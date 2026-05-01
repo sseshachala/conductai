@@ -2,6 +2,10 @@
 
 A visual AI agent orchestration platform for engineering teams. Build, run, and audit AI agents that do real engineering work — write code, ship features, manage infrastructure, triage incidents — with approval gates and full execution traces.
 
+![Simple webhook → tool → output workflow](docs/canvas-simple.png)
+
+![Full Story→PR reference workflow with 16 blocks](docs/canvas-story-pr.png)
+
 ---
 
 ## What it does
