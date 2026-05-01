@@ -1,0 +1,9 @@
+*Delegator agent run complete* ✓
+
+*Agent:* {workflow_name}
+*Status:* {status}
+*Duration:* {duration}
+
+{run_summary}
+
+_View full trace → {trace_url}_

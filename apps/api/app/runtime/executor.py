@@ -1,0 +1,793 @@
+"""
+DAG Executor — runs a workflow version block by block.
+
+Execution model:
+- Topologically sort the graph
+- Execute each block, passing accumulated state from previous blocks
+- Logic blocks route execution: pass/fail source handles control which branch runs
+- Approval blocks pause the run; resume via POST /runs/{id}/approve
+- Write a run_event for every state transition
+- On any failure, mark the run failed and run cleanup blocks
+"""
+import json
+import logging
+import os
+import re
+import subprocess
+from collections import defaultdict, deque
+from datetime import datetime, timezone
+from typing import Any
+
+import anthropic
+
+from app.core.config import settings
+from app.core.crypto import decrypt
+from app.core.database import SessionLocal
+from app.models.integration import Integration
+from app.models.run import Run, RunEvent
+from app.models.workflow import WorkflowVersion
+
+log = logging.getLogger(__name__)
+
+
+# ── helpers ──────────────────────────────────────────────────────────────────
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _emit(db, run_id, block_id: str | None, kind: str, payload: dict):
+    event = RunEvent(run_id=run_id, block_id=block_id, kind=kind, payload=payload)
+    db.add(event)
+    db.commit()
+
+
+def _resolve_refs(value: Any, state: dict) -> Any:
+    """Replace {{block_id.field}} references with values from run state."""
+    if isinstance(value, str):
+        def replace(m):
+            parts = m.group(1).split(".")
+            obj = state.get(parts[0], {})
+            for p in parts[1:]:
+                if isinstance(obj, dict):
+                    obj = obj.get(p, m.group(0))
+            return str(obj)
+        return re.sub(r"\{\{([\w.]+)\}\}", replace, value)
+    if isinstance(value, dict):
+        return {k: _resolve_refs(v, state) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_resolve_refs(i, state) for i in value]
+    return value
+
+
+def _topological_sort(nodes: list[dict], edges: list[dict]) -> list[dict]:
+    """Kahn's algorithm — returns nodes in execution order."""
+    id_to_node = {n["id"]: n for n in nodes}
+    in_degree: dict[str, int] = defaultdict(int)
+    adjacency: dict[str, list[str]] = defaultdict(list)
+
+    for edge in edges:
+        src, tgt = edge["source"], edge["target"]
+        adjacency[src].append(tgt)
+        in_degree[tgt] += 1
+
+    queue = deque(n["id"] for n in nodes if in_degree[n["id"]] == 0)
+    order: list[dict] = []
+
+    while queue:
+        nid = queue.popleft()
+        order.append(id_to_node[nid])
+        for neighbor in adjacency[nid]:
+            in_degree[neighbor] -= 1
+            if in_degree[neighbor] == 0:
+                queue.append(neighbor)
+
+    return order
+
+
+def _find_skipped_blocks(nodes: list[dict], edges: list[dict], logic_routes: dict[str, str]) -> set[str]:
+    """
+    Given resolved logic block routes {block_id: 'pass'|'fail'}, return the set
+    of block IDs that should be skipped because they're on the non-taken branch.
+
+    A block is skipped if:
+    1. It is the direct target of a wrong-route edge from a logic block, OR
+    2. ALL of its incoming edges come from skipped blocks (propagation).
+    """
+    if not logic_routes:
+        return set()
+
+    all_node_ids = {n["id"] for n in nodes}
+    skipped: set[str] = set()
+
+    # Direct targets of non-chosen branches
+    for edge in edges:
+        src = edge.get("source", "")
+        if src in logic_routes:
+            handle = edge.get("sourceHandle") or "pass"
+            if handle != logic_routes[src]:
+                skipped.add(edge["target"])
+
+    # Propagate: if every incoming edge comes from a skipped node, skip this node too
+    changed = True
+    while changed:
+        changed = False
+        for node_id in all_node_ids:
+            if node_id in skipped:
+                continue
+            incoming = [e for e in edges if e["target"] == node_id]
+            if incoming and all(e["source"] in skipped for e in incoming):
+                skipped.add(node_id)
+                changed = True
+
+    return skipped
+
+
+# ── special exceptions ────────────────────────────────────────────────────────
+
+class ApprovalRequired(Exception):
+    """Raised by the approval block to pause the run."""
+    def __init__(self, block_id: str, message: str = ""):
+        self.block_id = block_id
+        self.message = message
+        super().__init__(message)
+
+
+# ── tool definitions for Brain agentic mode ───────────────────────────────────
+
+BRAIN_TOOLS = [
+    {
+        "name": "read_file",
+        "description": "Read the contents of a file at the given path.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Absolute or relative file path to read"}
+            },
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "write_file",
+        "description": "Write content to a file at the given path. Creates parent directories if needed.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "File path to write"},
+                "content": {"type": "string", "description": "Content to write to the file"},
+            },
+            "required": ["path", "content"],
+        },
+    },
+    {
+        "name": "run_shell",
+        "description": "Execute a shell command and return stdout/stderr. Use for tests, builds, git commands.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "description": "Shell command to execute"},
+                "working_dir": {"type": "string", "description": "Working directory (optional)"},
+            },
+            "required": ["command"],
+        },
+    },
+    {
+        "name": "search_code",
+        "description": "Search for a pattern in files using grep. Returns matching lines with file paths.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pattern": {"type": "string", "description": "Regex pattern to search for"},
+                "path": {"type": "string", "description": "Directory or file to search in", "default": "."},
+                "file_glob": {"type": "string", "description": "File glob to filter (e.g. '*.py')", "default": "*"},
+            },
+            "required": ["pattern"],
+        },
+    },
+]
+
+# Commands that are never allowed in run_shell
+_FORBIDDEN_SHELL_PATTERNS = [
+    r"rm\s+-rf\s+/",
+    r"rm\s+-fr\s+/",
+    r"mkfs",
+    r"dd\s+if=",
+    r":\(\)\{.*\}",       # fork bomb
+    r">\s*/dev/sd",
+    r"chmod\s+777\s+/",
+    r"chown.*root",
+]
+
+
+def _tool_read_file(path: str) -> str:
+    try:
+        with open(path) as f:
+            content = f.read()
+        if len(content) > 20_000:
+            content = content[:20_000] + "\n[... truncated]"
+        return content
+    except Exception as e:
+        return f"Error reading file: {e}"
+
+
+def _tool_write_file(path: str, content: str) -> str:
+    try:
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(content)
+        return f"Written {len(content)} bytes to {path}"
+    except Exception as e:
+        return f"Error writing file: {e}"
+
+
+def _tool_run_shell(command: str, working_dir: str | None = None) -> str:
+    for pattern in _FORBIDDEN_SHELL_PATTERNS:
+        if re.search(pattern, command):
+            return f"Refused: command matches forbidden pattern '{pattern}'"
+    try:
+        result = subprocess.run(
+            command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=working_dir,
+        )
+        output = result.stdout + result.stderr
+        if len(output) > 10_000:
+            output = output[:10_000] + "\n[... truncated]"
+        return output or "(no output)"
+    except subprocess.TimeoutExpired:
+        return "Error: command timed out after 60s"
+    except Exception as e:
+        return f"Error running shell: {e}"
+
+
+def _tool_search_code(pattern: str, path: str = ".", file_glob: str = "*") -> str:
+    try:
+        cmd = ["grep", "-r", "--include", file_glob, "-n", pattern, path]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        output = result.stdout
+        if len(output) > 8_000:
+            output = output[:8_000] + "\n[... truncated]"
+        return output or "(no matches)"
+    except Exception as e:
+        return f"Error searching: {e}"
+
+
+def _dispatch_tool(tool_name: str, tool_input: dict) -> str:
+    if tool_name == "read_file":
+        return _tool_read_file(tool_input["path"])
+    if tool_name == "write_file":
+        return _tool_write_file(tool_input["path"], tool_input["content"])
+    if tool_name == "run_shell":
+        return _tool_run_shell(tool_input["command"], tool_input.get("working_dir"))
+    if tool_name == "search_code":
+        return _tool_search_code(
+            tool_input["pattern"],
+            tool_input.get("path", "."),
+            tool_input.get("file_glob", "*"),
+        )
+    return f"Unknown tool: {tool_name}"
+
+
+# ── block executors ───────────────────────────────────────────────────────────
+
+def _execute_brain(block: dict, state: dict, compiled_artifacts: dict) -> dict:
+    if state.get("__dry_run"):
+        return {
+            "dry_run": True,
+            "note": "Dry run — Brain block would invoke Claude AI with the workflow context",
+            "description": block["data"].get("description", ""),
+            "is_agentic": block["data"].get("isAgentic", False),
+        }
+
+    artifact = compiled_artifacts.get(block["id"], {})
+    system_prompt = artifact.get("system_prompt", block["data"].get("description", ""))
+    is_agentic = block["data"].get("isAgentic", False)
+
+    context = json.dumps({k: v for k, v in state.items() if not k.startswith("__")}, default=str)[:4000]
+    user_message = f"Workflow context so far:\n{context}\n\nExecute your task."
+
+    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+
+    if is_agentic:
+        # Bounded agentic loop with real tool_use — max 20 turns
+        messages: list[dict] = [{"role": "user", "content": user_message}]
+        turns = 0
+        max_turns = 20
+
+        while turns < max_turns:
+            response = client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=4096,
+                system=system_prompt,
+                tools=BRAIN_TOOLS,
+                messages=messages,
+            )
+            turns += 1
+
+            # Collect tool calls from response
+            tool_calls = [b for b in response.content if b.type == "tool_use"]
+            text_blocks = [b for b in response.content if b.type == "text"]
+            final_text = " ".join(b.text for b in text_blocks)
+
+            if response.stop_reason == "end_turn" or not tool_calls:
+                return {"output": final_text, "turns": turns}
+
+            # Append assistant message
+            messages.append({"role": "assistant", "content": response.content})
+
+            # Execute tool calls and build tool_result message
+            tool_results = []
+            for tc in tool_calls:
+                result_content = _dispatch_tool(tc.name, tc.input)
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tc.id,
+                    "content": result_content,
+                })
+            messages.append({"role": "user", "content": tool_results})
+
+        return {"output": "Turn budget exhausted", "turns": max_turns}
+
+    else:
+        # Single call (no tools)
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=2048,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_message}],
+        )
+        text = next((b.text for b in response.content if hasattr(b, "text")), "")
+        return {"output": text}
+
+
+def _dry_run_mock(integration: str, action: str, params: dict) -> dict:
+    """Return a realistic-looking mock result for dry run mode."""
+    return {
+        "dry_run": True,
+        "integration": integration,
+        "action": action,
+        "params": params,
+        "simulated": True,
+        "note": f"Dry run — {integration}.{action} would have been called with these params",
+    }
+
+
+def _execute_tool(block: dict, state: dict, credentials: dict) -> dict:
+    from app.runtime.integrations import github, slack, linear, digitalocean, vercel, railway
+
+    dry_run = state.get("__dry_run", False)
+    data = block["data"]
+    integration = data.get("integration")
+    config = data.get("config", {})
+    params = _resolve_refs(config.get("params", {}), state)
+
+    if not integration:
+        return {"skipped": True, "reason": "No integration configured"}
+
+    action = config.get("action", "")
+
+    if dry_run:
+        creds = credentials.get(integration, {})
+        if not creds:
+            return {"dry_run": True, "warning": f"No credentials for {integration} — would fail in a real run", "action": action}
+        return _dry_run_mock(integration, action, params)
+
+    creds = credentials.get(integration, {})
+    if not creds:
+        return {"skipped": True, "reason": f"No credentials for {integration}"}
+
+    if integration == "github":
+        return github.execute(action, params, creds)
+    if integration == "slack":
+        return slack.execute(action, params, creds)
+    if integration == "linear":
+        return linear.execute(action, params, creds)
+    if integration == "digitalocean":
+        return digitalocean.execute(action, params, creds)
+    if integration == "vercel":
+        return vercel.execute(action, params, creds)
+    if integration == "railway":
+        return railway.execute(action, params, creds)
+
+    return {"skipped": True, "reason": f"Integration '{integration}' not yet implemented"}
+
+
+def _build_run_summary(state: dict) -> str:
+    """Build a human-readable bullet-point summary from accumulated block outputs."""
+    lines = []
+    for key, val in state.items():
+        if key.startswith("__"):
+            continue
+        if not isinstance(val, dict):
+            continue
+        # Skip skipped/dry-run blocks
+        if val.get("skipped") or val.get("dry_run"):
+            continue
+        # Pick best one-liner
+        summary = None
+        if val.get("pr_url"):
+            summary = f"PR opened → {val['pr_url']}"
+        elif val.get("html_url") and val.get("clone_url"):
+            summary = f"Repo created → {val['html_url']}"
+        elif val.get("branch"):
+            summary = f"Branch created: {val['branch']}"
+        elif val.get("full_name"):
+            summary = f"Repo: {val['full_name']}"
+        elif val.get("ts") and val.get("channel"):
+            summary = f"Slack message sent to {val['channel']}"
+        elif val.get("identifier") and val.get("title"):
+            summary = f"Linear {val['identifier']}: {val['title']}"
+        elif val.get("droplet_id"):
+            summary = f"Droplet {val['droplet_id']} — {val.get('status', '?')}"
+        elif val.get("state") and val.get("url"):
+            summary = f"Deployment {val['state']} → {val['url']}"
+        elif val.get("triggered") and val.get("service_id"):
+            summary = f"Railway service {val['service_id']} redeployed"
+        elif val.get("route"):
+            summary = f"Logic route: {val['route']}"
+        elif isinstance(val.get("output"), str):
+            summary = val["output"][:120]
+        if summary:
+            lines.append(f"• {key}: {summary}")
+    return "\n".join(lines) if lines else "No results recorded."
+
+
+def _load_template(name: str) -> str:
+    import os
+    path = os.path.join(os.path.dirname(__file__), "..", "templates", name)
+    try:
+        with open(os.path.abspath(path)) as f:
+            return f.read()
+    except FileNotFoundError:
+        return "{run_summary}"
+
+
+def _fill_template(template: str, state: dict, workflow_name: str = "Agent", trace_url: str = "") -> tuple[str, str]:
+    """Return (subject, body) filled from template."""
+    run_summary = _build_run_summary(state)
+    triggered_by = str(state.get("__triggered_by", "manual"))
+
+    # Split subject line if present (first line starting with "Subject:")
+    lines = template.strip().splitlines()
+    subject = f"Delegator: {workflow_name} completed"
+    body_lines = lines
+    if lines and lines[0].lower().startswith("subject:"):
+        subject = lines[0][8:].strip()
+        body_lines = lines[2:] if len(lines) > 2 else []
+
+    body = "\n".join(body_lines)
+    replacements = {
+        "{workflow_name}": workflow_name,
+        "{status}": "completed",
+        "{duration}": "—",
+        "{triggered_by}": triggered_by,
+        "{run_summary}": run_summary,
+        "{trace_url}": trace_url or "(see Delegator dashboard)",
+    }
+    for k, v in replacements.items():
+        subject = subject.replace(k, v)
+        body = body.replace(k, v)
+
+    return subject, body
+
+
+def _execute_output(block: dict, state: dict, credentials: dict, workflow_name: str = "Agent", trace_url: str = "") -> dict:
+    from app.runtime.integrations import slack, email as email_integration
+    from app.core.config import settings
+
+    dry_run = state.get("__dry_run", False)
+    data = block["data"]
+    integration = data.get("integration", "slack")
+    config = data.get("config", {})
+
+    if dry_run:
+        summary = _build_run_summary(state)
+        return {"dry_run": True, "integration": integration, "preview": summary, "note": f"Dry run — would send via {integration}"}
+
+    results: dict = {}
+
+    send_slack = integration in ("slack", "both")
+    send_email = integration in ("email", "both")
+
+    if send_slack:
+        slack_creds = credentials.get("slack", {})
+        channel = config.get("channel", "#general")
+        if slack_creds and channel:
+            _, body = _fill_template(_load_template("slack_output.txt"), state, workflow_name, trace_url)
+            r = slack.execute("post_message", {"channel": channel, "text": body}, slack_creds)
+            results["slack"] = r
+        else:
+            results["slack"] = {"sent": False, "reason": "No Slack credentials or channel configured"}
+
+    if send_email:
+        email_creds = dict(credentials.get("email", {}))
+        if not email_creds.get("resend_api_key") and settings.resend_api_key:
+            email_creds["resend_api_key"] = settings.resend_api_key
+        to = _resolve_refs(config.get("to", ""), state)
+        from_address = config.get("from_address") or settings.email_from
+        if email_creds and to:
+            subject, body = _fill_template(_load_template("email_output.txt"), state, workflow_name, trace_url)
+            r = email_integration.execute("send_email", {"to": to, "subject": subject, "body": body, "from_address": from_address}, email_creds)
+            results["email"] = r
+        else:
+            results["email"] = {"sent": False, "reason": "No email credentials or recipient configured"}
+
+    if not results:
+        return {"sent": False, "reason": "No integration configured"}
+
+    return {"sent": True, "integration": integration, **results}
+
+
+def _execute_logic(block: dict, state: dict) -> dict:
+    """
+    Evaluate a condition and return route: 'pass' or 'fail'.
+
+    Checks (in order):
+    1. Explicit condition expression in block config
+    2. exit_code == 0 from last shell output
+    3. Keywords 'pass', 'success', 'true', '0' in last output
+    """
+    config = block["data"].get("config", {})
+    condition_expr = _resolve_refs(config.get("condition", ""), state)
+    last_output = str(state.get("__last_output", "")).lower()
+
+    # If config has an explicit condition expression, evaluate it
+    if condition_expr:
+        cond_lower = condition_expr.lower()
+        if any(k in cond_lower for k in ("pass", "success", "true", "== 0", "exit 0")):
+            # Condition is about passing — check last_output
+            pass
+        elif any(k in cond_lower for k in ("fail", "error", "false")):
+            return {"route": "fail", "condition": condition_expr, "evaluated_on": last_output[:200]}
+
+    # Check exit_code in last output (JSON blob from run_shell)
+    try:
+        last_json = json.loads(state.get("__last_output", "{}"))
+        if isinstance(last_json, dict):
+            exit_code = last_json.get("exit_code")
+            if exit_code is not None:
+                route = "pass" if int(exit_code) == 0 else "fail"
+                return {"route": route, "condition": condition_expr, "exit_code": exit_code}
+    except (json.JSONDecodeError, TypeError, ValueError):
+        pass
+
+    # Keyword match on last output string
+    if any(k in last_output for k in ("pass", "success", "true", "all tests passed", "exit code 0")):
+        return {"route": "pass", "condition": condition_expr, "evaluated_on": last_output[:200]}
+    if any(k in last_output for k in ("fail", "error", "false", "exception", "traceback")):
+        return {"route": "fail", "condition": condition_expr, "evaluated_on": last_output[:200]}
+
+    # Default: pass (non-blocking)
+    return {"route": "pass", "condition": condition_expr, "evaluated_on": last_output[:200]}
+
+
+def _execute_approval(block: dict, state: dict, credentials: dict, run_id: str) -> dict:
+    """
+    Pause the run and send a Slack DM with Approve/Reject buttons.
+    Raises ApprovalRequired so the executor can pause the run.
+
+    On resume, the executor injects __approval_{block_id} = 'approved'|'rejected'
+    into state before re-queuing, so the block returns without raising.
+    """
+    from app.runtime.integrations import slack
+
+    block_id = block["id"]
+    approval_key = f"__approval_{block_id}"
+
+    # Resuming — decision already recorded by the approval webhook
+    if approval_key in state:
+        decision = state[approval_key]
+        if decision == "rejected":
+            raise ValueError(f"Approval rejected for block {block_id}")
+        return {"decision": "approved", "resumed": True}
+
+    # First encounter — send Slack DM and pause
+    data = block["data"]
+    config = data.get("config", {})
+    message = _resolve_refs(
+        config.get("message", data.get("description", "Approval required to continue.")),
+        state,
+    )
+    slack_user = config.get("slack_user")
+    channel = config.get("channel", "#general")
+
+    creds = credentials.get("slack", {})
+    if creds:
+        callback_url = f"{settings.api_base_url}/runs/{run_id}/approve"
+        try:
+            if slack_user:
+                slack.execute(
+                    "post_approval_message",
+                    {
+                        "channel": slack_user,
+                        "text": message,
+                        "run_id": run_id,
+                        "callback_url": callback_url,
+                    },
+                    creds,
+                )
+            else:
+                slack.execute(
+                    "post_approval_message",
+                    {
+                        "channel": channel,
+                        "text": message,
+                        "run_id": run_id,
+                        "callback_url": callback_url,
+                    },
+                    creds,
+                )
+        except Exception as e:
+            log.warning("Approval Slack send failed: %s", e)
+
+    raise ApprovalRequired(block_id, message)
+
+
+# ── main executor ─────────────────────────────────────────────────────────────
+
+def execute_run(run_id: str):
+    """
+    Entry point called by the worker.
+    Loads the run, executes the DAG, writes events throughout.
+
+    Supports resuming paused runs: blocks whose output is already in state
+    are skipped (their previous output is preserved).
+    """
+    db = SessionLocal()
+    try:
+        run = db.query(Run).filter(Run.id == run_id).first()
+        if not run:
+            log.error("Run %s not found", run_id)
+            return
+
+        from sqlalchemy.orm import joinedload
+        version = db.query(WorkflowVersion).options(
+            joinedload(WorkflowVersion.workflow)
+        ).filter(
+            WorkflowVersion.id == run.workflow_version_id
+        ).first()
+
+        graph = version.graph
+        nodes = graph.get("nodes", [])
+        edges = graph.get("edges", [])
+        compiled = version.compiled_artifacts or {}
+
+        run.status = "running"
+        run.started_at = run.started_at or _now()
+        db.commit()
+        _emit(db, run_id, None, "run_started", {"node_count": len(nodes)})
+
+        ordered = _topological_sort(nodes, edges)
+        cleanup_blocks = [n for n in ordered if n["data"].get("type") == "cleanup"]
+        exec_blocks = [n for n in ordered if n["data"].get("type") != "cleanup"]
+
+        # Accumulated state — includes previous run segment outputs on resume
+        state: dict[str, Any] = dict(run.state or {})
+
+        cred_rows = db.query(Integration).filter(
+            Integration.workspace_id == version.workflow.workspace_id
+        ).all()
+        credentials: dict[str, Any] = {
+            row.handle: decrypt(row.encrypted_credentials)
+            for row in cred_rows
+            if row.encrypted_credentials
+        }
+
+        failed = False
+        fail_error = ""
+        logic_routes: dict[str, str] = {}  # block_id → 'pass'|'fail'
+
+        for block in exec_blocks:
+            block_id = block["id"]
+            block_type = block["data"].get("type", "tool")
+
+            # Skip blocks already completed in a previous run segment (resume support)
+            if block_id in state:
+                log.debug("Block %s already in state — skipping (resume)", block_id)
+                if block_type == "logic":
+                    logic_routes[block_id] = state[block_id].get("route", "pass")
+                continue
+
+            # Skip blocks on a non-taken logic branch
+            skipped = _find_skipped_blocks(nodes, edges, logic_routes)
+            if block_id in skipped:
+                _emit(db, run_id, block_id, "block_skipped", {"reason": "branch_not_taken"})
+                continue
+
+            run.current_block_id = block_id
+            db.commit()
+
+            _emit(db, run_id, block_id, "block_started", {
+                "type": block_type,
+                "label": block["data"].get("label", ""),
+            })
+
+            try:
+                if block_type == "trigger":
+                    result = {"triggered": True}
+
+                elif block_type == "brain":
+                    result = _execute_brain(block, state, compiled)
+
+                elif block_type == "tool":
+                    result = _execute_tool(block, state, credentials)
+
+                elif block_type == "output":
+                    wf_name = version.workflow.name if version.workflow else "Agent"
+                    trace_url = f"{settings.api_base_url.rstrip('/')}/workflows/{version.workflow.id}/runs/{run_id}" if version.workflow else ""
+                    result = _execute_output(block, state, credentials, workflow_name=wf_name, trace_url=trace_url)
+
+                elif block_type == "logic":
+                    result = _execute_logic(block, state)
+                    logic_routes[block_id] = result.get("route", "pass")
+
+                elif block_type == "approval":
+                    result = _execute_approval(block, state, credentials, run_id)
+
+                elif block_type == "memory":
+                    result = {"status": "memory_op_skipped", "note": "Memory — Phase 4"}
+
+                else:
+                    result = {"status": "skipped", "type": block_type}
+
+                state[block_id] = result
+                state["__last_output"] = json.dumps(result, default=str)
+
+                _emit(db, run_id, block_id, "block_completed", {"output": result})
+
+            except ApprovalRequired as ap:
+                run.status = "paused"
+                run.paused_at = _now()
+                run.current_block_id = ap.block_id
+                run.state = state
+                db.commit()
+                _emit(db, run_id, ap.block_id, "approval_requested", {
+                    "block_id": ap.block_id,
+                    "message": ap.message,
+                })
+                log.info("Run %s paused at approval block %s", run_id, ap.block_id)
+                return  # Exit without marking failed
+
+            except Exception as e:
+                log.exception("Block %s failed", block_id)
+                failed = True
+                fail_error = str(e)
+                _emit(db, run_id, block_id, "block_failed", {"error": str(e)})
+                break
+
+        # Always run cleanup blocks
+        for block in cleanup_blocks:
+            try:
+                _emit(db, run_id, block["id"], "block_started", {"type": "cleanup"})
+                result = _execute_tool(block, state, credentials)
+                _emit(db, run_id, block["id"], "block_completed", {"output": result})
+            except Exception as e:
+                _emit(db, run_id, block["id"], "block_failed", {"error": str(e)})
+
+        run.status = "failed" if failed else "succeeded"
+        run.completed_at = _now()
+        run.current_block_id = None
+        run.state = state
+        db.commit()
+
+        _emit(db, run_id, None, "run_completed" if not failed else "run_failed", {
+            "status": run.status,
+            "error": fail_error,
+        })
+        log.info("Run %s finished: %s", run_id, run.status)
+
+    except Exception as e:
+        log.exception("Executor crash for run %s", run_id)
+        try:
+            run = db.query(Run).filter(Run.id == run_id).first()
+            if run:
+                run.status = "failed"
+                run.completed_at = _now()
+                db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()

@@ -1,0 +1,21 @@
+Subject: Delegator: {workflow_name} completed ✓
+
+Hi,
+
+Your Delegator agent "{workflow_name}" finished running.
+
+Status: {status}
+Duration: {duration}
+Triggered by: {triggered_by}
+
+--- Results ---
+
+{run_summary}
+
+---
+
+View the full trace here:
+{trace_url}
+
+—
+Delegator · AI agent orchestration

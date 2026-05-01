@@ -1,0 +1,145 @@
+"""
+GitHub integration — tool implementations.
+Each function takes a params dict and returns a structured result dict.
+"""
+import httpx
+
+BASE = "https://api.github.com"
+
+
+def _headers(token: str) -> dict:
+    return {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+
+def get_repo(token: str, owner: str, repo: str) -> dict:
+    r = httpx.get(f"{BASE}/repos/{owner}/{repo}", headers=_headers(token), timeout=15)
+    r.raise_for_status()
+    d = r.json()
+    return {"full_name": d["full_name"], "default_branch": d["default_branch"], "clone_url": d["clone_url"]}
+
+
+def create_branch(token: str, owner: str, repo: str, branch: str, from_branch: str = "main") -> dict:
+    # Get SHA of base branch
+    r = httpx.get(f"{BASE}/repos/{owner}/{repo}/git/ref/heads/{from_branch}", headers=_headers(token), timeout=15)
+    r.raise_for_status()
+    sha = r.json()["object"]["sha"]
+
+    # Create new branch
+    r2 = httpx.post(
+        f"{BASE}/repos/{owner}/{repo}/git/refs",
+        headers=_headers(token),
+        json={"ref": f"refs/heads/{branch}", "sha": sha},
+        timeout=15,
+    )
+    if r2.status_code == 422:
+        return {"branch": branch, "sha": sha, "already_exists": True}
+    r2.raise_for_status()
+    return {"branch": branch, "sha": sha, "already_exists": False}
+
+
+def open_pull_request(token: str, owner: str, repo: str, title: str, head: str, base: str, body: str = "") -> dict:
+    r = httpx.post(
+        f"{BASE}/repos/{owner}/{repo}/pulls",
+        headers=_headers(token),
+        json={"title": title, "head": head, "base": base, "body": body, "draft": True},
+        timeout=15,
+    )
+    r.raise_for_status()
+    d = r.json()
+    return {"pr_number": d["number"], "pr_url": d["html_url"], "title": d["title"]}
+
+
+def list_pull_requests(token: str, owner: str, repo: str, state: str = "open") -> dict:
+    r = httpx.get(
+        f"{BASE}/repos/{owner}/{repo}/pulls",
+        headers=_headers(token),
+        params={"state": state, "per_page": 10},
+        timeout=15,
+    )
+    r.raise_for_status()
+    prs = [{"number": p["number"], "title": p["title"], "url": p["html_url"]} for p in r.json()]
+    return {"pull_requests": prs}
+
+
+def create_repo(
+    token: str,
+    name: str,
+    description: str = "",
+    private: bool = True,
+    auto_init: bool = True,
+) -> dict:
+    r = httpx.post(
+        f"{BASE}/user/repos",
+        headers=_headers(token),
+        json={
+            "name": name,
+            "description": description,
+            "private": private,
+            "auto_init": auto_init,
+        },
+        timeout=15,
+    )
+    if r.status_code == 422:
+        # Repo already exists — fetch it instead
+        user_r = httpx.get(f"{BASE}/user", headers=_headers(token), timeout=10)
+        user_r.raise_for_status()
+        owner = user_r.json()["login"]
+        return get_repo(token=token, owner=owner, repo=name)
+    r.raise_for_status()
+    d = r.json()
+    return {
+        "full_name": d["full_name"],
+        "clone_url": d["clone_url"],
+        "ssh_url": d["ssh_url"],
+        "html_url": d["html_url"],
+        "private": d["private"],
+        "default_branch": d.get("default_branch", "main"),
+    }
+
+
+def add_repo_secret(token: str, owner: str, repo: str, secret_name: str, secret_value: str) -> dict:
+    """Add or update a GitHub Actions secret in a repo (requires nacl for encryption)."""
+    try:
+        from base64 import b64encode
+        from nacl import encoding, public  # type: ignore[import]
+
+        # Get repo public key
+        pk_r = httpx.get(f"{BASE}/repos/{owner}/{repo}/actions/secrets/public-key", headers=_headers(token), timeout=10)
+        pk_r.raise_for_status()
+        pk_data = pk_r.json()
+        pub_key = public.PublicKey(pk_data["key"].encode(), encoding.Base64Encoder())
+        sealed = public.SealedBox(pub_key).encrypt(secret_value.encode())
+        encrypted = b64encode(sealed).decode()
+
+        r = httpx.put(
+            f"{BASE}/repos/{owner}/{repo}/actions/secrets/{secret_name}",
+            headers=_headers(token),
+            json={"encrypted_value": encrypted, "key_id": pk_data["key_id"]},
+            timeout=15,
+        )
+        r.raise_for_status()
+        return {"secret": secret_name, "repo": f"{owner}/{repo}", "set": True}
+    except ImportError:
+        return {"secret": secret_name, "repo": f"{owner}/{repo}", "set": False, "reason": "PyNaCl not installed on server"}
+
+
+TOOL_MAP = {
+    "get_repo": get_repo,
+    "create_branch": create_branch,
+    "open_pull_request": open_pull_request,
+    "list_pull_requests": list_pull_requests,
+    "create_repo": create_repo,
+    "add_repo_secret": add_repo_secret,
+}
+
+
+def execute(action: str, params: dict, credentials: dict) -> dict:
+    token = credentials.get("token") or credentials.get("api_key", "")
+    fn = TOOL_MAP.get(action)
+    if not fn:
+        raise ValueError(f"Unknown GitHub action: {action}")
+    return fn(token=token, **params)
