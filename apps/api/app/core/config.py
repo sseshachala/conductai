@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     # Email — system-level default; can also be added per-workspace in Settings
     resend_api_key: str = ""
     email_from: str = "Delegator <notifications@delegator.dev>"
+    # Webhook secrets
+    vercel_webhook_secret: str = ""
 
     class Config:
         env_file = ".env"

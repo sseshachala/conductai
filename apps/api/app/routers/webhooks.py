@@ -1,23 +1,27 @@
 """
 Webhook endpoints for external services.
 
-POST /webhooks/slack/interactions — receives interactive component payloads
-  (Approve / Reject button clicks from approval block Slack messages).
+POST /webhooks/slack/interactions  — Slack approval button clicks
+POST /webhooks/vercel              — Vercel deployment events (deployment.succeeded etc.)
+POST /webhooks/railway             — Railway deployment events
 """
 import hashlib
 import hmac
 import json
 import logging
 import time
+from typing import Any
 from urllib.parse import unquote_plus
 
 import redis
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.run import Run, RunEvent
+from app.models.workflow import Workflow, WorkflowVersion
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -123,3 +127,134 @@ async def slack_interactions(request: Request, db: Session = Depends(get_db)):
     log.info("Run %s approval: %s by %s — re-queued", run_id_str, decision, approver)
 
     return {"ok": True}
+
+
+# ── Deploy webhook helpers ────────────────────────────────────────────────────
+
+def _trigger_webhook_workflows(db: Session, event_type: str, initial_state: dict[str, Any]) -> list[str]:
+    """
+    Find all workflows whose current version has a trigger block with
+    event_type = 'webhook' and queue a new run for each one.
+    Returns list of queued run IDs.
+    """
+    from app.models.workflow import Workflow, WorkflowVersion
+    import uuid as uuid_mod
+
+    # Find all workflows with a webhook trigger
+    versions = db.query(WorkflowVersion).join(
+        Workflow, Workflow.current_version_id == WorkflowVersion.id
+    ).all()
+
+    queued: list[str] = []
+    for version in versions:
+        nodes = version.graph.get("nodes", [])
+        has_webhook_trigger = any(
+            n.get("data", {}).get("type") == "trigger" and
+            n.get("data", {}).get("config", {}).get("event_type") == "webhook"
+            for n in nodes
+        )
+        if not has_webhook_trigger:
+            continue
+
+        run = Run(
+            workflow_version_id=version.id,
+            triggered_by=f"webhook:{event_type}",
+            status="pending",
+            state={**initial_state, "__triggered_by": f"webhook:{event_type}"},
+        )
+        db.add(run)
+        db.flush()
+        db.commit()
+        _redis().rpush(QUEUE_KEY, str(run.id))
+        queued.append(str(run.id))
+        log.info("Webhook %s triggered run %s for version %s", event_type, run.id, version.id)
+
+    return queued
+
+
+@router.post("/vercel")
+async def vercel_webhook(request: Request, db: Session = Depends(get_db)):
+    """
+    Receive Vercel deployment webhooks.
+    Configure in Vercel → Project → Settings → Webhooks.
+    Events: deployment.succeeded, deployment.failed, deployment.ready, etc.
+    """
+    body = await request.body()
+
+    # Optional signature verification
+    vercel_secret = settings.vercel_webhook_secret if hasattr(settings, "vercel_webhook_secret") else ""
+    if vercel_secret:
+        sig = request.headers.get("x-vercel-signature", "")
+        expected = hmac.new(vercel_secret.encode(), body, hashlib.sha1).hexdigest()  # type: ignore[attr-defined]
+        if not hmac.compare_digest(sig, expected):
+            raise HTTPException(status_code=401, detail="Invalid Vercel signature")
+
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    event_type = payload.get("type", "deployment.unknown")
+    deployment = payload.get("payload", {}).get("deployment", {})
+    project = payload.get("payload", {}).get("project", {})
+
+    initial_state = {
+        "vercel_webhook": {
+            "event": event_type,
+            "deployment_id": deployment.get("id"),
+            "url": f"https://{deployment.get('url')}" if deployment.get("url") else None,
+            "state": deployment.get("readyState") or deployment.get("state"),
+            "project_name": project.get("name"),
+            "branch": deployment.get("meta", {}).get("githubCommitRef"),
+            "commit_sha": deployment.get("meta", {}).get("githubCommitSha"),
+            "commit_message": deployment.get("meta", {}).get("githubCommitMessage"),
+        }
+    }
+
+    # Only trigger workflows on meaningful terminal states
+    trigger_on = {"deployment.succeeded", "deployment.ready", "deployment.failed", "deployment.error"}
+    if event_type not in trigger_on:
+        return {"ok": True, "queued": 0, "reason": f"event {event_type} not a trigger"}
+
+    queued = _trigger_webhook_workflows(db, event_type, initial_state)
+    return {"ok": True, "queued": len(queued), "run_ids": queued}
+
+
+@router.post("/railway")
+async def railway_webhook(request: Request, db: Session = Depends(get_db)):
+    """
+    Receive Railway deployment webhooks.
+    Configure in Railway → Project → Settings → Webhooks.
+    Events: DEPLOY_SUCCESS, DEPLOY_FAILED, etc.
+    """
+    body = await request.body()
+
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    event_type = payload.get("type", "UNKNOWN")
+    deployment = payload.get("deployment", {})
+    service = payload.get("service", {})
+    project = payload.get("project", {})
+
+    initial_state = {
+        "railway_webhook": {
+            "event": event_type,
+            "deployment_id": deployment.get("id"),
+            "status": deployment.get("status"),
+            "url": deployment.get("url"),
+            "service_name": service.get("name"),
+            "service_id": service.get("id"),
+            "project_name": project.get("name"),
+            "environment": payload.get("environment", {}).get("name"),
+        }
+    }
+
+    trigger_on = {"DEPLOY_SUCCESS", "DEPLOY_FAILED", "DEPLOY_CRASHED"}
+    if event_type not in trigger_on:
+        return {"ok": True, "queued": 0, "reason": f"event {event_type} not a trigger"}
+
+    queued = _trigger_webhook_workflows(db, event_type, initial_state)
+    return {"ok": True, "queued": len(queued), "run_ids": queued}
