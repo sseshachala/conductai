@@ -37,3 +37,20 @@ logs/
 
 # Alembic
 apps/api/alembic/versions/*.pyc
+
+# Python cache (all locations)
+**/__pycache__/
+**/*.pyc
+
+# Coverage / testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# macOS
+**/.DS_Store
+
+# Secrets / keys
+*.pem
+*.key
+*.p12
