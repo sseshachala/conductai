@@ -5,23 +5,26 @@ to Railway. This is Delegator deploying itself (dogfood).
 Workflow graph (no cycles — pure DAG):
 
   d1 (trigger: webhook deploy_delegator)
-    → d2 (tool: list_environments)       — get environment_id
-    → d3 (tool: trigger backend deploy)  — returns deployment_id
-    → d4 (tool: trigger frontend deploy) — returns deployment_id
+    → d2 (tool: list_environments)       — get environment_id from creds
+    → d3 (tool: trigger backend deploy)  — service_id from creds
+    → d4 (tool: trigger frontend deploy) — service_id from creds
     → d5 (tool: wait for backend)        — polls until done, returns {healthy: bool}
     → d6 (tool: wait for frontend)       — polls until done, returns {healthy: bool}
     → d7 (logic: both healthy?)
     → d8 (output: notify success)        — pass branch
     → d9 (output: notify failure)        — fail branch
 
-Artifact config is stored in each tool block's params — no separate DB table needed.
-Service IDs are read from env vars at seed time; store them as PLACEHOLDER values
-if you want to fill them in later via the workflow editor.
+Service IDs and project_id are NOT hardcoded here — they are read from the Railway
+credentials vault at run time. Go to Settings → Railway → Connect and fill in:
+  - API token
+  - Project ID
+  - Backend service ID  (delegator-backend)
+  - Frontend service ID (delegator-ui)
+  - Environment ID      (optional — auto-fetched if blank)
 
 Run with: docker compose exec api python seed_deploy_delegator.py
 """
 import json
-import os
 from sqlalchemy import create_engine, text
 from app.core.config import settings
 
@@ -30,12 +33,6 @@ engine = create_engine(settings.database_url)
 # dev workspace — change to your workspace UUID in production
 WORKSPACE_ID = "00000000-0000-0000-0000-000000000001"
 WORKFLOW_ID  = "00000000-0000-0000-0000-000000000004"
-
-# Read service IDs from env if set, otherwise use placeholder strings
-# that can be filled in through the workflow editor.
-RAILWAY_PROJECT_ID     = os.getenv("RAILWAY_PROJECT_ID", "REPLACE_WITH_RAILWAY_PROJECT_ID")
-RAILWAY_BACKEND_SVC_ID = os.getenv("RAILWAY_BACKEND_SERVICE_ID", "REPLACE_WITH_BACKEND_SERVICE_ID")
-RAILWAY_FRONTEND_SVC_ID = os.getenv("RAILWAY_FRONTEND_SERVICE_ID", "REPLACE_WITH_FRONTEND_SERVICE_ID")
 
 
 def pos(col: int, row: int) -> dict:
@@ -58,6 +55,7 @@ nodes = [
     },
 
     # ── Get Railway environment ───────────────────────────────────────────────
+    # project_id is pulled from the Railway credentials vault at run time.
     {
         "id": "d2", "type": "block", "position": pos(1, 1),
         "data": {
@@ -67,14 +65,13 @@ nodes = [
             "integration": "railway",
             "config": {
                 "action": "list_environments",
-                "params": {
-                    "project_id": RAILWAY_PROJECT_ID,
-                },
+                "params": {},
             },
         },
     },
 
     # ── Artifact: delegator-backend ───────────────────────────────────────────
+    # Set service_id to your Railway backend service ID via the workflow editor.
     {
         "id": "d3", "type": "block", "position": pos(2, 0),
         "data": {
@@ -85,7 +82,7 @@ nodes = [
             "config": {
                 "action": "trigger_and_get_deployment",
                 "params": {
-                    "service_id": RAILWAY_BACKEND_SVC_ID,
+                    "service_id": "",
                     "environment_id": "{{d2.environment_id}}",
                 },
             },
@@ -93,6 +90,7 @@ nodes = [
     },
 
     # ── Artifact: delegator-ui ────────────────────────────────────────────────
+    # Set service_id to your Railway frontend service ID via the workflow editor.
     {
         "id": "d4", "type": "block", "position": pos(2, 2),
         "data": {
@@ -103,7 +101,7 @@ nodes = [
             "config": {
                 "action": "trigger_and_get_deployment",
                 "params": {
-                    "service_id": RAILWAY_FRONTEND_SVC_ID,
+                    "service_id": "",
                     "environment_id": "{{d2.environment_id}}",
                 },
             },

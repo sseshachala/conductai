@@ -228,4 +228,13 @@ def execute(action: str, params: dict, credentials: dict) -> dict:
     fn = TOOL_MAP.get(action)
     if not fn:
         raise ValueError(f"Unknown Railway action: {action}")
-    return fn(token=token, **params)
+
+    # Fall back to credential-stored values for project_id and environment_id
+    # so workflow blocks that omit these params still work when they're saved
+    # in the Railway credentials vault via Settings.
+    merged = dict(params)
+    for field in ("project_id", "environment_id"):
+        if not merged.get(field) and credentials.get(field):
+            merged[field] = credentials[field]
+
+    return fn(token=token, **merged)
