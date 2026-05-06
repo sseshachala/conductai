@@ -4,6 +4,7 @@ Webhook endpoints for external services.
 POST /webhooks/slack/interactions  — Slack approval button clicks
 POST /webhooks/vercel              — Vercel deployment events (deployment.succeeded etc.)
 POST /webhooks/railway             — Railway deployment events
+POST /webhooks/github              — GitHub issue/PR events (issues.labeled, etc.)
 """
 import hashlib
 import hmac
@@ -258,3 +259,105 @@ async def railway_webhook(request: Request, db: Session = Depends(get_db)):
 
     queued = _trigger_webhook_workflows(db, event_type, initial_state)
     return {"ok": True, "queued": len(queued), "run_ids": queued}
+
+
+# ── GitHub webhook ────────────────────────────────────────────────────────────
+
+def _verify_github_signature(body: bytes, signature: str) -> bool:
+    secret = settings.github_webhook_secret
+    if not secret:
+        return True  # Skip in dev if not configured
+    expected = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()  # type: ignore[attr-defined]
+    return hmac.compare_digest(expected, signature)
+
+
+def _trigger_github_workflows(db: Session, event_type: str, label_filter: str, initial_state: dict[str, Any]) -> list[str]:
+    """
+    Find workflow versions with a trigger block matching:
+      - event_type == "github_issue"
+      - config.label == label_filter (or label_filter is empty = match all)
+    """
+    import uuid as uuid_mod
+
+    versions = db.query(WorkflowVersion).join(
+        Workflow, Workflow.current_version_id == WorkflowVersion.id
+    ).all()
+
+    queued: list[str] = []
+    for version in versions:
+        nodes = version.graph.get("nodes", [])
+        match = any(
+            n.get("data", {}).get("type") == "trigger" and
+            n.get("data", {}).get("config", {}).get("event_type") == event_type and
+            (
+                not n.get("data", {}).get("config", {}).get("label") or
+                n.get("data", {}).get("config", {}).get("label") == label_filter
+            )
+            for n in nodes
+        )
+        if not match:
+            continue
+
+        run = Run(
+            workflow_version_id=version.id,
+            triggered_by=f"github:{event_type}:{label_filter}",
+            status="pending",
+            state={**initial_state, "__triggered_by": f"github:{event_type}"},
+        )
+        db.add(run)
+        db.flush()
+        db.commit()
+        _redis().rpush(QUEUE_KEY, str(run.id))
+        queued.append(str(run.id))
+        log.info("GitHub %s (label=%s) triggered run %s for version %s", event_type, label_filter, run.id, version.id)
+
+    return queued
+
+
+@router.post("/github")
+async def github_webhook(request: Request, db: Session = Depends(get_db)):
+    """
+    Receive GitHub webhook events.
+    Configure in GitHub → repo → Settings → Webhooks.
+    Listens for: issues (labeled), push, pull_request (opened, merged).
+    """
+    body = await request.body()
+
+    sig = request.headers.get("X-Hub-Signature-256", "")
+    if not _verify_github_signature(body, sig):
+        raise HTTPException(status_code=401, detail="Invalid GitHub signature")
+
+    event = request.headers.get("X-GitHub-Event", "unknown")
+
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    # Only handle issue labeled events for now
+    if event != "issues" or payload.get("action") != "labeled":
+        return {"ok": True, "queued": 0, "reason": f"event {event}/{payload.get('action')} not handled"}
+
+    issue = payload.get("issue", {})
+    label = payload.get("label", {}).get("name", "")
+    repo = payload.get("repository", {})
+
+    initial_state = {
+        "github_issue": {
+            "issue_number": issue.get("number"),
+            "title": issue.get("title"),
+            "body": issue.get("body") or "",
+            "url": issue.get("html_url"),
+            "author": issue.get("user", {}).get("login"),
+            "labels": [l["name"] for l in issue.get("labels", [])],
+            "label_added": label,
+            "repo_full_name": repo.get("full_name"),
+            "repo_name": repo.get("name"),
+            "repo_owner": repo.get("owner", {}).get("login"),
+            "default_branch": repo.get("default_branch", "main"),
+            "clone_url": repo.get("clone_url"),
+        }
+    }
+
+    queued = _trigger_github_workflows(db, "github_issue", label, initial_state)
+    return {"ok": True, "queued": len(queued), "run_ids": queued, "label": label}

@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from app.core.auth import get_workspace_id
 from app.core.database import get_db
 from app.models.workflow import Workflow, WorkflowVersion
 from app.schemas.workflow import WorkflowCreate, WorkflowUpdate, WorkflowOut, WorkflowDetailOut
@@ -10,8 +11,6 @@ from app.compiler.compiler import compile_workflow
 from app.compiler.stream import stream_compile_block
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
-
-DEV_WORKSPACE_ID = "00000000-0000-0000-0000-000000000001"
 
 
 def _run_compiler(version_id, graph: dict):
@@ -32,15 +31,15 @@ def _run_compiler(version_id, graph: dict):
 
 
 @router.get("", response_model=list[WorkflowOut])
-def list_workflows(db: Session = Depends(get_db)):
+def list_workflows(db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id)):
     return db.query(Workflow).filter(
-        Workflow.workspace_id == DEV_WORKSPACE_ID
+        Workflow.workspace_id == workspace_id
     ).order_by(Workflow.updated_at.desc()).all()
 
 
 @router.post("", response_model=WorkflowDetailOut, status_code=201)
-def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db)):
-    workflow = Workflow(workspace_id=DEV_WORKSPACE_ID, name=body.name)
+def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id)):
+    workflow = Workflow(workspace_id=workspace_id, name=body.name)
     db.add(workflow)
     db.flush()
 

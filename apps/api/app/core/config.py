@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     email_from: str = "Delegator <notifications@delegator.dev>"
     # Webhook secrets
     vercel_webhook_secret: str = ""
+    github_webhook_secret: str = ""
+    # Modal sandbox — when set, Brain tools run in isolated containers
+    modal_token_id: str = ""
+    modal_token_secret: str = ""
 
     class Config:
         env_file = ".env"
