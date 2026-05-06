@@ -260,20 +260,6 @@ def _dispatch_tool(tool_name: str, tool_input: dict) -> str:
     return dispatch_brain_tool(tool_name, tool_input)
 
 
-def _dispatch_tool_legacy(tool_name: str, tool_input: dict) -> str:
-    if tool_name == "read_file":
-        return _tool_read_file(tool_input["path"])
-    if tool_name == "write_file":
-        return _tool_write_file(tool_input["path"], tool_input["content"])
-    if tool_name == "run_shell":
-        return _tool_run_shell(tool_input["command"], tool_input.get("working_dir"))
-    if tool_name == "search_code":
-        return _tool_search_code(
-            tool_input["pattern"],
-            tool_input.get("path", "."),
-            tool_input.get("file_glob", "*"),
-        )
-    return f"Unknown tool: {tool_name}"
 
 
 # ── block executors ───────────────────────────────────────────────────────────
@@ -358,6 +344,7 @@ def _execute_brain(block: dict, state: dict, compiled_artifacts: dict) -> dict:
             final_text = " ".join(b.text for b in text_blocks)
 
             if response.stop_reason == "end_turn" or not tool_calls:
+                # Sonnet 4.6 pricing: $3/1M input, $15/1M output — update if model changes
                 cost_usd = round((total_input_tokens * 3 + total_output_tokens * 15) / 1_000_000, 6)
                 files_changed, diff_stat = _extract_git_evidence(working_dir)
                 return {
