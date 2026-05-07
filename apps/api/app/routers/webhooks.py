@@ -271,17 +271,24 @@ def _verify_github_signature(body: bytes, signature: str) -> bool:
     return hmac.compare_digest(expected, signature)
 
 
-def _trigger_github_workflows(db: Session, event_type: str, label_filter: str, initial_state: dict[str, Any]) -> list[str]:
+def _trigger_github_workflows(
+    db: Session, event_type: str, label_filter: str, initial_state: dict[str, Any],
+    workspace_id: str | None = None,
+) -> list[str]:
     """
     Find workflow versions with a trigger block matching:
       - event_type == "github_issue"
       - config.label == label_filter (or label_filter is empty = match all)
+    If workspace_id is provided, only triggers workflows in that workspace.
     """
     import uuid as uuid_mod
 
-    versions = db.query(WorkflowVersion).join(
+    query = db.query(WorkflowVersion).join(
         Workflow, Workflow.current_version_id == WorkflowVersion.id
-    ).all()
+    )
+    if workspace_id:
+        query = query.filter(Workflow.workspace_id == workspace_id)
+    versions = query.all()
 
     queued: list[str] = []
     for version in versions:
@@ -315,11 +322,18 @@ def _trigger_github_workflows(db: Session, event_type: str, label_filter: str, i
 
 
 @router.post("/github")
-async def github_webhook(request: Request, db: Session = Depends(get_db)):
+async def github_webhook(
+    request: Request,
+    db: Session = Depends(get_db),
+    workspace_id: str | None = None,
+):
     """
     Receive GitHub webhook events.
     Configure in GitHub → repo → Settings → Webhooks.
     Listens for: issues (labeled), push, pull_request (opened, merged).
+
+    Pass ?workspace_id=<uuid> in the webhook URL to scope triggers to a single
+    workspace (required in multi-tenant deployments).
     """
     body = await request.body()
 
@@ -359,5 +373,5 @@ async def github_webhook(request: Request, db: Session = Depends(get_db)):
         }
     }
 
-    queued = _trigger_github_workflows(db, "github_issue", label, initial_state)
+    queued = _trigger_github_workflows(db, "github_issue", label, initial_state, workspace_id)
     return {"ok": True, "queued": len(queued), "run_ids": queued, "label": label}

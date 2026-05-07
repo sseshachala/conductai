@@ -15,6 +15,7 @@ import subprocess
 
 log = logging.getLogger(__name__)
 
+# Shared across local and Modal execution paths — single source of truth.
 _FORBIDDEN_SHELL_PATTERNS = [
     r"rm\s+-rf\s+/",
     r"rm\s+-fr\s+/",
@@ -26,7 +27,11 @@ _FORBIDDEN_SHELL_PATTERNS = [
     r"chown.*root",
 ]
 
-_modal_available = bool(os.environ.get("MODAL_TOKEN_ID") and os.environ.get("MODAL_TOKEN_SECRET"))
+
+def _modal_available() -> bool:
+    """Check at call time so .env loading order doesn't matter."""
+    from app.core.config import settings
+    return bool(settings.modal_token_id and settings.modal_token_secret)
 
 
 # ── Local fallback (dev mode) ─────────────────────────────────────────────────
@@ -80,78 +85,82 @@ def _local_search_code(pattern: str, path: str = ".", file_glob: str = "*") -> s
 
 # ── Modal sandbox (production) ────────────────────────────────────────────────
 
+# Lazy-initialised Modal function stub — defined once, reused across calls.
+_modal_run_tool = None
+
+
+def _get_modal_run_tool():
+    global _modal_run_tool
+    if _modal_run_tool is not None:
+        return _modal_run_tool
+
+    import modal  # type: ignore[import]
+
+    _app = modal.App("delegator-brain-sandbox")
+    forbidden_patterns = _FORBIDDEN_SHELL_PATTERNS  # captured at definition time
+
+    @_app.function(timeout=120, cpu=1, memory=512, retries=0)
+    def run_tool(name: str, inputs: dict) -> str:
+        import os as _os
+        import re as _re
+        import subprocess as _sp
+
+        if name == "read_file":
+            try:
+                with open(inputs["path"]) as f:
+                    c = f.read()
+                return c[:20_000] + "\n[... truncated]" if len(c) > 20_000 else c
+            except Exception as e:
+                return f"Error: {e}"
+
+        if name == "write_file":
+            try:
+                _os.makedirs(_os.path.dirname(_os.path.abspath(inputs["path"])), exist_ok=True)
+                with open(inputs["path"], "w") as f:
+                    f.write(inputs["content"])
+                return f"Written {len(inputs['content'])} bytes to {inputs['path']}"
+            except Exception as e:
+                return f"Error: {e}"
+
+        if name == "run_shell":
+            cmd = inputs["command"]
+            for p in forbidden_patterns:
+                if _re.search(p, cmd):
+                    return f"Refused: matches forbidden pattern '{p}'"
+            try:
+                r = _sp.run(
+                    cmd, shell=True, capture_output=True, text=True,
+                    timeout=110, cwd=inputs.get("working_dir"),
+                )
+                out = r.stdout + r.stderr
+                return (out[:10_000] + "\n[... truncated]") if len(out) > 10_000 else out or "(no output)"
+            except _sp.TimeoutExpired:
+                return "Error: timed out"
+            except Exception as e:
+                return f"Error: {e}"
+
+        if name == "search_code":
+            try:
+                r = _sp.run(
+                    ["grep", "-r", "--include", inputs.get("file_glob", "*"), "-n",
+                     inputs["pattern"], inputs.get("path", ".")],
+                    capture_output=True, text=True, timeout=15,
+                )
+                out = r.stdout
+                return (out[:8_000] + "\n[... truncated]") if len(out) > 8_000 else out or "(no matches)"
+            except Exception as e:
+                return f"Error: {e}"
+
+        return f"Unknown tool: {name}"
+
+    _modal_run_tool = run_tool
+    return _modal_run_tool
+
+
 def _modal_dispatch(tool_name: str, tool_input: dict) -> str:
-    """Dispatch a single tool call into a Modal sandbox container."""
     try:
-        import modal  # type: ignore[import]
-
-        app = modal.App.lookup("delegator-brain-sandbox", create_if_missing=True)
-
-        @app.function(
-            timeout=120,
-            cpu=1,
-            memory=512,
-            retries=0,
-        )
-        def _run_tool_in_sandbox(name: str, inputs: dict) -> str:
-            import os, re, subprocess  # noqa: F401
-
-            forbidden = [
-                r"rm\s+-rf\s+/", r"rm\s+-fr\s+/", r"mkfs", r"dd\s+if=",
-                r":\(\)\{.*\}", r">\s*/dev/sd", r"chmod\s+777\s+/", r"chown.*root",
-            ]
-
-            if name == "read_file":
-                try:
-                    with open(inputs["path"]) as f:
-                        c = f.read()
-                    return c[:20_000] + "\n[... truncated]" if len(c) > 20_000 else c
-                except Exception as e:
-                    return f"Error: {e}"
-
-            if name == "write_file":
-                try:
-                    os.makedirs(os.path.dirname(os.path.abspath(inputs["path"])), exist_ok=True)
-                    with open(inputs["path"], "w") as f:
-                        f.write(inputs["content"])
-                    return f"Written {len(inputs['content'])} bytes to {inputs['path']}"
-                except Exception as e:
-                    return f"Error: {e}"
-
-            if name == "run_shell":
-                cmd = inputs["command"]
-                for p in forbidden:
-                    if re.search(p, cmd):
-                        return f"Refused: matches forbidden pattern '{p}'"
-                try:
-                    r = subprocess.run(
-                        cmd, shell=True, capture_output=True, text=True,
-                        timeout=110, cwd=inputs.get("working_dir"),
-                    )
-                    out = r.stdout + r.stderr
-                    return (out[:10_000] + "\n[... truncated]") if len(out) > 10_000 else out or "(no output)"
-                except subprocess.TimeoutExpired:
-                    return "Error: timed out"
-                except Exception as e:
-                    return f"Error: {e}"
-
-            if name == "search_code":
-                try:
-                    r = subprocess.run(
-                        ["grep", "-r", "--include", inputs.get("file_glob", "*"), "-n",
-                         inputs["pattern"], inputs.get("path", ".")],
-                        capture_output=True, text=True, timeout=15,
-                    )
-                    out = r.stdout
-                    return (out[:8_000] + "\n[... truncated]") if len(out) > 8_000 else out or "(no matches)"
-                except Exception as e:
-                    return f"Error: {e}"
-
-            return f"Unknown tool: {name}"
-
-        with modal.enable_output():
-            return _run_tool_in_sandbox.remote(tool_name, tool_input)
-
+        fn = _get_modal_run_tool()
+        return fn.remote(tool_name, tool_input)
     except Exception as e:
         log.warning("Modal dispatch failed, falling back to local: %s", e)
         return _dispatch_local(tool_name, tool_input)
@@ -180,7 +189,7 @@ def dispatch_brain_tool(tool_name: str, tool_input: dict) -> str:
     Main entry point for Brain block tool execution.
     Routes to Modal sandbox in production, local subprocess in dev.
     """
-    if _modal_available:
+    if _modal_available():
         log.debug("Dispatching %s to Modal sandbox", tool_name)
         return _modal_dispatch(tool_name, tool_input)
     return _dispatch_local(tool_name, tool_input)
