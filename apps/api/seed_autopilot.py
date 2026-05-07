@@ -1,8 +1,18 @@
 """
 Seed the Autopilot workflow — watches for GitHub issues labeled 'autopilot ready',
-implements the fix, runs tests, and opens a PR.
+implements the fix, runs tests (with inline retry), and opens a PR.
 
 Run with: docker compose exec api python seed_autopilot.py
+
+Graph: a1 → a2 → a3 → a4 → a5 → a6 → a7
+  a1: Trigger (github issue labeled)
+  a2: Fetch issue (tool block)
+  a3: Implement fix (Brain)
+  a4: Run tests + fix failures (Brain — handles retry internally, no DAG cycle)
+  a5: Logic — did tests pass?
+  a6: Push & open PR (Brain) — pass path
+  a7: Notify PR ready (output/slack)
+  a8: Notify failure (output/slack) — fail path from a5
 """
 import json
 from sqlalchemy import create_engine, text
@@ -10,6 +20,7 @@ from app.core.config import settings
 
 engine = create_engine(settings.database_url)
 
+# dev workspace only — do not run against production
 WORKSPACE_ID = "00000000-0000-0000-0000-000000000001"
 WORKFLOW_ID   = "00000000-0000-0000-0000-000000000003"
 
@@ -77,18 +88,24 @@ nodes = [
         "id": "a4", "type": "block", "position": pos(3, 0),
         "data": {
             "type": "brain",
-            "label": "Run tests",
+            "label": "Run tests & fix",
             "isAgentic": True,
             "description": (
-                "Run the test suite for the repo at /tmp/autopilot_repo.\n"
-                "1. Detect the test runner (pytest, npm test, etc.) by reading package.json or requirements.txt\n"
+                "Run the test suite for the repo at /tmp/autopilot_repo. "
+                "If tests fail, fix the failures and re-run. Repeat up to 3 times.\n\n"
+                "1. Detect the test runner (pytest, npm test, etc.) by reading "
+                "package.json or requirements.txt\n"
                 "2. Run the tests\n"
-                "3. Output: {passed: true/false, output: <test output summary>}"
+                "3. If tests fail: read the failure output, patch the code, re-run\n"
+                "4. After up to 3 fix attempts, stop regardless of outcome\n\n"
+                "Output as JSON on the final line:\n"
+                '{"passed": true/false, "attempts": <number>, '
+                '"output": "<brief summary of test results>"}'
             ),
         },
     },
     {
-        "id": "a5", "type": "block", "position": pos(2, 1),
+        "id": "a5", "type": "block", "position": pos(3, 1),
         "data": {
             "type": "logic",
             "label": "Tests pass?",
@@ -96,21 +113,7 @@ nodes = [
         },
     },
     {
-        "id": "a6", "type": "block", "position": pos(1, 2),
-        "data": {
-            "type": "brain",
-            "label": "Fix failures",
-            "isAgentic": True,
-            "description": (
-                "Tests failed. Output from test run:\n{{a4.output}}\n\n"
-                "Read the failing test output, identify the root cause, patch the code, "
-                "re-run tests. Max 3 attempts. "
-                "If still failing after 3 attempts, output {passed: false, gave_up: true}."
-            ),
-        },
-    },
-    {
-        "id": "a7", "type": "block", "position": pos(3, 1),
+        "id": "a6", "type": "block", "position": pos(4, 0),
         "data": {
             "type": "brain",
             "label": "Push & open PR",
@@ -121,25 +124,44 @@ nodes = [
                 "Branch: autopilot/issue-{{a2.issue_number}}\n"
                 "Base: {{a1.github_issue.default_branch}}\n\n"
                 "1. cd /tmp/autopilot_repo\n"
-                "2. git push origin autopilot/issue-{{a2.issue_number}}\n"
-                "   (Use the GitHub token from credentials — set it via: "
-                "git remote set-url origin https://<token>@github.com/{{a1.github_issue.repo_full_name}}.git)\n"
-                "3. Use the GitHub API to open a pull request:\n"
+                "2. Set the remote with credentials:\n"
+                "   git remote set-url origin "
+                "https://<github_token>@github.com/{{a1.github_issue.repo_full_name}}.git\n"
+                "   (retrieve the GitHub token from the Delegator credentials vault)\n"
+                "3. git push origin autopilot/issue-{{a2.issue_number}}\n"
+                "4. Open a PR via the GitHub API:\n"
                 "   POST https://api.github.com/repos/{{a1.github_issue.repo_full_name}}/pulls\n"
-                "   {title: 'fix: {{a2.title}} (closes #{{a2.issue_number}})', "
-                "head: 'autopilot/issue-{{a2.issue_number}}', "
-                "base: '{{a1.github_issue.default_branch}}', "
-                "body: 'Automated fix by Delegator.\n\nCloses #{{a2.issue_number}}'}\n"
-                "4. Output the PR URL"
+                '   {"title": "fix: {{a2.title}} (closes #{{a2.issue_number}})", '
+                '"head": "autopilot/issue-{{a2.issue_number}}", '
+                '"base": "{{a1.github_issue.default_branch}}", '
+                '"body": "Automated fix by Delegator.\\n\\nCloses #{{a2.issue_number}}"}\n\n'
+                "Output ONLY the following JSON on the last line of your response:\n"
+                '{"pr_url": "<full PR URL>"}'
             ),
         },
     },
     {
-        "id": "a8", "type": "block", "position": pos(3, 2),
+        "id": "a7", "type": "block", "position": pos(4, 1),
         "data": {
             "type": "output",
             "label": "Notify PR ready",
-            "description": "PR opened for issue #{{a2.issue_number}}: {{a2.title}}. Review at {{a7.pr_url}}",
+            "description": "PR opened for issue #{{a2.issue_number}}: {{a2.title}}. Review at {{a6.pr_url}}",
+            "integration": "slack",
+            "config": {
+                "integration": "slack",
+                "channel": "#engineering",
+            },
+        },
+    },
+    {
+        "id": "a8", "type": "block", "position": pos(2, 2),
+        "data": {
+            "type": "output",
+            "label": "Notify failure",
+            "description": (
+                "Tests failed after {{a4.attempts}} attempt(s) for issue "
+                "#{{a2.issue_number}}: {{a2.title}}. Manual review needed."
+            ),
             "integration": "slack",
             "config": {
                 "integration": "slack",
@@ -154,10 +176,9 @@ edges = [
     {"id": "e2-3", "source": "a2", "target": "a3"},
     {"id": "e3-4", "source": "a3", "target": "a4"},
     {"id": "e4-5", "source": "a4", "target": "a5"},
-    {"id": "e5-6", "source": "a5", "target": "a6", "sourceHandle": "fail"},
-    {"id": "e6-4", "source": "a6", "target": "a4"},
-    {"id": "e5-7", "source": "a5", "target": "a7", "sourceHandle": "pass"},
-    {"id": "e7-8", "source": "a7", "target": "a8"},
+    {"id": "e5-6", "source": "a5", "target": "a6", "sourceHandle": "pass"},
+    {"id": "e6-7", "source": "a6", "target": "a7"},
+    {"id": "e5-8", "source": "a5", "target": "a8", "sourceHandle": "fail"},
 ]
 
 graph = {"nodes": nodes, "edges": edges}

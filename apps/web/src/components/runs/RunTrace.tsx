@@ -354,6 +354,17 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
         if (typeof out.output_tokens === "number") blockMap[ev.block_id].outputTokens = out.output_tokens
         if (Array.isArray(out.files_changed)) blockMap[ev.block_id].filesChanged = out.files_changed as FileChanged[]
         if (typeof out.diff_stat === "string") blockMap[ev.block_id].diffStat = out.diff_stat
+        // Brain blocks output pr_url as JSON on the last line of their text output.
+        // Try to parse it from out.output so the "View PR →" link works.
+        if (typeof out.output === "string" && !out.pr_url) {
+          const lastLine = out.output.trim().split("\n").pop() ?? ""
+          try {
+            const parsed = JSON.parse(lastLine)
+            if (typeof parsed?.pr_url === "string") {
+              blockMap[ev.block_id].output = { ...out, pr_url: parsed.pr_url }
+            }
+          } catch { /* not JSON, ignore */ }
+        }
       }
     } else if (ev.kind === "block_failed" && blockMap[ev.block_id]) {
       blockMap[ev.block_id].status = "failed"

@@ -1,4 +1,5 @@
 import json
+from typing import Annotated
 from uuid import UUID
 
 import redis
@@ -7,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_workspace_id
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.run import Run, RunEvent
@@ -22,11 +24,24 @@ def _redis():
     return redis.from_url(settings.redis_url, decode_responses=True)
 
 
-@router.get("", response_model=list[RunOut])
-def list_runs(workflow_id: UUID, db: Session = Depends(get_db)):
-    workflow = db.query(Workflow).filter(Workflow.id == workflow_id).first()
+def _get_workflow(workflow_id: UUID, workspace_id: str, db: Session) -> Workflow:
+    """Fetch workflow and verify it belongs to the caller's workspace."""
+    workflow = db.query(Workflow).filter(
+        Workflow.id == workflow_id,
+        Workflow.workspace_id == workspace_id,
+    ).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
+    return workflow
+
+
+@router.get("", response_model=list[RunOut])
+def list_runs(
+    workflow_id: UUID,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    workflow = _get_workflow(workflow_id, workspace_id, db)
     return (
         db.query(Run)
         .filter(Run.workflow_version_id == workflow.current_version_id)
@@ -36,10 +51,13 @@ def list_runs(workflow_id: UUID, db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=RunOut, status_code=201)
-def create_run(workflow_id: UUID, body: RunCreate, db: Session = Depends(get_db)):
-    workflow = db.query(Workflow).filter(Workflow.id == workflow_id).first()
-    if not workflow:
-        raise HTTPException(status_code=404, detail="Workflow not found")
+def create_run(
+    workflow_id: UUID,
+    body: RunCreate,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    workflow = _get_workflow(workflow_id, workspace_id, db)
     if not workflow.current_version_id:
         raise HTTPException(status_code=400, detail="Workflow has no published version")
 
@@ -60,7 +78,14 @@ def create_run(workflow_id: UUID, body: RunCreate, db: Session = Depends(get_db)
 
 
 @router.get("/{run_id}", response_model=RunDetailOut)
-def get_run(workflow_id: UUID, run_id: UUID, db: Session = Depends(get_db)):
+def get_run(
+    workflow_id: UUID,
+    run_id: UUID,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    # Verify the workflow belongs to this workspace before exposing run data.
+    _get_workflow(workflow_id, workspace_id, db)
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -68,8 +93,14 @@ def get_run(workflow_id: UUID, run_id: UUID, db: Session = Depends(get_db)):
 
 
 @router.get("/{run_id}/stream")
-def stream_run_events(workflow_id: UUID, run_id: UUID, db: Session = Depends(get_db)):
+def stream_run_events(
+    workflow_id: UUID,
+    run_id: UUID,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
     """SSE stream of run_events as they are written by the executor."""
+    _get_workflow(workflow_id, workspace_id, db)
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -131,6 +162,7 @@ def approve_run(
     run_id: UUID,
     body: ApprovalDecision,
     db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
 ):
     """
     Called by the human approver (or Slack webhook) to resume a paused run.
@@ -138,6 +170,8 @@ def approve_run(
     """
     if body.decision not in ("approved", "rejected"):
         raise HTTPException(status_code=422, detail="decision must be 'approved' or 'rejected'")
+
+    _get_workflow(workflow_id, workspace_id, db)
 
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
@@ -149,7 +183,6 @@ def approve_run(
     if not block_id:
         raise HTTPException(status_code=400, detail="No approval block recorded on paused run")
 
-    # Record decision into state so executor can resume past the approval block
     state = dict(run.state or {})
     state[f"__approval_{block_id}"] = body.decision
     if body.approver:
@@ -159,7 +192,6 @@ def approve_run(
     run.paused_at = None
     db.commit()
 
-    # Emit event
     event = RunEvent(
         run_id=run_id,
         block_id=block_id,
@@ -169,7 +201,6 @@ def approve_run(
     db.add(event)
     db.commit()
 
-    # Re-queue for the worker
     _redis().rpush(QUEUE_KEY, str(run_id))
 
     return {"run_id": str(run_id), "decision": body.decision, "status": "queued"}
