@@ -9,13 +9,21 @@ interface Credential {
   fields: string[]
 }
 
+interface FieldDef {
+  key: string
+  label: string
+  placeholder: string
+  secret?: boolean   // true = password input (default true)
+  optional?: boolean // true = not required to save
+}
+
 interface ServiceDef {
   value: string
   label: string
   description: string
   color: string
   abbr: string
-  fields: { key: string; label: string; placeholder: string }[]
+  fields: FieldDef[]
 }
 
 const SERVICES: ServiceDef[] = [
@@ -47,7 +55,11 @@ const SERVICES: ServiceDef[] = [
     value: "railway", label: "Railway", abbr: "RW",
     description: "Deploy services and check deployment status",
     color: "bg-violet-600 text-white",
-    fields: [{ key: "token", label: "API token", placeholder: "railway token from account settings" }],
+    fields: [
+      { key: "token",       label: "API token",   placeholder: "railway token from account settings", secret: true },
+      { key: "project_id",  label: "Project ID",  placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", secret: false },
+      { key: "environment_id", label: "Environment ID", placeholder: "leave blank to auto-fetch from project", secret: false, optional: true },
+    ],
   },
   {
     value: "digitalocean", label: "DigitalOcean", abbr: "DO",
@@ -94,11 +106,12 @@ export default function CredentialsManager({ initialCredentials }: Props) {
   async function handleSave(svc: ServiceDef) {
     const credObj: Record<string, string> = {}
     for (const f of svc.fields) {
-      if (!fieldValues[f.key]?.trim()) {
+      const val = fieldValues[f.key]?.trim() ?? ""
+      if (!val && !f.optional) {
         setError(`${f.label} is required`)
         return
       }
-      credObj[f.key] = fieldValues[f.key].trim()
+      if (val) credObj[f.key] = val
     }
 
     setSaving(true)
@@ -191,12 +204,15 @@ export default function CredentialsManager({ initialCredentials }: Props) {
             {/* Inline connect form */}
             {isOpen && (
               <div className="px-4 pb-4 pt-1 border-t border-stone-100 space-y-3">
-                {svc.fields.map(f => (
+                {svc.fields.map((f, i) => (
                   <div key={f.key}>
-                    <label className="text-xs font-medium text-stone-500 block mb-1">{f.label}</label>
+                    <label className="text-xs font-medium text-stone-500 block mb-1">
+                      {f.label}
+                      {f.optional && <span className="ml-1 text-stone-300 font-normal">optional</span>}
+                    </label>
                     <input
-                      type="password"
-                      autoFocus
+                      type={f.secret !== false ? "password" : "text"}
+                      autoFocus={i === 0}
                       value={fieldValues[f.key] ?? ""}
                       onChange={e => setFieldValues(prev => ({ ...prev, [f.key]: e.target.value }))}
                       onKeyDown={e => e.key === "Enter" && handleSave(svc)}

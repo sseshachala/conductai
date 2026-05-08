@@ -127,27 +127,96 @@ def get_service_deployments(token: str, service_id: str, environment_id: str, li
     return {"deployments": deployments}
 
 
+def list_environments(token: str, project_id: str) -> dict:
+    """List environments in a Railway project."""
+    query = """
+    query Project($projectId: String!) {
+      project(id: $projectId) {
+        environments {
+          edges {
+            node {
+              id
+              name
+            }
+          }
+        }
+      }
+    }
+    """
+    data = _gql(token, query, {"projectId": project_id})
+    envs = [
+        {"id": e["node"]["id"], "name": e["node"]["name"]}
+        for e in data.get("project", {}).get("environments", {}).get("edges", [])
+    ]
+    # Expose the first (production) environment_id at the top level for easy template access.
+    return {
+        "environments": envs,
+        "environment_id": envs[0]["id"] if envs else None,
+        "environment_name": envs[0]["name"] if envs else None,
+    }
+
+
+def trigger_and_get_deployment(
+    token: str,
+    service_id: str,
+    environment_id: str,
+) -> dict:
+    """
+    Trigger a redeployment and return the resulting deployment ID.
+    Waits up to 15 seconds for Railway to create the new deployment record.
+    """
+    trigger_deployment(token=token, service_id=service_id, environment_id=environment_id)
+
+    # Railway creates the deployment asynchronously — poll for it.
+    deadline = time.time() + 15
+    while time.time() < deadline:
+        time.sleep(3)
+        result = get_service_deployments(token=token, service_id=service_id, environment_id=environment_id, limit=1)
+        deployments = result.get("deployments", [])
+        if deployments and deployments[0].get("id"):
+            d = deployments[0]
+            return {
+                "deployment_id": d["id"],
+                "status": d.get("status"),
+                "service_id": service_id,
+                "environment_id": environment_id,
+            }
+
+    return {"deployment_id": None, "service_id": service_id, "environment_id": environment_id}
+
+
 def wait_for_deployment(
     token: str,
     deployment_id: str,
     timeout_seconds: int = 300,
 ) -> dict:
-    """Poll until deployment status is SUCCESS or reaches a terminal failure state."""
+    """Poll until deployment reaches a terminal state. Returns status dict (never raises)."""
+    if not deployment_id:
+        return {"status": "FAILED", "error": "No deployment_id provided", "healthy": False}
+
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
         info = get_deployment(token=token, deployment_id=deployment_id)
         status = (info.get("status") or "").upper()
         if status == "SUCCESS":
-            return info
+            return {**info, "healthy": True}
         if status in ("FAILED", "CRASHED", "REMOVED"):
-            raise RuntimeError(f"Railway deployment {deployment_id} ended with status {status}")
+            return {**info, "healthy": False, "error": f"Deployment ended with status {status}"}
         time.sleep(10)
-    raise TimeoutError(f"Deployment {deployment_id} did not succeed within {timeout_seconds}s")
+
+    return {
+        "status": "TIMEOUT",
+        "deployment_id": deployment_id,
+        "healthy": False,
+        "error": f"Deployment did not finish within {timeout_seconds}s",
+    }
 
 
 TOOL_MAP = {
     "trigger_deployment": trigger_deployment,
+    "trigger_and_get_deployment": trigger_and_get_deployment,
     "list_services": list_services,
+    "list_environments": list_environments,
     "get_deployment": get_deployment,
     "get_service_deployments": get_service_deployments,
     "wait_for_deployment": wait_for_deployment,
@@ -159,4 +228,13 @@ def execute(action: str, params: dict, credentials: dict) -> dict:
     fn = TOOL_MAP.get(action)
     if not fn:
         raise ValueError(f"Unknown Railway action: {action}")
-    return fn(token=token, **params)
+
+    # Fall back to credential-stored values for project_id and environment_id
+    # so workflow blocks that omit these params still work when they're saved
+    # in the Railway credentials vault via Settings.
+    merged = dict(params)
+    for field in ("project_id", "environment_id"):
+        if not merged.get(field) and credentials.get(field):
+            merged[field] = credentials[field]
+
+    return fn(token=token, **merged)

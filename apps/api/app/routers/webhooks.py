@@ -134,14 +134,13 @@ async def slack_interactions(request: Request, db: Session = Depends(get_db)):
 
 def _trigger_webhook_workflows(db: Session, event_type: str, initial_state: dict[str, Any]) -> list[str]:
     """
-    Find all workflows whose current version has a trigger block with
-    event_type = 'webhook' and queue a new run for each one.
+    Find all workflows whose trigger block config.event_type matches `event_type`
+    OR is the generic value "webhook" (matches all webhook events).
     Returns list of queued run IDs.
     """
     from app.models.workflow import Workflow, WorkflowVersion
     import uuid as uuid_mod
 
-    # Find all workflows with a webhook trigger
     versions = db.query(WorkflowVersion).join(
         Workflow, Workflow.current_version_id == WorkflowVersion.id
     ).all()
@@ -151,7 +150,7 @@ def _trigger_webhook_workflows(db: Session, event_type: str, initial_state: dict
         nodes = version.graph.get("nodes", [])
         has_webhook_trigger = any(
             n.get("data", {}).get("type") == "trigger" and
-            n.get("data", {}).get("config", {}).get("event_type") == "webhook"
+            n.get("data", {}).get("config", {}).get("event_type") in ("webhook", event_type)
             for n in nodes
         )
         if not has_webhook_trigger:
@@ -375,3 +374,32 @@ async def github_webhook(
 
     queued = _trigger_github_workflows(db, "github_issue", label, initial_state, workspace_id)
     return {"ok": True, "queued": len(queued), "run_ids": queued, "label": label}
+
+
+# ── Deploy Delegator manual trigger ──────────────────────────────────────────
+
+@router.post("/deploy-delegator")
+async def deploy_delegator(request: Request, db: Session = Depends(get_db)):
+    """
+    Manually trigger the Deploy Delegator workflow (deploys delegator-backend
+    and delegator-ui to Railway). Looks for workflows with trigger block
+    event_type = 'deploy_delegator'.
+
+    Optionally accepts a JSON body: {"ref": "main", "triggered_by": "user"}
+    """
+    try:
+        body = await request.body()
+        payload = json.loads(body) if body else {}
+    except json.JSONDecodeError:
+        payload = {}
+
+    initial_state = {
+        "deploy_trigger": {
+            "ref": payload.get("ref", "main"),
+            "triggered_by": payload.get("triggered_by", "manual"),
+        }
+    }
+
+    queued = _trigger_webhook_workflows(db, "deploy_delegator", initial_state)
+    return {"ok": True, "queued": len(queued), "run_ids": queued}
+
