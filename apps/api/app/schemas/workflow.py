@@ -40,6 +40,8 @@ class WorkflowOut(BaseModel):
     current_version_id: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
+    last_run_status: Optional[str] = None
+    last_run_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
