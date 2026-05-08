@@ -83,7 +83,8 @@ def get_workspace_id(
     - If set and valid JWT: extracts workspace from 'org_id' or 'sub' claim
     - If set and invalid JWT: raises 401
     """
-    if not settings.clerk_secret_key:
+    # Require both keys to be set — partial Clerk config falls back to dev workspace
+    if not settings.clerk_secret_key or not settings.clerk_frontend_api:
         return DEV_WORKSPACE_ID
 
     if not credentials:
