@@ -4,6 +4,4 @@ dockerfilePath = "apps/api/Dockerfile"
 buildTarget = "prod"
 
 [deploy]
-healthcheckPath = "/health"
-healthcheckTimeout = 120
 restartPolicyType = "on_failure"
