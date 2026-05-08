@@ -11,6 +11,7 @@ class Workspace(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False)
+    owner_id = Column(String(255), nullable=True)
     plan = Column(String(50), nullable=False, default="free")
     kms_key_id = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)

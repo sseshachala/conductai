@@ -1,4 +1,9 @@
+"use client"
+
+import { useEffect, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@clerk/nextjs"
 import AuthButton from "@/components/AuthButton"
 
 interface Workflow {
@@ -7,16 +12,6 @@ interface Workflow {
   updated_at: string
   last_run_status: string | null
   last_run_at: string | null
-}
-
-async function getWorkflows(): Promise<Workflow[]> {
-  try {
-    const res = await fetch(`${process.env.API_URL}/workflows`, { cache: "no-store" })
-    if (!res.ok) return []
-    return res.json()
-  } catch {
-    return []
-  }
 }
 
 const RUN_STATUS: Record<string, { label: string; dot: string; text: string; bg: string }> = {
@@ -36,13 +31,65 @@ function timeAgo(ts: string): string {
   return `${Math.floor(hrs / 24)}d ago`
 }
 
-export default async function WorkflowsPage() {
-  const workflows = await getWorkflows()
+function getActiveProject(): string | null {
+  if (typeof document === "undefined") return null
+  const match = document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)
+  return match ? match[1] : null
+}
+
+export default function WorkflowsPage() {
+  const router = useRouter()
+  const { getToken, isLoaded, isSignedIn } = useAuth()
+  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+
+  const [workflows, setWorkflows] = useState<Workflow[]>([])
+  const [projectId, setProjectId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (clerkEnabled && isLoaded && !isSignedIn) {
+      router.replace("/")
+      return
+    }
+    if (!clerkEnabled || (isLoaded && isSignedIn)) {
+      const pid = getActiveProject()
+      setProjectId(pid)
+      loadWorkflows(pid)
+    }
+  }, [isLoaded, isSignedIn, clerkEnabled])
+
+  async function loadWorkflows(pid: string | null) {
+    try {
+      const headers: Record<string, string> = {}
+      if (clerkEnabled) {
+        const token = await getToken()
+        if (token) headers["Authorization"] = `Bearer ${token}`
+      }
+      if (pid) headers["X-Workspace-ID"] = pid
+
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, { headers })
+      if (res.ok) setWorkflows(await res.json())
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-stone-50">
       <header className="border-b border-stone-200 bg-white px-6 py-3.5 flex items-center justify-between">
-        <span className="text-base font-bold text-stone-900 tracking-tight">Delegator</span>
+        <div className="flex items-center gap-3">
+          <Link href="/projects" className="text-base font-bold text-stone-900 tracking-tight hover:text-stone-600 transition-colors">
+            Delegator
+          </Link>
+          {projectId && (
+            <>
+              <span className="text-stone-300">/</span>
+              <Link href="/projects" className="text-sm text-stone-500 hover:text-stone-800 transition-colors">
+                Switch project
+              </Link>
+            </>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           <Link href="/settings" className="text-sm text-stone-500 hover:text-stone-800 transition-colors">
             Integrations
@@ -53,7 +100,7 @@ export default async function WorkflowsPage() {
           >
             + New agent
           </Link>
-          <AuthButton afterSignOutUrl="/sign-in" />
+          {clerkEnabled && <AuthButton afterSignOutUrl="/" />}
         </div>
       </header>
 
@@ -63,7 +110,13 @@ export default async function WorkflowsPage() {
           <span className="text-xs text-stone-400">{workflows.length} agent{workflows.length !== 1 ? "s" : ""}</span>
         </div>
 
-        {workflows.length === 0 ? (
+        {loading ? (
+          <div className="space-y-2">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-20 rounded-xl border border-stone-200 bg-white animate-pulse" />
+            ))}
+          </div>
+        ) : workflows.length === 0 ? (
           <div className="rounded-xl border border-dashed border-stone-300 p-16 text-center">
             <p className="text-stone-800 font-medium mb-1">No agents yet</p>
             <p className="text-stone-400 text-sm mb-6">Build your first AI agent on the canvas</p>
@@ -88,9 +141,7 @@ export default async function WorkflowsPage() {
                     <p className="font-semibold text-stone-900 group-hover:text-stone-700 transition-colors">
                       {w.name}
                     </p>
-                    <p className="text-xs text-stone-400 mt-0.5">
-                      edited {timeAgo(w.updated_at)}
-                    </p>
+                    <p className="text-xs text-stone-400 mt-0.5">edited {timeAgo(w.updated_at)}</p>
                   </div>
                   <div className="flex items-center gap-3">
                     {status ? (
