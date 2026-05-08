@@ -4,19 +4,16 @@ POST   /credentials          — upsert a credential by handle
 GET    /credentials          — list all (no secret values)
 DELETE /credentials/:handle  — remove
 """
-from uuid import UUID
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_workspace_id
 from app.core.crypto import decrypt, encrypt
 from app.core.database import get_db
 from app.models.integration import Integration
 
 router = APIRouter(prefix="/credentials", tags=["credentials"])
-
-DEV_WORKSPACE = UUID("00000000-0000-0000-0000-000000000001")
 
 KNOWN_SERVICES = {
     "github":       {"fields": ["token"],        "label": "GitHub",       "hint": "Personal access token or OAuth token"},
@@ -44,9 +41,9 @@ class CredentialOut(BaseModel):
 
 
 @router.get("", response_model=list[CredentialOut])
-def list_credentials(db: Session = Depends(get_db)):
+def list_credentials(db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id)):
     rows = db.query(Integration).filter(
-        Integration.workspace_id == DEV_WORKSPACE
+        Integration.workspace_id == workspace_id
     ).order_by(Integration.created_at).all()
 
     return [
@@ -61,16 +58,15 @@ def list_credentials(db: Session = Depends(get_db)):
 
 
 @router.post("", status_code=201)
-def upsert_credential(body: CredentialUpsert, db: Session = Depends(get_db)):
+def upsert_credential(body: CredentialUpsert, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id)):
     if not body.credentials:
         raise HTTPException(status_code=422, detail="credentials dict must not be empty")
 
     existing = db.query(Integration).filter(
-        Integration.workspace_id == DEV_WORKSPACE,
+        Integration.workspace_id == workspace_id,
         Integration.handle == body.handle,
     ).first()
 
-    service_meta = KNOWN_SERVICES.get(body.service, {})
     auth_method = "api_key" if "api_key" in body.credentials else "oauth"
 
     if existing:
@@ -79,7 +75,7 @@ def upsert_credential(body: CredentialUpsert, db: Session = Depends(get_db)):
         existing.encrypted_credentials = encrypt(body.credentials)
     else:
         row = Integration(
-            workspace_id=DEV_WORKSPACE,
+            workspace_id=workspace_id,
             service=body.service,
             handle=body.handle,
             auth_method=auth_method,
@@ -92,9 +88,9 @@ def upsert_credential(body: CredentialUpsert, db: Session = Depends(get_db)):
 
 
 @router.delete("/{handle}", status_code=204)
-def delete_credential(handle: str, db: Session = Depends(get_db)):
+def delete_credential(handle: str, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id)):
     row = db.query(Integration).filter(
-        Integration.workspace_id == DEV_WORKSPACE,
+        Integration.workspace_id == workspace_id,
         Integration.handle == handle,
     ).first()
     if not row:
