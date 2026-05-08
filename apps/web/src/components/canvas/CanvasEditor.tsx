@@ -22,6 +22,7 @@ import "@xyflow/react/dist/style.css"
 import BlockNode, { type BlockNodeData } from "./BlockNode"
 import BlockEditor from "./BlockEditor"
 import Sidebar from "./Sidebar"
+import CostEstimate from "./CostEstimate"
 import { type BlockType } from "@/lib/block-types"
 
 const nodeTypes = { block: BlockNode }
@@ -245,26 +246,26 @@ function CanvasEditorInner({ workflowId }: CanvasEditorProps) {
           }`}>
             {saveStatus === "saving" ? "Saving…" : "Saved ✓"}
           </span>
+          <CostEstimate workflowId={workflowId} />
           <a
             href={`/workflows/${workflowId}/runs`}
-            className="text-xs text-stone-500 hover:text-stone-800 transition-colors"
+            className="text-xs text-stone-500 hover:text-stone-800 transition-colors px-2 py-1 rounded hover:bg-stone-100"
           >
-            Runs
+            History
           </a>
-          <span className="text-xs text-stone-400">mode: DAG with agentic sub-blocks</span>
           <button
             onClick={() => startRun(true)}
             disabled={running !== "idle"}
-            className="rounded-lg border border-stone-300 px-4 py-1.5 text-sm font-medium text-stone-600 hover:bg-stone-50 transition-colors disabled:opacity-50"
+            className="rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-500 hover:bg-stone-50 transition-colors disabled:opacity-50"
           >
-            {running === "dry" ? "Simulating…" : "Dry Run"}
+            {running === "dry" ? "Simulating…" : "Dry run"}
           </button>
           <button
             onClick={() => startRun(false)}
             disabled={running !== "idle"}
-            className="rounded-lg bg-stone-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-stone-700 transition-colors disabled:opacity-50"
+            className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-violet-700 transition-colors disabled:opacity-50"
           >
-            {running === "live" ? "Starting…" : "Run"}
+            {running === "live" ? "Starting…" : "▶ Run"}
           </button>
           <AuthButton afterSignOutUrl="/sign-in" />
         </div>
