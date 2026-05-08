@@ -1,30 +1,54 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { BLOCK_LIBRARY, BLOCK_STYLES } from "@/lib/block-types"
 import { cn } from "@/lib/utils"
 
-const INTEGRATIONS = [
-  { name: "GitHub",       status: "connect" },
-  { name: "Slack",        status: "connect" },
-  { name: "Linear",       status: "connect" },
-  { name: "DigitalOcean", status: "connect" },
-  { name: "Vercel",       status: "connect" },
-  { name: "Postgres",     status: "add" },
+const INTEGRATION_LIST = [
+  { handle: "github",       label: "GitHub" },
+  { handle: "slack",        label: "Slack" },
+  { handle: "linear",       label: "Linear" },
+  { handle: "digitalocean", label: "DigitalOcean" },
+  { handle: "vercel",       label: "Vercel" },
+  { handle: "railway",      label: "Railway" },
 ]
 
 export default function Sidebar() {
+  const [connectedHandles, setConnectedHandles] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials`)
+      .then(r => r.ok ? r.json() : [])
+      .then((creds: { handle: string }[]) => {
+        setConnectedHandles(new Set(creds.map(c => c.handle.toLowerCase())))
+      })
+      .catch(() => {})
+  }, [])
+
   return (
     <aside className="w-52 border-l border-stone-200 bg-white flex flex-col overflow-y-auto shrink-0">
       {/* Integrations */}
       <div className="px-3 py-3 border-b border-stone-100">
         <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-2">Integrations</p>
         <div className="space-y-1.5">
-          {INTEGRATIONS.map((i) => (
-            <div key={i.name} className="flex items-center justify-between">
-              <span className="text-xs text-stone-600">{i.name}</span>
-              <button className="text-[10px] font-medium text-indigo-500 hover:underline">{i.status}</button>
-            </div>
-          ))}
+          {INTEGRATION_LIST.map((i) => {
+            const connected = connectedHandles.has(i.handle)
+            return (
+              <div key={i.handle} className="flex items-center justify-between">
+                <span className="text-xs text-stone-600">{i.label}</span>
+                {connected ? (
+                  <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-600">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                    connected
+                  </span>
+                ) : (
+                  <a href="/settings" className="text-[10px] font-medium text-indigo-500 hover:underline">
+                    connect →
+                  </a>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
 

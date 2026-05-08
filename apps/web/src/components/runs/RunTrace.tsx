@@ -390,6 +390,10 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
   const runCompleted = events.find(e => e.kind === "run_completed")
   const totalDur = duration(meta.started_at, meta.completed_at)
 
+  // Aggregate tokens + cost from block_completed events
+  const totalTokens = blockRows.reduce((acc, r) => acc + (r.inputTokens ?? 0) + (r.outputTokens ?? 0), 0)
+  const totalCost   = blockRows.reduce((acc, r) => acc + (r.costUsd ?? 0), 0)
+
   const handleApproval = async (decision: "approved" | "rejected") => {
     setApprovalSubmitting(true)
     try {
@@ -411,6 +415,26 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
           Dry run — no real API calls were made. Use <strong>Run</strong> to execute for real.
         </div>
       )}
+
+      {/* Summary stats grid */}
+      <div className="grid grid-cols-4 gap-3 rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
+        <div>
+          <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-0.5">Duration</p>
+          <p className="text-sm font-semibold text-stone-800">{totalDur ?? (done ? "—" : "…")}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-0.5">Tokens</p>
+          <p className="text-sm font-semibold text-stone-800">{totalTokens > 0 ? totalTokens.toLocaleString() : "—"}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-0.5">Est. cost</p>
+          <p className="text-sm font-semibold text-stone-800">{totalCost > 0 ? `$${totalCost.toFixed(4)}` : "—"}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-0.5">Triggered by</p>
+          <p className="text-sm font-semibold text-stone-800 truncate">{meta.triggered_by ?? "—"}</p>
+        </div>
+      </div>
 
       {/* Status bar */}
       <div className="flex items-center gap-3">
