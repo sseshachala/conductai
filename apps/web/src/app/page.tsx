@@ -33,7 +33,7 @@ function LandingPage() {
         <span className="font-bold text-stone-900 text-lg tracking-tight">Delegator</span>
         <SignInButton mode="modal">
           <button className="text-sm font-medium text-stone-600 hover:text-stone-900 transition-colors">
-            Sign in
+            Sign in →
           </button>
         </SignInButton>
       </header>
@@ -59,7 +59,7 @@ function LandingPage() {
           <SignInButton mode="modal">
             <button className="inline-flex items-center gap-3 bg-stone-900 hover:bg-stone-700 text-white font-medium px-6 py-3 rounded-xl text-sm transition-colors shadow-sm">
               <GoogleIcon />
-              Continue with Google
+              Request early access
             </button>
           </SignInButton>
           <p className="mt-3 text-xs text-stone-400">No credit card required</p>
