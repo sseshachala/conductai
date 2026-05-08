@@ -388,7 +388,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
 
   const runFailed = events.find(e => e.kind === "run_failed")
   const runCompleted = events.find(e => e.kind === "run_completed")
-  const totalDur = duration(meta.started_at, meta.completed_at)
+  const totalDur = duration(meta.started_at ?? undefined, meta.completed_at ?? undefined)
 
   // Aggregate tokens + cost from block_completed events
   const totalTokens = blockRows.reduce((acc, r) => acc + (r.inputTokens ?? 0) + (r.outputTokens ?? 0), 0)
