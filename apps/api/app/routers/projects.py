@@ -1,22 +1,23 @@
 """
-Projects (workspaces) CRUD + template listing.
+Projects (workspaces) CRUD + template listing + waitlist approval.
 
 A "project" is a workspace owned by a single user. Workflows and credentials
-are scoped to a project.
+are scoped to a project. New users get a pending workspace (is_approved=False)
+until manually approved via the admin endpoint.
 """
 import json
 import uuid
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_user_id
+from app.core.config import settings
 from app.core.database import get_db
-from app.models.workspace import Workspace
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -37,6 +38,7 @@ class ProjectOut(BaseModel):
     id: str
     name: str
     owner_id: str
+    is_approved: bool
     created_at: datetime
     workflow_count: int = 0
 
@@ -52,7 +54,9 @@ class ProjectCreate(BaseModel):
 
 @router.get("/templates", response_model=list[TemplateOut])
 def list_templates(db: Session = Depends(get_db)):
-    rows = db.execute(text("SELECT id, slug, name, description, default_mode FROM project_templates ORDER BY name")).fetchall()
+    rows = db.execute(text(
+        "SELECT id, slug, name, description, default_mode FROM project_templates ORDER BY name"
+    )).fetchall()
     return [TemplateOut(id=str(r.id), slug=r.slug, name=r.name, description=r.description, default_mode=r.default_mode) for r in rows]
 
 
@@ -62,7 +66,7 @@ def list_projects(
     db: Session = Depends(get_db),
 ):
     rows = db.execute(text("""
-        SELECT w.id, w.name, w.owner_id, w.created_at,
+        SELECT w.id, w.name, w.owner_id, w.is_approved, w.created_at,
                COUNT(wf.id) AS workflow_count
         FROM workspaces w
         LEFT JOIN workflows wf ON wf.workspace_id = w.id
@@ -71,12 +75,21 @@ def list_projects(
         ORDER BY w.created_at DESC
     """), {"owner_id": user_id}).fetchall()
 
+    # Auto-register new users with a pending workspace
+    if not rows:
+        project_id, now = uuid.uuid4(), datetime.utcnow()
+        db.execute(text("""
+            INSERT INTO workspaces (id, name, owner_id, plan, is_approved, created_at, updated_at)
+            VALUES (:id, 'My Workspace', :owner_id, 'free', false, :now, :now)
+        """), {"id": str(project_id), "owner_id": user_id, "now": now})
+        db.commit()
+        return [ProjectOut(id=str(project_id), name="My Workspace", owner_id=user_id,
+                           is_approved=False, created_at=now, workflow_count=0)]
+
     return [
         ProjectOut(
-            id=str(r.id),
-            name=r.name,
-            owner_id=r.owner_id,
-            created_at=r.created_at,
+            id=str(r.id), name=r.name, owner_id=r.owner_id,
+            is_approved=r.is_approved, created_at=r.created_at,
             workflow_count=r.workflow_count or 0,
         )
         for r in rows
@@ -92,26 +105,30 @@ def create_project(
     if not body.name.strip():
         raise HTTPException(status_code=422, detail="Project name cannot be empty")
 
-    project_id = uuid.uuid4()
-    now = datetime.utcnow()
+    # New projects inherit approval from first project (if user is already approved)
+    first = db.execute(text(
+        "SELECT is_approved FROM workspaces WHERE owner_id = :uid ORDER BY created_at LIMIT 1"
+    ), {"uid": user_id}).fetchone()
+    inherit_approval = bool(first and first.is_approved)
 
+    project_id, now = uuid.uuid4(), datetime.utcnow()
     db.execute(text("""
-        INSERT INTO workspaces (id, name, owner_id, plan, created_at, updated_at)
-        VALUES (:id, :name, :owner_id, 'free', :now, :now)
-    """), {"id": str(project_id), "name": body.name.strip(), "owner_id": user_id, "now": now})
+        INSERT INTO workspaces (id, name, owner_id, plan, is_approved, created_at, updated_at)
+        VALUES (:id, :name, :owner_id, 'free', :approved, :now, :now)
+    """), {"id": str(project_id), "name": body.name.strip(), "owner_id": user_id,
+           "approved": inherit_approval, "now": now})
 
-    # Seed workflows from template if requested
     if body.template_id:
         tmpl = db.execute(text(
             "SELECT name, default_mode, nodes, edges FROM project_templates WHERE id = :id"
         ), {"id": body.template_id}).fetchone()
-
         if tmpl:
             _seed_workflow_from_template(db, project_id, tmpl)
 
     db.commit()
-
-    return ProjectOut(id=str(project_id), name=body.name.strip(), owner_id=user_id, created_at=now, workflow_count=1 if body.template_id else 0)
+    return ProjectOut(id=str(project_id), name=body.name.strip(), owner_id=user_id,
+                      is_approved=inherit_approval, created_at=now,
+                      workflow_count=1 if body.template_id else 0)
 
 
 @router.delete("/{project_id}", status_code=204)
@@ -126,7 +143,6 @@ def delete_project(
     if row.owner_id != user_id:
         raise HTTPException(status_code=403, detail="Not your project")
 
-    # Cascade: runs → run_events, workflow_versions, workflows, integrations
     db.execute(text("""
         DELETE FROM run_events WHERE run_id IN (
             SELECT r.id FROM runs r
@@ -147,6 +163,43 @@ def delete_project(
     db.execute(text("DELETE FROM integrations WHERE workspace_id = :pid"), {"pid": project_id})
     db.execute(text("DELETE FROM workspaces WHERE id = :pid"), {"pid": project_id})
     db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Admin — approve a user by owner_id or workspace id
+# Protected by X-Admin-Secret header matching ADMIN_SECRET env var
+# ---------------------------------------------------------------------------
+
+@router.post("/admin/approve", status_code=200)
+def admin_approve(
+    body: dict,
+    x_admin_secret: Annotated[str | None, Header()] = None,
+    db: Session = Depends(get_db),
+):
+    if not settings.admin_secret or x_admin_secret != settings.admin_secret:
+        raise HTTPException(status_code=403, detail="Invalid admin secret")
+
+    owner_id = body.get("owner_id")
+    workspace_id = body.get("workspace_id")
+
+    if not owner_id and not workspace_id:
+        raise HTTPException(status_code=422, detail="Provide owner_id or workspace_id")
+
+    if owner_id:
+        result = db.execute(text(
+            "UPDATE workspaces SET is_approved = true WHERE owner_id = :oid RETURNING id, name"
+        ), {"oid": owner_id})
+    else:
+        result = db.execute(text(
+            "UPDATE workspaces SET is_approved = true WHERE id = :wid RETURNING id, name"
+        ), {"wid": workspace_id})
+
+    rows = result.fetchall()
+    if not rows:
+        raise HTTPException(status_code=404, detail="No workspaces found")
+
+    db.commit()
+    return {"approved": [{"id": str(r.id), "name": r.name} for r in rows]}
 
 
 # ---------------------------------------------------------------------------
