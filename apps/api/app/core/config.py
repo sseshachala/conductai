@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     railway_backend_service_id: str = ""   # delegator-backend service ID
     railway_frontend_service_id: str = ""  # delegator-ui service ID
 
+    # Admin — used to approve waitlisted users via POST /projects/admin/approve
+    admin_secret: str = ""
+
     # Modal sandbox — when set, Brain tools run in isolated containers
     modal_token_id: str = ""
     modal_token_secret: str = ""
