@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import credentials, runs, webhooks, workflows
+from app.routers import credentials, projects, runs, webhooks, workflows
 
 app = FastAPI(title="Marshal API", version="0.1.0")
 
@@ -12,6 +12,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(projects.router)
 app.include_router(workflows.router)
 app.include_router(runs.router)
 app.include_router(credentials.router)
