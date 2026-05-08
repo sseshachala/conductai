@@ -38,30 +38,39 @@ function getActiveProject(): string | null {
 }
 
 export default function WorkflowsPage() {
+  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  if (clerkEnabled) return <WorkflowsWithAuth />
+  return <WorkflowsContent getToken={null} />
+}
+
+function WorkflowsWithAuth() {
   const router = useRouter()
   const { getToken, isLoaded, isSignedIn } = useAuth()
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 
+  useEffect(() => {
+    if (isLoaded && !isSignedIn) router.replace("/")
+  }, [isLoaded, isSignedIn, router])
+
+  if (!isLoaded) return null
+  return <WorkflowsContent getToken={getToken} />
+}
+
+function WorkflowsContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
+  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [projectId, setProjectId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (clerkEnabled && isLoaded && !isSignedIn) {
-      router.replace("/")
-      return
-    }
-    if (!clerkEnabled || (isLoaded && isSignedIn)) {
-      const pid = getActiveProject()
-      setProjectId(pid)
-      loadWorkflows(pid)
-    }
-  }, [isLoaded, isSignedIn, clerkEnabled])
+    const pid = getActiveProject()
+    setProjectId(pid)
+    loadWorkflows(pid)
+  }, [])
 
   async function loadWorkflows(pid: string | null) {
     try {
       const headers: Record<string, string> = {}
-      if (clerkEnabled) {
+      if (getToken) {
         const token = await getToken()
         if (token) headers["Authorization"] = `Bearer ${token}`
       }
@@ -138,9 +147,7 @@ export default function WorkflowsPage() {
                   className="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-5 py-4 hover:border-stone-300 hover:shadow-sm transition-all group"
                 >
                   <div>
-                    <p className="font-semibold text-stone-900 group-hover:text-stone-700 transition-colors">
-                      {w.name}
-                    </p>
+                    <p className="font-semibold text-stone-900 group-hover:text-stone-700 transition-colors">{w.name}</p>
                     <p className="text-xs text-stone-400 mt-0.5">edited {timeAgo(w.updated_at)}</p>
                   </div>
                   <div className="flex items-center gap-3">
@@ -152,9 +159,7 @@ export default function WorkflowsPage() {
                     ) : (
                       <span className="text-xs text-stone-400 italic">never run</span>
                     )}
-                    {w.last_run_at && (
-                      <span className="text-xs text-stone-400">{timeAgo(w.last_run_at)}</span>
-                    )}
+                    {w.last_run_at && <span className="text-xs text-stone-400">{timeAgo(w.last_run_at)}</span>}
                     <span className="text-stone-300 group-hover:text-stone-500 transition-colors text-sm">→</span>
                   </div>
                 </Link>
