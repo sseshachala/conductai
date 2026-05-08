@@ -10,7 +10,7 @@ export default function Home() {
 
   // Without Clerk, go straight to app
   useEffect(() => {
-    if (!clerkEnabled) router.replace("/workflows")
+    if (!clerkEnabled) router.replace("/projects")
   }, [clerkEnabled, router])
 
   if (!clerkEnabled) return null
@@ -23,7 +23,7 @@ function LandingPage() {
   const { isSignedIn, isLoaded } = useAuth()
 
   useEffect(() => {
-    if (isLoaded && isSignedIn) router.replace("/workflows")
+    if (isLoaded && isSignedIn) router.replace("/projects")
   }, [isLoaded, isSignedIn, router])
 
   return (

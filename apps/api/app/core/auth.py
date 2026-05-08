@@ -5,8 +5,9 @@ When CLERK_SECRET_KEY is set, validates Bearer tokens from Clerk.
 Falls back to the dev workspace when no key is configured (local dev only).
 
 Usage in routes:
-    from app.core.auth import get_workspace_id
+    from app.core.auth import get_workspace_id, get_user_id
     workspace_id: str = Depends(get_workspace_id)
+    user_id: str = Depends(get_user_id)
 """
 import logging
 from typing import Annotated
@@ -20,10 +21,10 @@ from app.core.config import settings
 log = logging.getLogger(__name__)
 
 DEV_WORKSPACE_ID = "00000000-0000-0000-0000-000000000001"
+DEV_USER_ID = "dev"
 
 _bearer = HTTPBearer(auto_error=False)
 
-# Cache Clerk JWKS to avoid fetching on every request
 _jwks_cache: dict | None = None
 
 
@@ -45,7 +46,6 @@ def _get_jwks() -> dict:
 
 
 def _verify_clerk_token(token: str) -> dict | None:
-    """Verify a Clerk JWT. Returns claims dict or None if invalid."""
     try:
         import jwt as pyjwt
 
@@ -73,19 +73,16 @@ def _verify_clerk_token(token: str) -> dict | None:
         return None
 
 
-def get_workspace_id(
+def _clerk_enabled() -> bool:
+    return bool(settings.clerk_secret_key and settings.clerk_frontend_api)
+
+
+def get_user_id(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
 ) -> str:
-    """
-    Dependency that returns the workspace ID for the current request.
-
-    - If CLERK_SECRET_KEY is not set: returns dev workspace ID (no auth)
-    - If set and valid JWT: extracts workspace from 'org_id' or 'sub' claim
-    - If set and invalid JWT: raises 401
-    """
-    # Require both keys to be set — partial Clerk config falls back to dev workspace
-    if not settings.clerk_secret_key or not settings.clerk_frontend_api:
-        return DEV_WORKSPACE_ID
+    """Returns the Clerk user_id (sub claim), or 'dev' in local dev mode."""
+    if not _clerk_enabled():
+        return DEV_USER_ID
 
     if not credentials:
         raise HTTPException(status_code=401, detail="Authorization header required")
@@ -94,7 +91,43 @@ def get_workspace_id(
     if not claims:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    # Clerk stores org_id in the session claims when the user has an active org
+    user_id = claims.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="No user ID in token")
+
+    return user_id
+
+
+def get_workspace_id(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
+    x_workspace_id: Annotated[str | None, Header()] = None,
+) -> str:
+    """
+    Returns the active workspace/project ID for the request.
+
+    Resolution order:
+    1. X-Workspace-ID header (explicit project selection from frontend)
+    2. Clerk JWT org_id or sub (single-workspace-per-user fallback)
+    3. Dev workspace (when Clerk is not configured)
+
+    When Clerk is enabled, the workspace must exist and be owned by the user
+    — validated at the router level for project-scoped endpoints.
+    """
+    if not _clerk_enabled():
+        # Dev mode: accept any X-Workspace-ID or fall back to dev workspace
+        return x_workspace_id or DEV_WORKSPACE_ID
+
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    claims = _verify_clerk_token(credentials.credentials)
+    if not claims:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    # If the frontend passed an explicit project, use it (ownership validated by caller)
+    if x_workspace_id:
+        return x_workspace_id
+
     workspace_id = claims.get("org_id") or claims.get("sub")
     if not workspace_id:
         raise HTTPException(status_code=401, detail="No workspace in token claims")
