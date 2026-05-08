@@ -17,7 +17,6 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     op.execute('CREATE EXTENSION IF NOT EXISTS "pgcrypto"')
-    op.execute('CREATE EXTENSION IF NOT EXISTS "vector"')
 
     op.create_table(
         "workspaces",
