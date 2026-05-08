@@ -289,6 +289,7 @@ function CanvasEditorInner({ workflowId }: CanvasEditorProps) {
             minZoom={0.3}
             maxZoom={2}
             deleteKeyCode="Backspace"
+            proOptions={{ hideAttribution: true }}
           >
             <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#E7E5E4" />
             <Controls className="!shadow-none !border !border-stone-200 !rounded-xl" showInteractive={false} />
