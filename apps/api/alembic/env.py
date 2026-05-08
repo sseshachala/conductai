@@ -1,3 +1,4 @@
+import os
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context
@@ -7,6 +8,11 @@ import app.models  # noqa: F401 — ensure all models are registered
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# Override sqlalchemy.url from the DATABASE_URL env var when available
+# (alembic.ini contains local dev defaults that don't work in production)
+if database_url := os.environ.get("DATABASE_URL"):
+    config.set_main_option("sqlalchemy.url", database_url)
 
 target_metadata = Base.metadata
 
