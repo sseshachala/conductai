@@ -3,6 +3,15 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     database_url: str = "postgresql://marshal:marshal@postgres:5432/marshal"
+
+    @property
+    def sqlalchemy_database_url(self) -> str:
+        url = self.database_url
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+        if url.startswith("postgresql://") and "+psycopg2" not in url:
+            url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+        return url
     redis_url: str = "redis://redis:6379"
     anthropic_api_key: str = ""
     encryption_key: str = "dev-only-32-byte-key-change-this!"

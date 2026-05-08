@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker
 from app.core.config import settings
 
 engine = create_engine(
-    settings.database_url,
+    settings.sqlalchemy_database_url,
     pool_pre_ping=True,
     connect_args={"connect_timeout": 5},
     pool_size=5,
