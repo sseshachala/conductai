@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Delegator — UX Mockup</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "Inter", system-ui, sans-serif; background: #f5f4f2; color: #1c1917; }
+  .screen { margin: 48px auto; max-width: 1100px; background: #fff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+  .screen-label { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #78716c; padding: 12px 20px; background: #fafaf9; border-bottom: 1px solid #e7e5e4; }
+
+  /* ── SHARED ── */
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 0 24px; height: 52px; background: #fff; border-bottom: 1px solid #e7e5e4; }
+  .logo { font-size: 15px; font-weight: 700; color: #1c1917; letter-spacing: -0.02em; }
+  .logo span { color: #7c3aed; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all 0.15s; }
+  .btn-primary { background: #1c1917; color: #fff; }
+  .btn-primary:hover { background: #292524; }
+  .btn-secondary { background: #f5f4f2; color: #44403c; border: 1px solid #e7e5e4; }
+  .btn-secondary:hover { background: #ede9e7; }
+  .btn-ghost { background: transparent; color: #78716c; font-size: 12px; padding: 6px 10px; }
+  .btn-ghost:hover { color: #1c1917; background: #f5f4f2; border-radius: 6px; }
+  .btn-run { background: #7c3aed; color: #fff; font-weight: 600; }
+  .btn-run:hover { background: #6d28d9; }
+  .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 500; }
+  .badge-success { background: #dcfce7; color: #15803d; }
+  .badge-failed  { background: #fee2e2; color: #dc2626; }
+  .badge-pending { background: #f5f4f2; color: #78716c; }
+  .badge-running { background: #dbeafe; color: #1d4ed8; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+  .dot-green  { background: #22c55e; }
+  .dot-gray   { background: #d4d4d2; }
+  .dot-purple { background: #7c3aed; }
+
+  /* ── SCREEN 1: Workflows list ── */
+  .wf-main { padding: 32px 32px; max-width: 760px; margin: 0 auto; }
+  .wf-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .wf-title { font-size: 20px; font-weight: 600; }
+  .wf-list { display: flex; flex-direction: column; gap: 8px; }
+  .wf-card { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border: 1px solid #e7e5e4; border-radius: 12px; cursor: pointer; transition: all 0.15s; text-decoration: none; color: inherit; background: #fff; }
+  .wf-card:hover { border-color: #c7c5c2; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .wf-name { font-size: 14px; font-weight: 600; color: #1c1917; }
+  .wf-meta { font-size: 11px; color: #a8a29e; margin-top: 2px; }
+  .wf-right { display: flex; align-items: center; gap: 12px; }
+  .wf-last-run { font-size: 11px; color: #a8a29e; }
+  .arrow { color: #d4d4d2; font-size: 14px; }
+  .wf-card:hover .arrow { color: #78716c; }
+  .empty-state { border: 1.5px dashed #d4d4d2; border-radius: 14px; padding: 64px 32px; text-align: center; }
+  .empty-state h3 { font-size: 15px; font-weight: 600; color: #44403c; margin-bottom: 6px; }
+  .empty-state p { font-size: 13px; color: #a8a29e; margin-bottom: 20px; }
+
+  /* ── SCREEN 2: Canvas editor ── */
+  .canvas-layout { display: flex; flex-direction: column; height: 600px; }
+  .canvas-topbar { display: flex; align-items: center; justify-content: space-between; padding: 0 20px; height: 52px; background: #fff; border-bottom: 1px solid #e7e5e4; flex-shrink: 0; }
+  .canvas-left { display: flex; align-items: center; gap: 12px; }
+  .canvas-right { display: flex; align-items: center; gap: 8px; }
+  .workflow-name { font-size: 14px; font-weight: 600; color: #1c1917; border: none; outline: none; }
+  .status-chip { font-size: 10px; font-weight: 600; color: #a8a29e; background: #f5f4f2; padding: 2px 8px; border-radius: 99px; letter-spacing: 0.02em; }
+  .save-chip { font-size: 11px; color: #22c55e; }
+  .divider { width: 1px; height: 18px; background: #e7e5e4; }
+  .canvas-body { display: flex; flex: 1; overflow: hidden; }
+  .canvas-area { flex: 1; background: #fafaf9; background-image: radial-gradient(circle, #d4d4d2 1px, transparent 1px); background-size: 20px 20px; position: relative; overflow: hidden; }
+
+  /* blocks on canvas */
+  .block { position: absolute; border-radius: 10px; border: 1.5px solid; padding: 10px 12px; width: 164px; cursor: pointer; transition: all 0.15s; }
+  .block:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+  .block-trigger { background: #eff6ff; border-color: #bfdbfe; top: 40px; left: 120px; }
+  .block-tool1   { background: #f0fdf4; border-color: #bbf7d0; top: 140px; left: 80px; }
+  .block-tool2   { background: #f0fdf4; border-color: #bbf7d0; top: 140px; left: 280px; }
+  .block-brain   { background: #faf5ff; border-color: #e9d5ff; top: 250px; left: 180px; }
+  .block-logic   { background: #f9fafb; border-color: #e5e7eb; top: 360px; left: 180px; }
+  .block-label   { font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 4px; }
+  .block-name    { font-size: 11px; font-weight: 600; color: #1c1917; }
+  .block-sub     { font-size: 9px; color: #a8a29e; margin-top: 3px; }
+  .block-ai-badge { display: inline-block; font-size: 8px; font-weight: 700; background: #7c3aed; color: #fff; padding: 1px 5px; border-radius: 3px; margin-left: 4px; }
+
+  /* connector lines */
+  .connector { position: absolute; width: 2px; background: #d4d4d2; border-radius: 1px; }
+  .c1 { height: 36px; left: 203px; top: 100px; }
+  .c2 { height: 36px; left: 163px; top: 100px; }
+  .c3 { height: 36px; left: 363px; top: 100px; }
+  .c4 { height: 36px; left: 263px; top: 204px; }
+
+  /* sidebar */
+  .sidebar { width: 200px; border-left: 1px solid #e7e5e4; background: #fff; display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
+  .sidebar-section { padding: 12px; border-bottom: 1px solid #f5f4f2; }
+  .sidebar-title { font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #a8a29e; margin-bottom: 10px; }
+  .integration-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
+  .integration-name { font-size: 12px; color: #44403c; display: flex; align-items: center; gap: 5px; }
+  .connect-btn { font-size: 10px; font-weight: 500; color: #7c3aed; cursor: pointer; }
+  .connect-btn:hover { text-decoration: underline; }
+  .connected-label { font-size: 10px; color: #22c55e; font-weight: 500; }
+  .block-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .block-tile { border-radius: 8px; border: 1.5px solid; padding: 8px; cursor: grab; aspect-ratio: 1; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.15s; }
+  .block-tile:hover { opacity: 0.85; transform: translateY(-1px); }
+  .block-tile-label { font-size: 7px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+  .block-tile-name  { font-size: 10px; font-weight: 600; color: #292524; }
+
+  /* bottom panel */
+  .bottom-panel { flex-shrink: 0; border-top: 1px solid #e7e5e4; background: #fff; }
+  .panel-tabs { display: flex; align-items: center; gap: 0; border-bottom: 1px solid #f5f4f2; padding: 0 16px; }
+  .panel-tab { font-size: 12px; font-weight: 500; color: #a8a29e; padding: 8px 12px; cursor: pointer; border-bottom: 2px solid transparent; }
+  .panel-tab.active { color: #1c1917; border-bottom-color: #1c1917; }
+  .panel-body { padding: 12px 16px; display: flex; gap: 12px; align-items: flex-start; }
+  .panel-textarea { flex: 1; font-size: 12px; color: #44403c; border: 1px solid #e7e5e4; border-radius: 8px; padding: 8px 10px; resize: none; height: 56px; font-family: inherit; outline: none; }
+  .panel-textarea:focus { border-color: #7c3aed; }
+  .panel-actions { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+
+  /* ── SCREEN 3: Run trace ── */
+  .trace-layout { display: flex; flex-direction: column; }
+  .trace-main { padding: 28px 32px; max-width: 760px; margin: 0 auto; width: 100%; }
+  .trace-header { margin-bottom: 24px; }
+  .trace-title { font-size: 18px; font-weight: 600; }
+  .trace-id { font-size: 11px; color: #a8a29e; font-family: monospace; margin-top: 2px; }
+  .trace-card { background: #fff; border: 1px solid #e7e5e4; border-radius: 14px; overflow: hidden; }
+  .trace-summary { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid #f5f4f2; }
+  .trace-stat { padding: 16px 20px; }
+  .trace-stat + .trace-stat { border-left: 1px solid #f5f4f2; }
+  .trace-stat-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #a8a29e; margin-bottom: 4px; }
+  .trace-stat-value { font-size: 18px; font-weight: 600; color: #1c1917; }
+  .trace-stat-sub { font-size: 11px; color: #a8a29e; margin-top: 1px; }
+  .timeline { padding: 20px 24px; }
+  .tl-row { display: flex; gap: 12px; padding-bottom: 16px; position: relative; }
+  .tl-row:not(:last-child)::before { content: ""; position: absolute; left: 9px; top: 22px; bottom: 0; width: 1px; background: #f5f4f2; }
+  .tl-dot { width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; margin-top: 1px; font-size: 9px; }
+  .tl-dot-ok     { background: #dcfce7; color: #15803d; }
+  .tl-dot-run    { background: #dbeafe; color: #1d4ed8; }
+  .tl-dot-skip   { background: #f5f4f2; color: #a8a29e; }
+  .tl-dot-brain  { background: #f3e8ff; color: #7c3aed; }
+  .tl-dot-gate   { background: #fff7ed; color: #c2410c; }
+  .tl-content { flex: 1; min-width: 0; }
+  .tl-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .tl-label { font-size: 13px; font-weight: 600; color: #1c1917; }
+  .tl-type  { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 2px 6px; border-radius: 4px; }
+  .tl-dur   { font-size: 11px; color: #a8a29e; margin-left: auto; }
+  .tl-sub   { font-size: 11px; color: #78716c; margin-top: 2px; }
+  .tl-skip  { font-size: 11px; color: #a8a29e; font-style: italic; margin-top: 2px; }
+  .tl-brain-output { margin-top: 8px; background: #1c1917; border-radius: 8px; padding: 10px 12px; font-size: 11px; color: #d4d4d2; font-family: monospace; line-height: 1.6; max-height: 80px; overflow: hidden; position: relative; }
+  .tl-brain-output::after { content: ""; position: absolute; bottom: 0; left: 0; right: 0; height: 24px; background: linear-gradient(transparent, #1c1917); }
+  .show-more { font-size: 11px; color: #7c3aed; cursor: pointer; margin-top: 4px; }
+
+  /* ── SCREEN 4: Settings ── */
+  .settings-main { padding: 32px; max-width: 600px; margin: 0 auto; }
+  .settings-title { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+  .settings-sub   { font-size: 13px; color: #78716c; margin-bottom: 24px; }
+  .cred-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+  .cred-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border: 1px solid #e7e5e4; border-radius: 10px; background: #fff; }
+  .cred-left { display: flex; align-items: center; gap: 10px; }
+  .cred-icon { width: 32px; height: 32px; border-radius: 8px; background: #f5f4f2; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; color: #44403c; }
+  .cred-icon.gh  { background: #1c1917; color: #fff; }
+  .cred-icon.sl  { background: #7c3aed; color: #fff; }
+  .cred-icon.rw  { background: #4f46e5; color: #fff; }
+  .cred-name { font-size: 13px; font-weight: 600; }
+  .cred-meta { font-size: 11px; color: #a8a29e; }
+  .remove-btn { font-size: 11px; color: #f87171; cursor: pointer; }
+  .add-cred-btn { width: 100%; padding: 10px; border: 1.5px dashed #d4d4d2; border-radius: 10px; background: transparent; font-size: 13px; color: #78716c; cursor: pointer; transition: all 0.15s; }
+  .add-cred-btn:hover { border-color: #7c3aed; color: #7c3aed; background: #faf5ff; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════
+     Screen 1: Workflows list — with last-run status
+     ═══════════════════════════════════════════════════════ -->
+<div class="screen">
+  <div class="screen-label">Screen 1 — Agents list (home)</div>
+  <div class="topbar">
+    <div class="logo">Dele<span>g</span>ator</div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn btn-ghost">Integrations</button>
+      <button class="btn btn-primary">+ New agent</button>
+    </div>
+  </div>
+  <div class="wf-main">
+    <div class="wf-header">
+      <h1 class="wf-title">Agents</h1>
+      <span style="font-size:12px;color:#a8a29e">3 agents</span>
+    </div>
+    <div class="wf-list">
+      <a class="wf-card">
+        <div>
+          <div class="wf-name">Story → PR</div>
+          <div class="wf-meta">16 blocks · GitHub, Linear, Slack, Vercel</div>
+        </div>
+        <div class="wf-right">
+          <span class="badge badge-success"><span class="dot dot-green"></span>Last run succeeded</span>
+          <span class="wf-last-run">2h ago</span>
+          <span class="arrow">→</span>
+        </div>
+      </a>
+      <a class="wf-card">
+        <div>
+          <div class="wf-name">Autopilot — GitHub Issues</div>
+          <div class="wf-meta">9 blocks · GitHub, Slack</div>
+        </div>
+        <div class="wf-right">
+          <span class="badge badge-failed"><span class="dot" style="background:#dc2626"></span>Last run failed</span>
+          <span class="wf-last-run">Yesterday</span>
+          <span class="arrow">→</span>
+        </div>
+      </a>
+      <a class="wf-card">
+        <div>
+          <div class="wf-name">Deploy Delegator</div>
+          <div class="wf-meta">9 blocks · Railway, GitHub</div>
+        </div>
+        <div class="wf-right">
+          <span class="badge badge-pending">Never run</span>
+          <span class="wf-last-run">3 days ago</span>
+          <span class="arrow">→</span>
+        </div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     Screen 2: Canvas editor — clean header + live sidebar
+     ═══════════════════════════════════════════════════════ -->
+<div class="screen">
+  <div class="screen-label">Screen 2 — Canvas editor</div>
+  <div class="canvas-layout">
+    <!-- Top bar -->
+    <div class="canvas-topbar">
+      <div class="canvas-left">
+        <a href="#" style="color:#a8a29e;font-size:13px;text-decoration:none">←</a>
+        <input class="workflow-name" value="Story → PR" readonly>
+        <span class="status-chip">autosaved</span>
+      </div>
+      <div class="canvas-right">
+        <span class="save-chip">Saved ✓</span>
+        <div class="divider"></div>
+        <button class="btn btn-ghost" style="font-size:12px">$ Estimate</button>
+        <button class="btn btn-ghost" style="font-size:12px">History</button>
+        <div class="divider"></div>
+        <button class="btn btn-run">▶ Run</button>
+      </div>
+    </div>
+
+    <!-- Canvas + sidebar -->
+    <div class="canvas-body">
+      <!-- Canvas area with blocks -->
+      <div class="canvas-area">
+        <div class="block block-trigger">
+          <div class="block-label" style="color:#3b82f6">Trigger</div>
+          <div class="block-name">Story ready</div>
+          <div class="block-sub">via Linear webhook</div>
+        </div>
+        <div class="block block-tool1">
+          <div class="block-label" style="color:#16a34a">Tool</div>
+          <div class="block-name">Fetch story</div>
+          <div class="block-sub">Linear</div>
+        </div>
+        <div class="block block-tool2">
+          <div class="block-label" style="color:#16a34a">Tool</div>
+          <div class="block-name">Checkout</div>
+          <div class="block-sub">GitHub</div>
+        </div>
+        <div class="block block-brain" style="box-shadow:0 0 0 2px #7c3aed,0 0 0 4px #f3e8ff">
+          <div class="block-label" style="color:#7c3aed">Brain <span class="block-ai-badge">AI</span></div>
+          <div class="block-name">Generate code</div>
+          <div class="block-sub">agentic · up to 20 turns</div>
+        </div>
+        <div class="block block-logic">
+          <div class="block-label" style="color:#6b7280">Logic</div>
+          <div class="block-name">Tests pass?</div>
+          <div style="display:flex;justify-content:space-between;margin-top:8px;padding:0 2px">
+            <span style="font-size:8px;font-weight:700;color:#16a34a;text-transform:uppercase">pass</span>
+            <span style="font-size:8px;font-weight:700;color:#dc2626;text-transform:uppercase">fail</span>
+          </div>
+        </div>
+        <!-- Connectors -->
+        <div class="connector c1"></div>
+        <div class="connector" style="height:36px;left:163px;top:100px"></div>
+        <div class="connector" style="height:36px;left:363px;top:100px"></div>
+        <div class="connector" style="height:36px;left:263px;top:210px"></div>
+        <div class="connector" style="height:36px;left:263px;top:322px"></div>
+      </div>
+
+      <!-- Sidebar -->
+      <div class="sidebar">
+        <!-- Integrations — connected state -->
+        <div class="sidebar-section">
+          <div class="sidebar-title">Integrations</div>
+          <div class="integration-row">
+            <span class="integration-name"><span class="dot dot-green"></span>GitHub</span>
+            <span class="connected-label">connected</span>
+          </div>
+          <div class="integration-row">
+            <span class="integration-name"><span class="dot dot-green"></span>Slack</span>
+            <span class="connected-label">connected</span>
+          </div>
+          <div class="integration-row">
+            <span class="integration-name"><span class="dot dot-gray"></span>Linear</span>
+            <span class="connect-btn">connect →</span>
+          </div>
+          <div class="integration-row">
+            <span class="integration-name"><span class="dot dot-gray"></span>Railway</span>
+            <span class="connect-btn">connect →</span>
+          </div>
+        </div>
+
+        <!-- Block library -->
+        <div class="sidebar-section">
+          <div class="sidebar-title">Blocks</div>
+          <div class="block-grid">
+            <div class="block-tile" style="background:#eff6ff;border-color:#bfdbfe">
+              <span class="block-tile-label" style="color:#3b82f6">Trigger</span>
+              <span class="block-tile-name">Webhook</span>
+            </div>
+            <div class="block-tile" style="background:#faf5ff;border-color:#e9d5ff">
+              <span class="block-tile-label" style="color:#7c3aed">Brain</span>
+              <span class="block-tile-name">LLM</span>
+            </div>
+            <div class="block-tile" style="background:#f0fdf4;border-color:#bbf7d0">
+              <span class="block-tile-label" style="color:#16a34a">Tool</span>
+              <span class="block-tile-name">API call</span>
+            </div>
+            <div class="block-tile" style="background:#f9fafb;border-color:#e5e7eb">
+              <span class="block-tile-label" style="color:#6b7280">Logic</span>
+              <span class="block-tile-name">Branch</span>
+            </div>
+            <div class="block-tile" style="background:#fff7ed;border-color:#fed7aa">
+              <span class="block-tile-label" style="color:#c2410c">Approval</span>
+              <span class="block-tile-name">Gate</span>
+            </div>
+            <div class="block-tile" style="background:#fff1f2;border-color:#fecdd3">
+              <span class="block-tile-label" style="color:#e11d48">Output</span>
+              <span class="block-tile-name">Notify</span>
+            </div>
+            <div class="block-tile" style="background:#fefce8;border-color:#fef08a">
+              <span class="block-tile-label" style="color:#a16207">Cleanup</span>
+              <span class="block-tile-name">Teardown</span>
+            </div>
+            <div class="block-tile" style="background:#fffbeb;border-color:#fde68a">
+              <span class="block-tile-label" style="color:#b45309">Memory</span>
+              <span class="block-tile-name">Vector</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom panel (block selected) -->
+    <div class="bottom-panel">
+      <div class="panel-tabs">
+        <div class="panel-tab active">Plain English</div>
+        <div class="panel-tab">Compiled prompt</div>
+      </div>
+      <div class="panel-body">
+        <textarea class="panel-textarea" placeholder="What should this block do?">Generate code for the story using file and shell tools. Max 20 turns.</textarea>
+        <div class="panel-actions">
+          <button class="btn btn-secondary" style="font-size:11px;padding:5px 10px">⚡ Compile</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     Screen 3: Run trace — structured timeline
+     ═══════════════════════════════════════════════════════ -->
+<div class="screen">
+  <div class="screen-label">Screen 3 — Run trace (succeeded)</div>
+  <div class="topbar">
+    <div style="display:flex;align-items:center;gap:10px">
+      <a href="#" style="color:#a8a29e;font-size:13px;text-decoration:none">←</a>
+      <span style="font-size:14px;font-weight:600">Story → PR</span>
+      <span style="font-size:12px;color:#a8a29e">/ History /</span>
+      <span style="font-size:12px;font-family:monospace;color:#78716c">a3f9b2…</span>
+    </div>
+    <button class="btn btn-ghost">Edit agent</button>
+  </div>
+  <div class="trace-main">
+    <div class="trace-header">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <h2 class="trace-title">Run trace</h2>
+        <span class="badge badge-success">succeeded</span>
+      </div>
+      <div class="trace-id">run_id: a3f9b2c1-44d0-4f8e-b3e1-000000000001</div>
+    </div>
+
+    <!-- Summary stats -->
+    <div class="trace-card">
+      <div class="trace-summary">
+        <div class="trace-stat">
+          <div class="trace-stat-label">Duration</div>
+          <div class="trace-stat-value">48.3s</div>
+        </div>
+        <div class="trace-stat">
+          <div class="trace-stat-label">Tokens used</div>
+          <div class="trace-stat-value">18,420</div>
+          <div class="trace-stat-sub">12,100 in · 6,320 out</div>
+        </div>
+        <div class="trace-stat">
+          <div class="trace-stat-label">Est. cost</div>
+          <div class="trace-stat-value">$0.13</div>
+          <div class="trace-stat-sub">Sonnet 4.6</div>
+        </div>
+        <div class="trace-stat">
+          <div class="trace-stat-label">Triggered by</div>
+          <div class="trace-stat-value" style="font-size:13px">manual</div>
+        </div>
+      </div>
+
+      <!-- Timeline -->
+      <div class="timeline">
+        <div class="tl-row">
+          <div class="tl-dot tl-dot-run">▶</div>
+          <div class="tl-content">
+            <div class="tl-head">
+              <span class="tl-label">Run started</span>
+              <span class="tl-dur">16 blocks</span>
+            </div>
+          </div>
+        </div>
+        <div class="tl-row">
+          <div class="tl-dot tl-dot-ok">✓</div>
+          <div class="tl-content">
+            <div class="tl-head">
+              <span class="tl-label">Story ready</span>
+              <span class="tl-type" style="background:#eff6ff;color:#3b82f6">trigger</span>
+              <span class="tl-dur">0.01s</span>
+            </div>
+            <div class="tl-sub">Triggered</div>
+          </div>
+        </div>
+        <div class="tl-row">
+          <div class="tl-dot tl-dot-skip">–</div>
+          <div class="tl-content">
+            <div class="tl-head">
+              <span class="tl-label">Fetch story</span>
+              <span class="tl-type" style="background:#f0fdf4;color:#16a34a">tool</span>
+              <span class="tl-dur">—</span>
+            </div>
+            <div class="tl-skip">Skipped — no credentials for linear</div>
+          </div>
+        </div>
+        <div class="tl-row">
+          <div class="tl-dot tl-dot-ok">✓</div>
+          <div class="tl-content">
+            <div class="tl-head">
+              <span class="tl-label">Checkout</span>
+              <span class="tl-type" style="background:#f0fdf4;color:#16a34a">tool</span>
+              <span class="tl-dur">1.2s</span>
+            </div>
+            <div class="tl-sub">Branch feat/STORY-42 created</div>
+          </div>
+        </div>
+        <div class="tl-row">
+          <div class="tl-dot tl-dot-brain" style="font-size:11px">AI</div>
+          <div class="tl-content">
+            <div class="tl-head">
+              <span class="tl-label">Generate code</span>
+              <span class="tl-type" style="background:#f3e8ff;color:#7c3aed">brain · agentic</span>
+              <span class="tl-dur">44.8s · 5 turns</span>
+            </div>
+            <div class="tl-brain-output">
+              Created src/auth/oauth.py with GitHub OAuth flow.
+              Updated tests/test_auth.py — 3 new test cases.
+              Modified requirements.txt: added PyJWT==2.9.0.
+              All imports resolved. Running tests now...
+            </div>
+            <div class="show-more">▸ show full output</div>
+          </div>
+        </div>
+        <div class="tl-row">
+          <div class="tl-dot tl-dot-ok">✓</div>
+          <div class="tl-content">
+            <div class="tl-head">
+              <span class="tl-label">Open PR</span>
+              <span class="tl-type" style="background:#f0fdf4;color:#16a34a">tool</span>
+              <span class="tl-dur">0.8s</span>
+            </div>
+            <div class="tl-sub">PR #47 opened → github.com/…/pull/47</div>
+          </div>
+        </div>
+        <div class="tl-row">
+          <div class="tl-dot tl-dot-ok" style="background:#dcfce7;color:#15803d;font-size:10px">✓</div>
+          <div class="tl-content">
+            <div class="tl-head"><span class="tl-label">Run completed</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     Screen 4: Settings / Integrations
+     ═══════════════════════════════════════════════════════ -->
+<div class="screen">
+  <div class="screen-label">Screen 4 — Settings · Integrations</div>
+  <div class="topbar">
+    <div class="logo">Dele<span>g</span>ator</div>
+    <a href="#" style="font-size:12px;color:#78716c;text-decoration:none">← Back to agents</a>
+  </div>
+  <div class="settings-main">
+    <h1 class="settings-title">Integrations</h1>
+    <p class="settings-sub">Connect the tools your agents will use. All credentials are AES-256 encrypted.</p>
+    <div class="cred-list">
+      <div class="cred-row">
+        <div class="cred-left">
+          <div class="cred-icon gh">GH</div>
+          <div>
+            <div class="cred-name">GitHub</div>
+            <div class="cred-meta">token · ghp_•••••••••••••</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <span class="badge badge-success"><span class="dot dot-green"></span>connected</span>
+          <span class="remove-btn">Remove</span>
+        </div>
+      </div>
+      <div class="cred-row">
+        <div class="cred-left">
+          <div class="cred-icon sl">SL</div>
+          <div>
+            <div class="cred-name">Slack</div>
+            <div class="cred-meta">token · xoxb-•••••••••••••</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <span class="badge badge-success"><span class="dot dot-green"></span>connected</span>
+          <span class="remove-btn">Remove</span>
+        </div>
+      </div>
+      <div class="cred-row">
+        <div class="cred-left">
+          <div class="cred-icon rw">RW</div>
+          <div>
+            <div class="cred-name">Railway</div>
+            <div class="cred-meta">token · •••••••  ·  project: perceptive-dream</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <span class="badge badge-success"><span class="dot dot-green"></span>connected</span>
+          <span class="remove-btn">Remove</span>
+        </div>
+      </div>
+    </div>
+    <button class="add-cred-btn">+ Add integration</button>
+  </div>
+</div>
+
+</body>
+</html>
