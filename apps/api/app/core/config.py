@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     # Webhook secrets
     vercel_webhook_secret: str = ""
     github_webhook_secret: str = ""
+    # Railway — used by the Deploy Delegator workflow and Railway integration blocks
+    railway_api_token: str = ""
+    railway_project_id: str = ""    # Delegator project ID on Railway
+    railway_environment_id: str = ""  # Production environment ID (auto-fetched if blank)
+    railway_backend_service_id: str = ""   # delegator-backend service ID
+    railway_frontend_service_id: str = ""  # delegator-ui service ID
+
     # Modal sandbox — when set, Brain tools run in isolated containers
     modal_token_id: str = ""
     modal_token_secret: str = ""
