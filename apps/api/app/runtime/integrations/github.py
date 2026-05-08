@@ -15,6 +15,36 @@ def _headers(token: str) -> dict:
     }
 
 
+def fetch_issue(token: str, owner: str, repo: str, issue_number: int) -> dict:
+    r = httpx.get(f"{BASE}/repos/{owner}/{repo}/issues/{issue_number}", headers=_headers(token), timeout=15)
+    r.raise_for_status()
+    d = r.json()
+    return {
+        "issue_number": d["number"],
+        "title": d["title"],
+        "body": d.get("body") or "",
+        "state": d["state"],
+        "url": d["html_url"],
+        "labels": [l["name"] for l in d.get("labels", [])],
+        "author": d["user"]["login"],
+    }
+
+
+def list_issues(token: str, owner: str, repo: str, label: str = "", state: str = "open") -> dict:
+    params: dict = {"state": state, "per_page": 20}
+    if label:
+        params["labels"] = label
+    r = httpx.get(f"{BASE}/repos/{owner}/{repo}/issues", headers=_headers(token), params=params, timeout=15)
+    r.raise_for_status()
+    issues = [
+        {"number": i["number"], "title": i["title"], "url": i["html_url"],
+         "labels": [l["name"] for l in i.get("labels", [])]}
+        for i in r.json()
+        if "pull_request" not in i
+    ]
+    return {"issues": issues, "count": len(issues)}
+
+
 def get_repo(token: str, owner: str, repo: str) -> dict:
     r = httpx.get(f"{BASE}/repos/{owner}/{repo}", headers=_headers(token), timeout=15)
     r.raise_for_status()
@@ -128,6 +158,8 @@ def add_repo_secret(token: str, owner: str, repo: str, secret_name: str, secret_
 
 
 TOOL_MAP = {
+    "fetch_issue": fetch_issue,
+    "list_issues": list_issues,
     "get_repo": get_repo,
     "create_branch": create_branch,
     "open_pull_request": open_pull_request,

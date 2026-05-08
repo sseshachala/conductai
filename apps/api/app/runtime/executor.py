@@ -256,22 +256,47 @@ def _tool_search_code(pattern: str, path: str = ".", file_glob: str = "*") -> st
 
 
 def _dispatch_tool(tool_name: str, tool_input: dict) -> str:
-    if tool_name == "read_file":
-        return _tool_read_file(tool_input["path"])
-    if tool_name == "write_file":
-        return _tool_write_file(tool_input["path"], tool_input["content"])
-    if tool_name == "run_shell":
-        return _tool_run_shell(tool_input["command"], tool_input.get("working_dir"))
-    if tool_name == "search_code":
-        return _tool_search_code(
-            tool_input["pattern"],
-            tool_input.get("path", "."),
-            tool_input.get("file_glob", "*"),
-        )
-    return f"Unknown tool: {tool_name}"
+    from app.runtime.sandbox import dispatch_brain_tool
+    return dispatch_brain_tool(tool_name, tool_input)
+
+
 
 
 # ── block executors ───────────────────────────────────────────────────────────
+
+def _extract_git_evidence(working_dir: str | None) -> tuple[list[dict], str]:
+    """Run git diff --stat in working_dir. Returns (files_changed, diff_stat_text)."""
+    if not working_dir:
+        return [], ""
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--stat", "HEAD"],
+            capture_output=True, text=True, timeout=10, cwd=working_dir,
+        )
+        stat = result.stdout.strip()
+        if not stat:
+            # Nothing committed yet — diff against index
+            result = subprocess.run(
+                ["git", "diff", "--stat"],
+                capture_output=True, text=True, timeout=10, cwd=working_dir,
+            )
+            stat = result.stdout.strip()
+
+        files: list[dict] = []
+        for line in stat.splitlines():
+            line = line.strip()
+            if "|" in line:
+                path = line.split("|")[0].strip()
+                action = "modified"
+                if "new file" in line.lower():
+                    action = "created"
+                elif "deleted" in line.lower():
+                    action = "deleted"
+                files.append({"path": path, "action": action})
+        return files, stat
+    except Exception:
+        return [], ""
+
 
 def _execute_brain(block: dict, state: dict, compiled_artifacts: dict) -> dict:
     if state.get("__dry_run"):
@@ -296,6 +321,9 @@ def _execute_brain(block: dict, state: dict, compiled_artifacts: dict) -> dict:
         messages: list[dict] = [{"role": "user", "content": user_message}]
         turns = 0
         max_turns = 20
+        total_input_tokens = 0
+        total_output_tokens = 0
+        working_dir: str | None = None  # track if Brain cloned a repo
 
         while turns < max_turns:
             response = client.messages.create(
@@ -306,6 +334,9 @@ def _execute_brain(block: dict, state: dict, compiled_artifacts: dict) -> dict:
                 messages=messages,
             )
             turns += 1
+            if hasattr(response, "usage") and response.usage:
+                total_input_tokens += getattr(response.usage, "input_tokens", 0)
+                total_output_tokens += getattr(response.usage, "output_tokens", 0)
 
             # Collect tool calls from response
             tool_calls = [b for b in response.content if b.type == "tool_use"]
@@ -313,7 +344,18 @@ def _execute_brain(block: dict, state: dict, compiled_artifacts: dict) -> dict:
             final_text = " ".join(b.text for b in text_blocks)
 
             if response.stop_reason == "end_turn" or not tool_calls:
-                return {"output": final_text, "turns": turns}
+                # Sonnet 4.6 pricing: $3/1M input, $15/1M output — update if model changes
+                cost_usd = round((total_input_tokens * 3 + total_output_tokens * 15) / 1_000_000, 6)
+                files_changed, diff_stat = _extract_git_evidence(working_dir)
+                return {
+                    "output": final_text,
+                    "turns": turns,
+                    "input_tokens": total_input_tokens,
+                    "output_tokens": total_output_tokens,
+                    "cost_usd": cost_usd,
+                    "files_changed": files_changed,
+                    "diff_stat": diff_stat,
+                }
 
             # Append assistant message
             messages.append({"role": "assistant", "content": response.content})
@@ -321,6 +363,9 @@ def _execute_brain(block: dict, state: dict, compiled_artifacts: dict) -> dict:
             # Execute tool calls and build tool_result message
             tool_results = []
             for tc in tool_calls:
+                # Track working dir if Brain runs shell commands
+                if tc.name == "run_shell" and tc.input.get("working_dir"):
+                    working_dir = tc.input["working_dir"]
                 result_content = _dispatch_tool(tc.name, tc.input)
                 tool_results.append({
                     "type": "tool_result",
@@ -329,7 +374,17 @@ def _execute_brain(block: dict, state: dict, compiled_artifacts: dict) -> dict:
                 })
             messages.append({"role": "user", "content": tool_results})
 
-        return {"output": "Turn budget exhausted", "turns": max_turns}
+        cost_usd = round((total_input_tokens * 3 + total_output_tokens * 15) / 1_000_000, 6)
+        files_changed, diff_stat = _extract_git_evidence(working_dir)
+        return {
+            "output": "Turn budget exhausted",
+            "turns": max_turns,
+            "input_tokens": total_input_tokens,
+            "output_tokens": total_output_tokens,
+            "cost_usd": cost_usd,
+            "files_changed": files_changed,
+            "diff_stat": diff_stat,
+        }
 
     else:
         # Single call (no tools)
@@ -340,7 +395,15 @@ def _execute_brain(block: dict, state: dict, compiled_artifacts: dict) -> dict:
             messages=[{"role": "user", "content": user_message}],
         )
         text = next((b.text for b in response.content if hasattr(b, "text")), "")
-        return {"output": text}
+        input_tokens = getattr(getattr(response, "usage", None), "input_tokens", 0)
+        output_tokens = getattr(getattr(response, "usage", None), "output_tokens", 0)
+        cost_usd = round((input_tokens * 3 + output_tokens * 15) / 1_000_000, 6)
+        return {
+            "output": text,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "cost_usd": cost_usd,
+        }
 
 
 def _dry_run_mock(integration: str, action: str, params: dict) -> dict:

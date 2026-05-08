@@ -133,6 +133,11 @@ const TYPE_BADGE: Record<string, string> = {
 
 // ── Block row component ───────────────────────────────────────────────────────
 
+interface FileChanged {
+  path: string
+  action: "created" | "modified" | "deleted"
+}
+
 interface BlockRow {
   blockId: string
   label: string
@@ -142,13 +147,26 @@ interface BlockRow {
   completedAt?: string
   output?: Record<string, unknown>
   error?: string
+  costUsd?: number
+  inputTokens?: number
+  outputTokens?: number
+  filesChanged?: FileChanged[]
+  diffStat?: string
+}
+
+const FILE_ACTION_COLOR: Record<string, string> = {
+  created:  "text-emerald-600",
+  modified: "text-blue-600",
+  deleted:  "text-red-500",
 }
 
 function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
   const [expanded, setExpanded] = useState(row.status === "failed")
+  const [diffExpanded, setDiffExpanded] = useState(false)
   const dur = duration(row.startedAt, row.completedAt)
   const summary = row.output ? summariseOutput(row.output, row.type) : null
   const isSkipped = row.output?.skipped === true
+  const prUrl = row.output?.pr_url as string | undefined
 
   const dot =
     row.status === "completed" && !isSkipped ? "bg-green-400" :
@@ -165,20 +183,19 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
       <div className={`pb-3 ${row.status === "failed" ? "rounded-lg bg-red-50 border border-red-100 px-3 py-2.5 -ml-1 mb-1" : ""}`}>
         {/* Header row */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Block label */}
           <span className={`text-sm font-semibold ${row.status === "failed" ? "text-red-800" : isSkipped ? "text-stone-400" : "text-stone-800"}`}>
             {row.label}
           </span>
-
-          {/* Block type badge */}
           <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${TYPE_BADGE[row.type] ?? "bg-stone-100 text-stone-500"}`}>
             {row.type}
           </span>
-
-          {/* Duration */}
-          {dur && (
-            <span className="text-xs text-stone-400 ml-auto">{dur}</span>
+          {/* Cost badge for Brain blocks */}
+          {row.type === "brain" && row.costUsd !== undefined && row.costUsd > 0 && (
+            <span className="text-[9px] text-stone-400 font-mono bg-stone-50 border border-stone-200 px-1.5 py-0.5 rounded ml-1">
+              {row.inputTokens?.toLocaleString()} tok · ${row.costUsd.toFixed(4)}
+            </span>
           )}
+          {dur && <span className="text-xs text-stone-400 ml-auto">{dur}</span>}
           {row.status === "running" && (
             <span className="text-xs text-blue-500 animate-pulse ml-auto">running…</span>
           )}
@@ -196,12 +213,44 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
           </p>
         )}
 
+        {/* PR link — prominent */}
+        {prUrl && (
+          <a href={prUrl} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 mt-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-800 hover:underline">
+            View PR →
+          </a>
+        )}
+
+        {/* Files changed (Brain block) */}
+        {row.filesChanged && row.filesChanged.length > 0 && (
+          <div className="mt-2 space-y-0.5">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-stone-400 mb-1">Files changed</p>
+            {row.filesChanged.map((f, i) => (
+              <div key={i} className="flex items-center gap-1.5">
+                <span className={`text-[9px] font-bold uppercase w-12 shrink-0 ${FILE_ACTION_COLOR[f.action]}`}>{f.action}</span>
+                <span className="text-[10px] font-mono text-stone-600 truncate">{f.path}</span>
+              </div>
+            ))}
+            {row.diffStat && (
+              <>
+                <button onClick={() => setDiffExpanded(d => !d)}
+                  className="mt-1 text-[10px] text-stone-400 hover:text-stone-600">
+                  {diffExpanded ? "▾ hide diff stat" : "▸ diff stat"}
+                </button>
+                {diffExpanded && (
+                  <pre className="mt-1 text-[10px] font-mono text-stone-500 bg-stone-50 border border-stone-200 rounded p-2 overflow-x-auto whitespace-pre">
+                    {row.diffStat}
+                  </pre>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
         {/* Expand/collapse raw output */}
         {row.output && !isSkipped && row.status === "completed" && (
-          <button
-            onClick={() => setExpanded(e => !e)}
-            className="mt-1 text-[10px] text-stone-400 hover:text-stone-600"
-          >
+          <button onClick={() => setExpanded(e => !e)}
+            className="mt-1 text-[10px] text-stone-400 hover:text-stone-600">
             {expanded ? "▾ hide output" : "▸ raw output"}
           </button>
         )}
@@ -295,9 +344,28 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
       blockMap[ev.block_id] = row
       blockRows.push(row)
     } else if (ev.kind === "block_completed" && blockMap[ev.block_id]) {
+      const out = ev.payload.output as Record<string, unknown> | undefined
       blockMap[ev.block_id].status = "completed"
       blockMap[ev.block_id].completedAt = ev.created_at
-      blockMap[ev.block_id].output = ev.payload.output as Record<string, unknown>
+      blockMap[ev.block_id].output = out
+      if (out) {
+        if (typeof out.cost_usd === "number") blockMap[ev.block_id].costUsd = out.cost_usd
+        if (typeof out.input_tokens === "number") blockMap[ev.block_id].inputTokens = out.input_tokens
+        if (typeof out.output_tokens === "number") blockMap[ev.block_id].outputTokens = out.output_tokens
+        if (Array.isArray(out.files_changed)) blockMap[ev.block_id].filesChanged = out.files_changed as FileChanged[]
+        if (typeof out.diff_stat === "string") blockMap[ev.block_id].diffStat = out.diff_stat
+        // Brain blocks output pr_url as JSON on the last line of their text output.
+        // Try to parse it from out.output so the "View PR →" link works.
+        if (typeof out.output === "string" && !out.pr_url) {
+          const lastLine = out.output.trim().split("\n").pop() ?? ""
+          try {
+            const parsed = JSON.parse(lastLine)
+            if (typeof parsed?.pr_url === "string") {
+              blockMap[ev.block_id].output = { ...out, pr_url: parsed.pr_url }
+            }
+          } catch { /* not JSON, ignore */ }
+        }
+      }
     } else if (ev.kind === "block_failed" && blockMap[ev.block_id]) {
       blockMap[ev.block_id].status = "failed"
       blockMap[ev.block_id].completedAt = ev.created_at

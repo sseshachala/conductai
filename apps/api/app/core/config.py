@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     railway_environment_id: str = ""  # Production environment ID (auto-fetched if blank)
     railway_backend_service_id: str = ""   # delegator-backend service ID
     railway_frontend_service_id: str = ""  # delegator-ui service ID
+
     # Modal sandbox — when set, Brain tools run in isolated containers
     modal_token_id: str = ""
     modal_token_secret: str = ""
