@@ -141,6 +141,7 @@ export default function BlockEditor({
   const isToolLike = ["tool", "cleanup"].includes(blockType)
   const integration = (blockData.integration as string) || ""
   const action = (getNestedValue(blockData, "config.action") as string) || ""
+  const triggerEventType = (getNestedValue(blockData, "config.event_type") as string) || ""
 
   // Derive config fields to show
   const staticFields = BLOCK_CONFIG_SCHEMAS[blockType] || []
@@ -331,6 +332,17 @@ export default function BlockEditor({
                 />
               </div>
             ))}
+
+            {blockType === "trigger" && triggerEventType === "github_issue_labeled" && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
+                <p className="font-semibold mb-1">Recommended safe defaults</p>
+                <p className="leading-relaxed">
+                  Use <span className="font-medium">strict</span> enforcement, an <span className="font-medium">exact</span> label match,
+                  and a repo <span className="font-medium">allowlist</span>. Only switch to permissive or allow-all behavior if you
+                  explicitly want broader webhook coverage.
+                </p>
+              </div>
+            )}
 
             {/* Action-specific param fields */}
             {actionFields.length > 0 && (
