@@ -1,23 +1,26 @@
 "use client"
 
-import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth, SignInButton } from "@clerk/nextjs"
 
 export default function Home() {
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-
-  useEffect(() => {
-    if (!clerkEnabled) window.location.replace("/projects")
-  }, [clerkEnabled])
-
-  if (!clerkEnabled) return null
   return <LandingPage />
 }
 
 function LandingPage() {
-  const router = useRouter()
+  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  if (clerkEnabled) return <LandingPageWithAuth />
+  return <LandingPageContent isSignedIn={false} isLoaded={true} />
+}
+
+function LandingPageWithAuth() {
   const { isSignedIn, isLoaded } = useAuth()
+  return <LandingPageContent isSignedIn={!!isSignedIn} isLoaded={isLoaded} />
+}
+
+function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isLoaded: boolean }) {
+  const router = useRouter()
+  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -40,13 +43,13 @@ function LandingPage() {
             >
               Open app →
             </button>
-          ) : (
+          ) : clerkEnabled ? (
             <SignInButton mode="modal">
               <button className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
                 Sign in →
               </button>
             </SignInButton>
-          )
+          ) : null
         )}
       </header>
 
@@ -76,16 +79,16 @@ function LandingPage() {
               >
                 Open app →
               </button>
-            ) : (
+            ) : clerkEnabled ? (
               <SignInButton mode="modal">
                 <button className="inline-flex items-center gap-3 bg-stone-900 hover:bg-stone-700 text-white font-semibold px-7 py-3.5 rounded-xl text-sm transition-colors shadow-sm">
                   <GoogleIcon />
                   Sign in with Google — it&apos;s free
                 </button>
               </SignInButton>
-            )
+            ) : null
           )}
-          {isLoaded && !isSignedIn && (
+          {isLoaded && !isSignedIn && clerkEnabled && (
             <p className="text-xs text-stone-400">No credit card · No setup · Just your Google account</p>
           )}
         </div>
@@ -179,7 +182,7 @@ function LandingPage() {
             >
               Open app →
             </button>
-          ) : (
+          ) : clerkEnabled ? (
             <>
               <SignInButton mode="modal">
                 <button className="inline-flex items-center gap-3 bg-stone-900 hover:bg-stone-700 text-white font-semibold px-7 py-3.5 rounded-xl text-sm transition-colors">
@@ -189,7 +192,7 @@ function LandingPage() {
               </SignInButton>
               <p className="text-xs text-stone-400 mt-4">No credit card · Instant access · Sign in with Google</p>
             </>
-          )
+          ) : null
         )}
       </section>
 
