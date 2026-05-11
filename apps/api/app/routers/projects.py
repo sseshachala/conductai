@@ -1,9 +1,9 @@
 """
-Projects (workspaces) CRUD + template listing + waitlist approval.
+Projects (workspaces) CRUD + template listing.
 
 A "project" is a workspace owned by a single user. Workflows and credentials
-are scoped to a project. New users get a pending workspace (is_approved=False)
-until manually approved via the admin endpoint.
+are scoped to a project. Google sign-in is the access gate — all signed-in
+users get immediate access with no waitlist.
 """
 import json
 import uuid
@@ -75,16 +75,16 @@ def list_projects(
         ORDER BY w.created_at DESC
     """), {"owner_id": user_id}).fetchall()
 
-    # Auto-register new users with a pending workspace
+    # Auto-register new users with an approved workspace — Google auth is the gate
     if not rows:
         project_id, now = uuid.uuid4(), datetime.utcnow()
         db.execute(text("""
             INSERT INTO workspaces (id, name, owner_id, plan, is_approved, created_at, updated_at)
-            VALUES (:id, 'My Workspace', :owner_id, 'free', false, :now, :now)
+            VALUES (:id, 'My Workspace', :owner_id, 'free', true, :now, :now)
         """), {"id": str(project_id), "owner_id": user_id, "now": now})
         db.commit()
         return [ProjectOut(id=str(project_id), name="My Workspace", owner_id=user_id,
-                           is_approved=False, created_at=now, workflow_count=0)]
+                           is_approved=True, created_at=now, workflow_count=0)]
 
     return [
         ProjectOut(
@@ -105,18 +105,11 @@ def create_project(
     if not body.name.strip():
         raise HTTPException(status_code=422, detail="Project name cannot be empty")
 
-    # New projects inherit approval from first project (if user is already approved)
-    first = db.execute(text(
-        "SELECT is_approved FROM workspaces WHERE owner_id = :uid ORDER BY created_at LIMIT 1"
-    ), {"uid": user_id}).fetchone()
-    inherit_approval = bool(first and first.is_approved)
-
     project_id, now = uuid.uuid4(), datetime.utcnow()
     db.execute(text("""
         INSERT INTO workspaces (id, name, owner_id, plan, is_approved, created_at, updated_at)
-        VALUES (:id, :name, :owner_id, 'free', :approved, :now, :now)
-    """), {"id": str(project_id), "name": body.name.strip(), "owner_id": user_id,
-           "approved": inherit_approval, "now": now})
+        VALUES (:id, :name, :owner_id, 'free', true, :now, :now)
+    """), {"id": str(project_id), "name": body.name.strip(), "owner_id": user_id, "now": now})
 
     if body.template_id:
         tmpl = db.execute(text(
@@ -127,7 +120,7 @@ def create_project(
 
     db.commit()
     return ProjectOut(id=str(project_id), name=body.name.strip(), owner_id=user_id,
-                      is_approved=inherit_approval, created_at=now,
+                      is_approved=True, created_at=now,
                       workflow_count=1 if body.template_id else 0)
 
 

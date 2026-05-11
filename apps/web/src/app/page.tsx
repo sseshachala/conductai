@@ -47,7 +47,7 @@ function LandingPage() {
       <section className="flex-1 flex flex-col items-center justify-center px-6 pt-16 pb-24 text-center">
         <div className="inline-flex items-center gap-2 bg-stone-100 text-stone-600 text-xs font-medium px-3 py-1.5 rounded-full mb-8">
           <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-          Now in early access — request your invite
+          Now in early access — sign in to try it free
         </div>
 
         <h1 className="text-5xl sm:text-6xl font-bold text-stone-900 leading-[1.1] tracking-tight max-w-3xl">
@@ -64,10 +64,29 @@ function LandingPage() {
           <SignInButton mode="modal">
             <button className="inline-flex items-center gap-3 bg-stone-900 hover:bg-stone-700 text-white font-semibold px-7 py-3.5 rounded-xl text-sm transition-colors shadow-sm">
               <GoogleIcon />
-              Request early access
+              Sign in with Google — it&apos;s free
             </button>
           </SignInButton>
-          <p className="text-xs text-stone-400">Free during early access · No credit card</p>
+          <p className="text-xs text-stone-400">No credit card · No setup · Just your Google account</p>
+        </div>
+      </section>
+
+      {/* Use cases */}
+      <section className="px-6 py-20">
+        <div className="max-w-5xl mx-auto">
+          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">What Delegator does</p>
+          <h2 className="text-3xl font-bold text-stone-900 text-center mb-12">
+            Real engineering work, done by AI.<br />Approved by you.
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+            {USE_CASES.map(uc => (
+              <div key={uc.title} className="bg-stone-50 rounded-2xl p-6">
+                <div className="text-2xl mb-3">{uc.icon}</div>
+                <p className="font-semibold text-stone-900 mb-1.5">{uc.title}</p>
+                <p className="text-sm text-stone-500 leading-relaxed">{uc.body}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -94,7 +113,7 @@ function LandingPage() {
         <div className="max-w-5xl mx-auto">
           <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">Why Delegator</p>
           <h2 className="text-3xl font-bold text-stone-900 text-center mb-12">
-            Not just another AI tool.<br />An AI teammate.
+            Not just another AI tool.<br />An AI teammate you can trust.
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             {WHY_DELEGATOR.map(f => (
@@ -124,16 +143,17 @@ function LandingPage() {
 
       {/* Bottom CTA */}
       <section className="px-6 py-20 text-center">
-        <h2 className="text-3xl font-bold text-stone-900 mb-4">Ready to delegate?</h2>
+        <h2 className="text-3xl font-bold text-stone-900 mb-4">Try it in 30 seconds</h2>
         <p className="text-stone-500 mb-8 max-w-md mx-auto">
-          Join engineering teams using Delegator to ship faster without losing control.
+          Sign in with Google, connect your GitHub repo, and let Delegator pick up its first ticket.
         </p>
         <SignInButton mode="modal">
           <button className="inline-flex items-center gap-3 bg-stone-900 hover:bg-stone-700 text-white font-semibold px-7 py-3.5 rounded-xl text-sm transition-colors">
             <GoogleIcon />
-            Request early access
+            Get started — it&apos;s free
           </button>
         </SignInButton>
+        <p className="text-xs text-stone-400 mt-4">No credit card · Instant access · Sign in with Google</p>
       </section>
 
       <footer className="border-t border-stone-100 py-8 text-center text-xs text-stone-400">
@@ -142,6 +162,24 @@ function LandingPage() {
     </div>
   )
 }
+
+const USE_CASES = [
+  {
+    icon: "🎫",
+    title: "Ticket → Pull Request",
+    body: "Label a GitHub issue 'autopilot ready'. Delegator reads the ticket, clones the repo, writes the fix, runs tests, and opens a PR — while you sleep.",
+  },
+  {
+    icon: "🚀",
+    title: "Story → Deployed feature",
+    body: "Drop a Linear story into Delegator. It breaks it into subtasks, implements each one, runs your CI, and notifies you on Slack when it's ready to review.",
+  },
+  {
+    icon: "🔥",
+    title: "Incident → Root cause",
+    body: "Page fires at 2am. Delegator reads logs, identifies the regression, opens a hotfix PR with the patch, and pings the on-call engineer with a full trace.",
+  },
+]
 
 const HOW_IT_WORKS = [
   {
@@ -171,7 +209,7 @@ const WHY_DELEGATOR = [
   },
   {
     icon: "🔍",
-    title: "Full audit trail",
+    title: "Full audit trail, zero surprises",
     body: "Every action is logged — what the AI read, what it wrote, what it ran, how long it took, what it cost. Debug any run in seconds.",
   },
   {
