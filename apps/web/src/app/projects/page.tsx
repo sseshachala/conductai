@@ -69,9 +69,6 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
     router.push("/workflows")
   }
 
-  const approvedProjects = projects.filter(p => p.is_approved)
-  const isPending = !loading && projects.length > 0 && approvedProjects.length === 0
-
   if (loading) {
     return (
       <div className="min-h-screen bg-stone-50 flex items-center justify-center">
@@ -79,8 +76,6 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
       </div>
     )
   }
-
-  if (isPending) return <WaitlistScreen />
 
   return (
     <div className="min-h-screen bg-stone-50">
@@ -103,7 +98,7 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
           </button>
         </div>
 
-        {approvedProjects.length === 0 ? (
+        {projects.length === 0 ? (
           <div className="rounded-xl border border-dashed border-stone-300 p-16 text-center">
             <p className="text-stone-800 font-medium mb-1">No projects yet</p>
             <p className="text-stone-400 text-sm mb-6">Create your first project to get started</p>
@@ -116,7 +111,7 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
           </div>
         ) : (
           <div className="grid gap-2">
-            {approvedProjects.map(p => (
+            {projects.map(p => (
               <button
                 key={p.id}
                 onClick={() => selectProject(p.id)}
@@ -142,45 +137,6 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
           onCreate={(id) => selectProject(id)}
         />
       )}
-    </div>
-  )
-}
-
-function WaitlistScreen() {
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-  return (
-    <div className="min-h-screen bg-stone-50 flex flex-col">
-      <header className="px-6 py-4 flex items-center justify-between max-w-5xl mx-auto w-full">
-        <span className="font-bold text-stone-900 text-lg tracking-tight">Delegator</span>
-        {clerkEnabled && <AuthButton afterSignOutUrl="/" />}
-      </header>
-
-      <main className="flex-1 flex flex-col items-center justify-center px-6 text-center">
-        <div className="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center mb-6">
-          <svg className="w-7 h-7 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </div>
-
-        <h1 className="text-2xl font-bold text-stone-900 mb-2">You&apos;re on the list</h1>
-        <p className="text-stone-500 max-w-sm leading-relaxed">
-          Thanks for signing up. We&apos;re onboarding teams gradually — we&apos;ll email you as soon as your access is ready.
-        </p>
-
-        <div className="mt-8 bg-white border border-stone-200 rounded-xl px-6 py-5 max-w-sm w-full text-left space-y-3">
-          <p className="text-xs font-semibold text-stone-400 uppercase tracking-wide">While you wait</p>
-          {[
-            "Star the repo on GitHub",
-            "Join our Slack community",
-            "Read the docs",
-          ].map(item => (
-            <div key={item} className="flex items-center gap-2.5 text-sm text-stone-600">
-              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
-              {item}
-            </div>
-          ))}
-        </div>
-      </main>
     </div>
   )
 }
