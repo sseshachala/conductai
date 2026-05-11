@@ -270,18 +270,123 @@ def _verify_github_signature(body: bytes, signature: str) -> bool:
     return hmac.compare_digest(expected, signature)
 
 
+def _normalize_github_issue_labeled_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """
+    Normalize GitHub issue labeled webhook payload into a stable internal shape.
+    Raises HTTPException(422) when required fields are missing.
+    """
+    issue = payload.get("issue") or {}
+    repo = payload.get("repository") or {}
+    label = (payload.get("label") or {}).get("name")
+
+    issue_number = issue.get("number")
+    repo_full_name = repo.get("full_name")
+
+    if not issue_number or not repo_full_name or not label:
+        raise HTTPException(status_code=422, detail="Missing required issue/repository/label fields")
+
+    return {
+        "event_type": "github_issue_labeled",
+        "action": payload.get("action"),
+        "delivery_id": payload.get("delivery_id"),
+        "installation_id": (payload.get("installation") or {}).get("id"),
+        "label": label,
+        "repo": {
+            "id": repo.get("id"),
+            "full_name": repo_full_name,
+            "name": repo.get("name"),
+            "owner": (repo.get("owner") or {}).get("login"),
+            "default_branch": repo.get("default_branch", "main"),
+            "clone_url": repo.get("clone_url"),
+        },
+        "issue": {
+            "id": issue.get("id"),
+            "number": issue_number,
+            "title": issue.get("title"),
+            "body": issue.get("body") or "",
+            "url": issue.get("html_url"),
+            "author": (issue.get("user") or {}).get("login"),
+            "labels": [l.get("name") for l in issue.get("labels", []) if l.get("name")],
+        },
+        "sender": {
+            "login": (payload.get("sender") or {}).get("login"),
+        },
+    }
+
+
+def _parse_repo_allowlist(raw: Any) -> set[str]:
+    """Accept either list[str] or comma-separated string from trigger config."""
+    if isinstance(raw, list):
+        return {str(v).strip() for v in raw if str(v).strip()}
+    if isinstance(raw, str):
+        return {v.strip() for v in raw.split(",") if v.strip()}
+    return set()
+
+
+def _parse_string_list(raw: Any) -> list[str]:
+    """Accept list[str] or comma-separated string as normalized list[str]."""
+    if isinstance(raw, list):
+        return [str(v).strip() for v in raw if str(v).strip()]
+    if isinstance(raw, str):
+        return [v.strip() for v in raw.split(",") if v.strip()]
+    return []
+
+
+def _labels_match(config: dict[str, Any], incoming_label: str, issue_labels: list[str], strict: bool) -> bool:
+    mode = str(config.get("label_mode") or "exact").strip()
+
+    if mode == "exact":
+        required = str(config.get("label") or "").strip()
+        if not required:
+            return not strict
+        return incoming_label == required
+
+    configured_labels = _parse_string_list(config.get("labels"))
+    if not configured_labels:
+        return not strict
+
+    if mode == "one_of":
+        return incoming_label in configured_labels or any(lbl in configured_labels for lbl in issue_labels)
+
+    if mode == "all_of":
+        issue_set = set(issue_labels)
+        return all(lbl in issue_set for lbl in configured_labels)
+
+    # Unknown mode -> fail closed in strict mode
+    return not strict
+
+
+def _repo_matches(config: dict[str, Any], incoming_repo: str, strict: bool) -> bool:
+    repo_scope = str(config.get("repo_scope") or "allowlist").strip()
+
+    if repo_scope == "allow_all":
+        return True
+
+    if repo_scope == "denylist":
+        denylist = _parse_repo_allowlist(config.get("repo_denylist"))
+        if not denylist:
+            return not strict
+        return incoming_repo not in denylist
+
+    # default: allowlist
+    allowlist = _parse_repo_allowlist(config.get("repo_allowlist") or config.get("repos"))
+    if not allowlist:
+        return not strict
+    return incoming_repo in allowlist
+
+
 def _trigger_github_workflows(
-    db: Session, event_type: str, label_filter: str, initial_state: dict[str, Any],
+        db: Session, event_type: str, normalized: dict[str, Any], initial_state: dict[str, Any],
     workspace_id: str | None = None,
 ) -> list[str]:
     """
-    Find workflow versions with a trigger block matching:
-      - event_type == "github_issue"
-      - config.label == label_filter (or label_filter is empty = match all)
+        Find workflow versions with a trigger block matching workflow-defined contract:
+            - event_type in {"github_issue", "github_issue_labeled"}
+            - config.label must equal incoming label
+            - optional config.repo_allowlist must include incoming repo full_name
+
     If workspace_id is provided, only triggers workflows in that workspace.
     """
-    import uuid as uuid_mod
-
     query = db.query(WorkflowVersion).join(
         Workflow, Workflow.current_version_id == WorkflowVersion.id
     )
@@ -290,23 +395,42 @@ def _trigger_github_workflows(
     versions = query.all()
 
     queued: list[str] = []
+    incoming_label = normalized["label"]
+    incoming_repo = normalized["repo"]["full_name"]
+    issue_labels = normalized["issue"]["labels"]
+
     for version in versions:
         nodes = version.graph.get("nodes", [])
-        match = any(
-            n.get("data", {}).get("type") == "trigger" and
-            n.get("data", {}).get("config", {}).get("event_type") == event_type and
-            (
-                not n.get("data", {}).get("config", {}).get("label") or
-                n.get("data", {}).get("config", {}).get("label") == label_filter
-            )
-            for n in nodes
-        )
-        if not match:
+        matched_trigger = None
+
+        for node in nodes:
+            data = node.get("data", {})
+            if data.get("type") != "trigger":
+                continue
+
+            config = data.get("config", {})
+            trigger_event = config.get("event_type")
+            if trigger_event not in (event_type, "github_issue_labeled"):
+                continue
+
+            enforcement = str(config.get("enforcement") or "strict").strip()
+            strict = enforcement != "permissive"
+
+            if not _labels_match(config, incoming_label, issue_labels, strict):
+                continue
+
+            if not _repo_matches(config, incoming_repo, strict):
+                continue
+
+            matched_trigger = node
+            break
+
+        if not matched_trigger:
             continue
 
         run = Run(
             workflow_version_id=version.id,
-            triggered_by=f"github:{event_type}:{label_filter}",
+            triggered_by=f"github:{event_type}:{incoming_label}",
             status="pending",
             state={**initial_state, "__triggered_by": f"github:{event_type}"},
         )
@@ -315,7 +439,7 @@ def _trigger_github_workflows(
         db.commit()
         _redis().rpush(QUEUE_KEY, str(run.id))
         queued.append(str(run.id))
-        log.info("GitHub %s (label=%s) triggered run %s for version %s", event_type, label_filter, run.id, version.id)
+        log.info("GitHub %s (label=%s repo=%s) triggered run %s for version %s", event_type, incoming_label, incoming_repo, run.id, version.id)
 
     return queued
 
@@ -351,29 +475,34 @@ async def github_webhook(
     if event != "issues" or payload.get("action") != "labeled":
         return {"ok": True, "queued": 0, "reason": f"event {event}/{payload.get('action')} not handled"}
 
-    issue = payload.get("issue", {})
-    label = payload.get("label", {}).get("name", "")
-    repo = payload.get("repository", {})
+    normalized = _normalize_github_issue_labeled_payload(payload)
 
     initial_state = {
         "github_issue": {
-            "issue_number": issue.get("number"),
-            "title": issue.get("title"),
-            "body": issue.get("body") or "",
-            "url": issue.get("html_url"),
-            "author": issue.get("user", {}).get("login"),
-            "labels": [l["name"] for l in issue.get("labels", [])],
-            "label_added": label,
-            "repo_full_name": repo.get("full_name"),
-            "repo_name": repo.get("name"),
-            "repo_owner": repo.get("owner", {}).get("login"),
-            "default_branch": repo.get("default_branch", "main"),
-            "clone_url": repo.get("clone_url"),
-        }
+            "issue_number": normalized["issue"]["number"],
+            "title": normalized["issue"]["title"],
+            "body": normalized["issue"]["body"],
+            "url": normalized["issue"]["url"],
+            "author": normalized["issue"]["author"],
+            "labels": normalized["issue"]["labels"],
+            "label_added": normalized["label"],
+            "repo_full_name": normalized["repo"]["full_name"],
+            "repo_name": normalized["repo"]["name"],
+            "repo_owner": normalized["repo"]["owner"],
+            "default_branch": normalized["repo"]["default_branch"],
+            "clone_url": normalized["repo"]["clone_url"],
+        },
+        "github_trigger": normalized,
     }
 
-    queued = _trigger_github_workflows(db, "github_issue", label, initial_state, workspace_id)
-    return {"ok": True, "queued": len(queued), "run_ids": queued, "label": label}
+    queued = _trigger_github_workflows(db, "github_issue", normalized, initial_state, workspace_id)
+    return {
+        "ok": True,
+        "queued": len(queued),
+        "run_ids": queued,
+        "label": normalized["label"],
+        "repo": normalized["repo"]["full_name"],
+    }
 
 
 # ── Deploy Delegator manual trigger ──────────────────────────────────────────
