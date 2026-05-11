@@ -19,10 +19,6 @@ function LandingPage() {
   const router = useRouter()
   const { isSignedIn, isLoaded } = useAuth()
 
-  useEffect(() => {
-    if (isLoaded && isSignedIn) router.replace("/projects")
-  }, [isLoaded, isSignedIn, router])
-
   return (
     <div className="min-h-screen bg-white flex flex-col">
 
@@ -36,11 +32,22 @@ function LandingPage() {
           </div>
           <span className="font-bold text-stone-900 text-base tracking-tight">Delegator</span>
         </div>
-        <SignInButton mode="modal">
-          <button className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
-            Sign in →
-          </button>
-        </SignInButton>
+        {isLoaded && (
+          isSignedIn ? (
+            <button
+              onClick={() => router.push("/projects")}
+              className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
+            >
+              Open app →
+            </button>
+          ) : (
+            <SignInButton mode="modal">
+              <button className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
+                Sign in →
+              </button>
+            </SignInButton>
+          )
+        )}
       </header>
 
       {/* Hero */}
@@ -61,13 +68,26 @@ function LandingPage() {
         </p>
 
         <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
-          <SignInButton mode="modal">
-            <button className="inline-flex items-center gap-3 bg-stone-900 hover:bg-stone-700 text-white font-semibold px-7 py-3.5 rounded-xl text-sm transition-colors shadow-sm">
-              <GoogleIcon />
-              Sign in with Google — it&apos;s free
-            </button>
-          </SignInButton>
-          <p className="text-xs text-stone-400">No credit card · No setup · Just your Google account</p>
+          {isLoaded && (
+            isSignedIn ? (
+              <button
+                onClick={() => router.push("/projects")}
+                className="inline-flex items-center gap-2 bg-stone-900 hover:bg-stone-700 text-white font-semibold px-7 py-3.5 rounded-xl text-sm transition-colors shadow-sm"
+              >
+                Open app →
+              </button>
+            ) : (
+              <SignInButton mode="modal">
+                <button className="inline-flex items-center gap-3 bg-stone-900 hover:bg-stone-700 text-white font-semibold px-7 py-3.5 rounded-xl text-sm transition-colors shadow-sm">
+                  <GoogleIcon />
+                  Sign in with Google — it&apos;s free
+                </button>
+              </SignInButton>
+            )
+          )}
+          {isLoaded && !isSignedIn && (
+            <p className="text-xs text-stone-400">No credit card · No setup · Just your Google account</p>
+          )}
         </div>
       </section>
 
@@ -143,17 +163,34 @@ function LandingPage() {
 
       {/* Bottom CTA */}
       <section className="px-6 py-20 text-center">
-        <h2 className="text-3xl font-bold text-stone-900 mb-4">Try it in 30 seconds</h2>
+        <h2 className="text-3xl font-bold text-stone-900 mb-4">
+          {isLoaded && isSignedIn ? "Ready to delegate?" : "Try it in 30 seconds"}
+        </h2>
         <p className="text-stone-500 mb-8 max-w-md mx-auto">
-          Sign in with Google, connect your GitHub repo, and let Delegator pick up its first ticket.
+          {isLoaded && isSignedIn
+            ? "Head to your projects and connect your first repo."
+            : "Sign in with Google, connect your GitHub repo, and let Delegator pick up its first ticket."}
         </p>
-        <SignInButton mode="modal">
-          <button className="inline-flex items-center gap-3 bg-stone-900 hover:bg-stone-700 text-white font-semibold px-7 py-3.5 rounded-xl text-sm transition-colors">
-            <GoogleIcon />
-            Get started — it&apos;s free
-          </button>
-        </SignInButton>
-        <p className="text-xs text-stone-400 mt-4">No credit card · Instant access · Sign in with Google</p>
+        {isLoaded && (
+          isSignedIn ? (
+            <button
+              onClick={() => router.push("/projects")}
+              className="inline-flex items-center gap-2 bg-stone-900 hover:bg-stone-700 text-white font-semibold px-7 py-3.5 rounded-xl text-sm transition-colors"
+            >
+              Open app →
+            </button>
+          ) : (
+            <>
+              <SignInButton mode="modal">
+                <button className="inline-flex items-center gap-3 bg-stone-900 hover:bg-stone-700 text-white font-semibold px-7 py-3.5 rounded-xl text-sm transition-colors">
+                  <GoogleIcon />
+                  Get started — it&apos;s free
+                </button>
+              </SignInButton>
+              <p className="text-xs text-stone-400 mt-4">No credit card · Instant access · Sign in with Google</p>
+            </>
+          )
+        )}
       </section>
 
       <footer className="border-t border-stone-100 py-8 text-center text-xs text-stone-400">
