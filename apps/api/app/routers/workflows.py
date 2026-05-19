@@ -1,10 +1,19 @@
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Body, Depends, HTTPException, BackgroundTasks
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.core.auth import get_workspace_id
 from app.core.database import get_db
+from app.dsl import (
+    Workflow as DSLWorkflow,
+    WorkflowValidationError,
+    graph_to_workflow,
+    load_workflow_yaml,
+    workflow_to_yaml,
+    yaml_filename_for,
+    yaml_to_graph,
+)
 from app.models.run import Run
 from app.models.workflow import Workflow, WorkflowVersion
 from app.schemas.workflow import WorkflowCreate, WorkflowUpdate, WorkflowOut, WorkflowDetailOut
@@ -272,3 +281,212 @@ def compile_workflow_now(workflow_id: UUID, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(workflow)
     return workflow
+
+
+# ── YAML source-of-truth endpoints ────────────────────────────────────────────
+#
+# YAML is the authoritative workflow definition. PUT accepts a YAML body,
+# validates it via the DSL, derives the {nodes, edges} graph, stores both,
+# and triggers compilation. GET returns the YAML so the canvas (or any
+# external tool) can round-trip the source.
+
+@router.put("/{workflow_id}/yaml", response_model=WorkflowDetailOut)
+def update_workflow_yaml(
+    workflow_id: UUID,
+    background_tasks: BackgroundTasks,
+    yaml_text: str = Body(..., media_type="application/x-yaml"),
+    db: Session = Depends(get_db),
+):
+    """
+    Replace the workflow definition with the provided YAML.
+
+    Returns the workflow with its new current_version_id. The compiled
+    artifacts are produced in the background — the caller doesn't wait.
+    """
+    workflow = db.query(Workflow).filter(Workflow.id == workflow_id).first()
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    try:
+        dsl = load_workflow_yaml(yaml_text)
+    except WorkflowValidationError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid workflow YAML: {e}")
+
+    graph_dict = yaml_to_graph(dsl)
+    version = WorkflowVersion(
+        workflow_id=workflow.id,
+        yaml_source=yaml_text,
+        graph=graph_dict,
+    )
+    db.add(version)
+    db.flush()
+    workflow.current_version_id = version.id
+    if dsl.name and not workflow.name:
+        workflow.name = dsl.name
+    db.commit()
+    db.refresh(workflow)
+
+    background_tasks.add_task(_run_compiler, version.id, graph_dict)
+    return workflow
+
+
+@router.get("/{workflow_id}/yaml", response_class=PlainTextResponse)
+def get_workflow_yaml(workflow_id: UUID, db: Session = Depends(get_db)):
+    """
+    Return the YAML source for the workflow's current version.
+
+    Sets ``Content-Disposition`` so curl / browsers / the CLI all save the
+    file as ``<projectname>-delegator.yml`` — the same convention the canvas
+    suggests and the customer is expected to commit to their repo.
+    """
+    workflow = db.query(Workflow).filter(Workflow.id == workflow_id).first()
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    if not workflow.current_version_id:
+        raise HTTPException(status_code=404, detail="Workflow has no version yet")
+
+    version = db.query(WorkflowVersion).filter(
+        WorkflowVersion.id == workflow.current_version_id
+    ).first()
+
+    # Prefer the stored YAML. If a workflow predates the DSL (graph-only),
+    # we don't try to reverse-engineer YAML from the JSON graph yet — that's
+    # a phase-2 migration tool.
+    if not (version and version.yaml_source):
+        raise HTTPException(
+            status_code=404,
+            detail="This workflow has no YAML source — it predates the DSL migration",
+        )
+
+    filename = yaml_filename_for(workflow.name)
+    return PlainTextResponse(
+        content=version.yaml_source,
+        media_type="application/x-yaml",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/{workflow_id}/yaml/filename")
+def get_workflow_yaml_filename(workflow_id: UUID, db: Session = Depends(get_db)):
+    """
+    Return the canonical YAML filename + a suggested ``source_path`` for the
+    Settings UI to use as the default when binding the workflow to a repo.
+    Keeps the naming convention in one place (``app.dsl.naming``) and lets the
+    frontend just read it rather than re-implement the slug.
+    """
+    workflow = db.query(Workflow).filter(Workflow.id == workflow_id).first()
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    filename = yaml_filename_for(workflow.name)
+    return {
+        "filename": filename,
+        "suggested_source_path": filename,
+    }
+
+
+class YamlValidateRequest(BaseModel):
+    yaml: str
+
+
+@router.post("/yaml/validate")
+def validate_workflow_yaml(body: YamlValidateRequest):
+    """
+    Dry-run validation for the canvas / editor — no DB writes. Returns the
+    derived graph on success so the canvas can render it immediately.
+    """
+    try:
+        dsl = load_workflow_yaml(body.yaml)
+    except WorkflowValidationError as e:
+        return {"ok": False, "error": str(e)}
+
+    return {
+        "ok": True,
+        "name": dsl.name,
+        "block_count": len(dsl.blocks) + len(dsl.cleanup),
+        "graph": yaml_to_graph(dsl),
+    }
+
+
+class GraphToYamlRequest(BaseModel):
+    """Canvas-shaped graph plus the workflow's metadata."""
+    name: str
+    description: str | None = None
+    graph: dict  # { nodes: [...], edges: [...] }
+
+
+@router.post("/yaml/from-graph")
+def workflow_yaml_from_graph(body: GraphToYamlRequest):
+    """
+    Convert a React Flow ``{nodes, edges}`` payload into the canonical YAML.
+    Used by the canvas to serialize its state without reimplementing the DSL
+    schema in TypeScript.
+    """
+    try:
+        dsl = graph_to_workflow(body.graph, name=body.name, description=body.description)
+    except WorkflowValidationError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid graph: {e}")
+    return {"yaml": workflow_to_yaml(dsl)}
+
+
+# ── Repo source binding + sync ────────────────────────────────────────────────
+
+
+class WorkflowSourceRequest(BaseModel):
+    """Bind a workflow to a YAML file in a customer's GitHub repo."""
+    source_repo: str | None = None   # "owner/repo" — pass null to unset
+    source_path: str | None = None   # path within repo, e.g. "delegator.yml"
+
+
+@router.put("/{workflow_id}/source", response_model=WorkflowDetailOut)
+def update_workflow_source(
+    workflow_id: UUID,
+    body: WorkflowSourceRequest,
+    db: Session = Depends(get_db),
+):
+    """Configure (or clear) the GitHub-repo source binding for a workflow."""
+    workflow = db.query(Workflow).filter(Workflow.id == workflow_id).first()
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    workflow.source_repo = body.source_repo or None
+    workflow.source_path = body.source_path or None
+    db.commit()
+    db.refresh(workflow)
+    return workflow
+
+
+class SyncRequest(BaseModel):
+    ref: str | None = None  # branch / tag / sha; default = repo default branch
+
+
+@router.post("/{workflow_id}/sync")
+def sync_workflow(
+    workflow_id: UUID,
+    body: SyncRequest = Body(default=SyncRequest()),
+    background_tasks: BackgroundTasks = None,  # type: ignore[assignment]
+    db: Session = Depends(get_db),
+):
+    """
+    Fetch the YAML at ``workflow.source_repo:source_path`` from GitHub,
+    validate it, and create a new WorkflowVersion if the content changed.
+    No-op when the source matches the current version.
+    """
+    from app.dsl.sync import SyncError, sync_workflow_from_repo
+
+    workflow = db.query(Workflow).filter(Workflow.id == workflow_id).first()
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    try:
+        result = sync_workflow_from_repo(db=db, workflow=workflow, ref=body.ref)
+    except SyncError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # If the sync produced a new version, trigger compilation in the background.
+    if result.get("changed") and background_tasks is not None:
+        version = db.query(WorkflowVersion).filter(
+            WorkflowVersion.id == workflow.current_version_id
+        ).first()
+        if version:
+            background_tasks.add_task(_run_compiler, version.id, version.graph)
+
+    return result

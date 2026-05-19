@@ -184,11 +184,26 @@ def _dispatch_local(tool_name: str, tool_input: dict) -> str:
     return f"Unknown tool: {tool_name}"
 
 
-def dispatch_brain_tool(tool_name: str, tool_input: dict) -> str:
+def dispatch_brain_tool(
+    tool_name: str,
+    tool_input: dict,
+    remote_host: dict | None = None,
+) -> str:
     """
     Main entry point for Brain block tool execution.
-    Routes to Modal sandbox in production, local subprocess in dev.
+
+    Routing precedence:
+      1. ``remote_host`` set on the block (e.g. a DO droplet provisioned by an
+         earlier tool block in the same run) -> run over SSH on that host.
+      2. Modal sandbox configured -> ephemeral container.
+      3. Local subprocess -> dev fallback.
     """
+    if remote_host and remote_host.get("ip"):
+        from app.runtime.remote_sandbox import remote_dispatch
+
+        log.debug("Dispatching %s to remote host %s", tool_name, remote_host.get("ip"))
+        return remote_dispatch(tool_name, tool_input, remote_host)
+
     if _modal_available():
         log.debug("Dispatching %s to Modal sandbox", tool_name)
         return _modal_dispatch(tool_name, tool_input)

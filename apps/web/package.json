@@ -15,6 +15,7 @@
     "react-dom": "^18.3.1",
     "@clerk/nextjs": "^5.7.5",
     "@xyflow/react": "^12.3.2",
+    "@dagrejs/dagre": "^1.1.4",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.460.0",
