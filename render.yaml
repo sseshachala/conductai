@@ -21,7 +21,7 @@
 
 databases:
   - name: delegator-db
-    plan: starter            # $7/mo, 1GB storage, fine for the lifestyle tier
+    plan: basic_256mb        # $6/mo, 256MB RAM, 1GB storage — fine for the lifestyle tier
     postgresMajorVersion: 16
     # ipAllowList: []        # uncomment to make it internet-public (default is private)
 
