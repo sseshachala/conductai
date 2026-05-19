@@ -21,7 +21,11 @@
 
 databases:
   - name: delegator-db
-    plan: basic_256mb        # $6/mo, 256MB RAM, 1GB storage — fine for the lifestyle tier
+    # Render's Postgres plan names have churned; `free` is always valid and
+    # lets the Blueprint apply cleanly. Upgrade from the Dashboard after the
+    # initial provision (Settings -> Upgrade plan) — free PG expires after
+    # 30 days unless promoted to a paid tier.
+    plan: free
     postgresMajorVersion: 16
     # ipAllowList: []        # uncomment to make it internet-public (default is private)
 
