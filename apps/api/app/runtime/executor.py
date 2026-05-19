@@ -255,11 +255,61 @@ def _tool_search_code(pattern: str, path: str = ".", file_glob: str = "*") -> st
         return f"Error searching: {e}"
 
 
-def _dispatch_tool(tool_name: str, tool_input: dict) -> str:
+def _dispatch_tool(tool_name: str, tool_input: dict, remote_host: dict | None = None) -> str:
     from app.runtime.sandbox import dispatch_brain_tool
-    return dispatch_brain_tool(tool_name, tool_input)
+    return dispatch_brain_tool(tool_name, tool_input, remote_host=remote_host)
 
 
+def _resolve_remote_host(
+    block: dict, state: dict, credentials: dict
+) -> dict | None:
+    """
+    If a Brain block declares a remote_host in its config, resolve it into a
+    concrete dict suitable for passing to ``dispatch_brain_tool``.
+
+    Block config shape:
+        {
+            "remote_host": {
+                "ip_ref": "{{wait.ip_address}}",           # required
+                "credentials_from": "digitalocean",        # integration handle
+                "username": "root",                        # optional, default root
+                "port": 22                                 # optional, default 22
+            }
+        }
+
+    The SSH private key is *never* embedded in the workflow JSON — it is read
+    from the named integration's encrypted credentials at execution time.
+    Returns None when no remote_host is configured (block runs locally / in Modal).
+    """
+    cfg = block.get("data", {}).get("config", {}) or {}
+    rh = cfg.get("remote_host")
+    if not rh:
+        return None
+
+    ip_ref = rh.get("ip_ref") or rh.get("ip")
+    ip = _resolve_refs(ip_ref, state) if isinstance(ip_ref, str) else ip_ref
+    if not ip or (isinstance(ip, str) and ip.startswith("{{")):
+        # Couldn't resolve — fall back to local execution rather than fail the block.
+        log.warning("Brain block %s remote_host ip_ref did not resolve: %r", block.get("id"), ip_ref)
+        return None
+
+    handle = rh.get("credentials_from") or "digitalocean"
+    creds = credentials.get(handle, {}) if isinstance(credentials, dict) else {}
+    private_key = creds.get("ssh_private_key") or rh.get("private_key")
+    if not private_key:
+        log.warning(
+            "Brain block %s declared remote_host but no ssh_private_key in '%s' credentials",
+            block.get("id"), handle,
+        )
+        return None
+
+    return {
+        "ip": ip,
+        "username": rh.get("username") or creds.get("ssh_username") or "root",
+        "port": int(rh.get("port") or creds.get("ssh_port") or 22),
+        "private_key": private_key,
+        "private_key_passphrase": creds.get("ssh_private_key_passphrase"),
+    }
 
 
 # ── block executors ───────────────────────────────────────────────────────────
@@ -298,18 +348,32 @@ def _extract_git_evidence(working_dir: str | None) -> tuple[list[dict], str]:
         return [], ""
 
 
-def _execute_brain(block: dict, state: dict, compiled_artifacts: dict) -> dict:
+def _execute_brain(
+    block: dict,
+    state: dict,
+    compiled_artifacts: dict,
+    credentials: dict | None = None,
+) -> dict:
     if state.get("__dry_run"):
         return {
             "dry_run": True,
             "note": "Dry run — Brain block would invoke Claude AI with the workflow context",
             "description": block["data"].get("description", ""),
             "is_agentic": block["data"].get("isAgentic", False),
+            "remote_host": bool((block.get("data", {}).get("config") or {}).get("remote_host")),
         }
 
     artifact = compiled_artifacts.get(block["id"], {})
     system_prompt = artifact.get("system_prompt", block["data"].get("description", ""))
     is_agentic = block["data"].get("isAgentic", False)
+
+    # Resolve remote host (if the YAML's `runs_on:` was set on this block).
+    # When set, all four Brain tools dispatch over SSH to that host rather
+    # than running locally on the worker or in Modal.
+    remote_host = _resolve_remote_host(block, state, credentials or {})
+
+    def _local_dispatch(tool_name: str, tool_input: dict) -> str:
+        return _dispatch_tool(tool_name, tool_input, remote_host=remote_host)
 
     context = json.dumps({k: v for k, v in state.items() if not k.startswith("__")}, default=str)[:4000]
     user_message = f"Workflow context so far:\n{context}\n\nExecute your task."
@@ -346,7 +410,13 @@ def _execute_brain(block: dict, state: dict, compiled_artifacts: dict) -> dict:
             if response.stop_reason == "end_turn" or not tool_calls:
                 # Sonnet 4.6 pricing: $3/1M input, $15/1M output — update if model changes
                 cost_usd = round((total_input_tokens * 3 + total_output_tokens * 15) / 1_000_000, 6)
-                files_changed, diff_stat = _extract_git_evidence(working_dir)
+                # Git-diff evidence runs on the worker host. When the work happened
+                # on a remote droplet we have nothing to inspect locally; the Brain's
+                # final text is expected to summarise the diff in that case.
+                if remote_host:
+                    files_changed, diff_stat = [], ""
+                else:
+                    files_changed, diff_stat = _extract_git_evidence(working_dir)
                 return {
                     "output": final_text,
                     "turns": turns,
@@ -355,6 +425,7 @@ def _execute_brain(block: dict, state: dict, compiled_artifacts: dict) -> dict:
                     "cost_usd": cost_usd,
                     "files_changed": files_changed,
                     "diff_stat": diff_stat,
+                    "remote_host_ip": remote_host.get("ip") if remote_host else None,
                 }
 
             # Append assistant message
@@ -366,7 +437,7 @@ def _execute_brain(block: dict, state: dict, compiled_artifacts: dict) -> dict:
                 # Track working dir if Brain runs shell commands
                 if tc.name == "run_shell" and tc.input.get("working_dir"):
                     working_dir = tc.input["working_dir"]
-                result_content = _dispatch_tool(tc.name, tc.input)
+                result_content = _local_dispatch(tc.name, tc.input)
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": tc.id,
@@ -375,7 +446,10 @@ def _execute_brain(block: dict, state: dict, compiled_artifacts: dict) -> dict:
             messages.append({"role": "user", "content": tool_results})
 
         cost_usd = round((total_input_tokens * 3 + total_output_tokens * 15) / 1_000_000, 6)
-        files_changed, diff_stat = _extract_git_evidence(working_dir)
+        if remote_host:
+            files_changed, diff_stat = [], ""
+        else:
+            files_changed, diff_stat = _extract_git_evidence(working_dir)
         return {
             "output": "Turn budget exhausted",
             "turns": max_turns,
@@ -384,6 +458,7 @@ def _execute_brain(block: dict, state: dict, compiled_artifacts: dict) -> dict:
             "cost_usd": cost_usd,
             "files_changed": files_changed,
             "diff_stat": diff_stat,
+            "remote_host_ip": remote_host.get("ip") if remote_host else None,
         }
 
     else:
@@ -773,7 +848,7 @@ def execute_run(run_id: str):
                     result = {"triggered": True}
 
                 elif block_type == "brain":
-                    result = _execute_brain(block, state, compiled)
+                    result = _execute_brain(block, state, compiled, credentials=credentials)
 
                 elif block_type == "tool":
                     result = _execute_tool(block, state, credentials)

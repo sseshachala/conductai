@@ -6,6 +6,9 @@ from sqlalchemy.orm import relationship
 from app.core.database import Base
 
 
+from sqlalchemy import Text
+
+
 class Workflow(Base):
     __tablename__ = "workflows"
 
@@ -14,6 +17,14 @@ class Workflow(Base):
     name = Column(String(255), nullable=False)
     current_version_id = Column(UUID(as_uuid=True), ForeignKey("workflow_versions.id"), nullable=True)
     default_mode = Column(String(50), nullable=False, default="dag")  # dag/agentic
+
+    # Optional link to a YAML file in a customer's GitHub repo. When both are
+    # set, the runtime can (phase 2) re-fetch the YAML at run time so a
+    # ``delegator.yml`` committed in the customer's repo becomes the source
+    # of truth instead of the DB copy.
+    source_repo = Column(String(255), nullable=True)
+    source_path = Column(String(512), nullable=True)
+
     created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -27,7 +38,13 @@ class WorkflowVersion(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     workflow_id = Column(UUID(as_uuid=True), ForeignKey("workflows.id"), nullable=False)
-    # graph stores blocks (nodes) and edges as JSONB
+
+    # yaml_source is the canonical workflow definition; ``graph`` below is a
+    # cached projection produced by app.dsl.loader.yaml_to_graph. New writes
+    # should always populate yaml_source; ``graph`` is regenerated from it.
+    yaml_source = Column(Text, nullable=True)
+
+    # graph stores blocks (nodes) and edges as JSONB — derived from yaml_source.
     # { "nodes": [...], "edges": [...] }
     graph = Column(JSONB, nullable=False, default=dict)
     # compiled_artifacts stores per-block compiled prompts and tool schemas

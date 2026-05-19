@@ -21,7 +21,15 @@ def create_droplet(
     image: str = "ubuntu-22-04-x64",
     tags: list | None = None,
     user_data: str | None = None,
+    ssh_keys: list | None = None,
 ) -> dict:
+    """
+    Create a droplet.
+
+    ``ssh_keys`` is a list of fingerprints (or numeric IDs) of SSH keys already
+    uploaded to the DO account. When provided, those keys are trusted by root
+    on the new droplet so the worker can SSH in without a password.
+    """
     payload: dict = {
         "name": name,
         "region": region,
@@ -31,6 +39,8 @@ def create_droplet(
     }
     if user_data:
         payload["user_data"] = user_data
+    if ssh_keys:
+        payload["ssh_keys"] = ssh_keys
 
     r = httpx.post(f"{BASE}/droplets", headers=_headers(token), json=payload, timeout=30)
     r.raise_for_status()
