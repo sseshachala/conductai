@@ -41,7 +41,9 @@ services:
     plan: starter            # $7/mo; bump to standard ($25) once you have load
     dockerfilePath: ./apps/api/Dockerfile
     dockerContext: ./apps/api
-    dockerTarget: prod       # uses the Dockerfile's prod stage (migrate + uvicorn)
+    # No build target needed: the Dockerfile's `prod` stage is the last one,
+    # so a plain `docker build` ends there. Local compose still asks for the
+    # `dev` stage explicitly for hot-reload.
     healthCheckPath: /health
     autoDeploy: true
     envVars:
@@ -95,7 +97,6 @@ services:
     plan: starter
     dockerfilePath: ./apps/api/Dockerfile
     dockerContext: ./apps/api
-    dockerTarget: prod
     dockerCommand: python -m app.worker
     autoDeploy: true
     envVars:
