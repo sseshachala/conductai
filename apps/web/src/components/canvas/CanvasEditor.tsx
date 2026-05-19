@@ -23,6 +23,8 @@ import BlockNode, { type BlockNodeData } from "./BlockNode"
 import BlockEditor from "./BlockEditor"
 import Sidebar from "./Sidebar"
 import CostEstimate from "./CostEstimate"
+import YamlPanel from "./YamlPanel"
+import { autoLayout } from "@/lib/auto-layout"
 import { type BlockType } from "@/lib/block-types"
 
 const nodeTypes = { block: BlockNode }
@@ -104,20 +106,52 @@ function CanvasEditorInner({ workflowId }: CanvasEditorProps) {
   const router = useRouter()
   const [running, setRunning] = useState<"idle" | "dry" | "live">("idle")
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([])
+  // "canvas" — drag-and-drop designer. "yaml" — source-of-truth view that
+  // mirrors what the runtime will actually execute.
+  const [activeView, setActiveView] = useState<"canvas" | "yaml">("canvas")
 
-  // Load workflow on mount
+  // Load workflow on mount. When a graph arrives without meaningful positions
+  // (the YAML loader writes placeholder coords), run dagre so it doesn't open
+  // as a stack of overlapping nodes.
   useEffect(() => {
     fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`)
       .then((r) => r.json())
       .then((data) => {
         setWorkflowName(data.name)
         const graph = data.current_version?.graph
-        if (graph?.nodes) setNodes(graph.nodes)
-        if (graph?.edges) setEdges(graph.edges)
+        if (graph?.nodes && graph?.edges) {
+          const needsLayout = graph.nodes.every(
+            (n: Node) => !n.position || (n.position.x === 0 && n.position.y === 0),
+          )
+          if (needsLayout) {
+            const laid = autoLayout(graph.nodes, graph.edges)
+            setNodes(laid.nodes)
+            setEdges(laid.edges)
+          } else {
+            setNodes(graph.nodes)
+            setEdges(graph.edges)
+          }
+        } else {
+          if (graph?.nodes) setNodes(graph.nodes)
+          if (graph?.edges) setEdges(graph.edges)
+        }
         setTimeout(() => { isFirstLoad.current = false }, 100)
       })
       .catch(() => { isFirstLoad.current = false })
   }, [workflowId, setNodes, setEdges])
+
+  const handleYamlLoaded = useCallback(
+    (next: { name?: string; nodes: Node[]; edges: Edge[] }) => {
+      if (next.name) setWorkflowName(next.name)
+      setNodes(next.nodes)
+      setEdges(next.edges)
+      setSelectedNode(null)
+      // Bypass the autosave debounce — the YAML save already persisted.
+      isFirstLoad.current = true
+      setTimeout(() => { isFirstLoad.current = false }, 100)
+    },
+    [setNodes, setEdges],
+  )
 
   const save = useCallback(async (currentNodes: Node[], currentEdges: Edge[], name: string) => {
     setSaveStatus("saving")
@@ -236,6 +270,28 @@ function CanvasEditorInner({ workflowId }: CanvasEditorProps) {
             className="text-base font-semibold text-stone-900 bg-transparent border-none outline-none focus:ring-0 w-64"
           />
           <span className="text-xs text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full">draft</span>
+          <div className="ml-3 flex bg-stone-100 rounded-md p-0.5 text-xs">
+            <button
+              onClick={() => setActiveView("canvas")}
+              className={`px-2.5 py-1 rounded ${
+                activeView === "canvas"
+                  ? "bg-white text-stone-900 shadow-sm font-medium"
+                  : "text-stone-500 hover:text-stone-800"
+              }`}
+            >
+              Canvas
+            </button>
+            <button
+              onClick={() => setActiveView("yaml")}
+              className={`px-2.5 py-1 rounded ${
+                activeView === "yaml"
+                  ? "bg-white text-stone-900 shadow-sm font-medium"
+                  : "text-stone-500 hover:text-stone-800"
+              }`}
+            >
+              YAML
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           {/* Autosave status */}
@@ -271,31 +327,45 @@ function CanvasEditorInner({ workflowId }: CanvasEditorProps) {
         </div>
       </header>
 
-      {/* Canvas + Sidebar */}
+      {/* Canvas + Sidebar (or YAML view) */}
       <div className="flex flex-1 overflow-hidden">
-        <div className="flex-1 relative">
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onNodeClick={onNodeClick}
-            onPaneClick={onPaneClick}
-            onDrop={onDrop}
-            onDragOver={onDragOver}
-            nodeTypes={nodeTypes}
-            defaultViewport={{ x: 80, y: 80, zoom: 1 }}
-            minZoom={0.3}
-            maxZoom={2}
-            deleteKeyCode="Backspace"
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#E7E5E4" />
-            <Controls className="!shadow-none !border !border-stone-200 !rounded-xl" showInteractive={false} />
-          </ReactFlow>
-        </div>
-        <Sidebar />
+        {activeView === "canvas" ? (
+          <>
+            <div className="flex-1 relative">
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onConnect={onConnect}
+                onNodeClick={onNodeClick}
+                onPaneClick={onPaneClick}
+                onDrop={onDrop}
+                onDragOver={onDragOver}
+                nodeTypes={nodeTypes}
+                defaultViewport={{ x: 80, y: 80, zoom: 1 }}
+                minZoom={0.3}
+                maxZoom={2}
+                deleteKeyCode="Backspace"
+                proOptions={{ hideAttribution: true }}
+              >
+                <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#E7E5E4" />
+                <Controls className="!shadow-none !border !border-stone-200 !rounded-xl" showInteractive={false} />
+              </ReactFlow>
+            </div>
+            <Sidebar />
+          </>
+        ) : (
+          <div className="flex-1 flex">
+            <YamlPanel
+              workflowId={workflowId}
+              workflowName={workflowName}
+              nodes={nodes}
+              edges={edges}
+              onLoaded={handleYamlLoaded}
+            />
+          </div>
+        )}
       </div>
 
       {/* Validation errors */}

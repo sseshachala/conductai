@@ -131,6 +131,53 @@ def create_repo(
     }
 
 
+def read_file(token: str, owner: str, repo: str, path: str, ref: str | None = None) -> dict:
+    """
+    Read a single file from a repo and return its decoded text contents.
+
+    Used primarily by the workflow repo-sync flow (``delegator.yml`` lives
+    in the customer's repo). Falls back gracefully when the file is missing —
+    callers that need a sync-failure signal should check ``found``.
+    """
+    import base64
+
+    params: dict = {}
+    if ref:
+        params["ref"] = ref
+    r = httpx.get(
+        f"{BASE}/repos/{owner}/{repo}/contents/{path}",
+        headers=_headers(token),
+        params=params,
+        timeout=15,
+    )
+    if r.status_code == 404:
+        return {"found": False, "path": path, "ref": ref}
+    r.raise_for_status()
+    d = r.json()
+    if isinstance(d, list):
+        # GitHub returns a list when ``path`` is a directory. We only support files.
+        return {"found": False, "path": path, "ref": ref, "reason": "path is a directory"}
+
+    content = d.get("content") or ""
+    encoding = d.get("encoding")
+    if encoding == "base64":
+        try:
+            text = base64.b64decode(content).decode("utf-8")
+        except Exception as e:
+            return {"found": True, "path": path, "ref": ref, "error": f"decode failed: {e}"}
+    else:
+        text = content
+
+    return {
+        "found": True,
+        "path": d.get("path"),
+        "ref": ref,
+        "sha": d.get("sha"),
+        "size": d.get("size"),
+        "content": text,
+    }
+
+
 def add_repo_secret(token: str, owner: str, repo: str, secret_name: str, secret_value: str) -> dict:
     """Add or update a GitHub Actions secret in a repo (requires nacl for encryption)."""
     try:
@@ -166,6 +213,7 @@ TOOL_MAP = {
     "list_pull_requests": list_pull_requests,
     "create_repo": create_repo,
     "add_repo_secret": add_repo_secret,
+    "read_file": read_file,
 }
 
 

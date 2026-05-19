@@ -1,0 +1,127 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# autopilot — GitHub issues
+#
+# Original Python seed (apps/api/seed_autopilot.py) lifted into the YAML DSL
+# without behaviour changes. The Brain blocks still operate on the worker host
+# (no `runs_on:` declared), matching the original. To run the work on an
+# ephemeral droplet instead, mirror the pattern in ai_ready.yaml — same nodes,
+# add create_droplet/wait_droplet, set runs_on on each brain block, and put a
+# destroy_droplet under `cleanup:`.
+# ──────────────────────────────────────────────────────────────────────────────
+name: Autopilot — GitHub Issues
+version: 1
+description: >
+  Watch for GitHub issues labeled `autopilot ready`, implement the fix, run
+  tests (with inline retry), open a PR. Same flow as the original seed.
+
+on:
+  github.issue_labeled:
+    integration: github
+    label: autopilot ready
+    next: fetch_issue
+
+blocks:
+  fetch_issue:
+    type: tool
+    integration: github
+    action: fetch_issue
+    label: Fetch issue
+    description: Get full issue title, body, and metadata
+    params:
+      owner: "{{_trigger.repo_owner}}"
+      repo: "{{_trigger.repo_name}}"
+      issue_number: "{{_trigger.issue_number}}"
+    next: implement_fix
+
+  implement_fix:
+    type: brain
+    mode: agentic
+    label: Implement fix
+    description: |
+      You are an expert software engineer.
+      A GitHub issue has been labeled 'autopilot ready'.
+
+      Issue title: {{fetch_issue.title}}
+      Issue body: {{fetch_issue.body}}
+      Repo: {{_trigger.repo_full_name}}
+      Clone URL: {{_trigger.clone_url}}
+
+      Steps:
+      1. Clone the repo: git clone <clone_url> /tmp/autopilot_repo
+      2. Create a branch: git checkout -b autopilot/issue-{{fetch_issue.issue_number}}
+      3. Read relevant files to understand the codebase
+      4. Implement the fix described in the issue
+      5. Stage changes: git add -A
+      6. Commit: git commit -m 'fix: <short description> (closes #{{fetch_issue.issue_number}})'
+      7. Output the branch name and a brief summary of what you changed
+    next: run_tests
+
+  run_tests:
+    type: brain
+    mode: agentic
+    label: Run tests & fix
+    description: |
+      Run the test suite for the repo at /tmp/autopilot_repo.
+      If tests fail, fix the failures and re-run. Repeat up to 3 times.
+
+      1. Detect the test runner (pytest, npm test, etc.) by reading
+         package.json or requirements.txt
+      2. Run the tests
+      3. If tests fail: read the failure output, patch the code, re-run
+      4. After up to 3 fix attempts, stop regardless of outcome
+
+      Output as JSON on the final line:
+        {"passed": true/false, "attempts": <number>,
+         "output": "<brief summary of test results>"}
+    next: tests_pass
+
+  tests_pass:
+    type: logic
+    label: Tests pass?
+    condition: "{{run_tests.passed}} == true"
+    next:
+      pass: push_pr
+      fail: notify_failure
+
+  push_pr:
+    type: brain
+    mode: agentic
+    label: Push & open PR
+    description: |
+      Push the branch and open a pull request.
+      Repo: {{_trigger.repo_full_name}}
+      Branch: autopilot/issue-{{fetch_issue.issue_number}}
+      Base: {{_trigger.default_branch}}
+
+      1. cd /tmp/autopilot_repo
+      2. Set the remote with credentials:
+         git remote set-url origin
+         https://<github_token>@github.com/{{_trigger.repo_full_name}}.git
+         (retrieve the GitHub token from the Delegator credentials vault)
+      3. git push origin autopilot/issue-{{fetch_issue.issue_number}}
+      4. Open a PR via the GitHub API:
+         POST https://api.github.com/repos/{{_trigger.repo_full_name}}/pulls
+         {"title": "fix: {{fetch_issue.title}} (closes #{{fetch_issue.issue_number}})",
+          "head":  "autopilot/issue-{{fetch_issue.issue_number}}",
+          "base":  "{{_trigger.default_branch}}",
+          "body":  "Automated fix by Delegator.\n\nCloses #{{fetch_issue.issue_number}}"}
+
+      Output ONLY the following JSON on the last line of your response:
+        {"pr_url": "<full PR URL>"}
+    next: notify_success
+
+  notify_success:
+    type: output
+    label: Notify PR ready
+    output:
+      via: slack
+      slack:
+        channel: "#engineering"
+
+  notify_failure:
+    type: output
+    label: Notify failure
+    output:
+      via: slack
+      slack:
+        channel: "#engineering"
