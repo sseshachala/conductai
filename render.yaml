@@ -1,0 +1,134 @@
+# Render Blueprint — provisions the full Delegator backend in one shot:
+#   - API web service       (FastAPI, runs migrations on boot)
+#   - Worker background job (Redis queue consumer)
+#   - Postgres database
+#   - Key-Value service     (Redis-compatible, used as the run queue)
+#
+# Frontend (apps/web) is intentionally NOT in this blueprint — it deploys to
+# Vercel as a separate concern (the existing ROADMAP convention).
+#
+# To deploy:
+#   1. Commit this file and push.
+#   2. dashboard.render.com -> New -> Blueprint -> connect your repo.
+#   3. Render reads this file, asks for the secrets marked `sync: false`
+#      (ANTHROPIC_API_KEY, ENCRYPTION_KEY, optional Slack/Resend/GitHub).
+#   4. Apply. First deploy takes ~5 min; Postgres provisions in parallel.
+#   5. Migrations run automatically on each deploy (the Dockerfile's prod
+#      target does `alembic upgrade head && uvicorn ...`).
+#
+# To seed the test workspace after the first deploy:
+#   Render dashboard -> delegator-api -> Shell -> `python seed_test_user.py`
+
+databases:
+  - name: delegator-db
+    plan: starter            # $7/mo, 1GB storage, fine for the lifestyle tier
+    postgresMajorVersion: 16
+    # ipAllowList: []        # uncomment to make it internet-public (default is private)
+
+services:
+  # ── Redis (Render calls this "Key Value"; it speaks the Redis protocol) ──
+  - type: keyvalue
+    name: delegator-redis
+    plan: starter            # $10/mo, 250MB
+    ipAllowList: []          # private — only other Render services can connect
+    maxmemoryPolicy: noeviction   # we lose queued runs otherwise
+
+  # ── API ───────────────────────────────────────────────────────────────────
+  - type: web
+    name: delegator-api
+    runtime: docker
+    region: oregon           # pick whichever is closest to your customers
+    plan: starter            # $7/mo; bump to standard ($25) once you have load
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: ./apps/api
+    dockerTarget: prod       # uses the Dockerfile's prod stage (migrate + uvicorn)
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: delegator-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: delegator-redis
+          property: connectionString
+      - key: API_BASE_URL
+        # Render injects RENDER_EXTERNAL_URL; we just alias it so the
+        # approval-webhook callback in executor.py picks up the right host.
+        fromService:
+          type: web
+          name: delegator-api
+          envVarKey: RENDER_EXTERNAL_URL
+      # ── Secrets you set in the Render UI on first apply ───────────────────
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ENCRYPTION_KEY
+        generateValue: true   # Render auto-generates a 32-char value
+      - key: SLACK_SIGNING_SECRET
+        sync: false
+      - key: VERCEL_WEBHOOK_SECRET
+        sync: false
+      - key: GITHUB_WEBHOOK_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        value: "Delegator <notifications@delegator.dev>"
+      # ── Optional Clerk auth (leave blank for single-tenant dev mode) ──────
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CLERK_FRONTEND_API
+        sync: false
+      # ── Optional Modal sandbox (leave blank to use local subprocess) ──────
+      - key: MODAL_TOKEN_ID
+        sync: false
+      - key: MODAL_TOKEN_SECRET
+        sync: false
+
+  # ── Worker (same image, different command) ────────────────────────────────
+  - type: worker
+    name: delegator-worker
+    runtime: docker
+    region: oregon
+    plan: starter
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: ./apps/api
+    dockerTarget: prod
+    dockerCommand: python -m app.worker
+    autoDeploy: true
+    envVars:
+      # Shared env with the API — every var has to be repeated here because
+      # Render doesn't (yet) support shared env groups in Blueprints reliably.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: delegator-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: delegator-redis
+          property: connectionString
+      - key: API_BASE_URL
+        fromService:
+          type: web
+          name: delegator-api
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ENCRYPTION_KEY
+        fromService:
+          type: web
+          name: delegator-api
+          envVarKey: ENCRYPTION_KEY
+      - key: SLACK_SIGNING_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        value: "Delegator <notifications@delegator.dev>"
+      - key: MODAL_TOKEN_ID
+        sync: false
+      - key: MODAL_TOKEN_SECRET
+        sync: false

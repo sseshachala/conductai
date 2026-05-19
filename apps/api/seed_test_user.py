@@ -150,20 +150,29 @@ def _upsert_user(conn) -> None:
 
 
 def _upsert_credentials(conn) -> None:
+    # `handle` is what blocks reference; `service` is the integration kind.
+    # For the seeded test workspace we just make them the same string —
+    # workflows use the handle, the runtime resolves credentials by handle.
     for handle, payload in DUMMY_CREDENTIALS.items():
         blob = encrypt(payload)
         conn.execute(
             text(
                 """
-                INSERT INTO integrations (id, workspace_id, handle, encrypted_credentials)
-                VALUES (:id, :ws, :handle, :blob)
+                INSERT INTO integrations
+                    (id, workspace_id, service, auth_method, handle, encrypted_credentials)
+                VALUES
+                    (:id, :ws, :service, :auth_method, :handle, :blob)
                 ON CONFLICT (workspace_id, handle) DO UPDATE
-                  SET encrypted_credentials = EXCLUDED.encrypted_credentials
+                  SET encrypted_credentials = EXCLUDED.encrypted_credentials,
+                      service = EXCLUDED.service,
+                      auth_method = EXCLUDED.auth_method
                 """
             ),
             {
                 "id": str(uuid.uuid4()),
                 "ws": TEST_WORKSPACE_ID,
+                "service": handle,
+                "auth_method": "api_key",  # dummy creds are api-key shaped
                 "handle": handle,
                 "blob": blob,
             },
