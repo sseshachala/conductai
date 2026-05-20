@@ -86,7 +86,7 @@ def cmd_run(args):
     cfg          = yaml.safe_load(raw_yaml)
     name         = cfg.get("name", path.stem)
     server       = args.server.rstrip("/")
-    workspace_id = cfg.get("workspace_id") or DEV_WORKSPACE
+    workspace_id = args.workspace or cfg.get("workspace_id") or DEV_WORKSPACE
     token        = args.token
     api_key      = args.api_key
     on_block     = cfg.get("on") or {}
@@ -145,9 +145,10 @@ def cmd_run(args):
 
 def main():
     parser = argparse.ArgumentParser(prog="marshal")
-    parser.add_argument("--server",  required=True, help="Marshal API URL")
-    parser.add_argument("--api-key", help="CLI API key (set CLI_API_KEY on the server)")
-    parser.add_argument("--token",   help="Bearer token for Clerk auth")
+    parser.add_argument("--server",    required=True, help="Marshal API URL")
+    parser.add_argument("--api-key",  help="CLI API key (set CLI_API_KEY on the server)")
+    parser.add_argument("--token",    help="Bearer token for Clerk auth")
+    parser.add_argument("--workspace", help="Workspace ID (overrides YAML workspace_id)")
 
     sub   = parser.add_subparsers(dest="command")
     run_p = sub.add_parser("run", help="Run a workflow from a YAML file")
