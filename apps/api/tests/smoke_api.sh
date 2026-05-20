@@ -17,6 +17,10 @@ set -u
 API_URL="${API_URL:-http://localhost:8000}"
 TEST_WORKSPACE_ID="${TEST_WORKSPACE_ID:-11111111-1111-1111-1111-111111111111}"
 SMOKE_EMPTY_WF_ID="${SMOKE_EMPTY_WF_ID:-22222222-2222-2222-2222-222222222222}"
+# Optional bearer token; when set we send it on every request so the
+# auth-protected endpoints work. When unset, those endpoints will 401
+# (which is correct behaviour — we record it as PASS with a note).
+AUTH_TOKEN="${AUTH_TOKEN:-}"
 VERBOSE=0
 [[ "${1:-}" == "--verbose" ]] && VERBOSE=1
 
@@ -37,6 +41,9 @@ hit() {
   # $1 method, $2 path, $3 content-type, $4 body file or '-' for none
   local method="$1" path="$2" ctype="$3" body="$4"
   local args=(-sS -o /tmp/smoke_body -w "%{http_code}" -X "$method" -H "Content-Type: $ctype" -H "X-Workspace-ID: ${TEST_WORKSPACE_ID}")
+  if [[ -n "$AUTH_TOKEN" ]]; then
+    args+=(-H "Authorization: Bearer ${AUTH_TOKEN}")
+  fi
   if [[ "$body" != "-" ]]; then
     args+=(--data-binary "@$body")
   fi
@@ -108,6 +115,8 @@ header "3. workflow CRUD (DB writes — needs seeded test workspace)"
 STATUS=$(hit GET /workflows "application/json" -)
 if [[ "$STATUS" == "200" ]]; then
   pass "GET /workflows" "200"
+elif [[ "$STATUS" == "401" && -z "$AUTH_TOKEN" ]]; then
+  pass "GET /workflows" "401 (auth enforced — set AUTH_TOKEN=… to test signed-in path)"
 else
   fail "GET /workflows" "got $STATUS"
 fi
