@@ -16,9 +16,9 @@ blocks:
     integration: github
     action: fetch_issue
     params:
-      repo: '{{_trigger.repo_name}}'
-      owner: '{{_trigger.repo_owner}}'
-      issue_number: '{{_trigger.issue_number}}'
+      repo: '{{a1.github_issue.repo_name}}'
+      owner: '{{a1.github_issue.repo_owner}}'
+      issue_number: '{{a1.github_issue.issue_number}}'
     next: a3
   a3:
     type: brain
@@ -31,9 +31,9 @@ blocks:
 
       Issue body: {{a2.body}}
 
-      Repo: {{_trigger.repo_full_name}}
+      Repo: {{a1.github_issue.repo_full_name}}
 
-      Clone URL: {{_trigger.clone_url}}
+      Clone URL: {{a1.github_issue.clone_url}}
 
 
       Steps:
@@ -90,10 +90,10 @@ blocks:
   a6:
     type: brain
     label: Push & open PR
-    description: "Push the branch and open a pull request.\nRepo: {{_trigger.repo_full_name}}\n\
-      Branch: autopilot/issue-{{a2.issue_number}}\nBase: {{_trigger.default_branch}}\n\
+    description: "Push the branch and open a pull request.\nRepo: {{a1.github_issue.repo_full_name}}\n\
+      Branch: autopilot/issue-{{a2.issue_number}}\nBase: {{a1.github_issue.default_branch}}\n\
       \n1. cd /tmp/autopilot_repo\n2. Set the remote with credentials:\n   git remote\
-      \ set-url origin https://<github_token>@github.com/{{_trigger.repo_full_name}}.git\n\
+      \ set-url origin https://<github_token>@github.com/{{a1.github_issue.repo_full_name}}.git\n\
       3. git push origin autopilot/issue-{{a2.issue_number}}\n4. Open a PR via the\
       \ GitHub API\n\nOutput ONLY the following JSON on the last line of your response:\n\
       {\"pr_url\": \"<full PR URL>\"}"
