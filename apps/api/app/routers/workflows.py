@@ -118,6 +118,29 @@ def update_workflow(
     return workflow
 
 
+@router.delete("/{workflow_id}", status_code=204)
+def delete_workflow(
+    workflow_id: UUID,
+    workspace_id: str = Depends(get_workspace_id),
+    db: Session = Depends(get_db),
+):
+    workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    from sqlalchemy import text
+    db.execute(text("""
+        DELETE FROM run_events WHERE run_id IN (
+            SELECT r.id FROM runs r
+            JOIN workflow_versions wv ON wv.id = r.workflow_version_id
+            WHERE wv.workflow_id = :wid
+        )
+    """), {"wid": str(workflow_id)})
+    db.execute(text("DELETE FROM runs WHERE workflow_version_id IN (SELECT id FROM workflow_versions WHERE workflow_id = :wid)"), {"wid": str(workflow_id)})
+    db.execute(text("DELETE FROM workflow_versions WHERE workflow_id = :wid"), {"wid": str(workflow_id)})
+    db.execute(text("DELETE FROM workflows WHERE id = :wid"), {"wid": str(workflow_id)})
+    db.commit()
+
+
 class BlockCompileRequest(BaseModel):
     description: str
     label: str = ""

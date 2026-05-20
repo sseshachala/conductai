@@ -131,6 +131,44 @@ def _gh_headers(token: str) -> dict:
     }
 
 
+@router.get("/github/issues")
+def list_github_issues(
+    repo: str,
+    label: str,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    """Return open issues in repo with the given label using the stored GitHub token."""
+    token = _github_token(workspace_id, db)
+    owner, repo_name = repo.split("/", 1)
+    try:
+        r = httpx.get(
+            f"{GITHUB_API}/repos/{owner}/{repo_name}/issues",
+            headers=_gh_headers(token),
+            params={"state": "open", "labels": label, "per_page": 100},
+            timeout=10,
+        )
+        r.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=f"GitHub API error: {e.response.text[:200]}")
+    except httpx.RequestError:
+        raise HTTPException(status_code=502, detail="Could not reach GitHub API")
+
+    return [
+        {
+            "number":    issue["number"],
+            "title":     issue["title"],
+            "body":      issue.get("body") or "",
+            "url":       issue["html_url"],
+            "author":    issue["user"]["login"],
+            "labels":    [lb["name"] for lb in issue.get("labels", [])],
+            "clone_url": f"https://github.com/{repo}.git",
+        }
+        for issue in r.json()
+        if "pull_request" not in issue  # exclude PRs
+    ]
+
+
 @router.get("/github/repos")
 def list_github_repos(
     db: Session = Depends(get_db),

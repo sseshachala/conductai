@@ -124,6 +124,35 @@ def create_project(
                       workflow_count=1 if body.template_id else 0)
 
 
+@router.patch("/{project_id}", response_model=ProjectOut)
+def rename_project(
+    project_id: str,
+    body: dict,
+    user_id: Annotated[str, Depends(get_user_id)],
+    db: Session = Depends(get_db),
+):
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Name cannot be empty")
+    row = db.execute(text("SELECT owner_id FROM workspaces WHERE id = :id"), {"id": project_id}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if row.owner_id != user_id:
+        raise HTTPException(status_code=403, detail="Not your project")
+    db.execute(text("UPDATE workspaces SET name = :name WHERE id = :id"), {"name": name, "id": project_id})
+    db.commit()
+    row = db.execute(text("""
+        SELECT w.id, w.name, w.owner_id, w.is_approved, w.created_at,
+               COUNT(wf.id) AS workflow_count
+        FROM workspaces w
+        LEFT JOIN workflows wf ON wf.workspace_id = w.id
+        WHERE w.id = :id GROUP BY w.id
+    """), {"id": project_id}).fetchone()
+    return ProjectOut(id=str(row.id), name=row.name, owner_id=row.owner_id,
+                      is_approved=row.is_approved, created_at=row.created_at,
+                      workflow_count=row.workflow_count or 0)
+
+
 @router.delete("/{project_id}", status_code=204)
 def delete_project(
     project_id: str,
