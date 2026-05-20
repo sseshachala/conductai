@@ -96,7 +96,9 @@ def create_run(
     if not workflow.current_version_id:
         raise HTTPException(status_code=400, detail="Workflow has no published version")
 
-    initial_state = {"__dry_run": True} if body.dry_run else {}
+    initial_state = body.initial_state or {}
+    if body.dry_run:
+        initial_state["__dry_run"] = True
     run = Run(
         workflow_version_id=workflow.current_version_id,
         triggered_by=body.triggered_by,
