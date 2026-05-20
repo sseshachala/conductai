@@ -16,9 +16,9 @@ export interface ConfigField {
 
 const GITHUB_ACTION_FIELDS: Record<string, ConfigField[]> = {
   fetch_issue: [
-    { key: "config.params.owner",        label: "Owner",        type: "text", readOnly: true, defaultValue: "{{a1.github_issue.repo_owner}}" },
-    { key: "config.params.repo",         label: "Repo",         type: "text", readOnly: true, defaultValue: "{{a1.github_issue.repo_name}}" },
-    { key: "config.params.issue_number", label: "Issue number", type: "text", readOnly: true, defaultValue: "{{a1.github_issue.issue_number}}" },
+    { key: "config.params.owner",        label: "Owner",        type: "text", readOnly: true, defaultValue: "{{_trigger.repo_owner}}" },
+    { key: "config.params.repo",         label: "Repo",         type: "text", readOnly: true, defaultValue: "{{_trigger.repo_name}}" },
+    { key: "config.params.issue_number", label: "Issue number", type: "text", readOnly: true, defaultValue: "{{_trigger.issue_number}}" },
   ],
   create_repo: [
     { key: "config.params.name", label: "Repo name", type: "text", required: true, placeholder: "my-repo" },
