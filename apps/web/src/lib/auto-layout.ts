@@ -18,7 +18,7 @@ export type LayoutDirection = "LR" | "TB"
 export function autoLayout(
   nodes: Node[],
   edges: Edge[],
-  direction: LayoutDirection = "LR",
+  direction: LayoutDirection = "TB",
 ): { nodes: Node[]; edges: Edge[] } {
   if (nodes.length === 0) return { nodes, edges }
 
@@ -26,10 +26,10 @@ export function autoLayout(
   g.setDefaultEdgeLabel(() => ({}))
   g.setGraph({
     rankdir: direction,
-    nodesep: 60,        // gap between siblings
-    ranksep: 80,        // gap between ranks
-    marginx: 40,
-    marginy: 40,
+    nodesep: 80,        // horizontal gap between siblings in TB mode
+    ranksep: 100,       // vertical gap between ranks
+    marginx: 60,
+    marginy: 60,
   })
 
   for (const node of nodes) {
