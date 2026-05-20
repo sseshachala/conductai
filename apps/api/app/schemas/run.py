@@ -8,6 +8,7 @@ from pydantic import BaseModel
 class RunCreate(BaseModel):
     triggered_by: Optional[str] = "manual"
     dry_run: bool = False
+    initial_state: Optional[dict[str, Any]] = None
 
 
 class RunEventOut(BaseModel):
