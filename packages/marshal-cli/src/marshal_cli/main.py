@@ -1,12 +1,11 @@
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
 import yaml
 
-from marshal_cli import api, github
+from marshal_cli import api
 
 RESET = "\033[0m"
 BOLD  = "\033[1m"
@@ -19,7 +18,7 @@ CYAN  = "\033[36m"
 DEV_WORKSPACE = "00000000-0000-0000-0000-000000000001"
 
 
-def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, token: str | None):
+def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, token: str | None) -> bool:
     qs = f"?workspace_id={workspace_id}"
     if token:
         qs += f"&token={token}"
@@ -54,6 +53,26 @@ def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, t
     return False
 
 
+def _build_state(issue: dict, repo_full_name: str) -> dict:
+    owner, repo = repo_full_name.split("/", 1)
+    return {
+        "github_issue": {
+            "repo_owner":     owner,
+            "repo_name":      repo,
+            "repo_full_name": repo_full_name,
+            "issue_number":   issue["number"],
+            "title":          issue["title"],
+            "body":           issue.get("body") or "",
+            "url":            issue["url"],
+            "author":         issue["author"],
+            "labels":         issue["labels"],
+            "label_added":    issue["labels"][0] if issue["labels"] else "",
+            "default_branch": "main",
+            "clone_url":      issue["clone_url"],
+        }
+    }
+
+
 def cmd_run(args):
     path = Path(args.yaml)
     if not path.exists():
@@ -66,14 +85,9 @@ def cmd_run(args):
     server       = args.server.rstrip("/")
     workspace_id = cfg.get("workspace_id") or DEV_WORKSPACE
     token        = args.token
-
-    # Read trigger config
     on_block     = cfg.get("on") or {}
     trigger_type = next(iter(on_block), None)
     trigger_cfg  = on_block.get(trigger_type, {})
-
-    # GitHub token — from flag or env
-    gh_token = args.github_token or os.environ.get("GITHUB_TOKEN")
 
     json_h = api.headers(workspace_id, token, "application/json")
     yaml_h = api.headers(workspace_id, token, "application/x-yaml")
@@ -81,24 +95,19 @@ def cmd_run(args):
     print(f"\n{BOLD}▶ marshal run — {name}{RESET}")
     print(f"  server: {server}\n")
 
-    # 1. Find or create workflow, push YAML
+    # Find or create workflow, push YAML
     workflow_id = api.find_or_create_workflow(server, name, json_h)
     print(f"  workflow: {workflow_id}")
     print(f"  pushing YAML… ", end="", flush=True)
     api.req_text("PUT", f"{server}/workflows/{workflow_id}/yaml", yaml_h, raw_yaml)
     print(f"{GREEN}ok{RESET}\n")
 
-    # 2. Build runs — one per matching issue
     if trigger_type == "github_issue_labeled":
         repo  = trigger_cfg.get("repo_allowlist", "")
         label = trigger_cfg.get("label", "")
 
-        if not gh_token:
-            print(f"{RED}ERROR: GitHub token required. Pass --github-token or set GITHUB_TOKEN env var.{RESET}")
-            sys.exit(1)
-
         print(f"  Fetching issues from {repo} with label '{label}'…")
-        issues = github.get_issues_with_label(repo, label, gh_token)
+        issues = api.req("GET", f"{server}/credentials/github/issues?repo={repo}&label={label}", json_h)
 
         if not issues:
             print(f"  No open issues found with label '{label}'.")
@@ -109,22 +118,19 @@ def cmd_run(args):
         passed = failed = 0
         for issue in issues:
             print(f"{CYAN}  ── Issue #{issue['number']}: {issue['title']}{RESET}")
-            state = github.build_state(issue, repo)
+            state = _build_state(issue, repo)
             run   = api.req("POST", f"{server}/workflows/{workflow_id}/runs", json_h, {
                 "triggered_by": f"cli:issue#{issue['number']}",
                 "initial_state": state,
             })
             ok = _stream_run(server, workflow_id, run["id"], workspace_id, token)
-            if ok:
-                passed += 1
-            else:
-                failed += 1
+            passed += ok
+            failed += not ok
             print()
 
         print(f"{BOLD}  Summary: {passed} passed, {failed} failed{RESET}\n")
 
     else:
-        # Non-webhook trigger — just run with empty state
         run = api.req("POST", f"{server}/workflows/{workflow_id}/runs", json_h, {
             "triggered_by": "cli",
             "initial_state": {},
@@ -134,9 +140,8 @@ def cmd_run(args):
 
 def main():
     parser = argparse.ArgumentParser(prog="marshal")
-    parser.add_argument("--server",       required=True, help="Marshal API URL")
-    parser.add_argument("--token",        help="Bearer token for Clerk auth")
-    parser.add_argument("--github-token", help="GitHub token (or set GITHUB_TOKEN env var)")
+    parser.add_argument("--server", required=True, help="Marshal API URL")
+    parser.add_argument("--token",  help="Bearer token for Clerk auth")
 
     sub   = parser.add_subparsers(dest="command")
     run_p = sub.add_parser("run", help="Run a workflow from a YAML file")

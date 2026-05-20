@@ -54,3 +54,4 @@ htmlcov/
 *.pem
 *.key
 *.p12
+.vercel

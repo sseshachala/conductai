@@ -1,23 +1,22 @@
 #!/usr/bin/env python3
 """
-Marshal CLI — run a workflow via the Marshal API.
+Marshal CLI — run a workflow from a YAML file in one shot.
 
 Usage:
-  marshal run <workflow.yaml>
-  marshal run autopilot.yaml --api-url http://localhost:8000
+  ./marshal run autopilot.yaml
+  ./marshal run autopilot.yaml --api-url http://localhost:8000
+  ./marshal run autopilot.yaml --token <clerk_jwt>
 
-The YAML must contain:
-  workflow_id: <uuid>
-  api_url: <base url>        # optional — overridden by --api-url flag
-  workspace_id: <uuid>       # optional — defaults to dev workspace
-  state:                     # initial state injected into the run
-    github_issue:
-      repo_owner: ...
+What it does:
+  1. Reads the YAML
+  2. Finds the workflow by name (or creates it)
+  3. Pushes the YAML as the current version
+  4. Creates a run (injecting state from the YAML's `test:` block)
+  5. Streams block-by-block events until the run completes or fails
 """
 import argparse
 import json
 import sys
-import time
 import urllib.request
 import urllib.error
 from pathlib import Path
@@ -25,72 +24,97 @@ from pathlib import Path
 try:
     import yaml
 except ImportError:
-    print("ERROR: pyyaml not installed. Run: pip install pyyaml")
+    print("ERROR: pyyaml not installed.  pip install pyyaml")
     sys.exit(1)
 
 DEV_WORKSPACE = "00000000-0000-0000-0000-000000000001"
 DEFAULT_API    = "http://localhost:8000"
 
-BLOCK_COLORS = {
-    "block_started":   "\033[34m",   # blue
-    "block_completed": "\033[32m",   # green
-    "block_failed":    "\033[31m",   # red
-    "run_failed":      "\033[31m",
-    "run_completed":   "\033[32m",
-}
 RESET = "\033[0m"
 BOLD  = "\033[1m"
+GREEN = "\033[32m"
+RED   = "\033[31m"
+BLUE  = "\033[34m"
+GRAY  = "\033[90m"
 
 
-def _color(kind: str, text: str) -> str:
-    return f"{BLOCK_COLORS.get(kind, '')}{text}{RESET}"
-
-
-def _request(method: str, url: str, body: dict | None, headers: dict) -> dict:
+def _req(method: str, url: str, headers: dict, body=None) -> dict:
     data = json.dumps(body).encode() if body is not None else None
     req  = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req) as resp:
             return json.loads(resp.read())
     except urllib.error.HTTPError as e:
-        detail = e.read().decode()
+        raw = e.read().decode()
         try:
-            detail = json.loads(detail).get("detail", detail)
+            detail = json.loads(raw).get("detail", raw)
         except Exception:
-            pass
-        print(f"\033[31mHTTP {e.code}: {detail}{RESET}")
+            detail = raw
+        print(f"{RED}HTTP {e.code}: {detail}{RESET}")
         sys.exit(1)
 
 
-def _stream(url: str, headers: dict):
-    """Minimal SSE reader — yields (event, data) tuples."""
-    req = urllib.request.Request(url, headers=headers)
+def _req_text(method: str, url: str, headers: dict, body_text: str) -> dict:
+    data = body_text.encode()
+    req  = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        raw = e.read().decode()
+        try:
+            detail = json.loads(raw).get("detail", raw)
+        except Exception:
+            detail = raw
+        print(f"{RED}HTTP {e.code}: {detail}{RESET}")
+        sys.exit(1)
+
+
+def _stream(url: str):
+    """Minimal SSE reader — yields parsed data dicts."""
+    req = urllib.request.Request(url)
     try:
         resp = urllib.request.urlopen(req)
     except urllib.error.HTTPError as e:
-        print(f"\033[31mStream error {e.code}: {e.read().decode()}{RESET}")
+        print(f"{RED}Stream error {e.code}: {e.read().decode()}{RESET}")
         sys.exit(1)
 
-    event = "message"
-    buf   = b""
+    buf = b""
     while True:
         chunk = resp.read(1)
         if not chunk:
             break
         buf += chunk
         if buf.endswith(b"\n\n"):
-            block = buf.decode().strip()
-            buf   = b""
-            for line in block.splitlines():
+            block_text = buf.decode().strip()
+            buf = b""
+            event = "message"
+            for line in block_text.splitlines():
                 if line.startswith("event:"):
                     event = line[6:].strip()
                 elif line.startswith("data:"):
                     data_str = line[5:].strip()
                     try:
-                        yield event, json.loads(data_str)
+                        data = json.loads(data_str)
                     except json.JSONDecodeError:
-                        yield event, {"raw": data_str}
-            event = "message"
+                        data = {"raw": data_str}
+                    data.setdefault("kind", event)
+                    yield data
+
+
+def _find_or_create_workflow(api: str, name: str, headers: dict) -> str:
+    """Return workflow ID — look up by name, create if missing."""
+    workflows = _req("GET", f"{api}/workflows", headers)
+    for wf in workflows:
+        if wf["name"] == name:
+            return wf["id"]
+
+    # Not found — create it with an empty graph; YAML push will set the real version
+    wf = _req("POST", f"{api}/workflows", headers, {
+        "name": name,
+        "graph": {"nodes": [], "edges": []},
+    })
+    return wf["id"]
 
 
 def cmd_run(args):
@@ -100,81 +124,85 @@ def cmd_run(args):
         sys.exit(1)
 
     with open(path) as f:
-        cfg = yaml.safe_load(f)
+        raw_yaml = f.read()
 
-    workflow_id  = cfg.get("workflow_id")
-    api_url      = (args.api_url or cfg.get("api_url") or DEFAULT_API).rstrip("/")
+    cfg = yaml.safe_load(raw_yaml)
+
+    name         = cfg.get("name", path.stem)
+    api          = (args.api_url or cfg.get("api_url") or DEFAULT_API).rstrip("/")
     workspace_id = cfg.get("workspace_id") or DEV_WORKSPACE
-    state        = cfg.get("state") or {}
+    test_state   = cfg.get("test", {}).get("state") or {}
 
-    if not workflow_id:
-        print("ERROR: workflow_id missing from YAML")
-        sys.exit(1)
-
-    headers = {
+    json_headers = {
         "Content-Type":   "application/json",
         "X-Workspace-Id": workspace_id,
     }
+    yaml_headers = {
+        "Content-Type":   "application/x-yaml",
+        "X-Workspace-Id": workspace_id,
+    }
     if args.token:
-        headers["Authorization"] = f"Bearer {args.token}"
+        json_headers["Authorization"] = yaml_headers["Authorization"] = f"Bearer {args.token}"
 
-    print(f"{BOLD}▶ Starting run — workflow {workflow_id}{RESET}")
-    print(f"  API: {api_url}")
-    if state:
-        print(f"  Initial state keys: {list(state.keys())}")
-    print()
+    # ── 1. Find or create workflow ────────────────────────────────────────────
+    print(f"{BOLD}▶ marshal run — {name}{RESET}")
+    print(f"  API: {api}")
+    workflow_id = _find_or_create_workflow(api, name, json_headers)
+    print(f"  Workflow ID: {workflow_id}")
 
-    run = _request(
-        "POST",
-        f"{api_url}/workflows/{workflow_id}/runs",
-        {"triggered_by": "cli", "initial_state": state},
-        headers,
-    )
+    # ── 2. Push YAML as new version ───────────────────────────────────────────
+    print(f"  Pushing YAML…", end=" ", flush=True)
+    _req_text("PUT", f"{api}/workflows/{workflow_id}/yaml", yaml_headers, raw_yaml)
+    print(f"{GREEN}done{RESET}")
+
+    # ── 3. Create run ─────────────────────────────────────────────────────────
+    run_body = {"triggered_by": "cli", "initial_state": test_state}
+    if test_state:
+        print(f"  State keys: {list(test_state.keys())}")
+
+    run = _req("POST", f"{api}/workflows/{workflow_id}/runs", json_headers, run_body)
     run_id = run["id"]
     print(f"  Run ID: {run_id}\n")
 
-    # Stream events
-    stream_url = f"{api_url}/workflows/{workflow_id}/runs/{run_id}/stream"
+    # ── 4. Stream events ──────────────────────────────────────────────────────
+    qs = f"?workspace_id={workspace_id}"
     if args.token:
-        stream_url += f"?token={args.token}&workspace_id={workspace_id}"
-    else:
-        stream_url += f"?workspace_id={workspace_id}"
+        qs += f"&token={args.token}"
+    stream_url = f"{api}/workflows/{workflow_id}/runs/{run_id}/stream{qs}"
 
-    terminal_kinds = {"run_completed", "run_failed"}
+    terminal = {"run_completed", "run_failed"}
 
-    for event, data in _stream(stream_url, {}):
-        kind     = data.get("kind", event)
+    for data in _stream(stream_url):
+        kind     = data.get("kind", "")
         block_id = data.get("block_id") or ""
         payload  = data.get("payload", data)
-
-        prefix = f"[{block_id}] " if block_id else ""
+        prefix   = f"[{block_id}] " if block_id else ""
 
         if kind == "block_started":
-            label = payload.get("label", payload.get("type", ""))
-            print(_color(kind, f"  ▶ {prefix}{label}"))
+            label = payload.get("label") or payload.get("type", "")
+            print(f"{BLUE}  ▶ {prefix}{label}{RESET}")
 
         elif kind == "block_completed":
             summary = payload.get("summary") or json.dumps(payload, default=str)[:120]
-            print(_color(kind, f"  ✓ {prefix}{summary}"))
+            print(f"{GREEN}  ✓ {prefix}{summary}{RESET}")
 
         elif kind == "block_failed":
-            err = payload.get("error", payload)
-            print(_color(kind, f"  ✗ {prefix}{err}"))
+            err = payload.get("error", json.dumps(payload, default=str)[:200])
+            print(f"{RED}  ✗ {prefix}{err}{RESET}")
 
         elif kind == "run_completed":
-            print(f"\n{BOLD}{_color(kind, '✓ Run completed')}{RESET}")
+            print(f"\n{BOLD}{GREEN}✓ Run completed{RESET}\n")
 
         elif kind == "run_failed":
             err = payload.get("error", "")
-            print(f"\n{BOLD}{_color(kind, f'✗ Run failed: {err}')}{RESET}")
+            print(f"\n{BOLD}{RED}✗ Run failed: {err}{RESET}\n")
+            sys.exit(1)
 
         else:
-            print(f"  {kind}: {json.dumps(payload, default=str)[:160]}")
+            print(f"{GRAY}  {kind}: {json.dumps(payload, default=str)[:140]}{RESET}")
 
-        if kind in terminal_kinds:
+        if kind in terminal:
             break
-
-    print()
 
 
 def main():
@@ -183,11 +211,10 @@ def main():
 
     run_p = sub.add_parser("run", help="Run a workflow from a YAML file")
     run_p.add_argument("yaml",      help="Path to workflow YAML")
-    run_p.add_argument("--api-url", help="API base URL (overrides YAML)")
-    run_p.add_argument("--token",   help="Bearer token for auth")
+    run_p.add_argument("--api-url", help="API base URL (overrides YAML api_url field)")
+    run_p.add_argument("--token",   help="Bearer token for Clerk auth")
 
     args = parser.parse_args()
-
     if args.command == "run":
         cmd_run(args)
     else:
