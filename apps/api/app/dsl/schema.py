@@ -125,6 +125,7 @@ class Block(BaseModel):
     # — brain blocks —
     mode: Literal["single", "agentic"] | None = None
     runs_on: RunsOn | None = None
+    custom_instructions: str | None = None  # user-editable zone, appended to description at runtime
 
     # — logic blocks —
     condition: str | None = None

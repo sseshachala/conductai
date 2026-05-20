@@ -365,6 +365,9 @@ def _execute_brain(
 
     artifact = compiled_artifacts.get(block["id"], {})
     system_prompt = artifact.get("system_prompt", block["data"].get("description", ""))
+    custom = block["data"].get("custom_instructions", "") or ""
+    if custom.strip():
+        system_prompt = f"{system_prompt}\n\nAdditional instructions:\n{custom.strip()}"
     is_agentic = block["data"].get("isAgentic", False)
 
     # Resolve remote host (if the YAML's `runs_on:` was set on this block).

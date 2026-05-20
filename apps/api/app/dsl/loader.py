@@ -207,6 +207,8 @@ def _node_to_block_payload(
 
     elif underlying_type == "brain":
         payload["mode"] = "agentic" if data.get("isAgentic") else "single"
+        if data.get("custom_instructions"):
+            payload["custom_instructions"] = data["custom_instructions"]
         rh = config.get("remote_host")
         if isinstance(rh, dict) and rh.get("ip_ref"):
             payload["runs_on"] = {
@@ -368,6 +370,8 @@ def _block_to_node(block_id: str, block: Block, col: int) -> dict[str, Any]:
     elif block.type == "brain":
         # The executor reads ``isAgentic`` (legacy field name from the canvas).
         data["isAgentic"] = (block.mode == "agentic")
+        if block.custom_instructions:
+            data["custom_instructions"] = block.custom_instructions
         if block.runs_on:
             config["remote_host"] = {
                 "ip_ref": block.runs_on.ip,
