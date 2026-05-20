@@ -16,7 +16,7 @@ interface RunMeta {
   completed_at: string | null
   paused_at: string | null
   current_block_id: string | null
-  workflow_version_id: string
+  workflow_version_id: string | null
 }
 
 interface Props {
@@ -24,6 +24,7 @@ interface Props {
   runId: string
   initialStatus: string
   initialMeta: RunMeta
+  getToken?: (() => Promise<string | null>) | null
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -271,7 +272,24 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function RunTrace({ workflowId, runId, initialStatus, initialMeta }: Props) {
+function getCookie(name: string): string | null {
+  if (typeof document === "undefined") return null
+  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
+  return m ? decodeURIComponent(m[1]) : null
+}
+
+async function buildHeaders(getToken?: (() => Promise<string | null>) | null): Promise<Record<string, string>> {
+  const h: Record<string, string> = {}
+  if (getToken) {
+    const token = await getToken()
+    if (token) h["Authorization"] = `Bearer ${token}`
+  }
+  const ws = getCookie("delegator_project_id")
+  if (ws) h["X-Workspace-Id"] = ws
+  return h
+}
+
+export default function RunTrace({ workflowId, runId, initialStatus, initialMeta, getToken }: Props) {
   const [events, setEvents] = useState<RunEvent[]>([])
   const [status, setStatus] = useState(initialStatus)
   const [meta, setMeta] = useState<RunMeta>(initialMeta)
@@ -285,10 +303,11 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
 
   const refreshMeta = async () => {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}`)
+      const headers = await buildHeaders(getToken)
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}`, { headers })
       if (res.ok) {
         const run = await res.json()
-        setMeta({ triggered_by: run.triggered_by, started_at: run.started_at, completed_at: run.completed_at, paused_at: run.paused_at, current_block_id: run.current_block_id, workflow_version_id: run.workflow_version_id })
+        setMeta({ triggered_by: run.triggered_by, started_at: run.started_at, completed_at: run.completed_at, paused_at: run.paused_at, current_block_id: run.current_block_id, workflow_version_id: run.workflow_version_id ?? null })
         if (run.status === "paused") { setStatus("paused"); setApprovalPending(true); setApprovalBlockId(run.current_block_id) }
       }
     } catch { /* ignore */ }
@@ -296,30 +315,46 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
 
   useEffect(() => {
     if (!done) return
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}`)
-      .then(r => r.json())
-      .then(run => {
-        if (run.events) setEvents(run.events)
-        setMeta({ triggered_by: run.triggered_by, started_at: run.started_at, completed_at: run.completed_at, paused_at: run.paused_at, current_block_id: run.current_block_id, workflow_version_id: run.workflow_version_id })
-      }).catch(() => {})
+    buildHeaders(getToken).then(headers =>
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}`, { headers })
+        .then(r => r.ok ? r.json() : null)
+        .then(run => {
+          if (!run) return
+          if (run.events) setEvents(run.events)
+          setMeta({ triggered_by: run.triggered_by, started_at: run.started_at, completed_at: run.completed_at, paused_at: run.paused_at, current_block_id: run.current_block_id, workflow_version_id: run.workflow_version_id ?? null })
+        }).catch(() => {})
+    )
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
     if (done) return
-    const es = new EventSource(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}/stream`)
-    es.onmessage = (e) => {
-      if (e.data === "[DONE]") { setDone(true); es.close(); refreshMeta(); return }
-      const event: RunEvent = JSON.parse(e.data)
-      setEvents(prev => prev.find(p => p.id === event.id) ? prev : [...prev, event])
-      if (event.kind === "run_completed") setStatus("succeeded")
-      if (event.kind === "run_failed") setStatus("failed")
-      if (event.kind === "run_paused" || event.kind === "approval_requested") {
-        setStatus("paused"); setApprovalPending(true); setApprovalBlockId(event.block_id)
+    let es: EventSource | null = null
+    let cancelled = false
+
+    buildHeaders(getToken).then(headers => {
+      if (cancelled) return
+      const wsId = getCookie("delegator_project_id")
+      const token = headers["Authorization"]?.replace("Bearer ", "") ?? ""
+      const params = new URLSearchParams()
+      if (token) params.set("token", token)
+      if (wsId) params.set("workspace_id", wsId)
+      const qs = params.toString() ? `?${params.toString()}` : ""
+      es = new EventSource(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}/stream${qs}`)
+      es.onmessage = (e) => {
+        if (e.data === "[DONE]") { setDone(true); es?.close(); refreshMeta(); return }
+        const event: RunEvent = JSON.parse(e.data)
+        setEvents(prev => prev.find(p => p.id === event.id) ? prev : [...prev, event])
+        if (event.kind === "run_completed") setStatus("succeeded")
+        if (event.kind === "run_failed") setStatus("failed")
+        if (event.kind === "run_paused" || event.kind === "approval_requested") {
+          setStatus("paused"); setApprovalPending(true); setApprovalBlockId(event.block_id)
+        }
       }
-    }
-    es.onerror = () => { es.close(); setDone(true); refreshMeta() }
-    return () => es.close()
+      es.onerror = () => { es?.close(); setDone(true); refreshMeta() }
+    })
+
+    return () => { cancelled = true; es?.close() }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId, runId, done])
 
@@ -397,8 +432,10 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
   const handleApproval = async (decision: "approved" | "rejected") => {
     setApprovalSubmitting(true)
     try {
+      const headers = await buildHeaders(getToken)
+      headers["Content-Type"] = "application/json"
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}/approve`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers,
         body: JSON.stringify({ decision, approver: "canvas-user" }),
       })
       if (res.ok) { setApprovalPending(false); setStatus("pending"); setDone(false) }
@@ -475,7 +512,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
         <div><span className="text-xs text-stone-400 block mb-0.5">Triggered by</span>{meta.triggered_by ?? "—"}</div>
         <div><span className="text-xs text-stone-400 block mb-0.5">Started</span>{fmt(meta.started_at)}</div>
         <div><span className="text-xs text-stone-400 block mb-0.5">Completed</span>{fmt(meta.completed_at)}</div>
-        <div><span className="text-xs text-stone-400 block mb-0.5">Version</span><span className="font-mono text-xs">{meta.workflow_version_id.slice(0, 8)}…</span></div>
+        <div><span className="text-xs text-stone-400 block mb-0.5">Version</span><span className="font-mono text-xs">{meta.workflow_version_id?.slice(0, 8) ?? "—"}</span></div>
       </div>
 
       {/* Block timeline */}
