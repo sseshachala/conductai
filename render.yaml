@@ -67,21 +67,15 @@ services:
           type: web
           name: delegator-api
           envVarKey: RENDER_EXTERNAL_URL
-      # ── Secrets you set in the Render UI on first apply ───────────────────
+      # ── Platform secrets (set in the Render UI on first apply) ────────────
+      # These are Delegator-the-platform's own keys, not the customer's.
+      # Per-workspace credentials (Slack, GitHub, Resend, DO, Linear, Vercel
+      # webhook secret) are stored encrypted in the `integrations` table and
+      # configured via Settings -> Integrations in the UI — bring your own.
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: ENCRYPTION_KEY
         generateValue: true   # Render auto-generates a 32-char value
-      - key: SLACK_SIGNING_SECRET
-        sync: false
-      - key: VERCEL_WEBHOOK_SECRET
-        sync: false
-      - key: GITHUB_WEBHOOK_SECRET
-        sync: false
-      - key: RESEND_API_KEY
-        sync: false
-      - key: EMAIL_FROM
-        value: "Delegator <notifications@delegator.dev>"
       # ── Optional Clerk auth (leave blank for single-tenant dev mode) ──────
       - key: CLERK_SECRET_KEY
         sync: false
@@ -127,12 +121,6 @@ services:
           type: web
           name: delegator-api
           envVarKey: ENCRYPTION_KEY
-      - key: SLACK_SIGNING_SECRET
-        sync: false
-      - key: RESEND_API_KEY
-        sync: false
-      - key: EMAIL_FROM
-        value: "Delegator <notifications@delegator.dev>"
       - key: MODAL_TOKEN_ID
         sync: false
       - key: MODAL_TOKEN_SECRET
