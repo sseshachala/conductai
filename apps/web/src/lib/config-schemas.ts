@@ -5,6 +5,7 @@ export interface ConfigField {
   label: string
   type: "text" | "textarea" | "select" | "toggle" | "number"
   required?: boolean
+  readOnly?: boolean   // show as a non-editable chip — value comes from a previous step
   placeholder?: string
   hint?: string
   options?: { value: string; label: string }[]
@@ -15,9 +16,9 @@ export interface ConfigField {
 
 const GITHUB_ACTION_FIELDS: Record<string, ConfigField[]> = {
   fetch_issue: [
-    { key: "config.params.owner",        label: "Owner",        type: "text", required: true, placeholder: "my-org" },
-    { key: "config.params.repo",         label: "Repo",         type: "text", required: true, placeholder: "my-repo" },
-    { key: "config.params.issue_number", label: "Issue number", type: "text", required: true, placeholder: "{{a1.github_issue.issue_number}}" },
+    { key: "config.params.owner",        label: "Owner",        type: "text", readOnly: true, defaultValue: "{{a1.github_issue.repo_owner}}" },
+    { key: "config.params.repo",         label: "Repo",         type: "text", readOnly: true, defaultValue: "{{a1.github_issue.repo_name}}" },
+    { key: "config.params.issue_number", label: "Issue number", type: "text", readOnly: true, defaultValue: "{{a1.github_issue.issue_number}}" },
   ],
   create_repo: [
     { key: "config.params.name", label: "Repo name", type: "text", required: true, placeholder: "my-repo" },
