@@ -219,8 +219,9 @@ def _node_to_block_payload(
                 payload["runs_on"]["port"] = rh["port"]
 
     elif underlying_type == "logic":
-        if config.get("condition"):
-            payload["condition"] = config["condition"]
+        # Fall back to a placeholder so graph→YAML never fails on an unconfigured
+        # logic block. The user can edit the condition in the YAML panel or canvas.
+        payload["condition"] = config.get("condition") or "true"
 
     elif underlying_type == "approval":
         for k in ("channel", "slack_user", "message"):
