@@ -144,6 +144,15 @@ function FieldInput({
 
   const base = "w-full border border-stone-200 rounded-lg px-2.5 py-1.5 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-200 bg-white"
 
+  if (field.readOnly) {
+    return (
+      <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-stone-50 border border-stone-200 rounded-lg">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 shrink-0">auto</span>
+        <span className="text-xs font-mono text-stone-500 truncate">{strVal || field.placeholder}</span>
+      </div>
+    )
+  }
+
   if (field.type === "toggle") {
     return (
       <button
@@ -244,6 +253,23 @@ export default function BlockEditor({
     ? (ACTION_FIELDS[integration]?.[action] || [])
     : []
 
+  // Seed default values for read-only fields the first time the block is opened
+  useEffect(() => {
+    const readOnlyFields = actionFields.filter(f => f.readOnly && f.defaultValue !== undefined)
+    if (readOnlyFields.length === 0) return
+    let updated = { ...blockData }
+    let changed = false
+    for (const f of readOnlyFields) {
+      const existing = getNestedValue(updated, f.key)
+      if (!existing) {
+        updated = setNestedValue(updated, f.key, String(f.defaultValue))
+        changed = true
+      }
+    }
+    if (changed) onChange(blockId, updated)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blockId, action])
+
   function handleFieldChange(path: string, value: unknown) {
     const updated = setNestedValue({ ...blockData }, path, value)
     onChange(blockId, updated)
@@ -255,6 +281,11 @@ export default function BlockEditor({
 
   function renderField(field: ConfigField) {
     const val = getNestedValue(blockData, field.key)
+
+    // Read-only fields skip all integration-specific overrides
+    if (field.readOnly) {
+      return <FieldRenderer field={field} value={val} onChange={() => {}} />
+    }
 
     if (integration === "github") {
       // Repo picker — replaces both owner and repo fields
