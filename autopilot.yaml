@@ -1,17 +1,113 @@
-workflow_id: 00000000-0000-0000-0000-000000000003
-api_url: https://delegator-api.onrender.com
+name: "Autopilot - GitHub Issues"
+version: 1
+'on':
+  github_issue_labeled:
+    integration: github
+    next: a2
+    label: autopilot ready
+    repo_allowlist: sseshachala/delegator
+blocks:
+  a2:
+    type: tool
+    label: Fetch issue
+    description: Get full issue title, body, and metadata
+    integration: github
+    action: fetch_issue
+    params:
+      repo: '{{a1.github_issue.repo_name}}'
+      owner: '{{a1.github_issue.repo_owner}}'
+      issue_number: '{{a1.github_issue.issue_number}}'
+    next: a3
+  a3:
+    type: brain
+    label: Implement fix
+    description: |
+      You are an expert software engineer. A GitHub issue has been labeled 'autopilot ready'.
 
-state:
-  github_issue:
-    repo_owner: sseshachala
-    repo_name: delegator
-    repo_full_name: sseshachala/delegator
-    issue_number: 32
-    title: "Test issue"
-    body: "Fix this bug"
-    url: "https://github.com/sseshachala/delegator/issues/32"
-    author: sseshachala
-    labels: ["autopilot ready", "ai_ready"]
-    label_added: "autopilot ready"
-    default_branch: main
-    clone_url: "https://github.com/sseshachala/delegator.git"
+      Issue title: {{a2.title}}
+      Issue body: {{a2.body}}
+      Repo: {{a1.github_issue.repo_full_name}}
+      Clone URL: {{a1.github_issue.clone_url}}
+
+      Steps:
+      1. Clone the repo: git clone <clone_url> /tmp/autopilot_repo
+      2. Create a branch: git checkout -b autopilot/issue-{{a2.issue_number}}
+      3. Read relevant files to understand the codebase
+      4. Implement the fix described in the issue
+      5. Stage changes: git add -A
+      6. Commit: git commit -m 'fix: <short description> (closes #{{a2.issue_number}})'
+      7. Output the branch name and a brief summary of what you changed
+    mode: agentic
+    next: a4
+  a4:
+    type: brain
+    label: Run tests & fix
+    description: |
+      Run the test suite for the repo at /tmp/autopilot_repo. If tests fail, fix and re-run. Repeat up to 3 times.
+
+      1. Detect the test runner (pytest, npm test, etc.) by reading package.json or requirements.txt
+      2. Run the tests
+      3. If tests fail: read the failure output, patch the code, re-run
+      4. After up to 3 fix attempts, stop regardless of outcome
+
+      Output as JSON on the final line:
+      {"passed": true/false, "attempts": <number>, "output": "<brief summary of test results>"}
+    mode: agentic
+    next: a5
+  a5:
+    type: logic
+    label: Tests pass?
+    condition: passed == true
+    next:
+      pass: a6
+      fail: a8
+  a6:
+    type: brain
+    label: Push & open PR
+    description: |
+      Push the branch and open a pull request.
+      Repo: {{a1.github_issue.repo_full_name}}
+      Branch: autopilot/issue-{{a2.issue_number}}
+      Base: {{a1.github_issue.default_branch}}
+
+      1. cd /tmp/autopilot_repo
+      2. git remote set-url origin https://<github_token>@github.com/{{a1.github_issue.repo_full_name}}.git
+      3. git push origin autopilot/issue-{{a2.issue_number}}
+      4. Open a PR via the GitHub API
+
+      Output ONLY the following JSON on the last line:
+      {"pr_url": "<full PR URL>"}
+    mode: agentic
+    next: a7
+  a7:
+    type: output
+    label: Notify PR ready
+    description: 'PR opened for issue #{{a2.issue_number}}: {{a2.title}}. Review at {{a6.pr_url}}'
+    output:
+      via: slack
+      slack:
+        channel: '#engineering'
+  a8:
+    type: output
+    label: Notify failure
+    description: 'Tests failed after {{a4.attempts}} attempt(s) for issue #{{a2.issue_number}}: {{a2.title}}. Manual review needed.'
+    output:
+      via: slack
+      slack:
+        channel: '#engineering'
+
+test:
+  state:
+    github_issue:
+      repo_owner: sseshachala
+      repo_name: delegator
+      repo_full_name: sseshachala/delegator
+      issue_number: 32
+      title: "Test issue"
+      body: "Fix this bug"
+      url: "https://github.com/sseshachala/delegator/issues/32"
+      author: sseshachala
+      labels: ["autopilot ready"]
+      label_added: "autopilot ready"
+      default_branch: main
+      clone_url: "https://github.com/sseshachala/delegator.git"
