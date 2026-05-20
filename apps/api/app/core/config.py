@@ -41,6 +41,7 @@ class Settings(BaseSettings):
 
     # CLI / server-to-server API key — bypasses Clerk auth
     cli_api_key: str = ""
+    cli_workspace_id: str = ""  # workspace the CLI api key is scoped to
 
     # Modal sandbox — when set, Brain tools run in isolated containers
     modal_token_id: str = ""
