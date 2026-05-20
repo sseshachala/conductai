@@ -127,8 +127,8 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
   const router = useRouter()
   const [running, setRunning] = useState<"idle" | "dry" | "live">("idle")
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([])
-  // "canvas" — drag-and-drop designer. "yaml" — source-of-truth view that
-  // mirrors what the runtime will actually execute.
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [editorExpanded, setEditorExpanded] = useState(false)
   const [activeView, setActiveView] = useState<"canvas" | "yaml">("canvas")
 
   // Load workflow on mount. When a graph arrives without meaningful positions
@@ -366,7 +366,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
       <div className="flex flex-1 overflow-hidden">
         {activeView === "canvas" ? (
           <>
-            <div className="flex-1 relative">
+            <div className="flex-1 relative min-w-0">
               <ReactFlow
                 nodes={nodes}
                 edges={edges}
@@ -388,7 +388,16 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
                 <Controls className="!shadow-none !border !border-stone-200 !rounded-xl" showInteractive={false} />
               </ReactFlow>
             </div>
-            <Sidebar />
+            <div className={`relative flex shrink-0 transition-all duration-200 ${sidebarOpen ? "w-52" : "w-8"}`}>
+              <button
+                onClick={() => setSidebarOpen(v => !v)}
+                className="absolute -left-3 top-1/2 -translate-y-1/2 z-10 w-6 h-6 rounded-full bg-white border border-stone-200 shadow-sm flex items-center justify-center text-stone-400 hover:text-stone-700 transition-colors"
+                title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+              >
+                {sidebarOpen ? "›" : "‹"}
+              </button>
+              {sidebarOpen && <Sidebar />}
+            </div>
           </>
         ) : (
           <div className="flex-1 flex">
@@ -439,7 +448,17 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
 
       {/* Block editor bottom panel */}
       {selectedNode && selectedData && (
-        <div className="shrink-0 max-h-64 overflow-y-auto border-t border-stone-200">
+        <div className={`shrink-0 overflow-y-auto border-t border-stone-200 transition-all duration-200 ${editorExpanded ? "max-h-[520px]" : "max-h-72"}`}>
+          <div className="flex items-center justify-between px-4 py-1 bg-stone-50 border-b border-stone-100">
+            <span className="text-[10px] text-stone-400 font-medium uppercase tracking-wide">Block config</span>
+            <button
+              onClick={() => setEditorExpanded(v => !v)}
+              className="text-stone-400 hover:text-stone-700 text-xs px-1.5 py-0.5 rounded hover:bg-stone-100 transition-colors"
+              title={editorExpanded ? "Collapse" : "Expand"}
+            >
+              {editorExpanded ? "▾ Less" : "▴ More"}
+            </button>
+          </div>
           <BlockEditor
             workflowId={workflowId}
             blockId={selectedNode.id}
