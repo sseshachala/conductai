@@ -13,16 +13,32 @@ const INTEGRATION_LIST = [
   { handle: "railway",      label: "Railway" },
 ]
 
-export default function Sidebar() {
+function getWorkspaceId(): string | null {
+  if (typeof document === "undefined") return null
+  const m = document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)
+  return m ? m[1] : null
+}
+
+export default function Sidebar({ getToken }: { getToken?: (() => Promise<string | null>) | null }) {
   const [connectedHandles, setConnectedHandles] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials`)
-      .then(r => r.ok ? r.json() : [])
-      .then((creds: { handle: string }[]) => {
-        setConnectedHandles(new Set(creds.map(c => c.handle.toLowerCase())))
-      })
-      .catch(() => {})
+    ;(async () => {
+      try {
+        const headers: Record<string, string> = {}
+        if (getToken) {
+          const token = await getToken()
+          if (token) headers["Authorization"] = `Bearer ${token}`
+        }
+        const ws = getWorkspaceId()
+        if (ws) headers["X-Workspace-Id"] = ws
+        const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials`, { headers })
+        if (r.ok) {
+          const creds: { handle: string }[] = await r.json()
+          setConnectedHandles(new Set(creds.map(c => c.handle.toLowerCase())))
+        }
+      } catch { /* network error — leave as disconnected */ }
+    })()
   }, [])
 
   return (
