@@ -258,7 +258,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       label: "Condition",
       type: "text",
       placeholder: "exit_code == 0",
-      hint: "Evaluated against the previous block's output. Leave blank to auto-detect pass/fail from keywords.",
+      hint: "Expression evaluated against the previous block's output. e.g. exit_code == 0",
     },
   ],
   approval: [

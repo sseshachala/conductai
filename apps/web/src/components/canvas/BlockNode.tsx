@@ -43,6 +43,7 @@ function BlockNode({ data, selected }: NodeProps) {
   const nodeData = data as BlockNodeData
   const style = BLOCK_STYLES[nodeData.type]
   const isLogic = nodeData.type === "logic"
+  const missingCondition = isLogic && !(nodeData.config as Record<string, unknown>)?.condition
   const integration = nodeData.integration as string | undefined
   const action = nodeData.config?.action
 
@@ -101,6 +102,11 @@ function BlockNode({ data, selected }: NodeProps) {
       {/* Description (no integration set) */}
       {!integrationLabel && nodeData.description && (
         <p className="text-[10px] text-stone-400 mt-0.5 leading-tight truncate">{nodeData.description}</p>
+      )}
+
+      {/* Logic condition warning */}
+      {missingCondition && (
+        <p className="text-[9px] text-amber-600 bg-amber-50 rounded px-1.5 py-0.5 mt-1.5">⚠ Set a condition</p>
       )}
 
       {/* Logic pass/fail handles */}
