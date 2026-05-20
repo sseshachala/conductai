@@ -207,10 +207,12 @@ def register_github_webhook(
             timeout=10,
         )
         if existing.ok:
-            for hook in existing.json():
-                if hook.get("config", {}).get("url") == webhook_url:
-                    return {"registered": True, "hook_id": hook["id"], "url": webhook_url, "existing": True}
-    except httpx.RequestError:
+            hooks = existing.json()
+            if isinstance(hooks, list):
+                for hook in hooks:
+                    if isinstance(hook, dict) and hook.get("config", {}).get("url") == webhook_url:
+                        return {"registered": True, "hook_id": hook["id"], "url": webhook_url, "existing": True}
+    except Exception:
         pass
 
     payload = {
