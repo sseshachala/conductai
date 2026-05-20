@@ -1,6 +1,6 @@
 id: 3638c5eb-ccb9-41da-aecf-b8bd6322e23c
 workspace_id: 01ade82f-9cc8-451b-89fe-37b2622924c1
-name: "Autopilot \u2014 GitHub Issues"
+name: "Autopilot - GitHub Issues"
 version: 1
 'on':
   github_issue_labeled:
@@ -120,4 +120,3 @@ blocks:
       via: slack
       slack:
         channel: '#engineering'
-
