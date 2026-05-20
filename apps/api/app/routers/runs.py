@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id
+from app.core.auth import get_workspace_id, _verify_clerk_token, _clerk_enabled, DEV_WORKSPACE_ID
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.run import Run, RunEvent
@@ -18,6 +18,41 @@ from app.schemas.run import RunCreate, RunDetailOut, RunOut
 router = APIRouter(prefix="/workflows/{workflow_id}/runs", tags=["runs"])
 
 QUEUE_KEY = "marshal:runs:queue"
+
+
+def get_workspace_id_sse(
+    request: Request,
+    workspace_id: str | None = Depends(lambda: None),
+) -> str:
+    """Auth dependency for SSE endpoints — also accepts token + workspace_id as query params
+    because EventSource cannot set custom headers."""
+    # Try header-based auth first
+    auth_header = request.headers.get("Authorization", "")
+    token_qp = request.query_params.get("token")
+    ws_qp = request.query_params.get("workspace_id")
+    x_ws = request.headers.get("x-workspace-id")
+
+    if not _clerk_enabled():
+        return x_ws or ws_qp or DEV_WORKSPACE_ID
+
+    # Get token from header OR query param
+    raw_token = None
+    if auth_header.startswith("Bearer "):
+        raw_token = auth_header.removeprefix("Bearer ")
+    elif token_qp:
+        raw_token = token_qp
+
+    if not raw_token:
+        raise HTTPException(status_code=401, detail="Authorization required")
+
+    claims = _verify_clerk_token(raw_token)
+    if not claims:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    ws = x_ws or ws_qp or claims.get("org_id") or claims.get("sub")
+    if not ws:
+        raise HTTPException(status_code=401, detail="No workspace in token claims")
+    return ws
 
 
 def _redis():
@@ -97,7 +132,7 @@ def stream_run_events(
     workflow_id: UUID,
     run_id: UUID,
     db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
+    workspace_id: str = Depends(get_workspace_id_sse),
 ):
     """SSE stream of run_events as they are written by the executor."""
     _get_workflow(workflow_id, workspace_id, db)
