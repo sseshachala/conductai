@@ -187,25 +187,26 @@ edges = [
 graph = {"nodes": nodes, "edges": edges}
 
 with engine.connect() as conn:
-    result = conn.execute(text("SELECT id FROM workflows WHERE name = 'Autopilot — GitHub Issues' LIMIT 1"))
-    if result.fetchone():
-        print("Already seeded — skipping.")
-    else:
+    existing = conn.execute(text("SELECT id FROM workflows WHERE id = :wf_id LIMIT 1"), {"wf_id": WORKFLOW_ID}).fetchone()
+
+    if not existing:
         conn.execute(text("""
             INSERT INTO workflows (id, workspace_id, name, default_mode)
             VALUES (:wf_id, :ws_id, 'Autopilot — GitHub Issues', 'dag')
         """), {"wf_id": WORKFLOW_ID, "ws_id": WORKSPACE_ID})
 
-        version_id = conn.execute(text("""
-            INSERT INTO workflow_versions (workflow_id, graph)
-            VALUES (:wf_id, cast(:graph as jsonb))
-            RETURNING id
-        """), {"wf_id": WORKFLOW_ID, "graph": json.dumps(graph)}).fetchone()[0]
+    # Always insert a fresh version so re-running the seed picks up graph fixes
+    version_id = conn.execute(text("""
+        INSERT INTO workflow_versions (workflow_id, graph)
+        VALUES (:wf_id, cast(:graph as jsonb))
+        RETURNING id
+    """), {"wf_id": WORKFLOW_ID, "graph": json.dumps(graph)}).fetchone()[0]
 
-        conn.execute(text("""
-            UPDATE workflows SET current_version_id = :vid WHERE id = :wf_id
-        """), {"vid": str(version_id), "wf_id": WORKFLOW_ID})
+    conn.execute(text("""
+        UPDATE workflows SET current_version_id = :vid WHERE id = :wf_id
+    """), {"vid": str(version_id), "wf_id": WORKFLOW_ID})
 
-        conn.commit()
-        print(f"Seeded 'Autopilot — GitHub Issues' — {len(nodes)} blocks, {len(edges)} edges.")
-        print(f"Workflow ID: {WORKFLOW_ID}")
+    conn.commit()
+    action = "Updated" if existing else "Seeded"
+    print(f"{action} 'Autopilot — GitHub Issues' — {len(nodes)} blocks, {len(edges)} edges.")
+    print(f"Workflow ID: {WORKFLOW_ID}")
