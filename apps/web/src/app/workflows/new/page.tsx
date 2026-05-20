@@ -122,7 +122,7 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
         {/* Template picker */}
         <div className="mb-10">
           <label className="block text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">
-            Start with a template
+            Choose a starting point
           </label>
           <div className="grid grid-cols-2 gap-3">
             {TEMPLATES.map(t => (
