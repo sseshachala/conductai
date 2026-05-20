@@ -41,7 +41,7 @@ def get_workspace_id_sse(
     from app.core.config import settings as _settings
     cli_key = _settings.cli_api_key
     if cli_key and (api_key_qp == cli_key or api_key_hdr == cli_key):
-        return x_ws or ws_qp or DEV_WORKSPACE_ID
+        return _settings.cli_workspace_id or x_ws or ws_qp or DEV_WORKSPACE_ID
 
     # Get token from header OR query param
     raw_token = None

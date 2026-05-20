@@ -127,7 +127,7 @@ def get_workspace_id(
 
     # CLI / server-to-server API key bypasses Clerk
     if x_api_key and settings.cli_api_key and x_api_key == settings.cli_api_key:
-        return x_workspace_id or DEV_WORKSPACE_ID
+        return settings.cli_workspace_id or x_workspace_id or DEV_WORKSPACE_ID
 
     if not credentials:
         raise HTTPException(status_code=401, detail="Authorization header required")
