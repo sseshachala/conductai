@@ -85,6 +85,7 @@ def cmd_run(args):
     raw_yaml     = path.read_text()
     cfg          = yaml.safe_load(raw_yaml)
     name         = cfg.get("name", path.stem)
+    workflow_id  = cfg.get("id")
     server       = args.server.rstrip("/")
     workspace_id = args.workspace or cfg.get("workspace_id") or DEV_WORKSPACE
     token        = args.token
@@ -99,8 +100,9 @@ def cmd_run(args):
     print(f"\n{BOLD}▶ marshal run — {name}{RESET}")
     print(f"  server: {server}\n")
 
-    # Find or create workflow, push YAML
-    workflow_id = api.find_or_create_workflow(server, name, json_h)
+    # Use id from YAML; fall back to name lookup
+    if not workflow_id:
+        workflow_id = api.find_or_create_workflow(server, name, json_h)
     print(f"  workflow: {workflow_id}")
     print(f"  pushing YAML… ", end="", flush=True)
     api.req_text("PUT", f"{server}/workflows/{workflow_id}/yaml", yaml_h, raw_yaml)
