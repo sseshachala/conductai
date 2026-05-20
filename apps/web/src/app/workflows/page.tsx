@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
@@ -61,6 +61,15 @@ function WorkflowsContent({ getToken }: { getToken: (() => Promise<string | null
   const [projectId, setProjectId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
+  async function authHeaders(): Promise<Record<string, string>> {
+    const h: Record<string, string> = {}
+    if (getToken) {
+      const token = await getToken()
+      if (token) h["Authorization"] = `Bearer ${token}`
+    }
+    return h
+  }
+
   useEffect(() => {
     const pid = getActiveProject()
     setProjectId(pid)
@@ -69,21 +78,33 @@ function WorkflowsContent({ getToken }: { getToken: (() => Promise<string | null
 
   async function loadWorkflows(pid: string | null) {
     try {
-      const headers: Record<string, string> = {}
-      if (getToken) {
-        const token = await getToken()
-        console.log("[auth] getToken result:", token ? `Bearer ${token.slice(0, 20)}...` : "NULL")
-        if (token) headers["Authorization"] = `Bearer ${token}`
-      } else {
-        console.log("[auth] getToken is null — clerkEnabled check failed")
-      }
+      const headers = await authHeaders()
       if (pid) headers["X-Workspace-ID"] = pid
-
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, { headers })
       if (res.ok) setWorkflows(await res.json())
     } finally {
       setLoading(false)
     }
+  }
+
+  async function renameAgent(id: string, name: string) {
+    const h = await authHeaders()
+    h["Content-Type"] = "application/json"
+    if (projectId) h["X-Workspace-ID"] = projectId
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${id}`, {
+      method: "PUT", headers: h, body: JSON.stringify({ name }),
+    })
+    if (res.ok) {
+      const updated = await res.json()
+      setWorkflows(prev => prev.map(w => w.id === id ? { ...w, name: updated.name } : w))
+    }
+  }
+
+  async function deleteAgent(id: string) {
+    const h = await authHeaders()
+    if (projectId) h["X-Workspace-ID"] = projectId
+    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${id}`, { method: "DELETE", headers: h })
+    setWorkflows(prev => prev.filter(w => w.id !== id))
   }
 
   return (
@@ -141,36 +162,125 @@ function WorkflowsContent({ getToken }: { getToken: (() => Promise<string | null
           </div>
         ) : (
           <div className="grid gap-2">
-            {workflows.map((w) => {
-              const status = w.last_run_status ? RUN_STATUS[w.last_run_status] : null
-              return (
-                <Link
-                  key={w.id}
-                  href={`/workflows/${w.id}`}
-                  className="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-5 py-4 hover:border-stone-300 hover:shadow-sm transition-all group"
-                >
-                  <div>
-                    <p className="font-semibold text-stone-900 group-hover:text-stone-700 transition-colors">{w.name}</p>
-                    <p className="text-xs text-stone-400 mt-0.5">edited {timeAgo(w.updated_at)}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {status ? (
-                      <span className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${status.bg} ${status.text}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
-                        {status.label}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-stone-400 italic">never run</span>
-                    )}
-                    {w.last_run_at && <span className="text-xs text-stone-400">{timeAgo(w.last_run_at)}</span>}
-                    <span className="text-stone-300 group-hover:text-stone-500 transition-colors text-sm">→</span>
-                  </div>
-                </Link>
-              )
-            })}
+            {workflows.map((w) => (
+              <AgentCard
+                key={w.id}
+                workflow={w}
+                onRename={(name) => renameAgent(w.id, name)}
+                onDelete={() => deleteAgent(w.id)}
+              />
+            ))}
           </div>
         )}
       </main>
+    </div>
+  )
+}
+
+function AgentCard({
+  workflow, onRename, onDelete,
+}: {
+  workflow: Workflow
+  onRename: (name: string) => Promise<void>
+  onDelete: () => Promise<void>
+}) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const [nameValue, setNameValue] = useState(workflow.name)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (renaming) inputRef.current?.focus()
+  }, [renaming])
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
+    }
+    document.addEventListener("mousedown", handleClick)
+    return () => document.removeEventListener("mousedown", handleClick)
+  }, [])
+
+  async function submitRename() {
+    const name = nameValue.trim()
+    if (name && name !== workflow.name) await onRename(name)
+    else setNameValue(workflow.name)
+    setRenaming(false)
+  }
+
+  const status = workflow.last_run_status ? RUN_STATUS[workflow.last_run_status] : null
+
+  if (confirmDelete) {
+    return (
+      <div className="flex items-center justify-between rounded-xl border border-red-200 bg-red-50 px-5 py-4">
+        <p className="text-sm text-red-700">Delete <span className="font-semibold">{workflow.name}</span>? This removes all runs and history.</p>
+        <div className="flex gap-2 ml-4 shrink-0">
+          <button onClick={() => onDelete()} className="text-xs font-medium text-white bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded-lg transition-colors">Delete</button>
+          <button onClick={() => setConfirmDelete(false)} className="text-xs font-medium text-stone-600 border border-stone-200 hover:bg-stone-50 px-3 py-1.5 rounded-lg transition-colors">Cancel</button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-5 py-4 hover:border-stone-300 hover:shadow-sm transition-all group">
+      <Link href={renaming ? "#" : `/workflows/${workflow.id}`} className="flex-1 min-w-0" onClick={renaming ? (e) => e.preventDefault() : undefined}>
+        {renaming ? (
+          <input
+            ref={inputRef}
+            value={nameValue}
+            onChange={e => setNameValue(e.target.value)}
+            onBlur={submitRename}
+            onKeyDown={e => { if (e.key === "Enter") submitRename(); if (e.key === "Escape") { setNameValue(workflow.name); setRenaming(false) } }}
+            onClick={e => e.preventDefault()}
+            className="text-sm font-semibold text-stone-900 bg-transparent border-b border-indigo-400 outline-none w-full"
+          />
+        ) : (
+          <p className="font-semibold text-stone-900 group-hover:text-stone-700 transition-colors truncate">{workflow.name}</p>
+        )}
+        <p className="text-xs text-stone-400 mt-0.5">edited {timeAgo(workflow.updated_at)}</p>
+      </Link>
+
+      <div className="flex items-center gap-3 ml-3 shrink-0">
+        {status ? (
+          <span className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${status.bg} ${status.text}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
+            {status.label}
+          </span>
+        ) : (
+          <span className="text-xs text-stone-400 italic">never run</span>
+        )}
+        {workflow.last_run_at && <span className="text-xs text-stone-400">{timeAgo(workflow.last_run_at)}</span>}
+
+        <div className="relative" ref={menuRef}>
+          <button
+            onClick={e => { e.preventDefault(); setMenuOpen(v => !v) }}
+            className="p-1.5 rounded-lg text-stone-300 hover:text-stone-600 hover:bg-stone-100 transition-colors opacity-0 group-hover:opacity-100"
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M10 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4z" />
+            </svg>
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-8 z-20 w-36 bg-white rounded-xl border border-stone-200 shadow-lg py-1">
+              <button
+                onClick={() => { setMenuOpen(false); setRenaming(true) }}
+                className="w-full text-left px-4 py-2 text-sm text-stone-700 hover:bg-stone-50"
+              >
+                Rename
+              </button>
+              <button
+                onClick={() => { setMenuOpen(false); setConfirmDelete(true) }}
+                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+              >
+                Delete
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
