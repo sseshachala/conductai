@@ -23,6 +23,36 @@ interface BlockEditorProps {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
+// Patterns that strongly suggest a hardcoded secret rather than a template ref.
+const SECRET_PATTERNS = [
+  /^ghp_[A-Za-z0-9]{36}/,           // GitHub personal access token
+  /^github_pat_[A-Za-z0-9_]{82}/,    // GitHub fine-grained PAT
+  /^ghs_[A-Za-z0-9]{36}/,           // GitHub app installation token
+  /^xoxb-[0-9]+-[A-Za-z0-9-]+/,     // Slack bot token
+  /^xoxp-[0-9]+-[A-Za-z0-9-]+/,     // Slack user token
+  /^xoxa-[0-9]+-[A-Za-z0-9-]+/,     // Slack legacy token
+  /^sk-[A-Za-z0-9]{20,}/,           // OpenAI / generic sk- key
+  /^pk-[A-Za-z0-9]{20,}/,           // Generic pk- key
+  /^Bearer\s+[A-Za-z0-9._-]{20,}/,  // Inline Bearer token
+  /^[A-Za-z0-9_-]{40,}$/,           // Long opaque string (≥40 chars, no spaces)
+]
+
+const SECRET_FIELD_NAMES = /token|secret|key|password|api_key|access_token|auth/i
+
+function looksLikeSecret(fieldName: string, value: unknown): boolean {
+  if (typeof value !== "string" || !value.trim()) return false
+  if (value.startsWith("{{") && value.endsWith("}}")) return false  // template ref — fine
+  if (SECRET_FIELD_NAMES.test(fieldName)) return true
+  return SECRET_PATTERNS.some(re => re.test(value.trim()))
+}
+
+function findHardcodedSecrets(params: unknown): string[] {
+  if (!params || typeof params !== "object") return []
+  return Object.entries(params as Record<string, unknown>)
+    .filter(([k, v]) => looksLikeSecret(k, v))
+    .map(([k]) => k)
+}
+
 function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
   return path.split(".").reduce<unknown>((acc, key) => {
     if (acc && typeof acc === "object") return (acc as Record<string, unknown>)[key]
@@ -343,6 +373,22 @@ export default function BlockEditor({
                 </p>
               </div>
             )}
+
+            {/* Hardcoded-secret warning */}
+            {(() => {
+              const params = getNestedValue(blockData, "config.params")
+              const leaked = findHardcodedSecrets(params)
+              return leaked.length > 0 ? (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-800">
+                  <p className="font-semibold mb-1">⚠ Secret detected in params: {leaked.join(", ")}</p>
+                  <p className="leading-relaxed text-red-700">
+                    Hardcoded tokens are exported in the YAML file and can leak if committed to a repo.
+                    Save this credential in <a href="/settings" className="underline font-medium">Integrations → Settings</a> and
+                    reference it via the <span className="font-mono bg-red-100 px-0.5 rounded">integration:</span> field instead.
+                  </p>
+                </div>
+              ) : null
+            })()}
 
             {/* Action-specific param fields */}
             {actionFields.length > 0 && (
