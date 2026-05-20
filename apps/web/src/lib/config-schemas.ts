@@ -4,6 +4,7 @@ export interface ConfigField {
   key: string          // dot-path into block.data, e.g. "config.params.owner"
   label: string
   type: "text" | "textarea" | "select" | "toggle" | "number"
+  required?: boolean
   placeholder?: string
   hint?: string
   options?: { value: string; label: string }[]
@@ -14,26 +15,26 @@ export interface ConfigField {
 
 const GITHUB_ACTION_FIELDS: Record<string, ConfigField[]> = {
   create_repo: [
-    { key: "config.params.name", label: "Repo name", type: "text", placeholder: "my-repo" },
+    { key: "config.params.name", label: "Repo name", type: "text", required: true, placeholder: "my-repo" },
   ],
   get_repo: [
-    { key: "config.params.owner", label: "Owner", type: "text", placeholder: "my-org" },
-    { key: "config.params.repo",  label: "Repo",  type: "text", placeholder: "my-repo" },
+    { key: "config.params.owner", label: "Owner", type: "text", required: true, placeholder: "my-org" },
+    { key: "config.params.repo",  label: "Repo",  type: "text", required: true, placeholder: "my-repo" },
   ],
   create_branch: [
-    { key: "config.params.owner",  label: "Owner",       type: "text", placeholder: "my-org" },
-    { key: "config.params.repo",   label: "Repo",        type: "text", placeholder: "my-repo" },
-    { key: "config.params.branch", label: "Branch name", type: "text", placeholder: "feat/{{linear_fetch.identifier}}" },
+    { key: "config.params.owner",  label: "Owner",       type: "text", required: true, placeholder: "my-org" },
+    { key: "config.params.repo",   label: "Repo",        type: "text", required: true, placeholder: "my-repo" },
+    { key: "config.params.branch", label: "Branch name", type: "text", required: true, placeholder: "feat/{{linear_fetch.identifier}}" },
   ],
   open_pull_request: [
-    { key: "config.params.owner", label: "Owner",      type: "text", placeholder: "my-org" },
-    { key: "config.params.repo",  label: "Repo",       type: "text", placeholder: "my-repo" },
-    { key: "config.params.title", label: "PR title",   type: "text", placeholder: "feat: {{linear_fetch.title}}" },
-    { key: "config.params.head",  label: "Head branch", type: "text", placeholder: "feat/{{linear_fetch.identifier}}" },
+    { key: "config.params.owner", label: "Owner",       type: "text", required: true, placeholder: "my-org" },
+    { key: "config.params.repo",  label: "Repo",        type: "text", required: true, placeholder: "my-repo" },
+    { key: "config.params.title", label: "PR title",    type: "text", required: true, placeholder: "feat: {{linear_fetch.title}}" },
+    { key: "config.params.head",  label: "Head branch", type: "text", required: true, placeholder: "feat/{{linear_fetch.identifier}}" },
   ],
   list_pull_requests: [
-    { key: "config.params.owner", label: "Owner", type: "text", placeholder: "my-org" },
-    { key: "config.params.repo",  label: "Repo",  type: "text", placeholder: "my-repo" },
+    { key: "config.params.owner", label: "Owner", type: "text", required: true, placeholder: "my-org" },
+    { key: "config.params.repo",  label: "Repo",  type: "text", required: true, placeholder: "my-repo" },
   ],
 }
 
@@ -41,16 +42,16 @@ const GITHUB_ACTION_FIELDS: Record<string, ConfigField[]> = {
 
 const SLACK_ACTION_FIELDS: Record<string, ConfigField[]> = {
   post_message: [
-    { key: "config.params.channel", label: "Channel", type: "text",     placeholder: "#general" },
-    { key: "config.params.text",    label: "Message", type: "textarea", placeholder: "{{previous_block.summary}}" },
+    { key: "config.params.channel", label: "Channel", type: "text",     required: true, placeholder: "#general" },
+    { key: "config.params.text",    label: "Message", type: "textarea", required: true, placeholder: "{{previous_block.summary}}" },
   ],
   post_dm: [
-    { key: "config.params.user", label: "User ID", type: "text",     placeholder: "U0123456", hint: "Profile → ⋮ → Copy member ID" },
-    { key: "config.params.text", label: "Message", type: "textarea", placeholder: "Your PR is ready for review." },
+    { key: "config.params.user", label: "User ID", type: "text",     required: true, placeholder: "U0123456", hint: "Profile → ⋮ → Copy member ID" },
+    { key: "config.params.text", label: "Message", type: "textarea", required: true, placeholder: "Your PR is ready for review." },
   ],
   post_approval_message: [
-    { key: "config.params.channel", label: "Channel", type: "text",     placeholder: "#eng-approvals" },
-    { key: "config.params.text",    label: "Message", type: "textarea", placeholder: "PR ready: {{github_pr.pr_url}}" },
+    { key: "config.params.channel", label: "Channel", type: "text",     required: true, placeholder: "#eng-approvals" },
+    { key: "config.params.text",    label: "Message", type: "textarea", required: true, placeholder: "PR ready: {{github_pr.pr_url}}" },
   ],
 }
 
@@ -58,19 +59,19 @@ const SLACK_ACTION_FIELDS: Record<string, ConfigField[]> = {
 
 const LINEAR_ACTION_FIELDS: Record<string, ConfigField[]> = {
   fetch_issue: [
-    { key: "config.params.issue_id", label: "Issue ID", type: "text", placeholder: "ENG-42 or uuid", hint: "Linear identifier or UUID" },
+    { key: "config.params.issue_id", label: "Issue ID", type: "text", required: true, placeholder: "ENG-42 or uuid", hint: "Linear identifier or UUID" },
   ],
   list_issues: [
-    { key: "config.params.team_id", label: "Team ID", type: "text", placeholder: "team-uuid" },
+    { key: "config.params.team_id", label: "Team ID", type: "text", required: true, placeholder: "team-uuid" },
     { key: "config.params.label",   label: "Label",   type: "text", placeholder: "ai-ready" },
   ],
   create_comment: [
-    { key: "config.params.issue_id", label: "Issue ID", type: "text",     placeholder: "ENG-42" },
-    { key: "config.params.body",     label: "Comment",  type: "textarea", placeholder: "PR opened: {{github_pr.pr_url}}" },
+    { key: "config.params.issue_id", label: "Issue ID", type: "text",     required: true, placeholder: "ENG-42" },
+    { key: "config.params.body",     label: "Comment",  type: "textarea", required: true, placeholder: "PR opened: {{github_pr.pr_url}}" },
   ],
   update_issue_status: [
-    { key: "config.params.issue_id", label: "Issue ID", type: "text", placeholder: "ENG-42" },
-    { key: "config.params.state_id", label: "State ID", type: "text", placeholder: "in-progress-uuid" },
+    { key: "config.params.issue_id", label: "Issue ID", type: "text", required: true, placeholder: "ENG-42" },
+    { key: "config.params.state_id", label: "State ID", type: "text", required: true, placeholder: "in-progress-uuid" },
   ],
 }
 
@@ -78,7 +79,7 @@ const LINEAR_ACTION_FIELDS: Record<string, ConfigField[]> = {
 
 const DO_ACTION_FIELDS: Record<string, ConfigField[]> = {
   create_droplet: [
-    { key: "config.params.name",   label: "Droplet name", type: "text",   placeholder: "sandbox-{{linear_fetch.identifier}}" },
+    { key: "config.params.name",   label: "Droplet name", type: "text",   required: true, placeholder: "sandbox-{{linear_fetch.identifier}}" },
     { key: "config.params.region", label: "Region",       type: "select", defaultValue: "nyc3", options: [
       { value: "nyc3", label: "New York 3" },
       { value: "sfo3", label: "San Francisco 3" },
@@ -87,13 +88,13 @@ const DO_ACTION_FIELDS: Record<string, ConfigField[]> = {
     ]},
   ],
   get_droplet: [
-    { key: "config.params.droplet_id", label: "Droplet ID", type: "text", placeholder: "{{create_droplet.droplet_id}}" },
+    { key: "config.params.droplet_id", label: "Droplet ID", type: "text", required: true, placeholder: "{{create_droplet.droplet_id}}" },
   ],
   destroy_droplet: [
-    { key: "config.params.droplet_id", label: "Droplet ID", type: "text", placeholder: "{{create_droplet.droplet_id}}" },
+    { key: "config.params.droplet_id", label: "Droplet ID", type: "text", required: true, placeholder: "{{create_droplet.droplet_id}}" },
   ],
   wait_for_droplet: [
-    { key: "config.params.droplet_id", label: "Droplet ID", type: "text", placeholder: "{{create_droplet.droplet_id}}" },
+    { key: "config.params.droplet_id", label: "Droplet ID", type: "text", required: true, placeholder: "{{create_droplet.droplet_id}}" },
   ],
 }
 
@@ -101,23 +102,23 @@ const DO_ACTION_FIELDS: Record<string, ConfigField[]> = {
 
 const VERCEL_ACTION_FIELDS: Record<string, ConfigField[]> = {
   get_deployment: [
-    { key: "config.params.deployment_id", label: "Deployment ID", type: "text", placeholder: "dpl_abc123" },
+    { key: "config.params.deployment_id", label: "Deployment ID", type: "text", required: true, placeholder: "dpl_abc123" },
   ],
   wait_for_deployment: [
-    { key: "config.params.deployment_id", label: "Deployment ID", type: "text", placeholder: "dpl_abc123" },
+    { key: "config.params.deployment_id", label: "Deployment ID", type: "text", required: true, placeholder: "dpl_abc123" },
   ],
   list_deployments: [
-    { key: "config.params.project_id", label: "Project ID", type: "text", placeholder: "prj_abc123" },
+    { key: "config.params.project_id", label: "Project ID", type: "text", required: true, placeholder: "prj_abc123" },
   ],
   get_latest_deployment: [
-    { key: "config.params.project_id", label: "Project ID", type: "text", placeholder: "prj_abc123" },
+    { key: "config.params.project_id", label: "Project ID", type: "text", required: true, placeholder: "prj_abc123" },
     { key: "config.params.branch",     label: "Branch",     type: "text", placeholder: "main" },
   ],
   redeploy: [
-    { key: "config.params.deployment_id", label: "Deployment ID", type: "text", placeholder: "dpl_abc123 or {{vercel_get.uid}}" },
+    { key: "config.params.deployment_id", label: "Deployment ID", type: "text", required: true, placeholder: "dpl_abc123 or {{vercel_get.uid}}" },
   ],
   create_deployment_from_git: [
-    { key: "config.params.project_id", label: "Project ID", type: "text", placeholder: "prj_abc123" },
+    { key: "config.params.project_id", label: "Project ID", type: "text", required: true, placeholder: "prj_abc123" },
     { key: "config.params.ref",        label: "Branch",     type: "text", placeholder: "main", defaultValue: "main" },
   ],
 }
@@ -126,21 +127,21 @@ const VERCEL_ACTION_FIELDS: Record<string, ConfigField[]> = {
 
 const RAILWAY_ACTION_FIELDS: Record<string, ConfigField[]> = {
   trigger_deployment: [
-    { key: "config.params.service_id",     label: "Service ID",     type: "text", placeholder: "service-uuid" },
-    { key: "config.params.environment_id", label: "Environment ID", type: "text", placeholder: "environment-uuid" },
+    { key: "config.params.service_id",     label: "Service ID",     type: "text", required: true, placeholder: "service-uuid" },
+    { key: "config.params.environment_id", label: "Environment ID", type: "text", required: true, placeholder: "environment-uuid" },
   ],
   list_services: [
-    { key: "config.params.project_id", label: "Project ID", type: "text", placeholder: "project-uuid" },
+    { key: "config.params.project_id", label: "Project ID", type: "text", required: true, placeholder: "project-uuid" },
   ],
   get_deployment: [
-    { key: "config.params.deployment_id", label: "Deployment ID", type: "text", placeholder: "deployment-uuid" },
+    { key: "config.params.deployment_id", label: "Deployment ID", type: "text", required: true, placeholder: "deployment-uuid" },
   ],
   get_service_deployments: [
-    { key: "config.params.service_id",     label: "Service ID",     type: "text", placeholder: "service-uuid" },
-    { key: "config.params.environment_id", label: "Environment ID", type: "text", placeholder: "environment-uuid" },
+    { key: "config.params.service_id",     label: "Service ID",     type: "text", required: true, placeholder: "service-uuid" },
+    { key: "config.params.environment_id", label: "Environment ID", type: "text", required: true, placeholder: "environment-uuid" },
   ],
   wait_for_deployment: [
-    { key: "config.params.deployment_id", label: "Deployment ID", type: "text", placeholder: "{{railway_deploy.id}}" },
+    { key: "config.params.deployment_id", label: "Deployment ID", type: "text", required: true, placeholder: "{{railway_deploy.id}}" },
   ],
 }
 
@@ -223,6 +224,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       key: "config.condition",
       label: "Condition",
       type: "text",
+      required: true,
       placeholder: "exit_code == 0",
       hint: "Expression evaluated against the previous block's output",
     },
@@ -232,12 +234,14 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       key: "config.message",
       label: "Approval message",
       type: "textarea",
+      required: true,
       placeholder: "PR ready for review: {{github_pr.pr_url}} — approve to merge.",
     },
     {
       key: "config.channel",
       label: "Slack channel",
       type: "text",
+      required: true,
       placeholder: "#eng-approvals",
     },
   ],
@@ -246,6 +250,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       key: "config.event_type",
       label: "Trigger",
       type: "select",
+      required: true,
       defaultValue: "manual",
       options: [
         { value: "manual",               label: "Manual" },
@@ -258,6 +263,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       key: "config.label",
       label: "Label",
       type: "text",
+      required: true,
       placeholder: "autopilot-ready",
       hint: "GitHub label that fires this trigger",
     },
@@ -272,6 +278,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       key: "config.cron",
       label: "Cron",
       type: "text",
+      required: true,
       placeholder: "0 9 * * 1-5",
       hint: "Standard cron expression (UTC)",
     },
@@ -281,6 +288,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       key: "integration",
       label: "Send via",
       type: "select",
+      required: true,
       defaultValue: "slack",
       options: [
         { value: "slack", label: "Slack" },
@@ -292,12 +300,14 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       key: "config.channel",
       label: "Slack channel",
       type: "text",
+      required: true,
       placeholder: "#general",
     },
     {
       key: "config.to",
       label: "Email address",
       type: "text",
+      required: true,
       placeholder: "you@example.com",
     },
   ],

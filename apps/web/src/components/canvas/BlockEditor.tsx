@@ -356,10 +356,11 @@ export default function BlockEditor({
             {/* Static fields for this block type */}
             {staticFields.map(field => (
               <div key={field.key}>
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center gap-1.5 mb-1">
                   <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">
                     {field.label}
                   </label>
+                  {field.required && <span className="text-red-500 text-[10px] font-bold leading-none">*</span>}
                   {field.hint && (
                     <span className="text-[10px] text-stone-400">{field.hint}</span>
                   )}
@@ -395,10 +396,11 @@ export default function BlockEditor({
                 <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">Parameters</p>
                 {actionFields.map(field => (
                   <div key={field.key}>
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-1.5 mb-1">
                       <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">
                         {field.label}
                       </label>
+                      {field.required && <span className="text-red-500 text-[10px] font-bold leading-none">*</span>}
                       {field.hint && (
                         <span className="text-[10px] text-stone-400">{field.hint}</span>
                       )}
