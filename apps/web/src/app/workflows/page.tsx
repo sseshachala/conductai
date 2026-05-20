@@ -31,10 +31,12 @@ function timeAgo(ts: string): string {
   return `${Math.floor(hrs / 24)}d ago`
 }
 
-function getActiveProject(): string | null {
+function getActiveProject(): { id: string; name: string } | null {
   if (typeof document === "undefined") return null
-  const match = document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)
-  return match ? match[1] : null
+  const idMatch = document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)
+  if (!idMatch) return null
+  const nameMatch = document.cookie.match(/(?:^|;\s*)delegator_project_name=([^;]+)/)
+  return { id: idMatch[1], name: nameMatch ? decodeURIComponent(nameMatch[1]) : "Project" }
 }
 
 export default function WorkflowsPage() {
@@ -58,7 +60,7 @@ function WorkflowsWithAuth() {
 function WorkflowsContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   const [workflows, setWorkflows] = useState<Workflow[]>([])
-  const [projectId, setProjectId] = useState<string | null>(null)
+  const [project, setProject] = useState<{ id: string; name: string } | null>(null)
   const [loading, setLoading] = useState(true)
 
   async function authHeaders(): Promise<Record<string, string>> {
@@ -71,9 +73,9 @@ function WorkflowsContent({ getToken }: { getToken: (() => Promise<string | null
   }
 
   useEffect(() => {
-    const pid = getActiveProject()
-    setProjectId(pid)
-    loadWorkflows(pid)
+    const p = getActiveProject()
+    setProject(p)
+    loadWorkflows(p?.id ?? null)
   }, [])
 
   async function loadWorkflows(pid: string | null) {
@@ -90,7 +92,7 @@ function WorkflowsContent({ getToken }: { getToken: (() => Promise<string | null
   async function renameAgent(id: string, name: string) {
     const h = await authHeaders()
     h["Content-Type"] = "application/json"
-    if (projectId) h["X-Workspace-ID"] = projectId
+    if (project?.id) h["X-Workspace-ID"] = project.id
     const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${id}`, {
       method: "PUT", headers: h, body: JSON.stringify({ name }),
     })
@@ -102,7 +104,7 @@ function WorkflowsContent({ getToken }: { getToken: (() => Promise<string | null
 
   async function deleteAgent(id: string) {
     const h = await authHeaders()
-    if (projectId) h["X-Workspace-ID"] = projectId
+    if (project?.id) h["X-Workspace-ID"] = project.id
     await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${id}`, { method: "DELETE", headers: h })
     setWorkflows(prev => prev.filter(w => w.id !== id))
   }
@@ -114,11 +116,13 @@ function WorkflowsContent({ getToken }: { getToken: (() => Promise<string | null
           <Link href="/projects" className="text-base font-bold text-stone-900 tracking-tight hover:text-stone-600 transition-colors">
             Delegator
           </Link>
-          {projectId && (
+          {project && (
             <>
               <span className="text-stone-300">/</span>
-              <Link href="/projects" className="text-sm text-stone-500 hover:text-stone-800 transition-colors">
-                Switch project
+              <span className="text-sm font-medium text-stone-700">{project.name}</span>
+              <span className="text-stone-300">·</span>
+              <Link href="/projects" className="text-sm text-stone-400 hover:text-stone-700 transition-colors">
+                Switch
               </Link>
             </>
           )}
