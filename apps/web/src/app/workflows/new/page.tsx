@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 
 const TEMPLATES = [
@@ -31,23 +32,64 @@ const TEMPLATES = [
   },
 ]
 
+function getWorkspaceId(): string | null {
+  return document.cookie
+    .split("; ")
+    .find(r => r.startsWith("delegator_project_id="))
+    ?.split("=")[1] ?? null
+}
+
 export default function NewWorkflowPage() {
+  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  if (clerkEnabled) return <NewWorkflowWithAuth />
+  return <NewWorkflowForm getToken={null} />
+}
+
+function NewWorkflowWithAuth() {
+  const { getToken } = useAuth()
+  return <NewWorkflowForm getToken={getToken} />
+}
+
+function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
   const [name, setName] = useState("")
   const [template, setTemplate] = useState("blank")
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
 
   async function handleCreate() {
     if (!name.trim()) return
     setLoading(true)
+    setError(null)
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" }
+      if (getToken) {
+        const token = await getToken()
+        if (token) headers["Authorization"] = `Bearer ${token}`
+      }
+      const workspaceId = getWorkspaceId()
+      if (workspaceId) headers["X-Workspace-Id"] = workspaceId
+
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ name: name.trim(), template }),
       })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        setError(err.detail ?? `Error ${res.status}`)
+        return
+      }
+
       const workflow = await res.json()
+      if (!workflow.id) {
+        setError("Unexpected response from server")
+        return
+      }
       router.push(`/workflows/${workflow.id}`)
+    } catch {
+      setError("Network error — please try again")
     } finally {
       setLoading(false)
     }
@@ -110,6 +152,10 @@ export default function NewWorkflowPage() {
             ))}
           </div>
         </div>
+
+        {error && (
+          <p className="mb-4 text-sm text-red-500 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>
+        )}
 
         {/* Create button */}
         <button

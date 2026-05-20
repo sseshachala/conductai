@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
+import { useAuth } from "@clerk/nextjs"
 import AuthButton from "@/components/AuthButton"
 import {
   ReactFlow,
@@ -92,9 +93,29 @@ function validateNodes(nodes: Node[]): ValidationError[] {
 
 interface CanvasEditorProps {
   workflowId: string
+  getToken?: (() => Promise<string | null>) | null
 }
 
-function CanvasEditorInner({ workflowId }: CanvasEditorProps) {
+function getWorkspaceId(): string | null {
+  if (typeof document === "undefined") return null
+  return document.cookie
+    .split("; ")
+    .find(r => r.startsWith("delegator_project_id="))
+    ?.split("=")[1] ?? null
+}
+
+async function authHeaders(getToken?: (() => Promise<string | null>) | null): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" }
+  if (getToken) {
+    const token = await getToken()
+    if (token) headers["Authorization"] = `Bearer ${token}`
+  }
+  const ws = getWorkspaceId()
+  if (ws) headers["X-Workspace-Id"] = ws
+  return headers
+}
+
+function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
@@ -114,7 +135,9 @@ function CanvasEditorInner({ workflowId }: CanvasEditorProps) {
   // (the YAML loader writes placeholder coords), run dagre so it doesn't open
   // as a stack of overlapping nodes.
   useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`)
+    if (!workflowId || workflowId === "undefined") return
+    authHeaders(getToken).then(headers =>
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, { headers })
       .then((r) => r.json())
       .then((data) => {
         setWorkflowName(data.name)
@@ -138,7 +161,8 @@ function CanvasEditorInner({ workflowId }: CanvasEditorProps) {
         setTimeout(() => { isFirstLoad.current = false }, 100)
       })
       .catch(() => { isFirstLoad.current = false })
-  }, [workflowId, setNodes, setEdges])
+    )
+  }, [workflowId, getToken, setNodes, setEdges])
 
   const handleYamlLoaded = useCallback(
     (next: { name?: string; nodes: Node[]; edges: Edge[] }) => {
@@ -154,11 +178,13 @@ function CanvasEditorInner({ workflowId }: CanvasEditorProps) {
   )
 
   const save = useCallback(async (currentNodes: Node[], currentEdges: Edge[], name: string) => {
+    if (!workflowId || workflowId === "undefined") return
     setSaveStatus("saving")
     try {
+      const headers = await authHeaders(getToken)
       await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ name, graph: { nodes: currentNodes, edges: currentEdges } }),
       })
       setSaveStatus("saved")
@@ -166,7 +192,7 @@ function CanvasEditorInner({ workflowId }: CanvasEditorProps) {
     } catch {
       setSaveStatus("idle")
     }
-  }, [workflowId])
+  }, [workflowId, getToken])
 
   // Autosave — debounced 1.5s after any node/edge change
   useEffect(() => {
@@ -228,11 +254,12 @@ function CanvasEditorInner({ workflowId }: CanvasEditorProps) {
     setValidationErrors([])
     setRunning(dryRun ? "dry" : "live")
     try {
+      const headers = await authHeaders(getToken)
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({ triggered_by: "manual", dry_run: dryRun }),
         }
       )
@@ -242,7 +269,7 @@ function CanvasEditorInner({ workflowId }: CanvasEditorProps) {
     } catch {
       setRunning("idle")
     }
-  }, [workflowId, router, nodes])
+  }, [workflowId, getToken, router, nodes])
 
   const handleBlockChange = useCallback(
     (blockId: string, changes: Record<string, unknown>) => {
@@ -420,10 +447,21 @@ function CanvasEditorInner({ workflowId }: CanvasEditorProps) {
   )
 }
 
-export default function CanvasEditor({ workflowId }: CanvasEditorProps) {
+function CanvasEditorWithClerk({ workflowId }: { workflowId: string }) {
+  const { getToken } = useAuth()
   return (
     <ReactFlowProvider>
-      <CanvasEditorInner workflowId={workflowId} />
+      <CanvasEditorInner workflowId={workflowId} getToken={getToken} />
+    </ReactFlowProvider>
+  )
+}
+
+export default function CanvasEditor({ workflowId }: { workflowId: string }) {
+  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  if (clerkEnabled) return <CanvasEditorWithClerk workflowId={workflowId} />
+  return (
+    <ReactFlowProvider>
+      <CanvasEditorInner workflowId={workflowId} getToken={null} />
     </ReactFlowProvider>
   )
 }
