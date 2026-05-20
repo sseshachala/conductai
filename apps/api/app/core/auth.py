@@ -109,6 +109,7 @@ def get_user_id(
 def get_workspace_id(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
     x_workspace_id: Annotated[str | None, Header()] = None,
+    x_api_key: Annotated[str | None, Header()] = None,
 ) -> str:
     """
     Returns the active workspace/project ID for the request.
@@ -122,7 +123,10 @@ def get_workspace_id(
     — validated at the router level for project-scoped endpoints.
     """
     if not _clerk_enabled():
-        # Dev mode: accept any X-Workspace-ID or fall back to dev workspace
+        return x_workspace_id or DEV_WORKSPACE_ID
+
+    # CLI / server-to-server API key bypasses Clerk
+    if x_api_key and settings.cli_api_key and x_api_key == settings.cli_api_key:
         return x_workspace_id or DEV_WORKSPACE_ID
 
     if not credentials:

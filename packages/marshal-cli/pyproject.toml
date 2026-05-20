@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "marshal-cli"
 version = "0.1.0"
 description = "Marshal workflow CLI"
-requires-python = ">=3.11"
+requires-python = ">=3.9"
 dependencies = ["pyyaml>=6.0"]
 
 [project.scripts]
