@@ -35,6 +35,14 @@ def get_workspace_id_sse(
     if not _clerk_enabled():
         return x_ws or ws_qp or DEV_WORKSPACE_ID
 
+    # CLI API key bypasses Clerk
+    api_key_qp = request.query_params.get("api_key")
+    api_key_hdr = request.headers.get("x-api-key")
+    from app.core.config import settings as _settings
+    cli_key = _settings.cli_api_key
+    if cli_key and (api_key_qp == cli_key or api_key_hdr == cli_key):
+        return x_ws or ws_qp or DEV_WORKSPACE_ID
+
     # Get token from header OR query param
     raw_token = None
     if auth_header.startswith("Bearer "):

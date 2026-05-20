@@ -18,9 +18,11 @@ CYAN  = "\033[36m"
 DEV_WORKSPACE = "00000000-0000-0000-0000-000000000001"
 
 
-def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, token: str | None) -> bool:
+def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, token=None, api_key=None) -> bool:
     qs = f"?workspace_id={workspace_id}"
-    if token:
+    if api_key:
+        qs += f"&api_key={api_key}"
+    elif token:
         qs += f"&token={token}"
     url = f"{server}/workflows/{workflow_id}/runs/{run_id}/stream{qs}"
 
@@ -85,12 +87,13 @@ def cmd_run(args):
     server       = args.server.rstrip("/")
     workspace_id = cfg.get("workspace_id") or DEV_WORKSPACE
     token        = args.token
+    api_key      = args.api_key
     on_block     = cfg.get("on") or {}
     trigger_type = next(iter(on_block), None)
     trigger_cfg  = on_block.get(trigger_type, {})
 
-    json_h = api.headers(workspace_id, token, "application/json")
-    yaml_h = api.headers(workspace_id, token, "application/x-yaml")
+    json_h = api.headers(workspace_id, token, "application/json", api_key)
+    yaml_h = api.headers(workspace_id, token, "application/x-yaml", api_key)
 
     print(f"\n{BOLD}▶ marshal run — {name}{RESET}")
     print(f"  server: {server}\n")
@@ -123,7 +126,7 @@ def cmd_run(args):
                 "triggered_by": f"cli:issue#{issue['number']}",
                 "initial_state": state,
             })
-            ok = _stream_run(server, workflow_id, run["id"], workspace_id, token)
+            ok = _stream_run(server, workflow_id, run["id"], workspace_id, token, api_key)
             passed += ok
             failed += not ok
             print()
@@ -140,8 +143,9 @@ def cmd_run(args):
 
 def main():
     parser = argparse.ArgumentParser(prog="marshal")
-    parser.add_argument("--server", required=True, help="Marshal API URL")
-    parser.add_argument("--token",  help="Bearer token for Clerk auth")
+    parser.add_argument("--server",  required=True, help="Marshal API URL")
+    parser.add_argument("--api-key", help="CLI API key (set CLI_API_KEY on the server)")
+    parser.add_argument("--token",   help="Bearer token for Clerk auth")
 
     sub   = parser.add_subparsers(dest="command")
     run_p = sub.add_parser("run", help="Run a workflow from a YAML file")
