@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+"""
+Marshal CLI — run a workflow via the Marshal API.
+
+Usage:
+  marshal run <workflow.yaml>
+  marshal run autopilot.yaml --api-url http://localhost:8000
+
+The YAML must contain:
+  workflow_id: <uuid>
+  api_url: <base url>        # optional — overridden by --api-url flag
+  workspace_id: <uuid>       # optional — defaults to dev workspace
+  state:                     # initial state injected into the run
+    github_issue:
+      repo_owner: ...
+"""
+import argparse
+import json
+import sys
+import time
+import urllib.request
+import urllib.error
+from pathlib import Path
+
+try:
+    import yaml
+except ImportError:
+    print("ERROR: pyyaml not installed. Run: pip install pyyaml")
+    sys.exit(1)
+
+DEV_WORKSPACE = "00000000-0000-0000-0000-000000000001"
+DEFAULT_API    = "http://localhost:8000"
+
+BLOCK_COLORS = {
+    "block_started":   "\033[34m",   # blue
+    "block_completed": "\033[32m",   # green
+    "block_failed":    "\033[31m",   # red
+    "run_failed":      "\033[31m",
+    "run_completed":   "\033[32m",
+}
+RESET = "\033[0m"
+BOLD  = "\033[1m"
+
+
+def _color(kind: str, text: str) -> str:
+    return f"{BLOCK_COLORS.get(kind, '')}{text}{RESET}"
+
+
+def _request(method: str, url: str, body: dict | None, headers: dict) -> dict:
+    data = json.dumps(body).encode() if body is not None else None
+    req  = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode()
+        try:
+            detail = json.loads(detail).get("detail", detail)
+        except Exception:
+            pass
+        print(f"\033[31mHTTP {e.code}: {detail}{RESET}")
+        sys.exit(1)
+
+
+def _stream(url: str, headers: dict):
+    """Minimal SSE reader — yields (event, data) tuples."""
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        resp = urllib.request.urlopen(req)
+    except urllib.error.HTTPError as e:
+        print(f"\033[31mStream error {e.code}: {e.read().decode()}{RESET}")
+        sys.exit(1)
+
+    event = "message"
+    buf   = b""
+    while True:
+        chunk = resp.read(1)
+        if not chunk:
+            break
+        buf += chunk
+        if buf.endswith(b"\n\n"):
+            block = buf.decode().strip()
+            buf   = b""
+            for line in block.splitlines():
+                if line.startswith("event:"):
+                    event = line[6:].strip()
+                elif line.startswith("data:"):
+                    data_str = line[5:].strip()
+                    try:
+                        yield event, json.loads(data_str)
+                    except json.JSONDecodeError:
+                        yield event, {"raw": data_str}
+            event = "message"
+
+
+def cmd_run(args):
+    path = Path(args.yaml)
+    if not path.exists():
+        print(f"ERROR: file not found: {path}")
+        sys.exit(1)
+
+    with open(path) as f:
+        cfg = yaml.safe_load(f)
+
+    workflow_id  = cfg.get("workflow_id")
+    api_url      = (args.api_url or cfg.get("api_url") or DEFAULT_API).rstrip("/")
+    workspace_id = cfg.get("workspace_id") or DEV_WORKSPACE
+    state        = cfg.get("state") or {}
+
+    if not workflow_id:
+        print("ERROR: workflow_id missing from YAML")
+        sys.exit(1)
+
+    headers = {
+        "Content-Type":   "application/json",
+        "X-Workspace-Id": workspace_id,
+    }
+    if args.token:
+        headers["Authorization"] = f"Bearer {args.token}"
+
+    print(f"{BOLD}▶ Starting run — workflow {workflow_id}{RESET}")
+    print(f"  API: {api_url}")
+    if state:
+        print(f"  Initial state keys: {list(state.keys())}")
+    print()
+
+    run = _request(
+        "POST",
+        f"{api_url}/workflows/{workflow_id}/runs",
+        {"triggered_by": "cli", "initial_state": state},
+        headers,
+    )
+    run_id = run["id"]
+    print(f"  Run ID: {run_id}\n")
+
+    # Stream events
+    stream_url = f"{api_url}/workflows/{workflow_id}/runs/{run_id}/stream"
+    if args.token:
+        stream_url += f"?token={args.token}&workspace_id={workspace_id}"
+    else:
+        stream_url += f"?workspace_id={workspace_id}"
+
+    terminal_kinds = {"run_completed", "run_failed"}
+
+    for event, data in _stream(stream_url, {}):
+        kind     = data.get("kind", event)
+        block_id = data.get("block_id") or ""
+        payload  = data.get("payload", data)
+
+        prefix = f"[{block_id}] " if block_id else ""
+
+        if kind == "block_started":
+            label = payload.get("label", payload.get("type", ""))
+            print(_color(kind, f"  ▶ {prefix}{label}"))
+
+        elif kind == "block_completed":
+            summary = payload.get("summary") or json.dumps(payload, default=str)[:120]
+            print(_color(kind, f"  ✓ {prefix}{summary}"))
+
+        elif kind == "block_failed":
+            err = payload.get("error", payload)
+            print(_color(kind, f"  ✗ {prefix}{err}"))
+
+        elif kind == "run_completed":
+            print(f"\n{BOLD}{_color(kind, '✓ Run completed')}{RESET}")
+
+        elif kind == "run_failed":
+            err = payload.get("error", "")
+            print(f"\n{BOLD}{_color(kind, f'✗ Run failed: {err}')}{RESET}")
+
+        else:
+            print(f"  {kind}: {json.dumps(payload, default=str)[:160]}")
+
+        if kind in terminal_kinds:
+            break
+
+    print()
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="marshal", description="Marshal workflow CLI")
+    sub    = parser.add_subparsers(dest="command")
+
+    run_p = sub.add_parser("run", help="Run a workflow from a YAML file")
+    run_p.add_argument("yaml",      help="Path to workflow YAML")
+    run_p.add_argument("--api-url", help="API base URL (overrides YAML)")
+    run_p.add_argument("--token",   help="Bearer token for auth")
+
+    args = parser.parse_args()
+
+    if args.command == "run":
+        cmd_run(args)
+    else:
+        parser.print_help()
+
+
+if __name__ == "__main__":
+    main()

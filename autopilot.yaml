@@ -1,0 +1,17 @@
+workflow_id: 00000000-0000-0000-0000-000000000003
+api_url: https://delegator-api.onrender.com
+
+state:
+  github_issue:
+    repo_owner: sseshachala
+    repo_name: delegator
+    repo_full_name: sseshachala/delegator
+    issue_number: 32
+    title: "Test issue"
+    body: "Fix this bug"
+    url: "https://github.com/sseshachala/delegator/issues/32"
+    author: sseshachala
+    labels: ["autopilot ready", "ai_ready"]
+    label_added: "autopilot ready"
+    default_branch: main
+    clone_url: "https://github.com/sseshachala/delegator.git"
