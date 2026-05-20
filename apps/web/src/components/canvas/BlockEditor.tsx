@@ -77,6 +77,38 @@ function WebhookRegisterButton({ owner, repo, getToken }: {
   )
 }
 
+// ── Ref chip renderer ─────────────────────────────────────────────────────────
+
+function SystemPromptWithChips({ text }: { text: string }) {
+  if (!text) return <span className="text-stone-400 italic">No system prompt defined.</span>
+
+  const parts = text.split(/({{[^}]+}})/)
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (part.startsWith("{{") && part.endsWith("}}")) {
+          const ref = part.slice(2, -2)
+          const isLiteral = ref.startsWith("<") || ref.includes(" ")
+          return (
+            <span
+              key={i}
+              className={cn(
+                "inline-flex items-center rounded px-1 py-0.5 text-[11px] font-mono font-medium mx-0.5",
+                isLiteral
+                  ? "bg-red-100 text-red-600 border border-red-200"
+                  : "bg-violet-100 text-violet-700 border border-violet-200"
+              )}
+            >
+              {part}
+            </span>
+          )
+        }
+        return <span key={i}>{part}</span>
+      })}
+    </>
+  )
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 // Patterns that strongly suggest a hardcoded secret rather than a template ref.
@@ -422,8 +454,9 @@ export default function BlockEditor({
 
         {/* ── Plain English tab ── */}
         {tab === "plain" && (
-          <div className="flex gap-4">
-            <div className="w-40 shrink-0">
+          <div className="space-y-4">
+            {/* Name field — always editable */}
+            <div>
               <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">Name</label>
               <input
                 value={label}
@@ -431,18 +464,62 @@ export default function BlockEditor({
                 className="mt-1 w-full rounded-lg border border-stone-200 px-2.5 py-1.5 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-300"
               />
             </div>
-            <div className="flex-1">
-              <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">
-                What should this block do?
-              </label>
-              <textarea
-                value={description}
-                onChange={e => onChange(blockId, { ...blockData, description: e.target.value })}
-                rows={3}
-                placeholder="Describe in plain English…"
-                className="mt-1 w-full rounded-lg border border-stone-200 px-2.5 py-1.5 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
-              />
-            </div>
+
+            {blockType === "brain" ? (
+              <>
+                {/* System prompt — readonly, chips rendered */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">
+                      System prompt
+                    </label>
+                    <span className="text-[10px] font-medium text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded">
+                      read-only
+                    </span>
+                  </div>
+                  <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 text-xs text-stone-600 leading-relaxed whitespace-pre-wrap min-h-[80px]">
+                    <SystemPromptWithChips text={description} />
+                  </div>
+                  <p className="text-[10px] text-stone-400 mt-1">
+                    <span className="inline-block w-2 h-2 rounded-sm bg-violet-200 border border-violet-300 mr-1 align-middle" />
+                    violet = template ref &nbsp;·&nbsp;
+                    <span className="inline-block w-2 h-2 rounded-sm bg-red-100 border border-red-200 mr-1 align-middle" />
+                    red = literal placeholder (check your YAML)
+                  </p>
+                </div>
+
+                {/* Custom instructions — user-editable */}
+                <div>
+                  <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">
+                    Your instructions
+                  </label>
+                  <p className="text-[10px] text-stone-400 mt-0.5 mb-1">
+                    Added to the system prompt at runtime. Use this to add constraints, focus areas, or context.
+                  </p>
+                  <textarea
+                    value={(blockData.custom_instructions as string) || ""}
+                    onChange={e => onChange(blockId, { ...blockData, custom_instructions: e.target.value })}
+                    rows={4}
+                    placeholder="e.g. Focus only on TypeScript files. Skip test files. Keep changes minimal."
+                    className="w-full rounded-lg border border-stone-200 px-2.5 py-1.5 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+                  />
+                </div>
+              </>
+            ) : (
+              /* Non-brain blocks — keep simple free-text description */
+              <div>
+                <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">
+                  What should this block do?
+                </label>
+                <textarea
+                  value={description}
+                  onChange={e => onChange(blockId, { ...blockData, description: e.target.value })}
+                  rows={3}
+                  placeholder="Describe in plain English…"
+                  className="mt-1 w-full rounded-lg border border-stone-200 px-2.5 py-1.5 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+                />
+              </div>
+            )}
           </div>
         )}
 
