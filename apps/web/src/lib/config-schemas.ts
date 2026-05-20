@@ -14,6 +14,11 @@ export interface ConfigField {
 // ── GitHub ────────────────────────────────────────────────────────────────────
 
 const GITHUB_ACTION_FIELDS: Record<string, ConfigField[]> = {
+  fetch_issue: [
+    { key: "config.params.owner",        label: "Owner",        type: "text", required: true, placeholder: "my-org" },
+    { key: "config.params.repo",         label: "Repo",         type: "text", required: true, placeholder: "my-repo" },
+    { key: "config.params.issue_number", label: "Issue number", type: "text", required: true, placeholder: "{{a1.github_issue.issue_number}}" },
+  ],
   create_repo: [
     { key: "config.params.name", label: "Repo name", type: "text", required: true, placeholder: "my-repo" },
   ],
@@ -149,8 +154,9 @@ const RAILWAY_ACTION_FIELDS: Record<string, ConfigField[]> = {
 
 export const INTEGRATION_ACTIONS: Record<string, { value: string; label: string }[]> = {
   github: [
-    { value: "create_repo",        label: "Create repo" },
+    { value: "fetch_issue",        label: "Fetch issue" },
     { value: "get_repo",           label: "Get repo" },
+    { value: "create_repo",        label: "Create repo" },
     { value: "create_branch",      label: "Create branch" },
     { value: "open_pull_request",  label: "Open pull request" },
     { value: "list_pull_requests", label: "List pull requests" },
