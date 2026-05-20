@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useAuth } from "@clerk/nextjs"
 
 interface Credential {
   handle: string
@@ -78,12 +79,24 @@ const SERVICES: ServiceDef[] = [
   },
 ]
 
-interface Props {
-  initialCredentials: Credential[]
+function getWorkspaceId(): string | null {
+  if (typeof document === "undefined") return null
+  return document.cookie.split("; ").find(r => r.startsWith("delegator_project_id="))?.split("=")[1] ?? null
 }
 
-export default function CredentialsManager({ initialCredentials }: Props) {
-  const [credentials, setCredentials] = useState<Credential[]>(initialCredentials)
+export default function CredentialsManager() {
+  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  if (clerkEnabled) return <CredentialsManagerWithAuth />
+  return <CredentialsManagerInner getToken={null} />
+}
+
+function CredentialsManagerWithAuth() {
+  const { getToken } = useAuth()
+  return <CredentialsManagerInner getToken={getToken} />
+}
+
+function CredentialsManagerInner({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
+  const [credentials, setCredentials] = useState<Credential[]>([])
   const [openService, setOpenService] = useState<string | null>(null)
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
@@ -91,6 +104,28 @@ export default function CredentialsManager({ initialCredentials }: Props) {
   const [error, setError] = useState("")
 
   const connectedServices = new Set(credentials.map(c => c.service))
+
+  async function buildHeaders(contentType = false): Promise<Record<string, string>> {
+    const headers: Record<string, string> = {}
+    if (contentType) headers["Content-Type"] = "application/json"
+    if (getToken) {
+      const token = await getToken()
+      if (token) headers["Authorization"] = `Bearer ${token}`
+    }
+    const ws = getWorkspaceId()
+    if (ws) headers["X-Workspace-Id"] = ws
+    return headers
+  }
+
+  async function loadCredentials() {
+    try {
+      const headers = await buildHeaders()
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials`, { headers })
+      if (res.ok) setCredentials(await res.json())
+    } catch { /* silent */ }
+  }
+
+  useEffect(() => { loadCredentials() }, [])
 
   function toggleService(svc: string) {
     if (openService === svc) {
@@ -117,13 +152,15 @@ export default function CredentialsManager({ initialCredentials }: Props) {
     setSaving(true)
     setError("")
     try {
+      const postHeaders = await buildHeaders(true)
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: postHeaders,
         body: JSON.stringify({ service: svc.value, handle: svc.value, credentials: credObj }),
       })
       if (!res.ok) throw new Error("Save failed")
-      const list = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials`).then(r => r.json())
+      const listHeaders = await buildHeaders()
+      const list = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials`, { headers: listHeaders }).then(r => r.json())
       setCredentials(list)
       setOpenService(null)
       setFieldValues({})
@@ -137,7 +174,8 @@ export default function CredentialsManager({ initialCredentials }: Props) {
   async function handleRemove(handle: string) {
     setDeleting(handle)
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/${handle}`, { method: "DELETE" })
+      const headers = await buildHeaders()
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/${handle}`, { method: "DELETE", headers })
       setCredentials(prev => prev.filter(c => c.handle !== handle))
     } finally {
       setDeleting(null)

@@ -28,48 +28,56 @@ _bearer = HTTPBearer(auto_error=False)
 _jwks_cache: dict | None = None
 
 
-def _get_jwks() -> dict:
-    global _jwks_cache
-    if _jwks_cache:
-        return _jwks_cache
+def _fetch_jwks() -> dict:
     clerk_domain = settings.clerk_frontend_api or ""
     if not clerk_domain:
         return {}
     try:
         r = httpx.get(f"https://{clerk_domain}/.well-known/jwks.json", timeout=10)
         r.raise_for_status()
-        _jwks_cache = r.json()
-        return _jwks_cache
+        return r.json()
     except Exception as e:
         log.warning("Could not fetch Clerk JWKS: %s", e)
         return {}
 
 
+def _get_jwks(force_refresh: bool = False) -> dict:
+    global _jwks_cache
+    if _jwks_cache and not force_refresh:
+        return _jwks_cache
+    _jwks_cache = _fetch_jwks()
+    return _jwks_cache
+
+
 def _verify_clerk_token(token: str) -> dict | None:
     try:
         import jwt as pyjwt
-
-        jwks = _get_jwks()
-        if not jwks:
-            return None
+        from jwt.algorithms import RSAAlgorithm
 
         header = pyjwt.get_unverified_header(token)
         key_id = header.get("kid")
-        key = next((k for k in jwks.get("keys", []) if k.get("kid") == key_id), None)
+
+        # Try cached JWKS first, refresh once if kid not found (handles key rotation)
+        for force in (False, True):
+            jwks = _get_jwks(force_refresh=force)
+            key = next((k for k in jwks.get("keys", []) if k.get("kid") == key_id), None)
+            if key:
+                break
         if not key:
+            log.warning("Clerk JWKS has no key matching kid=%s", key_id)
             return None
 
-        from jwt.algorithms import RSAAlgorithm
         public_key = RSAAlgorithm.from_jwk(key)
         claims = pyjwt.decode(
             token,
             public_key,
             algorithms=["RS256"],
             options={"verify_aud": False},
+            leeway=30,  # tolerate up to 30s clock skew
         )
         return claims
     except Exception as e:
-        log.debug("Clerk token verification failed: %s", e)
+        log.warning("Clerk token verification failed: %s", e)
         return None
 
 
