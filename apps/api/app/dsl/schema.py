@@ -213,6 +213,8 @@ class CleanupBlock(Block):
 # Workflow — the root document.
 # ---------------------------------------------------------------------------
 class Workflow(BaseModel):
+    id: str | None = None           # workflow UUID — included when exported from canvas
+    workspace_id: str | None = None  # workspace UUID — included when exported from canvas
     name: str
     version: int = 1
     description: str | None = None

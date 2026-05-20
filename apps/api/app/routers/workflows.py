@@ -432,6 +432,8 @@ def validate_workflow_yaml(body: YamlValidateRequest):
 
 class GraphToYamlRequest(BaseModel):
     """Canvas-shaped graph plus the workflow's metadata."""
+    id: str | None = None
+    workspace_id: str | None = None
     name: str
     description: str | None = None
     graph: dict  # { nodes: [...], edges: [...] }
@@ -448,6 +450,8 @@ def workflow_yaml_from_graph(body: GraphToYamlRequest):
         dsl = graph_to_workflow(body.graph, name=body.name, description=body.description)
     except WorkflowValidationError as e:
         raise HTTPException(status_code=400, detail=f"Invalid graph: {e}")
+    dsl.id = body.id
+    dsl.workspace_id = body.workspace_id
     return {"yaml": workflow_to_yaml(dsl)}
 
 
