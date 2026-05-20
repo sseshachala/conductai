@@ -143,10 +143,18 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
         setWorkflowName(data.name)
         const graph = data.current_version?.graph
         if (graph?.nodes && graph?.edges) {
-          const needsLayout = graph.nodes.every(
+          // Run auto-layout when:
+          // (a) all nodes are at (0,0) — no positions assigned yet
+          // (b) all nodes share the same y — backend placeholder grid (yaml_to_graph
+          //     assigns sequential x columns but y=80 for every node)
+          // In both cases the stored positions are meaningless and dagre produces
+          // a much cleaner result. User-repositioned graphs will have varied y values.
+          const allAtOrigin = graph.nodes.every(
             (n: Node) => !n.position || (n.position.x === 0 && n.position.y === 0),
           )
-          if (needsLayout) {
+          const allSameY = graph.nodes.length > 1 &&
+            graph.nodes.every((n: Node) => n.position?.y === graph.nodes[0].position?.y)
+          if (allAtOrigin || allSameY) {
             const laid = autoLayout(graph.nodes, graph.edges)
             setNodes(laid.nodes)
             setEdges(laid.edges)
