@@ -396,7 +396,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
               >
                 {sidebarOpen ? "›" : "‹"}
               </button>
-              {sidebarOpen && <Sidebar />}
+              {sidebarOpen && <Sidebar getToken={getToken} />}
             </div>
           </>
         ) : (
