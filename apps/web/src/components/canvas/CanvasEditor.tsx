@@ -342,7 +342,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
             href={`/workflows/${workflowId}/runs`}
             className="text-xs text-stone-500 hover:text-stone-800 transition-colors px-2 py-1 rounded hover:bg-stone-100"
           >
-            History
+            Activity
           </a>
           <button
             onClick={() => startRun(true)}
