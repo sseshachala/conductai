@@ -376,7 +376,20 @@ def _execute_brain(
         return _dispatch_tool(tool_name, tool_input, remote_host=remote_host)
 
     context = json.dumps({k: v for k, v in state.items() if not k.startswith("__")}, default=str)[:4000]
-    user_message = f"Workflow context so far:\n{context}\n\nExecute your task."
+
+    # Append available integration tokens so Brain blocks can use them directly
+    # (e.g. git push with GitHub token, Slack API calls). Tokens are runtime-only
+    # and never written to run_events.
+    cred_lines: list[str] = []
+    for handle, creds in (credentials or {}).items():
+        if isinstance(creds, dict):
+            for field, val in creds.items():
+                if val and isinstance(val, str):
+                    cred_lines.append(f"  {handle}.{field}: {val}")
+    cred_section = ("\n\nAvailable credentials (use these for API calls, git push, etc.):\n"
+                    + "\n".join(cred_lines)) if cred_lines else ""
+
+    user_message = f"Workflow context so far:\n{context}{cred_section}\n\nExecute your task."
 
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
