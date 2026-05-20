@@ -192,7 +192,7 @@ with engine.connect() as conn:
     if not existing:
         conn.execute(text("""
             INSERT INTO workflows (id, workspace_id, name, default_mode)
-            VALUES (:wf_id, :ws_id, 'Autopilot — GitHub Issues', 'dag')
+            VALUES (:wf_id, :ws_id, 'Autopilot - GitHub Issues', 'dag')
         """), {"wf_id": WORKFLOW_ID, "ws_id": WORKSPACE_ID})
 
     # Always insert a fresh version so re-running the seed picks up graph fixes
@@ -208,5 +208,5 @@ with engine.connect() as conn:
 
     conn.commit()
     action = "Updated" if existing else "Seeded"
-    print(f"{action} 'Autopilot — GitHub Issues' — {len(nodes)} blocks, {len(edges)} edges.")
+    print(f"{action} 'Autopilot - GitHub Issues' — {len(nodes)} blocks, {len(edges)} edges.")
     print(f"Workflow ID: {WORKFLOW_ID}")
