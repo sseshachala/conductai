@@ -76,7 +76,7 @@ export default function RunsPage() {
       </header>
 
       <main className="mx-auto max-w-3xl px-6 py-10">
-        <h2 className="text-xl font-semibold text-stone-900 mb-6">Run history</h2>
+        <h2 className="text-xl font-semibold text-stone-900 mb-6">Run activity</h2>
 
         {loading ? (
           <p className="text-stone-400 text-sm">Loading…</p>
