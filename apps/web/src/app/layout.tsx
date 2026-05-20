@@ -3,8 +3,9 @@ import "./globals.css"
 import { ClerkProvider } from "@clerk/nextjs"
 
 export const metadata: Metadata = {
-  title: "Delegator",
-  description: "AI agent orchestration for engineering teams",
+  title: "Delegator — AI engineer that opens draft PRs you approve",
+  description:
+    "Open-source AI engineer for small teams. Label a GitHub issue, get a tested draft PR — approved in Slack before anything merges.",
 }
 
 const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY

@@ -61,13 +61,14 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         </div>
 
         <h1 className="text-5xl sm:text-6xl font-bold text-stone-900 leading-[1.1] tracking-tight max-w-3xl">
-          Your engineering team,<br />
-          <span className="text-indigo-600">with an AI co-pilot</span>
+          Label a GitHub issue.<br />
+          <span className="text-indigo-600">Get a tested draft PR.</span>
         </h1>
 
         <p className="mt-6 text-xl text-stone-500 max-w-2xl leading-relaxed">
-          Delegator picks up tickets, writes the code, runs tests, and opens pull requests —
-          while your team stays in control of every merge.
+          The open-source AI engineer that opens draft PRs and asks before
+          anything merges. Built for engineering teams of 10–80 who want
+          speed without surrendering control.
         </p>
 
         <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
@@ -206,56 +207,66 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
 const USE_CASES = [
   {
     icon: "🎫",
-    title: "Ticket → Pull Request",
-    body: "Label a GitHub issue 'autopilot ready'. Delegator reads the ticket, clones the repo, writes the fix, runs tests, and opens a PR — while you sleep.",
+    title: "Ticket → Draft PR",
+    body: "Label a GitHub or Linear issue `ai-ready`. Delegator clones the repo, detects the stack, writes the fix, runs your tests, and opens a draft PR with a Slack approval gate.",
   },
   {
-    icon: "🚀",
-    title: "Story → Deployed feature",
-    body: "Drop a Linear story into Delegator. It breaks it into subtasks, implements each one, runs your CI, and notifies you on Slack when it's ready to review.",
+    icon: "📦",
+    title: "Dependency CVE → Patch",
+    body: "Snyk or Dependabot flags a vuln. Delegator reads the dependency, proposes the upgrade or patch, runs tests, opens a PR with full context — you approve in one click.",
   },
   {
-    icon: "🔥",
-    title: "Incident → Root cause",
-    body: "Page fires at 2am. Delegator reads logs, identifies the regression, opens a hotfix PR with the patch, and pings the on-call engineer with a full trace.",
+    icon: "📝",
+    title: "Merged PRs → Release notes",
+    body: "Tag pushed. Delegator reads every merged PR since the last tag, drafts release notes that read like a human wrote them, posts to Slack or commits a CHANGELOG.",
   },
 ]
 
 const HOW_IT_WORKS = [
   {
     title: "Connect your tools",
-    body: "Link GitHub, Linear, and Slack in minutes. No migration, no new workflow — Delegator fits around what you already use.",
+    body: "Link GitHub, Slack, and Linear in five minutes. No migration, no new workflow — Delegator fits around what you already use.",
   },
   {
     title: "Delegator picks up the work",
-    body: "Label an issue 'autopilot ready' or trigger a workflow. Delegator clones the repo, implements the fix, runs tests, and opens a PR.",
+    body: "Label an issue `ai-ready` or fire a webhook. Delegator spins up an ephemeral sandbox, clones your repo, implements the fix, and runs your tests.",
   },
   {
-    title: "You review and approve",
-    body: "Nothing merges without your sign-off. You get a Slack notification with the PR link and a full audit trail of every action taken.",
+    title: "You approve in Slack",
+    body: "One-click Approve or Reject in a Slack DM. Nothing merges without a human gate. Every step is event-sourced — debug any run in seconds.",
   },
 ]
 
 const WHY_DELEGATOR = [
   {
-    icon: "⚡",
-    title: "Pre-built SDLC workflows",
-    body: "Not a blank canvas. Delegator ships with battle-tested workflows for common engineering tasks — Autopilot, Story→PR, Deploy — ready to connect to your stack.",
-  },
-  {
     icon: "🔒",
     title: "Human approval on every merge",
-    body: "Approval gates are first-class, not an afterthought. Every workflow has a checkpoint where a human reviews before anything ships to production.",
+    body: "Approval gates are first-class blocks, not an afterthought. Every workflow has a Slack checkpoint before anything ships. The thing your CISO will actually sign off on.",
+  },
+  {
+    icon: "📂",
+    title: "Open source, config-as-code",
+    body: "MIT licensed. The workflow lives as `<project>-delegator.yml` in your repo — diffable, reviewable in PRs, version-controlled like any other config. No black box.",
+  },
+  {
+    icon: "🏠",
+    title: "Runs on your infrastructure",
+    body: "Agents execute on ephemeral DigitalOcean droplets in your account — your code, your credentials, your perimeter. We never see what the agent reads or writes.",
   },
   {
     icon: "🔍",
     title: "Full audit trail, zero surprises",
-    body: "Every action is logged — what the AI read, what it wrote, what it ran, how long it took, what it cost. Debug any run in seconds.",
+    body: "Every action is event-sourced — what the AI read, what it wrote, what it ran, how long it took, what it cost. Debug any run by scrubbing through the trace.",
+  },
+  {
+    icon: "⚡",
+    title: "Pre-built playbooks",
+    body: "Not a blank canvas. Ships with ai-ready autopilot, dependency CVE patcher, release-notes drafter, issue triage — install with one click, edit on the canvas if you want.",
   },
   {
     icon: "🧩",
-    title: "Fits your existing tools",
-    body: "No new issue tracker. No new chat tool. No new CI system. Delegator plugs into GitHub, Linear, Slack, and Vercel — the tools your team already lives in.",
+    title: "Fits your existing stack",
+    body: "GitHub, Slack, Linear, Vercel, DigitalOcean, Email. No new issue tracker. No new chat tool. Delegator plugs into the tools your team already lives in.",
   },
 ]
 

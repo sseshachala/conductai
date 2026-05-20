@@ -1,6 +1,23 @@
 # Delegator
 
-A visual AI agent orchestration platform for engineering teams. Build, run, and audit AI agents that do real engineering work — write code, ship features, manage infrastructure, triage incidents — with approval gates and full execution traces.
+> **Label a GitHub issue `ai-ready`. Delegator clones your repo, writes the fix,
+> runs tests on an ephemeral sandbox, and opens a draft PR — then DMs you in
+> Slack for one-click approval before anything merges.**
+
+Open-source AI engineer for small teams. Config lives as YAML in your repo
+(`<project>-delegator.yml`), runs on your infrastructure, full audit trail,
+MIT licensed. Built for teams of 10–80 engineers who want to ship faster
+without giving an autonomous agent the keys to production.
+
+**Why this and not Devin / Cursor agents?** Those are autonomous black boxes
+optimized for individual developers. Delegator is built for engineering
+*teams*: every change goes through a human approval gate, every action is
+event-sourced and audit-logged, and the workflow definition lives as a YAML
+file in your repo where it can be reviewed in PRs like any other config.
+
+**Why this and not Zapier / n8n?** Those don't have AI agents in the middle.
+Delegator's Brain blocks are agentic — Claude reads your codebase, writes
+the fix, iterates on test failures, then hands off to a human.
 
 ![Simple webhook → tool → output workflow](docs/canvas-simple.png)
 
@@ -10,7 +27,8 @@ A visual AI agent orchestration platform for engineering teams. Build, run, and 
 
 ## What it does
 
-Delegator lets you build agents on a drag-and-drop canvas by wiring together blocks:
+Delegator lets you build agents on a drag-and-drop canvas (or write the YAML
+directly) by wiring together blocks:
 
 | Block | Purpose |
 |-------|---------|
