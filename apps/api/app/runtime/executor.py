@@ -858,11 +858,13 @@ def execute_run(run_id: str):
 
             try:
                 if block_type == "trigger":
-                    # Expose webhook data under this block's ID so {{a1.github_issue.*}} refs resolve
+                    # Flatten github_issue fields so {{_trigger.repo_owner}} refs resolve
                     result = {"triggered": True}
-                    for key in ("github_issue", "github_trigger"):
-                        if key in state:
-                            result[key] = state[key]
+                    if "github_issue" in state:
+                        result.update(state["github_issue"])
+                        result["github_issue"] = state["github_issue"]
+                    if "github_trigger" in state:
+                        result["github_trigger"] = state["github_trigger"]
 
                 elif block_type == "brain":
                     result = _execute_brain(block, state, compiled, credentials=credentials)
