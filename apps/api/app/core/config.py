@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     # Admin — used to approve waitlisted users via POST /projects/admin/approve
     admin_secret: str = ""
 
+    # CLI / server-to-server API key — bypasses Clerk auth
+    cli_api_key: str = ""
+
     # Modal sandbox — when set, Brain tools run in isolated containers
     modal_token_id: str = ""
     modal_token_secret: str = ""

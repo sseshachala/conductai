@@ -8,9 +8,11 @@ RESET = "\033[0m"
 DEV_WORKSPACE = "00000000-0000-0000-0000-000000000001"
 
 
-def headers(workspace_id: str, token: str | None, content_type="application/json") -> dict:
+def headers(workspace_id: str, token=None, content_type="application/json", api_key=None) -> dict:
     h = {"Content-Type": content_type, "X-Workspace-Id": workspace_id}
-    if token:
+    if api_key:
+        h["X-Api-Key"] = api_key
+    elif token:
         h["Authorization"] = f"Bearer {token}"
     return h
 
