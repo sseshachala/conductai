@@ -1,6 +1,7 @@
 import argparse
 import json
 import sys
+import urllib.parse
 from pathlib import Path
 
 import yaml
@@ -110,7 +111,8 @@ def cmd_run(args):
         label = trigger_cfg.get("label", "")
 
         print(f"  Fetching issues from {repo} with label '{label}'…")
-        issues = api.req("GET", f"{server}/credentials/github/issues?repo={repo}&label={label}", json_h)
+        qs = urllib.parse.urlencode({"repo": repo, "label": label})
+        issues = api.req("GET", f"{server}/credentials/github/issues?{qs}", json_h)
 
         if not issues:
             print(f"  No open issues found with label '{label}'.")
