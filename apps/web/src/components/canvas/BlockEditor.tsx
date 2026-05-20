@@ -34,17 +34,17 @@ function WebhookRegisterButton({ owner, repo, getToken }: {
   async function register() {
     setStatus("loading")
     try {
-      const headers: Record<string, string> = {}
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL
+      if (!apiUrl) { setStatus("error"); setMsg("NEXT_PUBLIC_API_URL not set"); return }
+      const headers: Record<string, string> = { "Content-Type": "application/json" }
       if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
       const ws = typeof document !== "undefined"
         ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
       if (ws) headers["X-Workspace-Id"] = ws
-      headers["Content-Type"] = "application/json"
-      const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/github/repos/${owner}/${repo}/webhook`, {
-        method: "POST", headers,
-      })
+      const url = `${apiUrl}/credentials/github/repos/${owner}/${repo}/webhook`
+      const r = await fetch(url, { method: "POST", headers })
       const data = await r.json()
-      if (!r.ok) { setStatus("error"); setMsg(data.detail || "Failed"); return }
+      if (!r.ok) { setStatus("error"); setMsg(data.detail || `HTTP ${r.status}`); return }
       setStatus("done")
       setMsg(data.existing ? "Already registered" : "Webhook registered!")
     } catch (e) {
