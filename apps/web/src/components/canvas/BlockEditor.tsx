@@ -23,6 +23,59 @@ interface BlockEditorProps {
   getToken?: (() => Promise<string | null>) | null
 }
 
+// ── Webhook registration ──────────────────────────────────────────────────────
+
+function WebhookRegisterButton({ owner, repo, getToken }: {
+  owner: string; repo: string; getToken?: (() => Promise<string | null>) | null
+}) {
+  const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle")
+  const [msg, setMsg] = useState("")
+
+  async function register() {
+    setStatus("loading")
+    try {
+      const headers: Record<string, string> = {}
+      if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
+      const ws = typeof document !== "undefined"
+        ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
+      if (ws) headers["X-Workspace-Id"] = ws
+      const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/github/repos/${owner}/${repo}/webhook`, {
+        method: "POST", headers,
+      })
+      const data = await r.json()
+      if (!r.ok) { setStatus("error"); setMsg(data.detail || "Failed"); return }
+      setStatus("done")
+      setMsg(data.existing ? "Already registered" : "Webhook registered!")
+    } catch {
+      setStatus("error"); setMsg("Network error")
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2.5 text-xs">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="font-semibold text-indigo-800">GitHub webhook</p>
+          <p className="text-indigo-600 mt-0.5">
+            {status === "done" ? msg : `Auto-register on ${owner}/${repo} to receive issue events`}
+            {status === "error" && <span className="text-red-600"> — {msg}</span>}
+          </p>
+        </div>
+        {status !== "done" && (
+          <button
+            onClick={register}
+            disabled={status === "loading"}
+            className="shrink-0 rounded-md bg-indigo-600 text-white px-3 py-1.5 font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          >
+            {status === "loading" ? "Registering…" : "Register"}
+          </button>
+        )}
+        {status === "done" && <span className="text-emerald-600 font-semibold shrink-0">✓ Active</span>}
+      </div>
+    </div>
+  )
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 // Patterns that strongly suggest a hardcoded secret rather than a template ref.
@@ -424,6 +477,15 @@ export default function BlockEditor({
               )
             })}
 
+
+            {/* GitHub webhook auto-registration */}
+            {blockType === "trigger" && triggerEventType === "github_issue_labeled" && (() => {
+              const repoAllowlist = (getNestedValue(blockData, "config.repo_allowlist") as string) || ""
+              const firstRepo = repoAllowlist.split(",")[0].trim()
+              const [owner, repo] = firstRepo.includes("/") ? firstRepo.split("/") : ["", ""]
+              if (!owner || !repo) return null
+              return <WebhookRegisterButton owner={owner} repo={repo} getToken={getToken} />
+            })()}
 
             {/* Hardcoded-secret warning */}
             {(() => {

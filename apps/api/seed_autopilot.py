@@ -38,8 +38,10 @@ nodes = [
             "description": "GitHub issue labeled 'autopilot ready'",
             "integration": "github",
             "config": {
-                "event_type": "github_issue",
-                "label": "autopilot ready",
+                "event_type": "github_issue_labeled",
+                "label_mode": "one_of",
+                "labels": "autopilot ready,ai_ready",
+                "enforcement": "strict",
             },
         },
     },
@@ -109,7 +111,8 @@ nodes = [
         "data": {
             "type": "logic",
             "label": "Tests pass?",
-            "description": "Branch on whether tests passed. Check a4.passed == true",
+            "description": "Branch on whether tests passed",
+            "config": {"condition": "passed == true"},
         },
     },
     {

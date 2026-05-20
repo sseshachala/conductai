@@ -180,3 +180,63 @@ def list_github_branches(
         raise HTTPException(status_code=502, detail="Could not reach GitHub API")
 
     return [{"name": b["name"]} for b in r.json()]
+
+
+@router.post("/github/repos/{owner}/{repo}/webhook")
+def register_github_webhook(
+    owner: str,
+    repo: str,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    """
+    Register a GitHub webhook on the given repo pointing at this Delegator instance.
+    Idempotent — if the hook URL already exists, returns the existing hook.
+    """
+    from app.core.config import settings
+
+    token = _github_token(workspace_id, db)
+    webhook_url = f"{settings.api_base_url.rstrip('/')}/webhooks/github?workspace_id={workspace_id}"
+    secret = settings.github_webhook_secret or ""
+
+    # Check for existing hook with same URL to stay idempotent
+    try:
+        existing = httpx.get(
+            f"{GITHUB_API}/repos/{owner}/{repo}/hooks",
+            headers=_gh_headers(token),
+            timeout=10,
+        )
+        if existing.ok:
+            for hook in existing.json():
+                if hook.get("config", {}).get("url") == webhook_url:
+                    return {"registered": True, "hook_id": hook["id"], "url": webhook_url, "existing": True}
+    except httpx.RequestError:
+        pass
+
+    payload = {
+        "name": "web",
+        "active": True,
+        "events": ["issues"],
+        "config": {
+            "url": webhook_url,
+            "content_type": "json",
+            "secret": secret,
+            "insecure_ssl": "0",
+        },
+    }
+
+    try:
+        r = httpx.post(
+            f"{GITHUB_API}/repos/{owner}/{repo}/hooks",
+            headers=_gh_headers(token),
+            json=payload,
+            timeout=10,
+        )
+        r.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=f"GitHub API error: {e.response.text[:300]}")
+    except httpx.RequestError:
+        raise HTTPException(status_code=502, detail="Could not reach GitHub API")
+
+    hook = r.json()
+    return {"registered": True, "hook_id": hook["id"], "url": webhook_url, "existing": False}
