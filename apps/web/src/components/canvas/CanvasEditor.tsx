@@ -467,6 +467,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
             description={(selectedData.description as string) ?? ""}
             blockData={selectedNode.data as Record<string, unknown>}
             onChange={handleBlockChange}
+            getToken={getToken}
           />
         </div>
       )}
