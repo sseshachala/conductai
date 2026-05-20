@@ -1,4 +1,15 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import { useParams } from "next/navigation"
+import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
+
+function getCookie(name: string): string | null {
+  if (typeof document === "undefined") return null
+  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
+  return m ? decodeURIComponent(m[1]) : null
+}
 
 interface Run {
   id: string
@@ -9,32 +20,6 @@ interface Run {
   created_at: string
 }
 
-async function getRuns(workflowId: string): Promise<Run[]> {
-  try {
-    const res = await fetch(
-      `${process.env.API_URL}/workflows/${workflowId}/runs`,
-      { cache: "no-store" }
-    )
-    if (!res.ok) return []
-    return res.json()
-  } catch {
-    return []
-  }
-}
-
-async function getWorkflow(workflowId: string) {
-  try {
-    const res = await fetch(
-      `${process.env.API_URL}/workflows/${workflowId}`,
-      { cache: "no-store" }
-    )
-    if (!res.ok) return null
-    return res.json()
-  } catch {
-    return null
-  }
-}
-
 const STATUS_STYLES: Record<string, string> = {
   pending:   "bg-stone-100 text-stone-500",
   running:   "bg-blue-100 text-blue-700",
@@ -42,22 +27,48 @@ const STATUS_STYLES: Record<string, string> = {
   failed:    "bg-red-100 text-red-700",
 }
 
-export default async function RunsPage({ params }: { params: { id: string } }) {
-  const [workflow, runs] = await Promise.all([
-    getWorkflow(params.id),
-    getRuns(params.id),
-  ])
+export default function RunsPage() {
+  const { id: workflowId } = useParams<{ id: string }>()
+  const { getToken } = useAuth()
+
+  const [runs, setRuns] = useState<Run[]>([])
+  const [workflowName, setWorkflowName] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function load() {
+      const token = await getToken()
+      const workspaceId = getCookie("delegator_project_id")
+      const headers: Record<string, string> = {}
+      if (token) headers["Authorization"] = `Bearer ${token}`
+      if (workspaceId) headers["X-Workspace-Id"] = workspaceId
+
+      const [runsRes, wfRes] = await Promise.all([
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs`, { headers }),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, { headers }),
+      ])
+
+      if (runsRes.ok) setRuns(await runsRes.json())
+      if (wfRes.ok) {
+        const wf = await wfRes.json()
+        setWorkflowName(wf.name ?? null)
+      }
+      setLoading(false)
+    }
+    load()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workflowId])
 
   return (
     <div className="min-h-screen bg-stone-50">
       <header className="border-b border-stone-200 bg-white px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href={`/workflows/${params.id}`} className="text-stone-400 hover:text-stone-700 text-sm">←</Link>
-          <span className="font-semibold text-stone-900">{workflow?.name ?? "Agent"}</span>
+          <Link href={`/workflows/${workflowId}`} className="text-stone-400 hover:text-stone-700 text-sm">←</Link>
+          <span className="font-semibold text-stone-900">{workflowName ?? "Agent"}</span>
           <span className="text-xs text-stone-400">/ Runs</span>
         </div>
         <Link
-          href={`/workflows/${params.id}`}
+          href={`/workflows/${workflowId}`}
           className="rounded-lg bg-stone-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-stone-700 transition-colors"
         >
           Edit agent
@@ -67,11 +78,13 @@ export default async function RunsPage({ params }: { params: { id: string } }) {
       <main className="mx-auto max-w-3xl px-6 py-10">
         <h2 className="text-xl font-semibold text-stone-900 mb-6">Run history</h2>
 
-        {runs.length === 0 ? (
+        {loading ? (
+          <p className="text-stone-400 text-sm">Loading…</p>
+        ) : runs.length === 0 ? (
           <div className="rounded-xl border border-dashed border-stone-300 p-16 text-center">
             <p className="text-stone-500 text-sm">No runs yet.</p>
             <Link
-              href={`/workflows/${params.id}`}
+              href={`/workflows/${workflowId}`}
               className="mt-4 inline-block text-sm font-medium text-indigo-600 hover:underline"
             >
               Open canvas to start a test run
@@ -82,7 +95,7 @@ export default async function RunsPage({ params }: { params: { id: string } }) {
             {runs.map((run) => (
               <Link
                 key={run.id}
-                href={`/workflows/${params.id}/runs/${run.id}`}
+                href={`/workflows/${workflowId}/runs/${run.id}`}
                 className="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-5 py-4 hover:border-stone-300 hover:shadow-sm transition-all"
               >
                 <div className="flex items-center gap-3">
