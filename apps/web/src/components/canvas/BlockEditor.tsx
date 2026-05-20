@@ -9,6 +9,7 @@ import {
   INTEGRATIONS,
   type ConfigField,
 } from "@/lib/config-schemas"
+import { GitHubRepoField, GitHubBranchField } from "./GitHubRepoField"
 import { cn } from "@/lib/utils"
 
 interface BlockEditorProps {
@@ -19,6 +20,7 @@ interface BlockEditorProps {
   description: string
   blockData: Record<string, unknown>
   onChange: (blockId: string, changes: Record<string, unknown>) => void
+  getToken?: (() => Promise<string | null>) | null
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -161,6 +163,7 @@ export default function BlockEditor({
   description,
   blockData,
   onChange,
+  getToken,
 }: BlockEditorProps) {
   const [tab, setTab] = useState<"plain" | "config" | "advanced">("config")
   const [streamedPrompt, setStreamedPrompt] = useState<string>("")
@@ -191,6 +194,54 @@ export default function BlockEditor({
   function handleFieldChange(path: string, value: unknown) {
     const updated = setNestedValue({ ...blockData }, path, value)
     onChange(blockId, updated)
+  }
+
+  // GitHub-aware field: repo picker sets owner + repo simultaneously
+  const githubOwner = (getNestedValue(blockData, "config.params.owner") as string) || ""
+  const githubRepo  = (getNestedValue(blockData, "config.params.repo")  as string) || ""
+
+  function renderField(field: ConfigField) {
+    const val = getNestedValue(blockData, field.key)
+
+    if (integration === "github") {
+      // Repo picker — replaces both owner and repo fields
+      if (field.key === "config.params.owner") {
+        return (
+          <GitHubRepoField
+            value={githubOwner ? `${githubOwner}/${githubRepo}` : ""}
+            getToken={getToken}
+            onChange={(owner, repo) => {
+              let updated = setNestedValue({ ...blockData }, "config.params.owner", owner)
+              updated = setNestedValue(updated, "config.params.repo", repo)
+              onChange(blockId, updated)
+            }}
+          />
+        )
+      }
+      // Hide the standalone repo field — it's set by the owner picker above
+      if (field.key === "config.params.repo") return null
+
+      // Branch picker
+      if (field.key === "config.params.branch" || field.key === "config.params.head" || field.key === "config.params.ref") {
+        return (
+          <GitHubBranchField
+            owner={githubOwner}
+            repo={githubRepo}
+            value={(val as string) || ""}
+            getToken={getToken}
+            onChange={v => handleFieldChange(field.key, v)}
+          />
+        )
+      }
+    }
+
+    return (
+      <FieldInput
+        field={field}
+        value={val}
+        onChange={v => handleFieldChange(field.key, v)}
+      />
+    )
   }
 
   // Stream whenever Advanced tab is open
@@ -354,24 +405,24 @@ export default function BlockEditor({
             )}
 
             {/* Static fields for this block type */}
-            {staticFields.map(field => (
-              <div key={field.key}>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">
-                    {field.label}
-                  </label>
-                  {field.required && <span className="text-red-500 text-[10px] font-bold leading-none">*</span>}
-                  {field.hint && (
-                    <span className="text-[10px] text-stone-400">{field.hint}</span>
-                  )}
+            {staticFields.map(field => {
+              const rendered = renderField(field)
+              if (rendered === null) return null
+              return (
+                <div key={field.key}>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">
+                      {field.label}
+                    </label>
+                    {field.required && <span className="text-red-500 text-[10px] font-bold leading-none">*</span>}
+                    {field.hint && (
+                      <span className="text-[10px] text-stone-400">{field.hint}</span>
+                    )}
+                  </div>
+                  {rendered}
                 </div>
-                <FieldInput
-                  field={field}
-                  value={getNestedValue(blockData, field.key)}
-                  onChange={val => handleFieldChange(field.key, val)}
-                />
-              </div>
-            ))}
+              )
+            })}
 
 
             {/* Hardcoded-secret warning */}
@@ -394,24 +445,24 @@ export default function BlockEditor({
             {actionFields.length > 0 && (
               <div className="pt-1 border-t border-stone-100 space-y-3">
                 <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">Parameters</p>
-                {actionFields.map(field => (
-                  <div key={field.key}>
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">
-                        {field.label}
-                      </label>
-                      {field.required && <span className="text-red-500 text-[10px] font-bold leading-none">*</span>}
-                      {field.hint && (
-                        <span className="text-[10px] text-stone-400">{field.hint}</span>
-                      )}
+                {actionFields.map(field => {
+                  const rendered = renderField(field)
+                  if (rendered === null) return null
+                  return (
+                    <div key={field.key}>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">
+                          {field.label}
+                        </label>
+                        {field.required && <span className="text-red-500 text-[10px] font-bold leading-none">*</span>}
+                        {field.hint && (
+                          <span className="text-[10px] text-stone-400">{field.hint}</span>
+                        )}
+                      </div>
+                      {rendered}
                     </div>
-                    <FieldInput
-                      field={field}
-                      value={getNestedValue(blockData, field.key)}
-                      onChange={val => handleFieldChange(field.key, val)}
-                    />
-                  </div>
-                ))}
+                  )
+                })}
                 <p className="text-[10px] text-stone-400 pt-1">
                   Tip: reference previous blocks with <code className="bg-stone-100 px-1 rounded">{"{{block_id.field}}"}</code>
                 </p>
