@@ -38,7 +38,7 @@ blocks:
 
       Steps:
 
-      1. Clone the repo: git clone <clone_url> /tmp/autopilot_repo
+      1. Clone the repo: git clone {{_trigger.clone_url}} /tmp/autopilot_repo
 
       2. Create a branch: git checkout -b autopilot/issue-{{a2.issue_number}}
 
