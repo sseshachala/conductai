@@ -39,6 +39,7 @@ function WebhookRegisterButton({ owner, repo, getToken }: {
       const ws = typeof document !== "undefined"
         ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
       if (ws) headers["X-Workspace-Id"] = ws
+      headers["Content-Type"] = "application/json"
       const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/github/repos/${owner}/${repo}/webhook`, {
         method: "POST", headers,
       })
@@ -46,8 +47,8 @@ function WebhookRegisterButton({ owner, repo, getToken }: {
       if (!r.ok) { setStatus("error"); setMsg(data.detail || "Failed"); return }
       setStatus("done")
       setMsg(data.existing ? "Already registered" : "Webhook registered!")
-    } catch {
-      setStatus("error"); setMsg("Network error")
+    } catch (e) {
+      setStatus("error"); setMsg(e instanceof Error ? e.message : "Network error")
     }
   }
 
@@ -284,7 +285,7 @@ export default function BlockEditor({
 
     // Read-only fields skip all integration-specific overrides
     if (field.readOnly) {
-      return <FieldRenderer field={field} value={val} onChange={() => {}} />
+      return <FieldInput field={field} value={val} onChange={() => {}} />
     }
 
     if (integration === "github") {
