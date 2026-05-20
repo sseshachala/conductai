@@ -49,6 +49,8 @@ export default function YamlPanel({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        id: workflowId,
+        workspace_id: document.cookie.match(/delegator_project_id=([^;]+)/)?.[1],
         name: workflowName,
         graph: { nodes, edges },
       }),
