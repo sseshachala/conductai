@@ -25,13 +25,14 @@ interface RunMeta {
 
 export default function RunDetailPage() {
   const { id: workflowId, run_id: runId } = useParams<{ id: string; run_id: string }>()
-  const { getToken } = useAuth()
+  const { getToken, isLoaded } = useAuth()
 
   const [run, setRun] = useState<RunMeta | null>(null)
   const [workflowName, setWorkflowName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (!isLoaded) return  // wait for Clerk to initialize before fetching
     async function load() {
       const token = await getToken()
       const workspaceId = getCookie("delegator_project_id")
@@ -53,7 +54,7 @@ export default function RunDetailPage() {
     }
     load()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workflowId, runId])
+  }, [workflowId, runId, isLoaded])
 
   if (loading) {
     return (
@@ -105,8 +106,9 @@ export default function RunDetailPage() {
               completed_at: run.completed_at,
               paused_at: run.paused_at,
               current_block_id: run.current_block_id,
-              workflow_version_id: run.workflow_version_id,
+              workflow_version_id: run.workflow_version_id ?? null,
             }}
+            getToken={getToken}
           />
         </div>
       </main>
