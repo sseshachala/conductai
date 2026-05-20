@@ -72,7 +72,10 @@ function WorkflowsContent({ getToken }: { getToken: (() => Promise<string | null
       const headers: Record<string, string> = {}
       if (getToken) {
         const token = await getToken()
+        console.log("[auth] getToken result:", token ? `Bearer ${token.slice(0, 20)}...` : "NULL")
         if (token) headers["Authorization"] = `Bearer ${token}`
+      } else {
+        console.log("[auth] getToken is null — clerkEnabled check failed")
       }
       if (pid) headers["X-Workspace-ID"] = pid
 
