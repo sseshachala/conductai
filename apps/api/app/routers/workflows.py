@@ -14,7 +14,7 @@ from app.dsl import (
     yaml_filename_for,
     yaml_to_graph,
 )
-from app.models.run import Run
+from app.models.run import Run, RunEvent
 from app.models.workflow import Workflow, WorkflowVersion
 from app.schemas.workflow import WorkflowCreate, WorkflowUpdate, WorkflowOut, WorkflowDetailOut
 from app.compiler.compiler import compile_workflow
@@ -170,10 +170,15 @@ def stream_block_compile(workflow_id: UUID, block_id: str, body: BlockCompileReq
 
 
 @router.get("/{workflow_id}/estimate")
-def estimate_workflow_cost(workflow_id: UUID, db: Session = Depends(get_db)):
+def estimate_workflow_cost(
+    workflow_id: UUID,
+    issues: int = 1,
+    db: Session = Depends(get_db),
+):
     """
-    Estimate token usage and cost for one run of this workflow.
-    Uses compiled artifacts (system prompts) to count tokens.
+    Estimate token usage and cost for this workflow.
+    Uses actual historical run data when available; falls back to static estimates.
+    ?issues=N multiplies cost by number of matching GitHub issues.
     Pricing: Claude Sonnet 4.6 — $3/1M input, $15/1M output.
     """
     workflow = db.query(Workflow).filter(Workflow.id == workflow_id).first()
@@ -186,22 +191,60 @@ def estimate_workflow_cost(workflow_id: UUID, db: Session = Depends(get_db)):
         WorkflowVersion.id == workflow.current_version_id
     ).first()
 
-    graph = version.graph or {}
+    graph     = version.graph or {}
     artifacts = version.compiled_artifacts or {}
-    nodes = graph.get("nodes", [])
+    nodes     = graph.get("nodes", [])
 
     # Pricing constants (Claude Sonnet 4.6)
     INPUT_PRICE_PER_TOKEN  = 3.00  / 1_000_000
     OUTPUT_PRICE_PER_TOKEN = 15.00 / 1_000_000
-    CHARS_PER_TOKEN = 4  # rough approximation
+    CHARS_PER_TOKEN        = 4
 
-    # Context grows as blocks run — estimate average context size passed in
-    AVG_CONTEXT_TOKENS = 1500
+    # ── Pull historical actuals from past succeeded runs ──────────────────────
+    # RunEvent.payload shape for block_completed:
+    #   {"output": {"input_tokens": N, "output_tokens": N, "turns": N, "cost_usd": N}}
+    past_events = (
+        db.query(RunEvent)
+        .join(Run, RunEvent.run_id == Run.id)
+        .join(WorkflowVersion, Run.workflow_version_id == WorkflowVersion.id)
+        .filter(
+            WorkflowVersion.workflow_id == workflow_id,
+            RunEvent.kind == "block_completed",
+            Run.status == "succeeded",
+        )
+        .all()
+    )
 
-    blocks = []
+    # Build per-block actuals: block_id → {avg_input, avg_output, avg_turns, samples}
+    block_actuals: dict[str, dict] = {}
+    for ev in past_events:
+        bid = ev.block_id
+        if not bid:
+            continue
+        out = (ev.payload or {}).get("output") or {}
+        if not isinstance(out, dict):
+            continue
+        in_tok  = out.get("input_tokens")
+        out_tok = out.get("output_tokens")
+        turns   = out.get("turns")
+        if in_tok is None or out_tok is None:
+            continue
+        if bid not in block_actuals:
+            block_actuals[bid] = {"input": [], "output": [], "turns": []}
+        block_actuals[bid]["input"].append(int(in_tok))
+        block_actuals[bid]["output"].append(int(out_tok))
+        if turns is not None:
+            block_actuals[bid]["turns"].append(int(turns))
+
+    def _avg(lst: list[int]) -> int:
+        return round(sum(lst) / len(lst)) if lst else 0
+
+    # ── Per-block estimates ───────────────────────────────────────────────────
+    blocks: list[dict] = []
     total_input_tokens  = 0
     total_output_tokens = 0
     integrations_used: set[str] = set()
+    has_actuals = False
 
     for node in nodes:
         nid   = node["id"]
@@ -214,32 +257,41 @@ def estimate_workflow_cost(workflow_id: UUID, db: Session = Depends(get_db)):
         system_prompt = art.get("system_prompt", "")
         prompt_tokens = len(system_prompt) // CHARS_PER_TOKEN
 
-        integration = data.get("integration") or data.get("config", {}).get("integration")
+        integration = data.get("integration") or (data.get("config") or {}).get("integration")
         if integration:
             integrations_used.add(integration)
 
-        if mode == "agentic":
-            # Multi-turn: estimate 5 turns average, each sees full context
-            est_turns        = 5
-            input_per_turn   = prompt_tokens + AVG_CONTEXT_TOKENS
-            output_per_turn  = 800
-            input_tokens     = input_per_turn  * est_turns
-            output_tokens    = output_per_turn * est_turns
-            note = f"~{est_turns} turns estimated"
+        actuals = block_actuals.get(nid)
 
-        elif mode in ("brain",):
-            input_tokens  = prompt_tokens + AVG_CONTEXT_TOKENS
+        if actuals:
+            # Use averaged actuals from real runs
+            has_actuals = True
+            input_tokens  = _avg(actuals["input"])
+            output_tokens = _avg(actuals["output"])
+            avg_turns     = _avg(actuals["turns"]) if actuals["turns"] else None
+            samples       = len(actuals["input"])
+            if avg_turns:
+                note = f"avg {avg_turns} turns · {samples} run{'s' if samples > 1 else ''}"
+            else:
+                note = f"avg of {samples} run{'s' if samples > 1 else ''}"
+
+        elif mode == "agentic":
+            input_tokens  = (prompt_tokens + 1500) * 5
+            output_tokens = 800 * 5
+            note = "~5 turns (no history yet)"
+
+        elif mode == "brain":
+            input_tokens  = prompt_tokens + 1500
             output_tokens = 500
-            note = "single call"
+            note = "single call (no history yet)"
 
         elif mode in ("trigger", "tool", "output", "cleanup", "memory"):
-            # No LLM call — just API calls
             input_tokens  = 0
             output_tokens = 0
             note = "no LLM call"
 
         elif mode == "logic":
-            input_tokens  = prompt_tokens + AVG_CONTEXT_TOKENS
+            input_tokens  = prompt_tokens + 1500
             output_tokens = 50
             note = "routing only"
 
@@ -249,7 +301,7 @@ def estimate_workflow_cost(workflow_id: UUID, db: Session = Depends(get_db)):
             note = "human gate — no LLM"
 
         else:
-            input_tokens  = prompt_tokens + AVG_CONTEXT_TOKENS
+            input_tokens  = prompt_tokens + 1500
             output_tokens = 200
             note = ""
 
@@ -270,7 +322,9 @@ def estimate_workflow_cost(workflow_id: UUID, db: Session = Depends(get_db)):
         total_input_tokens  += input_tokens
         total_output_tokens += output_tokens
 
-    total_cost = (total_input_tokens * INPUT_PRICE_PER_TOKEN) + (total_output_tokens * OUTPUT_PRICE_PER_TOKEN)
+    per_run_cost = (total_input_tokens * INPUT_PRICE_PER_TOKEN) + (total_output_tokens * OUTPUT_PRICE_PER_TOKEN)
+    issues       = max(1, issues)
+    total_cost   = per_run_cost * issues
 
     return {
         "workflow_id":          str(workflow_id),
@@ -279,10 +333,13 @@ def estimate_workflow_cost(workflow_id: UUID, db: Session = Depends(get_db)):
         "total_input_tokens":   total_input_tokens,
         "total_output_tokens":  total_output_tokens,
         "total_tokens":         total_input_tokens + total_output_tokens,
+        "per_run_cost_usd":     round(per_run_cost, 4),
+        "issues_count":         issues,
         "total_cost_usd":       round(total_cost, 4),
         "integrations_used":    sorted(integrations_used),
         "model":                "claude-sonnet-4-6",
         "pricing_note":         "$3/1M input · $15/1M output",
+        "based_on_actuals":     has_actuals,
     }
 
 
