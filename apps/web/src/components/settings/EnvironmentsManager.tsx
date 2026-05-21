@@ -7,6 +7,7 @@ interface Environment {
   id: string
   name: string
   created_at: string
+  connectedServices?: string[]
 }
 
 interface Credential {
@@ -110,7 +111,20 @@ function EnvironmentsManagerInner({ getToken }: { getToken: (() => Promise<strin
     try {
       const headers = await buildHeaders()
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments`, { headers })
-      if (res.ok) setEnvironments(await res.json())
+      if (!res.ok) return
+      const envs: Environment[] = await res.json()
+      // Fetch credentials for each environment to show connected services inline
+      const enriched = await Promise.all(envs.map(async env => {
+        try {
+          const r = await fetch(
+            `${process.env.NEXT_PUBLIC_API_URL}/credentials/by-environment/${env.id}`,
+            { headers }
+          )
+          const creds: Credential[] = r.ok ? await r.json() : []
+          return { ...env, connectedServices: creds.map(c => c.service) }
+        } catch { return env }
+      }))
+      setEnvironments(enriched)
     } catch { /* silent */ }
   }, [buildHeaders])
 
@@ -183,27 +197,27 @@ function EnvironmentsManagerInner({ getToken }: { getToken: (() => Promise<strin
               className="flex items-center gap-3 flex-1 text-left"
               onClick={() => setSelected(env)}
             >
-              <span className={`w-9 h-9 rounded-lg text-xs font-bold flex items-center justify-center shrink-0 ${
-                env.name === "Default" ? "bg-stone-100 text-stone-500" : "bg-violet-100 text-violet-700"
-              }`}>
+              <span className="w-9 h-9 rounded-lg text-xs font-bold flex items-center justify-center shrink-0 bg-violet-100 text-violet-700">
                 {env.name.slice(0, 2).toUpperCase()}
               </span>
               <div>
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium text-stone-900">{env.name}</p>
-                  {env.name === "Default" && (
-                    <span className="text-[10px] font-medium text-stone-400 bg-stone-50 border border-stone-200 px-1.5 py-0.5 rounded-full">
-                      built-in
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-stone-400">Created {formatDate(env.created_at)} · click to manage credentials</p>
+                <p className="text-sm font-medium text-stone-900">{env.name}</p>
+                {env.connectedServices && env.connectedServices.length > 0 ? (
+                  <div className="flex items-center gap-1 mt-1 flex-wrap">
+                    {env.connectedServices.map(svc => (
+                      <span key={svc} className="text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-100 px-1.5 py-0.5 rounded-full">
+                        {svc}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-stone-400 mt-0.5">No integrations yet · click to add</p>
+                )}
               </div>
             </button>
 
             <div className="flex items-center gap-2 ml-4">
-              {env.name !== "Default" && (
-                confirmDelete === env.id ? (
+              {confirmDelete === env.id ? (
                   <>
                     <span className="text-xs text-stone-500">Delete?</span>
                     <button
@@ -227,8 +241,7 @@ function EnvironmentsManagerInner({ getToken }: { getToken: (() => Promise<strin
                   >
                     Delete
                   </button>
-                )
-              )}
+                )}
               <span className="text-stone-300 text-sm">→</span>
             </div>
           </div>
@@ -356,9 +369,7 @@ function EnvironmentDetail({
         >
           ←
         </button>
-        <span className={`w-8 h-8 rounded-lg text-xs font-bold flex items-center justify-center ${
-          environment.name === "Default" ? "bg-stone-100 text-stone-500" : "bg-violet-100 text-violet-700"
-        }`}>
+        <span className="w-8 h-8 rounded-lg text-xs font-bold flex items-center justify-center bg-violet-100 text-violet-700">
           {environment.name.slice(0, 2).toUpperCase()}
         </span>
         <div>
