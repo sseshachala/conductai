@@ -410,6 +410,14 @@ def _execute_brain(
 
     user_message = f"Workflow context so far:\n{context}{cred_section}\n\nExecute your task."
 
+    sufficiency_instruction = (
+        "IMPORTANT: Before doing any work, assess whether you have enough information "
+        "to complete this task. If the description is vague, missing critical details, "
+        "or you cannot determine what success looks like — respond immediately with:\n"
+        "NEEDS_CLARIFICATION: <concise explanation of what is missing>\n"
+        "Do not attempt partial work or use any tools if the task is unclear."
+    )
+
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
     if is_agentic:
@@ -420,12 +428,13 @@ def _execute_brain(
         total_input_tokens = 0
         total_output_tokens = 0
         working_dir: str | None = None  # track if Brain cloned a repo
+        full_system = f"{system_prompt}\n\n{sufficiency_instruction}"
 
         while turns < max_turns:
             response = client.messages.create(
                 model="claude-sonnet-4-6",
                 max_tokens=4096,
-                system=system_prompt,
+                system=full_system,
                 tools=BRAIN_TOOLS,
                 messages=messages,
             )
@@ -438,6 +447,10 @@ def _execute_brain(
             tool_calls = [b for b in response.content if b.type == "tool_use"]
             text_blocks = [b for b in response.content if b.type == "text"]
             final_text = " ".join(b.text for b in text_blocks)
+
+            # First-turn sufficiency check — fail fast before any tools are used
+            if turns == 1 and final_text.strip().startswith("NEEDS_CLARIFICATION:"):
+                raise ValueError(final_text.strip())
 
             if response.stop_reason == "end_turn" or not tool_calls:
                 # Sonnet 4.6 pricing: $3/1M input, $15/1M output — update if model changes
