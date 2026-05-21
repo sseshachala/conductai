@@ -30,8 +30,7 @@ export const BLOCK_STYLES: Record<BlockType, BlockStyle> = {
 }
 
 export const BLOCK_LIBRARY: { type: BlockType; title: string; description: string }[] = [
-  { type: "trigger",  title: "Trigger · webhook",  description: "Start on webhook, schedule, or event" },
-  { type: "trigger",  title: "Trigger · schedule",  description: "Start on a cron schedule" },
+  { type: "trigger",  title: "Trigger · event",  description: "Start on GitHub issue label or inbound webhook" },
   { type: "brain",    title: "Brain · LLM",          description: "Single LLM call or agentic loop" },
   { type: "tool",     title: "Tool · API call",       description: "Call an external integration" },
   { type: "memory",   title: "Memory · vector",       description: "Read/write from vector store" },

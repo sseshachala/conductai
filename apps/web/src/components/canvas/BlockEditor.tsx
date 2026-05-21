@@ -580,16 +580,6 @@ export default function BlockEditor({
             )
           })()}
 
-          {/* Inbound webhook — show the URL to POST to */}
-          {blockType === "trigger" && triggerEventType === "webhook" && (
-            <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2.5 text-xs text-violet-800 mt-2 space-y-1.5">
-              <p className="font-semibold">Inbound webhook URL</p>
-              <p className="font-mono break-all select-all text-violet-700">
-                {(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}/webhooks/inbound/{workflowId}
-              </p>
-              <p className="text-violet-600">POST any JSON payload to this URL to trigger a run. The payload is available as <span className="font-mono">{"{{_trigger.*}}"}</span> in your blocks.</p>
-            </div>
-          )}
 
           {/* Secret warning */}
           {(() => {
@@ -620,6 +610,16 @@ export default function BlockEditor({
                     {field.hint && <span className="text-[10px] text-stone-400">{field.hint}</span>}
                   </div>
                   {rendered}
+                  {/* Inject webhook URL right after the trigger-type dropdown */}
+                  {blockType === "trigger" && field.key === "config.event_type" && triggerEventType === "webhook" && (
+                    <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2.5 text-xs text-violet-800 mt-2 space-y-1">
+                      <p className="font-semibold text-[10px] uppercase tracking-wide text-violet-500">Webhook URL</p>
+                      <p className="font-mono break-all select-all text-violet-700 text-[11px]">
+                        {(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}/webhooks/inbound/{workflowId}
+                      </p>
+                      <p className="text-violet-500 text-[10px]">POST any JSON to this URL — payload available as <span className="font-mono">{"{{_trigger.*}}"}</span></p>
+                    </div>
+                  )}
                 </div>
               )
             })}
