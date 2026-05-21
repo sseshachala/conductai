@@ -33,7 +33,6 @@ export const BLOCK_LIBRARY: { type: BlockType; title: string; description: strin
   { type: "trigger",  title: "Trigger · event",  description: "Start on GitHub issue label or inbound webhook" },
   { type: "brain",    title: "Brain · LLM",          description: "Single LLM call or agentic loop" },
   { type: "tool",     title: "Tool · API call",       description: "Call an external integration" },
-  { type: "memory",   title: "Memory · vector",       description: "Read/write from vector store" },
   { type: "logic",    title: "Logic · branch",        description: "Route on condition or test result" },
   { type: "approval", title: "Approval · pause",      description: "Pause and wait for human sign-off" },
   { type: "output",   title: "Output · Slack / email",description: "Send a message or notification" },
