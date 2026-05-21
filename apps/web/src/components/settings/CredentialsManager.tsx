@@ -47,22 +47,6 @@ const SERVICES: ServiceDef[] = [
     fields: [{ key: "api_key", label: "API key", placeholder: "lin_api_…" }],
   },
   {
-    value: "vercel", label: "Vercel", abbr: "VC",
-    description: "Trigger deployments and monitor status",
-    color: "bg-stone-800 text-white",
-    fields: [{ key: "token", label: "Access token", placeholder: "Personal access token" }],
-  },
-  {
-    value: "railway", label: "Railway", abbr: "RW",
-    description: "Deploy services and check deployment status",
-    color: "bg-violet-600 text-white",
-    fields: [
-      { key: "token",       label: "API token",   placeholder: "railway token from account settings", secret: true },
-      { key: "project_id",  label: "Project ID",  placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", secret: false },
-      { key: "environment_id", label: "Environment ID", placeholder: "leave blank to auto-fetch from project", secret: false, optional: true },
-    ],
-  },
-  {
     value: "digitalocean", label: "DigitalOcean", abbr: "DO",
     description: "Provision and manage cloud droplets",
     color: "bg-blue-500 text-white",

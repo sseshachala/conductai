@@ -266,11 +266,11 @@ const WHY_DELEGATOR = [
   {
     icon: "🧩",
     title: "Fits your existing stack",
-    body: "GitHub, Slack, Linear, Vercel, DigitalOcean, Email. No new issue tracker. No new chat tool. Delegator plugs into the tools your team already lives in.",
+    body: "GitHub, Slack, Linear, DigitalOcean, Email. No new issue tracker. No new chat tool. Delegator plugs into the tools your team already lives in.",
   },
 ]
 
-const INTEGRATIONS = ["GitHub", "Linear", "Slack", "Vercel", "Railway", "DigitalOcean", "Email"]
+const INTEGRATIONS = ["GitHub", "Linear", "Slack", "DigitalOcean", "Email"]
 
 function GoogleIcon() {
   return (

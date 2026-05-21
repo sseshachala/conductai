@@ -9,8 +9,6 @@ const INTEGRATION_LIST = [
   { handle: "slack",        label: "Slack" },
   { handle: "linear",       label: "Linear" },
   { handle: "digitalocean", label: "DigitalOcean" },
-  { handle: "vercel",       label: "Vercel" },
-  { handle: "railway",      label: "Railway" },
 ]
 
 function getWorkspaceId(): string | null {
