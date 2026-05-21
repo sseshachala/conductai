@@ -420,26 +420,28 @@ def _execute_brain(
 
     environment_preamble = (
         "EXECUTION ENVIRONMENT:\n"
-        "You are running inside a fresh isolated Ubuntu container. Every run starts clean.\n"
+        "You are running inside a fresh isolated container. Every run starts clean.\n"
         "Pre-installed: git, python3, pip3, curl, wget, node, npm, unzip.\n"
-        "Do NOT run apt-get, do NOT check if tools exist with find/which — they are available.\n"
         "\n"
-        "STANDARD REPO SETUP (always follow this exact pattern):\n"
-        "1. Clone the repo:  git clone <url> /tmp/repo && cd /tmp/repo\n"
-        "2. Create a branch: git checkout -b fix/<issue-number>-<short-slug>\n"
-        "3. Install deps (only what the project needs):\n"
-        "   - Node.js project (package.json exists): npm ci\n"
-        "   - Python project (requirements.txt exists): pip3 install -r requirements.txt\n"
-        "   - Python project (pyproject.toml exists): pip3 install -e .\n"
-        "   - Other: inspect and install accordingly\n"
-        "4. Implement the fix\n"
-        "5. Run tests to verify\n"
-        "6. git add -A && git commit -m 'fix: <description>'\n"
-        "7. git push origin <branch-name>\n"
+        "CRITICAL — DO NOT waste turns checking if tools exist:\n"
+        "- Do NOT run: which git, apt-get, find / -name git, ls /usr/bin/git\n"
+        "- Do NOT run: apt-get install anything\n"
+        "- If git clone fails on the first try, immediately fall back to the GitHub API\n"
+        "  approach using python3 + urllib (no third-party libraries needed).\n"
         "\n"
-        "Use the GitHub token from credentials for clone URL and push: "
-        "https://<github.token>@github.com/<owner>/<repo>.git\n"
-        "Do not deviate from this pattern. Do not explore the system."
+        "STANDARD REPO SETUP — try git first, fall back to GitHub API if it fails:\n"
+        "Option A (git available):\n"
+        "  git clone https://<token>@github.com/<owner>/<repo>.git /tmp/repo\n"
+        "  cd /tmp/repo && git checkout -b fix/<issue-number>-<slug>\n"
+        "  <make changes> && git add -A && git commit -m 'fix: ...' && git push origin <branch>\n"
+        "  Then open PR via GitHub API.\n"
+        "\n"
+        "Option B (git not available — use immediately if Option A fails):\n"
+        "  Use python3 urllib to: GET file contents, PATCH/PUT changes, POST branch, POST PR.\n"
+        "  Do NOT try curl, wget, or any other approach — go straight to python3 urllib.\n"
+        "  Complete ALL steps in one python3 script: read files, apply changes, commit, create PR.\n"
+        "\n"
+        "Do NOT switch between options mid-task. Pick one and finish completely."
     )
 
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
@@ -504,12 +506,15 @@ def _execute_brain(
                     "diff_stat": diff_stat,
                     "remote_host_ip": remote_host.get("ip") if remote_host else None,
                 }
-                # Extract structured values from JSON on the last line of output.
-                # Brain blocks can surface pr_url, passed, etc. as direct refs this way.
-                _last_line = final_text.strip().rsplit("\n", 1)[-1].strip()
+                # Extract structured values from the last JSON line of the output
+                # so brain blocks can surface keys like pr_url, passed, etc. as
+                # direct refs (e.g. {{push_pr.pr_url}}).
+                import json as _json
+                _output_text = result.get("output", "")
+                _last_line = _output_text.strip().rsplit("\n", 1)[-1].strip()
                 if _last_line.startswith("{") and _last_line.endswith("}"):
                     try:
-                        _extracted = json.loads(_last_line)
+                        _extracted = _json.loads(_last_line)
                         if isinstance(_extracted, dict):
                             result.update(_extracted)
                     except Exception:
@@ -585,12 +590,24 @@ def _execute_brain(
         input_tokens = getattr(getattr(response, "usage", None), "input_tokens", 0)
         output_tokens = getattr(getattr(response, "usage", None), "output_tokens", 0)
         cost_usd = round((input_tokens * 3 + output_tokens * 15) / 1_000_000, 6)
-        return {
+        result = {
             "output": text,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "cost_usd": cost_usd,
         }
+        # Extract structured values from the last JSON line of the output
+        import json as _json
+        _output_text = result.get("output", "")
+        _last_line = _output_text.strip().rsplit("\n", 1)[-1].strip()
+        if _last_line.startswith("{") and _last_line.endswith("}"):
+            try:
+                _extracted = _json.loads(_last_line)
+                if isinstance(_extracted, dict):
+                    result.update(_extracted)
+            except Exception:
+                pass
+        return result
 
 
 def _dry_run_mock(integration: str, action: str, params: dict) -> dict:
@@ -771,47 +788,14 @@ def _execute_output(block: dict, state: dict, credentials: dict, workflow_name: 
     return {"sent": True, "integration": integration, **results}
 
 
-def _evaluate_condition_expr(condition_expr: str) -> bool | None:
-    """
-    Evaluate a simple equality/comparison expression such as:
-      'true == true', 'false == true', '42 == 42', 'pass', 'false'
-
-    Returns True/False, or None if the expression cannot be evaluated
-    as a structured comparison (falls through to keyword matching).
-    """
-    expr = condition_expr.strip()
-
-    # Handle simple equality: <lhs> == <rhs>
-    if "==" in expr:
-        parts = expr.split("==", 1)
-        lhs = parts[0].strip().lower()
-        rhs = parts[1].strip().lower()
-        return lhs == rhs
-
-    # Handle simple inequality: <lhs> != <rhs>
-    if "!=" in expr:
-        parts = expr.split("!=", 1)
-        lhs = parts[0].strip().lower()
-        rhs = parts[1].strip().lower()
-        return lhs != rhs
-
-    # Single literal value
-    low = expr.lower()
-    if low in ("true", "pass", "success", "1", "yes"):
-        return True
-    if low in ("false", "fail", "failure", "0", "no"):
-        return False
-
-    return None
-
-
 def _execute_logic(block: dict, state: dict) -> dict:
     """
     Evaluate a condition and return route: 'pass' or 'fail'.
 
     Checks (in order):
-    1. Explicit condition expression in block config — evaluated as a structured
-       comparison (e.g. '{{run_tests.passed}} == true') after ref resolution.
+    1. Explicit condition expression in block config
+       - Equality expression: "value == true/false" evaluated directly
+       - Keyword-based: pass/success/true -> pass; fail/error/false -> fail
     2. exit_code == 0 from last shell output
     3. Keywords 'pass', 'success', 'true', '0' in last output
     """
@@ -819,14 +803,30 @@ def _execute_logic(block: dict, state: dict) -> dict:
     condition_expr = _resolve_refs(config.get("condition", ""), state)
     last_output = str(state.get("__last_output", "")).lower()
 
-    # If config has an explicit condition expression, evaluate it structurally
+    # If config has an explicit condition expression, evaluate it
     if condition_expr:
-        result = _evaluate_condition_expr(condition_expr)
-        if result is True:
-            return {"route": "pass", "condition": condition_expr, "evaluated": True}
-        if result is False:
-            return {"route": "fail", "condition": condition_expr, "evaluated": False}
-        # result is None — expression was ambiguous; fall through to heuristics
+        cond_stripped = condition_expr.strip()
+        cond_lower = cond_stripped.lower()
+
+        # Handle equality expressions: "<value> == true/false" or "<value> == <value>"
+        eq_match = re.match(r"^(.+?)\s*==\s*(.+)$", cond_stripped, re.IGNORECASE)
+        if eq_match:
+            lhs = eq_match.group(1).strip().lower()
+            rhs = eq_match.group(2).strip().lower()
+            # Normalise Python/JSON booleans
+            lhs_val = lhs in ("true", "1", "yes")  if lhs in ("true", "false", "1", "0", "yes", "no") else lhs
+            rhs_val = rhs in ("true", "1", "yes") if rhs in ("true", "false", "1", "0", "yes", "no") else rhs
+            matched = lhs_val == rhs_val
+            route = "pass" if matched else "fail"
+            return {"route": route, "condition": condition_expr, "evaluated_on": f"{lhs} == {rhs}"}
+
+        # Keyword-only expressions
+        if any(k in cond_lower for k in ("fail", "error")):
+            return {"route": "fail", "condition": condition_expr, "evaluated_on": last_output[:200]}
+        if cond_lower in ("true", "pass", "success"):
+            return {"route": "pass", "condition": condition_expr, "evaluated_on": cond_lower}
+        if cond_lower in ("false",):
+            return {"route": "fail", "condition": condition_expr, "evaluated_on": cond_lower}
 
     # Check exit_code in last output (JSON blob from run_shell)
     try:
