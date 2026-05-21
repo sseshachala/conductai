@@ -196,7 +196,7 @@ export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, 
           >
             Full trace →
           </a>
-          <button onClick={onClose} className="text-stone-400 hover:text-stone-700 text-lg leading-none">×</button>
+          <button onClick={onClose} className="text-xs text-stone-400 hover:text-stone-700 font-medium px-2 py-1 rounded hover:bg-stone-100 transition-colors">Hide</button>
         </div>
       </div>
 
