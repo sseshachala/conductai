@@ -267,6 +267,14 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       ],
     },
     {
+      key: "config.webhook_secret",
+      label: "Webhook secret",
+      type: "text",
+      required: false,
+      placeholder: "optional — used to verify HMAC-SHA256 signature",
+      hint: "If set, callers must send X-Webhook-Signature: <hmac-sha256 of body>",
+    },
+    {
       key: "config.label",
       label: "Label",
       type: "text",

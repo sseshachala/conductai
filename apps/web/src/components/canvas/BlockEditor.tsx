@@ -279,6 +279,8 @@ export default function BlockEditor({
           return triggerEventType === "github_issue_labeled"
         if (f.key === "config.cron")
           return triggerEventType === "schedule"
+        if (f.key === "config.webhook_secret")
+          return triggerEventType === "webhook"
         return true
       })
     : allStaticFields
