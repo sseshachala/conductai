@@ -262,7 +262,13 @@ export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, 
               {row.toolCalls && row.toolCalls.length > 0 && (
                 <div className="mt-1.5 space-y-0.5 border-l-2 border-violet-200 pl-2">
                   {row.toolCalls.map(tc => (
-                    <p key={tc.id} className="text-[10px] text-stone-500 font-mono truncate">
+                    <p key={tc.id} className={`text-[10px] font-mono truncate ${
+                      tc.tool === "modal_error"
+                        ? "text-red-600 font-semibold"
+                        : tc.tool === "modal_lifecycle"
+                        ? "text-stone-400 italic"
+                        : "text-stone-500"
+                    }`}>
                       {tc.summary}
                     </p>
                   ))}

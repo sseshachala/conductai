@@ -164,8 +164,16 @@ def _get_modal_run_tool():
 
 
 def _modal_dispatch(tool_name: str, tool_input: dict) -> str:
-    fn = _get_modal_run_tool()
-    return fn.remote(tool_name, tool_input)
+    try:
+        fn = _get_modal_run_tool()
+        return fn.remote(tool_name, tool_input)
+    except Exception as e:
+        # Surface Modal-level errors (cold start failure, timeout, container crash)
+        # back to the executor so they appear in the run trace instead of being silent.
+        error_type = type(e).__name__
+        msg = f"[Modal error — {error_type}] {e}"
+        log.error("Modal dispatch error for %s: %s", tool_name, e, exc_info=True)
+        raise RuntimeError(msg) from e
 
 
 # ── Public interface ──────────────────────────────────────────────────────────
