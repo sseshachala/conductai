@@ -63,8 +63,13 @@ def list_workflows(db: Session = Depends(get_db), workspace_id: str = Depends(ge
 
 
 _TEMPLATE_PLAYBOOKS = {
-    "autopilot_quick": "autopilot-quick.yaml",
-    "autopilot_full": "autopilot.yaml",
+    "autopilot_quick":    "autopilot-quick.yaml",
+    "autopilot_full":     "autopilot.yaml",
+    "autopilot_approved": "autopilot-approved.yaml",
+    "pr_reviewer":        "pr-reviewer.yaml",
+    "ci_notify":          "ci-notify.yaml",
+    "incident_responder": "incident-responder.yaml",
+    "dependency_updater": "dependency-updater.yaml",
 }
 
 
