@@ -141,6 +141,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
   const [activeView, setActiveView] = useState<"canvas" | "yaml">("canvas")
   const [environments, setEnvironments] = useState<Array<{ id: string; name: string }>>([])
   const [selectedEnvId, setSelectedEnvId] = useState<string>("")
+  const [envCredentials, setEnvCredentials] = useState<Array<{ handle: string; service: string }>>([])
 
   const STORAGE_KEY = `marshal:active-run:${workflowId}`
 
@@ -180,6 +181,17 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
         .catch(() => {})
     )
   }, [getToken])
+
+  // Load credentials for the selected environment
+  useEffect(() => {
+    if (!selectedEnvId) { setEnvCredentials([]); return }
+    authHeaders(getToken).then(headers =>
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/by-environment/${selectedEnvId}`, { headers })
+        .then(r => r.ok ? r.json() : [])
+        .then(data => setEnvCredentials(data))
+        .catch(() => {})
+    )
+  }, [getToken, selectedEnvId])
 
   // Load workflow on mount. When a graph arrives without meaningful positions
   // (the YAML loader writes placeholder coords), run dagre so it doesn't open
@@ -712,10 +724,11 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
                     />
                   </div>
                 ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center px-4">
-                    <span className="text-2xl">←</span>
-                    <p className="text-xs text-stone-400 leading-relaxed">Click a block on the canvas to configure it</p>
-                  </div>
+                  <EnvironmentPanel
+                    environments={environments}
+                    selectedEnvId={selectedEnvId}
+                    credentials={envCredentials}
+                  />
                 )
               )}
             </div>
@@ -818,6 +831,85 @@ function CanvasEditorWithClerk({ workflowId }: { workflowId: string }) {
     <ReactFlowProvider>
       <CanvasEditorInner workflowId={workflowId} getToken={getToken} />
     </ReactFlowProvider>
+  )
+}
+
+const SERVICE_META: Record<string, { label: string; abbr: string; color: string }> = {
+  github:       { label: "GitHub",       abbr: "GH", color: "bg-stone-800 text-white" },
+  slack:        { label: "Slack",        abbr: "SL", color: "bg-purple-600 text-white" },
+  linear:       { label: "Linear",       abbr: "LN", color: "bg-indigo-600 text-white" },
+  digitalocean: { label: "DigitalOcean", abbr: "DO", color: "bg-blue-500 text-white" },
+  email:        { label: "Email",        abbr: "EM", color: "bg-emerald-600 text-white" },
+}
+
+const ALL_SERVICES = ["github", "slack", "linear", "digitalocean", "email"]
+
+function EnvironmentPanel({
+  environments,
+  selectedEnvId,
+  credentials,
+}: {
+  environments: Array<{ id: string; name: string }>
+  selectedEnvId: string
+  credentials: Array<{ handle: string; service: string }>
+}) {
+  const env = environments.find(e => e.id === selectedEnvId)
+  const connectedServices = new Set(credentials.map(c => c.service))
+
+  return (
+    <div className="flex-1 flex flex-col px-4 py-5 gap-5 min-w-0">
+      {/* Environment */}
+      <div>
+        <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-2">Environment</p>
+        {env ? (
+          <div className="flex items-center gap-2">
+            <span className="w-7 h-7 rounded-md text-[10px] font-bold flex items-center justify-center bg-violet-100 text-violet-700">
+              {env.name.slice(0, 2).toUpperCase()}
+            </span>
+            <span className="text-sm font-medium text-stone-900">{env.name}</span>
+          </div>
+        ) : (
+          <p className="text-xs text-stone-400">No environment assigned — use the dropdown above to set one.</p>
+        )}
+      </div>
+
+      {/* Integrations */}
+      {env && (
+        <div>
+          <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-2">Integrations</p>
+          <div className="space-y-2">
+            {ALL_SERVICES.map(svc => {
+              const meta = SERVICE_META[svc]
+              const connected = connectedServices.has(svc)
+              return (
+                <div key={svc} className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-5 h-5 rounded text-[9px] font-bold flex items-center justify-center ${meta.color}`}>
+                      {meta.abbr}
+                    </span>
+                    <span className="text-xs text-stone-600">{meta.label}</span>
+                  </div>
+                  {connected ? (
+                    <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-600">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      connected
+                    </span>
+                  ) : (
+                    <a href="/settings" className="text-[10px] text-indigo-500 hover:underline">
+                      connect →
+                    </a>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      <p className="text-[10px] text-stone-400 mt-auto leading-relaxed">
+        Click a block to configure it.
+      </p>
+    </div>
   )
 }
 
