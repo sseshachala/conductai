@@ -94,7 +94,7 @@ function BlockNode({ data, selected }: NodeProps) {
       </p>
 
       {/* Integration + action sub-label */}
-      {integrationLabel && (
+      {integrationLabel && !(nodeData.type === "trigger" && (nodeData.config as Record<string, string> | undefined)?.event_type !== "github_issue_labeled") && (
         <div className="flex items-center gap-1 mt-1.5 flex-wrap">
           <span className={cn("text-[9px] font-semibold px-1.5 py-0.5 rounded", integrationColor)}>
             {integrationLabel}
