@@ -21,18 +21,12 @@ KNOWN_WORKFLOW_ID = "3638c5eb-ccb9-41da-aecf-b8bd6322e23c"
 def upgrade() -> None:
     conn = op.get_bind()
 
-    # 1. Find all distinct workspace_ids that have integrations (global or not)
+    # 1. Find all distinct workspace_ids that have integrations
+    # (workspaces table uses "id" as PK — query integrations only)
     workspace_rows = conn.execute(
         sa.text("SELECT DISTINCT workspace_id FROM integrations")
     ).fetchall()
-
-    # Also include workspaces that have credentials but no integrations yet
-    all_workspace_rows = conn.execute(
-        sa.text("SELECT DISTINCT workspace_id FROM workspaces")
-    ).fetchall()
-
-    # Union both sets
-    all_workspace_ids = {str(r[0]) for r in workspace_rows} | {str(r[0]) for r in all_workspace_rows}
+    all_workspace_ids = {str(r[0]) for r in workspace_rows}
 
     # 2. For each workspace, create a "Default" environment (skip if already exists)
     workspace_to_default_env: dict[str, str] = {}
