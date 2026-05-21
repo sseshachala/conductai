@@ -255,31 +255,21 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
   trigger: [
     {
       key: "config.event_type",
-      label: "Trigger",
+      label: "Trigger type",
       type: "select",
       required: true,
-      defaultValue: "manual",
+      defaultValue: "github_issue_labeled",
       options: [
-        { value: "manual",               label: "Manual" },
-        { value: "webhook",              label: "Webhook" },
-        { value: "schedule",             label: "Schedule (cron)" },
         { value: "github_issue_labeled", label: "GitHub — issue labeled" },
+        { value: "webhook",              label: "Inbound webhook" },
       ],
-    },
-    {
-      key: "config.webhook_secret",
-      label: "Webhook secret",
-      type: "text",
-      required: false,
-      placeholder: "optional — used to verify HMAC-SHA256 signature",
-      hint: "If set, callers must send X-Webhook-Signature: <hmac-sha256 of body>",
     },
     {
       key: "config.label",
       label: "Label",
       type: "text",
       required: true,
-      placeholder: "autopilot-ready",
+      placeholder: "autopilot ready",
       hint: "GitHub label that fires this trigger",
     },
     {
@@ -290,12 +280,12 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       hint: "Comma-separated owner/repo — only these repos will fire the trigger",
     },
     {
-      key: "config.cron",
-      label: "Cron",
+      key: "config.webhook_secret",
+      label: "Webhook secret",
       type: "text",
-      required: true,
-      placeholder: "0 9 * * 1-5",
-      hint: "Standard cron expression (UTC)",
+      required: false,
+      placeholder: "optional — verify HMAC-SHA256 signature",
+      hint: "If set, callers must send X-Webhook-Signature: sha256=<hmac> header",
     },
   ],
   output: [
