@@ -1,40 +1,64 @@
-name: CI Notify
+name: CI Failure Alert
 version: 1
 description: >
-  Receives a CI/CD webhook (GitHub Actions, CircleCI, etc.), summarises the
-  result, and posts to Slack. On failure, includes a brief AI diagnosis.
+  Fires when a CI/CD build fails. Diagnoses the failure from the webhook payload
+  and posts a summary with root cause and suggested fix to Slack.
+
+  Setup: GitHub repo → Settings → Webhooks → Add webhook.
+  Payload URL: https://<your-api>/webhooks/inbound/<this-workflow-id>
+  Content type: application/json
+  Events: choose individual → Workflow runs
+  Note: The brain block checks conclusion == failure and skips silently on success.
 
 on:
   webhook:
-    next: summarise_result
+    next: diagnose_failure
 
 blocks:
-  summarise_result:
+  diagnose_failure:
     type: brain
     mode: single
-    label: Summarise CI result
+    label: Diagnose CI failure
     description: |
-      A CI/CD pipeline has completed and sent a webhook payload.
+      A CI/CD webhook has fired. Only act if the build failed — skip silently otherwise.
 
       Payload: {{_trigger}}
 
-      1. Extract: repo name, branch, commit SHA, status (success/failure), workflow name, run URL
-      2. If status is failure: read the failure reason from the payload and write a one-sentence diagnosis
-      3. Format a short Slack message:
-         - ✅ or ❌ based on status
-         - Repo + branch + workflow name
-         - Commit SHA (short, 7 chars)
-         - Link to the run
-         - If failed: one-sentence diagnosis
+      1. Check the conclusion/status field:
+         - GitHub Actions: {{_trigger.workflow_run.conclusion}} — only proceed if "failure"
+         - CircleCI: {{_trigger.workflow.status}} — only proceed if "failed"
+         - Other: look for a status/conclusion field indicating failure
+         If the build succeeded, output: {"status": "success", "message": "", "skip": true}
+
+      2. If failed, extract:
+         - Repo name and branch
+         - Workflow/pipeline name
+         - Commit SHA (short, 7 chars) and commit message
+         - Author of the failing commit
+         - Link to the failed run
+         - Failed job/step name if available
+
+      3. Diagnose the failure:
+         - Read the failed step name and any error message in the payload
+         - Form a one-sentence root cause hypothesis
+         - Suggest one concrete fix action
+
+      4. Format a Slack message:
+         ❌ *<workflow name>* failed on `<branch>`
+         Repo: <repo> | Commit: <sha> by <author>
+         Failed step: <step name>
+         Likely cause: <hypothesis>
+         Fix: <suggested action>
+         <link to run>
 
       Output ONLY the following JSON on the last line:
-        {"status": "success|failure", "message": "<formatted slack message>", "run_url": "<url>"}
-    next: notify_result
+        {"status": "failure", "skip": false, "message": "<slack message>", "run_url": "<url>"}
+    next: notify_failure
 
-  notify_result:
+  notify_failure:
     type: output
-    label: Post to Slack
-    description: "{{summarise_result.message}}"
+    label: Alert Slack
+    description: "{{diagnose_failure.message}}"
     output:
       via: slack
       slack:
