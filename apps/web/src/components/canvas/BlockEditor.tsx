@@ -582,7 +582,7 @@ export default function BlockEditor({
       )}
 
       {/* ── Static config fields (trigger, logic, output, approval) ── */}
-      {staticFields.length > 0 && !isToolLike && (
+      {staticFields.length > 0 && !isToolLike && blockType !== "brain" && (
         <div className={section}>
           <span className={sectionLabel}>Configuration</span>
           <div className="space-y-3">
