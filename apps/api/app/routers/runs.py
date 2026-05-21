@@ -309,9 +309,19 @@ def list_all_runs(
         q = q.filter(Run.status == status)
     results = []
     for run, wf_id, wf_name in q.all():
-        out = RunWithWorkflowOut.model_validate(run)
-        out.workflow_id = str(wf_id)
-        out.workflow_name = wf_name
+        out = RunWithWorkflowOut(
+            id=run.id,
+            workflow_version_id=run.workflow_version_id,
+            triggered_by=run.triggered_by,
+            status=run.status,
+            started_at=run.started_at,
+            paused_at=run.paused_at,
+            completed_at=run.completed_at,
+            current_block_id=run.current_block_id,
+            created_at=run.created_at,
+            workflow_id=str(wf_id),
+            workflow_name=wf_name,
+        )
         results.append(out)
     return results
 
@@ -333,7 +343,16 @@ def get_workspace_run(
     if not row:
         raise HTTPException(status_code=404, detail="Run not found")
     run, wf_id, wf_name = row
-    out = RunWithWorkflowOut.model_validate(run)
-    out.workflow_id = str(wf_id)
-    out.workflow_name = wf_name
-    return out
+    return RunWithWorkflowOut(
+        id=run.id,
+        workflow_version_id=run.workflow_version_id,
+        triggered_by=run.triggered_by,
+        status=run.status,
+        started_at=run.started_at,
+        paused_at=run.paused_at,
+        completed_at=run.completed_at,
+        current_block_id=run.current_block_id,
+        created_at=run.created_at,
+        workflow_id=str(wf_id),
+        workflow_name=wf_name,
+    )

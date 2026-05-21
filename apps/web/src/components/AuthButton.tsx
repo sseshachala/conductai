@@ -6,12 +6,12 @@ import { useState, useRef, useEffect } from "react"
 
 const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 
-export default function AuthButton({ afterSignOutUrl = "/" }: { afterSignOutUrl?: string }) {
+export default function AuthButton({ afterSignOutUrl = "/", dropUp = false }: { afterSignOutUrl?: string; dropUp?: boolean }) {
   if (!clerkEnabled) return null
-  return <AccountMenu afterSignOutUrl={afterSignOutUrl} />
+  return <AccountMenu afterSignOutUrl={afterSignOutUrl} dropUp={dropUp} />
 }
 
-function AccountMenu({ afterSignOutUrl }: { afterSignOutUrl: string }) {
+function AccountMenu({ afterSignOutUrl, dropUp }: { afterSignOutUrl: string; dropUp?: boolean }) {
   const { signOut } = useClerk()
   const { user } = useUser()
   const router = useRouter()
@@ -40,7 +40,7 @@ function AccountMenu({ afterSignOutUrl }: { afterSignOutUrl: string }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-9 w-52 bg-white border border-stone-200 rounded-xl shadow-lg py-1 z-50">
+        <div className={`absolute right-0 w-52 bg-white border border-stone-200 rounded-xl shadow-lg py-1 z-50 ${dropUp ? "bottom-9" : "top-9"}`}>
           {email && (
             <>
               <p className="px-3 py-2 text-[11px] text-stone-400 truncate">{email}</p>
