@@ -129,10 +129,25 @@ def cmd_run(args):
         for issue in issues:
             print(f"{CYAN}  ── Issue #{issue['number']}: {issue['title']}{RESET}")
             state = _build_state(issue, repo)
-            run   = api.req("POST", f"{server}/workflows/{workflow_id}/runs", json_h, {
-                "triggered_by": f"cli:issue#{issue['number']}",
-                "initial_state": state,
-            })
+
+            # Preflight: estimate turn budget before starting the run
+            max_turns = None
+            try:
+                pf = api.req("POST", f"{server}/workflows/{workflow_id}/preflight", json_h, {
+                    "issue_title": issue["title"],
+                    "issue_body":  issue.get("body") or "",
+                })
+                suggested = pf.get("suggested_max_turns", 20)
+                if suggested > 20:
+                    print(f"{GRAY}  ⚠ estimated {suggested} turns — bumping max_turns{RESET}")
+                    max_turns = suggested
+            except Exception:
+                pass  # preflight is best-effort
+
+            payload = {"triggered_by": f"cli:issue#{issue['number']}", "initial_state": state}
+            if max_turns:
+                payload["max_turns"] = max_turns
+            run   = api.req("POST", f"{server}/workflows/{workflow_id}/runs", json_h, payload)
             ok = _stream_run(server, workflow_id, run["id"], workspace_id, token, api_key)
             passed += ok
             failed += not ok

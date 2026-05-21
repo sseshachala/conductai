@@ -9,6 +9,7 @@ class RunCreate(BaseModel):
     triggered_by: Optional[str] = "manual"
     dry_run: bool = False
     initial_state: Optional[dict[str, Any]] = None
+    max_turns: Optional[int] = None  # override default 20-turn brain budget
 
 
 class RunEventOut(BaseModel):

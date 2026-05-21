@@ -445,10 +445,10 @@ def _execute_brain(
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
     if is_agentic:
-        # Bounded agentic loop with real tool_use — max 20 turns
+        # Bounded agentic loop — max_turns from run state, default 20
         messages: list[dict] = [{"role": "user", "content": user_message}]
         turns = 0
-        max_turns = 20
+        max_turns = int(state.get("__max_turns", 20))
         total_input_tokens = 0
         total_output_tokens = 0
         working_dir: str | None = None  # track if Brain cloned a repo

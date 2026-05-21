@@ -172,6 +172,101 @@ def stream_block_compile(workflow_id: UUID, block_id: str, body: BlockCompileReq
     )
 
 
+class PreflightRequest(BaseModel):
+    issue_title: str = ""
+    issue_body: str = ""
+
+
+@router.post("/{workflow_id}/preflight")
+def preflight_workflow(
+    workflow_id: UUID,
+    body: PreflightRequest,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    """
+    Estimate the turn budget needed before starting a run.
+    Makes a single cheap Claude call per agentic brain block — no tools, pure reasoning.
+    Returns suggested_max_turns and a per-block breakdown.
+    """
+    from app.core.config import settings
+    import anthropic
+
+    workflow = db.query(Workflow).filter(
+        Workflow.id == workflow_id,
+        Workflow.workspace_id == workspace_id,
+    ).first()
+    if not workflow or not workflow.current_version:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    graph = workflow.current_version.graph or {}
+    nodes = graph.get("nodes", [])
+    brain_blocks = [
+        n for n in nodes
+        if n.get("data", {}).get("type") == "brain"
+        and n.get("data", {}).get("isAgentic", False)
+    ]
+
+    if not brain_blocks:
+        return {"suggested_max_turns": 20, "blocks": [], "total_files": []}
+
+    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    block_estimates = []
+    all_files: list[str] = []
+
+    for block in brain_blocks:
+        data = block.get("data", {})
+        label = data.get("label", block.get("id", "?"))
+        description = data.get("description", "")
+
+        prompt = (
+            f"You are estimating work for an AI coding agent.\n\n"
+            f"Issue title: {body.issue_title}\n"
+            f"Issue body: {body.issue_body}\n\n"
+            f"Brain block task:\n{description}\n\n"
+            f"Estimate: how many tool calls (shell commands, file reads, file writes) "
+            f"will this block need to complete this task?\n"
+            f"Respond with JSON only, no explanation:\n"
+            f'{{ "files": ["path/to/file", ...], "estimated_turns": <number>, "reasoning": "<one line>" }}'
+        )
+
+        try:
+            resp = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=256,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            import json, re
+            text = resp.content[0].text.strip()
+            # extract JSON even if wrapped in markdown
+            m = re.search(r"\{.*\}", text, re.DOTALL)
+            parsed = json.loads(m.group()) if m else {}
+            est = int(parsed.get("estimated_turns", 20))
+            files = parsed.get("files", [])
+            reasoning = parsed.get("reasoning", "")
+        except Exception:
+            est, files, reasoning = 20, [], ""
+
+        block_estimates.append({
+            "block_id": block.get("id"),
+            "label": label,
+            "estimated_turns": est,
+            "files": files,
+            "reasoning": reasoning,
+        })
+        all_files.extend(files)
+
+    total = sum(b["estimated_turns"] for b in block_estimates)
+    # add 5 turns buffer for commit/push/PR steps
+    suggested = max(total + 5, 20)
+
+    return {
+        "suggested_max_turns": suggested,
+        "blocks": block_estimates,
+        "total_files": list(dict.fromkeys(all_files)),  # deduplicated
+    }
+
+
 @router.post("/{workflow_id}/validate")
 def validate_workflow(
     workflow_id: UUID,
