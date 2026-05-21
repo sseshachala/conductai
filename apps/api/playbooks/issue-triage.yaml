@@ -1,0 +1,103 @@
+name: Issue Triage
+version: 1
+description: >
+  Triggered when a new GitHub issue is opened. AI reads the title and body,
+  assigns labels and priority, and posts a clarifying comment if the issue
+  is vague or missing reproduction steps.
+
+  Setup: GitHub repo → Settings → Webhooks → Add webhook.
+  Payload URL: https://<your-api>/webhooks/inbound/<this-workflow-id>
+  Content type: application/json
+  Events: choose individual → Issues → opened
+
+on:
+  webhook:
+    next: triage_issue
+
+blocks:
+  triage_issue:
+    type: brain
+    mode: agentic
+    label: Triage issue
+    description: |
+      A new GitHub issue has been opened. Triage it: classify, label, and ask
+      for clarification if needed.
+
+      Webhook payload: {{_trigger}}
+
+      Step 1 — Verify this is a new issue event:
+        Action: {{_trigger.action}} — only proceed if "opened"
+        Otherwise output: {"issue_number": null, "skipped": true}
+        And stop.
+
+      Step 2 — Extract issue details:
+        Issue number: {{_trigger.issue.number}}
+        Title: {{_trigger.issue.title}}
+        Body: {{_trigger.issue.body}}
+        Author: {{_trigger.issue.user.login}}
+        Repo: {{_trigger.repository.full_name}}
+        Existing labels: {{_trigger.issue.labels}}
+
+      Step 3 — Classify the issue type:
+        Read title and body carefully.
+        Classify as one of:
+          - bug: describes something broken or not working as expected
+          - feature: requests new functionality
+          - question: asking how something works
+          - docs: documentation gap or error
+          - performance: slowness or resource usage
+          - security: potential vulnerability (handle with care — do not expose details)
+          - duplicate: clearly describes the same issue as an existing one
+
+      Step 4 — Assign priority:
+        P1 (critical): data loss, security issue, complete outage, blocks all users
+        P2 (high): major feature broken, no workaround, affects many users
+        P3 (medium): issue has a workaround, affects some users
+        P4 (low): cosmetic, edge case, nice-to-have
+
+      Step 5 — Add labels via GitHub API:
+        GET https://api.github.com/repos/{{_trigger.repository.full_name}}/labels
+        to see which labels exist.
+
+        POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/{{_trigger.issue.number}}/labels
+        {
+          "labels": ["<type label>", "<priority label>"]
+        }
+        Use Authorization: token <github_token>
+        Only add labels that exist in the repo — do not create new ones.
+        Map type → label name (best match from what exists):
+          bug → "bug", "Bug", "type: bug"
+          feature → "enhancement", "feature", "type: feature"
+          question → "question", "help wanted"
+          docs → "documentation", "docs"
+          performance → "performance", "perf"
+
+      Step 6 — Decide if clarification is needed:
+        Post a clarifying comment if ANY of these are true:
+          - Body is empty or fewer than 20 words
+          - It's a bug report with no reproduction steps
+          - It's a feature request with no description of the problem being solved
+          - The title is too vague (e.g. "Bug", "Help", "Issue")
+
+        If clarification is needed, POST a comment:
+        POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/{{_trigger.issue.number}}/comments
+        {
+          "body": "Thanks for opening this issue, @<author>! To help us triage faster, could you provide:\n\n<bullet list of 2-3 specific questions based on what's missing>\n\nThis will help us reproduce and fix it more quickly."
+        }
+        Use Authorization: token <github_token>
+
+        If the issue is clear and well-described, post a brief acknowledgment:
+        "Thanks @<author> — triaged as <type>, <priority>. We'll review shortly."
+
+      Step 7 — Output ONLY the following JSON on the last line:
+        {"issue_number": <number>, "type": "<classification>", "priority": "<P1-P4>", "clarification_requested": <true|false>, "skipped": false}
+    next: notify_triage
+
+  notify_triage:
+    type: output
+    label: Log triage to Slack
+    description: "Issue #{{triage_issue.issue_number}} triaged: {{triage_issue.type}} / {{triage_issue.priority}}{{triage_issue.clarification_requested == true and ' — clarification requested' or ''}}"
+    output:
+      via: slack
+      slack:
+        channel: "#engineering"
