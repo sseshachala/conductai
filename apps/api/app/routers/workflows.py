@@ -79,8 +79,11 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
 
 
 @router.get("/{workflow_id}", response_model=WorkflowDetailOut)
-def get_workflow(workflow_id: UUID, db: Session = Depends(get_db)):
-    workflow = db.query(Workflow).filter(Workflow.id == workflow_id).first()
+def get_workflow(workflow_id: UUID, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id)):
+    workflow = db.query(Workflow).filter(
+        Workflow.id == workflow_id,
+        Workflow.workspace_id == workspace_id,
+    ).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
     return workflow
