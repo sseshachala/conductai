@@ -70,6 +70,8 @@ _TEMPLATE_PLAYBOOKS = {
     "ci_notify":          "ci-notify.yaml",
     "incident_responder": "incident-responder.yaml",
     "dependency_updater": "dependency-updater.yaml",
+    "release_notes":      "release-notes.yaml",
+    "issue_triage":       "issue-triage.yaml",
 }
 
 

@@ -66,7 +66,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         </h1>
 
         <p className="mt-6 text-xl text-stone-500 max-w-2xl leading-relaxed">
-          Delegator ships with 7 ready-made agents — label a GitHub issue, get a PR.
+          Delegator ships with 9 ready-made agents — label a GitHub issue, get a PR.
           CI fails, get a diagnosis. Alert fires, get a hypothesis. All in Slack.
           Nothing merges without your approval.
         </p>
@@ -265,6 +265,20 @@ const TEMPLATES = [
     what: "Cron fires every Monday → AI scans for outdated patch/minor deps → bumps versions → opens a single clean PR. Never bumps major versions.",
     scenario: "Team was 4 months behind on npm patches. Now a single PR lands every Monday. Merge in 30 seconds when CI is green.",
   },
+  {
+    icon: "🏷️",
+    name: "Issue Triage",
+    trigger: "GitHub issue",
+    what: "New issue opened → AI classifies type and priority → adds labels → posts a clarifying comment if the issue is vague or missing reproduction steps.",
+    scenario: "Issue filed at 11pm with just a title. By morning it has a bug/P2 label and a comment asking for reproduction steps — before any human touched it.",
+  },
+  {
+    icon: "📋",
+    name: "Release Notes",
+    trigger: "Git tag pushed",
+    what: "Tag pushed → AI reads every merged PR since the last tag → groups by feature/fix/maintenance → writes CHANGELOG entry → posts summary to Slack.",
+    scenario: "Engineer pushes v1.4.0 tag. #releases gets a Slack message listing 12 PRs shipped, grouped by type. CHANGELOG.md updated automatically.",
+  },
 ]
 
 const HOW_IT_WORKS = [
@@ -305,8 +319,8 @@ const WHY_DELEGATOR = [
   },
   {
     icon: "⚡",
-    title: "7 pre-built agents, ready to run",
-    body: "Autopilot, PR Reviewer, CI Failure Alert, Incident Responder, Dependency Updater. Pick a template, connect your tools, first run in minutes — not days.",
+    title: "9 pre-built agents, ready to run",
+    body: "Autopilot, PR Reviewer, Issue Triage, Release Notes, CI Failure Alert, Incident Responder, Dependency Updater. Pick a template, first run in minutes — not days.",
   },
   {
     icon: "🧩",
