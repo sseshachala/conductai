@@ -540,7 +540,18 @@ def _execute_brain(
                 # Track working dir if Brain runs shell commands
                 if tc.name == "run_shell" and tc.input.get("working_dir"):
                     working_dir = tc.input["working_dir"]
-                result_content = _local_dispatch(tc.name, tc.input)
+                try:
+                    result_content = _local_dispatch(tc.name, tc.input)
+                except RuntimeError as sandbox_err:
+                    # Surface Modal/sandbox errors into the run trace so they're
+                    # visible in the RunDrawer instead of silently failing.
+                    if db and run_id:
+                        _emit(db, run_id, block_id, "brain_tool_call", {
+                            "tool": "modal_error",
+                            "summary": str(sandbox_err),
+                            "turn": turns,
+                        })
+                    raise
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": tc.id,
