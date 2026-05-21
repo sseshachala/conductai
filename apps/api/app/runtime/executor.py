@@ -494,7 +494,7 @@ def _execute_brain(
                             "summary": "--- Cleaning Modal Assets ---",
                             "turn": turns,
                         })
-                return {
+                result = {
                     "output": final_text,
                     "turns": turns,
                     "input_tokens": total_input_tokens,
@@ -504,6 +504,17 @@ def _execute_brain(
                     "diff_stat": diff_stat,
                     "remote_host_ip": remote_host.get("ip") if remote_host else None,
                 }
+                # Extract structured values from JSON on the last line of output.
+                # Brain blocks can surface pr_url, passed, etc. as direct refs this way.
+                _last_line = final_text.strip().rsplit("\n", 1)[-1].strip()
+                if _last_line.startswith("{") and _last_line.endswith("}"):
+                    try:
+                        _extracted = json.loads(_last_line)
+                        if isinstance(_extracted, dict):
+                            result.update(_extracted)
+                    except Exception:
+                        pass
+                return result
 
             # Append assistant message
             messages.append({"role": "assistant", "content": response.content})
@@ -760,12 +771,47 @@ def _execute_output(block: dict, state: dict, credentials: dict, workflow_name: 
     return {"sent": True, "integration": integration, **results}
 
 
+def _evaluate_condition_expr(condition_expr: str) -> bool | None:
+    """
+    Evaluate a simple equality/comparison expression such as:
+      'true == true', 'false == true', '42 == 42', 'pass', 'false'
+
+    Returns True/False, or None if the expression cannot be evaluated
+    as a structured comparison (falls through to keyword matching).
+    """
+    expr = condition_expr.strip()
+
+    # Handle simple equality: <lhs> == <rhs>
+    if "==" in expr:
+        parts = expr.split("==", 1)
+        lhs = parts[0].strip().lower()
+        rhs = parts[1].strip().lower()
+        return lhs == rhs
+
+    # Handle simple inequality: <lhs> != <rhs>
+    if "!=" in expr:
+        parts = expr.split("!=", 1)
+        lhs = parts[0].strip().lower()
+        rhs = parts[1].strip().lower()
+        return lhs != rhs
+
+    # Single literal value
+    low = expr.lower()
+    if low in ("true", "pass", "success", "1", "yes"):
+        return True
+    if low in ("false", "fail", "failure", "0", "no"):
+        return False
+
+    return None
+
+
 def _execute_logic(block: dict, state: dict) -> dict:
     """
     Evaluate a condition and return route: 'pass' or 'fail'.
 
     Checks (in order):
-    1. Explicit condition expression in block config
+    1. Explicit condition expression in block config — evaluated as a structured
+       comparison (e.g. '{{run_tests.passed}} == true') after ref resolution.
     2. exit_code == 0 from last shell output
     3. Keywords 'pass', 'success', 'true', '0' in last output
     """
@@ -773,14 +819,14 @@ def _execute_logic(block: dict, state: dict) -> dict:
     condition_expr = _resolve_refs(config.get("condition", ""), state)
     last_output = str(state.get("__last_output", "")).lower()
 
-    # If config has an explicit condition expression, evaluate it
+    # If config has an explicit condition expression, evaluate it structurally
     if condition_expr:
-        cond_lower = condition_expr.lower()
-        if any(k in cond_lower for k in ("pass", "success", "true", "== 0", "exit 0")):
-            # Condition is about passing — check last_output
-            pass
-        elif any(k in cond_lower for k in ("fail", "error", "false")):
-            return {"route": "fail", "condition": condition_expr, "evaluated_on": last_output[:200]}
+        result = _evaluate_condition_expr(condition_expr)
+        if result is True:
+            return {"route": "pass", "condition": condition_expr, "evaluated": True}
+        if result is False:
+            return {"route": "fail", "condition": condition_expr, "evaluated": False}
+        # result is None — expression was ambiguous; fall through to heuristics
 
     # Check exit_code in last output (JSON blob from run_shell)
     try:
