@@ -170,12 +170,22 @@ def _modal_dispatch(tool_name: str, tool_input: dict) -> str:
 
 def _dispatch_local(tool_name: str, tool_input: dict) -> str:
     if tool_name == "read_file":
+        if "path" not in tool_input:
+            return "Error: missing required parameter 'path'"
         return _local_read_file(tool_input["path"])
     if tool_name == "write_file":
+        if "path" not in tool_input:
+            return "Error: missing required parameter 'path'"
+        if "content" not in tool_input:
+            return "Error: missing required parameter 'content'"
         return _local_write_file(tool_input["path"], tool_input["content"])
     if tool_name == "run_shell":
+        if "command" not in tool_input:
+            return "Error: missing required parameter 'command'"
         return _local_run_shell(tool_input["command"], tool_input.get("working_dir"))
     if tool_name == "search_code":
+        if "pattern" not in tool_input:
+            return "Error: missing required parameter 'pattern'"
         return _local_search_code(
             tool_input["pattern"],
             tool_input.get("path", "."),
