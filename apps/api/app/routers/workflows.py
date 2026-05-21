@@ -169,6 +169,105 @@ def stream_block_compile(workflow_id: UUID, block_id: str, body: BlockCompileReq
     )
 
 
+@router.post("/{workflow_id}/validate")
+def validate_workflow(
+    workflow_id: UUID,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    """
+    Pre-flight validation before starting a run.
+    Checks: credentials configured, required block fields set, Brain descriptions sufficient.
+    Returns {valid: bool, errors: [{block_id, label, message}]}
+    """
+    import re
+    from app.models.integration import Integration
+    from app.core.crypto import decrypt
+
+    workflow = db.query(Workflow).filter(
+        Workflow.id == workflow_id,
+        Workflow.workspace_id == workspace_id,
+    ).first()
+    if not workflow or not workflow.current_version:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    graph = workflow.current_version.graph or {}
+    nodes = graph.get("nodes", [])
+
+    # Which integrations are configured?
+    cred_rows = db.query(Integration).filter(
+        Integration.workspace_id == workspace_id
+    ).all()
+    configured_handles = {row.handle for row in cred_rows if row.encrypted_credentials}
+
+    errors = []
+
+    for node in nodes:
+        data = node.get("data", {})
+        block_type = data.get("type", "tool")
+        label = data.get("label") or node.get("id", "?")
+        block_id = node.get("id", "?")
+        config = data.get("config") or {}
+        integration = data.get("integration", "")
+
+        # ── Trigger blocks ──────────────────────────────────────────────────
+        if block_type == "trigger":
+            event_type = config.get("event_type", "")
+            if event_type in ("github_issue_labeled", "github_issue"):
+                if "github" not in configured_handles:
+                    errors.append({"block_id": block_id, "label": label,
+                                   "message": "GitHub credential not configured — connect it in Settings"})
+                if not config.get("repo_allowlist"):
+                    errors.append({"block_id": block_id, "label": label,
+                                   "message": "repo_allowlist is required (e.g. owner/repo)"})
+                if not config.get("label"):
+                    errors.append({"block_id": block_id, "label": label,
+                                   "message": "label is required (e.g. ai_ready)"})
+
+        # ── Brain blocks ─────────────────────────────────────────────────────
+        elif block_type == "brain":
+            description = (data.get("description") or config.get("description") or "").strip()
+            if len(description.split()) < 10:
+                errors.append({"block_id": block_id, "label": label,
+                                "message": "Description too vague — add at least 10 words describing what the AI should do"})
+            system_prompt = (data.get("system_prompt") or config.get("system_prompt") or "").strip()
+            if not system_prompt:
+                errors.append({"block_id": block_id, "label": label,
+                                "message": "System prompt is required for Brain blocks"})
+
+        # ── Tool / cleanup blocks ────────────────────────────────────────────
+        elif block_type in ("tool", "cleanup"):
+            if not integration:
+                errors.append({"block_id": block_id, "label": label,
+                                "message": "No integration selected"})
+            else:
+                # Check the needed credential is configured
+                needed = integration.lower().split(":")[0]
+                if needed not in configured_handles:
+                    errors.append({"block_id": block_id, "label": label,
+                                   "message": f"{integration} credential not configured — connect it in Settings"})
+                action = config.get("action", "")
+                if not action:
+                    errors.append({"block_id": block_id, "label": label,
+                                   "message": f"No action selected for {integration}"})
+
+        # ── Output blocks ────────────────────────────────────────────────────
+        elif block_type == "output":
+            via = integration or "slack"
+            if via in ("slack", "both"):
+                if not config.get("channel"):
+                    errors.append({"block_id": block_id, "label": label,
+                                   "message": "Slack channel is required (e.g. #general)"})
+                if "slack" not in configured_handles:
+                    errors.append({"block_id": block_id, "label": label,
+                                   "message": "Slack credential not configured — connect it in Settings"})
+            if via in ("email", "both") and not config.get("to"):
+                errors.append({"block_id": block_id, "label": label,
+                                "message": "Email address (To) is required"})
+
+    return {"valid": len(errors) == 0, "errors": errors}
+
+
 @router.get("/{workflow_id}/estimate")
 def estimate_workflow_cost(
     workflow_id: UUID,
