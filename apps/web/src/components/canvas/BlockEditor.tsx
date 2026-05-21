@@ -9,7 +9,7 @@ import {
   INTEGRATIONS,
   type ConfigField,
 } from "@/lib/config-schemas"
-import { GitHubRepoField, GitHubBranchField } from "./GitHubRepoField"
+import { GitHubRepoField, GitHubBranchField, GitHubRepoAllowlistField } from "./GitHubRepoField"
 import { cn } from "@/lib/utils"
 
 interface BlockEditorProps {
@@ -318,6 +318,17 @@ export default function BlockEditor({
     // Read-only fields skip all integration-specific overrides
     if (field.readOnly) {
       return <FieldInput field={field} value={val} onChange={() => {}} />
+    }
+
+    // Trigger repo allowlist — multi-select typeahead from connected GitHub account
+    if (field.key === "config.repo_allowlist") {
+      return (
+        <GitHubRepoAllowlistField
+          value={(val as string) || ""}
+          getToken={getToken}
+          onChange={v => handleFieldChange(field.key, v)}
+        />
+      )
     }
 
     if (integration === "github") {
