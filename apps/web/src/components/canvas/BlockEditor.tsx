@@ -281,6 +281,16 @@ export default function BlockEditor({
           return triggerEventType === "webhook"
         return true
       })
+    : blockType === "output"
+    ? allStaticFields.filter(f => {
+        if (f.key === "config.channel")
+          return integration === "slack" || integration === "both"
+        if (f.key === "config.to")
+          return integration === "email" || integration === "both"
+        if (f.key === "config.webhook_url" || f.key === "config.webhook_secret")
+          return integration === "webhook"
+        return true
+      })
     : allStaticFields
   const actionFields = isToolLike && integration && action
     ? (ACTION_FIELDS[integration]?.[action] || [])
