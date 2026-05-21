@@ -17,7 +17,7 @@ from app.core.auth import get_workspace_id, _verify_clerk_token, _clerk_enabled,
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.run import Run, RunEvent
-from app.models.workflow import Workflow
+from app.models.workflow import Workflow, WorkflowVersion
 from app.schemas.run import RunCreate, RunDetailOut, RunOut
 
 router = APIRouter(prefix="/workflows/{workflow_id}/runs", tags=["runs"])
@@ -89,10 +89,14 @@ def list_runs(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
 ):
-    workflow = _get_workflow(workflow_id, workspace_id, db)
+    _get_workflow(workflow_id, workspace_id, db)
+    # Return runs across ALL versions so autosave version bumps don't hide history
+    version_ids = db.query(WorkflowVersion.id).filter(
+        WorkflowVersion.workflow_id == workflow_id
+    ).subquery()
     return (
         db.query(Run)
-        .filter(Run.workflow_version_id == workflow.current_version_id)
+        .filter(Run.workflow_version_id.in_(version_ids))
         .order_by(Run.created_at.desc())
         .all()
     )
