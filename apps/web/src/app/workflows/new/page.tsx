@@ -7,12 +7,6 @@ import Link from "next/link"
 
 const TEMPLATES = [
   {
-    id: "blank",
-    label: "Blank",
-    description: "Start from scratch with an empty canvas",
-    tags: [],
-  },
-  {
     id: "autopilot_quick",
     label: "Autopilot Quick",
     description: "Watch for GitHub issues labeled 'autopilot ready', implement the fix and open a PR immediately. No test step — CI runs tests on the PR.",
@@ -46,7 +40,7 @@ function NewWorkflowWithAuth() {
 
 function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
   const [name, setName] = useState("")
-  const [template, setTemplate] = useState("blank")
+  const [template, setTemplate] = useState("autopilot_quick")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
