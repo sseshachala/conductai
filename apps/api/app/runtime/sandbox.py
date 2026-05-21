@@ -99,7 +99,12 @@ def _get_modal_run_tool():
     _app = modal.App("delegator-brain-sandbox")
     forbidden_patterns = _FORBIDDEN_SHELL_PATTERNS  # captured at definition time
 
-    @_app.function(timeout=120, cpu=1, memory=512, retries=0)
+    _image = (
+        modal.Image.debian_slim()
+        .apt_install("git", "curl", "wget", "unzip", "python3", "python3-pip", "nodejs", "npm")
+    )
+
+    @_app.function(timeout=300, cpu=1, memory=1024, retries=0, image=_image)
     def run_tool(name: str, inputs: dict) -> str:
         import os as _os
         import re as _re

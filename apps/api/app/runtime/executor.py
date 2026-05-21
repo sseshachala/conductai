@@ -418,6 +418,30 @@ def _execute_brain(
         "Do not attempt partial work or use any tools if the task is unclear."
     )
 
+    environment_preamble = (
+        "EXECUTION ENVIRONMENT:\n"
+        "You are running inside a fresh isolated Ubuntu container. Every run starts clean.\n"
+        "Pre-installed: git, python3, pip3, curl, wget, node, npm, unzip.\n"
+        "Do NOT run apt-get, do NOT check if tools exist with find/which — they are available.\n"
+        "\n"
+        "STANDARD REPO SETUP (always follow this exact pattern):\n"
+        "1. Clone the repo:  git clone <url> /tmp/repo && cd /tmp/repo\n"
+        "2. Create a branch: git checkout -b fix/<issue-number>-<short-slug>\n"
+        "3. Install deps (only what the project needs):\n"
+        "   - Node.js project (package.json exists): npm ci\n"
+        "   - Python project (requirements.txt exists): pip3 install -r requirements.txt\n"
+        "   - Python project (pyproject.toml exists): pip3 install -e .\n"
+        "   - Other: inspect and install accordingly\n"
+        "4. Implement the fix\n"
+        "5. Run tests to verify\n"
+        "6. git add -A && git commit -m 'fix: <description>'\n"
+        "7. git push origin <branch-name>\n"
+        "\n"
+        "Use the GitHub token from credentials for clone URL and push: "
+        "https://<github.token>@github.com/<owner>/<repo>.git\n"
+        "Do not deviate from this pattern. Do not explore the system."
+    )
+
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
     if is_agentic:
@@ -428,7 +452,7 @@ def _execute_brain(
         total_input_tokens = 0
         total_output_tokens = 0
         working_dir: str | None = None  # track if Brain cloned a repo
-        full_system = f"{system_prompt}\n\n{sufficiency_instruction}"
+        full_system = f"{environment_preamble}\n\n{system_prompt}\n\n{sufficiency_instruction}"
 
         while turns < max_turns:
             response = client.messages.create(
