@@ -740,6 +740,32 @@ def workflow_yaml_from_graph(body: GraphToYamlRequest):
 # ── Repo source binding + sync ────────────────────────────────────────────────
 
 
+class WorkflowEnvironmentRequest(BaseModel):
+    """Assign (or clear) an environment on a workflow."""
+    environment_id: str | None = None  # UUID string or null to clear
+
+
+@router.patch("/{workflow_id}/environment")
+def set_workflow_environment(
+    workflow_id: UUID,
+    body: WorkflowEnvironmentRequest,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    """Assign or clear the environment scoping for a workflow."""
+    workflow = db.query(Workflow).filter(
+        Workflow.id == workflow_id,
+        Workflow.workspace_id == workspace_id,
+    ).first()
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    workflow.environment_id = body.environment_id or None
+    db.commit()
+    db.refresh(workflow)
+    return {"id": str(workflow.id), "environment_id": str(workflow.environment_id) if workflow.environment_id else None}
+
+
 class WorkflowSourceRequest(BaseModel):
     """Bind a workflow to a YAML file in a customer's GitHub repo."""
     source_repo: str | None = None   # "owner/repo" — pass null to unset

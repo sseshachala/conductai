@@ -22,3 +22,4 @@ class Workspace(Base):
     users = relationship("User", back_populates="workspace")
     workflows = relationship("Workflow", back_populates="workspace")
     integrations = relationship("Integration", back_populates="workspace")
+    environments = relationship("Environment", back_populates="workspace")

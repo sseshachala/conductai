@@ -1,8 +1,16 @@
+"use client"
+
+import { useState } from "react"
 import Link from "next/link"
 import AuthButton from "@/components/AuthButton"
 import CredentialsManager from "@/components/settings/CredentialsManager"
+import EnvironmentsManager from "@/components/settings/EnvironmentsManager"
+
+type Tab = "integrations" | "environments"
 
 export default function SettingsPage() {
+  const [activeTab, setActiveTab] = useState<Tab>("integrations")
+
   return (
     <div className="min-h-screen bg-stone-50">
       <header className="border-b border-stone-200 bg-white px-6 py-4 flex items-center justify-between">
@@ -17,14 +25,39 @@ export default function SettingsPage() {
 
       <main className="mx-auto max-w-2xl px-6 py-12">
         <div className="mb-8">
-          <h1 className="text-2xl font-semibold text-stone-900">Connect your tools</h1>
+          <h1 className="text-2xl font-semibold text-stone-900">Settings</h1>
           <p className="text-sm text-stone-500 mt-1.5">
-            Add credentials for the integrations your agents will use.
+            Manage your integrations and environments.
             All tokens are encrypted with AES-256-GCM before storage.
           </p>
         </div>
 
-        <CredentialsManager />
+        {/* Tab bar */}
+        <div className="flex bg-stone-100 rounded-lg p-1 mb-6 w-fit">
+          <button
+            onClick={() => setActiveTab("integrations")}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              activeTab === "integrations"
+                ? "bg-white text-stone-900 shadow-sm"
+                : "text-stone-500 hover:text-stone-800"
+            }`}
+          >
+            Integrations
+          </button>
+          <button
+            onClick={() => setActiveTab("environments")}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              activeTab === "environments"
+                ? "bg-white text-stone-900 shadow-sm"
+                : "text-stone-500 hover:text-stone-800"
+            }`}
+          >
+            Environments
+          </button>
+        </div>
+
+        {activeTab === "integrations" && <CredentialsManager />}
+        {activeTab === "environments" && <EnvironmentsManager />}
 
         <div className="mt-10 pt-8 border-t border-stone-200 text-right">
           <Link
