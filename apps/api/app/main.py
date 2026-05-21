@@ -33,3 +33,28 @@ app.include_router(webhooks.router)
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/health/sandbox")
+def sandbox_health():
+    """Diagnose which execution backend is active."""
+    from app.runtime.sandbox import _modal_available
+    from app.core.config import settings
+    modal_configured = bool(settings.modal_token_id and settings.modal_token_secret)
+    modal_result = None
+    if modal_configured:
+        try:
+            from app.runtime.sandbox import _modal_dispatch
+            modal_result = _modal_dispatch("run_shell", {"command": "echo modal-ok"})
+            modal_ok = "modal-ok" in modal_result
+        except Exception as e:
+            modal_result = str(e)
+            modal_ok = False
+    else:
+        modal_ok = False
+    return {
+        "modal_configured": modal_configured,
+        "modal_working":    modal_ok,
+        "modal_test_output": modal_result,
+        "active_backend":   "modal" if modal_ok else "local",
+    }
