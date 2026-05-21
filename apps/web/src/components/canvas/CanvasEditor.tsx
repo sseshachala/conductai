@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AuthButton from "@/components/AuthButton"
+import RunDrawer from "./RunDrawer"
 import {
   ReactFlow,
   Background,
@@ -126,6 +127,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
   const { screenToFlowPosition } = useReactFlow()
   const router = useRouter()
   const [running, setRunning] = useState<"idle" | "dry" | "live">("idle")
+  const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([])
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [editorExpanded, setEditorExpanded] = useState(false)
@@ -273,11 +275,29 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
       )
       if (!res.ok) throw new Error("Failed to start run")
       const run = await res.json()
-      router.push(`/workflows/${workflowId}/runs/${run.id}`)
+      if (dryRun) {
+        router.push(`/workflows/${workflowId}/runs/${run.id}`)
+      } else {
+        setActiveRunId(run.id)
+        setRunning("idle")
+      }
     } catch {
       setRunning("idle")
     }
   }, [workflowId, getToken, router, nodes])
+
+  const handleBlockStatus = useCallback((blockId: string, status: "running" | "completed" | "failed" | "skipped") => {
+    setNodes(nds => nds.map(n =>
+      n.id === blockId ? { ...n, data: { ...n.data, runStatus: status } } : n
+    ))
+  }, [setNodes])
+
+  const handleDrawerClose = useCallback(() => {
+    setActiveRunId(null)
+    setRunning("idle")
+    // Clear run status highlights from all nodes
+    setNodes(nds => nds.map(n => ({ ...n, data: { ...n.data, runStatus: undefined } })))
+  }, [setNodes])
 
   const handleBlockChange = useCallback(
     (blockId: string, changes: Record<string, unknown>) => {
@@ -352,11 +372,11 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
             {running === "dry" ? "Simulating…" : "Dry run"}
           </button>
           <button
-            onClick={() => startRun(false)}
-            disabled={running !== "idle"}
+            onClick={() => activeRunId ? handleDrawerClose() : startRun(false)}
+            disabled={running === "live" || running === "dry"}
             className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-violet-700 transition-colors disabled:opacity-50"
           >
-            {running === "live" ? "Starting…" : "▶ Run"}
+            {running === "live" ? "Starting…" : activeRunId ? "■ Stop" : "▶ Run"}
           </button>
           <AuthButton afterSignOutUrl="/sign-in" />
         </div>
@@ -387,6 +407,15 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
                 <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#E7E5E4" />
                 <Controls className="!shadow-none !border !border-stone-200 !rounded-xl" showInteractive={false} />
               </ReactFlow>
+              {activeRunId && (
+                <RunDrawer
+                  workflowId={workflowId}
+                  runId={activeRunId}
+                  getToken={getToken}
+                  onBlockStatus={handleBlockStatus}
+                  onClose={handleDrawerClose}
+                />
+              )}
             </div>
             <div className={`relative flex shrink-0 transition-all duration-200 ${sidebarOpen ? "w-52" : "w-8"}`}>
               <button

@@ -12,6 +12,7 @@ export interface BlockNodeData {
   isAgentic?: boolean
   integration?: string
   config?: { action?: string }
+  runStatus?: "running" | "completed" | "failed" | "skipped"
   [key: string]: unknown
 }
 
@@ -47,6 +48,13 @@ function BlockNode({ data, selected }: NodeProps) {
   const integration = nodeData.integration as string | undefined
   const action = nodeData.config?.action
 
+  const runStatus = nodeData.runStatus
+  const runRing =
+    runStatus === "running"   ? "ring-2 ring-violet-400 ring-offset-2 shadow-violet-100 shadow-lg" :
+    runStatus === "completed" ? "ring-2 ring-emerald-400 ring-offset-2" :
+    runStatus === "failed"    ? "ring-2 ring-red-400 ring-offset-2" :
+    runStatus === "skipped"   ? "opacity-40" : ""
+
   const effectiveIntegration = integration || (nodeData.type === "output" ? "slack" : undefined)
   const integrationLabel = effectiveIntegration ? INTEGRATION_LABELS[effectiveIntegration] ?? effectiveIntegration : null
   const integrationColor = effectiveIntegration ? (INTEGRATION_COLORS[effectiveIntegration] ?? "bg-stone-500 text-white") : ""
@@ -58,14 +66,19 @@ function BlockNode({ data, selected }: NodeProps) {
     <div
       style={{ width: 200 }}
       className={cn(
-        "rounded-xl border-2 px-3 py-2.5 cursor-pointer transition-all shadow-sm",
+        "relative rounded-xl border-2 px-3 py-2.5 cursor-pointer transition-all shadow-sm",
         style.bg,
         style.border,
+        runStatus ? runRing :
         selected
           ? "ring-2 ring-indigo-400 ring-offset-2 shadow-md"
           : "hover:shadow-md hover:ring-1 hover:ring-stone-300 hover:ring-offset-1"
       )}
     >
+      {/* Running pulse indicator */}
+      {runStatus === "running" && (
+        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-violet-500 animate-ping" />
+      )}
       {/* Target handle (top) */}
       <Handle
         type="target"
