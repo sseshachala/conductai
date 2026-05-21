@@ -130,6 +130,62 @@ async def slack_interactions(request: Request, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
+
+# ── Inbound webhook trigger ───────────────────────────────────────────────────
+
+@router.post("/inbound/{workflow_id}")
+async def inbound_webhook(
+    workflow_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Receive an inbound POST and fire a workflow run whose trigger is configured
+    as event_type=\"webhook\".  Optionally verifies an HMAC-SHA256 signature
+    when the trigger node has a webhook_secret set.
+    """
+    body = await request.body()
+    try:
+        payload = json.loads(body) if body else {}
+    except Exception:
+        payload = {"raw": body.decode(errors="replace")}
+
+    workflow = db.query(Workflow).filter(Workflow.id == workflow_id).first()
+    if not workflow or not workflow.current_version:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    version = workflow.current_version
+    nodes = version.graph.get("nodes", [])
+    trigger_node = next(
+        (n for n in nodes
+         if n.get("data", {}).get("type") == "trigger"
+         and n.get("data", {}).get("config", {}).get("event_type") == "webhook"),
+        None,
+    )
+    if not trigger_node:
+        raise HTTPException(status_code=400, detail="Workflow has no webhook trigger")
+
+    webhook_secret = trigger_node.get("data", {}).get("config", {}).get("webhook_secret", "")
+    if webhook_secret:
+        sig_header = request.headers.get("X-Webhook-Signature", "")
+        expected = hmac.new(webhook_secret.encode(), body, hashlib.sha256).hexdigest()  # type: ignore[attr-defined]
+        if not sig_header or not hmac.compare_digest(expected, sig_header):
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
+    run = Run(
+        workflow_version_id=version.id,
+        triggered_by="webhook:inbound",
+        status="pending",
+        state={"_trigger": payload, "__triggered_by": "webhook:inbound"},
+    )
+    db.add(run)
+    db.flush()
+    db.commit()
+    _redis().rpush(QUEUE_KEY, str(run.id))
+    log.info("Inbound webhook triggered run %s for workflow %s", run.id, workflow_id)
+    return {"ok": True, "run_id": str(run.id)}
+
+
 # ── Deploy webhook helpers ────────────────────────────────────────────────────
 
 def _trigger_webhook_workflows(db: Session, event_type: str, initial_state: dict[str, Any]) -> list[str]:
