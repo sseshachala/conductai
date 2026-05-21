@@ -260,7 +260,7 @@ export default function BlockEditor({
   onChange,
   getToken,
 }: BlockEditorProps) {
-  const [tab, setTab] = useState<"plain" | "config" | "advanced">("config")
+  const [promptOpen, setPromptOpen] = useState(false)
   const [streamedPrompt, setStreamedPrompt] = useState<string>("")
   const [isStreaming, setIsStreaming] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
@@ -361,9 +361,9 @@ export default function BlockEditor({
     )
   }
 
-  // Stream whenever Advanced tab is open
+  // Stream compiled prompt when preview section is open
   useEffect(() => {
-    if (tab !== "advanced") return
+    if (!promptOpen) return
     if (abortRef.current) abortRef.current.abort()
     const abort = new AbortController()
     abortRef.current = abort
@@ -412,269 +412,215 @@ export default function BlockEditor({
     })()
 
     return () => abort.abort()
-  }, [tab, blockId, workflowId, description])
+  }, [promptOpen, blockId, workflowId, description])
 
   useEffect(() => {
-    setTab("config")
+    setPromptOpen(false)
     setStreamedPrompt("")
     setIsStreaming(false)
   }, [blockId])
 
+  const section = "px-4 py-3 space-y-3 border-b border-stone-100"
+  const sectionLabel = "text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-2 block"
+  const inputBase = "w-full border border-stone-200 rounded-lg px-2.5 py-1.5 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-200 bg-white"
+
   return (
-    <div className="bg-white">
+    <div className="bg-white flex flex-col h-full overflow-y-auto">
+
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-2.5 border-b border-stone-100">
-        <div className="flex items-center gap-2">
-          <span className={cn("text-[9px] font-bold tracking-widest uppercase px-1.5 py-0.5 rounded", style.label)}>
-            {style.labelText}
-          </span>
-          <span className="text-sm font-medium text-stone-700">{label}</span>
-        </div>
-        <div className="flex rounded-lg border border-stone-200 overflow-hidden text-xs">
-          {(["config", "plain", "advanced"] as const).map(t => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={cn("px-3 py-1.5 font-medium capitalize transition-colors",
-                tab === t ? "bg-stone-900 text-white" : "text-stone-500 hover:text-stone-700"
-              )}
-            >
-              {t === "advanced" ? (
-                <>Advanced {isStreaming && tab === "advanced" && (
-                  <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                )}</>
-              ) : t === "config" ? "Config" : "Plain English"}
-            </button>
-          ))}
-        </div>
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-stone-100 shrink-0">
+        <span className={cn("text-[9px] font-bold tracking-widest uppercase px-1.5 py-0.5 rounded shrink-0", style.label)}>
+          {style.labelText}
+        </span>
+        <input
+          value={label}
+          onChange={e => onChange(blockId, { ...blockData, label: e.target.value })}
+          className="flex-1 text-sm font-medium text-stone-800 bg-transparent border-0 outline-none focus:bg-stone-50 rounded px-1 -mx-1 min-w-0"
+          placeholder="Block name"
+        />
       </div>
 
-      {/* Body */}
-      <div className="px-5 py-3">
-
-        {/* ── Plain English tab ── */}
-        {tab === "plain" && (
-          <div className="space-y-4">
-            {/* Name field — always editable */}
-            <div>
-              <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">Name</label>
-              <input
-                value={label}
-                onChange={e => onChange(blockId, { ...blockData, label: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-stone-200 px-2.5 py-1.5 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              />
+      {/* ── Brain blocks: system prompt + custom instructions ── */}
+      {blockType === "brain" && (
+        <>
+          <div className={section}>
+            <div className="flex items-center justify-between">
+              <span className={sectionLabel}>System prompt</span>
+              <span className="text-[10px] text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded mb-2">read-only</span>
             </div>
+            <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 text-xs text-stone-600 leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto">
+              <SystemPromptWithChips text={description} />
+            </div>
+            <p className="text-[10px] text-stone-400 mt-1 flex items-center gap-2">
+              <span className="inline-flex items-center gap-1">
+                <span className="inline-block w-2 h-2 rounded-sm bg-violet-200 border border-violet-300" />
+                template ref
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="inline-block w-2 h-2 rounded-sm bg-red-100 border border-red-200" />
+                literal placeholder
+              </span>
+            </p>
+          </div>
 
-            {blockType === "brain" ? (
-              <>
-                {/* System prompt — readonly, chips rendered */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">
-                      System prompt
-                    </label>
-                    <span className="text-[10px] font-medium text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded">
-                      read-only
-                    </span>
-                  </div>
-                  <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 text-xs text-stone-600 leading-relaxed whitespace-pre-wrap min-h-[80px]">
-                    <SystemPromptWithChips text={description} />
-                  </div>
-                  <p className="text-[10px] text-stone-400 mt-1">
-                    <span className="inline-block w-2 h-2 rounded-sm bg-violet-200 border border-violet-300 mr-1 align-middle" />
-                    violet = template ref &nbsp;·&nbsp;
-                    <span className="inline-block w-2 h-2 rounded-sm bg-red-100 border border-red-200 mr-1 align-middle" />
-                    red = literal placeholder (check your YAML)
-                  </p>
-                </div>
+          <div className={section}>
+            <span className={sectionLabel}>Your instructions</span>
+            <textarea
+              value={(blockData.custom_instructions as string) || ""}
+              onChange={e => onChange(blockId, { ...blockData, custom_instructions: e.target.value })}
+              rows={3}
+              placeholder="Add constraints or focus areas. Avoid overriding steps from the system prompt above."
+              className={cn(inputBase, "resize-none")}
+            />
+          </div>
 
-                {/* Custom instructions — user-editable */}
-                <div>
-                  <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">
-                    Your instructions
-                  </label>
-                  <p className="text-[10px] text-stone-400 mt-0.5 mb-1">
-                    Added to the system prompt at runtime. Use this to add constraints, focus areas, or context.
-                  </p>
-                  <textarea
-                    value={(blockData.custom_instructions as string) || ""}
-                    onChange={e => onChange(blockId, { ...blockData, custom_instructions: e.target.value })}
-                    rows={4}
-                    placeholder="e.g. Focus only on TypeScript files. Skip test files. Keep changes minimal."
-                    className="w-full rounded-lg border border-stone-200 px-2.5 py-1.5 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
-                  />
+          <div className={section}>
+            <span className={sectionLabel}>Mode</span>
+            {BLOCK_CONFIG_SCHEMAS.brain?.map(field => (
+              <div key={field.key}>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-stone-600">{field.label}</span>
+                  <FieldInput field={field} value={blockData.isAgentic} onChange={v => onChange(blockId, { ...blockData, isAgentic: v })} />
                 </div>
-              </>
-            ) : (
-              /* Non-brain blocks — keep simple free-text description */
-              <div>
-                <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">
-                  What should this block do?
-                </label>
-                <textarea
-                  value={description}
-                  onChange={e => onChange(blockId, { ...blockData, description: e.target.value })}
-                  rows={3}
-                  placeholder="Describe in plain English…"
-                  className="mt-1 w-full rounded-lg border border-stone-200 px-2.5 py-1.5 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
-                />
+                {field.hint && <p className="text-[10px] text-stone-400 mt-1">{field.hint}</p>}
               </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* ── Tool blocks: integration + action + params ── */}
+      {isToolLike && (
+        <div className={section}>
+          <span className={sectionLabel}>Integration</span>
+          <div className="space-y-2">
+            <select
+              value={integration}
+              onChange={e => {
+                const updated = setNestedValue({ ...blockData }, "integration", e.target.value)
+                onChange(blockId, setNestedValue(updated, "config.action", ""))
+              }}
+              className={inputBase}
+            >
+              <option value="">— pick integration —</option>
+              {INTEGRATIONS.map(i => <option key={i.value} value={i.value}>{i.label}</option>)}
+            </select>
+
+            {integration && (
+              <select
+                value={action}
+                onChange={e => handleFieldChange("config.action", e.target.value)}
+                className={inputBase}
+              >
+                <option value="">— pick action —</option>
+                {(INTEGRATION_ACTIONS[integration] || []).map(a => (
+                  <option key={a.value} value={a.value}>{a.label}</option>
+                ))}
+              </select>
             )}
           </div>
-        )}
 
-        {/* ── Config tab ── */}
-        {tab === "config" && (
-          <div className="space-y-3">
-
-            {/* Integration + Action pickers for tool-like blocks */}
-            {isToolLike && (
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide block mb-1">Integration</label>
-                  <select
-                    value={integration}
-                    onChange={e => {
-                      const updated = setNestedValue({ ...blockData }, "integration", e.target.value)
-                      const withAction = setNestedValue(updated, "config.action", "")
-                      onChange(blockId, withAction)
-                    }}
-                    className="w-full border border-stone-200 rounded-lg px-2.5 py-1.5 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-200 bg-white"
-                  >
-                    <option value="">— pick one —</option>
-                    {INTEGRATIONS.map(i => (
-                      <option key={i.value} value={i.value}>{i.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {integration && (
-                  <div className="flex-1">
-                    <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide block mb-1">Action</label>
-                    <select
-                      value={action}
-                      onChange={e => handleFieldChange("config.action", e.target.value)}
-                      className="w-full border border-stone-200 rounded-lg px-2.5 py-1.5 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-200 bg-white"
-                    >
-                      <option value="">— pick one —</option>
-                      {(INTEGRATION_ACTIONS[integration] || []).map(a => (
-                        <option key={a.value} value={a.value}>{a.label}</option>
-                      ))}
-                    </select>
+          {/* Params */}
+          {actionFields.length > 0 && (
+            <div className="space-y-2 pt-2">
+              <span className={sectionLabel}>Parameters</span>
+              {actionFields.map(field => {
+                const rendered = renderField(field)
+                if (rendered === null) return null
+                return (
+                  <div key={field.key}>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">{field.label}</label>
+                      {field.required && <span className="text-red-500 text-[10px] font-bold">*</span>}
+                      {field.hint && <span className="text-[10px] text-stone-400">{field.hint}</span>}
+                    </div>
+                    {rendered}
                   </div>
-                )}
-              </div>
-            )}
+                )
+              })}
+              <p className="text-[10px] text-stone-400 pt-1">
+                Tip: reference previous blocks with <code className="bg-stone-100 px-1 rounded">{"{{block_id.field}}"}</code>
+              </p>
+            </div>
+          )}
 
-            {/* Static fields for this block type */}
+          {/* GitHub webhook — auto-register info (no button, fires on Run) */}
+          {blockType === "trigger" && triggerEventType === "github_issue_labeled" && (() => {
+            const repoAllowlist = (getNestedValue(blockData, "config.repo_allowlist") as string) || ""
+            const firstRepo = repoAllowlist.split(",")[0].trim()
+            const [owner, repo] = firstRepo.includes("/") ? firstRepo.split("/") : ["", ""]
+            if (!owner || !repo) return null
+            return (
+              <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-700 mt-2">
+                Webhook on <span className="font-mono font-medium">{owner}/{repo}</span> will be registered automatically when you run.
+              </div>
+            )
+          })()}
+
+          {/* Secret warning */}
+          {(() => {
+            const leaked = findHardcodedSecrets(getNestedValue(blockData, "config.params"))
+            return leaked.length > 0 ? (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-800 mt-2">
+                <p className="font-semibold mb-1">⚠ Secret in params: {leaked.join(", ")}</p>
+                <p>Save credentials in <a href="/settings" className="underline">Settings</a> instead.</p>
+              </div>
+            ) : null
+          })()}
+        </div>
+      )}
+
+      {/* ── Static config fields (trigger, logic, output, approval) ── */}
+      {staticFields.length > 0 && !isToolLike && (
+        <div className={section}>
+          <span className={sectionLabel}>Configuration</span>
+          <div className="space-y-3">
             {staticFields.map(field => {
               const rendered = renderField(field)
               if (rendered === null) return null
               return (
                 <div key={field.key}>
                   <div className="flex items-center gap-1.5 mb-1">
-                    <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">
-                      {field.label}
-                    </label>
-                    {field.required && <span className="text-red-500 text-[10px] font-bold leading-none">*</span>}
-                    {field.hint && (
-                      <span className="text-[10px] text-stone-400">{field.hint}</span>
-                    )}
+                    <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">{field.label}</label>
+                    {field.required && <span className="text-red-500 text-[10px] font-bold">*</span>}
+                    {field.hint && <span className="text-[10px] text-stone-400">{field.hint}</span>}
                   </div>
                   {rendered}
                 </div>
               )
             })}
-
-
-            {/* GitHub webhook auto-registration */}
-            {blockType === "trigger" && triggerEventType === "github_issue_labeled" && (() => {
-              const repoAllowlist = (getNestedValue(blockData, "config.repo_allowlist") as string) || ""
-              const firstRepo = repoAllowlist.split(",")[0].trim()
-              const [owner, repo] = firstRepo.includes("/") ? firstRepo.split("/") : ["", ""]
-              if (!owner || !repo) return null
-              return <WebhookRegisterButton owner={owner} repo={repo} getToken={getToken} />
-            })()}
-
-            {/* Hardcoded-secret warning */}
-            {(() => {
-              const params = getNestedValue(blockData, "config.params")
-              const leaked = findHardcodedSecrets(params)
-              return leaked.length > 0 ? (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-800">
-                  <p className="font-semibold mb-1">⚠ Secret detected in params: {leaked.join(", ")}</p>
-                  <p className="leading-relaxed text-red-700">
-                    Hardcoded tokens are exported in the YAML file and can leak if committed to a repo.
-                    Save this credential in <a href="/settings" className="underline font-medium">Integrations → Settings</a> and
-                    reference it via the <span className="font-mono bg-red-100 px-0.5 rounded">integration:</span> field instead.
-                  </p>
-                </div>
-              ) : null
-            })()}
-
-            {/* Action-specific param fields */}
-            {actionFields.length > 0 && (
-              <div className="pt-1 border-t border-stone-100 space-y-3">
-                <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">Parameters</p>
-                {actionFields.map(field => {
-                  const rendered = renderField(field)
-                  if (rendered === null) return null
-                  return (
-                    <div key={field.key}>
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">
-                          {field.label}
-                        </label>
-                        {field.required && <span className="text-red-500 text-[10px] font-bold leading-none">*</span>}
-                        {field.hint && (
-                          <span className="text-[10px] text-stone-400">{field.hint}</span>
-                        )}
-                      </div>
-                      {rendered}
-                    </div>
-                  )
-                })}
-                <p className="text-[10px] text-stone-400 pt-1">
-                  Tip: reference previous blocks with <code className="bg-stone-100 px-1 rounded">{"{{block_id.field}}"}</code>
-                </p>
-              </div>
-            )}
-
-            {/* Empty state */}
-            {!isToolLike && staticFields.length === 0 && (
-              <p className="text-sm text-stone-400 py-2">No configuration for this block type.</p>
-            )}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* ── Advanced tab ── */}
-        {tab === "advanced" && (
-          <div className="relative">
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">
-                Compiled prompt — auto-generated
-              </label>
-              {isStreaming && (
-                <span className="text-[10px] text-amber-500 font-medium animate-pulse">Compiling…</span>
-              )}
-            </div>
+      {/* ── Brain: compiled prompt preview (collapsed by default) ── */}
+      {blockType === "brain" && (
+        <div className="px-4 py-3">
+          <button
+            onClick={() => setPromptOpen(v => !v)}
+            className="flex items-center gap-1.5 text-[10px] font-semibold text-stone-400 uppercase tracking-wider hover:text-stone-600 transition-colors"
+          >
+            <span>{promptOpen ? "▾" : "▸"}</span>
+            Preview compiled prompt
+            {isStreaming && <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse ml-1" />}
+          </button>
+          {promptOpen && (
             <div className={cn(
-              "min-h-28 rounded-lg border bg-stone-950 px-3 py-2.5 text-xs font-mono text-green-300 leading-relaxed whitespace-pre-wrap",
+              "mt-2 rounded-lg border bg-stone-950 px-3 py-2.5 text-xs font-mono text-green-300 leading-relaxed whitespace-pre-wrap max-h-64 overflow-y-auto",
               isStreaming ? "border-amber-300/30" : "border-stone-700"
             )}>
-              {streamedPrompt || (
-                isStreaming
-                  ? <span className="text-stone-500">Generating<span className="animate-pulse">…</span></span>
-                  : <span className="text-stone-500">Switch to Plain English, add a description, then come back here.</span>
+              {streamedPrompt || (isStreaming
+                ? <span className="text-stone-500">Generating…</span>
+                : <span className="text-stone-500">Add a description to preview the prompt.</span>
               )}
               {isStreaming && streamedPrompt && (
                 <span className="inline-block w-1.5 h-3.5 bg-green-400 ml-0.5 animate-pulse align-middle" />
               )}
             </div>
-          </div>
-        )}
+          )}
+        </div>
+      )}
 
-      </div>
     </div>
   )
 }

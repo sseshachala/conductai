@@ -22,7 +22,8 @@ import "@xyflow/react/dist/style.css"
 
 import BlockNode, { type BlockNodeData } from "./BlockNode"
 import BlockEditor from "./BlockEditor"
-import Sidebar from "./Sidebar"
+import BlockPalette from "./BlockPalette"
+import RunDrawer from "./RunDrawer"
 import CostEstimate from "./CostEstimate"
 import YamlPanel from "./YamlPanel"
 import { autoLayout } from "@/lib/auto-layout"
@@ -126,9 +127,10 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
   const { screenToFlowPosition } = useReactFlow()
   const router = useRouter()
   const [running, setRunning] = useState<"idle" | "dry" | "live">("idle")
+  const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([])
-  const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [editorExpanded, setEditorExpanded] = useState(false)
+  const [leftOpen, setLeftOpen] = useState(true)
+  const [rightOpen, setRightOpen] = useState(true)
   const [activeView, setActiveView] = useState<"canvas" | "yaml">("canvas")
 
   // Load workflow on mount. When a graph arrives without meaningful positions
@@ -219,6 +221,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     setSelectedNode(node)
+    setRightOpen(true)
   }, [])
 
   const onPaneClick = useCallback(() => setSelectedNode(null), [])
@@ -273,11 +276,29 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
       )
       if (!res.ok) throw new Error("Failed to start run")
       const run = await res.json()
-      router.push(`/workflows/${workflowId}/runs/${run.id}`)
+      if (dryRun) {
+        router.push(`/workflows/${workflowId}/runs/${run.id}`)
+      } else {
+        setActiveRunId(run.id)
+        setRightOpen(true)
+        setRunning("idle")
+      }
     } catch {
       setRunning("idle")
     }
   }, [workflowId, getToken, router, nodes])
+
+  const handleBlockStatus = useCallback((blockId: string, status: "running" | "completed" | "failed" | "skipped") => {
+    setNodes(nds => nds.map(n =>
+      n.id === blockId ? { ...n, data: { ...n.data, runStatus: status } } : n
+    ))
+  }, [setNodes])
+
+  const handleDrawerClose = useCallback(() => {
+    setActiveRunId(null)
+    setRunning("idle")
+    setNodes(nds => nds.map(n => ({ ...n, data: { ...n.data, runStatus: undefined } })))
+  }, [setNodes])
 
   const handleBlockChange = useCallback(
     (blockId: string, changes: Record<string, unknown>) => {
@@ -352,20 +373,33 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
             {running === "dry" ? "Simulating…" : "Dry run"}
           </button>
           <button
-            onClick={() => startRun(false)}
-            disabled={running !== "idle"}
+            onClick={() => activeRunId ? handleDrawerClose() : startRun(false)}
+            disabled={running === "live" || running === "dry"}
             className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-violet-700 transition-colors disabled:opacity-50"
           >
-            {running === "live" ? "Starting…" : "▶ Run"}
+            {running === "live" ? "Starting…" : activeRunId ? "■ Stop" : "▶ Run"}
           </button>
           <AuthButton afterSignOutUrl="/sign-in" />
         </div>
       </header>
 
-      {/* Canvas + Sidebar (or YAML view) */}
+      {/* Three-panel layout (or YAML view) */}
       <div className="flex flex-1 overflow-hidden">
         {activeView === "canvas" ? (
           <>
+            {/* Left panel — block palette */}
+            <div className={`relative flex shrink-0 transition-all duration-200 border-r border-stone-200 ${leftOpen ? "w-44" : "w-8"}`}>
+              <button
+                onClick={() => setLeftOpen(v => !v)}
+                className="absolute -right-3 top-1/2 -translate-y-1/2 z-10 w-6 h-6 rounded-full bg-white border border-stone-200 shadow-sm flex items-center justify-center text-stone-400 hover:text-stone-700 transition-colors"
+                title={leftOpen ? "Collapse palette" : "Expand palette"}
+              >
+                {leftOpen ? "‹" : "›"}
+              </button>
+              {leftOpen && <BlockPalette getToken={getToken} />}
+            </div>
+
+            {/* Center — canvas */}
             <div className="flex-1 relative min-w-0">
               <ReactFlow
                 nodes={nodes}
@@ -387,16 +421,47 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
                 <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#E7E5E4" />
                 <Controls className="!shadow-none !border !border-stone-200 !rounded-xl" showInteractive={false} />
               </ReactFlow>
+              {activeRunId && (
+                <RunDrawer
+                  workflowId={workflowId}
+                  runId={activeRunId}
+                  getToken={getToken}
+                  onBlockStatus={handleBlockStatus}
+                  onClose={handleDrawerClose}
+                />
+              )}
             </div>
-            <div className={`relative flex shrink-0 transition-all duration-200 ${sidebarOpen ? "w-52" : "w-8"}`}>
+
+            {/* Right panel — block config */}
+            <div className={`relative flex shrink-0 transition-all duration-200 border-l border-stone-200 bg-white ${rightOpen ? "w-72" : "w-8"}`}>
               <button
-                onClick={() => setSidebarOpen(v => !v)}
+                onClick={() => setRightOpen(v => !v)}
                 className="absolute -left-3 top-1/2 -translate-y-1/2 z-10 w-6 h-6 rounded-full bg-white border border-stone-200 shadow-sm flex items-center justify-center text-stone-400 hover:text-stone-700 transition-colors"
-                title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+                title={rightOpen ? "Collapse config" : "Expand config"}
               >
-                {sidebarOpen ? "›" : "‹"}
+                {rightOpen ? "›" : "‹"}
               </button>
-              {sidebarOpen && <Sidebar getToken={getToken} />}
+              {rightOpen && (
+                selectedNode && selectedData ? (
+                  <div className="flex-1 overflow-y-auto min-w-0">
+                    <BlockEditor
+                      workflowId={workflowId}
+                      blockId={selectedNode.id}
+                      blockType={selectedData.type}
+                      label={selectedData.label}
+                      description={(selectedData.description as string) ?? ""}
+                      blockData={selectedNode.data as Record<string, unknown>}
+                      onChange={handleBlockChange}
+                      getToken={getToken}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center px-4">
+                    <span className="text-2xl">←</span>
+                    <p className="text-xs text-stone-400 leading-relaxed">Click a block on the canvas to configure it</p>
+                  </div>
+                )
+              )}
             </div>
           </>
         ) : (
@@ -426,7 +491,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
                     key={e.blockId}
                     onClick={() => {
                       const node = nodes.find(n => n.id === e.blockId)
-                      if (node) { setSelectedNode(node) }
+                      if (node) { setSelectedNode(node); setRightOpen(true) }
                     }}
                     className="text-xs text-red-600 hover:text-red-800 hover:underline text-left"
                   >
@@ -436,39 +501,8 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
                 ))}
               </div>
             </div>
-            <button
-              onClick={() => setValidationErrors([])}
-              className="text-red-300 hover:text-red-500 text-lg leading-none shrink-0 mt-0.5"
-            >
-              ×
-            </button>
+            <button onClick={() => setValidationErrors([])} className="text-red-300 hover:text-red-500 text-lg leading-none shrink-0 mt-0.5">×</button>
           </div>
-        </div>
-      )}
-
-      {/* Block editor bottom panel */}
-      {selectedNode && selectedData && (
-        <div className={`shrink-0 overflow-y-auto border-t border-stone-200 transition-all duration-200 ${editorExpanded ? "max-h-[520px]" : "max-h-72"}`}>
-          <div className="flex items-center justify-between px-4 py-1 bg-stone-50 border-b border-stone-100">
-            <span className="text-[10px] text-stone-400 font-medium uppercase tracking-wide">Block config</span>
-            <button
-              onClick={() => setEditorExpanded(v => !v)}
-              className="text-stone-400 hover:text-stone-700 text-xs px-1.5 py-0.5 rounded hover:bg-stone-100 transition-colors"
-              title={editorExpanded ? "Collapse" : "Expand"}
-            >
-              {editorExpanded ? "▾ Less" : "▴ More"}
-            </button>
-          </div>
-          <BlockEditor
-            workflowId={workflowId}
-            blockId={selectedNode.id}
-            blockType={selectedData.type}
-            label={selectedData.label}
-            description={(selectedData.description as string) ?? ""}
-            blockData={selectedNode.data as Record<string, unknown>}
-            onChange={handleBlockChange}
-            getToken={getToken}
-          />
         </div>
       )}
     </div>
