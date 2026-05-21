@@ -380,6 +380,9 @@ def validate_workflow(
             if via in ("email", "both") and not config.get("to"):
                 errors.append({"block_id": block_id, "label": label,
                                 "message": "Email address (To) is required"})
+            if via == "webhook" and not config.get("webhook_url"):
+                errors.append({"block_id": block_id, "label": label,
+                                "message": "Webhook URL is required"})
 
     return {"valid": len(errors) == 0, "errors": errors}
 
