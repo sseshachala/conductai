@@ -31,8 +31,9 @@ KNOWN_SERVICES = {
 
 class CredentialUpsert(BaseModel):
     service: str
-    handle: str        # short name used in blocks, e.g. "github", "slack-prod"
-    credentials: dict  # raw key/value, will be encrypted
+    handle: str                         # short name used in blocks, e.g. "github", "slack-prod"
+    credentials: dict                   # raw key/value, will be encrypted
+    environment_id: str | None = None   # optional environment scoping
 
 
 class CredentialOut(BaseModel):
@@ -73,11 +74,13 @@ def upsert_credential(body: CredentialUpsert, db: Session = Depends(get_db), wor
     ).first()
 
     auth_method = "api_key" if "api_key" in body.credentials else "oauth"
+    env_id = body.environment_id or None
 
     if existing:
         existing.service = body.service
         existing.auth_method = auth_method
         existing.encrypted_credentials = encrypt(body.credentials)
+        existing.environment_id = env_id
     else:
         row = Integration(
             workspace_id=workspace_id,
@@ -85,6 +88,7 @@ def upsert_credential(body: CredentialUpsert, db: Session = Depends(get_db), wor
             handle=body.handle,
             auth_method=auth_method,
             encrypted_credentials=encrypt(body.credentials),
+            environment_id=env_id,
         )
         db.add(row)
 
@@ -102,6 +106,33 @@ def delete_credential(handle: str, db: Session = Depends(get_db), workspace_id: 
         raise HTTPException(status_code=404, detail="Credential not found")
     db.delete(row)
     db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Environment-scoped credential listing
+# ---------------------------------------------------------------------------
+
+@router.get("/by-environment/{env_id}", response_model=list[CredentialOut])
+def list_credentials_by_environment(
+    env_id: str,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    """List credentials scoped to a specific environment."""
+    rows = db.query(Integration).filter(
+        Integration.workspace_id == workspace_id,
+        Integration.environment_id == env_id,
+    ).order_by(Integration.created_at).all()
+
+    return [
+        CredentialOut(
+            handle=r.handle,
+            service=r.service,
+            auth_method=r.auth_method,
+            fields=list(decrypt(r.encrypted_credentials).keys()) if r.encrypted_credentials else [],
+        )
+        for r in rows
+    ]
 
 
 # ---------------------------------------------------------------------------
