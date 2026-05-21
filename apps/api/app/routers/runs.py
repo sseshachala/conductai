@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from typing import Annotated
 from uuid import UUID
 
@@ -7,6 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
 
 from app.core.auth import get_workspace_id, _verify_clerk_token, _clerk_enabled, DEV_WORKSPACE_ID
 from app.core.config import settings
@@ -199,6 +204,27 @@ def stream_run_events(
 class ApprovalDecision(BaseModel):
     decision: str  # "approved" or "rejected"
     approver: str | None = None
+
+
+@router.post("/{run_id}/cancel")
+def cancel_run(
+    workflow_id: UUID,
+    run_id: UUID,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    """Mark a running or pending run as cancelled. The worker will abort on next check."""
+    _get_workflow(workflow_id, workspace_id, db)
+    run = db.query(Run).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if run.status not in ("running", "pending"):
+        raise HTTPException(status_code=400, detail=f"Run cannot be cancelled (status: {run.status})")
+    run.status = "cancelled"
+    run.finished_at = _now()
+    db.add(RunEvent(run_id=run_id, block_id=None, kind="run_cancelled", payload={"reason": "user_cancelled"}))
+    db.commit()
+    return {"run_id": str(run_id), "status": "cancelled"}
 
 
 @router.post("/{run_id}/approve")
