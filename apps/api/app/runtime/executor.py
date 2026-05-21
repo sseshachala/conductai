@@ -914,7 +914,16 @@ def execute_run(run_id: str):
                 elif block_type == "output":
                     wf_name = version.workflow.name if version.workflow else "Agent"
                     trace_url = f"{settings.api_base_url.rstrip('/')}/workflows/{version.workflow.id}/runs/{run_id}" if version.workflow else ""
-                    result = _execute_output(block, state, credentials, workflow_name=wf_name, trace_url=trace_url)
+                    try:
+                        result = _execute_output(block, state, credentials, workflow_name=wf_name, trace_url=trace_url)
+                    except Exception as out_err:
+                        # Notification failures are non-fatal — the real work already succeeded.
+                        log.warning("Output block %s failed (non-fatal): %s", block_id, out_err)
+                        result = {"sent": False, "error": str(out_err)}
+                        _emit(db, run_id, block_id, "block_completed", {"output": result, "warning": str(out_err)})
+                        state[block_id] = result
+                        state["__last_output"] = json.dumps(result, default=str)
+                        continue
 
                 elif block_type == "logic":
                     result = _execute_logic(block, state)
