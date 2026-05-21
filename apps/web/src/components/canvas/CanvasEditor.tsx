@@ -133,6 +133,35 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
   const [rightOpen, setRightOpen] = useState(true)
   const [activeView, setActiveView] = useState<"canvas" | "yaml">("canvas")
 
+  const STORAGE_KEY = `marshal:active-run:${workflowId}`
+
+  // On mount, check if there's an in-progress run we navigated away from.
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (!stored) return
+    const { runId, startedAt } = JSON.parse(stored)
+    // Ignore stale entries older than 2 hours
+    if (Date.now() - startedAt > 2 * 60 * 60 * 1000) {
+      localStorage.removeItem(STORAGE_KEY)
+      return
+    }
+    authHeaders(getToken).then(headers =>
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}`, { headers })
+        .then(r => r.ok ? r.json() : null)
+        .then(run => {
+          if (!run) { localStorage.removeItem(STORAGE_KEY); return }
+          if (run.status === "running" || run.status === "pending") {
+            setActiveRunId(runId)
+            setRightOpen(true)
+          } else {
+            localStorage.removeItem(STORAGE_KEY)
+          }
+        })
+        .catch(() => localStorage.removeItem(STORAGE_KEY))
+    )
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workflowId])
+
   // Load workflow on mount. When a graph arrives without meaningful positions
   // (the YAML loader writes placeholder coords), run dagre so it doesn't open
   // as a stack of overlapping nodes.
@@ -389,6 +418,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
       if (dryRun) {
         router.push(`/workflows/${workflowId}/runs/${run.id}`)
       } else {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ runId: run.id, startedAt: Date.now() }))
         setActiveRunId(run.id)
         setRightOpen(true)
         setRunning("idle")
@@ -405,10 +435,11 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
   }, [setNodes])
 
   const handleDrawerClose = useCallback(() => {
+    localStorage.removeItem(STORAGE_KEY)
     setActiveRunId(null)
     setRunning("idle")
     setNodes(nds => nds.map(n => ({ ...n, data: { ...n.data, runStatus: undefined } })))
-  }, [setNodes])
+  }, [setNodes, STORAGE_KEY])
 
   const handleBlockChange = useCallback(
     (blockId: string, changes: Record<string, unknown>) => {
@@ -538,6 +569,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
                   getToken={getToken}
                   onBlockStatus={handleBlockStatus}
                   onClose={handleDrawerClose}
+                  onRunDone={() => localStorage.removeItem(STORAGE_KEY)}
                 />
               )}
             </div>

@@ -29,6 +29,7 @@ interface RunDrawerProps {
   getToken?: (() => Promise<string | null>) | null
   onBlockStatus: (blockId: string, status: BlockStatus) => void
   onClose: () => void
+  onRunDone?: () => void
 }
 
 function getCookie(name: string): string | null {
@@ -150,8 +151,8 @@ export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, 
           setRows(Object.values(rowMapRef.current))
         }
 
-        if (kind === "run_completed") setRunStatus("succeeded")
-        if (kind === "run_failed")    setRunStatus("failed")
+        if (kind === "run_completed") { setRunStatus("succeeded"); onRunDone?.() }
+        if (kind === "run_failed")    { setRunStatus("failed");    onRunDone?.() }
       }
 
       es.onerror = () => { es?.close(); setDone(true) }
