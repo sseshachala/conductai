@@ -588,7 +588,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
             className="ml-2 text-xs border border-stone-200 rounded-lg px-2 py-1 text-stone-600 bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
             title="Agent environment"
           >
-            <option value="">Default (global)</option>
+            <option value="">— select environment —</option>
             {environments.map(env => (
               <option key={env.id} value={env.id}>{env.name}</option>
             ))}
