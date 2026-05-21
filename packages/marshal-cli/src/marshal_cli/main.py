@@ -42,6 +42,9 @@ def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, t
         elif kind == "block_failed":
             err = payload.get("error", json.dumps(payload, default=str)[:200])
             print(f"{RED}    ✗ {prefix}{err}{RESET}")
+        elif kind == "brain_tool_call":
+            summary = payload.get("summary", payload.get("tool", ""))
+            print(f"{GRAY}      · {summary}{RESET}")
         elif kind == "run_completed":
             print(f"{BOLD}{GREEN}    ✓ done{RESET}")
         elif kind == "run_failed":
