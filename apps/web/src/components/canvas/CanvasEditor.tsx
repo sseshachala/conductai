@@ -128,6 +128,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
   const router = useRouter()
   const [running, setRunning] = useState<"idle" | "dry" | "live">("idle")
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
+  const [drawerVisible, setDrawerVisible] = useState(false)
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([])
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
@@ -152,7 +153,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
           if (!run) { localStorage.removeItem(STORAGE_KEY); return }
           if (run.status === "running" || run.status === "pending") {
             setActiveRunId(runId)
-            setRightOpen(true)
+            setDrawerVisible(true)
           } else {
             localStorage.removeItem(STORAGE_KEY)
           }
@@ -420,7 +421,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
       } else {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ runId: run.id, startedAt: Date.now() }))
         setActiveRunId(run.id)
-        setRightOpen(true)
+        setDrawerVisible(true)
         setRunning("idle")
       }
     } catch {
@@ -434,9 +435,14 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
     ))
   }, [setNodes])
 
+  const handleDrawerHide = useCallback(() => {
+    setDrawerVisible(false)
+  }, [])
+
   const handleDrawerClose = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY)
     setActiveRunId(null)
+    setDrawerVisible(false)
     setRunning("idle")
     setNodes(nds => nds.map(n => ({ ...n, data: { ...n.data, runStatus: undefined } })))
   }, [setNodes, STORAGE_KEY])
@@ -514,11 +520,11 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
             {running === "dry" ? "Simulating…" : "Dry run"}
           </button>
           <button
-            onClick={() => activeRunId ? handleDrawerClose() : startRun(false)}
+            onClick={() => activeRunId ? setDrawerVisible(true) : startRun(false)}
             disabled={running === "live" || running === "dry"}
             className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-violet-700 transition-colors disabled:opacity-50"
           >
-            {running === "live" ? "Starting…" : activeRunId ? "■ Stop" : "▶ Run"}
+            {running === "live" ? "Starting…" : activeRunId ? "▶ Running…" : "▶ Run"}
           </button>
           <AuthButton afterSignOutUrl="/sign-in" />
         </div>
@@ -562,13 +568,13 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
                 <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#E7E5E4" />
                 <Controls className="!shadow-none !border !border-stone-200 !rounded-xl" showInteractive={false} />
               </ReactFlow>
-              {activeRunId && (
+              {activeRunId && drawerVisible && (
                 <RunDrawer
                   workflowId={workflowId}
                   runId={activeRunId}
                   getToken={getToken}
                   onBlockStatus={handleBlockStatus}
-                  onClose={handleDrawerClose}
+                  onClose={handleDrawerHide}
                   onRunDone={() => localStorage.removeItem(STORAGE_KEY)}
                 />
               )}
