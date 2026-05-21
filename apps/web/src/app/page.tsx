@@ -61,14 +61,14 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         </div>
 
         <h1 className="text-5xl sm:text-6xl font-bold text-stone-900 leading-[1.1] tracking-tight max-w-3xl">
-          Label a GitHub issue.<br />
-          <span className="text-indigo-600">Get a tested draft PR.</span>
+          Your AI engineering team.<br />
+          <span className="text-indigo-600">Running 24 / 7.</span>
         </h1>
 
         <p className="mt-6 text-xl text-stone-500 max-w-2xl leading-relaxed">
-          The open-source AI engineer that opens draft PRs and asks before
-          anything merges. Built for engineering teams of 10–80 who want
-          speed without surrendering control.
+          Delegator ships with 7 ready-made agents — label a GitHub issue, get a PR.
+          CI fails, get a diagnosis. Alert fires, get a hypothesis. All in Slack.
+          Nothing merges without your approval.
         </p>
 
         <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
@@ -95,19 +95,30 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         </div>
       </section>
 
-      {/* Use cases */}
+      {/* Templates */}
       <section className="px-6 py-20">
-        <div className="max-w-5xl mx-auto">
-          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">What Delegator does</p>
-          <h2 className="text-3xl font-bold text-stone-900 text-center mb-12">
-            Real engineering work, done by AI.<br />Approved by you.
+        <div className="max-w-6xl mx-auto">
+          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">Ready-made agents</p>
+          <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
+            Start from a real playbook.<br />Not a blank canvas.
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-            {USE_CASES.map(uc => (
-              <div key={uc.title} className="bg-stone-50 rounded-2xl p-6">
-                <div className="text-2xl mb-3">{uc.icon}</div>
-                <p className="font-semibold text-stone-900 mb-1.5">{uc.title}</p>
-                <p className="text-sm text-stone-500 leading-relaxed">{uc.body}</p>
+          <p className="text-center text-stone-500 text-sm max-w-xl mx-auto mb-12">
+            Every agent ships with a working YAML playbook. Connect your tools, pick a template, and your first run happens in minutes.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {TEMPLATES.map(t => (
+              <div key={t.name} className="bg-white rounded-2xl border border-stone-200 p-6 flex flex-col gap-3">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-2xl">{t.icon}</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full mt-1">{t.trigger}</span>
+                </div>
+                <div>
+                  <p className="font-semibold text-stone-900 mb-1">{t.name}</p>
+                  <p className="text-sm text-stone-500 leading-relaxed">{t.what}</p>
+                </div>
+                <div className="mt-auto pt-3 border-t border-stone-100">
+                  <p className="text-xs text-stone-400 italic leading-relaxed">{t.scenario}</p>
+                </div>
               </div>
             ))}
           </div>
@@ -204,21 +215,55 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
   )
 }
 
-const USE_CASES = [
+const TEMPLATES = [
   {
-    icon: "🎫",
-    title: "Ticket → Draft PR",
-    body: "Label a GitHub or Linear issue `ai-ready`. Delegator clones the repo, detects the stack, writes the fix, runs your tests, and opens a draft PR with a Slack approval gate.",
+    icon: "⚡",
+    name: "Autopilot Quick",
+    trigger: "GitHub issue",
+    what: "Issue labeled → AI implements the fix → opens a PR immediately. No test step — CI runs tests on the PR.",
+    scenario: "Team labels a bug \"autopilot ready\" at 5pm. PR is open and ready for review by 5:02pm.",
+  },
+  {
+    icon: "🧪",
+    name: "Autopilot + Tests",
+    trigger: "GitHub issue",
+    what: "Issue labeled → AI implements the fix → runs your test suite → opens PR only if tests pass.",
+    scenario: "Issue filed on Friday. By Monday morning a green PR is waiting — tests already passed.",
+  },
+  {
+    icon: "✅",
+    name: "Autopilot + Approval",
+    trigger: "GitHub issue",
+    what: "Issue labeled → implement → run tests → human approves in Slack → PR opened. Nothing ships without a gate.",
+    scenario: "Junior dev labels an issue. Senior reviews the AI's implementation in Slack before any PR is created.",
+  },
+  {
+    icon: "🔍",
+    name: "PR Reviewer",
+    trigger: "PR opened",
+    what: "Any PR opened (by a human or Autopilot) → AI reviews the diff for bugs, security issues, and style → posts a review comment.",
+    scenario: "Autopilot opens a PR at 2am. By the time a human reads it in the morning, it already has an AI code review flagging a missing null check.",
+  },
+  {
+    icon: "🚨",
+    name: "CI Failure Alert",
+    trigger: "CI webhook",
+    what: "Build fails → AI reads the failed step and error → diagnoses root cause → posts structured Slack alert with a suggested fix.",
+    scenario: "GitHub Actions workflow fails at 3am. On-call wakes up to a Slack message: \"Likely cause: missing env var STRIPE_KEY in staging. Fix: add to Render env config.\"",
+  },
+  {
+    icon: "🔥",
+    name: "Incident Responder",
+    trigger: "PagerDuty / OpsGenie",
+    what: "Alert fires → AI fetches recent commits and deploys → correlates timing → posts root cause hypothesis to #incidents within 60 seconds.",
+    scenario: "payment-service latency spikes. Before the on-call opens their laptop, Slack already says: \"Deploy 3 minutes before spike touched checkout.py — suspect commit a3f92b1 by @alice.\"",
   },
   {
     icon: "📦",
-    title: "Dependency CVE → Patch",
-    body: "Snyk or Dependabot flags a vuln. Delegator reads the dependency, proposes the upgrade or patch, runs tests, opens a PR with full context — you approve in one click.",
-  },
-  {
-    icon: "📝",
-    title: "Merged PRs → Release notes",
-    body: "Tag pushed. Delegator reads every merged PR since the last tag, drafts release notes that read like a human wrote them, posts to Slack or commits a CHANGELOG.",
+    name: "Dependency Updater",
+    trigger: "Weekly cron",
+    what: "Cron fires every Monday → AI scans for outdated patch/minor deps → bumps versions → opens a single clean PR. Never bumps major versions.",
+    scenario: "Team was 4 months behind on npm patches. Now a single PR lands every Monday. Merge in 30 seconds when CI is green.",
   },
 ]
 
@@ -250,8 +295,8 @@ const WHY_DELEGATOR = [
   },
   {
     icon: "🏠",
-    title: "Runs on your infrastructure",
-    body: "Agents execute on ephemeral DigitalOcean droplets in your account — your code, your credentials, your perimeter. We never see what the agent reads or writes.",
+    title: "Isolated sandboxes, every run",
+    body: "Each agent run executes in an ephemeral Modal sandbox — spun up, used, torn down. Your code and credentials never touch shared infrastructure.",
   },
   {
     icon: "🔍",
@@ -260,17 +305,17 @@ const WHY_DELEGATOR = [
   },
   {
     icon: "⚡",
-    title: "Pre-built playbooks",
-    body: "Not a blank canvas. Ships with ai-ready autopilot, dependency CVE patcher, release-notes drafter, issue triage — install with one click, edit on the canvas if you want.",
+    title: "7 pre-built agents, ready to run",
+    body: "Autopilot, PR Reviewer, CI Failure Alert, Incident Responder, Dependency Updater. Pick a template, connect your tools, first run in minutes — not days.",
   },
   {
     icon: "🧩",
     title: "Fits your existing stack",
-    body: "GitHub, Slack, Linear, DigitalOcean, Email. No new issue tracker. No new chat tool. Delegator plugs into the tools your team already lives in.",
+    body: "GitHub, Slack, PagerDuty, OpsGenie, email, and any inbound webhook. No new tools, no migration — Delegator plugs into what your team already uses.",
   },
 ]
 
-const INTEGRATIONS = ["GitHub", "Linear", "Slack", "DigitalOcean", "Email"]
+const INTEGRATIONS = ["GitHub", "Slack", "PagerDuty", "OpsGenie", "Email / Resend", "Any webhook"]
 
 function GoogleIcon() {
   return (
