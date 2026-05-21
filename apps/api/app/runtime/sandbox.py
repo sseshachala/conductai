@@ -162,7 +162,7 @@ def _modal_dispatch(tool_name: str, tool_input: dict) -> str:
         fn = _get_modal_run_tool()
         return fn.remote(tool_name, tool_input)
     except Exception as e:
-        log.warning("Modal dispatch failed, falling back to local: %s", e)
+        log.error("Modal dispatch failed, falling back to local: %s", e, exc_info=True)
         return _dispatch_local(tool_name, tool_input)
 
 
