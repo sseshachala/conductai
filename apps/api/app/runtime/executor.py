@@ -348,11 +348,27 @@ def _extract_git_evidence(working_dir: str | None) -> tuple[list[dict], str]:
         return [], ""
 
 
+def _summarise_tool_call(tool_name: str, tool_input: dict) -> str:
+    """Return a short human-readable description of a single tool call."""
+    if tool_name == "run_shell":
+        cmd = tool_input.get("command", "")
+        wd = tool_input.get("working_dir", "")
+        return f"$ {cmd}" + (f"  (in {wd})" if wd else "")
+    if tool_name == "write_file":
+        return f"write {tool_input.get('path', '')}"
+    if tool_name == "read_file":
+        return f"read {tool_input.get('path', '')}"
+    return tool_name
+
+
 def _execute_brain(
     block: dict,
     state: dict,
     compiled_artifacts: dict,
     credentials: dict | None = None,
+    db=None,
+    run_id: str | None = None,
+    block_id: str | None = None,
 ) -> dict:
     if state.get("__dry_run"):
         return {
@@ -459,6 +475,12 @@ def _execute_brain(
                     "tool_use_id": tc.id,
                     "content": result_content,
                 })
+                if db and run_id:
+                    _emit(db, run_id, block_id, "brain_tool_call", {
+                        "tool": tc.name,
+                        "summary": _summarise_tool_call(tc.name, tc.input),
+                        "turn": turns,
+                    })
             messages.append({"role": "user", "content": tool_results})
 
         cost_usd = round((total_input_tokens * 3 + total_output_tokens * 15) / 1_000_000, 6)
@@ -870,7 +892,8 @@ def execute_run(run_id: str):
                         result["github_trigger"] = state["github_trigger"]
 
                 elif block_type == "brain":
-                    result = _execute_brain(block, state, compiled, credentials=credentials)
+                    result = _execute_brain(block, state, compiled, credentials=credentials,
+                                            db=db, run_id=run_id, block_id=block_id)
 
                 elif block_type == "tool":
                     result = _execute_tool(block, state, credentials)
