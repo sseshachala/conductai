@@ -96,12 +96,13 @@ def _get_modal_run_tool():
 
     import modal  # type: ignore[import]
 
-    _app = modal.App("delegator-brain-sandbox")
+    _app = modal.App("delegator-brain-sandbox-v2")  # bumped to bust Modal image cache
     forbidden_patterns = _FORBIDDEN_SHELL_PATTERNS  # captured at definition time
 
     _image = (
         modal.Image.debian_slim()
         .apt_install("git", "curl", "wget", "unzip", "python3", "python3-pip", "nodejs", "npm")
+        .run_commands("git --version && node --version && python3 --version")  # verify at build time
     )
 
     @_app.function(timeout=300, cpu=1, memory=1024, retries=0, image=_image)
