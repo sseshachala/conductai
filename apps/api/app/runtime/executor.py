@@ -988,31 +988,20 @@ def execute_run(run_id: str):
         # Accumulated state — includes previous run segment outputs on resume
         state: dict[str, Any] = dict(run.state or {})
 
-        cred_rows = db.query(Integration).filter(
-            Integration.workspace_id == version.workflow.workspace_id
-        ).all()
-
         env_id = version.workflow.environment_id
         if env_id:
-            # Env-scoped credentials override workspace globals
-            global_creds = {
-                row.handle: decrypt(row.encrypted_credentials)
-                for row in cred_rows
-                if row.environment_id is None and row.encrypted_credentials
-            }
-            env_creds = {
-                row.handle: decrypt(row.encrypted_credentials)
-                for row in cred_rows
-                if str(row.environment_id) == str(env_id) and row.encrypted_credentials
-            }
-            credentials: dict[str, Any] = {**global_creds, **env_creds}  # env-scoped wins
+            cred_rows = db.query(Integration).filter(
+                Integration.workspace_id == version.workflow.workspace_id,
+                Integration.environment_id == env_id,
+            ).all()
         else:
-            # No environment — load workspace globals only (backwards compat)
-            credentials: dict[str, Any] = {
-                row.handle: decrypt(row.encrypted_credentials)
-                for row in cred_rows
-                if row.environment_id is None and row.encrypted_credentials
-            }
+            cred_rows = []
+
+        credentials: dict[str, Any] = {
+            row.handle: decrypt(row.encrypted_credentials)
+            for row in cred_rows
+            if row.encrypted_credentials
+        }
 
         failed = False
         fail_error = ""

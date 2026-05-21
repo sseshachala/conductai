@@ -74,7 +74,23 @@ def upsert_credential(body: CredentialUpsert, db: Session = Depends(get_db), wor
     ).first()
 
     auth_method = "api_key" if "api_key" in body.credentials else "oauth"
-    env_id = body.environment_id or None
+
+    # Resolve environment: explicit ID > Default environment > error
+    if body.environment_id:
+        env_id = body.environment_id
+    else:
+        from app.models.environment import Environment
+        default_env = db.query(Environment).filter(
+            Environment.workspace_id == workspace_id,
+            Environment.name == "Default",
+        ).first()
+        if not default_env:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=422,
+                detail="No Default environment found. Create an environment first in Settings → Environments.",
+            )
+        env_id = str(default_env.id)
 
     if existing:
         existing.service = body.service

@@ -92,7 +92,18 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
             except Exception:
                 pass  # fall through to blank graph on parse error
 
-    workflow = Workflow(workspace_id=workspace_id, name=body.name)
+    # Auto-assign to the workspace's Default environment if one exists
+    from app.models.environment import Environment
+    default_env = db.query(Environment).filter(
+        Environment.workspace_id == workspace_id,
+        Environment.name == "Default",
+    ).first()
+
+    workflow = Workflow(
+        workspace_id=workspace_id,
+        name=body.name,
+        environment_id=default_env.id if default_env else None,
+    )
     db.add(workflow)
     db.flush()
 
