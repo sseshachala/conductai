@@ -52,7 +52,7 @@ function statusColor(status: BlockStatus) {
   return "border-l-stone-200 bg-stone-50/50"
 }
 
-export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, onClose }: RunDrawerProps) {
+export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, onClose, onRunDone }: RunDrawerProps) {
   const [rows, setRows] = useState<BlockRow[]>([])
   const [done, setDone] = useState(false)
   const [runStatus, setRunStatus] = useState<"running" | "succeeded" | "failed">("running")
