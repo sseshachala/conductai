@@ -46,7 +46,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
         {/* User */}
         <div className="px-3 py-3 border-t border-stone-100">
-          <AuthButton afterSignOutUrl="/sign-in" />
+          <AuthButton afterSignOutUrl="/sign-in" dropUp />
         </div>
       </aside>
       <main className="flex-1 overflow-auto">{children}</main>
