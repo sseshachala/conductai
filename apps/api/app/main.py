@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.routers import credentials, environments, projects, runs, webhooks, workflows
+from app.routers.runs import workspace_runs_router
 
 app = FastAPI(title="Marshal API", version="0.1.0")
 
@@ -26,6 +27,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 app.include_router(projects.router)
 app.include_router(workflows.router)
 app.include_router(runs.router)
+app.include_router(workspace_runs_router)
 app.include_router(credentials.router)
 app.include_router(environments.router)
 app.include_router(webhooks.router)

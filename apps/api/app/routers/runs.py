@@ -18,9 +18,13 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.run import Run, RunEvent
 from app.models.workflow import Workflow, WorkflowVersion
-from app.schemas.run import RunCreate, RunDetailOut, RunOut
+from app.schemas.run import RunCreate, RunDetailOut, RunOut, RunWithWorkflowOut
 
 router = APIRouter(prefix="/workflows/{workflow_id}/runs", tags=["runs"])
+
+# ── Workspace-wide runs router ────────────────────────────────────────────────
+
+workspace_runs_router = APIRouter(prefix="/runs", tags=["runs"])
 
 QUEUE_KEY = "marshal:runs:queue"
 
@@ -281,3 +285,55 @@ def approve_run(
     _redis().rpush(QUEUE_KEY, str(run_id))
 
     return {"run_id": str(run_id), "decision": body.decision, "status": "queued"}
+
+
+# ── Workspace-wide run endpoints ──────────────────────────────────────────────
+
+@workspace_runs_router.get("", response_model=list[RunWithWorkflowOut])
+def list_all_runs(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    status: str | None = None,
+    limit: int = 50,
+):
+    """All runs across all agents in the workspace, newest first."""
+    q = (
+        db.query(Run, Workflow.id.label("wf_id"), Workflow.name.label("wf_name"))
+        .join(WorkflowVersion, Run.workflow_version_id == WorkflowVersion.id)
+        .join(Workflow, WorkflowVersion.workflow_id == Workflow.id)
+        .filter(Workflow.workspace_id == workspace_id)
+        .order_by(Run.created_at.desc())
+        .limit(limit)
+    )
+    if status:
+        q = q.filter(Run.status == status)
+    results = []
+    for run, wf_id, wf_name in q.all():
+        out = RunWithWorkflowOut.model_validate(run)
+        out.workflow_id = str(wf_id)
+        out.workflow_name = wf_name
+        results.append(out)
+    return results
+
+
+@workspace_runs_router.get("/{run_id}", response_model=RunWithWorkflowOut)
+def get_workspace_run(
+    run_id: UUID,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    """Single run by ID, scoped to workspace, with workflow name."""
+    row = (
+        db.query(Run, Workflow.id.label("wf_id"), Workflow.name.label("wf_name"))
+        .join(WorkflowVersion, Run.workflow_version_id == WorkflowVersion.id)
+        .join(Workflow, WorkflowVersion.workflow_id == Workflow.id)
+        .filter(Workflow.workspace_id == workspace_id, Run.id == run_id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Run not found")
+    run, wf_id, wf_name = row
+    out = RunWithWorkflowOut.model_validate(run)
+    out.workflow_id = str(wf_id)
+    out.workflow_name = wf_name
+    return out

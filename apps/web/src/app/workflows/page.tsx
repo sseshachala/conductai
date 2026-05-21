@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
-import AuthButton from "@/components/AuthButton"
+import AppShell from "@/components/AppShell"
 
 interface Workflow {
   id: string
@@ -110,38 +110,8 @@ function WorkflowsContent({ getToken }: { getToken: (() => Promise<string | null
   }
 
   return (
-    <div className="min-h-screen bg-stone-50">
-      <header className="border-b border-stone-200 bg-white px-6 py-3.5 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link href="/projects" className="text-base font-bold text-stone-900 tracking-tight hover:text-stone-600 transition-colors">
-            Delegator
-          </Link>
-          {project && (
-            <>
-              <span className="text-stone-300">/</span>
-              <span className="text-sm font-medium text-stone-700">{project.name}</span>
-              <span className="text-stone-300">·</span>
-              <Link href="/projects" className="text-sm text-stone-400 hover:text-stone-700 transition-colors">
-                Switch
-              </Link>
-            </>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          <Link href="/settings" className="text-sm text-stone-500 hover:text-stone-800 transition-colors">
-            Integrations
-          </Link>
-          <Link
-            href="/workflows/new"
-            className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700 transition-colors"
-          >
-            + New agent
-          </Link>
-          {clerkEnabled && <AuthButton afterSignOutUrl="/" />}
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-3xl px-6 py-10">
+    <AppShell>
+      <div className="mx-auto max-w-3xl px-6 py-10">
         <div className="flex items-center justify-between mb-5">
           <h1 className="text-xl font-semibold text-stone-900">Agents</h1>
           <span className="text-xs text-stone-400">{workflows.length} agent{workflows.length !== 1 ? "s" : ""}</span>
@@ -176,8 +146,8 @@ function WorkflowsContent({ getToken }: { getToken: (() => Promise<string | null
             ))}
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }
 

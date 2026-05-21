@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
+import AppShell from "@/components/AppShell"
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
@@ -61,23 +62,20 @@ export default function RunsPage() {
   }, [workflowId])
 
   return (
-    <div className="min-h-screen bg-stone-50">
-      <header className="border-b border-stone-200 bg-white px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link href={`/workflows/${workflowId}`} className="text-stone-400 hover:text-stone-700 text-sm">←</Link>
-          <span className="font-semibold text-stone-900">{workflowName ?? "Agent"}</span>
-          <span className="text-xs text-stone-400">/ Runs</span>
+    <AppShell>
+      <div className="mx-auto max-w-3xl px-6 py-10">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <Link href={`/workflows/${workflowId}`} className="text-stone-400 hover:text-stone-700 text-sm">←</Link>
+            <h2 className="text-xl font-semibold text-stone-900">{workflowName ?? "Agent"} — Runs</h2>
+          </div>
+          <Link
+            href={`/workflows/${workflowId}`}
+            className="rounded-lg bg-stone-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-stone-700 transition-colors"
+          >
+            Edit agent
+          </Link>
         </div>
-        <Link
-          href={`/workflows/${workflowId}`}
-          className="rounded-lg bg-stone-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-stone-700 transition-colors"
-        >
-          Edit agent
-        </Link>
-      </header>
-
-      <main className="mx-auto max-w-3xl px-6 py-10">
-        <h2 className="text-xl font-semibold text-stone-900 mb-6">Run history</h2>
 
         {loading ? (
           <p className="text-stone-400 text-sm">Loading…</p>
@@ -115,7 +113,7 @@ export default function RunsPage() {
             ))}
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }

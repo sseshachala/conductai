@@ -41,3 +41,8 @@ class RunOut(BaseModel):
 
 class RunDetailOut(RunOut):
     events: list[RunEventOut] = []
+
+
+class RunWithWorkflowOut(RunOut):
+    workflow_id: str
+    workflow_name: str
