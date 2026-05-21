@@ -9,7 +9,7 @@ import {
   INTEGRATIONS,
   type ConfigField,
 } from "@/lib/config-schemas"
-import { GitHubRepoField, GitHubBranchField } from "./GitHubRepoField"
+import { GitHubRepoField, GitHubBranchField, GitHubRepoAllowlistField } from "./GitHubRepoField"
 import { cn } from "@/lib/utils"
 
 interface BlockEditorProps {
@@ -320,6 +320,17 @@ export default function BlockEditor({
       return <FieldInput field={field} value={val} onChange={() => {}} />
     }
 
+    // Trigger repo allowlist — multi-select typeahead from connected GitHub account
+    if (field.key === "config.repo_allowlist") {
+      return (
+        <GitHubRepoAllowlistField
+          value={(val as string) || ""}
+          getToken={getToken}
+          onChange={v => handleFieldChange(field.key, v)}
+        />
+      )
+    }
+
     if (integration === "github") {
       // Repo picker — replaces both owner and repo fields
       if (field.key === "config.params.owner") {
@@ -571,7 +582,7 @@ export default function BlockEditor({
       )}
 
       {/* ── Static config fields (trigger, logic, output, approval) ── */}
-      {staticFields.length > 0 && !isToolLike && (
+      {staticFields.length > 0 && !isToolLike && blockType !== "brain" && (
         <div className={section}>
           <span className={sectionLabel}>Configuration</span>
           <div className="space-y-3">
