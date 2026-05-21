@@ -84,8 +84,14 @@ function BlockNode({ data, selected }: NodeProps) {
         )}
       </div>
 
-      {/* Block label */}
-      <p className="text-xs font-semibold text-stone-800 leading-tight truncate">{nodeData.label}</p>
+      {/* Block label — trigger nodes show human-readable event name */}
+      <p className="text-xs font-semibold text-stone-800 leading-tight truncate">
+        {nodeData.type === "trigger"
+          ? (nodeData.config as Record<string, string> | undefined)?.event_type === "webhook"
+            ? "Webhook"
+            : "GitHub Issue"
+          : nodeData.label}
+      </p>
 
       {/* Integration + action sub-label */}
       {integrationLabel && (
