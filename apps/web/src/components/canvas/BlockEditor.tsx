@@ -277,8 +277,6 @@ export default function BlockEditor({
     ? allStaticFields.filter(f => {
         if (f.key === "config.label" || f.key === "config.repo_allowlist")
           return triggerEventType === "github_issue_labeled"
-        if (f.key === "config.cron")
-          return triggerEventType === "schedule"
         if (f.key === "config.webhook_secret")
           return triggerEventType === "webhook"
         return true
@@ -569,7 +567,7 @@ export default function BlockEditor({
             </div>
           )}
 
-          {/* GitHub webhook — auto-register info (no button, fires on Run) */}
+          {/* GitHub trigger — auto-register info */}
           {blockType === "trigger" && triggerEventType === "github_issue_labeled" && (() => {
             const repoAllowlist = (getNestedValue(blockData, "config.repo_allowlist") as string) || ""
             const firstRepo = repoAllowlist.split(",")[0].trim()
@@ -581,6 +579,17 @@ export default function BlockEditor({
               </div>
             )
           })()}
+
+          {/* Inbound webhook — show the URL to POST to */}
+          {blockType === "trigger" && triggerEventType === "webhook" && (
+            <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2.5 text-xs text-violet-800 mt-2 space-y-1.5">
+              <p className="font-semibold">Inbound webhook URL</p>
+              <p className="font-mono break-all select-all text-violet-700">
+                {(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}/webhooks/inbound/{workflowId}
+              </p>
+              <p className="text-violet-600">POST any JSON payload to this URL to trigger a run. The payload is available as <span className="font-mono">{"{{_trigger.*}}"}</span> in your blocks.</p>
+            </div>
+          )}
 
           {/* Secret warning */}
           {(() => {
