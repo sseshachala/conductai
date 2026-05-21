@@ -23,6 +23,7 @@ import anthropic
 from app.core.config import settings
 from app.core.crypto import decrypt
 from app.core.database import SessionLocal
+from app.models.environment import Environment  # noqa: F401 — used for FK relationship loading
 from app.models.integration import Integration
 from app.models.run import Run, RunEvent
 from app.models.workflow import WorkflowVersion
@@ -990,11 +991,28 @@ def execute_run(run_id: str):
         cred_rows = db.query(Integration).filter(
             Integration.workspace_id == version.workflow.workspace_id
         ).all()
-        credentials: dict[str, Any] = {
-            row.handle: decrypt(row.encrypted_credentials)
-            for row in cred_rows
-            if row.encrypted_credentials
-        }
+
+        env_id = version.workflow.environment_id
+        if env_id:
+            # Env-scoped credentials override workspace globals
+            global_creds = {
+                row.handle: decrypt(row.encrypted_credentials)
+                for row in cred_rows
+                if row.environment_id is None and row.encrypted_credentials
+            }
+            env_creds = {
+                row.handle: decrypt(row.encrypted_credentials)
+                for row in cred_rows
+                if str(row.environment_id) == str(env_id) and row.encrypted_credentials
+            }
+            credentials: dict[str, Any] = {**global_creds, **env_creds}  # env-scoped wins
+        else:
+            # No environment — load workspace globals only (backwards compat)
+            credentials: dict[str, Any] = {
+                row.handle: decrypt(row.encrypted_credentials)
+                for row in cred_rows
+                if row.environment_id is None and row.encrypted_credentials
+            }
 
         failed = False
         fail_error = ""

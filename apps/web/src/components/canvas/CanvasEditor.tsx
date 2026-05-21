@@ -139,6 +139,8 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
   const [activeView, setActiveView] = useState<"canvas" | "yaml">("canvas")
+  const [environments, setEnvironments] = useState<Array<{ id: string; name: string }>>([])
+  const [selectedEnvId, setSelectedEnvId] = useState<string>("")
 
   const STORAGE_KEY = `marshal:active-run:${workflowId}`
 
@@ -169,6 +171,16 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId])
 
+  // Load available environments for the environment picker
+  useEffect(() => {
+    authHeaders(getToken).then(headers =>
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments`, { headers })
+        .then(r => r.ok ? r.json() : [])
+        .then(data => setEnvironments(data))
+        .catch(() => {})
+    )
+  }, [getToken])
+
   // Load workflow on mount. When a graph arrives without meaningful positions
   // (the YAML loader writes placeholder coords), run dagre so it doesn't open
   // as a stack of overlapping nodes.
@@ -179,6 +191,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
       .then((r) => r.json())
       .then((data) => {
         setWorkflowName(data.name)
+        setSelectedEnvId(data.environment_id ?? "")
         const graph = data.current_version?.graph
         if (graph?.nodes && graph?.edges) {
           // Run auto-layout when:
@@ -222,6 +235,18 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
     },
     [setNodes, setEdges],
   )
+
+  const handleEnvChange = useCallback(async (envId: string) => {
+    setSelectedEnvId(envId)
+    try {
+      const headers = await authHeaders(getToken)
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/environment`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ environment_id: envId || null }),
+      })
+    } catch { /* non-fatal */ }
+  }, [workflowId, getToken])
 
   const save = useCallback(async (currentNodes: Node[], currentEdges: Edge[], name: string) => {
     if (!workflowId || workflowId === "undefined") return
@@ -544,6 +569,18 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
             className="text-base font-semibold text-stone-900 bg-transparent border-none outline-none focus:ring-0 w-64"
           />
           <span className="text-xs text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full">draft</span>
+          {/* Environment picker */}
+          <select
+            value={selectedEnvId}
+            onChange={e => handleEnvChange(e.target.value)}
+            className="ml-2 text-xs border border-stone-200 rounded-lg px-2 py-1 text-stone-600 bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+            title="Agent environment"
+          >
+            <option value="">Default (global)</option>
+            {environments.map(env => (
+              <option key={env.id} value={env.id}>{env.name}</option>
+            ))}
+          </select>
           <div className="ml-3 flex bg-stone-100 rounded-md p-0.5 text-xs">
             <button
               onClick={() => setActiveView("canvas")}

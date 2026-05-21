@@ -24,11 +24,13 @@ class Workflow(Base):
     # of truth instead of the DB copy.
     source_repo = Column(String(255), nullable=True)
     source_path = Column(String(512), nullable=True)
+    environment_id = Column(UUID(as_uuid=True), ForeignKey("environments.id"), nullable=True)
 
     created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     workspace = relationship("Workspace", back_populates="workflows")
+    environment = relationship("Environment")
     versions = relationship("WorkflowVersion", foreign_keys="WorkflowVersion.workflow_id", back_populates="workflow")
     current_version = relationship("WorkflowVersion", foreign_keys=[current_version_id])
 
