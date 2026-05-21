@@ -1,0 +1,61 @@
+name: PR Reviewer
+version: 1
+description: >
+  Receives a GitHub pull_request.opened webhook, reviews the diff for bugs,
+  style issues, and security concerns, then posts a review comment on the PR.
+
+on:
+  webhook:
+    next: review_pr
+
+blocks:
+  review_pr:
+    type: brain
+    mode: agentic
+    label: Review PR
+    description: |
+      You are an expert code reviewer. A GitHub pull request has been opened.
+
+      PR details from webhook payload:
+      - PR number: {{_trigger.number}}
+      - Title: {{_trigger.pull_request.title}}
+      - Author: {{_trigger.pull_request.user.login}}
+      - Repo: {{_trigger.repository.full_name}}
+      - Diff URL: {{_trigger.pull_request.diff_url}}
+      - PR URL: {{_trigger.pull_request.html_url}}
+      - Base branch: {{_trigger.pull_request.base.ref}}
+      - Head branch: {{_trigger.pull_request.head.ref}}
+
+      Steps:
+      1. Fetch the diff:
+         GET {{_trigger.pull_request.diff_url}}
+         Use Authorization: token <github_token> header
+      2. Review the diff for:
+         - Bugs or logic errors
+         - Security issues (hardcoded secrets, SQL injection, XSS, etc.)
+         - Missing error handling
+         - Style and naming inconsistencies
+      3. Post a review comment via GitHub API:
+         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/pulls/{{_trigger.number}}/reviews
+         {
+           "body": "<your review summary>",
+           "event": "COMMENT",
+           "comments": []
+         }
+         Use Authorization: token <github_token> header
+
+      Be concise. Group findings by severity (critical / warning / suggestion).
+      If the PR looks clean, say so clearly.
+
+      Output ONLY the following JSON on the last line:
+        {"review_url": "<PR URL>", "findings": <number of issues found>}
+    next: notify_review
+
+  notify_review:
+    type: output
+    label: Notify review posted
+    description: "PR #{{_trigger.number}} reviewed: {{review_pr.findings}} findings. See {{review_pr.review_url}}"
+    output:
+      via: slack
+      slack:
+        channel: "#engineering"

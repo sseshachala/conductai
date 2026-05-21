@@ -1,0 +1,54 @@
+name: Incident Responder
+version: 1
+description: >
+  Receives a PagerDuty or OpsGenie alert webhook, investigates recent commits
+  and deploys, and posts a root cause hypothesis to Slack.
+
+on:
+  webhook:
+    next: investigate
+
+blocks:
+  investigate:
+    type: brain
+    mode: agentic
+    label: Investigate incident
+    description: |
+      An incident alert has fired. Investigate and produce a root cause hypothesis.
+
+      Alert payload: {{_trigger}}
+
+      Extract from the payload:
+      - Service/component affected
+      - Alert title and description
+      - Severity
+      - Triggered at
+
+      Investigation steps:
+      1. Identify the affected repo from the service name in the alert
+      2. Fetch recent commits (last 10) via GitHub API:
+         GET https://api.github.com/repos/<owner>/<repo>/commits?per_page=10
+      3. Fetch recent deployments:
+         GET https://api.github.com/repos/<owner>/<repo>/deployments?per_page=5
+      4. Look for commits or deploys in the 2 hours before the alert fired
+      5. Form a hypothesis: which commit or deploy most likely caused this?
+
+      Write a concise Slack message:
+      - 🚨 Incident: <title>
+      - Severity: <level>
+      - Likely cause: <hypothesis>
+      - Suspect commit: <sha> — <message> by <author> at <time>
+      - Next steps: <1-2 suggested actions>
+
+      Output ONLY the following JSON on the last line:
+        {"hypothesis": "<one sentence>", "suspect_commit": "<sha or none>", "message": "<slack message>"}
+    next: notify_incident
+
+  notify_incident:
+    type: output
+    label: Post incident summary
+    description: "{{investigate.message}}"
+    output:
+      via: slack
+      slack:
+        channel: "#incidents"
