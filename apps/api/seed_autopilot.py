@@ -112,7 +112,7 @@ nodes = [
             "type": "logic",
             "label": "Tests pass?",
             "description": "Branch on whether tests passed",
-            "config": {"condition": "passed == true"},
+            "config": {"condition": "{{a4.passed}} == true"},
         },
     },
     {
