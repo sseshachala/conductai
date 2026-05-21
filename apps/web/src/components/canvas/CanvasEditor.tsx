@@ -287,13 +287,37 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
   )
 
   const startRun = useCallback(async (dryRun: boolean) => {
-    const errors = validateNodes(nodes)
-    if (errors.length > 0) {
-      setValidationErrors(errors)
+    // Client-side quick checks first
+    const localErrors = validateNodes(nodes)
+    if (localErrors.length > 0) {
+      setValidationErrors(localErrors)
       return
     }
     setValidationErrors([])
     setRunning(dryRun ? "dry" : "live")
+
+    // Server-side pre-flight: credentials, brain descriptions, required fields
+    try {
+      const headers = await authHeaders(getToken)
+      const vRes = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/validate`,
+        { method: "POST", headers }
+      )
+      if (vRes.ok) {
+        const { valid, errors } = await vRes.json()
+        if (!valid) {
+          setValidationErrors(errors.map((e: { block_id: string; label: string; message: string }) => ({
+            blockId: e.block_id,
+            label: e.label,
+            message: e.message,
+          })))
+          setRunning("idle")
+          return
+        }
+      }
+    } catch {
+      // validate is best-effort — don't block the run if the endpoint fails
+    }
 
     try {
       const headers = await authHeaders(getToken)
