@@ -164,12 +164,8 @@ def _get_modal_run_tool():
 
 
 def _modal_dispatch(tool_name: str, tool_input: dict) -> str:
-    try:
-        fn = _get_modal_run_tool()
-        return fn.remote(tool_name, tool_input)
-    except Exception as e:
-        log.error("Modal dispatch failed, falling back to local: %s", e, exc_info=True)
-        return _dispatch_local(tool_name, tool_input)
+    fn = _get_modal_run_tool()
+    return fn.remote(tool_name, tool_input)
 
 
 # ── Public interface ──────────────────────────────────────────────────────────
@@ -223,4 +219,8 @@ def dispatch_brain_tool(
     if _modal_available():
         log.debug("Dispatching %s to Modal sandbox", tool_name)
         return _modal_dispatch(tool_name, tool_input)
-    return _dispatch_local(tool_name, tool_input)
+
+    raise RuntimeError(
+        "No sandbox configured — agentic brain blocks require Modal credentials. "
+        "Set MODAL_TOKEN_ID and MODAL_TOKEN_SECRET in your environment."
+    )
