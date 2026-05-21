@@ -1,0 +1,53 @@
+name: Dependency Updater
+version: 1
+description: >
+  Triggered via webhook or marshal CLI. Scans the repo for outdated dependencies,
+  bumps them, and opens a PR. Run on a cron schedule via marshal CLI.
+
+on:
+  webhook:
+    next: update_deps
+
+blocks:
+  update_deps:
+    type: brain
+    mode: agentic
+    label: Update dependencies
+    description: |
+      You are an expert software engineer. Scan this repo for outdated dependencies
+      and open a PR with the updates.
+
+      Repo: {{_trigger.repo_full_name}}
+      Clone URL: {{_trigger.clone_url}}
+
+      Steps:
+      1. Clone the repo: git clone {{_trigger.clone_url}} /tmp/dep_updater_repo
+      2. Create a branch: git checkout -b deps/auto-update-{{_trigger.date}}
+      3. Detect the package manager:
+         - If package.json exists: run `npm outdated --json` to find outdated packages
+         - If requirements.txt exists: run `pip list --outdated --format=json`
+         - If pyproject.toml exists: check with `pip list --outdated --format=json`
+      4. Update dependencies:
+         - npm: run `npm update` for minor/patch; update package.json manually for majors
+         - pip: update requirements.txt with new versions
+      5. Run a quick smoke test if one exists (npm test --passWithNoTests or pytest -x -q)
+      6. Stage and commit: git add -A && git commit -m 'chore: bump dependencies (auto-update)'
+      7. Push and open a PR via GitHub API:
+         POST https://api.github.com/repos/{{_trigger.repo_full_name}}/pulls
+         {"title": "chore: bump dependencies",
+          "head": "deps/auto-update-{{_trigger.date}}",
+          "base": "{{_trigger.default_branch}}",
+          "body": "Automated dependency update by Delegator.\n\nReview and merge when CI passes."}
+
+      Output ONLY the following JSON on the last line:
+        {"pr_url": "<full PR URL>", "packages_updated": <count>}
+    next: notify_update
+
+  notify_update:
+    type: output
+    label: Notify deps updated
+    description: "Dependency update PR opened: {{update_deps.pr_url}} ({{update_deps.packages_updated}} packages)"
+    output:
+      via: slack
+      slack:
+        channel: "#engineering"

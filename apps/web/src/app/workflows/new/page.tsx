@@ -9,13 +9,43 @@ const TEMPLATES = [
   {
     id: "autopilot_quick",
     label: "Autopilot Quick",
-    description: "Watch for GitHub issues labeled 'autopilot ready', implement the fix and open a PR immediately. No test step — CI runs tests on the PR.",
+    description: "GitHub issue labeled → implement fix → open PR immediately. No test step — CI runs tests on the PR.",
     tags: ["GitHub", "Slack"],
   },
   {
     id: "autopilot_full",
     label: "Autopilot Full",
-    description: "Watch for GitHub issues labeled 'autopilot ready', implement the fix, run tests with inline retry, then open a PR.",
+    description: "GitHub issue labeled → implement fix → run tests with retry → open PR.",
+    tags: ["GitHub", "Slack"],
+  },
+  {
+    id: "autopilot_approved",
+    label: "Autopilot + Approval",
+    description: "GitHub issue labeled → implement fix → run tests → human approves → open PR.",
+    tags: ["GitHub", "Slack"],
+  },
+  {
+    id: "pr_reviewer",
+    label: "PR Reviewer",
+    description: "Pull request opened → AI reviews the diff for bugs, security issues, and style → posts review comment.",
+    tags: ["GitHub", "Slack"],
+  },
+  {
+    id: "ci_notify",
+    label: "CI Notify",
+    description: "CI/CD pipeline posts a webhook → AI summarises the result → Slack notification with diagnosis on failure.",
+    tags: ["Slack"],
+  },
+  {
+    id: "incident_responder",
+    label: "Incident Responder",
+    description: "PagerDuty or OpsGenie alert fires → AI investigates recent commits and deploys → root cause hypothesis posted to Slack.",
+    tags: ["Slack"],
+  },
+  {
+    id: "dependency_updater",
+    label: "Dependency Updater",
+    description: "Triggered via webhook or CLI cron → scans for outdated packages → bumps versions and opens a PR.",
     tags: ["GitHub", "Slack"],
   },
 ]
