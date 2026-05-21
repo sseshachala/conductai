@@ -1,0 +1,63 @@
+name: Autopilot Quick — GitHub Issues
+version: 1
+description: >
+  Watch for GitHub issues labeled `autopilot ready`, implement the fix, open a
+  PR immediately. No test step — CI runs tests on the PR instead.
+
+on:
+  github.issue_labeled:
+    integration: github
+    label: autopilot ready
+    next: fetch_issue
+
+blocks:
+  fetch_issue:
+    type: tool
+    integration: github
+    action: fetch_issue
+    label: Fetch issue
+    description: Get full issue title, body, and metadata
+    params:
+      owner: "{{_trigger.repo_owner}}"
+      repo: "{{_trigger.repo_name}}"
+      issue_number: "{{_trigger.issue_number}}"
+    next: implement_fix
+
+  implement_fix:
+    type: brain
+    mode: agentic
+    label: Implement fix
+    description: |
+      You are an expert software engineer.
+      A GitHub issue has been labeled 'autopilot ready'.
+
+      Issue title: {{fetch_issue.title}}
+      Issue body: {{fetch_issue.body}}
+      Repo: {{_trigger.repo_full_name}}
+      Clone URL: {{_trigger.clone_url}}
+
+      Steps:
+      1. Clone the repo: git clone {{_trigger.clone_url}} /tmp/autopilot_repo
+      2. Create a branch: git checkout -b autopilot/issue-{{fetch_issue.issue_number}}
+      3. Read relevant files to understand the codebase
+      4. Implement the fix described in the issue
+      5. Stage and commit: git add -A && git commit -m 'fix: <short description> (closes #{{fetch_issue.issue_number}})'
+      6. Push and open a PR via the GitHub API:
+         POST https://api.github.com/repos/{{_trigger.repo_full_name}}/pulls
+         {"title": "fix: {{fetch_issue.title}} (closes #{{fetch_issue.issue_number}})",
+          "head":  "autopilot/issue-{{fetch_issue.issue_number}}",
+          "base":  "{{_trigger.default_branch}}",
+          "body":  "Automated fix by Delegator.\n\nCloses #{{fetch_issue.issue_number}}"}
+
+      Output ONLY the following JSON on the last line of your response:
+        {"pr_url": "<full PR URL>"}
+    next: notify_success
+
+  notify_success:
+    type: output
+    label: Notify PR ready
+    description: "PR opened for issue #{{fetch_issue.issue_number}}: {{fetch_issue.title}}. Review at {{implement_fix.pr_url}}"
+    output:
+      via: slack
+      slack:
+        channel: "#general"

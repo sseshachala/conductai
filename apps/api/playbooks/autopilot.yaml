@@ -47,7 +47,7 @@ blocks:
       Clone URL: {{_trigger.clone_url}}
 
       Steps:
-      1. Clone the repo: git clone <clone_url> /tmp/autopilot_repo
+      1. Clone the repo: git clone {{_trigger.clone_url}} /tmp/autopilot_repo
       2. Create a branch: git checkout -b autopilot/issue-{{fetch_issue.issue_number}}
       3. Read relevant files to understand the codebase
       4. Implement the fix described in the issue

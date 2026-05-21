@@ -62,13 +62,34 @@ def list_workflows(db: Session = Depends(get_db), workspace_id: str = Depends(ge
     return results
 
 
+_TEMPLATE_PLAYBOOKS = {
+    "autopilot_quick": "autopilot-quick.yaml",
+    "autopilot_full": "autopilot.yaml",
+}
+
+
 @router.post("", response_model=WorkflowDetailOut, status_code=201)
 def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id)):
+    import pathlib
+
+    graph_data = body.graph.model_dump()
+
+    if body.template and body.template in _TEMPLATE_PLAYBOOKS:
+        playbook_file = _TEMPLATE_PLAYBOOKS[body.template]
+        playbook_path = pathlib.Path(__file__).parent.parent.parent / "playbooks" / playbook_file
+        if playbook_path.exists():
+            dsl_text = playbook_path.read_text()
+            try:
+                dsl = load_workflow_yaml(dsl_text)
+                graph_data = yaml_to_graph(dsl)
+            except Exception:
+                pass  # fall through to blank graph on parse error
+
     workflow = Workflow(workspace_id=workspace_id, name=body.name)
     db.add(workflow)
     db.flush()
 
-    version = WorkflowVersion(workflow_id=workflow.id, graph=body.graph.model_dump())
+    version = WorkflowVersion(workflow_id=workflow.id, graph=graph_data)
     db.add(version)
     db.flush()
 
