@@ -496,7 +496,7 @@ def _execute_brain(
                             "summary": "--- Cleaning Modal Assets ---",
                             "turn": turns,
                         })
-                return {
+                result = {
                     "output": final_text,
                     "turns": turns,
                     "input_tokens": total_input_tokens,
@@ -506,6 +506,20 @@ def _execute_brain(
                     "diff_stat": diff_stat,
                     "remote_host_ip": remote_host.get("ip") if remote_host else None,
                 }
+                # Extract structured values from the last JSON line of the output
+                # so brain blocks can surface keys like pr_url, passed, etc. as
+                # direct refs (e.g. {{push_pr.pr_url}}).
+                import json as _json
+                _output_text = result.get("output", "")
+                _last_line = _output_text.strip().rsplit("\n", 1)[-1].strip()
+                if _last_line.startswith("{") and _last_line.endswith("}"):
+                    try:
+                        _extracted = _json.loads(_last_line)
+                        if isinstance(_extracted, dict):
+                            result.update(_extracted)
+                    except Exception:
+                        pass
+                return result
 
             # Append assistant message
             messages.append({"role": "assistant", "content": response.content})
@@ -576,12 +590,24 @@ def _execute_brain(
         input_tokens = getattr(getattr(response, "usage", None), "input_tokens", 0)
         output_tokens = getattr(getattr(response, "usage", None), "output_tokens", 0)
         cost_usd = round((input_tokens * 3 + output_tokens * 15) / 1_000_000, 6)
-        return {
+        result = {
             "output": text,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "cost_usd": cost_usd,
         }
+        # Extract structured values from the last JSON line of the output
+        import json as _json
+        _output_text = result.get("output", "")
+        _last_line = _output_text.strip().rsplit("\n", 1)[-1].strip()
+        if _last_line.startswith("{") and _last_line.endswith("}"):
+            try:
+                _extracted = _json.loads(_last_line)
+                if isinstance(_extracted, dict):
+                    result.update(_extracted)
+            except Exception:
+                pass
+        return result
 
 
 def _dry_run_mock(integration: str, action: str, params: dict) -> dict:
@@ -768,6 +794,8 @@ def _execute_logic(block: dict, state: dict) -> dict:
 
     Checks (in order):
     1. Explicit condition expression in block config
+       - Equality expression: "value == true/false" evaluated directly
+       - Keyword-based: pass/success/true -> pass; fail/error/false -> fail
     2. exit_code == 0 from last shell output
     3. Keywords 'pass', 'success', 'true', '0' in last output
     """
@@ -777,12 +805,28 @@ def _execute_logic(block: dict, state: dict) -> dict:
 
     # If config has an explicit condition expression, evaluate it
     if condition_expr:
-        cond_lower = condition_expr.lower()
-        if any(k in cond_lower for k in ("pass", "success", "true", "== 0", "exit 0")):
-            # Condition is about passing — check last_output
-            pass
-        elif any(k in cond_lower for k in ("fail", "error", "false")):
+        cond_stripped = condition_expr.strip()
+        cond_lower = cond_stripped.lower()
+
+        # Handle equality expressions: "<value> == true/false" or "<value> == <value>"
+        eq_match = re.match(r"^(.+?)\s*==\s*(.+)$", cond_stripped, re.IGNORECASE)
+        if eq_match:
+            lhs = eq_match.group(1).strip().lower()
+            rhs = eq_match.group(2).strip().lower()
+            # Normalise Python/JSON booleans
+            lhs_val = lhs in ("true", "1", "yes")  if lhs in ("true", "false", "1", "0", "yes", "no") else lhs
+            rhs_val = rhs in ("true", "1", "yes") if rhs in ("true", "false", "1", "0", "yes", "no") else rhs
+            matched = lhs_val == rhs_val
+            route = "pass" if matched else "fail"
+            return {"route": route, "condition": condition_expr, "evaluated_on": f"{lhs} == {rhs}"}
+
+        # Keyword-only expressions
+        if any(k in cond_lower for k in ("fail", "error")):
             return {"route": "fail", "condition": condition_expr, "evaluated_on": last_output[:200]}
+        if cond_lower in ("true", "pass", "success"):
+            return {"route": "pass", "condition": condition_expr, "evaluated_on": cond_lower}
+        if cond_lower in ("false",):
+            return {"route": "fail", "condition": condition_expr, "evaluated_on": cond_lower}
 
     # Check exit_code in last output (JSON blob from run_shell)
     try:
