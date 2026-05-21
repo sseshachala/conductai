@@ -278,7 +278,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
       const blockType = type as BlockType
       const defaults: Record<string, unknown> = {}
       if (blockType === "output") defaults.integration = "slack"
-      if (blockType === "trigger") defaults.config = { event_type: "manual" }
+      if (blockType === "trigger") defaults.config = { event_type: "github_issue_labeled" }
 
       const newNode: Node = {
         id,
