@@ -920,6 +920,12 @@ def execute_run(run_id: str):
         logic_routes: dict[str, str] = {}  # block_id → 'pass'|'fail'
 
         for block in exec_blocks:
+            # Check if user cancelled the run between blocks
+            db.refresh(run)
+            if run.status == "cancelled":
+                log.info("Run %s cancelled by user", run_id)
+                return
+
             block_id = block["id"]
             block_type = block["data"].get("type", "tool")
 

@@ -55,7 +55,32 @@ function statusColor(status: BlockStatus) {
 export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, onClose, onRunDone }: RunDrawerProps) {
   const [rows, setRows] = useState<BlockRow[]>([])
   const [done, setDone] = useState(false)
-  const [runStatus, setRunStatus] = useState<"running" | "succeeded" | "failed">("running")
+  const [runStatus, setRunStatus] = useState<"running" | "succeeded" | "failed" | "cancelled">("running")
+  const [killing, setKilling] = useState(false)
+
+  async function killRun() {
+    setKilling(true)
+    const params = new URLSearchParams()
+    const wsId = getCookie("delegator_project_id")
+    if (wsId) params.set("workspace_id", wsId)
+    const qs = params.toString() ? `?${params.toString()}` : ""
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" }
+      if (getToken) {
+        const token = await getToken()
+        if (token) headers["Authorization"] = `Bearer ${token}`
+      }
+      await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}/cancel${qs}`,
+        { method: "POST", headers }
+      )
+    } finally {
+      setKilling(false)
+      setDone(true)
+      setRunStatus("cancelled")
+      onRunDone?.()
+    }
+  }
   const bottomRef = useRef<HTMLDivElement>(null)
   const rowMapRef = useRef<Record<string, BlockRow>>({})
 
@@ -151,8 +176,9 @@ export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, 
           setRows(Object.values(rowMapRef.current))
         }
 
-        if (kind === "run_completed") { setRunStatus("succeeded"); onRunDone?.() }
-        if (kind === "run_failed")    { setRunStatus("failed");    onRunDone?.() }
+        if (kind === "run_completed")  { setRunStatus("succeeded");  onRunDone?.() }
+        if (kind === "run_failed")     { setRunStatus("failed");     onRunDone?.() }
+        if (kind === "run_cancelled")  { setRunStatus("cancelled");  onRunDone?.() }
       }
 
       es.onerror = () => { es?.close(); setDone(true) }
@@ -170,11 +196,15 @@ export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, 
   const statusBanner = done
     ? runStatus === "succeeded"
       ? "bg-emerald-50 border-t border-emerald-200 text-emerald-700"
+      : runStatus === "cancelled"
+      ? "bg-stone-50 border-t border-stone-200 text-stone-600"
       : "bg-red-50 border-t border-red-200 text-red-700"
     : "bg-violet-50 border-t border-violet-200 text-violet-700"
 
   const statusLabel = done
-    ? runStatus === "succeeded" ? "Run completed" : "Run failed"
+    ? runStatus === "succeeded" ? "Run completed"
+    : runStatus === "cancelled" ? "Run cancelled"
+    : "Run failed"
     : "Running…"
 
   return (
@@ -196,6 +226,15 @@ export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, 
           >
             Full trace →
           </a>
+          {!done && (
+            <button
+              onClick={killRun}
+              disabled={killing}
+              className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded hover:bg-red-50 transition-colors disabled:opacity-50"
+            >
+              {killing ? "Killing…" : "Kill"}
+            </button>
+          )}
           <button onClick={onClose} className="text-xs text-stone-400 hover:text-stone-700 font-medium px-2 py-1 rounded hover:bg-stone-100 transition-colors">Hide</button>
         </div>
       </div>
