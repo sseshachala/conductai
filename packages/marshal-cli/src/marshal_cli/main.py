@@ -61,21 +61,23 @@ def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, t
 
 def _build_state(issue: dict, repo_full_name: str) -> dict:
     owner, repo = repo_full_name.split("/", 1)
+    trigger = {
+        "repo_owner":     owner,
+        "repo_name":      repo,
+        "repo_full_name": repo_full_name,
+        "issue_number":   issue["number"],
+        "title":          issue["title"],
+        "body":           issue.get("body") or "",
+        "url":            issue["url"],
+        "author":         issue["author"],
+        "labels":         issue["labels"],
+        "label_added":    issue["labels"][0] if issue["labels"] else "",
+        "default_branch": "main",
+        "clone_url":      issue["clone_url"],
+    }
     return {
-        "github_issue": {
-            "repo_owner":     owner,
-            "repo_name":      repo,
-            "repo_full_name": repo_full_name,
-            "issue_number":   issue["number"],
-            "title":          issue["title"],
-            "body":           issue.get("body") or "",
-            "url":            issue["url"],
-            "author":         issue["author"],
-            "labels":         issue["labels"],
-            "label_added":    issue["labels"][0] if issue["labels"] else "",
-            "default_branch": "main",
-            "clone_url":      issue["clone_url"],
-        }
+        "github_issue": trigger,
+        "_trigger":     trigger,
     }
 
 

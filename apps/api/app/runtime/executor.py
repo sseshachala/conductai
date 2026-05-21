@@ -765,7 +765,8 @@ def _execute_logic(block: dict, state: dict) -> dict:
     Evaluate a condition and return route: 'pass' or 'fail'.
 
     Checks (in order):
-    1. Explicit condition expression in block config
+    1. Explicit boolean comparison expression (e.g. "{{block.field}} == true")
+       after resolving refs — evaluated directly as a Python boolean expression.
     2. exit_code == 0 from last shell output
     3. Keywords 'pass', 'success', 'true', '0' in last output
     """
@@ -773,14 +774,23 @@ def _execute_logic(block: dict, state: dict) -> dict:
     condition_expr = _resolve_refs(config.get("condition", ""), state)
     last_output = str(state.get("__last_output", "")).lower()
 
-    # If config has an explicit condition expression, evaluate it
+    # If config has an explicit condition expression, attempt direct boolean evaluation first.
+    # This handles patterns like "True == true", "false == true", "True == True", etc.
+    # that result from resolving {{block.field}} refs whose values are Python booleans or
+    # the strings "true"/"false".
     if condition_expr:
-        cond_lower = condition_expr.lower()
-        if any(k in cond_lower for k in ("pass", "success", "true", "== 0", "exit 0")):
-            # Condition is about passing — check last_output
-            pass
-        elif any(k in cond_lower for k in ("fail", "error", "false")):
-            return {"route": "fail", "condition": condition_expr, "evaluated_on": last_output[:200]}
+        # Normalise to a Python-evaluable expression: lower-case true/false → True/False
+        normalised = re.sub(
+            r"\btrue\b", "True",
+            re.sub(r"\bfalse\b", "False", condition_expr, flags=re.IGNORECASE),
+            flags=re.IGNORECASE,
+        )
+        try:
+            evaluated = eval(normalised, {"__builtins__": {}})  # noqa: S307
+            route = "pass" if evaluated else "fail"
+            return {"route": route, "condition": condition_expr, "evaluated_on": normalised}
+        except Exception:
+            pass  # Fall through to heuristic checks below
 
     # Check exit_code in last output (JSON blob from run_shell)
     try:
@@ -963,6 +973,19 @@ def execute_run(run_id: str):
                 elif block_type == "brain":
                     result = _execute_brain(block, state, compiled, credentials=credentials,
                                             db=db, run_id=run_id, block_id=block_id)
+                    # Extract structured JSON emitted on the last line of brain output.
+                    # This lets brain blocks surface values like pr_url, passed, etc.
+                    # as direct refs (e.g. {{push_pr.pr_url}}) without extra parsing.
+                    import json as _json
+                    _output_text = result.get("output", "") or ""
+                    _last_line = _output_text.strip().rsplit("\n", 1)[-1].strip()
+                    if _last_line.startswith("{") and _last_line.endswith("}"):
+                        try:
+                            _extracted = _json.loads(_last_line)
+                            if isinstance(_extracted, dict):
+                                result.update(_extracted)
+                        except Exception:
+                            pass
 
                 elif block_type == "tool":
                     result = _execute_tool(block, state, credentials)
