@@ -225,15 +225,12 @@ def validate_workflow(
                                    "message": "label is required (e.g. ai_ready)"})
 
         # ── Brain blocks ─────────────────────────────────────────────────────
+        # description IS the system prompt — no separate system_prompt field exists
         elif block_type == "brain":
             description = (data.get("description") or config.get("description") or "").strip()
-            if len(description.split()) < 10:
+            if not description:
                 errors.append({"block_id": block_id, "label": label,
-                                "message": "Description too vague — add at least 10 words describing what the AI should do"})
-            system_prompt = (data.get("system_prompt") or config.get("system_prompt") or "").strip()
-            if not system_prompt:
-                errors.append({"block_id": block_id, "label": label,
-                                "message": "System prompt is required for Brain blocks"})
+                                "message": "Description is required for Brain blocks"})
 
         # ── Tool / cleanup blocks ────────────────────────────────────────────
         elif block_type in ("tool", "cleanup"):
