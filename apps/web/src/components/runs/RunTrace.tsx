@@ -139,6 +139,12 @@ interface FileChanged {
   action: "created" | "modified" | "deleted"
 }
 
+interface ToolCall {
+  tool: string
+  summary: string
+  turn: number
+}
+
 interface BlockRow {
   blockId: string
   label: string
@@ -153,6 +159,7 @@ interface BlockRow {
   outputTokens?: number
   filesChanged?: FileChanged[]
   diffStat?: string
+  toolCalls?: ToolCall[]
 }
 
 const FILE_ACTION_COLOR: Record<string, string> = {
@@ -201,6 +208,17 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
             <span className="text-xs text-blue-500 animate-pulse ml-auto">running…</span>
           )}
         </div>
+
+        {/* Brain tool calls — live sub-steps */}
+        {row.toolCalls && row.toolCalls.length > 0 && (
+          <div className="mt-1.5 space-y-0.5 border-l-2 border-violet-200 pl-2">
+            {row.toolCalls.map((tc, i) => (
+              <p key={i} className="text-[10px] font-mono text-stone-500 truncate">
+                {tc.summary}
+              </p>
+            ))}
+          </div>
+        )}
 
         {/* Error */}
         {row.status === "failed" && row.error && (
@@ -415,6 +433,13 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
       }
       blockMap[ev.block_id] = row
       blockRows.push(row)
+    } else if (ev.kind === "brain_tool_call" && blockMap[ev.block_id]) {
+      const call: ToolCall = {
+        tool:    ev.payload.tool as string,
+        summary: ev.payload.summary as string,
+        turn:    ev.payload.turn as number,
+      }
+      blockMap[ev.block_id].toolCalls = [...(blockMap[ev.block_id].toolCalls ?? []), call]
     } else if (ev.kind === "approval_requested" && blockMap[ev.block_id]) {
       blockMap[ev.block_id].status = "running"
       blockMap[ev.block_id].output = { status: "approval_required" }
