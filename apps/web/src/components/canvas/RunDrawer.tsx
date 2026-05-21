@@ -5,6 +5,13 @@ import { cn } from "@/lib/utils"
 
 type BlockStatus = "running" | "completed" | "failed" | "skipped"
 
+interface ToolCallRow {
+  id: string
+  tool: string
+  summary: string
+  turn: number
+}
+
 interface BlockRow {
   blockId: string
   label: string
@@ -13,6 +20,7 @@ interface BlockRow {
   output?: string
   error?: string
   costUsd?: number
+  toolCalls?: ToolCallRow[]
 }
 
 interface RunDrawerProps {
@@ -128,6 +136,20 @@ export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, 
           onBlockStatus(block_id, "skipped")
         }
 
+        if (kind === "brain_tool_call" && block_id && rowMapRef.current[block_id]) {
+          const call: ToolCallRow = {
+            id: `${block_id}-${payload.turn}-${payload.tool}`,
+            tool: payload.tool as string,
+            summary: payload.summary as string,
+            turn: payload.turn as number,
+          }
+          rowMapRef.current[block_id] = {
+            ...rowMapRef.current[block_id],
+            toolCalls: [...(rowMapRef.current[block_id].toolCalls ?? []), call],
+          }
+          setRows(Object.values(rowMapRef.current))
+        }
+
         if (kind === "run_completed") setRunStatus("succeeded")
         if (kind === "run_failed")    setRunStatus("failed")
       }
@@ -197,6 +219,15 @@ export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, 
                   <span className="text-stone-400 shrink-0">${row.costUsd.toFixed(3)}</span>
                 )}
               </div>
+              {row.toolCalls && row.toolCalls.length > 0 && (
+                <div className="mt-1.5 space-y-0.5 border-l-2 border-violet-200 pl-2">
+                  {row.toolCalls.map(tc => (
+                    <p key={tc.id} className="text-[10px] text-stone-500 font-mono truncate">
+                      {tc.summary}
+                    </p>
+                  ))}
+                </div>
+              )}
               {row.output && (
                 <p className="text-stone-500 mt-0.5 truncate">{row.output}</p>
               )}
