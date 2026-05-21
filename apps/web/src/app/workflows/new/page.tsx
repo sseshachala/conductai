@@ -27,7 +27,7 @@ const TEMPLATES = [
   {
     id: "pr_reviewer",
     label: "PR Reviewer",
-    description: "Pull request opened → AI reviews the diff for bugs, security issues, and style → posts review comment.",
+    description: "Triggered when any PR is opened — by Autopilot or a human. AI reviews the diff for bugs, security, and style → posts review comment. Setup: add this agent's webhook URL as a GitHub repo webhook for pull_request.opened events.",
     tags: ["GitHub", "Slack"],
   },
   {
