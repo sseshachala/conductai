@@ -486,6 +486,14 @@ def _execute_brain(
                     files_changed, diff_stat = [], ""
                 else:
                     files_changed, diff_stat = _extract_git_evidence(working_dir)
+                if db and run_id:
+                    from app.runtime.sandbox import _modal_available
+                    if _modal_available():
+                        _emit(db, run_id, block_id, "brain_tool_call", {
+                            "tool": "modal_lifecycle",
+                            "summary": "--- Cleaning Modal Assets ---",
+                            "turn": turns,
+                        })
                 return {
                     "output": final_text,
                     "turns": turns,
@@ -499,6 +507,16 @@ def _execute_brain(
 
             # Append assistant message
             messages.append({"role": "assistant", "content": response.content})
+
+            # Emit Modal lifecycle event on first tool-dispatching turn
+            if turns == 1 and db and run_id:
+                from app.runtime.sandbox import _modal_available
+                if _modal_available():
+                    _emit(db, run_id, block_id, "brain_tool_call", {
+                        "tool": "modal_lifecycle",
+                        "summary": "--- Initializing Modal Assets ---",
+                        "turn": 0,
+                    })
 
             # Execute tool calls and build tool_result message
             tool_results = []
@@ -525,6 +543,14 @@ def _execute_brain(
             files_changed, diff_stat = [], ""
         else:
             files_changed, diff_stat = _extract_git_evidence(working_dir)
+        if db and run_id:
+            from app.runtime.sandbox import _modal_available
+            if _modal_available():
+                _emit(db, run_id, block_id, "brain_tool_call", {
+                    "tool": "modal_lifecycle",
+                    "summary": "--- Cleaning Modal Assets ---",
+                    "turn": max_turns,
+                })
         return {
             "output": "Turn budget exhausted",
             "turns": max_turns,
