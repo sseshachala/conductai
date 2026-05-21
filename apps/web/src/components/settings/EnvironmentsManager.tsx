@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useAuth } from "@clerk/nextjs"
 
 interface Environment {
@@ -8,6 +8,66 @@ interface Environment {
   name: string
   created_at: string
 }
+
+interface Credential {
+  handle: string
+  service: string
+  auth_method: string
+  fields: string[]
+}
+
+interface FieldDef {
+  key: string
+  label: string
+  placeholder: string
+  secret?: boolean
+  optional?: boolean
+}
+
+interface ServiceDef {
+  value: string
+  label: string
+  description: string
+  color: string
+  abbr: string
+  fields: FieldDef[]
+}
+
+const SERVICES: ServiceDef[] = [
+  {
+    value: "github", label: "GitHub", abbr: "GH",
+    description: "Create branches and pull requests",
+    color: "bg-stone-900 text-white",
+    fields: [{ key: "token", label: "Personal access token", placeholder: "ghp_… or gho_…" }],
+  },
+  {
+    value: "slack", label: "Slack", abbr: "SL",
+    description: "Post messages and approval requests",
+    color: "bg-purple-600 text-white",
+    fields: [{ key: "token", label: "Bot token", placeholder: "xoxb-…" }],
+  },
+  {
+    value: "linear", label: "Linear", abbr: "LN",
+    description: "Fetch issues and post comments",
+    color: "bg-indigo-600 text-white",
+    fields: [{ key: "api_key", label: "API key", placeholder: "lin_api_…" }],
+  },
+  {
+    value: "digitalocean", label: "DigitalOcean", abbr: "DO",
+    description: "Provision and manage droplets",
+    color: "bg-blue-500 text-white",
+    fields: [{ key: "token", label: "Personal access token", placeholder: "dop_v1_…" }],
+  },
+  {
+    value: "email", label: "Email", abbr: "EM",
+    description: "Send notifications via Resend or SendGrid",
+    color: "bg-emerald-600 text-white",
+    fields: [
+      { key: "resend_api_key", label: "Resend API key (recommended)", placeholder: "re_…" },
+      { key: "sendgrid_api_key", label: "SendGrid API key (alternative)", placeholder: "SG.…", optional: true },
+    ],
+  },
+]
 
 function getWorkspaceId(): string | null {
   if (typeof document === "undefined") return null
@@ -27,13 +87,14 @@ function EnvironmentsManagerWithAuth() {
 
 function EnvironmentsManagerInner({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
   const [environments, setEnvironments] = useState<Environment[]>([])
+  const [selected, setSelected] = useState<Environment | null>(null)
   const [newName, setNewName] = useState("")
   const [creating, setCreating] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
-  const [error, setError] = useState("")
+  const [listError, setListError] = useState("")
 
-  async function buildHeaders(contentType = false): Promise<Record<string, string>> {
+  const buildHeaders = useCallback(async (contentType = false): Promise<Record<string, string>> => {
     const headers: Record<string, string> = {}
     if (contentType) headers["Content-Type"] = "application/json"
     if (getToken) {
@@ -43,29 +104,27 @@ function EnvironmentsManagerInner({ getToken }: { getToken: (() => Promise<strin
     const ws = getWorkspaceId()
     if (ws) headers["X-Workspace-Id"] = ws
     return headers
-  }
+  }, [getToken])
 
-  async function loadEnvironments() {
+  const loadEnvironments = useCallback(async () => {
     try {
       const headers = await buildHeaders()
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments`, { headers })
       if (res.ok) setEnvironments(await res.json())
     } catch { /* silent */ }
-  }
+  }, [buildHeaders])
 
-  useEffect(() => { loadEnvironments() }, [])
+  useEffect(() => { loadEnvironments() }, [loadEnvironments])
 
   async function handleCreate() {
     const name = newName.trim()
-    if (!name) { setError("Environment name is required"); return }
+    if (!name) { setListError("Environment name is required"); return }
     setCreating(true)
-    setError("")
+    setListError("")
     try {
       const headers = await buildHeaders(true)
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ name }),
+        method: "POST", headers, body: JSON.stringify({ name }),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
@@ -74,7 +133,7 @@ function EnvironmentsManagerInner({ getToken }: { getToken: (() => Promise<strin
       setNewName("")
       await loadEnvironments()
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to create environment")
+      setListError(e instanceof Error ? e.message : "Failed to create environment")
     } finally {
       setCreating(false)
     }
@@ -82,18 +141,17 @@ function EnvironmentsManagerInner({ getToken }: { getToken: (() => Promise<strin
 
   async function handleDelete(id: string) {
     setDeleting(id)
-    setError("")
+    setListError("")
     try {
       const headers = await buildHeaders()
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments/${id}`, {
-        method: "DELETE",
-        headers,
+        method: "DELETE", headers,
       })
       if (!res.ok) throw new Error("Failed to delete environment")
       setEnvironments(prev => prev.filter(e => e.id !== id))
       setConfirmDelete(null)
     } catch {
-      setError("Failed to delete environment")
+      setListError("Failed to delete environment")
     } finally {
       setDeleting(null)
     }
@@ -102,75 +160,76 @@ function EnvironmentsManagerInner({ getToken }: { getToken: (() => Promise<strin
   function formatDate(iso: string) {
     try {
       return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
-    } catch {
-      return iso
-    }
+    } catch { return iso }
+  }
+
+  // Drill into an environment
+  if (selected) {
+    return (
+      <EnvironmentDetail
+        environment={selected}
+        buildHeaders={buildHeaders}
+        onBack={() => setSelected(null)}
+      />
+    )
   }
 
   return (
     <div className="space-y-3">
-      {/* Default (workspace global) row — always shown, non-deletable */}
-      <div className="rounded-xl border border-stone-200 bg-white">
-        <div className="flex items-center justify-between px-4 py-3.5">
-          <div className="flex items-center gap-3">
-            <span className="w-9 h-9 rounded-lg text-xs font-bold flex items-center justify-center shrink-0 bg-stone-100 text-stone-500">
-              WS
-            </span>
-            <div>
-              <div className="flex items-center gap-2">
-                <p className="text-sm font-medium text-stone-900">Default (workspace global)</p>
-                <span className="text-[10px] font-medium text-stone-400 bg-stone-50 border border-stone-200 px-1.5 py-0.5 rounded-full">
-                  built-in
-                </span>
-              </div>
-              <p className="text-xs text-stone-400">Credentials available to all agents with no environment assigned</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Existing environments */}
       {environments.map(env => (
-        <div
-          key={env.id}
-          className="rounded-xl border border-stone-200 bg-white"
-        >
+        <div key={env.id} className="rounded-xl border border-stone-200 bg-white">
           <div className="flex items-center justify-between px-4 py-3.5">
-            <div className="flex items-center gap-3">
-              <span className="w-9 h-9 rounded-lg text-xs font-bold flex items-center justify-center shrink-0 bg-violet-100 text-violet-700">
+            <button
+              className="flex items-center gap-3 flex-1 text-left"
+              onClick={() => setSelected(env)}
+            >
+              <span className={`w-9 h-9 rounded-lg text-xs font-bold flex items-center justify-center shrink-0 ${
+                env.name === "Default" ? "bg-stone-100 text-stone-500" : "bg-violet-100 text-violet-700"
+              }`}>
                 {env.name.slice(0, 2).toUpperCase()}
               </span>
               <div>
-                <p className="text-sm font-medium text-stone-900">{env.name}</p>
-                <p className="text-xs text-stone-400">Created {formatDate(env.created_at)}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-stone-900">{env.name}</p>
+                  {env.name === "Default" && (
+                    <span className="text-[10px] font-medium text-stone-400 bg-stone-50 border border-stone-200 px-1.5 py-0.5 rounded-full">
+                      built-in
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-stone-400">Created {formatDate(env.created_at)} · click to manage credentials</p>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {confirmDelete === env.id ? (
-                <>
-                  <span className="text-xs text-stone-500">Delete this environment?</span>
+            </button>
+
+            <div className="flex items-center gap-2 ml-4">
+              {env.name !== "Default" && (
+                confirmDelete === env.id ? (
+                  <>
+                    <span className="text-xs text-stone-500">Delete?</span>
+                    <button
+                      onClick={() => handleDelete(env.id)}
+                      disabled={deleting === env.id}
+                      className="text-xs font-medium text-red-600 hover:text-red-800 disabled:opacity-50 transition-colors"
+                    >
+                      {deleting === env.id ? "Deleting…" : "Confirm"}
+                    </button>
+                    <button
+                      onClick={() => setConfirmDelete(null)}
+                      className="text-xs text-stone-400 hover:text-stone-600 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
                   <button
-                    onClick={() => handleDelete(env.id)}
-                    disabled={deleting === env.id}
-                    className="text-xs font-medium text-red-600 hover:text-red-800 disabled:opacity-50 transition-colors"
+                    onClick={e => { e.stopPropagation(); setConfirmDelete(env.id) }}
+                    className="text-xs text-stone-400 hover:text-red-500 transition-colors"
                   >
-                    {deleting === env.id ? "Deleting…" : "Confirm"}
+                    Delete
                   </button>
-                  <button
-                    onClick={() => setConfirmDelete(null)}
-                    className="text-xs text-stone-400 hover:text-stone-600 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <button
-                  onClick={() => setConfirmDelete(env.id)}
-                  className="text-xs text-stone-400 hover:text-red-500 transition-colors"
-                >
-                  Delete
-                </button>
+                )
               )}
+              <span className="text-stone-300 text-sm">→</span>
             </div>
           </div>
         </div>
@@ -183,9 +242,9 @@ function EnvironmentsManagerInner({ getToken }: { getToken: (() => Promise<strin
           <input
             type="text"
             value={newName}
-            onChange={e => { setNewName(e.target.value); setError("") }}
+            onChange={e => { setNewName(e.target.value); setListError("") }}
             onKeyDown={e => e.key === "Enter" && handleCreate()}
-            placeholder="e.g. staging, production, testing"
+            placeholder="e.g. staging, production, customer-A"
             className="flex-1 border border-stone-200 rounded-lg px-3 py-2 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-violet-200"
           />
           <button
@@ -196,7 +255,213 @@ function EnvironmentsManagerInner({ getToken }: { getToken: (() => Promise<strin
             {creating ? "Creating…" : "Create"}
           </button>
         </div>
-        {error && <p className="text-xs text-red-500 mt-2">{error}</p>}
+        {listError && <p className="text-xs text-red-500 mt-2">{listError}</p>}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Environment detail — credential management for one environment
+// ---------------------------------------------------------------------------
+
+function EnvironmentDetail({
+  environment,
+  buildHeaders,
+  onBack,
+}: {
+  environment: Environment
+  buildHeaders: (contentType?: boolean) => Promise<Record<string, string>>
+  onBack: () => void
+}) {
+  const [credentials, setCredentials] = useState<Credential[]>([])
+  const [openService, setOpenService] = useState<string | null>(null)
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({})
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [error, setError] = useState("")
+
+  const loadCredentials = useCallback(async () => {
+    try {
+      const headers = await buildHeaders()
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/credentials/by-environment/${environment.id}`,
+        { headers }
+      )
+      if (res.ok) setCredentials(await res.json())
+    } catch { /* silent */ }
+  }, [buildHeaders, environment.id])
+
+  useEffect(() => { loadCredentials() }, [loadCredentials])
+
+  const connectedServices = new Set(credentials.map(c => c.service))
+
+  function toggleService(svc: string) {
+    if (openService === svc) { setOpenService(null); setError("") }
+    else { setOpenService(svc); setFieldValues({}); setError("") }
+  }
+
+  async function handleSave(svc: ServiceDef) {
+    const credObj: Record<string, string> = {}
+    for (const f of svc.fields) {
+      const val = fieldValues[f.key]?.trim() ?? ""
+      if (!val && !f.optional) { setError(`${f.label} is required`); return }
+      if (val) credObj[f.key] = val
+    }
+    setSaving(true)
+    setError("")
+    try {
+      const headers = await buildHeaders(true)
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          service: svc.value,
+          handle: `${svc.value}_${environment.name.toLowerCase().replace(/\s+/g, "_")}`,
+          credentials: credObj,
+          environment_id: environment.id,
+        }),
+      })
+      if (!res.ok) throw new Error("Save failed")
+      await loadCredentials()
+      setOpenService(null)
+      setFieldValues({})
+    } catch {
+      setError("Failed to save — check your token and try again")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleRemove(handle: string) {
+    setDeleting(handle)
+    try {
+      const headers = await buildHeaders()
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/${handle}`, {
+        method: "DELETE", headers,
+      })
+      setCredentials(prev => prev.filter(c => c.handle !== handle))
+    } finally {
+      setDeleting(null)
+    }
+  }
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-6">
+        <button
+          onClick={onBack}
+          className="text-stone-400 hover:text-stone-700 text-sm transition-colors"
+        >
+          ←
+        </button>
+        <span className={`w-8 h-8 rounded-lg text-xs font-bold flex items-center justify-center ${
+          environment.name === "Default" ? "bg-stone-100 text-stone-500" : "bg-violet-100 text-violet-700"
+        }`}>
+          {environment.name.slice(0, 2).toUpperCase()}
+        </span>
+        <div>
+          <h2 className="text-sm font-semibold text-stone-900">{environment.name}</h2>
+          <p className="text-xs text-stone-400">Credentials scoped to this environment</p>
+        </div>
+      </div>
+
+      {/* Services */}
+      <div className="space-y-3">
+        {SERVICES.map(svc => {
+          const isConnected = connectedServices.has(svc.value)
+          const isOpen = openService === svc.value
+          const cred = credentials.find(c => c.service === svc.value)
+
+          return (
+            <div
+              key={svc.value}
+              className={`rounded-xl border bg-white transition-all ${
+                isOpen ? "border-stone-300 shadow-sm" : "border-stone-200"
+              }`}
+            >
+              <div className="flex items-center justify-between px-4 py-3.5">
+                <div className="flex items-center gap-3">
+                  <span className={`w-9 h-9 rounded-lg text-xs font-bold flex items-center justify-center shrink-0 ${svc.color}`}>
+                    {svc.abbr}
+                  </span>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-stone-900">{svc.label}</p>
+                      {isConnected && (
+                        <span className="flex items-center gap-1 text-[10px] font-medium text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                          Connected
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-stone-400">{svc.description}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {isConnected && cred && (
+                    <button
+                      onClick={() => handleRemove(cred.handle)}
+                      disabled={deleting === cred.handle}
+                      className="text-xs text-stone-400 hover:text-red-500 disabled:opacity-50 transition-colors"
+                    >
+                      {deleting === cred.handle ? "Removing…" : "Remove"}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => toggleService(svc.value)}
+                    className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
+                      isConnected
+                        ? "border border-stone-200 text-stone-500 hover:bg-stone-50"
+                        : "bg-stone-900 text-white hover:bg-stone-700"
+                    }`}
+                  >
+                    {isConnected ? "Update" : "Connect"}
+                  </button>
+                </div>
+              </div>
+
+              {isOpen && (
+                <div className="px-4 pb-4 pt-1 border-t border-stone-100 space-y-3">
+                  {svc.fields.map((f, i) => (
+                    <div key={f.key}>
+                      <label className="text-xs font-medium text-stone-500 block mb-1">
+                        {f.label}
+                        {f.optional && <span className="ml-1 text-stone-300 font-normal">optional</span>}
+                      </label>
+                      <input
+                        type={f.secret !== false ? "password" : "text"}
+                        autoFocus={i === 0}
+                        value={fieldValues[f.key] ?? ""}
+                        onChange={e => setFieldValues(prev => ({ ...prev, [f.key]: e.target.value }))}
+                        onKeyDown={e => e.key === "Enter" && handleSave(svc)}
+                        placeholder={f.placeholder}
+                        className="w-full border border-stone-200 rounded-lg px-3 py-2 text-sm font-mono text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                      />
+                    </div>
+                  ))}
+                  {error && <p className="text-xs text-red-500">{error}</p>}
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={() => handleSave(svc)}
+                      disabled={saving}
+                      className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700 disabled:opacity-50 transition-colors"
+                    >
+                      {saving ? "Saving…" : "Save"}
+                    </button>
+                    <button
+                      onClick={() => { setOpenService(null); setError("") }}
+                      className="rounded-lg border border-stone-200 px-4 py-2 text-sm text-stone-600 hover:bg-stone-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
