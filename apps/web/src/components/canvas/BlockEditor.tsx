@@ -487,15 +487,27 @@ export default function BlockEditor({
 
           <div className={section}>
             <span className={sectionLabel}>Mode</span>
-            {BLOCK_CONFIG_SCHEMAS.brain?.map(field => (
-              <div key={field.key}>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-stone-600">{field.label}</span>
-                  <FieldInput field={field} value={blockData.isAgentic} onChange={v => onChange(blockId, { ...blockData, isAgentic: v })} />
-                </div>
-                {field.hint && <p className="text-[10px] text-stone-400 mt-1">{field.hint}</p>}
-              </div>
-            ))}
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-stone-700">
+                {blockData.isAgentic ? "Agentic" : "Single call"}
+              </span>
+              <FieldInput
+                field={BLOCK_CONFIG_SCHEMAS.brain![0]}
+                value={blockData.isAgentic}
+                onChange={v => onChange(blockId, { ...blockData, isAgentic: v })}
+              />
+            </div>
+            <p className="text-[10px] leading-relaxed mt-1.5 px-2 py-1.5 rounded-lg border">
+              {blockData.isAgentic ? (
+                <span className="text-violet-700 border-violet-200 bg-violet-50 rounded-lg">
+                  <strong>Agentic on</strong> — Claude loops autonomously using tools: reads files, writes code, runs shell commands. Use for implementing fixes, running tests, pushing branches.
+                </span>
+              ) : (
+                <span className="text-stone-500 border-stone-100 bg-stone-50 rounded-lg">
+                  <strong>Single call</strong> — Claude responds once with text only. No file access, no commands. Use for summarising, classifying, or generating messages.
+                </span>
+              )}
+            </p>
           </div>
         </>
       )}
