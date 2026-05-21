@@ -468,7 +468,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
           }`}>
             {saveStatus === "saving" ? "Saving…" : "Saved ✓"}
           </span>
-          <CostEstimate workflowId={workflowId} />
+          <CostEstimate workflowId={workflowId} nodes={nodes} getToken={getToken} />
           <a
             href={`/workflows/${workflowId}/runs`}
             className="text-xs text-stone-500 hover:text-stone-800 transition-colors px-2 py-1 rounded hover:bg-stone-100"

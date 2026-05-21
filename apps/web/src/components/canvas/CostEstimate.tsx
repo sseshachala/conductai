@@ -1,6 +1,8 @@
 "use client"
 
 import { useState } from "react"
+import { type BlockNodeData } from "./BlockNode"
+import { type Node } from "@xyflow/react"
 
 interface BlockEstimate {
   block_id: string
@@ -20,10 +22,13 @@ interface Estimate {
   total_input_tokens: number
   total_output_tokens: number
   total_tokens: number
+  per_run_cost_usd: number
+  issues_count: number
   total_cost_usd: number
   integrations_used: string[]
   model: string
   pricing_note: string
+  based_on_actuals: boolean
 }
 
 const MODE_BADGE: Record<string, string> = {
@@ -48,11 +53,19 @@ function fmtCost(n: number) {
   return `$${n.toFixed(4)}`
 }
 
-interface Props {
-  workflowId: string
+function getWorkspaceHeader(): Record<string, string> {
+  if (typeof document === "undefined") return {}
+  const m = document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)
+  return m ? { "X-Workspace-Id": m[1] } : {}
 }
 
-export default function CostEstimate({ workflowId }: Props) {
+interface Props {
+  workflowId: string
+  nodes?: Node[]
+  getToken?: (() => Promise<string | null>) | null
+}
+
+export default function CostEstimate({ workflowId, nodes, getToken }: Props) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [estimate, setEstimate] = useState<Estimate | null>(null)
@@ -62,8 +75,47 @@ export default function CostEstimate({ workflowId }: Props) {
     setLoading(true)
     setError("")
     try {
+      const headers: Record<string, string> = { ...getWorkspaceHeader() }
+      if (getToken) {
+        const token = await getToken()
+        if (token) headers["Authorization"] = `Bearer ${token}`
+      }
+
+      // Find trigger block — read repo_allowlist + label to count matching issues
+      let issuesCount = 1
+      const triggerNode = (nodes ?? []).find(n => {
+        const d = n.data as BlockNodeData
+        const cfg = (d.config as Record<string, unknown>) ?? {}
+        return d.type === "trigger" && (
+          cfg.event_type === "github_issue_labeled" || cfg.event_type === "github_issue"
+        )
+      })
+      if (triggerNode) {
+        const cfg = (triggerNode.data as BlockNodeData).config as Record<string, unknown>
+        const repoAllowlist = (cfg.repo_allowlist as string) || ""
+        const label = (cfg.label as string) || ""
+        const repos = repoAllowlist.split(",").map(s => s.trim()).filter(Boolean)
+        if (repos.length > 0 && label) {
+          let total = 0
+          await Promise.all(repos.map(async (repo) => {
+            try {
+              const r = await fetch(
+                `${process.env.NEXT_PUBLIC_API_URL}/credentials/github/issues?repo=${encodeURIComponent(repo)}&label=${encodeURIComponent(label)}`,
+                { headers }
+              )
+              if (r.ok) {
+                const issues = await r.json()
+                total += Array.isArray(issues) ? issues.length : 0
+              }
+            } catch { /* skip */ }
+          }))
+          issuesCount = Math.max(1, total)
+        }
+      }
+
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/estimate`
+        `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/estimate?issues=${issuesCount}`,
+        { headers }
       )
       if (!res.ok) throw new Error("Failed to estimate")
       setEstimate(await res.json())
@@ -102,24 +154,35 @@ export default function CostEstimate({ workflowId }: Props) {
             </div>
 
             {/* Summary bar */}
-            <div className="grid grid-cols-3 gap-px bg-stone-100 border-b border-stone-200">
+            <div className="grid grid-cols-4 gap-px bg-stone-100 border-b border-stone-200">
               <div className="bg-white px-5 py-3">
-                <p className="text-xs text-stone-400">Est. total cost</p>
+                <p className="text-xs text-stone-400">
+                  {estimate.issues_count > 1 ? `Total (${estimate.issues_count} issues)` : "Est. total cost"}
+                </p>
                 <p className="text-xl font-semibold text-stone-900 mt-0.5">
                   {estimate.total_cost_usd === 0 ? "Free" : `$${estimate.total_cost_usd.toFixed(4)}`}
                 </p>
+                {estimate.issues_count > 1 && (
+                  <p className="text-xs text-stone-400 mt-0.5">${estimate.per_run_cost_usd.toFixed(4)} × {estimate.issues_count}</p>
+                )}
               </div>
               <div className="bg-white px-5 py-3">
-                <p className="text-xs text-stone-400">Total tokens</p>
+                <p className="text-xs text-stone-400">Tokens / run</p>
                 <p className="text-xl font-semibold text-stone-900 mt-0.5">{fmt(estimate.total_tokens)}</p>
                 <p className="text-xs text-stone-400">{fmt(estimate.total_input_tokens)} in · {fmt(estimate.total_output_tokens)} out</p>
               </div>
               <div className="bg-white px-5 py-3">
                 <p className="text-xs text-stone-400">Integrations</p>
                 <p className="text-sm font-medium text-stone-700 mt-1">
-                  {estimate.integrations_used.length === 0
-                    ? "None"
-                    : estimate.integrations_used.join(", ")}
+                  {estimate.integrations_used.length === 0 ? "None" : estimate.integrations_used.join(", ")}
+                </p>
+              </div>
+              <div className="bg-white px-5 py-3">
+                <p className="text-xs text-stone-400">Data source</p>
+                <p className="text-sm font-medium mt-1">
+                  {estimate.based_on_actuals
+                    ? <span className="text-emerald-600">✓ historical actuals</span>
+                    : <span className="text-amber-500">⚠ static estimate</span>}
                 </p>
               </div>
             </div>
@@ -177,7 +240,10 @@ export default function CostEstimate({ workflowId }: Props) {
             </div>
 
             <div className="px-6 py-3 border-t border-stone-100 text-xs text-stone-400">
-              Estimates assume ~5 turns for agentic blocks and ~1,500 tokens of context per block. Actual costs may vary.
+              {estimate.based_on_actuals
+                ? "Based on averaged actual token usage from previous runs of this workflow."
+                : "No run history yet — using static estimates. Accuracy improves after first run."}
+              {" "}Pricing: {estimate.pricing_note}.
             </div>
           </div>
         </div>
