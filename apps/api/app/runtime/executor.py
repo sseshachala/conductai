@@ -782,6 +782,30 @@ def _execute_output(block: dict, state: dict, credentials: dict, workflow_name: 
         else:
             results["email"] = {"sent": False, "reason": "No email credentials or recipient configured"}
 
+    if integration == "webhook":
+        import hashlib
+        import hmac as hmac_lib
+        import urllib.request
+        webhook_url = _resolve_refs(config.get("webhook_url", ""), state)
+        webhook_secret = config.get("webhook_secret", "")
+        if not webhook_url:
+            return {"sent": False, "reason": "No webhook URL configured"}
+        payload = json.dumps({
+            "workflow": workflow_name,
+            "trace_url": trace_url,
+            "state": {k: v for k, v in state.items() if not k.startswith("__")},
+        }, default=str).encode()
+        headers = {"Content-Type": "application/json", "User-Agent": "Delegator/1.0"}
+        if webhook_secret:
+            sig = hmac_lib.new(webhook_secret.encode(), payload, hashlib.sha256).hexdigest()
+            headers["X-Delegator-Signature"] = f"sha256={sig}"
+        try:
+            req = urllib.request.Request(webhook_url, data=payload, headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return {"sent": True, "integration": "webhook", "status_code": resp.status}
+        except Exception as e:
+            return {"sent": False, "integration": "webhook", "error": str(e)}
+
     if not results:
         return {"sent": False, "reason": "No integration configured"}
 

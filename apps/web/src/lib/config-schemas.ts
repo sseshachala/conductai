@@ -296,9 +296,10 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       required: true,
       defaultValue: "slack",
       options: [
-        { value: "slack", label: "Slack" },
-        { value: "email", label: "Email" },
-        { value: "both",  label: "Slack + Email" },
+        { value: "slack",   label: "Slack" },
+        { value: "email",   label: "Email" },
+        { value: "both",    label: "Slack + Email" },
+        { value: "webhook", label: "Outbound webhook" },
       ],
     },
     {
@@ -314,6 +315,22 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       type: "text",
       required: true,
       placeholder: "you@example.com",
+    },
+    {
+      key: "config.webhook_url",
+      label: "Webhook URL",
+      type: "text",
+      required: true,
+      placeholder: "https://hooks.example.com/...",
+      hint: "Delegator will POST the run result as JSON",
+    },
+    {
+      key: "config.webhook_secret",
+      label: "HMAC secret",
+      type: "text",
+      required: false,
+      placeholder: "optional",
+      hint: "Signs the payload — receiver checks X-Delegator-Signature: sha256=<hmac>",
     },
   ],
 }
