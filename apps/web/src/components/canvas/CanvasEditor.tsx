@@ -646,7 +646,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
                   getToken={getToken}
                   onBlockStatus={handleBlockStatus}
                   onClose={handleDrawerHide}
-                  onRunDone={() => localStorage.removeItem(STORAGE_KEY)}
+                  onRunDone={() => { localStorage.removeItem(STORAGE_KEY); setRunning("idle"); setActiveRunId(null) }}
                 />
               )}
             </div>

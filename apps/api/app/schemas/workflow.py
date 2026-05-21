@@ -13,6 +13,7 @@ class WorkflowGraph(BaseModel):
 class WorkflowCreate(BaseModel):
     name: str
     graph: WorkflowGraph = WorkflowGraph()
+    template: Optional[str] = None
 
 
 class WorkflowUpdate(BaseModel):

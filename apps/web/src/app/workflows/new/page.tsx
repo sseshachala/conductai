@@ -13,22 +13,16 @@ const TEMPLATES = [
     tags: [],
   },
   {
-    id: "story_pr",
-    label: "Story → Pull Request",
-    description: "Fetch a Linear issue, create a GitHub branch and open a draft PR",
-    tags: ["Linear", "GitHub"],
+    id: "autopilot_quick",
+    label: "Autopilot Quick",
+    description: "Watch for GitHub issues labeled 'autopilot ready', implement the fix and open a PR immediately. No test step — CI runs tests on the PR.",
+    tags: ["GitHub", "Slack"],
   },
   {
-    id: "deploy",
-    label: "Deploy & Notify",
-    description: "Trigger a Vercel or Railway deployment and post the result to Slack",
-    tags: ["Vercel", "Railway", "Slack"],
-  },
-  {
-    id: "triage",
-    label: "Issue Triage",
-    description: "Classify incoming Linear issues and route them to the right team",
-    tags: ["Linear", "Slack"],
+    id: "autopilot_full",
+    label: "Autopilot Full",
+    description: "Watch for GitHub issues labeled 'autopilot ready', implement the fix, run tests with inline retry, then open a PR.",
+    tags: ["GitHub", "Slack"],
   },
 ]
 
