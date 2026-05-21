@@ -264,14 +264,124 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
     }
     setValidationErrors([])
     setRunning(dryRun ? "dry" : "live")
+
     try {
       const headers = await authHeaders(getToken)
+      let initialState: Record<string, unknown> | undefined
+
+      // For webhook-triggered workflows, replicate what the CLI does:
+      // find the trigger block, query GitHub for matching issues, inject initial_state.
+      const triggerNode = nodes.find(n => {
+        const d = n.data as BlockNodeData
+        const cfg = (d.config as Record<string, unknown>) ?? {}
+        return d.type === "trigger" && (
+          cfg.event_type === "github_issue_labeled" ||
+          cfg.event_type === "github_issue"
+        )
+      })
+
+      if (triggerNode) {
+        const cfg = (triggerNode.data as BlockNodeData).config as Record<string, unknown>
+        const repoAllowlist = (cfg.repo_allowlist as string) || ""
+        const label = (cfg.label as string) || ""
+        const repos = repoAllowlist.split(",").map(s => s.trim()).filter(Boolean)
+        const repo = repos[0] // try first configured repo
+
+        if (!repo || !label) {
+          setValidationErrors([{
+            blockId: triggerNode.id,
+            label: (triggerNode.data as BlockNodeData).label,
+            message: "Set repo_allowlist and label on the trigger block before running",
+          }])
+          setRunning("idle")
+          return
+        }
+
+        const issueRes = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/credentials/github/issues?repo=${encodeURIComponent(repo)}&label=${encodeURIComponent(label)}`,
+          { headers }
+        )
+        if (!issueRes.ok) {
+          setValidationErrors([{
+            blockId: triggerNode.id,
+            label: (triggerNode.data as BlockNodeData).label,
+            message: "Could not fetch GitHub issues — is GitHub connected?",
+          }])
+          setRunning("idle")
+          return
+        }
+
+        const issues: Array<{ number: number; title: string; body: string; url: string; author: string; labels: string[]; clone_url: string }> = await issueRes.json()
+
+        if (issues.length === 0) {
+          setValidationErrors([{
+            blockId: triggerNode.id,
+            label: (triggerNode.data as BlockNodeData).label,
+            message: `No open issues with label "${label}" found in ${repo}`,
+          }])
+          setRunning("idle")
+          return
+        }
+
+        if (issues.length > 1) {
+          setValidationErrors([{
+            blockId: triggerNode.id,
+            label: (triggerNode.data as BlockNodeData).label,
+            message: `${issues.length} matching issues found — use the CLI to run all: marshal run autopilot.yaml`,
+          }])
+          setRunning("idle")
+          return
+        }
+
+        const issue = issues[0]
+        const [repoOwner, repoName] = repo.split("/")
+        initialState = {
+          github_issue: {
+            issue_number:   issue.number,
+            title:          issue.title,
+            body:           issue.body,
+            url:            issue.url,
+            author:         issue.author,
+            labels:         issue.labels,
+            label_added:    label,
+            repo_full_name: repo,
+            repo_name:      repoName,
+            repo_owner:     repoOwner,
+            default_branch: "main",
+            clone_url:      issue.clone_url,
+          },
+          github_trigger: {
+            event_type: "github_issue_labeled",
+            label,
+            repo: {
+              full_name:      repo,
+              name:           repoName,
+              owner:          repoOwner,
+              default_branch: "main",
+              clone_url:      issue.clone_url,
+            },
+            issue: {
+              number: issue.number,
+              title:  issue.title,
+              body:   issue.body,
+              url:    issue.url,
+              author: issue.author,
+              labels: issue.labels,
+            },
+          },
+        }
+      }
+
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs`,
         {
           method: "POST",
           headers,
-          body: JSON.stringify({ triggered_by: "manual", dry_run: dryRun }),
+          body: JSON.stringify({
+            triggered_by: "manual",
+            dry_run: dryRun,
+            ...(initialState ? { initial_state: initialState } : {}),
+          }),
         }
       )
       if (!res.ok) throw new Error("Failed to start run")
