@@ -105,6 +105,117 @@ export function GitHubRepoField({ value, onChange, getToken }: RepoFieldProps) {
   )
 }
 
+// ── Repo allowlist picker (multi, comma-separated) ───────────────────────────
+
+interface RepoAllowlistFieldProps {
+  value: string   // comma-separated "owner/repo" values
+  onChange: (value: string) => void
+  getToken?: (() => Promise<string | null>) | null
+}
+
+export function GitHubRepoAllowlistField({ value, onChange, getToken }: RepoAllowlistFieldProps) {
+  const [repos, setRepos] = useState<Repo[]>(reposCache ?? [])
+  const [loading, setLoading] = useState(!reposCache)
+  const [search, setSearch] = useState("")
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  const selected = value ? value.split(",").map(s => s.trim()).filter(Boolean) : []
+
+  useEffect(() => {
+    if (reposCache) { setRepos(reposCache); setLoading(false); return }
+    ;(async () => {
+      try {
+        const headers: Record<string, string> = { ...getWorkspaceHeader() }
+        if (getToken) {
+          const token = await getToken()
+          if (token) headers["Authorization"] = `Bearer ${token}`
+        }
+        const r = await fetch(`${API}/credentials/github/repos`, { headers })
+        if (r.ok) {
+          const data: Repo[] = await r.json()
+          reposCache = data
+          setRepos(data)
+        }
+      } finally { setLoading(false) }
+    })()
+  }, [])
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener("mousedown", handleClick)
+    return () => document.removeEventListener("mousedown", handleClick)
+  }, [])
+
+  const filtered = repos
+    .filter(r => !selected.includes(r.full_name))
+    .filter(r => r.full_name.toLowerCase().includes(search.toLowerCase()))
+    .slice(0, 20)
+
+  function add(fullName: string) {
+    const next = [...selected, fullName].join(", ")
+    onChange(next)
+    setSearch("")
+    setOpen(false)
+  }
+
+  function remove(fullName: string) {
+    onChange(selected.filter(s => s !== fullName).join(", "))
+  }
+
+  return (
+    <div className="space-y-1.5" ref={ref}>
+      {/* Selected chips */}
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {selected.map(repo => (
+            <span key={repo} className="inline-flex items-center gap-1 bg-stone-100 text-stone-700 text-xs px-2 py-0.5 rounded-full">
+              {repo}
+              <button
+                type="button"
+                onMouseDown={() => remove(repo)}
+                className="text-stone-400 hover:text-stone-700 leading-none"
+              >×</button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Typeahead input */}
+      <div className="relative">
+        <input
+          type="text"
+          value={search}
+          onChange={e => { setSearch(e.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          placeholder={loading ? "Loading repos…" : "Add repo…"}
+          className="w-full border border-stone-200 rounded-lg px-2.5 py-1.5 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-200 bg-white"
+        />
+        {open && (search || repos.length > 0) && (
+          <div className="absolute z-30 mt-1 w-full bg-white border border-stone-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+            {loading ? (
+              <p className="px-3 py-2 text-xs text-stone-400">Loading…</p>
+            ) : filtered.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-stone-400">{search ? "No matching repos" : "All repos added"}</p>
+            ) : filtered.map(r => (
+              <button
+                key={r.full_name}
+                type="button"
+                onMouseDown={() => add(r.full_name)}
+                className="w-full text-left px-3 py-2 text-xs text-stone-700 hover:bg-stone-50 truncate"
+              >
+                {r.full_name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Branch picker ─────────────────────────────────────────────────────────────
 
 interface BranchFieldProps {
