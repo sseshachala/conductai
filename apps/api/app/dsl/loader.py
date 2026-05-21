@@ -126,6 +126,10 @@ def graph_to_workflow(
         if node_id == TRIGGER_NODE_ID or block_type == "trigger":
             cfg = data.get("config") or {}
             event = cfg.get("event_type") or data.get("label") or "manual"
+            # Convert underscore form back to dot-notation for the YAML on: key
+            # Only applies to integration-prefixed events (e.g. github_issue_labeled → github.issue_labeled)
+            _YAML_EVENT_MAP = {"github_issue_labeled": "github.issue_labeled"}
+            event_yaml_key = _YAML_EVENT_MAP.get(event, event)
             extras = {k: v for k, v in cfg.items() if k != "event_type"}
             trig: dict[str, Any] = {
                 "integration": data.get("integration"),
@@ -134,7 +138,7 @@ def graph_to_workflow(
             entry_edges = out_edges.get(node_id, [])
             if entry_edges:
                 trig["next"] = entry_edges[0]["target"]
-            trigger_payload = {event: {k: v for k, v in trig.items() if v is not None}}
+            trigger_payload = {event_yaml_key: {k: v for k, v in trig.items() if v is not None}}
             continue
 
         # — cleanup blocks ------------------------------------------------
@@ -334,6 +338,9 @@ def _build_trigger_node(workflow: Workflow) -> dict[str, Any] | None:
 
     event_name, trig = next(iter(workflow.triggers.items()))
     extras = trig.model_dump(exclude={"integration", "next"}, exclude_none=True)
+    # Normalise dot-notation YAML keys (e.g. "github.issue_labeled") to the
+    # underscore form the UI dropdown expects ("github_issue_labeled").
+    event_type = event_name.replace(".", "_")
 
     return {
         "id": TRIGGER_NODE_ID,
@@ -341,10 +348,10 @@ def _build_trigger_node(workflow: Workflow) -> dict[str, Any] | None:
         "position": _position(col=0),
         "data": {
             "type": "trigger",
-            "label": event_name,
+            "label": event_type,
             "integration": trig.integration,
-            "description": event_name,
-            "config": {"event_type": event_name, **extras},
+            "description": event_type,
+            "config": {"event_type": event_type, **extras},
         },
     }
 
