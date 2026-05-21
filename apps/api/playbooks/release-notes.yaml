@@ -1,0 +1,96 @@
+name: Release Notes Drafter
+version: 1
+description: >
+  Triggered when a git tag is pushed (GitHub sends a webhook on tag creation).
+  Reads all merged PRs since the previous tag, groups them by type, writes
+  a CHANGELOG entry, and posts a summary to Slack.
+
+  Setup: GitHub repo → Settings → Webhooks → Add webhook.
+  Payload URL: https://<your-api>/webhooks/inbound/<this-workflow-id>
+  Content type: application/json
+  Events: choose individual → Branch or tag creation
+
+on:
+  webhook:
+    next: draft_release_notes
+
+blocks:
+  draft_release_notes:
+    type: brain
+    mode: agentic
+    label: Draft release notes
+    description: |
+      A new git tag has been pushed. Draft release notes from merged PRs.
+
+      Webhook payload: {{_trigger}}
+
+      Step 1 — Parse the tag event:
+        Tag name: {{_trigger.ref}} (strip "refs/tags/" prefix if present)
+        Repo: {{_trigger.repository.full_name}}
+        Pushed by: {{_trigger.pusher.name}}
+
+        If this is not a tag push (ref does not start with "refs/tags/"), output:
+          {"tag": null, "changelog": null, "slack_message": null, "skipped": true}
+        And stop.
+
+      Step 2 — Find the previous tag:
+        GET https://api.github.com/repos/{{_trigger.repository.full_name}}/tags?per_page=5
+        Use Authorization: token <github_token>
+        The current tag will appear first. Use the second tag as the base.
+        If no previous tag exists, use the 20 most recent merged PRs instead.
+
+      Step 3 — Fetch merged PRs since the previous tag:
+        GET https://api.github.com/repos/{{_trigger.repository.full_name}}/pulls?state=closed&per_page=50
+        Filter to PRs where merged_at is after the previous tag's commit date.
+        For each PR collect: number, title, author (user.login), merged_at, labels.
+
+      Step 4 — Group PRs by type using conventional commit prefixes and labels:
+        Features (feat:, enhancement label, feature label)
+        Bug fixes (fix:, bug label)
+        Performance (perf:)
+        Documentation (docs:)
+        Maintenance (chore:, deps:, ci:)
+        Other (anything not matched above)
+
+        Skip PRs with title starting with "chore: auto-update" (dependency updater noise).
+
+      Step 5 — Write a CHANGELOG entry:
+        ## <tag name> — <today's date YYYY-MM-DD>
+
+        ### What's new
+        - <PR title> (#<number>) by @<author>   ← features only
+
+        ### Bug fixes
+        - <PR title> (#<number>) by @<author>
+
+        ### Maintenance
+        - <PR title> (#<number>) by @<author>
+
+        (Omit any section that has no entries.)
+
+      Step 6 — Post to CHANGELOG.md in the repo (optional, do if file exists):
+        GET https://api.github.com/repos/{{_trigger.repository.full_name}}/contents/CHANGELOG.md
+        If file exists: prepend the new entry above the existing content and PUT it back.
+        If not: skip silently.
+
+      Step 7 — Format Slack message:
+        🚀 *{{_trigger.repository.name}} <tag>* released by @<pusher>
+        <N> PRs shipped since <previous tag>
+
+        *What's new:* <bullet list of features, max 5>
+        *Bug fixes:* <bullet list, max 3>
+
+        Full changelog: https://github.com/{{_trigger.repository.full_name}}/releases/tag/<tag>
+
+      Output ONLY the following JSON on the last line:
+        {"tag": "<tag name>", "pr_count": <number>, "changelog": "<markdown entry>", "slack_message": "<slack message>", "skipped": false}
+    next: notify_release
+
+  notify_release:
+    type: output
+    label: Post release to Slack
+    description: "{{draft_release_notes.slack_message}}"
+    output:
+      via: slack
+      slack:
+        channel: "#releases"
