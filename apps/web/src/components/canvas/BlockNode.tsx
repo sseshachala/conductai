@@ -105,8 +105,8 @@ function BlockNode({ data, selected }: NodeProps) {
         </div>
       )}
 
-      {/* Description (no integration set) */}
-      {!integrationLabel && nodeData.description && (
+      {/* Description (no integration set, not a trigger) */}
+      {!integrationLabel && nodeData.description && nodeData.type !== "trigger" && (
         <p className="text-[10px] text-stone-400 mt-0.5 leading-tight truncate">{nodeData.description}</p>
       )}
 
