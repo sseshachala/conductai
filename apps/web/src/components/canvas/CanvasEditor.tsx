@@ -130,6 +130,12 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const [drawerVisible, setDrawerVisible] = useState(false)
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([])
+  const [preflight, setPreflight] = useState<{
+    suggestedTurns: number
+    files: string[]
+    pendingDryRun: boolean
+    initialState?: Record<string, unknown>
+  } | null>(null)
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
   const [activeView, setActiveView] = useState<"canvas" | "yaml">("canvas")
@@ -426,32 +432,73 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
         }
       }
 
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            triggered_by: "manual",
-            dry_run: dryRun,
-            ...(initialState ? { initial_state: initialState } : {}),
-          }),
+      // Preflight: estimate turn budget using Claude (cheap single call per brain block)
+      const issue = initialState
+        ? (initialState.github_issue as Record<string, string> | undefined)
+        : undefined
+      try {
+        const pfRes = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/preflight`,
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              issue_title: issue?.title ?? "",
+              issue_body:  issue?.body  ?? "",
+            }),
+          }
+        )
+        if (pfRes.ok) {
+          const pf = await pfRes.json()
+          if (pf.suggested_max_turns > 20) {
+            setPreflight({
+              suggestedTurns: pf.suggested_max_turns,
+              files: pf.total_files ?? [],
+              pendingDryRun: dryRun,
+              initialState: initialState,
+            })
+            setRunning("idle")
+            return
+          }
         }
-      )
-      if (!res.ok) throw new Error("Failed to start run")
-      const run = await res.json()
-      if (dryRun) {
-        router.push(`/workflows/${workflowId}/runs/${run.id}`)
-      } else {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ runId: run.id, startedAt: Date.now() }))
-        setActiveRunId(run.id)
-        setDrawerVisible(true)
-        setRunning("idle")
-      }
+      } catch { /* preflight is best-effort */ }
+
+      await _fireRun(headers, dryRun, initialState, undefined)
     } catch {
       setRunning("idle")
     }
   }, [workflowId, getToken, router, nodes])
+
+  const _fireRun = useCallback(async (
+    headers: Record<string, string>,
+    dryRun: boolean,
+    initialState: Record<string, unknown> | undefined,
+    maxTurns: number | undefined,
+  ) => {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          triggered_by: "manual",
+          dry_run: dryRun,
+          ...(initialState ? { initial_state: initialState } : {}),
+          ...(maxTurns    ? { max_turns: maxTurns }          : {}),
+        }),
+      }
+    )
+    if (!res.ok) throw new Error("Failed to start run")
+    const run = await res.json()
+    if (dryRun) {
+      router.push(`/workflows/${workflowId}/runs/${run.id}`)
+    } else {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ runId: run.id, startedAt: Date.now() }))
+      setActiveRunId(run.id)
+      setDrawerVisible(true)
+      setRunning("idle")
+    }
+  }, [workflowId, router, STORAGE_KEY])
 
   const handleBlockStatus = useCallback((blockId: string, status: "running" | "completed" | "failed" | "skipped") => {
     setNodes(nds => nds.map(n =>
@@ -648,6 +695,53 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
           </div>
         )}
       </div>
+
+      {/* Preflight turn-budget banner */}
+      {preflight && (
+        <div className="shrink-0 border-t border-amber-200 bg-amber-50 px-5 py-3">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-amber-800 mb-1">
+                ⚠ Estimated {preflight.suggestedTurns} turns needed — default is 20
+              </p>
+              {preflight.files.length > 0 && (
+                <p className="text-xs text-amber-700 mb-2 font-mono truncate">
+                  Files: {preflight.files.join(", ")}
+                </p>
+              )}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => {
+                    const headers = await authHeaders(getToken)
+                    setPreflight(null)
+                    setRunning(preflight.pendingDryRun ? "dry" : "live")
+                    try {
+                      await _fireRun(headers, preflight.pendingDryRun, preflight.initialState, preflight.suggestedTurns)
+                    } catch { setRunning("idle") }
+                  }}
+                  className="text-xs font-semibold bg-amber-600 text-white px-3 py-1.5 rounded-lg hover:bg-amber-700 transition-colors"
+                >
+                  Run with {preflight.suggestedTurns} turns
+                </button>
+                <button
+                  onClick={async () => {
+                    const headers = await authHeaders(getToken)
+                    setPreflight(null)
+                    setRunning(preflight.pendingDryRun ? "dry" : "live")
+                    try {
+                      await _fireRun(headers, preflight.pendingDryRun, preflight.initialState, undefined)
+                    } catch { setRunning("idle") }
+                  }}
+                  className="text-xs text-amber-700 hover:text-amber-900 px-2 py-1.5"
+                >
+                  Run anyway (20 turns)
+                </button>
+                <button onClick={() => { setPreflight(null); setRunning("idle") }} className="text-xs text-amber-400 hover:text-amber-600 ml-auto">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Validation errors */}
       {validationErrors.length > 0 && (

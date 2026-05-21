@@ -116,6 +116,8 @@ def create_run(
     initial_state = body.initial_state or {}
     if body.dry_run:
         initial_state["__dry_run"] = True
+    if body.max_turns:
+        initial_state["__max_turns"] = body.max_turns
     run = Run(
         workflow_version_id=workflow.current_version_id,
         triggered_by=body.triggered_by,
