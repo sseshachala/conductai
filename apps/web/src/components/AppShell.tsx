@@ -11,7 +11,7 @@ const NAV = [
   { href: "/settings",  label: "Settings", icon: "⚙" },
 ]
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+export default function AppShell({ children, noPadding }: { children: React.ReactNode; noPadding?: boolean }) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
 
@@ -70,7 +70,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </button>
       </aside>
 
-      <main className="flex-1 overflow-auto">{children}</main>
+      <main className={`flex-1 min-h-0 ${noPadding ? "overflow-hidden flex flex-col" : "overflow-auto"}`}>{children}</main>
     </div>
   )
 }
