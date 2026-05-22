@@ -123,7 +123,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle")
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isFirstLoad = useRef(true)
-  const { screenToFlowPosition } = useReactFlow()
+  const { screenToFlowPosition, setCenter } = useReactFlow()
   const router = useRouter()
   const [running, setRunning] = useState<"idle" | "dry" | "live">("idle")
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
@@ -811,7 +811,13 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
                     key={e.blockId}
                     onClick={() => {
                       const node = nodes.find(n => n.id === e.blockId)
-                      if (node) { setSelectedNode(node); setRightOpen(true) }
+                      if (node) {
+                        setSelectedNode(node)
+                        setRightOpen(true)
+                        const x = (node.position.x ?? 0) + (node.width ?? 200) / 2
+                        const y = (node.position.y ?? 0) + (node.height ?? 80) / 2
+                        setCenter(x, y, { zoom: 1, duration: 400 })
+                      }
                     }}
                     className="text-xs text-red-600 hover:text-red-800 hover:underline text-left"
                   >

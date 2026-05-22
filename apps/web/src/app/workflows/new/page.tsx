@@ -184,7 +184,22 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
         </div>
 
         {error && (
-          <p className="mb-4 text-sm text-red-500 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>
+          <div className="mb-4 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+            <p className="text-sm text-red-600 mb-2">{error}</p>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleCreate}
+                disabled={!name.trim() || loading}
+                className="text-xs font-medium text-red-700 hover:text-red-900 underline underline-offset-2"
+              >
+                Try again
+              </button>
+              <span className="text-red-200">·</span>
+              <Link href="/workflows" className="text-xs font-medium text-red-700 hover:text-red-900 underline underline-offset-2">
+                Back to agents
+              </Link>
+            </div>
+          </div>
         )}
 
         {/* Create button */}
