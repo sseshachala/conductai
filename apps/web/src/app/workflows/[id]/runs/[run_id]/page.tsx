@@ -21,6 +21,7 @@ interface RunMeta {
   paused_at: string | null
   current_block_id: string | null
   workflow_version_id: string
+  state?: Record<string, unknown> | null
 }
 
 export default function RunDetailPage() {
@@ -45,7 +46,10 @@ export default function RunDetailPage() {
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, { headers }),
       ])
 
-      if (runRes.ok) setRun(await runRes.json())
+      if (runRes.ok) {
+          const runData = await runRes.json()
+          setRun(runData)
+        }
       if (wfRes.ok) {
         const wf = await wfRes.json()
         setWorkflowName(wf.name ?? null)
@@ -90,9 +94,50 @@ export default function RunDetailPage() {
       </header>
 
       <main className="mx-auto max-w-3xl px-6 py-10">
-        <div className="mb-6">
-          <h2 className="text-xl font-semibold text-stone-900">Run trace</h2>
-          <p className="text-sm text-stone-400 mt-1 font-mono">{run.id}</p>
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-semibold text-stone-900">Run trace</h2>
+            <p className="text-sm text-stone-400 mt-1 font-mono">{run.id}</p>
+            {/* Trigger context */}
+            {(() => {
+              const trigger = (run.state as Record<string, unknown> | null | undefined)
+              const t = (trigger?._trigger ?? trigger?.github_issue ?? {}) as Record<string, unknown>
+              const issueNum = t.issue_number as number | undefined
+              const issueTitle = (t.title ?? t.issue_title) as string | undefined
+              const prUrl = (trigger?.pr_url) as string | undefined
+              if (!issueNum && !prUrl) return null
+              return (
+                <div className="flex items-center gap-3 mt-2 flex-wrap">
+                  {issueNum && (
+                    <span className="text-xs text-stone-500 bg-stone-100 px-2 py-0.5 rounded">
+                      Issue #{issueNum}{issueTitle ? ` — ${issueTitle}` : ""}
+                    </span>
+                  )}
+                  {prUrl && (
+                    <a href={prUrl} target="_blank" rel="noopener noreferrer"
+                      className="text-xs text-indigo-600 hover:underline font-medium">
+                      View PR →
+                    </a>
+                  )}
+                </div>
+              )
+            })()}
+          </div>
+          {/* Export button */}
+          <button
+            onClick={() => {
+              const blob = new Blob([JSON.stringify(run, null, 2)], { type: "application/json" })
+              const url = URL.createObjectURL(blob)
+              const a = document.createElement("a")
+              a.href = url
+              a.download = `run-${run.id.slice(0, 8)}.json`
+              a.click()
+              URL.revokeObjectURL(url)
+            }}
+            className="shrink-0 text-xs text-stone-400 hover:text-stone-700 border border-stone-200 hover:border-stone-300 rounded-lg px-3 py-1.5 transition-colors"
+          >
+            ↓ Export JSON
+          </button>
         </div>
 
         <div className="bg-white rounded-xl border border-stone-200 p-6">
