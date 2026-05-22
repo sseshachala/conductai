@@ -41,6 +41,7 @@ class RunOut(BaseModel):
 
 class RunDetailOut(RunOut):
     events: list[RunEventOut] = []
+    state: Optional[dict[str, Any]] = None
 
 
 class RunWithWorkflowOut(RunOut):
