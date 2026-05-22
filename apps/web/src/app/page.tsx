@@ -100,6 +100,31 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
             <p className="text-xs text-stone-400">No credit card · No setup · Just your Google account</p>
           )}
         </div>
+
+        {/* Post-sign-in next steps — only shown when signed in */}
+        {isLoaded && isSignedIn && (
+          <div className="mt-8 bg-stone-50 border border-stone-200 rounded-2xl px-6 py-5 max-w-md w-full text-left">
+            <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-3">Get started in 3 steps</p>
+            <ol className="space-y-2.5">
+              {[
+                { n: "1", text: "Create a project and connect your GitHub repo" },
+                { n: "2", text: "Pick an agent template (Autopilot is a good first one)" },
+                { n: "3", text: "Add your credentials in Settings → Environments, then hit Run" },
+              ].map(({ n, text }) => (
+                <li key={n} className="flex items-start gap-3 text-sm text-stone-600">
+                  <span className="w-5 h-5 rounded-full bg-stone-900 text-white text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">{n}</span>
+                  {text}
+                </li>
+              ))}
+            </ol>
+            <button
+              onClick={() => router.push("/projects")}
+              className="mt-4 text-sm font-medium text-stone-900 hover:text-stone-600 transition-colors"
+            >
+              Go to Projects →
+            </button>
+          </div>
+        )}
       </section>
 
       {/* Trust strip */}
