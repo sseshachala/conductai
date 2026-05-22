@@ -24,6 +24,7 @@ interface Props {
   runId: string
   initialStatus: string
   initialMeta: RunMeta
+  maxTurns?: number | null
   getToken?: (() => Promise<string | null>) | null
 }
 
@@ -254,12 +255,23 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
               <>
                 <button onClick={() => setDiffExpanded(d => !d)}
                   className="mt-1 text-[10px] text-stone-400 hover:text-stone-600">
-                  {diffExpanded ? "▾ hide diff stat" : "▸ diff stat"}
+                  {diffExpanded ? "▾ hide diff" : "▸ show diff"}
                 </button>
                 {diffExpanded && (
-                  <pre className="mt-1 text-[10px] font-mono text-stone-500 bg-stone-50 border border-stone-200 rounded p-2 overflow-x-auto whitespace-pre">
-                    {row.diffStat}
-                  </pre>
+                  <div className="mt-1 rounded border border-stone-200 overflow-x-auto bg-stone-50">
+                    {row.diffStat.split("\n").map((line, i) => {
+                      const cls =
+                        line.startsWith("+") && !line.startsWith("+++") ? "bg-emerald-50 text-emerald-700" :
+                        line.startsWith("-") && !line.startsWith("---") ? "bg-red-50 text-red-600" :
+                        line.startsWith("@@") ? "bg-blue-50 text-blue-600" :
+                        "text-stone-500"
+                      return (
+                        <div key={i} className={`font-mono text-[10px] px-2 py-0.5 whitespace-pre ${cls}`}>
+                          {line || " "}
+                        </div>
+                      )
+                    })}
+                  </div>
                 )}
               </>
             )}
@@ -307,7 +319,7 @@ async function buildHeaders(getToken?: (() => Promise<string | null>) | null): P
   return h
 }
 
-export default function RunTrace({ workflowId, runId, initialStatus, initialMeta, getToken }: Props) {
+export default function RunTrace({ workflowId, runId, initialStatus, initialMeta, maxTurns, getToken }: Props) {
   const [events, setEvents] = useState<RunEvent[]>([])
   const [status, setStatus] = useState(initialStatus)
   const [meta, setMeta] = useState<RunMeta>(initialMeta)
@@ -454,6 +466,11 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
   const totalTokens = blockRows.reduce((acc, r) => acc + (r.inputTokens ?? 0) + (r.outputTokens ?? 0), 0)
   const totalCost   = blockRows.reduce((acc, r) => acc + (r.costUsd ?? 0), 0)
 
+  // Actual turns = highest turn number seen across all brain_tool_call events
+  const actualTurns = events
+    .filter(e => e.kind === "brain_tool_call" && typeof e.payload?.turn === "number")
+    .reduce((max, e) => Math.max(max, e.payload.turn as number), 0)
+
   const handleApproval = async (decision: "approved" | "rejected") => {
     setApprovalSubmitting(true)
     try {
@@ -479,10 +496,23 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
       )}
 
       {/* Summary stats grid */}
-      <div className="grid grid-cols-4 gap-3 rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
+      <div className="grid grid-cols-5 gap-3 rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
         <div>
           <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-0.5">Duration</p>
           <p className="text-sm font-semibold text-stone-800">{totalDur ?? (done ? "—" : "…")}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-0.5">Turns</p>
+          <p className="text-sm font-semibold text-stone-800">
+            {actualTurns > 0 ? (
+              maxTurns ? (
+                <span>
+                  {actualTurns}
+                  <span className="text-stone-400 font-normal"> / {maxTurns} est.</span>
+                </span>
+              ) : actualTurns
+            ) : "—"}
+          </p>
         </div>
         <div>
           <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-0.5">Tokens</p>
