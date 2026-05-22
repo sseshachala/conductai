@@ -1,3 +1,4 @@
+import AppShell from "@/components/AppShell"
 import CanvasEditor from "@/components/canvas/CanvasEditor"
 
 interface Props {
@@ -5,5 +6,9 @@ interface Props {
 }
 
 export default function WorkflowPage({ params }: Props) {
-  return <CanvasEditor workflowId={params.id} />
+  return (
+    <AppShell noPadding>
+      <CanvasEditor workflowId={params.id} />
+    </AppShell>
+  )
 }
