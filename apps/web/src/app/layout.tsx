@@ -80,6 +80,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <body>
             {children}
             <Script src="https://narratr.ai/widget.js" data-brand-key="c7ae7b0c-2b6" strategy="afterInteractive" />
+            <Script src="https://narratr.ai/embed.js" data-brand="conduct-agentic" strategy="afterInteractive" />
           </body>
         </html>
       </ClerkProvider>
