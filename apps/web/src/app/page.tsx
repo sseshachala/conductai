@@ -33,7 +33,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
               <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
           </div>
-          <span className="font-bold text-stone-900 text-base tracking-tight">Deligators</span>
+          <span className="font-bold text-stone-900 text-base tracking-tight">Conduct</span>
         </div>
         {isLoaded && (
           isSignedIn ? (
@@ -66,7 +66,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         </h1>
 
         <p className="mt-6 text-xl text-stone-500 max-w-2xl leading-relaxed">
-          Deligators ships with 9 ready-made agents — label a GitHub issue, get a PR.
+          Conduct ships with 9 ready-made agents — label a GitHub issue, get a PR.
           CI fails, get a diagnosis. Alert fires, get a hypothesis. All in Slack.
           Nothing merges without your approval.
         </p>
@@ -143,10 +143,10 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         </div>
       </section>
 
-      {/* Why Deligators — the moat */}
+      {/* Why Conduct — the moat */}
       <section className="px-6 py-20">
         <div className="max-w-5xl mx-auto">
-          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">Why Deligators</p>
+          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">Why Conduct</p>
           <h2 className="text-3xl font-bold text-stone-900 text-center mb-12">
             Not just another AI tool.<br />An AI teammate you can trust.
           </h2>
@@ -184,7 +184,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         <p className="text-stone-500 mb-8 max-w-md mx-auto">
           {isLoaded && isSignedIn
             ? "Head to your projects and connect your first repo."
-            : "Sign in with Google, connect your GitHub repo, and let Deligators pick up its first ticket."}
+            : "Sign in with Google, connect your GitHub repo, and let Conduct pick up its first ticket."}
         </p>
         {isLoaded && (
           isSignedIn ? (
@@ -209,7 +209,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
       </section>
 
       <footer className="border-t border-stone-100 py-8 text-center text-xs text-stone-400">
-        © {new Date().getFullYear()} Deligators · Built for engineering teams
+        © {new Date().getFullYear()} Conduct · Built for engineering teams
       </footer>
     </div>
   )
@@ -284,11 +284,11 @@ const TEMPLATES = [
 const HOW_IT_WORKS = [
   {
     title: "Connect your tools",
-    body: "Link GitHub, Slack, and Linear in five minutes. No migration, no new workflow — Deligators fits around what you already use.",
+    body: "Link GitHub, Slack, and Linear in five minutes. No migration, no new workflow — Conduct fits around what you already use.",
   },
   {
-    title: "Deligators picks up the work",
-    body: "Label an issue `ai-ready` or fire a webhook. Deligators spins up an ephemeral sandbox, clones your repo, implements the fix, and runs your tests.",
+    title: "Conduct picks up the work",
+    body: "Label an issue `ai-ready` or fire a webhook. Conduct spins up an ephemeral sandbox, clones your repo, implements the fix, and runs your tests.",
   },
   {
     title: "You approve in Slack",
@@ -325,7 +325,7 @@ const WHY_DELEGATOR = [
   {
     icon: "🧩",
     title: "Fits your existing stack",
-    body: "GitHub, Slack, PagerDuty, OpsGenie, email, and any inbound webhook. No new tools, no migration — Deligators plugs into what your team already uses.",
+    body: "GitHub, Slack, PagerDuty, OpsGenie, email, and any inbound webhook. No new tools, no migration — Conduct plugs into what your team already uses.",
   },
 ]
 
