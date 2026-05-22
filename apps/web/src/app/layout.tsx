@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import Script from "next/script"
 import "./globals.css"
 import { ClerkProvider } from "@clerk/nextjs"
 
@@ -42,14 +43,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     return (
       <ClerkProvider>
         <html lang="en">
-          <body>{children}</body>
+          <body>
+            {children}
+            <Script src="https://narratr.ai/widget.js" data-brand-key="c7ae7b0c-2b6" strategy="afterInteractive" />
+          </body>
         </html>
       </ClerkProvider>
     )
   }
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        <Script src="https://narratr.ai/widget.js" data-brand-key="c7ae7b0c-2b6" strategy="afterInteractive" />
+      </body>
     </html>
   )
 }
