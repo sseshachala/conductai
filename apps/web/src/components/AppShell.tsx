@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation"
 import AuthButton from "@/components/AuthButton"
 
 const NAV = [
+  { href: "/projects",  label: "Projects", icon: "◈" },
   { href: "/workflows", label: "Agents",   icon: "⚡" },
   { href: "/runs",      label: "Runs",     icon: "▶" },
   { href: "/settings",  label: "Settings", icon: "⚙" },
