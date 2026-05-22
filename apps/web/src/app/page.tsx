@@ -44,7 +44,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
           {isLoaded && (
             isSignedIn ? (
               <button
-                onClick={() => router.push("/projects")}
+                onClick={() => router.push("/dashboard")}
                 className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
               >
                 Open app →
@@ -82,7 +82,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
           {isLoaded && (
             isSignedIn ? (
               <button
-                onClick={() => router.push("/projects")}
+                onClick={() => router.push("/dashboard")}
                 className="inline-flex items-center gap-2 bg-stone-900 hover:bg-stone-700 text-white font-semibold px-7 py-3.5 rounded-xl text-sm transition-colors shadow-sm"
               >
                 Open app →
@@ -118,7 +118,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
               ))}
             </ol>
             <button
-              onClick={() => router.push("/projects")}
+              onClick={() => router.push("/dashboard")}
               className="mt-4 text-sm font-medium text-stone-900 hover:text-stone-600 transition-colors"
             >
               Go to Projects →
@@ -270,7 +270,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         {isLoaded && (
           isSignedIn ? (
             <button
-              onClick={() => router.push("/projects")}
+              onClick={() => router.push("/dashboard")}
               className="inline-flex items-center gap-2 bg-stone-900 hover:bg-stone-700 text-white font-semibold px-7 py-3.5 rounded-xl text-sm transition-colors"
             >
               Open app →
