@@ -322,7 +322,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       type: "text",
       required: true,
       placeholder: "https://hooks.example.com/...",
-      hint: "Delegator will POST the run result as JSON",
+      hint: "Delegators will POST the run result as JSON",
     },
     {
       key: "config.webhook_secret",
@@ -330,7 +330,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       type: "text",
       required: false,
       placeholder: "optional",
-      hint: "Signs the payload — receiver checks X-Delegator-Signature: sha256=<hmac>",
+      hint: "Signs the payload — receiver checks X-Delegators-Signature: sha256=<hmac>",
     },
   ],
 }
