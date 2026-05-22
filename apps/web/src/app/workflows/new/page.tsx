@@ -5,6 +5,12 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 
+const FEATURED = [
+  { id: "autopilot_quick",    icon: "⚡", label: "Autopilot Quick",    description: "Issue labeled → implement fix → open PR." },
+  { id: "pr_reviewer",        icon: "🔍", label: "PR Reviewer",        description: "PR opened → AI reviews diff → posts comment." },
+  { id: "autopilot_approved", icon: "✋", label: "Autopilot + Approval",description: "Fix → tests → human approves → open PR." },
+]
+
 const TEMPLATES = [
   {
     id: "autopilot_quick",
@@ -133,6 +139,31 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
       </header>
 
       <main className="mx-auto max-w-xl px-6 py-12">
+
+        {/* Quick-start featured playbooks */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-semibold text-stone-400 uppercase tracking-wide">Quick start</p>
+            <Link href="/marketplace" className="text-xs text-stone-400 hover:text-stone-700 transition-colors">Browse all →</Link>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {FEATURED.map(f => (
+              <button
+                key={f.id}
+                onClick={() => setTemplate(f.id)}
+                className={`text-left rounded-xl border p-3 transition-all ${
+                  template === f.id
+                    ? "border-stone-900 bg-white shadow-sm ring-1 ring-stone-900"
+                    : "border-stone-200 bg-white hover:border-stone-300"
+                }`}
+              >
+                <span className="text-xl leading-none block mb-2">{f.icon}</span>
+                <p className={`text-xs font-semibold mb-1 ${template === f.id ? "text-stone-900" : "text-stone-700"}`}>{f.label}</p>
+                <p className="text-[10px] text-stone-400 leading-relaxed">{f.description}</p>
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* Name */}
         <div className="mb-8">

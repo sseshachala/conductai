@@ -6,11 +6,12 @@ import { usePathname } from "next/navigation"
 import AuthButton from "@/components/AuthButton"
 
 const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: "◎" },
-  { href: "/projects",  label: "Projects",  icon: "◈" },
-  { href: "/workflows", label: "Agents",    icon: "⚡" },
-  { href: "/runs",      label: "Runs",      icon: "▶" },
-  { href: "/settings",  label: "Settings",  icon: "⚙" },
+  { href: "/dashboard",   label: "Dashboard",  icon: "◎" },
+  { href: "/projects",    label: "Projects",   icon: "◈" },
+  { href: "/workflows",   label: "Agents",     icon: "⚡" },
+  { href: "/marketplace", label: "Playbooks",  icon: "📦" },
+  { href: "/runs",        label: "Runs",       icon: "▶" },
+  { href: "/settings",    label: "Settings",   icon: "⚙" },
 ]
 
 export default function AppShell({ children, noPadding }: { children: React.ReactNode; noPadding?: boolean }) {
