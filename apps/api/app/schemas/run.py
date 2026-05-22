@@ -33,6 +33,7 @@ class RunOut(BaseModel):
     paused_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     current_block_id: Optional[str] = None
+    max_turns: Optional[int] = None
     created_at: datetime
 
     class Config:
@@ -41,6 +42,7 @@ class RunOut(BaseModel):
 
 class RunDetailOut(RunOut):
     events: list[RunEventOut] = []
+    state: Optional[dict[str, Any]] = None
 
 
 class RunWithWorkflowOut(RunOut):
