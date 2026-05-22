@@ -254,12 +254,23 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
               <>
                 <button onClick={() => setDiffExpanded(d => !d)}
                   className="mt-1 text-[10px] text-stone-400 hover:text-stone-600">
-                  {diffExpanded ? "▾ hide diff stat" : "▸ diff stat"}
+                  {diffExpanded ? "▾ hide diff" : "▸ show diff"}
                 </button>
                 {diffExpanded && (
-                  <pre className="mt-1 text-[10px] font-mono text-stone-500 bg-stone-50 border border-stone-200 rounded p-2 overflow-x-auto whitespace-pre">
-                    {row.diffStat}
-                  </pre>
+                  <div className="mt-1 rounded border border-stone-200 overflow-x-auto bg-stone-50">
+                    {row.diffStat.split("\n").map((line, i) => {
+                      const cls =
+                        line.startsWith("+") && !line.startsWith("+++") ? "bg-emerald-50 text-emerald-700" :
+                        line.startsWith("-") && !line.startsWith("---") ? "bg-red-50 text-red-600" :
+                        line.startsWith("@@") ? "bg-blue-50 text-blue-600" :
+                        "text-stone-500"
+                      return (
+                        <div key={i} className={`font-mono text-[10px] px-2 py-0.5 whitespace-pre ${cls}`}>
+                          {line || " "}
+                        </div>
+                      )
+                    })}
+                  </div>
                 )}
               </>
             )}
