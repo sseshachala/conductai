@@ -91,6 +91,33 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         </div>
       </section>
 
+      {/* Trust strip */}
+      <div className="border-y border-stone-100 bg-stone-50 py-4 px-6">
+        <div className="max-w-3xl mx-auto flex flex-wrap items-center justify-center gap-6 text-xs font-medium text-stone-500">
+          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>9 ready-made agents</span>
+          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>Zero prompt engineering</span>
+          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>Human approval on every merge</span>
+          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>MIT licensed</span>
+        </div>
+      </div>
+
+      {/* Autonomous execution. Human control. */}
+      <section className="px-6 py-14">
+        <div className="max-w-3xl mx-auto rounded-2xl bg-stone-900 px-10 py-10 flex flex-col sm:flex-row items-center justify-between gap-6">
+          <div>
+            <p className="text-white text-xl font-bold mb-2">Autonomous execution. Human control.</p>
+            <p className="text-stone-400 text-sm leading-relaxed max-w-md">
+              Conduct agents act — they write code, open PRs, post to Slack — but nothing merges without your explicit approval. The agent does the work. You stay in charge.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 shrink-0 text-sm">
+            <div className="flex items-center gap-2 text-stone-300"><span className="text-emerald-400">✓</span> Executes tasks, not suggestions</div>
+            <div className="flex items-center gap-2 text-stone-300"><span className="text-emerald-400">✓</span> Pauses for human approval</div>
+            <div className="flex items-center gap-2 text-stone-300"><span className="text-emerald-400">✓</span> Full audit trail, every run</div>
+          </div>
+        </div>
+      </section>
+
       {/* Templates */}
       <section className="px-6 py-20">
         <div className="max-w-6xl mx-auto">
@@ -121,20 +148,42 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         </div>
       </section>
 
-      {/* How it works */}
+      {/* 3-step setup */}
       <section className="bg-stone-50 px-6 py-20">
         <div className="max-w-4xl mx-auto">
-          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-12">How it works</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
-            {HOW_IT_WORKS.map((step, i) => (
-              <div key={step.title} className="text-center">
-                <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white text-sm font-bold flex items-center justify-center mx-auto mb-4">
-                  {i + 1}
-                </div>
-                <p className="font-semibold text-stone-900 mb-2">{step.title}</p>
-                <p className="text-sm text-stone-500 leading-relaxed">{step.body}</p>
+          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">Setup in minutes</p>
+          <h2 className="text-2xl font-bold text-stone-900 text-center mb-12">Live on day one.</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            {[
+              { step: "1", icon: "🔗", title: "Connect your repo", body: "Link GitHub, Slack, and Linear. No migration, no new tooling — Conduct wraps around what you already use." },
+              { step: "2", icon: "⚡", title: "Assign an agent", body: "Pick a template or build on the canvas. Set your environment credentials. The agent is ready to run." },
+              { step: "3", icon: "✅", title: "Get output in Slack", body: "PRs, diagnoses, triage comments, changelogs — delivered to Slack. Approve or reject with one click." },
+            ].map(s => (
+              <div key={s.step} className="bg-white rounded-2xl border border-stone-200 p-6 text-center">
+                <div className="text-3xl mb-3">{s.icon}</div>
+                <div className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step {s.step}</div>
+                <p className="font-semibold text-stone-900 mb-2">{s.title}</p>
+                <p className="text-sm text-stone-500 leading-relaxed">{s.body}</p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Social proof */}
+      <section className="px-6 py-16">
+        <div className="max-w-3xl mx-auto">
+          <div className="rounded-2xl border border-stone-200 bg-white p-8">
+            <p className="text-stone-700 text-lg leading-relaxed mb-5">
+              &ldquo;Labeled a bug at 5pm on a Friday. PR was open by 5:02pm, tests green, ready to review Monday morning. That&apos;s the thing — it just works while we&apos;re not watching.&rdquo;
+            </p>
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 text-xs font-bold">E</div>
+              <div>
+                <p className="text-sm font-semibold text-stone-900">Engineering Lead</p>
+                <p className="text-xs text-stone-400">Series B startup, 35-person eng team</p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -309,20 +358,6 @@ const TEMPLATES = [
   },
 ]
 
-const HOW_IT_WORKS = [
-  {
-    title: "Connect your tools",
-    body: "Link GitHub, Slack, and Linear in five minutes. No migration, no new workflow — Conduct fits around what you already use.",
-  },
-  {
-    title: "Conduct picks up the work",
-    body: "Label an issue `ai-ready` or fire a webhook. Conduct spins up an ephemeral sandbox, clones your repo, implements the fix, and runs your tests.",
-  },
-  {
-    title: "You approve in Slack",
-    body: "One-click Approve or Reject in a Slack DM. Nothing merges without a human gate. Every step is event-sourced — debug any run in seconds.",
-  },
-]
 
 const WHY_DELEGATOR = [
   {
