@@ -38,14 +38,49 @@ export const metadata: Metadata = {
 
 const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 
+const softwareAppJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Conduct",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Web",
+  "url": "https://conductai.ai",
+  "description": "9 pre-built AI agents for GitHub workflows. Automate issue triage, PR reviews, incident response, and release notes — with human approval before anything merges.",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD",
+  },
+  "featureList": [
+    "Autopilot: GitHub issue to pull request",
+    "PR Reviewer",
+    "Issue Triage",
+    "Release Notes generator",
+    "Incident Responder",
+    "Dependency Updater",
+    "Deploy Monitor",
+    "Human approval gates via Slack",
+    "Ephemeral sandbox execution",
+  ],
+}
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const jsonLd = (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareAppJsonLd) }}
+    />
+  )
+
   if (clerkEnabled) {
     return (
       <ClerkProvider>
         <html lang="en">
+          <head>{jsonLd}</head>
           <body>
             {children}
             <Script src="https://narratr.ai/widget.js" data-brand-key="c7ae7b0c-2b6" strategy="afterInteractive" />
+            <Script src="https://narratr.ai/embed.js" data-brand="conduct-agentic" strategy="afterInteractive" />
           </body>
         </html>
       </ClerkProvider>
@@ -53,6 +88,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   }
   return (
     <html lang="en">
+      <head>{jsonLd}</head>
       <body>
         {children}
         <Script src="https://narratr.ai/widget.js" data-brand-key="c7ae7b0c-2b6" strategy="afterInteractive" />

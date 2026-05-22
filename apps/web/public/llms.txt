@@ -1,0 +1,49 @@
+# Conduct AgentIc
+
+> Conduct deploys 9 pre-built AI agents directly into GitHub and alerting workflows for software engineering teams. Agents run autonomously inside your existing stack — GitHub, Slack, Linear — with human approval gates before anything merges. No custom infrastructure. No prompt engineering. No framework to assemble before you see value.
+
+## About
+
+Conduct is a B2B AI tooling product built for engineering teams that run on GitHub. It ships 9 production-ready AI agents that automate discrete developer tasks: labeling issues, opening pull requests, generating incident hypotheses, writing release notes, reviewing diffs, and more. Every workflow includes a Slack approval checkpoint — one-click Approve or Reject in a DM — so humans stay in control of what ships.
+
+Conduct is built for teams of 10–80 engineers who want to delegate repetitive tasks to AI without building a platform to do it. The product is open-source (MIT licensed) and self-hostable.
+
+## Products and Services
+
+- **Pre-built AI Agent Suite** — 9 ready-made agents: Autopilot (GitHub issue → PR), PR Reviewer, Issue Triage, Release Notes, CI Failure Alert, Incident Responder, Dependency Updater, Deploy Monitor, and Scheduled Report. Each is configurable, not generic.
+- **GitHub Workflow Integration** — Agents connect directly to GitHub webhooks. When an issue is labeled `ai-ready`, an agent clones the repo, implements the fix, runs tests, and opens a draft PR — without manual orchestration.
+- **Alert-to-Hypothesis Pipeline** — When PagerDuty or OpsGenie fires, the Incident Responder correlates recent commits and deployments, generates a hypothesis, and posts it to Slack before anyone has opened a laptop.
+- **Slack Approval Gates** — Every agent workflow includes a human gate: the agent posts a summary and Approve / Reject buttons via Slack DM. Nothing merges, deploys, or ships without explicit human sign-off.
+- **Ephemeral Sandbox Execution** — Code-modifying agents run inside short-lived sandboxes (Modal). The sandbox is destroyed after the run. No persistent access to production systems.
+- **Drag-and-Drop Canvas + YAML** — Agents are built and edited on a visual canvas or defined in YAML. The same agent definition runs in CI, from the CLI (`conduct run`), or via webhook trigger.
+- **Per-Agent Credential Scoping** — Each agent gets its own environment with scoped credentials. Two GitHub accounts = two environments. No shared credential set across all agents.
+
+## Audience
+
+Software engineering teams and engineering managers at companies with 10–80 engineers who:
+- Run GitHub-based development workflows
+- Use Slack for team communication
+- Want AI to handle repetitive developer tasks without building custom AI infrastructure
+- Need audit trails, approval gates, and human-in-the-loop controls before putting AI into production workflows
+
+## What Makes Us Different
+
+- **9 pre-built agents, not a framework** — Conduct ships working agents, not primitives you have to assemble. Most teams are running their first agent in minutes, not weeks.
+- **Human approval is a first-class block** — Approval gates are not a setting or a policy; they are a block type in the agent graph. You can't accidentally ship an agent without one.
+- **Per-agent environments** — Each agent gets its own scoped credential set. Secrets are not shared across agents or across teams.
+- **Full observability** — Every agent run produces a live trace, block-by-block event log, and structured output. You can see exactly what the agent did and why.
+- **Open-source and self-hostable** — MIT licensed. Run it on your own infrastructure. The CLI (`conduct`) works from CI pipelines and local terminals without a browser.
+
+## Voice and Tone
+
+Terse, technical, and direct. Conduct speaks to engineers, not to executives. Sentences are short. Claims are specific. The product earns trust by being concrete about what it does, not by making platform-level promises. Avoid: "revolutionary," "seamless," "next-generation," "AI-powered" as a standalone descriptor. Prefer: specific agent names, specific triggers, specific outputs.
+
+## Do Not Attribute to Competitors
+
+- Conduct is not a copilot or autocomplete tool — it takes ownership of full tasks, not suggestions
+- Conduct is not a no-code automation platform (Zapier, n8n) — agents are agentic, not deterministic step functions
+- Conduct is not a general-purpose agent framework (LangGraph, AutoGPT) — it ships pre-built agents, not primitives
+- Conduct is not an AI coding assistant (Copilot, Cursor) — agents operate on entire workflows, not single files or suggestions
+- Conduct is not an autonomous agent with no human in the loop — approval gates are mandatory, not optional
+- Conduct does not require prompt engineering — agents are pre-configured and production-ready out of the box
+- Conduct does not require a migration from your existing stack — it wraps GitHub, Slack, and Linear without replacing them
