@@ -128,19 +128,54 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
       </section>
 
       {/* Audience */}
-      <section className="px-6 py-10">
-        <div className="max-w-3xl mx-auto">
-          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-6">Built for</p>
-          <div className="grid sm:grid-cols-4 gap-3">
+      <section className="px-6 py-14">
+        <div className="max-w-4xl mx-auto">
+          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-2">Built for</p>
+          <p className="text-center text-stone-500 text-sm mb-8">From solo builders to growing engineering teams.</p>
+          <div className="grid sm:grid-cols-4 gap-4">
             {[
-              { label: "Vibe coders", desc: "Solo builders who want to ship faster without managing infrastructure" },
-              { label: "Teams of 2–5", desc: "Early-stage startups where every engineer counts — let agents handle the toil" },
-              { label: "Teams of 5–10", desc: "Growing teams drowning in issues, reviews, and incident triage" },
-              { label: "Teams of 10–15", desc: "Scaling teams who need consistent process without adding headcount" },
-            ].map(({ label, desc }) => (
-              <div key={label} className="rounded-xl border border-stone-200 bg-white px-4 py-4">
-                <p className="text-sm font-semibold text-stone-900 mb-1">{label}</p>
-                <p className="text-xs text-stone-400 leading-relaxed">{desc}</p>
+              {
+                icon: "⚡",
+                label: "Vibe coders",
+                tag: "Solo",
+                desc: "Ship faster without managing infrastructure. Your AI teammate handles the repetitive work.",
+                accent: "from-amber-50 to-orange-50 border-amber-200",
+                iconBg: "bg-amber-100 text-amber-600",
+              },
+              {
+                icon: "🚀",
+                label: "Teams of 2–5",
+                tag: "Early-stage",
+                desc: "Every engineer counts. Let agents pick up tickets, review PRs, and triage issues overnight.",
+                accent: "from-violet-50 to-indigo-50 border-violet-200",
+                iconBg: "bg-violet-100 text-violet-600",
+              },
+              {
+                icon: "🔥",
+                label: "Teams of 5–10",
+                tag: "Growing",
+                desc: "Drowning in issues and incident triage? Agents run 24/7 so your team can focus on features.",
+                accent: "from-blue-50 to-sky-50 border-blue-200",
+                iconBg: "bg-blue-100 text-blue-600",
+              },
+              {
+                icon: "🏗️",
+                label: "Teams of 10–15",
+                tag: "Scaling",
+                desc: "Consistent process across the team without adding headcount. Every workflow audited and gated.",
+                accent: "from-emerald-50 to-teal-50 border-emerald-200",
+                iconBg: "bg-emerald-100 text-emerald-600",
+              },
+            ].map(({ icon, label, tag, desc, accent, iconBg }) => (
+              <div key={label} className={`rounded-2xl border bg-gradient-to-br ${accent} px-5 py-5 flex flex-col gap-3`}>
+                <div className="flex items-center justify-between">
+                  <span className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg ${iconBg}`}>{icon}</span>
+                  <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider">{tag}</span>
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-stone-900 mb-1">{label}</p>
+                  <p className="text-xs text-stone-500 leading-relaxed">{desc}</p>
+                </div>
               </div>
             ))}
           </div>
