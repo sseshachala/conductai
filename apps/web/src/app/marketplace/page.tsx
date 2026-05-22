@@ -50,12 +50,40 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   const [loading, setLoading] = useState(true)
   const [activeTag, setActiveTag] = useState("all")
   const [installing, setInstalling] = useState<string | null>(null)
+  const [installedSlugs, setInstalledSlugs] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/playbooks`)
-      .then(r => r.json())
-      .then(data => setPlaybooks(data))
-      .finally(() => setLoading(false))
+    async function load() {
+      const headers: Record<string, string> = {}
+      if (getToken) {
+        const token = await getToken()
+        if (token) headers["Authorization"] = `Bearer ${token}`
+      }
+      const workspaceId = getWorkspaceId()
+      if (workspaceId) headers["X-Workspace-Id"] = workspaceId
+
+      const [pbRes, wfRes] = await Promise.all([
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/playbooks`),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, { headers }),
+      ])
+
+      if (pbRes.ok) setPlaybooks(await pbRes.json())
+
+      if (wfRes.ok) {
+        const workflows: { name: string }[] = await wfRes.json()
+        const installedNames = new Set(workflows.map(w => w.name))
+        const matched = new Set(
+          Object.entries(FRIENDLY_NAMES)
+            .filter(([, name]) => installedNames.has(name))
+            .map(([slug]) => slug)
+        )
+        setInstalledSlugs(matched)
+      }
+
+      setLoading(false)
+    }
+    load()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function install(slug: string) {
@@ -76,6 +104,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
       })
       if (!res.ok) return
       const wf = await res.json()
+      setInstalledSlugs(prev => new Set([...prev, slug]))
       router.push(`/workflows/${wf.id}`)
     } finally {
       setInstalling(null)
@@ -83,8 +112,6 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   }
 
   const filtered = activeTag === "all" ? playbooks : playbooks.filter(p => p.tags.includes(activeTag))
-  const featured = filtered.filter(p => p.featured)
-  const rest = filtered.filter(p => !p.featured)
 
   return (
     <AppShell>
@@ -119,7 +146,15 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-4">
-            {filtered.map(p => <PlaybookCard key={p.slug} playbook={p} installing={installing} onInstall={install} />)}
+            {filtered.map(p => (
+              <PlaybookCard
+                key={p.slug}
+                playbook={p}
+                installing={installing}
+                installed={installedSlugs.has(p.slug)}
+                onInstall={install}
+              />
+            ))}
           </div>
         )}
       </div>
@@ -127,14 +162,17 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   )
 }
 
-function PlaybookCard({ playbook, installing, onInstall }: {
+function PlaybookCard({ playbook, installing, installed, onInstall }: {
   playbook: Playbook
   installing: string | null
+  installed: boolean
   onInstall: (slug: string) => void
 }) {
   const isInstalling = installing === playbook.slug
   return (
-    <div className="rounded-xl border border-stone-200 bg-white p-5 flex flex-col gap-3 hover:border-stone-300 transition-colors">
+    <div className={`rounded-xl border bg-white p-5 flex flex-col gap-3 transition-colors ${
+      installed ? "border-emerald-200 bg-emerald-50/30" : "border-stone-200 hover:border-stone-300"
+    }`}>
       <div className="flex items-start justify-between gap-2">
         <span className="text-2xl leading-none">{playbook.icon}</span>
         <div className="flex flex-wrap gap-1 justify-end">
@@ -152,11 +190,15 @@ function PlaybookCard({ playbook, installing, onInstall }: {
         <p className="text-xs text-stone-500 leading-relaxed">{playbook.description}</p>
       </div>
       <button
-        onClick={() => onInstall(playbook.slug)}
-        disabled={!!installing}
-        className="mt-auto w-full rounded-lg bg-stone-900 px-3 py-2 text-xs font-medium text-white hover:bg-stone-700 transition-colors disabled:opacity-40"
+        onClick={() => !installed && onInstall(playbook.slug)}
+        disabled={!!installing || installed}
+        className={`mt-auto w-full rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
+          installed
+            ? "bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default"
+            : "bg-stone-900 text-white hover:bg-stone-700 disabled:opacity-40"
+        }`}
       >
-        {isInstalling ? "Installing…" : "+ Install"}
+        {isInstalling ? "Installing…" : installed ? "✓ Installed" : "+ Install"}
       </button>
     </div>
   )
