@@ -127,6 +127,7 @@ def create_run(
         triggered_by=body.triggered_by,
         status="pending",
         state=initial_state,
+        max_turns=body.max_turns or None,
     )
     db.add(run)
     db.commit()

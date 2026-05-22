@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+import sqlalchemy as sa
 from sqlalchemy import Column, String, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
@@ -17,6 +18,7 @@ class Run(Base):
     paused_at = Column(DateTime(timezone=True), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     current_block_id = Column(String(255), nullable=True)
+    max_turns = Column(sa.Integer, nullable=True)
     state = Column(JSONB, nullable=False, default=dict)  # accumulated block outputs
     created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
