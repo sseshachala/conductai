@@ -151,6 +151,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                 <StatCard
                   label="Failed runs"
                   value={data.week.failed_runs}
+                  sub={data.week.failed_runs > 0 ? "View traces →" : "All clear"}
                   highlight={data.week.failed_runs > 0 ? "red" : "green"}
                   href={data.week.failed_runs > 0 ? "/runs" : undefined}
                 />
