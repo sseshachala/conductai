@@ -1,0 +1,123 @@
+name: Copilot / AI PR Reviewer
+version: 1
+description: >
+  Triggered when a pull request is opened by an AI author (GitHub Copilot,
+  Cursor, Claude Code, or any bot). Reviews the diff for correctness, security,
+  and test coverage, posts a structured review comment, then pauses for a human
+  to approve before the PR can be merged.
+
+  Setup: GitHub repo → Settings → Webhooks → Add webhook.
+  Payload URL: https://<your-api>/webhooks/inbound/<this-workflow-id>
+  Content type: application/json
+  Event: Pull requests (pull_request.opened)
+
+  The agent checks whether the PR author is a bot before running.
+  Human-authored PRs are silently skipped.
+
+on:
+  webhook:
+    next: check_author
+
+blocks:
+  check_author:
+    type: logic
+    label: Is AI-authored PR?
+    description: >
+      Check whether the PR was opened by an AI/bot author.
+      GitHub Copilot PRs have user.type == "Bot" or login contains
+      "copilot", "cursor", "claude", or ends with "[bot]".
+    condition: >
+      {{_trigger.pull_request.user.type}} == "Bot"
+      OR {{_trigger.pull_request.user.login}} contains "copilot"
+      OR {{_trigger.pull_request.user.login}} contains "cursor"
+      OR {{_trigger.pull_request.user.login}} contains "claude"
+      OR {{_trigger.pull_request.user.login}} ends_with "[bot]"
+    next:
+      pass: review_pr
+      fail: skip_human_pr
+
+  skip_human_pr:
+    type: output
+    label: Skip — human PR
+    description: "PR #{{_trigger.number}} is human-authored — skipping AI review gate."
+    output:
+      via: none
+
+  review_pr:
+    type: brain
+    mode: agentic
+    label: Review AI-generated PR
+    description: |
+      You are a senior code reviewer auditing a pull request written by an AI coding assistant
+      (GitHub Copilot, Cursor, or Claude Code).
+
+      PR details:
+      - PR number: {{_trigger.number}}
+      - Title: {{_trigger.pull_request.title}}
+      - Author: {{_trigger.pull_request.user.login}} (AI-generated)
+      - Repo: {{_trigger.repository.full_name}}
+      - Diff URL: {{_trigger.pull_request.diff_url}}
+      - PR URL: {{_trigger.pull_request.html_url}}
+      - Base branch: {{_trigger.pull_request.base.ref}}
+
+      Steps:
+      1. Fetch the diff:
+         GET {{_trigger.pull_request.diff_url}}
+         Use Authorization: token <github_token> header
+      2. Review with extra scrutiny for AI-generated code:
+         - Correctness: does the change actually solve the stated problem?
+         - Security: hardcoded secrets, injection risks, insecure defaults
+         - Test coverage: are new code paths tested? Did the AI skip tests?
+         - Hallucinated APIs: calls to methods/packages that don't exist
+         - Over-engineering: unnecessary abstractions or complexity
+         - Breaking changes: interface changes that affect callers
+      3. Post a review comment via GitHub API:
+         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/pulls/{{_trigger.number}}/reviews
+         {
+           "body": "<your structured review>",
+           "event": "COMMENT"
+         }
+         Use Authorization: token <github_token> header
+
+      Format your review with three sections:
+      🔴 Critical (must fix before merge)
+      🟡 Warning (should address)
+      🟢 Looks good (what the AI got right)
+
+      If there are no critical issues, say so clearly.
+
+      Output ONLY the following JSON on the last line:
+        {"review_url": "<PR URL>", "critical": <count>, "warnings": <count>}
+    next: gate_merge
+
+  gate_merge:
+    type: approval
+    label: Human approval required
+    description: >
+      AI PR #{{_trigger.number}} has been reviewed.
+      Critical issues: {{review_pr.critical}} · Warnings: {{review_pr.warnings}}
+
+      Review: {{review_pr.review_url}}
+
+      Approve to allow merge. Reject to request changes from the AI tool.
+    next:
+      approved: notify_approved
+      rejected: notify_rejected
+
+  notify_approved:
+    type: output
+    label: Notify — approved to merge
+    description: "✅ AI PR #{{_trigger.number}} approved after review. {{review_pr.critical}} critical, {{review_pr.warnings}} warnings. Ready to merge."
+    output:
+      via: slack
+      slack:
+        channel: "#engineering"
+
+  notify_rejected:
+    type: output
+    label: Notify — changes requested
+    description: "🚫 AI PR #{{_trigger.number}} rejected. {{review_pr.critical}} critical issues must be fixed before merge."
+    output:
+      via: slack
+      slack:
+        channel: "#engineering"

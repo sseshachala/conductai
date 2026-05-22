@@ -31,6 +31,7 @@ const FRIENDLY_NAMES: Record<string, string> = {
   ci_notify:          "CI Failure Alert",
   incident_responder: "Incident Responder",
   dependency_updater: "Dependency Updater",
+  copilot_reviewer:   "Copilot / AI PR Reviewer",
 }
 
 export default function MarketplacePage() {

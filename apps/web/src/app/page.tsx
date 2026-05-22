@@ -295,6 +295,40 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         </div>
       </section>
 
+      {/* Copilot / AI coding tools orchestration */}
+      <section className="bg-stone-900 px-6 py-20">
+        <div className="max-w-4xl mx-auto text-center">
+          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-4">Works with GitHub Copilot · Cursor · Claude Code</p>
+          <h2 className="text-3xl font-bold text-white mb-4">
+            You have AI that writes code.<br />Conduct decides when it ships.
+          </h2>
+          <p className="text-stone-400 text-sm max-w-2xl mx-auto mb-10 leading-relaxed">
+            Every engineering team now has an AI writing code. Nobody has a system that governs when that code actually merges.
+            Conduct is the orchestration layer above Copilot, Cursor, and Claude Code — it catches AI-generated PRs, reviews the diff,
+            gates on a human approval, and posts structured findings to Slack before a single line hits main.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-left mb-10">
+            {[
+              { icon: "🔍", title: "Catch AI PRs automatically", body: "Trigger fires when Copilot, Cursor, or any bot opens a PR. Human PRs are skipped silently." },
+              { icon: "🧠", title: "Review with extra scrutiny", body: "Checks for hallucinated APIs, missing tests, security issues, and over-engineering — things humans miss in AI diffs." },
+              { icon: "✋", title: "Gate before merge", body: "Human approval required before the PR can land. One-click Approve or Reject in Slack." },
+            ].map(c => (
+              <div key={c.title} className="bg-stone-800 rounded-2xl p-5">
+                <span className="text-2xl block mb-3">{c.icon}</span>
+                <p className="text-white font-semibold text-sm mb-1">{c.title}</p>
+                <p className="text-stone-400 text-xs leading-relaxed">{c.body}</p>
+              </div>
+            ))}
+          </div>
+          <a
+            href="/marketplace"
+            className="inline-flex items-center gap-2 rounded-xl bg-white text-stone-900 px-6 py-3 text-sm font-semibold hover:bg-stone-100 transition-colors"
+          >
+            🤖 Install Copilot / AI PR Reviewer →
+          </a>
+        </div>
+      </section>
+
       {/* Why Conduct — the moat */}
       <section className="px-6 py-20">
         <div className="max-w-5xl mx-auto">
