@@ -88,7 +88,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-4xl px-6 py-10">
+      <div className="mx-auto max-w-5xl px-6 py-10">
 
         {/* Header */}
         <div className="mb-8">
@@ -114,27 +114,12 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
         </div>
 
         {loading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[1,2,3,4,5,6].map(i => <div key={i} className="h-44 rounded-xl bg-stone-100 animate-pulse" />)}
+          <div className="grid grid-cols-3 gap-4">
+            {[1,2,3,4,5,6,7,8,9].map(i => <div key={i} className="h-48 rounded-xl bg-stone-100 animate-pulse" />)}
           </div>
         ) : (
-          <div className="space-y-8">
-            {featured.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-3">Featured</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {featured.map(p => <PlaybookCard key={p.slug} playbook={p} installing={installing} onInstall={install} />)}
-                </div>
-              </div>
-            )}
-            {rest.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-3">More playbooks</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {rest.map(p => <PlaybookCard key={p.slug} playbook={p} installing={installing} onInstall={install} />)}
-                </div>
-              </div>
-            )}
+          <div className="grid grid-cols-3 gap-4">
+            {filtered.map(p => <PlaybookCard key={p.slug} playbook={p} installing={installing} onInstall={install} />)}
           </div>
         )}
       </div>
