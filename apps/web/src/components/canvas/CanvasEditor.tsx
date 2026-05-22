@@ -584,7 +584,6 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
             onChange={(e) => setWorkflowName(e.target.value)}
             className="text-base font-semibold text-stone-900 bg-transparent border-none outline-none focus:ring-0 w-64"
           />
-          <span className="text-xs text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full">draft</span>
           {/* Environment picker */}
           <select
             value={selectedEnvId}
