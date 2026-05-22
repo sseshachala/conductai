@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from marshal_cli import api
+from conduct_cli import api
 
 RESET = "\033[0m"
 BOLD  = "\033[1m"
@@ -102,7 +102,7 @@ def cmd_run(args):
     json_h = api.headers(workspace_id, token, "application/json", api_key)
     yaml_h = api.headers(workspace_id, token, "application/x-yaml", api_key)
 
-    print(f"\n{BOLD}▶ marshal run — {name}{RESET}")
+    print(f"\n{BOLD}▶ conduct run — {name}{RESET}")
     print(f"  server: {server}\n")
 
     # Use id from YAML; fall back to name lookup
@@ -166,7 +166,7 @@ def cmd_run(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="marshal")
+    parser = argparse.ArgumentParser(prog="conduct")
     parser.add_argument("--server",    required=True, help="Marshal API URL")
     parser.add_argument("--api-key",  help="CLI API key (set CLI_API_KEY on the server)")
     parser.add_argument("--token",    help="Bearer token for Clerk auth")
