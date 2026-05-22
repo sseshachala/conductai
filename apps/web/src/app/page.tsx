@@ -204,6 +204,38 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         )}
       </section>
 
+      {/* CLI section */}
+      <section className="border-t border-stone-100 py-16 px-6">
+        <div className="mx-auto max-w-3xl">
+          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-3">CLI & CI</p>
+          <h2 className="text-2xl font-bold text-stone-900 mb-3">Run agents from your terminal</h2>
+          <p className="text-stone-500 mb-8 text-sm leading-relaxed">
+            The <code className="bg-stone-100 px-1.5 py-0.5 rounded text-stone-700 font-mono text-xs">conduct</code> CLI
+            lets you trigger any agent from your terminal, a GitHub Action, or a CI pipeline — no browser required.
+          </p>
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="rounded-xl bg-stone-950 p-5 font-mono text-sm">
+              <p className="text-stone-500 text-xs mb-3"># Install</p>
+              <p className="text-emerald-400">pip install conduct-cli</p>
+              <p className="text-stone-500 text-xs mt-4 mb-3"># Run an agent</p>
+              <p className="text-white">conduct --server https://api.conductai.ai \</p>
+              <p className="text-white pl-4">--api-key YOUR_KEY \</p>
+              <p className="text-white pl-4">run autopilot.yaml</p>
+            </div>
+            <div className="rounded-xl bg-stone-950 p-5 font-mono text-sm">
+              <p className="text-stone-500 text-xs mb-3"># autopilot.yaml</p>
+              <p className="text-violet-400">name<span className="text-white">: Fix GitHub Issue</span></p>
+              <p className="text-violet-400">workflow_id<span className="text-white">: abc-123</span></p>
+              <p className="text-violet-400">trigger<span className="text-white">:</span></p>
+              <p className="text-white pl-4">event_type<span className="text-stone-400">: github_issue_labeled</span></p>
+              <p className="text-white pl-4">label<span className="text-stone-400">: ai-ready</span></p>
+              <p className="text-white pl-4">repo<span className="text-stone-400">:</span></p>
+              <p className="text-white pl-8">full_name<span className="text-stone-400">: your-org/repo</span></p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <footer className="border-t border-stone-100 py-8 text-center text-xs text-stone-400">
         © {new Date().getFullYear()} Conduct · Built for engineering teams
       </footer>
