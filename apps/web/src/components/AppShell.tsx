@@ -59,14 +59,17 @@ export default function AppShell({ children, noPadding }: { children: React.Reac
           <AuthButton afterSignOutUrl="/sign-in" dropUp />
         </div>
 
-        {/* Collapse toggle — sits on the right edge */}
-        <button
-          onClick={() => setCollapsed(v => !v)}
-          className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white border border-stone-200 shadow-sm flex items-center justify-center text-stone-400 hover:text-stone-700 transition-colors z-10"
-          title={collapsed ? "Expand" : "Collapse"}
-        >
-          {collapsed ? "›" : "‹"}
-        </button>
+        {/* Collapse toggle — explicit button inside sidebar */}
+        <div className={`px-2 pb-3 flex ${collapsed ? "justify-center" : ""}`}>
+          <button
+            onClick={() => setCollapsed(v => !v)}
+            className={`flex items-center gap-1.5 text-xs text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-lg px-2 py-1.5 transition-colors w-full ${collapsed ? "justify-center" : ""}`}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            <span className="text-base leading-none">{collapsed ? "›" : "‹"}</span>
+            {!collapsed && <span>Collapse</span>}
+          </button>
+        </div>
       </aside>
 
       <main className={`flex-1 min-h-0 ${noPadding ? "overflow-hidden flex flex-col" : "overflow-auto"}`}>{children}</main>
