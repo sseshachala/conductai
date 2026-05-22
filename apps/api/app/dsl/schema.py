@@ -131,8 +131,10 @@ class Block(BaseModel):
     condition: str | None = None
 
     # — approval blocks —
+    via: Literal["slack", "email", "both"] | None = None  # default: slack if channel/slack_user set
     channel: str | None = None
     slack_user: str | None = None
+    approval_email: str | None = None  # email address to send approve/reject link
     message: str | None = None
 
     # — output blocks —
@@ -165,10 +167,15 @@ class Block(BaseModel):
                     "logic blocks need `next: { pass: <block>, fail: <block> }`"
                 )
         elif t == "approval":
-            if not self.channel and not self.slack_user:
-                raise ValueError(
-                    "approval blocks require either `channel` or `slack_user`"
-                )
+            via = self.via or "slack"
+            has_slack = bool(self.channel or self.slack_user)
+            has_email = bool(self.approval_email)
+            if via in ("slack", "both") and not has_slack:
+                raise ValueError("approval blocks with via=slack/both require `channel` or `slack_user`")
+            if via in ("email", "both") and not has_email:
+                raise ValueError("approval blocks with via=email/both require `approval_email`")
+            if not has_slack and not has_email:
+                raise ValueError("approval blocks require at least one of: `channel`, `slack_user`, or `approval_email`")
         elif t == "output":
             if not self.output:
                 raise ValueError("output blocks require an `output:` section")
