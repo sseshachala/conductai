@@ -400,25 +400,21 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         </div>
       </section>
 
-      <footer className="border-t border-stone-100 py-8 text-center text-xs text-stone-400">
-        © {new Date().getFullYear()} Conduct · Built for engineering teams ·{" "}
-        <a
-          href="https://github.com/sseshachala/conductai"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="hover:text-stone-600 transition-colors"
-        >
-          GitHub
-        </a>
-        {" · MIT licensed · "}
-        <a
-          href="https://github.com/sseshachala/conductai/discussions/new?category=ideas"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="hover:text-stone-600 transition-colors"
-        >
-          💡 Request an idea
-        </a>
+      <footer className="border-t border-stone-100 py-8 text-center text-xs text-stone-400 space-y-2">
+        <div className="flex items-center justify-center gap-3 flex-wrap">
+          <span>© {new Date().getFullYear()} Conduct</span>
+          <span>·</span>
+          <a href="https://github.com/sseshachala/conductai" target="_blank" rel="noopener noreferrer" className="hover:text-stone-600 transition-colors">GitHub</a>
+          <span>·</span>
+          <span>MIT licensed</span>
+          <span>·</span>
+          <a href="https://github.com/sseshachala/conductai/discussions/new?category=ideas" target="_blank" rel="noopener noreferrer" className="hover:text-stone-600 transition-colors">💡 Request an idea</a>
+          <span>·</span>
+          <a href="/privacy" className="hover:text-stone-600 transition-colors">Privacy</a>
+          <span>·</span>
+          <a href="/terms" className="hover:text-stone-600 transition-colors">Terms</a>
+        </div>
+        <p className="text-stone-300">Envisioned, designed and developed with 💕 from Houston</p>
       </footer>
 
       {/* FAQ JSON-LD structured data */}
