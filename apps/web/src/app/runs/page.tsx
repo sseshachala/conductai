@@ -85,8 +85,8 @@ function GlobalRunsContent({ getToken }: { getToken: (() => Promise<string | nul
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-4xl px-6 py-10">
-        <div className="flex items-center justify-between mb-6">
+      <div className="mx-auto max-w-3xl px-6 py-10">
+        <div className="flex items-center justify-between mb-5">
           <h1 className="text-xl font-semibold text-stone-900">Runs</h1>
           <span className="text-xs text-stone-400">{runs.length} run{runs.length !== 1 ? "s" : ""}</span>
         </div>
