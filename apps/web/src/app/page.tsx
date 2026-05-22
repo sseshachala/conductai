@@ -285,9 +285,39 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         </div>
       </section>
 
+      {/* FAQ */}
+      <section className="border-t border-stone-100 py-16 px-6">
+        <div className="mx-auto max-w-3xl">
+          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-3">FAQ</p>
+          <h2 className="text-2xl font-bold text-stone-900 mb-8">Common questions</h2>
+          <div className="space-y-6">
+            {FAQ.map(({ q, a }) => (
+              <div key={q} className="border-b border-stone-100 pb-6 last:border-0">
+                <p className="font-semibold text-stone-900 mb-2">{q}</p>
+                <p className="text-sm text-stone-500 leading-relaxed">{a}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <footer className="border-t border-stone-100 py-8 text-center text-xs text-stone-400">
         © {new Date().getFullYear()} Conduct · Built for engineering teams
       </footer>
+
+      {/* FAQ JSON-LD structured data */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          "mainEntity": FAQ.map(({ q, a }) => ({
+            "@type": "Question",
+            "name": q,
+            "acceptedAnswer": { "@type": "Answer", "text": a },
+          })),
+        }) }}
+      />
     </div>
   )
 }
@@ -393,6 +423,37 @@ const WHY_DELEGATOR = [
 ]
 
 const INTEGRATIONS = ["GitHub", "Slack", "PagerDuty", "OpsGenie", "Email / Resend", "Any webhook"]
+
+const FAQ = [
+  {
+    q: "What does Conduct actually do?",
+    a: "Conduct ships 9 pre-built AI agents that execute directly inside GitHub and alerting workflows. The agents handle discrete engineering tasks — labeling issues, opening pull requests, generating incident hypotheses from alerts, writing release notes, and more. Nothing needs to be built from scratch.",
+  },
+  {
+    q: "Is Conduct a good fit for my engineering team?",
+    a: "Conduct is built for software engineering teams and engineering managers running GitHub-based workflows who want to automate repetitive developer tasks without building custom AI infrastructure. If your team is already using GitHub, Slack, and Linear, Conduct fits around those tools without requiring a migration or workflow overhaul.",
+  },
+  {
+    q: "How does Conduct work once it's connected to our stack?",
+    a: "Link GitHub, Slack, and Linear in about five minutes — no migration required. From there, agents run inside your existing workflows. Every workflow includes a Slack approval checkpoint before anything ships — one-click Approve or Reject in a DM.",
+  },
+  {
+    q: "How is Conduct different from GitHub Copilot or other AI coding assistants?",
+    a: "Conduct is a team substitute, not a copilot. Agents take ownership of full tasks like opening a PR or responding to an incident, rather than offering suggestions you still have to act on. The 9 agents ship pre-configured and ready to run — no framework to wire up, no prompts to engineer.",
+  },
+  {
+    q: "What specific agents come included?",
+    a: "The pre-built suite includes Autopilot, PR Reviewer, Issue Triage, Release Notes, CI Failure Alert, Incident Responder, Dependency Updater, Deploy Monitor, and Scheduled Report — 9 agents total. Each is pre-configured with sensible defaults and editable on the canvas.",
+  },
+  {
+    q: "How long does it take to get up and running?",
+    a: "Pick a template and you can have your first agent running in minutes, not days. Connecting GitHub, Slack, and Linear takes about five minutes, and the agents are pre-configured — there's no build phase before they're operational.",
+  },
+  {
+    q: "Will our security team approve this?",
+    a: "Conduct is designed with approval gates as first-class blocks — nothing merges without a human gate via Slack DM. Agents run in ephemeral sandboxes when executing code changes, limiting exposure. Every action is event-sourced and audit-logged.",
+  },
+]
 
 function GoogleIcon() {
   return (
