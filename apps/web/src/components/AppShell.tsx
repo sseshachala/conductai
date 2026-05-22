@@ -60,6 +60,20 @@ export default function AppShell({ children, noPadding }: { children: React.Reac
           <AuthButton afterSignOutUrl="/sign-in" dropUp />
         </div>
 
+        {/* Ideas link */}
+        <div className={`px-2 pb-1 flex ${collapsed ? "justify-center" : ""}`}>
+          <a
+            href="https://github.com/sseshachala/conductai/discussions/new?category=ideas"
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`flex items-center gap-1.5 text-xs text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-lg px-2 py-1.5 transition-colors w-full ${collapsed ? "justify-center" : ""}`}
+            title="Request an integration or flow"
+          >
+            <span className="text-base leading-none">💡</span>
+            {!collapsed && <span>Request an idea</span>}
+          </a>
+        </div>
+
         {/* Collapse toggle — explicit button inside sidebar */}
         <div className={`px-2 pb-3 flex ${collapsed ? "justify-center" : ""}`}>
           <button
