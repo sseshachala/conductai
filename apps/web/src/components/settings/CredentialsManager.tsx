@@ -157,9 +157,15 @@ function CredentialsManagerInner({ getToken }: { getToken: (() => Promise<string
 
   async function handleRemove(handle: string) {
     setDeleting(handle)
+    setError("")
     try {
       const headers = await buildHeaders()
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/${handle}`, { method: "DELETE", headers })
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/${handle}`, { method: "DELETE", headers })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setError(body.detail ?? "Failed to remove credential")
+        return
+      }
       setCredentials(prev => prev.filter(c => c.handle !== handle))
     } finally {
       setDeleting(null)
