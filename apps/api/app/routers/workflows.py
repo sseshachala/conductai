@@ -72,6 +72,7 @@ _TEMPLATE_PLAYBOOKS = {
     "dependency_updater": "dependency-updater.yaml",
     "release_notes":      "release-notes.yaml",
     "issue_triage":       "issue-triage.yaml",
+    "copilot_reviewer":   "copilot-reviewer.yaml",
 }
 
 _PLAYBOOK_META = {
@@ -84,6 +85,7 @@ _PLAYBOOK_META = {
     "ci_notify":          {"icon": "🚨", "tags": ["github", "notifications"],"featured": False, "description": "CI build fails → AI diagnoses the failed step → posts root cause and suggested fix to Slack."},
     "incident_responder": {"icon": "🔥", "tags": ["ops", "notifications"],   "featured": False, "description": "Alert fires → AI correlates recent commits and deploys → posts root cause hypothesis to #incidents."},
     "dependency_updater": {"icon": "📦", "tags": ["github", "ops"],          "featured": False, "description": "Weekly cron → AI scans for outdated deps → bumps patch/minor versions → opens a single clean PR."},
+    "copilot_reviewer":   {"icon": "🤖", "tags": ["github", "code-review", "approval"], "featured": True, "description": "PR opened by Copilot/Cursor/Claude Code → AI reviews the diff → human approves before merge. The orchestration layer above your AI coding tool."},
 }
 
 
