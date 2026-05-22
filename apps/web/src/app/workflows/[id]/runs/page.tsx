@@ -19,6 +19,7 @@ interface Run {
   started_at: string | null
   completed_at: string | null
   created_at: string
+  max_turns: number | null
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -106,9 +107,16 @@ export default function RunsPage() {
                     <span className="text-xs text-stone-400">{run.triggered_by}</span>
                   )}
                 </div>
-                <span className="text-xs text-stone-400">
-                  {new Date(run.created_at).toLocaleString()}
-                </span>
+                <div className="flex items-center gap-4">
+                  {run.max_turns != null && (
+                    <span className="text-xs text-stone-400 font-mono">
+                      est. {run.max_turns} turns
+                    </span>
+                  )}
+                  <span className="text-xs text-stone-400">
+                    {new Date(run.created_at).toLocaleString()}
+                  </span>
+                </div>
               </Link>
             ))}
           </div>

@@ -22,6 +22,7 @@ interface RunMeta {
   current_block_id: string | null
   workflow_version_id: string
   state?: Record<string, unknown> | null
+  max_turns?: number | null
 }
 
 export default function RunDetailPage() {
@@ -153,6 +154,7 @@ export default function RunDetailPage() {
               current_block_id: run.current_block_id,
               workflow_version_id: run.workflow_version_id ?? null,
             }}
+            maxTurns={run.max_turns ?? null}
             getToken={getToken}
           />
         </div>
