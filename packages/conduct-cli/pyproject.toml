@@ -3,14 +3,14 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "marshal-cli"
+name = "conduct-cli"
 version = "0.1.0"
-description = "Marshal workflow CLI"
+description = "Conduct workflow CLI"
 requires-python = ">=3.9"
 dependencies = ["pyyaml>=6.0"]
 
 [project.scripts]
-marshal = "marshal_cli.main:main"
+conduct = "conduct_cli.main:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
