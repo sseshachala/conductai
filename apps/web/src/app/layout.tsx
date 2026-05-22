@@ -6,6 +6,11 @@ export const metadata: Metadata = {
   title: "Conduct — AI agents that act inside your stack",
   description:
     "Open-source AI engineer for small teams. Label a GitHub issue, get a tested draft PR — approved in Slack before anything merges.",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
 }
 
 const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
