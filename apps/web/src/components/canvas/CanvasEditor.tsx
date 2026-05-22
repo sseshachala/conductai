@@ -691,7 +691,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
         {activeView === "canvas" ? (
           <>
             {/* Left panel — block palette */}
-            <div className={`relative flex shrink-0 transition-all duration-200 border-r border-stone-200 ${leftOpen ? "w-44" : "w-8"}`}>
+            <div className={`relative flex shrink-0 transition-all duration-200 border-r border-stone-200 ${leftOpen ? "w-44" : "w-12"}`}>
               <button
                 onClick={() => setLeftOpen(v => !v)}
                 className="absolute -right-3 top-1/2 -translate-y-1/2 z-10 w-6 h-6 rounded-full bg-white border border-stone-200 shadow-sm flex items-center justify-center text-stone-400 hover:text-stone-700 transition-colors"
@@ -699,7 +699,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
               >
                 {leftOpen ? "‹" : "›"}
               </button>
-              {leftOpen && <BlockPalette getToken={getToken} />}
+              <BlockPalette getToken={getToken} collapsed={!leftOpen} />
             </div>
 
             {/* Center — canvas */}
