@@ -26,7 +26,7 @@ export default function AppShell({ children, noPadding }: { children: React.Reac
               <span className="text-white text-xs">⚡</span>
             </div>
             {!collapsed && (
-              <span className="font-bold text-stone-900 text-sm tracking-tight truncate">Delegator</span>
+              <span className="font-bold text-stone-900 text-sm tracking-tight truncate">Delegators</span>
             )}
           </Link>
         </div>

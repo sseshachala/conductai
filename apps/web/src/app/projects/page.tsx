@@ -101,7 +101,7 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
   return (
     <div className="min-h-screen bg-stone-50">
       <header className="border-b border-stone-200 bg-white px-6 py-3.5 flex items-center justify-between">
-        <span className="text-base font-bold text-stone-900 tracking-tight">Delegator</span>
+        <span className="text-base font-bold text-stone-900 tracking-tight">Delegators</span>
         {clerkEnabled && <AuthButton afterSignOutUrl="/" />}
       </header>
 
