@@ -183,8 +183,8 @@ export function GitHubRepoAllowlistField({ value, onChange, getToken }: RepoAllo
         </div>
       )}
 
-      {/* Typeahead input */}
-      <div className="relative">
+      {/* Typeahead input — hidden once a repo is selected (limit 1) */}
+      {selected.length === 0 && <div className="relative">
         <input
           type="text"
           value={search}
@@ -211,7 +211,7 @@ export function GitHubRepoAllowlistField({ value, onChange, getToken }: RepoAllo
             ))}
           </div>
         )}
-      </div>
+      </div>}
     </div>
   )
 }

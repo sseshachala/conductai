@@ -450,13 +450,10 @@ export default function BlockEditor({
 
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-stone-100 shrink-0">
-        <span className={cn("text-[9px] font-bold tracking-widest uppercase px-1.5 py-0.5 rounded shrink-0", style.label)}>
-          {style.labelText}
-        </span>
         <input
           value={label}
           onChange={e => onChange(blockId, { ...blockData, label: e.target.value })}
-          className="flex-1 text-sm font-medium text-stone-800 bg-transparent border-0 outline-none focus:bg-stone-50 rounded px-1 -mx-1 min-w-0"
+          className="flex-1 text-sm font-semibold text-stone-900 bg-transparent border-0 outline-none focus:bg-stone-50 rounded px-1 -mx-1 min-w-0"
           placeholder="Block name"
         />
       </div>
