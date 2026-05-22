@@ -28,11 +28,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
       {/* Nav */}
       <header className="px-6 py-5 flex items-center justify-between max-w-6xl mx-auto w-full">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-stone-900 flex items-center justify-center">
-            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          </div>
+          <img src="/icon.svg" alt="Conduct" className="w-7 h-7" />
           <span className="font-bold text-stone-900 text-base tracking-tight">Conduct</span>
         </div>
         {isLoaded && (
