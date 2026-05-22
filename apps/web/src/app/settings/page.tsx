@@ -13,9 +13,18 @@ export default function SettingsPage() {
   return (
     <AppShell>
       <div className="mx-auto max-w-3xl px-6 py-10">
-        <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-semibold text-stone-900">Settings</h1>
           <span className="text-xs text-stone-400">Tokens encrypted at rest</span>
+        </div>
+
+        {/* Onboarding hint */}
+        <div className="mb-6 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 flex items-start gap-3">
+          <span className="text-amber-500 text-base leading-none mt-0.5">⚠</span>
+          <p className="text-sm text-amber-800 leading-relaxed">
+            <span className="font-semibold">Add credentials before running agents.</span>{" "}
+            Create an environment under <strong>Environments</strong>, add your GitHub and Slack tokens under <strong>Integrations</strong>, then assign the environment to your agent on the canvas.
+          </p>
         </div>
 
         {/* Tab bar */}
