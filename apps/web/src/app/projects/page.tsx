@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
-import AuthButton from "@/components/AuthButton"
+import AppShell from "@/components/AppShell"
 import NewProjectModal from "@/components/NewProjectModal"
 
 interface Project {
@@ -90,27 +90,11 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
     setProjects(prev => prev.filter(p => p.id !== id))
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-stone-50 flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-stone-300 border-t-stone-600 rounded-full animate-spin" />
-      </div>
-    )
-  }
-
   return (
-    <div className="min-h-screen bg-stone-50">
-      <header className="border-b border-stone-200 bg-white px-6 py-3.5 flex items-center justify-between">
-        <span className="text-base font-bold text-stone-900 tracking-tight">Delegators</span>
-        {clerkEnabled && <AuthButton afterSignOutUrl="/" />}
-      </header>
-
-      <main className="mx-auto max-w-3xl px-6 py-10">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-xl font-semibold text-stone-900">Your projects</h1>
-            <p className="text-sm text-stone-400 mt-0.5">Each project has its own agents, credentials, and settings</p>
-          </div>
+    <AppShell>
+      <div className="mx-auto max-w-3xl px-6 py-10">
+        <div className="flex items-center justify-between mb-5">
+          <h1 className="text-xl font-semibold text-stone-900">Projects</h1>
           <button
             onClick={() => setShowModal(true)}
             className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700 transition-colors"
@@ -119,7 +103,11 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
           </button>
         </div>
 
-        {projects.length === 0 ? (
+        {loading ? (
+          <div className="space-y-2">
+            {[1, 2].map(i => <div key={i} className="h-20 rounded-xl border border-stone-200 bg-white animate-pulse" />)}
+          </div>
+        ) : projects.length === 0 ? (
           <div className="rounded-xl border border-dashed border-stone-300 p-16 text-center">
             <p className="text-stone-800 font-medium mb-1">No projects yet</p>
             <p className="text-stone-400 text-sm mb-6">Create your first project to get started</p>
@@ -143,7 +131,7 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
             ))}
           </div>
         )}
-      </main>
+      </div>
 
       {showModal && (
         <NewProjectModal
@@ -152,7 +140,7 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
           onCreate={(id) => selectProject(id)}
         />
       )}
-    </div>
+    </AppShell>
   )
 }
 
