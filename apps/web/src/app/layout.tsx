@@ -3,7 +3,7 @@ import "./globals.css"
 import { ClerkProvider } from "@clerk/nextjs"
 
 export const metadata: Metadata = {
-  title: "Delegator — AI engineer that opens draft PRs you approve",
+  title: "Delegators — AI engineer that opens draft PRs you approve",
   description:
     "Open-source AI engineer for small teams. Label a GitHub issue, get a tested draft PR — approved in Slack before anything merges.",
 }
