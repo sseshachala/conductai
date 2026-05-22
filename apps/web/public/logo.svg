@@ -1,0 +1,10 @@
+<svg width="140" height="32" viewBox="0 0 140 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Icon mark -->
+  <rect width="32" height="32" rx="7" fill="#09090b"/>
+  <path d="M22 10C20 8.7 17.7 8 15.5 8C10.8 8 7 11.8 7 16.5C7 21.2 10.8 25 15.5 25C17.7 25 20 24.3 22 23"
+        stroke="white" stroke-width="2.8" stroke-linecap="round" fill="none"/>
+  <circle cx="23.5" cy="22.5" r="2" fill="white"/>
+  <!-- Wordmark -->
+  <text x="42" y="21" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif"
+        font-size="15" font-weight="700" letter-spacing="-0.3" fill="#09090b">Conduct</text>
+</svg>

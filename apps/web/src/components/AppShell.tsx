@@ -23,9 +23,7 @@ export default function AppShell({ children, noPadding }: { children: React.Reac
         {/* Logo */}
         <div className={`px-3 py-4 border-b border-stone-100 flex items-center ${collapsed ? "justify-center" : "gap-2"}`}>
           <Link href="/workflows" className="flex items-center gap-2 min-w-0">
-            <div className="w-6 h-6 rounded-md bg-stone-900 flex items-center justify-center shrink-0">
-              <span className="text-white text-xs">⚡</span>
-            </div>
+            <img src="/icon.svg" alt="Conduct" className="w-6 h-6 shrink-0" />
             {!collapsed && (
               <span className="font-bold text-stone-900 text-sm tracking-tight truncate">Conduct</span>
             )}
