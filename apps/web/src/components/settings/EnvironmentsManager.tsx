@@ -161,7 +161,12 @@ function EnvironmentsManagerInner({ getToken }: { getToken: (() => Promise<strin
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments/${id}`, {
         method: "DELETE", headers,
       })
-      if (!res.ok) throw new Error("Failed to delete environment")
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setListError(body.detail ?? "Failed to delete environment")
+        setConfirmDelete(null)
+        return
+      }
       setEnvironments(prev => prev.filter(e => e.id !== id))
       setConfirmDelete(null)
     } catch {

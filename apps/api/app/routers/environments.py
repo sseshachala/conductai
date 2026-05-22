@@ -88,15 +88,22 @@ def delete_environment(
     if not env:
         raise HTTPException(status_code=404, detail="Environment not found")
 
-    # Nullify environment_id on any integrations assigned to this environment
+    # Block deletion if any workflows are still assigned to this environment
+    agents = (
+        db.query(Workflow)
+        .filter(Workflow.environment_id == env_id)
+        .all()
+    )
+    if agents:
+        names = ", ".join(a.name for a in agents)
+        raise HTTPException(
+            status_code=409,
+            detail=f"Remove this environment from {len(agents)} agent(s) first: {names}",
+        )
+
+    # Safe to delete — remove any dangling integration references and the env
     db.query(Integration).filter(Integration.environment_id == env_id).update(
         {"environment_id": None}, synchronize_session=False
     )
-
-    # Nullify environment_id on any workflows assigned to this environment
-    db.query(Workflow).filter(Workflow.environment_id == env_id).update(
-        {"environment_id": None}, synchronize_session=False
-    )
-
     db.delete(env)
     db.commit()
