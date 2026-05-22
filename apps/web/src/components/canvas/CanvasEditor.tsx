@@ -7,6 +7,7 @@ import {
   ReactFlow,
   Background,
   Controls,
+  MiniMap,
   addEdge,
   useNodesState,
   useEdgesState,
@@ -123,7 +124,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle")
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isFirstLoad = useRef(true)
-  const { screenToFlowPosition, setCenter } = useReactFlow()
+  const { screenToFlowPosition, setCenter, fitView } = useReactFlow()
   const router = useRouter()
   const [canvasLoading, setCanvasLoading] = useState(true)
   const [running, setRunning] = useState<"idle" | "dry" | "live">("idle")
@@ -231,6 +232,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
         }
         setTimeout(() => { isFirstLoad.current = false }, 100)
         setCanvasLoading(false)
+        setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 50)
       })
       .catch(() => { isFirstLoad.current = false; setCanvasLoading(false) })
     )
@@ -642,6 +644,13 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
             History
           </a>
           <button
+            onClick={() => fitView({ padding: 0.2, duration: 300 })}
+            title="Fit all blocks into view"
+            className="rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-500 hover:bg-stone-50 transition-colors"
+          >
+            ⊡ Fit
+          </button>
+          <button
             onClick={() => startRun(true)}
             disabled={running !== "idle"}
             className="rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-500 hover:bg-stone-50 transition-colors disabled:opacity-50"
@@ -710,6 +719,13 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
               >
                 <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#E7E5E4" />
                 <Controls className="!shadow-none !border !border-stone-200 !rounded-xl" showInteractive={false} />
+                <MiniMap
+                  nodeColor="#e7e5e4"
+                  maskColor="rgba(250,250,249,0.7)"
+                  className="!border !border-stone-200 !rounded-xl !shadow-none"
+                  pannable
+                  zoomable
+                />
               </ReactFlow>
               {activeRunId && drawerVisible && (
                 <RunDrawer
