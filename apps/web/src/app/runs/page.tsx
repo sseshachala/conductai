@@ -61,6 +61,7 @@ function GlobalRunsWithAuth() {
 function GlobalRunsContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
   const [runs, setRuns] = useState<RunWithWorkflow[]>([])
   const [loading, setLoading] = useState(true)
+  const [agentFilter, setAgentFilter] = useState<string>("")
 
   useEffect(() => {
     async function load() {
@@ -83,16 +84,33 @@ function GlobalRunsContent({ getToken }: { getToken: (() => Promise<string | nul
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const agentNames = Array.from(new Set(runs.map(r => r.workflow_name))).sort()
+  const filtered = agentFilter ? runs.filter(r => r.workflow_name === agentFilter) : runs
+
   return (
     <AppShell>
       <div className="mx-auto max-w-3xl px-6 py-10">
         <div className="flex items-center justify-between mb-5">
           <h1 className="text-xl font-semibold text-stone-900">Runs</h1>
-          <span className="text-xs text-stone-400">{runs.length} run{runs.length !== 1 ? "s" : ""}</span>
+          <div className="flex items-center gap-3">
+            {agentNames.length > 1 && (
+              <select
+                value={agentFilter}
+                onChange={e => setAgentFilter(e.target.value)}
+                className="text-xs border border-stone-200 rounded-lg px-2 py-1.5 text-stone-600 bg-white focus:outline-none focus:ring-2 focus:ring-stone-200"
+              >
+                <option value="">All agents</option>
+                {agentNames.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            )}
+            <span className="text-xs text-stone-400">{filtered.length} run{filtered.length !== 1 ? "s" : ""}</span>
+          </div>
         </div>
 
         {loading ? (
-          <p className="text-stone-400 text-sm">Loading…</p>
+          <div className="space-y-2">
+            {[1, 2, 3].map(i => <div key={i} className="h-12 rounded-xl border border-stone-200 bg-white animate-pulse" />)}
+          </div>
         ) : runs.length === 0 ? (
           <div className="rounded-xl border border-dashed border-stone-300 p-16 text-center">
             <p className="text-stone-800 font-medium mb-1">No runs yet</p>
@@ -111,7 +129,7 @@ function GlobalRunsContent({ getToken }: { getToken: (() => Promise<string | nul
                 </tr>
               </thead>
               <tbody>
-                {runs.map((run) => {
+                {filtered.map((run) => {
                   const style = STATUS_STYLES[run.status] ?? STATUS_STYLES.pending
                   return (
                     <tr
