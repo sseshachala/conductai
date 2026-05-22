@@ -175,7 +175,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
       {/* Bottom CTA */}
       <section className="px-6 py-20 text-center">
         <h2 className="text-3xl font-bold text-stone-900 mb-4">
-          {isLoaded && isSignedIn ? "Ready to delegate?" : "Try it in 30 seconds"}
+          {isLoaded && isSignedIn ? "Ready to conduct?" : "Try it in 30 seconds"}
         </h2>
         <p className="text-stone-500 mb-8 max-w-md mx-auto">
           {isLoaded && isSignedIn
