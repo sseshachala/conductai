@@ -116,7 +116,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
             <ol className="space-y-2.5">
               {[
                 { n: "1", text: "Create a project and connect your GitHub repo" },
-                { n: "2", text: "Pick an agent template (Autopilot is a good first one)" },
+                { n: "2", text: "Browse the Playbook Marketplace and install an agent in one click" },
                 { n: "3", text: "Add your credentials in Settings → Environments, then hit Run" },
               ].map(({ n, text }) => (
                 <li key={n} className="flex items-start gap-3 text-sm text-stone-600">
@@ -220,14 +220,14 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
       {/* Templates */}
       <section className="px-6 py-20">
         <div className="max-w-6xl mx-auto">
-          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">Ready-made agents</p>
+          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">Playbook Marketplace</p>
           <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
-            Start from a real playbook.<br />Not a blank canvas.
+            One click to install.<br />Running in minutes.
           </h2>
           <p className="text-center text-stone-500 text-sm max-w-xl mx-auto mb-12">
-            Every agent ships with a working YAML playbook. Connect your tools, pick a template, and your first run happens in minutes.
+            9 pre-built agent playbooks — browse, install, configure your credentials, and run. Already installed playbooks are tracked so you never duplicate. No blank canvas required.
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
             {TEMPLATES.map(t => (
               <div key={t.name} className="bg-white rounded-2xl border border-stone-200 p-6 flex flex-col gap-3">
                 <div className="flex items-start justify-between gap-2">
@@ -244,6 +244,14 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
               </div>
             ))}
           </div>
+          <div className="text-center">
+            <a
+              href="/marketplace"
+              className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-6 py-3 text-sm font-medium text-stone-700 hover:border-stone-300 hover:shadow-sm transition-all"
+            >
+              📦 Browse all 9 playbooks in the Marketplace →
+            </a>
+          </div>
         </div>
       </section>
 
@@ -255,7 +263,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             {[
               { step: "1", icon: "🔗", title: "Connect your repo", body: "Link GitHub, Slack, and Linear. No migration, no new tooling — Conduct wraps around what you already use." },
-              { step: "2", icon: "⚡", title: "Assign an agent", body: "Pick a template or build on the canvas. Set your environment credentials. The agent is ready to run." },
+              { step: "2", icon: "📦", title: "Install from the Marketplace", body: "Browse 9 pre-built playbooks, click Install — canvas is pre-wired. Add credentials and the agent is ready to run." },
               { step: "3", icon: "✅", title: "Get output in Slack", body: "PRs, diagnoses, triage comments, changelogs — delivered to Slack. Approve or reject with one click." },
             ].map(s => (
               <div key={s.step} className="bg-white rounded-2xl border border-stone-200 p-6 text-center">
@@ -524,8 +532,8 @@ const WHY_DELEGATOR = [
   },
   {
     icon: "⚡",
-    title: "9 pre-built agents, ready to run",
-    body: "Autopilot, PR Reviewer, Issue Triage, Release Notes, CI Failure Alert, Incident Responder, Dependency Updater. Pick a template, first run in minutes — not days.",
+    title: "Playbook Marketplace — one click to install",
+    body: "9 pre-built agents in the Marketplace: Autopilot, PR Reviewer, Issue Triage, Release Notes, CI Failure Alert, Incident Responder, Dependency Updater. Install, configure credentials, run. Already-installed playbooks are tracked so you never duplicate.",
   },
   {
     icon: "🧩",
@@ -555,11 +563,11 @@ const FAQ = [
   },
   {
     q: "What specific agents come included?",
-    a: "The pre-built suite includes Autopilot, PR Reviewer, Issue Triage, Release Notes, CI Failure Alert, Incident Responder, Dependency Updater, Deploy Monitor, and Scheduled Report — 9 agents total. Each is pre-configured with sensible defaults and editable on the canvas.",
+    a: "The Playbook Marketplace includes 9 agents: Autopilot, PR Reviewer, Issue Triage, Release Notes, CI Failure Alert, Incident Responder, Dependency Updater, and more. Each installs in one click — the canvas is pre-wired, just add credentials. Already-installed playbooks are tracked so you never create duplicates.",
   },
   {
     q: "How long does it take to get up and running?",
-    a: "Pick a template and you can have your first agent running in minutes, not days. Connecting GitHub, Slack, and Linear takes about five minutes, and the agents are pre-configured — there's no build phase before they're operational.",
+    a: "Install a playbook from the Marketplace and your first agent can be running in minutes. Connecting GitHub and Slack takes about five minutes. The playbooks are pre-wired — there's no build phase before they're operational.",
   },
   {
     q: "Will our security team approve this?",
