@@ -36,7 +36,7 @@ const INTEGRATION_COLORS: Record<string, string> = {
 }
 
 function handleClass(color: string) {
-  return `!w-2.5 !h-2.5 !border-2 !border-white !shadow-sm !transition-transform hover:!scale-125 ${color}`
+  return `!w-4 !h-4 !border-2 !border-white !shadow-md !transition-all !opacity-0 group-hover:!opacity-100 hover:!scale-125 hover:!shadow-lg ${color}`
 }
 
 function BlockNode({ data, selected }: NodeProps) {
@@ -58,7 +58,7 @@ function BlockNode({ data, selected }: NodeProps) {
     <div
       style={{ width: 200 }}
       className={cn(
-        "rounded-xl border-2 px-3 py-2.5 cursor-pointer transition-all shadow-sm",
+        "group rounded-xl border-2 px-3 py-2.5 cursor-pointer transition-all shadow-sm",
         style.bg,
         style.border,
         selected
