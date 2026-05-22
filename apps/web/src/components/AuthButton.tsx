@@ -40,7 +40,7 @@ function AccountMenu({ afterSignOutUrl, dropUp }: { afterSignOutUrl: string; dro
       </button>
 
       {open && (
-        <div className={`absolute right-0 w-52 bg-white border border-stone-200 rounded-xl shadow-lg py-1 z-50 ${dropUp ? "bottom-9" : "top-9"}`}>
+        <div className={`absolute w-52 bg-white border border-stone-200 rounded-xl shadow-lg py-1 z-50 ${dropUp ? "bottom-full mb-1 left-0" : "top-9 right-0"}`}>
           {email && (
             <>
               <p className="px-3 py-2 text-[11px] text-stone-400 truncate">{email}</p>

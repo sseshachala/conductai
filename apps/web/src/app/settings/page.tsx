@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import Link from "next/link"
 import AppShell from "@/components/AppShell"
 import CredentialsManager from "@/components/settings/CredentialsManager"
 import EnvironmentsManager from "@/components/settings/EnvironmentsManager"
@@ -13,13 +12,10 @@ export default function SettingsPage() {
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-2xl px-6 py-12">
-        <div className="mb-8">
-          <h1 className="text-2xl font-semibold text-stone-900">Settings</h1>
-          <p className="text-sm text-stone-500 mt-1.5">
-            Manage your integrations and environments.
-            All tokens are encrypted with AES-256-GCM before storage.
-          </p>
+      <div className="mx-auto max-w-3xl px-6 py-10">
+        <div className="flex items-center justify-between mb-5">
+          <h1 className="text-xl font-semibold text-stone-900">Settings</h1>
+          <span className="text-xs text-stone-400">Tokens encrypted at rest</span>
         </div>
 
         {/* Tab bar */}
@@ -48,15 +44,6 @@ export default function SettingsPage() {
 
         {activeTab === "integrations" && <CredentialsManager />}
         {activeTab === "environments" && <EnvironmentsManager />}
-
-        <div className="mt-10 pt-8 border-t border-stone-200 text-right">
-          <Link
-            href="/workflows/new"
-            className="rounded-lg px-5 py-2.5 text-sm font-medium bg-stone-900 text-white hover:bg-stone-700 transition-colors"
-          >
-            Create your first agent →
-          </Link>
-        </div>
       </div>
     </AppShell>
   )
