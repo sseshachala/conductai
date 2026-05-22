@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
-import AuthButton from "@/components/AuthButton"
 import {
   ReactFlow,
   Background,
@@ -570,11 +569,10 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
   const selectedData = selectedNode?.data as BlockNodeData | undefined
 
   return (
-    <div className="flex flex-col h-screen bg-stone-50">
+    <div className="flex flex-col h-full bg-stone-50">
       {/* Top bar */}
       <header className="flex items-center justify-between px-5 py-3 bg-white border-b border-stone-200 shrink-0">
         <div className="flex items-center gap-3">
-          <a href="/workflows" className="text-stone-400 hover:text-stone-700 text-sm">←</a>
           <input
             value={workflowName}
             onChange={(e) => setWorkflowName(e.target.value)}
@@ -652,7 +650,6 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
           >
             {running === "live" ? "Starting…" : activeRunId ? "▶ Running…" : "▶ Run"}
           </button>
-          <AuthButton afterSignOutUrl="/sign-in" />
         </div>
       </header>
 
