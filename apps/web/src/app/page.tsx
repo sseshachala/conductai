@@ -127,6 +127,26 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         )}
       </section>
 
+      {/* Audience */}
+      <section className="px-6 py-10">
+        <div className="max-w-3xl mx-auto">
+          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-6">Built for</p>
+          <div className="grid sm:grid-cols-4 gap-3">
+            {[
+              { label: "Vibe coders", desc: "Solo builders who want to ship faster without managing infrastructure" },
+              { label: "Teams of 2–5", desc: "Early-stage startups where every engineer counts — let agents handle the toil" },
+              { label: "Teams of 5–10", desc: "Growing teams drowning in issues, reviews, and incident triage" },
+              { label: "Teams of 10–15", desc: "Scaling teams who need consistent process without adding headcount" },
+            ].map(({ label, desc }) => (
+              <div key={label} className="rounded-xl border border-stone-200 bg-white px-4 py-4">
+                <p className="text-sm font-semibold text-stone-900 mb-1">{label}</p>
+                <p className="text-xs text-stone-400 leading-relaxed">{desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Trust strip */}
       <div className="border-y border-stone-100 bg-stone-50 py-4 px-6">
         <div className="max-w-3xl mx-auto flex flex-wrap items-center justify-center gap-6 text-xs font-medium text-stone-500">
