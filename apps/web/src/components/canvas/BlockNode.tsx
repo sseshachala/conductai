@@ -43,6 +43,7 @@ function BlockNode({ data, selected }: NodeProps) {
   const nodeData = data as BlockNodeData
   const style = BLOCK_STYLES[nodeData.type]
   const isLogic = nodeData.type === "logic"
+  const isApproval = nodeData.type === "approval"
   const missingCondition = isLogic && !(nodeData.config as Record<string, unknown>)?.condition
   const integration = nodeData.integration as string | undefined
   const action = nodeData.config?.action
@@ -131,6 +132,27 @@ function BlockNode({ data, selected }: NodeProps) {
           />
           <Handle
             id="fail"
+            type="source"
+            position={Position.Bottom}
+            style={{ left: "72%", bottom: -6 }}
+            className={handleClass("!bg-red-400")}
+          />
+        </>
+      ) : isApproval ? (
+        <>
+          <div className="flex justify-between mt-2 px-0.5">
+            <span className="text-[8px] font-semibold text-green-600 uppercase tracking-wide">approved</span>
+            <span className="text-[8px] font-semibold text-red-500 uppercase tracking-wide">rejected</span>
+          </div>
+          <Handle
+            id="approved"
+            type="source"
+            position={Position.Bottom}
+            style={{ left: "28%", bottom: -6 }}
+            className={handleClass("!bg-green-400")}
+          />
+          <Handle
+            id="rejected"
             type="source"
             position={Position.Bottom}
             style={{ left: "72%", bottom: -6 }}
