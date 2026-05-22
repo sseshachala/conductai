@@ -41,7 +41,9 @@ blocks:
     label: Skip — human PR
     description: "PR #{{_trigger.number}} is human-authored — skipping AI review gate."
     output:
-      via: none
+      via: slack
+      slack:
+        channel: "#engineering"
 
   review_pr:
     type: brain
@@ -93,6 +95,7 @@ blocks:
   gate_merge:
     type: approval
     label: Human approval required
+    channel: "#engineering"
     description: >
       AI PR #{{_trigger.number}} has been reviewed.
       Critical issues: {{review_pr.critical}} · Warnings: {{review_pr.warnings}}
