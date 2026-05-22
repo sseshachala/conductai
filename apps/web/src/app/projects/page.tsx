@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import NewProjectModal from "@/components/NewProjectModal"
+import OnboardingChecklist from "@/components/OnboardingChecklist"
 
 interface Project {
   id: string
@@ -93,6 +94,7 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
   return (
     <AppShell>
       <div className="mx-auto max-w-3xl px-6 py-10">
+        <OnboardingChecklist hasProject={projects.length > 0} getToken={getToken} />
         <div className="flex items-center justify-between mb-5">
           <h1 className="text-xl font-semibold text-stone-900">Projects</h1>
           <button
