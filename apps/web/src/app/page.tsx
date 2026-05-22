@@ -33,6 +33,14 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         </div>
         <div className="flex items-center gap-4">
           <a
+            href="https://github.com/sseshachala/conductai/discussions/new?category=ideas"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
+          >
+            💡 Request an idea
+          </a>
+          <a
             href="https://github.com/sseshachala/conductai"
             target="_blank"
             rel="noopener noreferrer"
@@ -402,7 +410,15 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         >
           GitHub
         </a>
-        {" · MIT licensed"}
+        {" · MIT licensed · "}
+        <a
+          href="https://github.com/sseshachala/conductai/discussions/new?category=ideas"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-stone-600 transition-colors"
+        >
+          💡 Request an idea
+        </a>
       </footer>
 
       {/* FAQ JSON-LD structured data */}
