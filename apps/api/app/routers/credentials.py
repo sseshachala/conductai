@@ -15,6 +15,7 @@ from app.core.auth import get_workspace_id
 from app.core.crypto import decrypt, encrypt
 from app.core.database import get_db
 from app.models.integration import Integration
+from app.models.workflow import Workflow
 
 GITHUB_API = "https://api.github.com"
 
@@ -120,6 +121,21 @@ def delete_credential(handle: str, db: Session = Depends(get_db), workspace_id: 
     ).first()
     if not row:
         raise HTTPException(status_code=404, detail="Credential not found")
+
+    # Block deletion if this integration's environment is assigned to any workflow
+    if row.environment_id:
+        agents = (
+            db.query(Workflow)
+            .filter(Workflow.environment_id == row.environment_id)
+            .all()
+        )
+        if agents:
+            names = ", ".join(a.name for a in agents)
+            raise HTTPException(
+                status_code=409,
+                detail=f"This credential's environment is used by {len(agents)} agent(s): {names}. Remove the environment from those agents first.",
+            )
+
     db.delete(row)
     db.commit()
 
