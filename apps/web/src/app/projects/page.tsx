@@ -108,14 +108,19 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
             {[1, 2].map(i => <div key={i} className="h-20 rounded-xl border border-stone-200 bg-white animate-pulse" />)}
           </div>
         ) : projects.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-stone-300 p-16 text-center">
-            <p className="text-stone-800 font-medium mb-1">No projects yet</p>
-            <p className="text-stone-400 text-sm mb-6">Create your first project to get started</p>
+          <div className="rounded-xl border border-dashed border-stone-300 px-10 py-14 text-center">
+            <p className="text-stone-800 font-semibold mb-2">Create your first project</p>
+            <p className="text-stone-400 text-sm mb-2 max-w-xs mx-auto leading-relaxed">
+              A project groups your agents, runs, and credentials. Think of it as one repo or one team.
+            </p>
+            <p className="text-stone-400 text-sm mb-8 max-w-xs mx-auto leading-relaxed">
+              Once created, you&apos;ll pick a template and have your first agent running in minutes.
+            </p>
             <button
               onClick={() => setShowModal(true)}
               className="inline-block rounded-lg bg-stone-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-stone-700 transition-colors"
             >
-              Create your first project
+              + New project
             </button>
           </div>
         ) : (
