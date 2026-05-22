@@ -13,6 +13,9 @@ import {
   useEdgesState,
   useReactFlow,
   ReactFlowProvider,
+  ConnectionMode,
+  ConnectionLineType,
+  MarkerType,
   type Connection,
   type Node,
   type Edge,
@@ -218,17 +221,28 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
           )
           const allSameY = graph.nodes.length > 1 &&
             graph.nodes.every((n: Node) => n.position?.y === graph.nodes[0].position?.y)
+          const styledEdges = (es: Edge[]) => es.map(e => ({
+            ...e,
+            type: e.type ?? "smoothstep",
+            markerEnd: e.markerEnd ?? { type: MarkerType.ArrowClosed, width: 16, height: 16, color: "#a8a29e" },
+            style: e.style ?? { stroke: "#a8a29e", strokeWidth: 2 },
+          }))
           if (allAtOrigin || allSameY) {
             const laid = autoLayout(graph.nodes, graph.edges)
             setNodes(laid.nodes)
-            setEdges(laid.edges)
+            setEdges(styledEdges(laid.edges))
           } else {
             setNodes(graph.nodes)
-            setEdges(graph.edges)
+            setEdges(styledEdges(graph.edges))
           }
         } else {
           if (graph?.nodes) setNodes(graph.nodes)
-          if (graph?.edges) setEdges(graph.edges)
+          if (graph?.edges) setEdges(graph.edges.map((e: Edge) => ({
+            ...e,
+            type: e.type ?? "smoothstep",
+            markerEnd: e.markerEnd ?? { type: MarkerType.ArrowClosed, width: 16, height: 16, color: "#a8a29e" },
+            style: e.style ?? { stroke: "#a8a29e", strokeWidth: 2 },
+          })))
         }
         setTimeout(() => { isFirstLoad.current = false }, 100)
         setCanvasLoading(false)
@@ -291,7 +305,12 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
   }, [nodes, edges, workflowName, save])
 
   const onConnect = useCallback(
-    (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
+    (connection: Connection) => setEdges((eds) => addEdge({
+      ...connection,
+      type: "smoothstep",
+      markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color: "#a8a29e" },
+      style: { stroke: "#a8a29e", strokeWidth: 2 },
+    }, eds)),
     [setEdges]
   )
 
@@ -716,6 +735,16 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
                 maxZoom={2}
                 deleteKeyCode="Backspace"
                 proOptions={{ hideAttribution: true }}
+                connectionMode={ConnectionMode.Loose}
+                connectionLineType={ConnectionLineType.SmoothStep}
+                connectionRadius={40}
+                snapGrid={[16, 16]}
+                snapToGrid
+                defaultEdgeOptions={{
+                  type: "smoothstep",
+                  markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color: "#a8a29e" },
+                  style: { stroke: "#a8a29e", strokeWidth: 2 },
+                }}
               >
                 <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#E7E5E4" />
                 <Controls className="!shadow-none !border !border-stone-200 !rounded-xl" showInteractive={false} />
