@@ -73,6 +73,7 @@ blocks:
   approve_pr:
     type: approval
     label: Approve PR
+    channel: "#engineering"
     description: |
       Fix is ready for issue #{{fetch_issue.issue_number}}: {{fetch_issue.title}}
 
