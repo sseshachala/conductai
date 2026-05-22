@@ -530,7 +530,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
     } catch {
       setRunning("idle")
     }
-  }, [workflowId, getToken, router, nodes])
+  }, [workflowId, getToken, router, nodes, selectedEnvId])
 
   const _fireRun = useCallback(async (
     headers: Record<string, string>,
