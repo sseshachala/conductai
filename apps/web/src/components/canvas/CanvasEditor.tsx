@@ -731,6 +731,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
                     environments={environments}
                     selectedEnvId={selectedEnvId}
                     credentials={envCredentials}
+                    nodes={nodes}
                   />
                 )
               )}
@@ -851,13 +852,24 @@ function EnvironmentPanel({
   environments,
   selectedEnvId,
   credentials,
+  nodes,
 }: {
   environments: Array<{ id: string; name: string }>
   selectedEnvId: string
   credentials: Array<{ handle: string; service: string }>
+  nodes: Node[]
 }) {
   const env = environments.find(e => e.id === selectedEnvId)
   const connectedServices = new Set(credentials.map(c => c.service))
+
+  // Derive the services this workflow actually uses from block integrations
+  const usedServices = Array.from(
+    new Set(
+      nodes
+        .map(n => (n.data as BlockNodeData).integration as string | undefined)
+        .filter((s): s is string => !!s && s in SERVICE_META)
+    )
+  )
 
   return (
     <div className="flex-1 flex flex-col px-4 py-5 gap-5 min-w-0">
@@ -876,12 +888,12 @@ function EnvironmentPanel({
         )}
       </div>
 
-      {/* Integrations */}
-      {env && (
+      {/* Only show services this workflow needs */}
+      {env && usedServices.length > 0 && (
         <div>
           <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-2">Integrations</p>
           <div className="space-y-2">
-            {ALL_SERVICES.map(svc => {
+            {usedServices.map(svc => {
               const meta = SERVICE_META[svc]
               const connected = connectedServices.has(svc)
               return (
@@ -890,7 +902,7 @@ function EnvironmentPanel({
                     <span className={`w-5 h-5 rounded text-[9px] font-bold flex items-center justify-center ${meta.color}`}>
                       {meta.abbr}
                     </span>
-                    <span className="text-xs text-stone-600">{meta.label}</span>
+                    <span className="text-xs text-stone-700">{meta.label}</span>
                   </div>
                   {connected ? (
                     <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-600">
@@ -898,8 +910,8 @@ function EnvironmentPanel({
                       connected
                     </span>
                   ) : (
-                    <a href="/settings" className="text-[10px] text-indigo-500 hover:underline">
-                      connect →
+                    <a href="/settings" className="text-[10px] text-amber-600 hover:underline font-medium">
+                      ⚠ not connected
                     </a>
                   )}
                 </div>
