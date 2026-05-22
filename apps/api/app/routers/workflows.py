@@ -74,6 +74,34 @@ _TEMPLATE_PLAYBOOKS = {
     "issue_triage":       "issue-triage.yaml",
 }
 
+_PLAYBOOK_META = {
+    "autopilot_quick":    {"icon": "⚡", "tags": ["github", "code"],        "featured": True,  "description": "GitHub issue labeled → implement fix → open PR. No test step — CI runs tests on the PR."},
+    "autopilot_full":     {"icon": "🤖", "tags": ["github", "code"],        "featured": True,  "description": "GitHub issue labeled → implement fix → run tests with retry → open PR."},
+    "autopilot_approved": {"icon": "✋", "tags": ["github", "code", "approval"], "featured": True, "description": "Implement fix → run tests → human approves in Slack → open PR. Nothing ships without a gate."},
+    "pr_reviewer":        {"icon": "🔍", "tags": ["github", "code-review"], "featured": True,  "description": "Any PR opened → AI reviews the diff for bugs, security issues, and style → posts a review comment."},
+    "issue_triage":       {"icon": "🏷",  "tags": ["github", "ops"],         "featured": True,  "description": "New issue opened → AI classifies type and priority → adds labels → posts a clarifying comment if vague."},
+    "release_notes":      {"icon": "📝", "tags": ["github", "notifications"],"featured": False, "description": "Git tag pushed → AI reads merged PRs → groups by type → writes CHANGELOG entry → posts to Slack."},
+    "ci_notify":          {"icon": "🚨", "tags": ["github", "notifications"],"featured": False, "description": "CI build fails → AI diagnoses the failed step → posts root cause and suggested fix to Slack."},
+    "incident_responder": {"icon": "🔥", "tags": ["ops", "notifications"],   "featured": False, "description": "Alert fires → AI correlates recent commits and deploys → posts root cause hypothesis to #incidents."},
+    "dependency_updater": {"icon": "📦", "tags": ["github", "ops"],          "featured": False, "description": "Weekly cron → AI scans for outdated deps → bumps patch/minor versions → opens a single clean PR."},
+}
+
+
+@router.get("/playbooks")
+def list_playbooks():
+    return [
+        {
+            "slug": slug,
+            "name": slug.replace("_", " ").title(),
+            "icon": _PLAYBOOK_META[slug]["icon"],
+            "description": _PLAYBOOK_META[slug]["description"],
+            "tags": _PLAYBOOK_META[slug]["tags"],
+            "featured": _PLAYBOOK_META[slug]["featured"],
+        }
+        for slug in _TEMPLATE_PLAYBOOKS
+        if slug in _PLAYBOOK_META
+    ]
+
 
 @router.post("", response_model=WorkflowDetailOut, status_code=201)
 def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id)):
