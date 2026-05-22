@@ -73,7 +73,9 @@ blocks:
   approve_pr:
     type: approval
     label: Approve PR
+    via: slack          # options: slack | email | both
     channel: "#engineering"
+    # approval_email: "team@yourcompany.com"  # uncomment to also send email
     description: |
       Fix is ready for issue #{{fetch_issue.issue_number}}: {{fetch_issue.title}}
 
