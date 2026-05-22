@@ -125,6 +125,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
   const isFirstLoad = useRef(true)
   const { screenToFlowPosition, setCenter } = useReactFlow()
   const router = useRouter()
+  const [canvasLoading, setCanvasLoading] = useState(true)
   const [running, setRunning] = useState<"idle" | "dry" | "live">("idle")
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const [drawerVisible, setDrawerVisible] = useState(false)
@@ -229,8 +230,9 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
           if (graph?.edges) setEdges(graph.edges)
         }
         setTimeout(() => { isFirstLoad.current = false }, 100)
+        setCanvasLoading(false)
       })
-      .catch(() => { isFirstLoad.current = false })
+      .catch(() => { isFirstLoad.current = false; setCanvasLoading(false) })
     )
   }, [workflowId, getToken, setNodes, setEdges])
 
@@ -330,6 +332,10 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
 
   const startRun = useCallback(async (dryRun: boolean) => {
     // Client-side quick checks first
+    if (!selectedEnvId) {
+      setValidationErrors([{ blockId: "__env__", label: "Environment", message: "Select an environment before running — add one in Settings → Environments" }])
+      return
+    }
     const localErrors = validateNodes(nodes)
     if (localErrors.length > 0) {
       setValidationErrors(localErrors)
@@ -671,6 +677,21 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
 
             {/* Center — canvas */}
             <div className="flex-1 relative min-w-0">
+              {canvasLoading && (
+                <div className="absolute inset-0 z-10 bg-stone-50 flex items-center justify-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="flex gap-3">
+                      {[80, 120, 80].map((w, i) => (
+                        <div key={i} className="rounded-xl bg-stone-200 animate-pulse h-16" style={{ width: w }} />
+                      ))}
+                    </div>
+                    <div className="flex gap-2 mt-1">
+                      {[1, 2].map(i => <div key={i} className="w-8 h-1 rounded-full bg-stone-200 animate-pulse" />)}
+                    </div>
+                    <p className="text-xs text-stone-400 mt-2">Loading canvas…</p>
+                  </div>
+                </div>
+              )}
               <ReactFlow
                 nodes={nodes}
                 edges={edges}
@@ -810,6 +831,7 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
                   <button
                     key={e.blockId}
                     onClick={() => {
+                      if (e.blockId === "__env__") return
                       const node = nodes.find(n => n.id === e.blockId)
                       if (node) {
                         setSelectedNode(node)
