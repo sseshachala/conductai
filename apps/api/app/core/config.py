@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     # CORS — comma-separated allowed origins; defaults to all in dev
     allowed_origins: str = "*"
 
+    # Environment — used to gate dev-only defaults (e.g. encryption key check)
+    environment: str = "development"
+
     # Admin — used to approve waitlisted users via POST /projects/admin/approve
     admin_secret: str = ""
 
