@@ -152,18 +152,26 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
 
   async function uninstall(slug: string) {
     const entry = installedMap.get(slug)
-    if (!entry) return
+    if (!entry) {
+      console.error("[uninstall] no entry found for slug", slug, [...installedMap.entries()])
+      return
+    }
     setUninstalling(slug)
     try {
       const headers = await authHeaders()
       headers["X-Workspace-Id"] = entry.workspaceId
 
+      console.log("[uninstall]", { slug, id: entry.id, workspaceId: entry.workspaceId })
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${entry.id}`, {
         method: "DELETE",
         headers,
       })
+      console.log("[uninstall] response status", res.status)
       if (res.ok) {
         setInstalledMap(prev => { const m = new Map(prev); m.delete(slug); return m })
+      } else {
+        const body = await res.text()
+        console.error("[uninstall] failed", res.status, body)
       }
     } finally {
       setUninstalling(null)
