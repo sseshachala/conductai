@@ -84,32 +84,31 @@ def _local_search_code(pattern: str, path: str = ".", file_glob: str = "*") -> s
 
 
 # ── Modal sandbox (production) ────────────────────────────────────────────────
+# Modal requires @app.function at module (global) scope.
+# We guard the entire definition so the module still imports cleanly without Modal installed.
 
-# Lazy-initialised Modal function stub — defined once, reused across calls.
-_modal_run_tool = None
+_modal_fn = None
 
+try:
+    import modal as _modal  # type: ignore[import]
 
-def _get_modal_run_tool():
-    global _modal_run_tool
-    if _modal_run_tool is not None:
-        return _modal_run_tool
-
-    import modal  # type: ignore[import]
-
-    _app = modal.App("delegator-brain-sandbox-v2")  # bumped to bust Modal image cache
-    forbidden_patterns = _FORBIDDEN_SHELL_PATTERNS  # captured at definition time
-
-    _image = (
-        modal.Image.debian_slim()
+    _modal_app = _modal.App("delegator-brain-sandbox-v2")
+    _modal_image = (
+        _modal.Image.debian_slim()
         .apt_install("git", "curl", "wget", "unzip", "python3", "python3-pip", "nodejs", "npm")
-        .run_commands("git --version && node --version && python3 --version")  # verify at build time
+        .run_commands("git --version && node --version && python3 --version")
     )
 
-    @_app.function(timeout=300, cpu=1, memory=1024, retries=0, image=_image, serialized=True)
-    def run_tool(name: str, inputs: dict) -> str:
+    @_modal_app.function(timeout=300, cpu=1, memory=1024, retries=0, image=_modal_image)
+    def _modal_fn(name: str, inputs: dict) -> str:  # type: ignore[misc]
         import os as _os
         import re as _re
         import subprocess as _sp
+
+        _forbidden = [
+            r"rm\s+-rf\s+/", r"rm\s+-fr\s+/", r"mkfs", r"dd\s+if=",
+            r":\(\)\{.*\}", r">\s*/dev/sd", r"chmod\s+777\s+/", r"chown.*root",
+        ]
 
         if name == "read_file":
             try:
@@ -130,7 +129,7 @@ def _get_modal_run_tool():
 
         if name == "run_shell":
             cmd = inputs["command"]
-            for p in forbidden_patterns:
+            for p in _forbidden:
                 if _re.search(p, cmd):
                     return f"Refused: matches forbidden pattern '{p}'"
             try:
@@ -159,17 +158,14 @@ def _get_modal_run_tool():
 
         return f"Unknown tool: {name}"
 
-    _modal_run_tool = run_tool
-    return _modal_run_tool
+except Exception:
+    pass  # Modal not installed or misconfigured — _modal_fn stays None
 
 
 def _modal_dispatch(tool_name: str, tool_input: dict) -> str:
     try:
-        fn = _get_modal_run_tool()
-        return fn.remote(tool_name, tool_input)
+        return _modal_fn.remote(tool_name, tool_input)
     except Exception as e:
-        # Surface Modal-level errors (cold start failure, timeout, container crash)
-        # back to the executor so they appear in the run trace instead of being silent.
         error_type = type(e).__name__
         msg = f"[Modal error — {error_type}] {e}"
         log.error("Modal dispatch error for %s: %s", tool_name, e, exc_info=True)
