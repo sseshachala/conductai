@@ -189,7 +189,34 @@ class Block(BaseModel):
 # DAG entry time.
 # ---------------------------------------------------------------------------
 class Trigger(BaseModel):
-    """One concrete trigger. Keyed in YAML by its event name (e.g. github.issue_labeled)."""
+    """
+    One concrete trigger. Keyed in YAML by its event name (e.g. github.issue_labeled).
+
+    Label matching for ``github.issue_labeled`` events
+    ---------------------------------------------------
+    Single label (legacy, still supported)::
+
+        on:
+          github.issue_labeled:
+            label: autopilot ready
+
+    Multiple labels — fires when **any** of the listed labels is added::
+
+        on:
+          github.issue_labeled:
+            labels:
+              - autopilot ready
+              - ai_pilot_ready
+              - ai_ready
+            label_mode: one_of   # default when `labels` list is present
+
+    All labels must be present on the issue::
+
+        on:
+          github.issue_labeled:
+            labels: [autopilot ready, ai_pilot_ready]
+            label_mode: all_of
+    """
 
     integration: str | None = None
     next: str | None = Field(
@@ -197,7 +224,7 @@ class Trigger(BaseModel):
         description="Entry block id. Defaults to the first key under blocks: if omitted.",
     )
 
-    model_config = ConfigDict(extra="allow")  # event-specific filter fields
+    model_config = ConfigDict(extra="allow")  # event-specific filter fields (label, labels, label_mode, etc.)
 
 
 # ---------------------------------------------------------------------------
