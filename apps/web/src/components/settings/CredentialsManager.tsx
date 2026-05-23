@@ -108,7 +108,10 @@ function CredentialsManagerInner({ getToken }: { getToken: (() => Promise<string
     try {
       const headers = await buildHeaders()
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials`, { headers })
-      if (res.ok) setCredentials(await res.json())
+      if (res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data)) setCredentials(data)
+      }
     } catch { /* silent */ }
   }
 
@@ -147,8 +150,11 @@ function CredentialsManagerInner({ getToken }: { getToken: (() => Promise<string
       })
       if (!res.ok) throw new Error("Save failed")
       const listHeaders = await buildHeaders()
-      const list = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials`, { headers: listHeaders }).then(r => r.json())
-      setCredentials(list)
+      const listRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials`, { headers: listHeaders })
+      if (listRes.ok) {
+        const list = await listRes.json()
+        if (Array.isArray(list)) setCredentials(list)
+      }
       setOpenService(null)
       setFieldValues({})
     } catch {
