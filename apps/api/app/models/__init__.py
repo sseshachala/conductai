@@ -4,8 +4,9 @@ from app.models.workspace_user import WorkspaceUser
 from app.models.workflow import Workflow, WorkflowVersion
 from app.models.integration import Integration
 from app.models.run import Run, RunEvent
+from app.models.email_template import EmailTemplate
 
 __all__ = [
     "Workspace", "User", "WorkspaceUser", "Workflow", "WorkflowVersion",
-    "Integration", "Run", "RunEvent",
+    "Integration", "Run", "RunEvent", "EmailTemplate",
 ]
