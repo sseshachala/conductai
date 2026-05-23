@@ -53,13 +53,48 @@ blocks:
       If the PR looks clean, say so clearly.
 
       Output ONLY the following JSON on the last line:
-        {"review_url": "<PR URL>", "findings": <number of issues found>}
+        {"review_url": "<PR URL>", "findings": <number of issues found>, "critical": <number of critical issues>}
+    next: has_critical
+
+  has_critical:
+    type: logic
+    label: Critical issues found?
+    condition: "{{review_pr.critical}} > 0"
+    next:
+      pass: create_fix_issue
+      fail: notify_review
+
+  create_fix_issue:
+    type: brain
+    mode: agentic
+    label: Create fix issue
+    description: |
+      A PR review found critical issues that need to be fixed by an automated agent.
+
+      PR: {{review_pr.review_url}}
+      Repo: {{_trigger.repository.full_name}}
+      Critical issues: {{review_pr.critical}}
+
+      Steps:
+      1. Create a GitHub issue via the API:
+         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues
+         Headers: Authorization: token <github_token>, Content-Type: application/json
+         Body:
+         {
+           "title": "fix: address critical review findings on PR #{{_trigger.number}}",
+           "body": "## Context\nPR #{{_trigger.number}} was reviewed and {{review_pr.critical}} critical issue(s) were found.\n\nReview: {{review_pr.review_url}}\n\n## Task\nRead the review comment on the PR, identify all 🔴 Critical findings, and implement fixes.\n\nFiles changed in the PR are the ones to focus on.",
+           "labels": ["autopilot ready"]
+         }
+         (retrieve the GitHub token from the Delegator credentials vault)
+
+      Output ONLY the following JSON on the last line:
+        {"issue_url": "<created issue URL>", "issue_number": <number>}
     next: notify_review
 
   notify_review:
     type: output
     label: Notify review posted
-    description: "PR #{{_trigger.number}} reviewed: {{review_pr.findings}} findings. See {{review_pr.review_url}}"
+    description: "PR #{{_trigger.number}} reviewed: {{review_pr.findings}} findings ({{review_pr.critical}} critical). See {{review_pr.review_url}}"
     output:
       via: slack
       slack:
