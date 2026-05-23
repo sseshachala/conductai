@@ -39,6 +39,14 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
             Compare
           </a>
           <a
+            href="https://narratr.ai/blog/conductai"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
+          >
+            Blog
+          </a>
+          <a
             href="https://github.com/sseshachala/conductai/discussions/new?category=ideas"
             target="_blank"
             rel="noopener noreferrer"
@@ -459,6 +467,8 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
           <a href="https://github.com/sseshachala/conductai/discussions/new?category=ideas" target="_blank" rel="noopener noreferrer" className="hover:text-stone-600 transition-colors">💡 Request an idea</a>
           <span>·</span>
           <a href="/compare" className="hover:text-stone-600 transition-colors">Compare</a>
+          <span>·</span>
+          <a href="https://narratr.ai/blog/conductai" target="_blank" rel="noopener noreferrer" className="hover:text-stone-600 transition-colors">Blog</a>
           <span>·</span>
           <a href="/privacy" className="hover:text-stone-600 transition-colors">Privacy</a>
           <span>·</span>
