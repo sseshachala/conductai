@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_user_id, require_workspace_role, get_user_workspace_role, get_clerk_user_email
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.email import send_email, invite_email_html
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -298,6 +299,23 @@ def add_member(
         """), {"ws": project_id, "email": email, "role": body.role,
                "invited_by": user_id, "now": now}).fetchone()[0]
         db.commit()
+
+        # Resolve workspace name and inviter email for the notification
+        ws_row = db.execute(text("SELECT name FROM workspaces WHERE id = :id"), {"id": project_id}).fetchone()
+        workspace_name = ws_row.name if ws_row else "your workspace"
+        inviter_email = get_clerk_user_email(user_id)
+        send_email(
+            to=email,
+            subject=f"You're invited to {workspace_name} on Conduct AI",
+            html=invite_email_html(
+                workspace_name=workspace_name,
+                invited_by_email=inviter_email,
+                role=body.role,
+            ),
+            workspace_id=project_id,
+            db=db,
+        )
+
         return InviteOut(id=str(invite_id), invited_email=email, role=body.role,
                          invited_by=user_id, created_at=now)
 
