@@ -156,6 +156,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
     setUninstalling(slug)
     try {
       const headers = await authHeaders()
+      console.log("[uninstall] headers", JSON.stringify(headers))
       headers["X-Workspace-Id"] = entry.workspaceId
 
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${entry.id}`, {
