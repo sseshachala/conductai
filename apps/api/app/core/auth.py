@@ -5,9 +5,11 @@ When CLERK_SECRET_KEY is set, validates Bearer tokens from Clerk.
 Falls back to the dev workspace when no key is configured (local dev only).
 
 Usage in routes:
-    from app.core.auth import get_workspace_id, get_user_id
+    from app.core.auth import get_workspace_id, get_user_id, require_workspace_role
     workspace_id: str = Depends(get_workspace_id)
     user_id: str = Depends(get_user_id)
+    # role-gated:
+    _: str = Depends(require_workspace_role("admin"))
 """
 import logging
 from typing import Annotated
@@ -15,8 +17,10 @@ from typing import Annotated
 import httpx
 from fastapi import Depends, Header, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.database import get_db
 
 log = logging.getLogger(__name__)
 
@@ -145,3 +149,49 @@ def get_workspace_id(
         raise HTTPException(status_code=401, detail="No workspace in token claims")
 
     return workspace_id
+
+
+def get_user_workspace_role(
+    user_id: Annotated[str, Depends(get_user_id)],
+    workspace_id: Annotated[str, Depends(get_workspace_id)],
+    db: Session = Depends(get_db),
+) -> str:
+    """
+    Returns the authenticated user's role in the requested workspace.
+    Raises 403 if the user is not a member. Skips check in dev mode.
+    """
+    if not _clerk_enabled():
+        return "admin"
+
+    from sqlalchemy import text
+    row = db.execute(
+        text("SELECT role FROM workspace_users WHERE workspace_id = :ws AND clerk_user_id = :uid"),
+        {"ws": workspace_id, "uid": user_id},
+    ).fetchone()
+
+    if not row:
+        # Legacy fallback: owner_id on workspaces table (pre-migration workspaces)
+        owner_row = db.execute(
+            text("SELECT owner_id FROM workspaces WHERE id = :ws AND owner_id = :uid"),
+            {"ws": workspace_id, "uid": user_id},
+        ).fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=403, detail="Not a member of this workspace")
+        return "admin"
+
+    return row.role
+
+
+def require_workspace_role(*allowed_roles: str):
+    """
+    Dependency factory that enforces minimum role for an endpoint.
+
+    Usage:
+        @router.post("/members")
+        def add_member(_: str = Depends(require_workspace_role("admin")), ...):
+    """
+    def _check(role: Annotated[str, Depends(get_user_workspace_role)]) -> str:
+        if role not in allowed_roles:
+            raise HTTPException(status_code=403, detail=f"Requires role: {', '.join(allowed_roles)}")
+        return role
+    return _check
