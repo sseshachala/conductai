@@ -1,14 +1,48 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import CredentialsManager from "@/components/settings/CredentialsManager"
 import EnvironmentsManager from "@/components/settings/EnvironmentsManager"
 import MembersManager from "@/components/settings/MembersManager"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 type Tab = "integrations" | "environments" | "members"
 
 export default function SettingsPage() {
+  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  if (clerkEnabled) return <SettingsPageWithAuth />
+  return <SettingsPageInner isAdmin={true} />
+}
+
+function SettingsPageWithAuth() {
+  const { getToken, userId } = useAuth()
+  const { activeWorkspace } = useWorkspace()
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  useEffect(() => {
+    if (!activeWorkspace || !userId) return
+    async function check() {
+      try {
+        const headers: Record<string, string> = {}
+        if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
+        const ws = document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1]
+        if (ws) headers["X-Workspace-Id"] = ws
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace!.id}/members`, { headers })
+        if (!res.ok) return
+        const members: { clerk_user_id: string; role: string }[] = await res.json()
+        setIsAdmin(members.find(m => m.clerk_user_id === userId)?.role === "admin")
+      } catch { /* stay false */ }
+    }
+    check()
+  }, [activeWorkspace?.id, userId])
+
+  return <SettingsPageInner isAdmin={isAdmin} />
+}
+
+function SettingsPageInner({ isAdmin }: { isAdmin: boolean }) {
+  const tabs = (["integrations", "environments", ...(isAdmin ? ["members"] : [])] as Tab[])
   const [activeTab, setActiveTab] = useState<Tab>("integrations")
 
   return (
@@ -19,7 +53,6 @@ export default function SettingsPage() {
           <span className="text-xs text-stone-400">Tokens encrypted at rest</span>
         </div>
 
-        {/* Onboarding hint */}
         <div className="mb-6 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 flex items-start gap-3">
           <span className="text-amber-500 text-base leading-none mt-0.5">⚠</span>
           <p className="text-sm text-amber-800 leading-relaxed">
@@ -28,9 +61,8 @@ export default function SettingsPage() {
           </p>
         </div>
 
-        {/* Tab bar */}
         <div className="flex bg-stone-100 rounded-lg p-1 mb-6 w-fit">
-          {(["integrations", "environments", "members"] as Tab[]).map(tab => (
+          {tabs.map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -47,7 +79,7 @@ export default function SettingsPage() {
 
         {activeTab === "integrations" && <CredentialsManager />}
         {activeTab === "environments" && <EnvironmentsManager />}
-        {activeTab === "members" && <MembersManager />}
+        {activeTab === "members" && isAdmin && <MembersManager />}
       </div>
     </AppShell>
   )
