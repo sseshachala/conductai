@@ -58,3 +58,10 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+_DEFAULT_ENCRYPTION_KEY = "dev-only-32-byte-key-change-this!"
+if settings.environment == "production" and settings.encryption_key == _DEFAULT_ENCRYPTION_KEY:
+    raise RuntimeError(
+        "Default encryption_key detected in production. "
+        "Set a strong ENCRYPTION_KEY environment variable before starting."
+    )
