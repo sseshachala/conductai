@@ -161,6 +161,97 @@ function setNestedValue(obj: Record<string, unknown>, path: string, value: unkno
   return result
 }
 
+
+// ── Tag input ─────────────────────────────────────────────────────────────────
+
+const KNOWN_LABEL_SUGGESTIONS = ["autopilot ready", "ai_pilot_ready", "ai_ready"]
+
+function TagInput({
+  value,
+  suggestions,
+  placeholder,
+  onChange,
+}: {
+  value: string[]
+  suggestions?: string[]
+  placeholder?: string
+  onChange: (tags: string[]) => void
+}) {
+  const [inputVal, setInputVal] = useState("")
+  const allSuggestions = suggestions ?? KNOWN_LABEL_SUGGESTIONS
+
+  function addTag(tag: string) {
+    const trimmed = tag.trim()
+    if (trimmed && !value.includes(trimmed)) {
+      onChange([...value, trimmed])
+    }
+    setInputVal("")
+  }
+
+  function removeTag(tag: string) {
+    onChange(value.filter(t => t !== tag))
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault()
+      addTag(inputVal)
+    } else if (e.key === "Backspace" && !inputVal && value.length > 0) {
+      removeTag(value[value.length - 1])
+    }
+  }
+
+  const unusedSuggestions = allSuggestions.filter(s => !value.includes(s))
+
+  return (
+    <div className="space-y-2">
+      {/* Tag chips display */}
+      <div className="flex flex-wrap gap-1.5 min-h-[2rem] w-full border border-stone-200 rounded-lg px-2.5 py-1.5 bg-white focus-within:ring-2 focus-within:ring-indigo-200">
+        {value.map(tag => (
+          <span
+            key={tag}
+            className="inline-flex items-center gap-1 rounded-md bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-xs font-medium text-indigo-700"
+          >
+            {tag}
+            <button
+              type="button"
+              onClick={() => removeTag(tag)}
+              className="text-indigo-400 hover:text-indigo-700 leading-none"
+              aria-label={`Remove ${tag}`}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        <input
+          type="text"
+          value={inputVal}
+          onChange={e => setInputVal(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={() => { if (inputVal.trim()) addTag(inputVal) }}
+          placeholder={value.length === 0 ? (placeholder ?? "Add a label…") : ""}
+          className="flex-1 min-w-[8rem] text-sm text-stone-900 bg-transparent border-0 outline-none py-0.5"
+        />
+      </div>
+      {/* Quick-add suggestions */}
+      {unusedSuggestions.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {unusedSuggestions.map(s => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => addTag(s)}
+              className="inline-flex items-center gap-1 rounded-md border border-dashed border-stone-300 px-2 py-0.5 text-[11px] text-stone-500 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+            >
+              + {s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Config field renderer ─────────────────────────────────────────────────────
 
 function FieldInput({
@@ -237,6 +328,23 @@ function FieldInput({
     )
   }
 
+
+  if (field.type === "tags") {
+    const tagArray: string[] = Array.isArray(value)
+      ? (value as string[])
+      : typeof value === "string" && value
+        ? value.split(",").map((t: string) => t.trim()).filter(Boolean)
+        : []
+    return (
+      <TagInput
+        value={tagArray}
+        suggestions={field.suggestions}
+        placeholder={field.placeholder}
+        onChange={onChange}
+      />
+    )
+  }
+
   return (
     <input
       type="text"
@@ -275,7 +383,7 @@ export default function BlockEditor({
   const allStaticFields = BLOCK_CONFIG_SCHEMAS[blockType] || []
   const staticFields = blockType === "trigger"
     ? allStaticFields.filter(f => {
-        if (f.key === "config.label" || f.key === "config.repo_allowlist")
+        if (f.key === "config.labels" || f.key === "config.repo_allowlist")
           return triggerEventType === "github_issue_labeled"
         if (f.key === "config.webhook_secret")
           return triggerEventType === "webhook"
