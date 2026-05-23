@@ -362,8 +362,38 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         </div>
       </section>
 
+      {/* Credential Vault Security */}
+      <section className="bg-stone-50 px-6 py-20">
+        <div className="max-w-5xl mx-auto">
+          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">Credential Vault</p>
+          <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
+            Your keys. Locked down. Always.
+          </h2>
+          <p className="text-center text-stone-500 text-sm max-w-xl mx-auto mb-12">
+            Conduct AI agents need your GitHub token and Slack token to act on your behalf. Here is exactly how we protect them.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-8">
+            {VAULT_SECURITY.map(v => (
+              <div key={v.title} className="bg-white rounded-2xl border border-stone-200 p-6 flex flex-col gap-3">
+                <div className="text-2xl">{v.icon}</div>
+                <div>
+                  <p className="font-semibold text-stone-900 mb-1">{v.title}</p>
+                  <p className="text-xs text-stone-500 leading-relaxed">{v.body}</p>
+                </div>
+                <div className="mt-auto">
+                  <span className="inline-block text-[10px] font-semibold uppercase tracking-wide bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">{v.badge}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-center text-xs text-stone-400">
+            Credentials are decrypted only at runtime, inside an ephemeral sandbox, and never written to logs.
+          </p>
+        </div>
+      </section>
+
       {/* Integrations */}
-      <section className="bg-stone-50 px-6 py-16">
+      <section className="bg-white px-6 py-16">
         <div className="max-w-3xl mx-auto text-center">
           <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-8">Works with your existing stack</p>
           <div className="flex flex-wrap justify-center gap-3">
@@ -642,6 +672,50 @@ const WHY_DELEGATOR = [
     icon: "🧩",
     title: "Fits your existing stack",
     body: "GitHub, Slack, PagerDuty, OpsGenie, email, and any inbound webhook. No new tools, no migration — Conduct plugs into what your team already uses.",
+  },
+  {
+    icon: "🔐",
+    title: "AES-256-GCM credential vault",
+    body: "Every API key and token is encrypted at rest with AES-256-GCM + HKDF-SHA256 key derivation. Credentials are decrypted only at runtime inside an ephemeral sandbox — never logged, never shared across workspaces.",
+  },
+]
+
+const VAULT_SECURITY = [
+  {
+    icon: "🔐",
+    title: "AES-256-GCM encryption at rest",
+    body: "Every credential is encrypted with AES-256-GCM before it touches the database. The encryption key is derived via HKDF-SHA256 — a separate environment secret, never stored alongside your data.",
+    badge: "Encrypted at rest",
+  },
+  {
+    icon: "🚫",
+    title: "Never logged, never exposed",
+    body: "Decrypted tokens are injected into the agent sandbox at runtime only. They are never written to logs, run traces, or any persistent store. The API returns only field names — never values.",
+    badge: "Zero token logging",
+  },
+  {
+    icon: "⏱️",
+    title: "Runtime-only, workspace-scoped",
+    body: "Credentials are decrypted once per run, inside an ephemeral Modal sandbox that is torn down immediately after. Each workspace's vault is strictly isolated — no cross-tenant access is possible.",
+    badge: "Ephemeral access",
+  },
+  {
+    icon: "🛡️",
+    title: "Fail-fast in production",
+    body: "The API refuses to start if a default or weak encryption key is detected in production. You cannot accidentally ship an unprotected vault.",
+    badge: "Startup guard",
+  },
+  {
+    icon: "🔑",
+    title: "You own your keys",
+    body: "Your GitHub token, Slack token, and API keys are yours. You can revoke or rotate them at any time in Settings → Integrations. Removing a credential immediately locks all workflows that depend on it.",
+    badge: "Full key control",
+  },
+  {
+    icon: "🏠",
+    title: "Isolated sandbox per run",
+    body: "Every agent run executes in a fresh ephemeral container. Your credentials and code never touch shared infrastructure between runs or between workspaces.",
+    badge: "No shared infra",
   },
 ]
 
