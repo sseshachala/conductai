@@ -1,0 +1,259 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# security-scanner — PR security review
+#
+# Triggers on every PR opened or updated. Runs a dedicated security scan
+# focused on OWASP Top 10, secret detection, insecure dependencies, and
+# language-specific vulnerability patterns. Posts findings as a PR review
+# comment. Creates a fix issue (labeled "autopilot ready") if critical
+# vulnerabilities are found.
+# ──────────────────────────────────────────────────────────────────────────────
+name: Security Scanner
+version: 1
+description: >
+  Automated security review on every PR. Scans for OWASP Top 10 vulnerabilities,
+  hardcoded secrets, insecure dependencies, injection flaws, authentication
+  bypasses, and language-specific security anti-patterns. Posts a structured
+  security report as a PR review comment. Critical findings create a fix issue
+  that triggers Autopilot.
+
+on:
+  webhook:
+    next: fetch_pr_diff
+
+blocks:
+  fetch_pr_diff:
+    type: brain
+    mode: agentic
+    label: Fetch PR diff
+    description: |
+      Fetch the pull request diff and metadata for security analysis.
+
+      Repo: {{_trigger.repository.full_name}}
+      PR number: {{_trigger.number}}
+      PR title: {{_trigger.pull_request.title}}
+      Author: {{_trigger.pull_request.user.login}}
+
+      Steps:
+      1. Retrieve the GitHub token from the Delegator credentials vault.
+      2. Fetch the PR diff:
+         GET https://api.github.com/repos/{{_trigger.repository.full_name}}/pulls/{{_trigger.number}}/files
+         Headers: Authorization: token <github_token>, Accept: application/vnd.github.v3+json
+      3. For each changed file, record: filename, status (added/modified/removed), patch (the diff).
+      4. Fetch the PR details for context:
+         GET https://api.github.com/repos/{{_trigger.repository.full_name}}/pulls/{{_trigger.number}}
+         Headers: Authorization: token <github_token>
+
+      Output ONLY the following JSON on the last line:
+        {"files_changed": <number>, "additions": <number>, "deletions": <number>, "pr_url": "<html_url>"}
+    next: security_scan
+
+  security_scan:
+    type: brain
+    mode: agentic
+    label: Run security scan
+    description: |
+      You are an expert security engineer performing a focused security review.
+      Analyse ONLY the changed lines in the PR diff. Do not flag issues in
+      unchanged code.
+
+      Repo: {{_trigger.repository.full_name}}
+      PR: {{_trigger.pull_request.html_url}}
+      Files changed: {{fetch_pr_diff.files_changed}}
+
+      SCAN FOR — check every changed file against ALL of the following:
+
+      ## Injection Flaws
+      - SQL injection: string concatenation into queries, missing parameterisation
+      - Command injection: user input passed to os.system, subprocess, exec, eval, child_process
+      - Template injection: user-controlled strings rendered in Jinja2, Handlebars, ERB, etc.
+      - LDAP / XPath / NoSQL injection patterns
+      - Path traversal: user input used in file paths without sanitisation
+
+      ## Secrets & Credentials
+      - Hardcoded API keys, tokens, passwords, private keys, connection strings
+      - Secrets in environment variable names that suggest they are being logged
+      - JWT secrets or encryption keys committed in source
+      - AWS_SECRET, GITHUB_TOKEN, STRIPE_KEY, DATABASE_URL patterns in code
+
+      ## Authentication & Authorisation
+      - Missing authentication checks on new endpoints or routes
+      - Broken access control: user A can access user B's resources
+      - JWT algorithm confusion (alg: none, HS256 vs RS256 swap)
+      - Session fixation or missing session invalidation
+      - Privilege escalation paths in role/permission logic
+
+      ## Cryptography
+      - Use of MD5 or SHA-1 for password hashing or signing
+      - Weak random number generation (Math.random, random.random for secrets)
+      - Hardcoded IVs or salts
+      - Disabled certificate verification (verify=False, rejectUnauthorized: false)
+
+      ## Insecure Dependencies
+      - Calls to known-vulnerable package versions (check imports against CVE patterns)
+      - Use of deprecated crypto functions (DES, RC4, ECB mode)
+      - Pickle / marshal deserialisation of untrusted data (Python)
+      - YAML.load without Loader (PyYAML), eval(JSON) patterns
+
+      ## Web Security (if applicable)
+      - dangerouslySetInnerHTML, bypassSecurityTrustHtml, v-html with user input
+      - CSRF: state-changing endpoints missing CSRF token validation
+      - CORS misconfiguration: allow_origins=["*"] on authenticated endpoints
+      - Open redirects using user-controlled URLs
+
+      ## Sensitive Data Exposure
+      - PII (email, SSN, credit card, health data) logged or returned in API responses
+      - Stack traces or internal error details exposed to clients
+      - Sensitive fields missing from serialiser exclusions
+
+      SEVERITY LEVELS:
+      🔴 Critical — directly exploitable, immediate risk (SQLi, RCE, hardcoded secret, auth bypass)
+      🟠 High     — exploitable under realistic conditions (SSRF, privilege escalation, weak crypto)
+      🟡 Medium   — requires specific conditions (missing CSRF on low-value endpoint, weak random for non-secret)
+      🔵 Info     — defence-in-depth improvement, not directly exploitable
+
+      Only report 🔴 and 🟠 if you are >80% confident. Skip theoretical issues.
+
+      FORMAT YOUR FINDINGS as a GitHub PR review comment body using this structure:
+
+      ## 🔒 Security Scan — {{_trigger.repository.full_name}} PR #{{_trigger.number}}
+
+      > Scanned {{fetch_pr_diff.files_changed}} changed file(s). Focused on newly added/modified lines only.
+
+      ### Summary
+      | Severity | Count |
+      |---|---|
+      | 🔴 Critical | N |
+      | 🟠 High | N |
+      | 🟡 Medium | N |
+      | 🔵 Info | N |
+
+      ### Findings
+      (for each finding:)
+      **[SEVERITY] Category** · `filename:line`
+      Description of the issue and why it is dangerous.
+      ```
+      // vulnerable code snippet
+      ```
+      **Fix:** Specific remediation step.
+
+      ---
+      *Powered by [Conduct AI](https://conductai.ai) · Security Scanner*
+
+      After writing the review comment, post it to GitHub:
+      POST https://api.github.com/repos/{{_trigger.repository.full_name}}/pulls/{{_trigger.number}}/reviews
+      Headers: Authorization: token <github_token>, Content-Type: application/json
+      Body: {"body": "<the formatted comment above>", "event": "COMMENT"}
+
+      Output ONLY the following JSON on the last line:
+        {"review_url": "<PR URL>", "critical": <count of 🔴 findings>, "high": <count of 🟠 findings>, "medium": <count of 🟡 findings>, "total": <total findings>}
+    next: has_critical
+
+  has_critical:
+    type: logic
+    label: Critical vulnerabilities found?
+    condition: "{{security_scan.critical}} > 0"
+    next:
+      pass: check_existing_issue
+      fail: notify_scan
+
+  check_existing_issue:
+    type: brain
+    mode: agentic
+    label: Check for existing security issue
+    description: |
+      Check if a security fix issue already exists for this PR to avoid duplicates.
+
+      Repo: {{_trigger.repository.full_name}}
+      PR number: {{_trigger.number}}
+
+      Steps:
+      1. Retrieve the GitHub token from the Delegator credentials vault.
+      2. Search for existing open issues:
+         GET https://api.github.com/search/issues?q=repo:{{_trigger.repository.full_name}}+is:issue+is:open+"security"+"%23{{_trigger.number}}"+in:title
+         Headers: Authorization: token <github_token>
+      3. If any issue title contains both "security" and "#{{_trigger.number}}", it already exists.
+
+      Output ONLY the following JSON on the last line:
+        {"exists": true, "issue_url": "<url>", "issue_number": <number>} if found
+        {"exists": false} if not found
+    next: issue_exists_gate
+
+  issue_exists_gate:
+    type: logic
+    label: Security issue already exists?
+    condition: "{{check_existing_issue.exists}} == true"
+    next:
+      pass: append_security_issue
+      fail: create_security_issue
+
+  append_security_issue:
+    type: brain
+    mode: agentic
+    label: Append findings to existing issue
+    description: |
+      A re-scan found new critical vulnerabilities on the same PR.
+      Append findings to the existing issue and re-trigger Autopilot.
+
+      Existing issue: {{check_existing_issue.issue_url}}
+      Issue number: {{check_existing_issue.issue_number}}
+      Repo: {{_trigger.repository.full_name}}
+
+      Steps:
+      1. Retrieve the GitHub token from the Delegator credentials vault.
+      2. Append a comment:
+         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/{{check_existing_issue.issue_number}}/comments
+         Headers: Authorization: token <github_token>, Content-Type: application/json
+         Body: {"body": "## Re-scan findings\n\nPR #{{_trigger.number}} was re-scanned. {{security_scan.critical}} critical and {{security_scan.high}} high severity issue(s) found.\n\nSee PR review: {{security_scan.review_url}}"}
+      3. Remove label then re-add to re-trigger Autopilot:
+         DELETE .../issues/{{check_existing_issue.issue_number}}/labels/autopilot%20ready
+         POST   .../issues/{{check_existing_issue.issue_number}}/labels  {"labels": ["autopilot ready"]}
+
+      Output ONLY the following JSON on the last line:
+        {"issue_url": "{{check_existing_issue.issue_url}}", "issue_number": {{check_existing_issue.issue_number}}}
+    next: notify_scan
+
+  create_security_issue:
+    type: brain
+    mode: agentic
+    label: Create security fix issue
+    description: |
+      Critical security vulnerabilities were found in PR #{{_trigger.number}}.
+      Create a GitHub issue so Autopilot can fix them.
+
+      IMPORTANT: Create the issue WITHOUT labels first, then add the label separately
+      so GitHub fires the issues.labeled webhook and Autopilot picks it up.
+
+      Repo: {{_trigger.repository.full_name}}
+      PR: {{security_scan.review_url}}
+      Critical: {{security_scan.critical}}  High: {{security_scan.high}}
+
+      Steps:
+      1. Retrieve the GitHub token from the Delegator credentials vault.
+      2. Create the issue (no labels):
+         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues
+         Headers: Authorization: token <github_token>, Content-Type: application/json
+         Body:
+         {
+           "title": "fix: address critical security findings on PR #{{_trigger.number}}",
+           "body": "## Security scan findings\n\nPR #{{_trigger.number}} was scanned and {{security_scan.critical}} critical vulnerability(s) were found.\n\nSecurity review: {{security_scan.review_url}}\n\n## Task\nRead the security review comment on the PR, identify all 🔴 Critical and 🟠 High findings, and implement fixes.\n\nPrioritise: injection flaws, hardcoded secrets, authentication bypasses."
+         }
+         Save the returned issue number.
+      3. Add label in a separate call:
+         POST .../issues/<issue_number>/labels
+         Body: {"labels": ["autopilot ready"]}
+
+      Output ONLY the following JSON on the last line:
+        {"issue_url": "<url>", "issue_number": <number>}
+    next: notify_scan
+
+  notify_scan:
+    type: output
+    label: Notify security scan complete
+    description: |
+      Security scan complete for PR #{{_trigger.number}}.
+      {{security_scan.critical}} critical · {{security_scan.high}} high · {{security_scan.medium}} medium findings.
+      Review: {{security_scan.review_url}}
+    output:
+      via: slack
+      slack:
+        channel: "#security"
