@@ -17,7 +17,12 @@ description: >
 on:
   github.issue_labeled:
     integration: github
-    label: autopilot ready
+    # Fire on any of these labels — add or remove labels as needed
+    labels:
+      - autopilot ready
+      - ai_pilot_ready
+      - ai_ready
+    label_mode: one_of
     next: fetch_issue
 
 blocks:
