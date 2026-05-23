@@ -301,14 +301,16 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-medium text-stone-500">
                   GitHub repo
-                  <span className="ml-1 text-stone-400 font-normal">— webhook will be registered automatically</span>
+                  <span className="ml-1 text-stone-400 font-normal">— webhook registered automatically on install</span>
                 </label>
                 {reposLoading ? (
                   <div className="h-9 rounded-lg bg-stone-100 animate-pulse" />
                 ) : repos.length === 0 ? (
-                  <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                    No repos found — make sure GitHub is connected in Settings → Integrations.
-                  </p>
+                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    No repos found. Connect GitHub in{" "}
+                    <a href="/settings/integrations" className="underline font-medium">Settings → Integrations</a>{" "}
+                    then re-open this modal.
+                  </div>
                 ) : (
                   <select
                     value={selectedRepo}
@@ -343,7 +345,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
               </button>
               <button
                 onClick={confirmInstall}
-                disabled={installing || projectsLoading || !selectedProjectId}
+                disabled={installing || projectsLoading || !selectedProjectId || (GITHUB_WEBHOOK_SLUGS.has(pendingSlug ?? "") && !selectedRepo)}
                 className="px-4 py-2 text-xs font-medium bg-stone-900 text-white rounded-lg hover:bg-stone-700 disabled:opacity-40 transition-colors"
               >
                 {installing ? "Installing…" : "Install"}
