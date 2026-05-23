@@ -188,18 +188,28 @@ async def inbound_webhook(
 
 # ── Deploy webhook helpers ────────────────────────────────────────────────────
 
-def _trigger_webhook_workflows(db: Session, event_type: str, initial_state: dict[str, Any]) -> list[str]:
+def _trigger_webhook_workflows(
+    db: Session,
+    event_type: str,
+    initial_state: dict[str, Any],
+    workspace_id: str | None = None,
+) -> list[str]:
     """
-    Find all workflows whose trigger block config.event_type matches `event_type`
+    Find workflows whose trigger block config.event_type matches `event_type`
     OR is the generic value "webhook" (matches all webhook events).
+    workspace_id MUST be provided to scope to a single tenant; omitting it is
+    only safe for internal callers that already scope the query themselves.
     Returns list of queued run IDs.
     """
     from app.models.workflow import Workflow, WorkflowVersion
     import uuid as uuid_mod
 
-    versions = db.query(WorkflowVersion).join(
+    q = db.query(WorkflowVersion).join(
         Workflow, Workflow.current_version_id == WorkflowVersion.id
-    ).all()
+    )
+    if workspace_id:
+        q = q.filter(Workflow.workspace_id == workspace_id)
+    versions = q.all()
 
     queued: list[str] = []
     for version in versions:
@@ -229,10 +239,16 @@ def _trigger_webhook_workflows(db: Session, event_type: str, initial_state: dict
 
 
 @router.post("/vercel")
-async def vercel_webhook(request: Request, db: Session = Depends(get_db)):
+async def vercel_webhook(
+    request: Request,
+    db: Session = Depends(get_db),
+    workspace_id: str | None = None,
+):
     """
     Receive Vercel deployment webhooks.
     Configure in Vercel → Project → Settings → Webhooks.
+    Register the URL as: <api_base_url>/webhooks/vercel?workspace_id=<workspace_id>
+    so events are scoped to the registering workspace only.
     Events: deployment.succeeded, deployment.failed, deployment.ready, etc.
     """
     body = await request.body()
@@ -272,7 +288,11 @@ async def vercel_webhook(request: Request, db: Session = Depends(get_db)):
     if event_type not in trigger_on:
         return {"ok": True, "queued": 0, "reason": f"event {event_type} not a trigger"}
 
-    queued = _trigger_webhook_workflows(db, event_type, initial_state)
+    if not workspace_id:
+        log.warning("Vercel webhook received with no workspace_id — ignoring to prevent cross-tenant fanout")
+        return {"ok": False, "reason": "workspace_id query param required; re-register the webhook URL with ?workspace_id=<your-workspace-id>"}
+
+    queued = _trigger_webhook_workflows(db, event_type, initial_state, workspace_id=workspace_id)
     return {"ok": True, "queued": len(queued), "run_ids": queued}
 
 
