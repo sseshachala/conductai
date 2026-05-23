@@ -98,6 +98,7 @@ function validateNodes(nodes: Node[]): ValidationError[] {
 interface CanvasEditorProps {
   workflowId: string
   getToken?: (() => Promise<string | null>) | null
+  isViewer?: boolean
 }
 
 function getWorkspaceId(): string | null {
@@ -119,7 +120,7 @@ async function authHeaders(getToken?: (() => Promise<string | null>) | null): Pr
   return headers
 }
 
-function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
+function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEditorProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
@@ -298,15 +299,15 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
     }
   }, [workflowId, getToken])
 
-  // Autosave — debounced 1.5s after any node/edge change
+  // Autosave — debounced 1.5s after any node/edge change (skip for viewers)
   useEffect(() => {
-    if (isFirstLoad.current) return
+    if (isFirstLoad.current || isViewer) return
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
     autosaveTimer.current = setTimeout(() => {
       save(nodes, edges, workflowName)
     }, 1500)
     return () => { if (autosaveTimer.current) clearTimeout(autosaveTimer.current) }
-  }, [nodes, edges, workflowName, save])
+  }, [nodes, edges, workflowName, save, isViewer])
 
   const onConnect = useCallback(
     (connection: Connection) => setEdges((eds) => addEdge({
@@ -663,14 +664,16 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
         <div className="flex items-center gap-3">
           <input
             value={workflowName}
-            onChange={(e) => setWorkflowName(e.target.value)}
+            onChange={(e) => !isViewer && setWorkflowName(e.target.value)}
+            readOnly={isViewer}
             className="text-base font-semibold text-stone-900 bg-transparent border-none outline-none focus:ring-0 w-64"
           />
           {/* Environment picker */}
           <select
             value={selectedEnvId}
-            onChange={e => handleEnvChange(e.target.value)}
-            className="ml-2 text-xs border border-stone-200 rounded-lg px-2 py-1 text-stone-600 bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+            onChange={e => !isViewer && handleEnvChange(e.target.value)}
+            disabled={isViewer}
+            className="ml-2 text-xs border border-stone-200 rounded-lg px-2 py-1 text-stone-600 bg-white focus:outline-none focus:ring-2 focus:ring-violet-200 disabled:opacity-60 disabled:cursor-not-allowed"
             title="Agent environment"
           >
             <option value="">— select environment —</option>
@@ -730,20 +733,24 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
           >
             ⊡ Fit
           </button>
-          <button
-            onClick={() => startRun(true)}
-            disabled={running !== "idle"}
-            className="rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-500 hover:bg-stone-50 transition-colors disabled:opacity-50"
-          >
-            {running === "dry" ? "Simulating…" : "Dry run"}
-          </button>
-          <button
-            onClick={() => activeRunId ? setDrawerVisible(true) : startRun(false)}
-            disabled={running === "live" || running === "dry"}
-            className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-violet-700 transition-colors disabled:opacity-50"
-          >
-            {running === "live" ? "Starting…" : activeRunId ? "▶ Running…" : "▶ Run"}
-          </button>
+          {!isViewer && (
+            <>
+              <button
+                onClick={() => startRun(true)}
+                disabled={running !== "idle"}
+                className="rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-500 hover:bg-stone-50 transition-colors disabled:opacity-50"
+              >
+                {running === "dry" ? "Simulating…" : "Dry run"}
+              </button>
+              <button
+                onClick={() => activeRunId ? setDrawerVisible(true) : startRun(false)}
+                disabled={running === "live" || running === "dry"}
+                className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-violet-700 transition-colors disabled:opacity-50"
+              >
+                {running === "live" ? "Starting…" : activeRunId ? "▶ Running…" : "▶ Run"}
+              </button>
+            </>
+          )}
         </div>
       </header>
 
@@ -751,17 +758,19 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
       <div className="flex flex-1 overflow-hidden">
         {activeView === "canvas" ? (
           <>
-            {/* Left panel — block palette */}
-            <div className={`relative flex shrink-0 transition-all duration-200 border-r border-stone-200 ${leftOpen ? "w-44" : "w-12"}`}>
-              <button
-                onClick={() => setLeftOpen(v => !v)}
-                className="absolute -right-3 top-1/2 -translate-y-1/2 z-10 w-6 h-6 rounded-full bg-white border border-stone-200 shadow-sm flex items-center justify-center text-stone-400 hover:text-stone-700 transition-colors"
-                title={leftOpen ? "Collapse palette" : "Expand palette"}
-              >
-                {leftOpen ? "‹" : "›"}
-              </button>
-              <BlockPalette getToken={getToken} collapsed={!leftOpen} />
-            </div>
+            {/* Left panel — block palette (editors/admins only) */}
+            {!isViewer && (
+              <div className={`relative flex shrink-0 transition-all duration-200 border-r border-stone-200 ${leftOpen ? "w-44" : "w-12"}`}>
+                <button
+                  onClick={() => setLeftOpen(v => !v)}
+                  className="absolute -right-3 top-1/2 -translate-y-1/2 z-10 w-6 h-6 rounded-full bg-white border border-stone-200 shadow-sm flex items-center justify-center text-stone-400 hover:text-stone-700 transition-colors"
+                  title={leftOpen ? "Collapse palette" : "Expand palette"}
+                >
+                  {leftOpen ? "‹" : "›"}
+                </button>
+                <BlockPalette getToken={getToken} collapsed={!leftOpen} />
+              </div>
+            )}
 
             {/* Center — canvas */}
             <div className="flex-1 relative min-w-0">
@@ -783,13 +792,16 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
               <ReactFlow
                 nodes={nodes}
                 edges={edges}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onConnect={onConnect}
+                onNodesChange={isViewer ? undefined : onNodesChange}
+                onEdgesChange={isViewer ? undefined : onEdgesChange}
+                onConnect={isViewer ? undefined : onConnect}
                 onNodeClick={onNodeClick}
                 onPaneClick={onPaneClick}
-                onDrop={onDrop}
-                onDragOver={onDragOver}
+                onDrop={isViewer ? undefined : onDrop}
+                onDragOver={isViewer ? undefined : onDragOver}
+                nodesDraggable={!isViewer}
+                nodesConnectable={!isViewer}
+                elementsSelectable={!isViewer}
                 nodeTypes={nodeTypes}
                 defaultViewport={{ x: 80, y: 80, zoom: 1 }}
                 minZoom={0.3}
@@ -1016,10 +1028,33 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
 }
 
 function CanvasEditorWithClerk({ workflowId }: { workflowId: string }) {
-  const { getToken } = useAuth()
+  const { getToken, userId } = useAuth()
+  const [isViewer, setIsViewer] = useState(false)
+
+  useEffect(() => {
+    if (!userId) return
+    async function fetchRole() {
+      try {
+        const ws = typeof document !== "undefined"
+          ? document.cookie.split("; ").find(r => r.startsWith("delegator_project_id="))?.split("=")[1]
+          : undefined
+        if (!ws) return
+        const token = getToken ? await getToken() : null
+        const headers: Record<string, string> = { "X-Workspace-Id": ws }
+        if (token) headers["Authorization"] = `Bearer ${token}`
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${ws}/members`, { headers })
+        if (!res.ok) return
+        const members: { clerk_user_id: string; role: string }[] = await res.json()
+        const role = members.find(m => m.clerk_user_id === userId)?.role
+        setIsViewer(role === "viewer")
+      } catch { /* stay false (non-viewer) */ }
+    }
+    fetchRole()
+  }, [userId])
+
   return (
     <ReactFlowProvider>
-      <CanvasEditorInner workflowId={workflowId} getToken={getToken} />
+      <CanvasEditorInner workflowId={workflowId} getToken={getToken} isViewer={isViewer} />
     </ReactFlowProvider>
   )
 }
