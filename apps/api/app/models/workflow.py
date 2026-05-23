@@ -15,7 +15,7 @@ class Workflow(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False)
     name = Column(String(255), nullable=False)
-    current_version_id = Column(UUID(as_uuid=True), ForeignKey("workflow_versions.id"), nullable=True)
+    current_version_id = Column(UUID(as_uuid=True), ForeignKey("workflow_versions.id", ondelete="SET NULL"), nullable=True)
     default_mode = Column(String(50), nullable=False, default="dag")  # dag/agentic
 
     # Optional link to a YAML file in a customer's GitHub repo. When both are
