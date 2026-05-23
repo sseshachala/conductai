@@ -61,8 +61,37 @@ blocks:
     label: Critical issues found?
     condition: "{{review_pr.critical}} > 0"
     next:
-      pass: create_fix_issue
+      pass: check_existing_issue
       fail: notify_review
+
+  check_existing_issue:
+    type: brain
+    mode: agentic
+    label: Check for existing fix issue
+    description: |
+      Before creating a fix issue, check if one already exists for this PR to avoid duplicates.
+
+      Repo: {{_trigger.repository.full_name}}
+      PR number: {{_trigger.number}}
+
+      Steps:
+      1. Search GitHub for existing open issues:
+         GET https://api.github.com/search/issues?q=repo:{{_trigger.repository.full_name}}+is:issue+is:open+"PR+%23{{_trigger.number}}"+in:title
+         Headers: Authorization: token <github_token>
+      2. If any issue in the results has a title containing "PR #{{_trigger.number}}", an issue already exists.
+
+      Output ONLY the following JSON on the last line:
+        {"exists": true, "issue_url": "<url of existing issue>"} if found
+        {"exists": false} if not found
+    next: issue_exists_gate
+
+  issue_exists_gate:
+    type: logic
+    label: Issue already exists?
+    condition: "{{check_existing_issue.exists}} == true"
+    next:
+      pass: notify_review
+      fail: create_fix_issue
 
   create_fix_issue:
     type: brain
