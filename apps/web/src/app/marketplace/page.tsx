@@ -57,7 +57,6 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   const [activeTag, setActiveTag] = useState("all")
   const [installing, setInstalling] = useState(false)
   const [uninstalling, setUninstalling] = useState<string | null>(null)
-  const [confirmingUninstall, setConfirmingUninstall] = useState<string | null>(null)
   // slug → { id, workspaceId } (for uninstall)
   const [installedMap, setInstalledMap] = useState<Map<string, { id: string; workspaceId: string }>>(new Map())
 
@@ -155,7 +154,6 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
     const entry = installedMap.get(slug)
     if (!entry) return
     setUninstalling(slug)
-    setConfirmingUninstall(null)
     try {
       const headers = await authHeaders()
       headers["X-Workspace-Id"] = entry.workspaceId
@@ -164,8 +162,9 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
         method: "DELETE",
         headers,
       })
-      if (!res.ok) return
-      setInstalledMap(prev => { const m = new Map(prev); m.delete(slug); return m })
+      if (res.ok) {
+        setInstalledMap(prev => { const m = new Map(prev); m.delete(slug); return m })
+      }
     } finally {
       setUninstalling(null)
     }
@@ -213,11 +212,8 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                 installing={false}
                 installed={installedMap.has(p.slug)}
                 uninstalling={uninstalling === p.slug}
-                confirming={confirmingUninstall === p.slug}
                 onInstall={openInstallModal}
-                onUninstallRequest={() => setConfirmingUninstall(p.slug)}
-                onUninstallConfirm={() => uninstall(p.slug)}
-                onUninstallCancel={() => setConfirmingUninstall(null)}
+                onUninstall={() => uninstall(p.slug)}
               />
             ))}
           </div>
@@ -271,16 +267,13 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   )
 }
 
-function PlaybookCard({ playbook, installing, installed, uninstalling, confirming, onInstall, onUninstallRequest, onUninstallConfirm, onUninstallCancel }: {
+function PlaybookCard({ playbook, installing, installed, uninstalling, onInstall, onUninstall }: {
   playbook: Playbook
   installing: boolean
   installed: boolean
   uninstalling: boolean
-  confirming: boolean
   onInstall: (slug: string) => void
-  onUninstallRequest: () => void
-  onUninstallConfirm: () => void
-  onUninstallCancel: () => void
+  onUninstall: () => void
 }) {
   return (
     <div className={`rounded-xl border bg-white p-5 flex flex-col gap-3 transition-colors ${
@@ -304,35 +297,18 @@ function PlaybookCard({ playbook, installing, installed, uninstalling, confirmin
       </div>
 
       {installed ? (
-        confirming ? (
-          <div className="mt-auto flex gap-2">
-            <button
-              onClick={onUninstallCancel}
-              className="flex-1 rounded-lg px-3 py-2 text-xs font-medium border border-stone-200 text-stone-500 hover:bg-stone-100 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={onUninstallConfirm}
-              disabled={uninstalling}
-              className="flex-1 rounded-lg px-3 py-2 text-xs font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 transition-colors"
-            >
-              {uninstalling ? "Removing…" : "Confirm"}
-            </button>
+        <div className="mt-auto flex gap-2">
+          <div className="flex-1 rounded-lg px-3 py-2 text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 text-center">
+            ✓ Installed
           </div>
-        ) : (
-          <div className="mt-auto flex gap-2">
-            <div className="flex-1 rounded-lg px-3 py-2 text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 text-center">
-              ✓ Installed
-            </div>
-            <button
-              onClick={onUninstallRequest}
-              className="rounded-lg px-3 py-2 text-xs font-medium border border-stone-200 text-stone-400 hover:text-red-600 hover:border-red-200 transition-colors"
-            >
-              Remove
-            </button>
-          </div>
-        )
+          <button
+            onClick={onUninstall}
+            disabled={uninstalling}
+            className="rounded-lg px-3 py-2 text-xs font-medium border border-stone-200 text-stone-400 hover:text-red-600 hover:border-red-200 disabled:opacity-40 transition-colors"
+          >
+            {uninstalling ? "Removing…" : "Remove"}
+          </button>
+        </div>
       ) : (
         <button
           onClick={() => onInstall(playbook.slug)}
