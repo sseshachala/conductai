@@ -37,7 +37,7 @@ function getCookie(name: string): string | null {
 }
 
 function setCookie(name: string, value: string) {
-  document.cookie = `${name}=${value}; path=/; max-age=31536000`
+  document.cookie = `${name}=${value}; path=/; max-age=31536000; Secure; SameSite=Lax`
 }
 
 interface Props {

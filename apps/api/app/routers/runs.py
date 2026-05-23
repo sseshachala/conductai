@@ -37,27 +37,24 @@ def get_workspace_id_sse(
     because EventSource cannot set custom headers."""
     # Try header-based auth first
     auth_header = request.headers.get("Authorization", "")
-    token_qp = request.query_params.get("token")
-    ws_qp = request.query_params.get("workspace_id")
     x_ws = request.headers.get("x-workspace-id")
 
     if not _clerk_enabled():
         return x_ws or ws_qp or DEV_WORKSPACE_ID
 
-    # CLI API key bypasses Clerk
-    api_key_qp = request.query_params.get("api_key")
+    # CLI API key — header only (query params are logged by proxies)
     api_key_hdr = request.headers.get("x-api-key")
     from app.core.config import settings as _settings
     cli_key = _settings.cli_api_key
-    if cli_key and (api_key_qp == cli_key or api_key_hdr == cli_key):
-        return _settings.cli_workspace_id or x_ws or ws_qp or DEV_WORKSPACE_ID
+    if cli_key and api_key_hdr == cli_key:
+        if not _settings.cli_workspace_id:
+            raise HTTPException(status_code=500, detail="CLI_WORKSPACE_ID is not configured on the server")
+        return _settings.cli_workspace_id
 
-    # Get token from header OR query param
+    # Get token from Authorization header only — query params end up in server logs
     raw_token = None
     if auth_header.startswith("Bearer "):
         raw_token = auth_header.removeprefix("Bearer ")
-    elif token_qp:
-        raw_token = token_qp
 
     if not raw_token:
         raise HTTPException(status_code=401, detail="Authorization required")
@@ -66,7 +63,7 @@ def get_workspace_id_sse(
     if not claims:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    ws = x_ws or ws_qp or claims.get("org_id") or claims.get("sub")
+    ws = x_ws or claims.get("org_id") or claims.get("sub")
     if not ws:
         raise HTTPException(status_code=401, detail="No workspace in token claims")
     return ws

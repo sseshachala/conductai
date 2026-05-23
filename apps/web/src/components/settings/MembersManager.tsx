@@ -117,22 +117,34 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
   }
 
   async function handleRoleChange(clerk_user_id: string, role: string) {
+    const prev_role = members.find(m => m.clerk_user_id === clerk_user_id)?.role
+    setMembers(prev => prev.map(m => m.clerk_user_id === clerk_user_id ? { ...m, role: role as Member["role"] } : m))
     const headers = await buildHeaders(true)
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace!.id}/members/${clerk_user_id}`, {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace!.id}/members/${clerk_user_id}`, {
       method: "PATCH",
       headers,
       body: JSON.stringify({ role }),
     })
-    setMembers(prev => prev.map(m => m.clerk_user_id === clerk_user_id ? { ...m, role: role as Member["role"] } : m))
+    if (!res.ok) {
+      // revert on failure
+      setMembers(prev => prev.map(m => m.clerk_user_id === clerk_user_id ? { ...m, role: prev_role as Member["role"] } : m))
+      const body = await res.json().catch(() => ({}))
+      setError(body.detail ?? "Failed to update role")
+    }
   }
 
   async function handleRemove(clerk_user_id: string) {
     setRemoving(clerk_user_id)
     try {
       const headers = await buildHeaders()
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace!.id}/members/${clerk_user_id}`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace!.id}/members/${clerk_user_id}`, {
         method: "DELETE", headers,
       })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setError(body.detail ?? "Failed to remove member")
+        return
+      }
       setMembers(prev => prev.filter(m => m.clerk_user_id !== clerk_user_id))
     } finally {
       setRemoving(null)
@@ -143,9 +155,14 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
     setCancelling(invite_id)
     try {
       const headers = await buildHeaders()
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace!.id}/invites/${invite_id}`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace!.id}/invites/${invite_id}`, {
         method: "DELETE", headers,
       })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setError(body.detail ?? "Failed to cancel invite")
+        return
+      }
       setInvites(prev => prev.filter(i => i.id !== invite_id))
     } finally {
       setCancelling(null)
