@@ -489,7 +489,7 @@ const FEATURE_GROUPS = [
       {
         name: "Pre-built playbooks / agents",
         note: "Install and run without building from scratch",
-        values: { conduct: "✅ 9", copilot: "🟡", devin: "❌", linearb: "🟡", bito: "❌", amazonq: "🟡", coderabbit: "❌", xhawk: "🟡" },
+        values: { conduct: "✅ 11", copilot: "🟡", devin: "❌", linearb: "🟡", bito: "❌", amazonq: "🟡", coderabbit: "❌", xhawk: "🟡" },
       },
       {
         name: "Custom workflow builder",

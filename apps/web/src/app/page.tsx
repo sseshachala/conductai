@@ -602,6 +602,13 @@ const TEMPLATES = [
     what: "PR opened → AI scans the diff for OWASP Top 10 vulnerabilities, hardcoded secrets, injection flaws, and insecure dependencies → posts a structured security report as a review comment.",
     scenario: "Dev opens a PR at midnight. By morning it has a security review flagging a hardcoded API key and a missing auth check — before any human looked at it.",
   },
+  {
+    icon: "🤖",
+    name: "Copilot / AI PR Reviewer",
+    trigger: "PR opened",
+    what: "PR opened by Copilot, Cursor, or Claude Code → AI reviews the diff with extra scrutiny for hallucinated APIs, missing tests, and over-engineering → human approves in Slack before merge.",
+    scenario: "Cursor opens a PR fixing a bug. AI flags a hallucinated method that doesn't exist in the codebase. Human reviews and rejects before it ever hits CI.",
+  },
 ]
 
 
