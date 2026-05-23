@@ -37,8 +37,38 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+_REDACT_PATTERNS = [
+    (re.compile(r'ghp_[A-Za-z0-9]{36,}'), '[REDACTED-GITHUB-TOKEN]'),
+    (re.compile(r'github_pat_[A-Za-z0-9_]{82,}'), '[REDACTED-GITHUB-TOKEN]'),
+    (re.compile(r'ghs_[A-Za-z0-9]{36,}'), '[REDACTED-GITHUB-TOKEN]'),
+    (re.compile(r'sk-[A-Za-z0-9]{32,}'), '[REDACTED-API-KEY]'),
+    (re.compile(r'Bearer\s+[A-Za-z0-9\-_\.]{20,}'), 'Bearer [REDACTED]'),
+]
+
+
+def _redact(text: str) -> str:
+    for pattern, replacement in _REDACT_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+def _redact_payload(payload: dict) -> dict:
+    """Recursively redact sensitive tokens from all string values in a payload."""
+    out = {}
+    for k, v in payload.items():
+        if isinstance(v, str):
+            out[k] = _redact(v)
+        elif isinstance(v, dict):
+            out[k] = _redact_payload(v)
+        elif isinstance(v, list):
+            out[k] = [_redact(i) if isinstance(i, str) else i for i in v]
+        else:
+            out[k] = v
+    return out
+
+
 def _emit(db, run_id, block_id: str | None, kind: str, payload: dict):
-    event = RunEvent(run_id=run_id, block_id=block_id, kind=kind, payload=payload)
+    event = RunEvent(run_id=run_id, block_id=block_id, kind=kind, payload=_redact_payload(payload))
     db.add(event)
     db.commit()
 
