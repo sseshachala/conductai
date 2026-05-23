@@ -95,7 +95,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         </h1>
 
         <p className="mt-6 text-xl text-stone-500 max-w-2xl leading-relaxed">
-          Conduct ships with 9 ready-made agents — label a GitHub issue, get a PR.
+          Conduct ships with 11 ready-made agents — label a GitHub issue, get a PR.
           CI fails, get a diagnosis. Alert fires, get a hypothesis. All in Slack.
           Nothing merges without your approval.
         </p>
@@ -207,7 +207,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
       {/* Trust strip */}
       <div className="border-y border-stone-100 bg-stone-50 py-4 px-6">
         <div className="max-w-3xl mx-auto flex flex-wrap items-center justify-center gap-6 text-xs font-medium text-stone-500">
-          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>10 ready-made agents</span>
+          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>11 ready-made agents</span>
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>Zero prompt engineering</span>
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>Human approval on every merge</span>
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>MIT licensed</span>
@@ -239,7 +239,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
             One click to install.<br />Running in minutes.
           </h2>
           <p className="text-center text-stone-500 text-sm max-w-xl mx-auto mb-12">
-            9 pre-built agent playbooks — browse, install, configure your credentials, and run. Already installed playbooks are tracked so you never duplicate. No blank canvas required.
+            11 pre-built agent playbooks — browse, install, configure your credentials, and run. Already installed playbooks are tracked so you never duplicate. No blank canvas required.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
             {TEMPLATES.map(t => (
@@ -263,7 +263,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
               href="/marketplace"
               className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-6 py-3 text-sm font-medium text-stone-700 hover:border-stone-300 hover:shadow-sm transition-all"
             >
-              📦 Browse all 9 playbooks in the Marketplace →
+              📦 Browse all 11 playbooks in the Marketplace →
             </a>
           </div>
         </div>
@@ -277,7 +277,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             {[
               { step: "1", icon: "🔗", title: "Connect your repo", body: "Link GitHub, Slack, and Linear. No migration, no new tooling — Conduct wraps around what you already use." },
-              { step: "2", icon: "📦", title: "Install from the Marketplace", body: "Browse 9 pre-built playbooks, click Install — canvas is pre-wired. Add credentials and the agent is ready to run." },
+              { step: "2", icon: "📦", title: "Install from the Marketplace", body: "Browse 11 pre-built playbooks, click Install — canvas is pre-wired. Add credentials and the agent is ready to run." },
               { step: "3", icon: "✅", title: "Get output in Slack", body: "PRs, diagnoses, triage comments, changelogs — delivered to Slack. Approve or reject with one click." },
             ].map(s => (
               <div key={s.step} className="bg-white rounded-2xl border border-stone-200 p-6 text-center">
@@ -629,7 +629,7 @@ const WHY_DELEGATOR = [
   {
     icon: "⚡",
     title: "Playbook Marketplace — one click to install",
-    body: "9 pre-built agents in the Marketplace: Autopilot, PR Reviewer, Issue Triage, Release Notes, CI Failure Alert, Incident Responder, Dependency Updater. Install, configure credentials, run. Already-installed playbooks are tracked so you never duplicate.",
+    body: "11 pre-built agents in the Marketplace: Autopilot, PR Reviewer, Security Scanner, Issue Triage, Release Notes, CI Failure Alert, Incident Responder, Dependency Updater, and more. Install, configure credentials, run. Already-installed playbooks are tracked so you never duplicate.",
   },
   {
     icon: "🧩",
@@ -654,7 +654,7 @@ const BLOG_POSTS = [
 const FAQ = [
   {
     q: "What does Conduct actually do?",
-    a: "Conduct ships 9 pre-built AI agents that execute directly inside GitHub and alerting workflows. The agents handle discrete engineering tasks — labeling issues, opening pull requests, generating incident hypotheses from alerts, writing release notes, and more. Nothing needs to be built from scratch.",
+    a: "Conduct ships 11 pre-built AI agents that execute directly inside GitHub and alerting workflows. The agents handle discrete engineering tasks — labeling issues, opening pull requests, generating incident hypotheses from alerts, writing release notes, security scanning, and more. Nothing needs to be built from scratch.",
   },
   {
     q: "Is Conduct a good fit for my engineering team?",
@@ -666,11 +666,11 @@ const FAQ = [
   },
   {
     q: "How is Conduct different from GitHub Copilot or other AI coding assistants?",
-    a: "Conduct is a team substitute, not a copilot. Agents take ownership of full tasks like opening a PR or responding to an incident, rather than offering suggestions you still have to act on. The 9 agents ship pre-configured and ready to run — no framework to wire up, no prompts to engineer.",
+    a: "Conduct is a team substitute, not a copilot. Agents take ownership of full tasks like opening a PR or responding to an incident, rather than offering suggestions you still have to act on. The 11 agents ship pre-configured and ready to run — no framework to wire up, no prompts to engineer.",
   },
   {
     q: "What specific agents come included?",
-    a: "The Playbook Marketplace includes 9 agents: Autopilot, PR Reviewer, Issue Triage, Release Notes, CI Failure Alert, Incident Responder, Dependency Updater, and more. Each installs in one click — the canvas is pre-wired, just add credentials. Already-installed playbooks are tracked so you never create duplicates.",
+    a: "The Playbook Marketplace includes 11 agents: Autopilot, PR Reviewer, Security Scanner, Issue Triage, Release Notes, CI Failure Alert, Incident Responder, Dependency Updater, and more. Each installs in one click — the canvas is pre-wired, just add credentials. Already-installed playbooks are tracked so you never create duplicates.",
   },
   {
     q: "How long does it take to get up and running?",
