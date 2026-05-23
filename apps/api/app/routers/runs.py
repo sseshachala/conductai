@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
-from app.core.auth import get_workspace_id, _verify_clerk_token, _clerk_enabled, DEV_WORKSPACE_ID
+from app.core.auth import get_workspace_id, require_workspace_role, _verify_clerk_token, _clerk_enabled, DEV_WORKSPACE_ID
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.run import Run, RunEvent
@@ -92,6 +92,7 @@ def list_runs(
     workflow_id: UUID,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
 ):
     _get_workflow(workflow_id, workspace_id, db)
     # Return runs across ALL versions so autosave version bumps don't hide history
@@ -112,6 +113,7 @@ def create_run(
     body: RunCreate,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor")),
 ):
     workflow = _get_workflow(workflow_id, workspace_id, db)
     if not workflow.current_version_id:
@@ -144,6 +146,7 @@ def get_run(
     run_id: UUID,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
 ):
     # Verify the workflow belongs to this workspace before exposing run data.
     _get_workflow(workflow_id, workspace_id, db)
@@ -223,6 +226,7 @@ def cancel_run(
     run_id: UUID,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor")),
 ):
     """Mark a running or pending run as cancelled. The worker will abort on next check."""
     _get_workflow(workflow_id, workspace_id, db)
@@ -245,6 +249,7 @@ def approve_run(
     body: ApprovalDecision,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor")),
 ):
     """
     Called by the human approver (or Slack webhook) to resume a paused run.
@@ -294,6 +299,7 @@ def approve_run(
 def list_all_runs(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
     status: str | None = None,
     limit: int = 50,
 ):
@@ -332,6 +338,7 @@ def get_workspace_run(
     run_id: UUID,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
 ):
     """Single run by ID, scoped to workspace, with workflow name."""
     row = (

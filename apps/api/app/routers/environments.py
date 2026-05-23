@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id
+from app.core.auth import get_workspace_id, require_workspace_role
 from app.core.database import get_db
 from app.models.environment import Environment
 from app.models.integration import Integration
@@ -39,6 +39,7 @@ class EnvironmentOut(BaseModel):
 def list_environments(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
 ):
     rows = (
         db.query(Environment)
@@ -54,6 +55,7 @@ def create_environment(
     body: EnvironmentCreate,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin")),
 ):
     name = body.name.strip()
     if not name:
@@ -79,6 +81,7 @@ def delete_environment(
     env_id: UUID,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin")),
 ):
     env = (
         db.query(Environment)
