@@ -104,17 +104,25 @@ blocks:
       Repo: {{_trigger.repository.full_name}}
       Critical issues: {{review_pr.critical}}
 
+      IMPORTANT: Create the issue WITHOUT labels first, then add the label in a
+      separate API call. GitHub only fires the `issues.labeled` webhook when a label
+      is added to an existing issue — not when an issue is created with labels attached.
+
       Steps:
-      1. Create a GitHub issue via the API:
+      1. Retrieve the GitHub token from the Delegator credentials vault.
+      2. Create the issue (no labels):
          POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues
          Headers: Authorization: token <github_token>, Content-Type: application/json
          Body:
          {
            "title": "fix: address critical review findings on PR #{{_trigger.number}}",
-           "body": "## Context\nPR #{{_trigger.number}} was reviewed and {{review_pr.critical}} critical issue(s) were found.\n\nReview: {{review_pr.review_url}}\n\n## Task\nRead the review comment on the PR, identify all 🔴 Critical findings, and implement fixes.\n\nFiles changed in the PR are the ones to focus on.",
-           "labels": ["autopilot ready"]
+           "body": "## Context\nPR #{{_trigger.number}} was reviewed and {{review_pr.critical}} critical issue(s) were found.\n\nReview: {{review_pr.review_url}}\n\n## Task\nRead the review comment on the PR, identify all 🔴 Critical findings, and implement fixes.\n\nFiles changed in the PR are the ones to focus on."
          }
-         (retrieve the GitHub token from the Delegator credentials vault)
+         Save the returned issue number.
+      3. Add the label in a separate call (this fires the webhook):
+         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/<issue_number>/labels
+         Headers: Authorization: token <github_token>, Content-Type: application/json
+         Body: {"labels": ["autopilot ready"]}
 
       Output ONLY the following JSON on the last line:
         {"issue_url": "<created issue URL>", "issue_number": <number>}
