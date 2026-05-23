@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id
+from app.core.auth import get_workspace_id, require_workspace_role
 from app.core.crypto import decrypt, encrypt
 from app.core.database import get_db
 from app.models.integration import Integration
@@ -48,7 +48,7 @@ class CredentialOut(BaseModel):
 
 
 @router.get("", response_model=list[CredentialOut])
-def list_credentials(db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id)):
+def list_credentials(db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _role: str = Depends(require_workspace_role("admin", "editor", "viewer"))):
     rows = db.query(Integration).filter(
         Integration.workspace_id == workspace_id
     ).order_by(Integration.created_at).all()
@@ -65,7 +65,7 @@ def list_credentials(db: Session = Depends(get_db), workspace_id: str = Depends(
 
 
 @router.post("", status_code=201)
-def upsert_credential(body: CredentialUpsert, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id)):
+def upsert_credential(body: CredentialUpsert, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _role: str = Depends(require_workspace_role("admin"))):
     if not body.credentials:
         raise HTTPException(status_code=422, detail="credentials dict must not be empty")
 
@@ -114,7 +114,7 @@ def upsert_credential(body: CredentialUpsert, db: Session = Depends(get_db), wor
 
 
 @router.delete("/{handle}", status_code=204)
-def delete_credential(handle: str, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id)):
+def delete_credential(handle: str, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _role: str = Depends(require_workspace_role("admin"))):
     row = db.query(Integration).filter(
         Integration.workspace_id == workspace_id,
         Integration.handle == handle,
@@ -149,6 +149,7 @@ def list_credentials_by_environment(
     env_id: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
 ):
     """List credentials scoped to a specific environment."""
     rows = db.query(Integration).filter(
@@ -200,6 +201,7 @@ def list_github_issues(
     label: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
 ):
     """Return open issues in repo with the given label using the stored GitHub token."""
     token = _github_token(workspace_id, db)
@@ -236,6 +238,7 @@ def list_github_issues(
 def list_github_repos(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
 ):
     """Return repos the stored GitHub token can access (up to 100, sorted by push date)."""
     token = _github_token(workspace_id, db)
@@ -264,6 +267,7 @@ def list_github_branches(
     repo: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
 ):
     """Return branch names for the given repo using the workspace's GitHub token."""
     token = _github_token(workspace_id, db)
@@ -289,6 +293,7 @@ def register_github_webhook(
     repo: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin")),
 ):
     """
     Register a GitHub webhook on the given repo pointing at this Delegator instance.

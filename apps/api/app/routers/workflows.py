@@ -4,7 +4,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from app.core.auth import get_workspace_id
+from app.core.auth import get_workspace_id, require_workspace_role
 from app.core.database import get_db
 
 log = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ def _run_compiler(version_id, graph: dict):
 
 
 @router.get("", response_model=list[WorkflowOut])
-def list_workflows(db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id)):
+def list_workflows(db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _role: str = Depends(require_workspace_role("admin", "editor", "viewer"))):
     workflows = db.query(Workflow).filter(
         Workflow.workspace_id == workspace_id
     ).order_by(Workflow.updated_at.desc()).all()
@@ -173,7 +173,7 @@ def list_playbooks():
 
 
 @router.post("", response_model=WorkflowDetailOut, status_code=201)
-def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id)):
+def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _role: str = Depends(require_workspace_role("admin", "editor"))):
     import pathlib
 
     graph_data = body.graph.model_dump()
@@ -240,7 +240,7 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
 
 
 @router.get("/{workflow_id}", response_model=WorkflowDetailOut)
-def get_workflow(workflow_id: UUID, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id)):
+def get_workflow(workflow_id: UUID, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _role: str = Depends(require_workspace_role("admin", "editor", "viewer"))):
     workflow = db.query(Workflow).filter(
         Workflow.id == workflow_id,
         Workflow.workspace_id == workspace_id,
@@ -287,6 +287,7 @@ def delete_workflow(
     workflow_id: UUID,
     workspace_id: str = Depends(get_workspace_id),
     db: Session = Depends(get_db),
+    _role: str = Depends(require_workspace_role("admin")),
 ):
     workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
     if not workflow:
@@ -332,6 +333,7 @@ def stream_block_compile(
     body: BlockCompileRequest,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor")),
 ):
     """Stream the compiled prompt for a single block using the current editor state."""
     workflow = db.query(Workflow).filter(
@@ -368,6 +370,7 @@ def preflight_workflow(
     body: PreflightRequest,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor")),
 ):
     """
     Estimate the turn budget needed before starting a run.
@@ -457,6 +460,7 @@ def validate_workflow(
     workflow_id: UUID,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
 ):
     """
     Pre-flight validation before starting a run.
@@ -557,6 +561,7 @@ def estimate_workflow_cost(
     issues: int = 1,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
 ):
     """
     Estimate token usage and cost for this workflow.
@@ -912,6 +917,7 @@ def set_workflow_environment(
     body: WorkflowEnvironmentRequest,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor")),
 ):
     """Assign or clear the environment scoping for a workflow."""
     workflow = db.query(Workflow).filter(
@@ -939,6 +945,7 @@ def update_workflow_source(
     body: WorkflowSourceRequest,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor")),
 ):
     """Configure (or clear) the GitHub-repo source binding for a workflow."""
     workflow = db.query(Workflow).filter(
