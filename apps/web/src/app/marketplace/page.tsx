@@ -56,9 +56,12 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   const [loading, setLoading] = useState(true)
   const [activeTag, setActiveTag] = useState("all")
   const [installing, setInstalling] = useState(false)
-  const [installedSlugs, setInstalledSlugs] = useState<Set<string>>(new Set())
+  const [uninstalling, setUninstalling] = useState<string | null>(null)
+  const [confirmingUninstall, setConfirmingUninstall] = useState<string | null>(null)
+  // slug → workflow id (for uninstall)
+  const [installedMap, setInstalledMap] = useState<Map<string, string>>(new Map())
 
-  // Modal state
+  // Install modal state
   const [pendingSlug, setPendingSlug] = useState<string | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string>("")
@@ -87,14 +90,14 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
       if (pbRes.ok) setPlaybooks(await pbRes.json())
 
       if (wfRes.ok) {
-        const workflows: { name: string }[] = await wfRes.json()
-        const installedNames = new Set(workflows.map(w => w.name))
-        const matched = new Set(
-          Object.entries(FRIENDLY_NAMES)
-            .filter(([, name]) => installedNames.has(name))
-            .map(([slug]) => slug)
-        )
-        setInstalledSlugs(matched)
+        const workflows: { id: string; name: string }[] = await wfRes.json()
+        const nameToId = new Map(workflows.map(w => [w.name, w.id]))
+        const map = new Map<string, string>()
+        for (const [slug, friendlyName] of Object.entries(FRIENDLY_NAMES)) {
+          const id = nameToId.get(friendlyName)
+          if (id) map.set(slug, id)
+        }
+        setInstalledMap(map)
       }
 
       setLoading(false)
@@ -119,7 +122,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
     }
   }
 
-  function closeModal() {
+  function closeInstallModal() {
     setPendingSlug(null)
     setProjects([])
     setSelectedProjectId("")
@@ -140,11 +143,32 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
       })
       if (!res.ok) return
       const wf = await res.json()
-      setInstalledSlugs(prev => new Set([...prev, pendingSlug]))
-      closeModal()
+      setInstalledMap(prev => new Map(prev).set(pendingSlug, wf.id))
+      closeInstallModal()
       router.push(`/workflows/${wf.id}`)
     } finally {
       setInstalling(false)
+    }
+  }
+
+  async function uninstall(slug: string) {
+    const workflowId = installedMap.get(slug)
+    if (!workflowId) return
+    setUninstalling(slug)
+    setConfirmingUninstall(null)
+    try {
+      const headers = await authHeaders()
+      const workspaceId = getWorkspaceId()
+      if (workspaceId) headers["X-Workspace-Id"] = workspaceId
+
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, {
+        method: "DELETE",
+        headers,
+      })
+      if (!res.ok) return
+      setInstalledMap(prev => { const m = new Map(prev); m.delete(slug); return m })
+    } finally {
+      setUninstalling(null)
     }
   }
 
@@ -188,8 +212,13 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                 key={p.slug}
                 playbook={p}
                 installing={false}
-                installed={installedSlugs.has(p.slug)}
+                installed={installedMap.has(p.slug)}
+                uninstalling={uninstalling === p.slug}
+                confirming={confirmingUninstall === p.slug}
                 onInstall={openInstallModal}
+                onUninstallRequest={() => setConfirmingUninstall(p.slug)}
+                onUninstallConfirm={() => uninstall(p.slug)}
+                onUninstallCancel={() => setConfirmingUninstall(null)}
               />
             ))}
           </div>
@@ -223,7 +252,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
 
             <div className="flex gap-2 justify-end">
               <button
-                onClick={closeModal}
+                onClick={closeInstallModal}
                 className="px-4 py-2 text-xs text-stone-500 hover:text-stone-700 rounded-lg hover:bg-stone-100 transition-colors"
               >
                 Cancel
@@ -243,11 +272,16 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   )
 }
 
-function PlaybookCard({ playbook, installing, installed, onInstall }: {
+function PlaybookCard({ playbook, installing, installed, uninstalling, confirming, onInstall, onUninstallRequest, onUninstallConfirm, onUninstallCancel }: {
   playbook: Playbook
   installing: boolean
   installed: boolean
+  uninstalling: boolean
+  confirming: boolean
   onInstall: (slug: string) => void
+  onUninstallRequest: () => void
+  onUninstallConfirm: () => void
+  onUninstallCancel: () => void
 }) {
   return (
     <div className={`rounded-xl border bg-white p-5 flex flex-col gap-3 transition-colors ${
@@ -269,17 +303,46 @@ function PlaybookCard({ playbook, installing, installed, onInstall }: {
         </p>
         <p className="text-xs text-stone-500 leading-relaxed">{playbook.description}</p>
       </div>
-      <button
-        onClick={() => !installed && onInstall(playbook.slug)}
-        disabled={installing || installed}
-        className={`mt-auto w-full rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
-          installed
-            ? "bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default"
-            : "bg-stone-900 text-white hover:bg-stone-700 disabled:opacity-40"
-        }`}
-      >
-        {installing ? "Installing…" : installed ? "✓ Installed" : "+ Install"}
-      </button>
+
+      {installed ? (
+        confirming ? (
+          <div className="mt-auto flex gap-2">
+            <button
+              onClick={onUninstallCancel}
+              className="flex-1 rounded-lg px-3 py-2 text-xs font-medium border border-stone-200 text-stone-500 hover:bg-stone-100 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={onUninstallConfirm}
+              disabled={uninstalling}
+              className="flex-1 rounded-lg px-3 py-2 text-xs font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 transition-colors"
+            >
+              {uninstalling ? "Removing…" : "Confirm"}
+            </button>
+          </div>
+        ) : (
+          <div className="mt-auto flex gap-2">
+            <div className="flex-1 rounded-lg px-3 py-2 text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 text-center">
+              ✓ Installed
+            </div>
+            <button
+              onClick={onUninstallRequest}
+              className="rounded-lg px-3 py-2 text-xs font-medium border border-stone-200 text-stone-400 hover:text-red-600 hover:border-red-200 transition-colors"
+            >
+              Remove
+            </button>
+          </div>
+        )
+      ) : (
+        <button
+          onClick={() => onInstall(playbook.slug)}
+          disabled={installing}
+          className="mt-auto w-full rounded-lg px-3 py-2 text-xs font-medium bg-stone-900 text-white hover:bg-stone-700 disabled:opacity-40 transition-colors"
+        >
+          {installing ? "Installing…" : "+ Install"}
+        </button>
+      )}
     </div>
   )
 }
