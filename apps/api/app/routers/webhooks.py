@@ -388,25 +388,52 @@ def _parse_string_list(raw: Any) -> list[str]:
     return []
 
 
-def _labels_match(config: dict[str, Any], incoming_label: str, issue_labels: list[str], strict: bool) -> bool:
-    mode = str(config.get("label_mode") or "exact").strip()
+# Well-known autopilot labels — used as the default tag set when no explicit
+# label configuration is present.
+AUTOPILOT_LABELS = {"autopilot ready", "ai_pilot_ready", "ai_ready"}
 
-    if mode == "exact":
+
+def _labels_match(config: dict[str, Any], incoming_label: str, issue_labels: list[str], strict: bool) -> bool:
+    """
+    Determine whether the incoming GitHub label (or the issue's full label set)
+    satisfies the workflow trigger's label configuration.
+
+    Trigger config shapes (in priority order):
+      1. ``label_mode: one_of``  + ``labels: [...]``  → any label in the list matches
+      2. ``label_mode: all_of``  + ``labels: [...]``  → every label must be present
+      3. ``label_mode: exact``   + ``label: "<str>"`` → exact single-label match (legacy)
+      4. ``labels: [...]`` (no label_mode)            → implicit one_of
+      5. ``label: "<str>"`` (no label_mode)           → legacy exact match
+
+    When no label configuration is present in strict mode the trigger does NOT fire.
+    In permissive mode an unconfigured trigger fires on any label.
+    """
+    mode = str(config.get("label_mode") or "").strip()
+
+    # ── new multi-label config (config.labels list / comma-separated string) ──
+    configured_labels = _parse_string_list(config.get("labels"))
+    if configured_labels:
+        effective_mode = mode if mode in ("one_of", "all_of") else "one_of"
+        if effective_mode == "one_of":
+            return incoming_label in configured_labels or any(lbl in configured_labels for lbl in issue_labels)
+        if effective_mode == "all_of":
+            issue_set = set(issue_labels)
+            return all(lbl in issue_set for lbl in configured_labels)
+
+    # ── legacy single-label config (config.label string) ──
+    if mode == "exact" or not mode:
         required = str(config.get("label") or "").strip()
         if not required:
             return not strict
         return incoming_label == required
 
-    configured_labels = _parse_string_list(config.get("labels"))
-    if not configured_labels:
+    if mode == "one_of":
+        # one_of with no labels list — treat as unconfigured
         return not strict
 
-    if mode == "one_of":
-        return incoming_label in configured_labels or any(lbl in configured_labels for lbl in issue_labels)
-
     if mode == "all_of":
-        issue_set = set(issue_labels)
-        return all(lbl in issue_set for lbl in configured_labels)
+        # all_of with no labels list — treat as unconfigured
+        return not strict
 
     # Unknown mode -> fail closed in strict mode
     return not strict
