@@ -14,6 +14,11 @@ interface Playbook {
   featured: boolean
 }
 
+interface Project {
+  id: string
+  name: string
+}
+
 const ALL_TAGS = ["all", "github", "code", "code-review", "ops", "notifications", "approval"]
 
 function getWorkspaceId(): string | null {
@@ -50,16 +55,27 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   const [playbooks, setPlaybooks] = useState<Playbook[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTag, setActiveTag] = useState("all")
-  const [installing, setInstalling] = useState<string | null>(null)
+  const [installing, setInstalling] = useState(false)
   const [installedSlugs, setInstalledSlugs] = useState<Set<string>>(new Set())
+
+  // Modal state
+  const [pendingSlug, setPendingSlug] = useState<string | null>(null)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("")
+  const [projectsLoading, setProjectsLoading] = useState(false)
+
+  async function authHeaders(): Promise<Record<string, string>> {
+    const headers: Record<string, string> = {}
+    if (getToken) {
+      const token = await getToken()
+      if (token) headers["Authorization"] = `Bearer ${token}`
+    }
+    return headers
+  }
 
   useEffect(() => {
     async function load() {
-      const headers: Record<string, string> = {}
-      if (getToken) {
-        const token = await getToken()
-        if (token) headers["Authorization"] = `Bearer ${token}`
-      }
+      const headers = await authHeaders()
       const workspaceId = getWorkspaceId()
       if (workspaceId) headers["X-Workspace-Id"] = workspaceId
 
@@ -87,28 +103,48 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function install(slug: string) {
-    setInstalling(slug)
+  async function openInstallModal(slug: string) {
+    setPendingSlug(slug)
+    setProjectsLoading(true)
     try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" }
-      if (getToken) {
-        const token = await getToken()
-        if (token) headers["Authorization"] = `Bearer ${token}`
+      const headers = await authHeaders()
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, { headers })
+      if (res.ok) {
+        const data: Project[] = await res.json()
+        setProjects(data)
+        setSelectedProjectId(data[0]?.id ?? "")
       }
-      const workspaceId = getWorkspaceId()
-      if (workspaceId) headers["X-Workspace-Id"] = workspaceId
+    } finally {
+      setProjectsLoading(false)
+    }
+  }
+
+  function closeModal() {
+    setPendingSlug(null)
+    setProjects([])
+    setSelectedProjectId("")
+  }
+
+  async function confirmInstall() {
+    if (!pendingSlug || !selectedProjectId) return
+    setInstalling(true)
+    try {
+      const headers = await authHeaders()
+      headers["Content-Type"] = "application/json"
+      headers["X-Workspace-Id"] = selectedProjectId
 
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ name: FRIENDLY_NAMES[slug] ?? slug, template: slug }),
+        body: JSON.stringify({ name: FRIENDLY_NAMES[pendingSlug] ?? pendingSlug, template: pendingSlug }),
       })
       if (!res.ok) return
       const wf = await res.json()
-      setInstalledSlugs(prev => new Set([...prev, slug]))
+      setInstalledSlugs(prev => new Set([...prev, pendingSlug]))
+      closeModal()
       router.push(`/workflows/${wf.id}`)
     } finally {
-      setInstalling(null)
+      setInstalling(false)
     }
   }
 
@@ -151,25 +187,68 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
               <PlaybookCard
                 key={p.slug}
                 playbook={p}
-                installing={installing}
+                installing={false}
                 installed={installedSlugs.has(p.slug)}
-                onInstall={install}
+                onInstall={openInstallModal}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* Install modal */}
+      {pendingSlug && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6 flex flex-col gap-5">
+            <div>
+              <h2 className="text-sm font-semibold text-stone-900">Install to project</h2>
+              <p className="text-xs text-stone-400 mt-1">
+                Choose which project to install <span className="font-medium text-stone-600">{FRIENDLY_NAMES[pendingSlug] ?? pendingSlug}</span> into.
+              </p>
+            </div>
+
+            {projectsLoading ? (
+              <div className="h-9 rounded-lg bg-stone-100 animate-pulse" />
+            ) : (
+              <select
+                value={selectedProjectId}
+                onChange={e => setSelectedProjectId(e.target.value)}
+                className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
+              >
+                {projects.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            )}
+
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={closeModal}
+                className="px-4 py-2 text-xs text-stone-500 hover:text-stone-700 rounded-lg hover:bg-stone-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmInstall}
+                disabled={installing || projectsLoading || !selectedProjectId}
+                className="px-4 py-2 text-xs font-medium bg-stone-900 text-white rounded-lg hover:bg-stone-700 disabled:opacity-40 transition-colors"
+              >
+                {installing ? "Installing…" : "Install"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   )
 }
 
 function PlaybookCard({ playbook, installing, installed, onInstall }: {
   playbook: Playbook
-  installing: string | null
+  installing: boolean
   installed: boolean
   onInstall: (slug: string) => void
 }) {
-  const isInstalling = installing === playbook.slug
   return (
     <div className={`rounded-xl border bg-white p-5 flex flex-col gap-3 transition-colors ${
       installed ? "border-emerald-200 bg-emerald-50/30" : "border-stone-200 hover:border-stone-300"
@@ -192,14 +271,14 @@ function PlaybookCard({ playbook, installing, installed, onInstall }: {
       </div>
       <button
         onClick={() => !installed && onInstall(playbook.slug)}
-        disabled={!!installing || installed}
+        disabled={installing || installed}
         className={`mt-auto w-full rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
           installed
             ? "bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default"
             : "bg-stone-900 text-white hover:bg-stone-700 disabled:opacity-40"
         }`}
       >
-        {isInstalling ? "Installing…" : installed ? "✓ Installed" : "+ Install"}
+        {installing ? "Installing…" : installed ? "✓ Installed" : "+ Install"}
       </button>
     </div>
   )
