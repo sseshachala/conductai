@@ -531,7 +531,8 @@ const FEATURE_GROUPS = [
       },
       {
         name: "Security / vulnerability scanning",
-        values: { conduct: "🟡", copilot: "🟡", devin: "🟡", linearb: "❌", bito: "✅", amazonq: "✅", coderabbit: "✅", xhawk: "🟡" },
+        note: "OWASP Top 10, secret detection, insecure deps",
+        values: { conduct: "✅", copilot: "🟡", devin: "🟡", linearb: "❌", bito: "✅", amazonq: "✅", coderabbit: "✅", xhawk: "🟡" },
       },
     ],
   },
