@@ -1,14 +1,17 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from app.core.config import settings
 from app.routers import credentials, dashboard, environments, projects, runs, webhooks, workflows
 from app.routers.runs import workspace_runs_router
 
 app = FastAPI(title="Marshal API", version="0.1.0")
 
+_origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
