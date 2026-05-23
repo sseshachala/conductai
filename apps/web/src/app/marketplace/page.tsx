@@ -19,6 +19,20 @@ interface Project {
   name: string
 }
 
+interface Repo {
+  full_name: string
+}
+
+// Playbooks that need a GitHub webhook registered on a specific repo
+const GITHUB_WEBHOOK_SLUGS = new Set([
+  "pr_reviewer", "copilot_reviewer", "issue_triage",
+  "ci_notify", "release_notes",
+  "autopilot_quick", "autopilot_full", "autopilot_approved",
+])
+
+// Playbooks that need manual webhook setup (show instructions instead)
+const MANUAL_WEBHOOK_SLUGS = new Set(["incident_responder", "dependency_updater"])
+
 const ALL_TAGS = ["all", "github", "code", "code-review", "ops", "notifications", "approval"]
 
 function getWorkspaceId(): string | null {
@@ -65,6 +79,9 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   const [projects, setProjects] = useState<Project[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string>("")
   const [projectsLoading, setProjectsLoading] = useState(false)
+  const [repos, setRepos] = useState<Repo[]>([])
+  const [selectedRepo, setSelectedRepo] = useState<string>("")
+  const [reposLoading, setReposLoading] = useState(false)
 
   async function authHeaders(): Promise<Record<string, string>> {
     const headers: Record<string, string> = {}
@@ -110,12 +127,33 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
     setProjectsLoading(true)
     try {
       const headers = await authHeaders()
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, { headers })
-      if (res.ok) {
-        const data: Project[] = await res.json()
-        setProjects(data)
-        setSelectedProjectId(data[0]?.id ?? "")
+      const workspaceId = getWorkspaceId()
+      if (workspaceId) headers["X-Workspace-Id"] = workspaceId
+
+      const promises: Promise<void>[] = [
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, { headers }).then(async res => {
+          if (res.ok) {
+            const data: Project[] = await res.json()
+            setProjects(data)
+            setSelectedProjectId(data[0]?.id ?? "")
+          }
+        }),
+      ]
+
+      if (GITHUB_WEBHOOK_SLUGS.has(slug)) {
+        setReposLoading(true)
+        promises.push(
+          fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/github/repos`, { headers }).then(async res => {
+            if (res.ok) {
+              const data: Repo[] = await res.json()
+              setRepos(data)
+              setSelectedRepo(data[0]?.full_name ?? "")
+            }
+          }).finally(() => setReposLoading(false))
+        )
       }
+
+      await Promise.all(promises)
     } finally {
       setProjectsLoading(false)
     }
@@ -125,6 +163,8 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
     setPendingSlug(null)
     setProjects([])
     setSelectedProjectId("")
+    setRepos([])
+    setSelectedRepo("")
   }
 
   async function confirmInstall() {
@@ -135,10 +175,17 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
       headers["Content-Type"] = "application/json"
       headers["X-Workspace-Id"] = selectedProjectId
 
+      const needsRepo = GITHUB_WEBHOOK_SLUGS.has(pendingSlug)
+      const body: Record<string, string> = {
+        name: FRIENDLY_NAMES[pendingSlug] ?? pendingSlug,
+        template: pendingSlug,
+      }
+      if (needsRepo && selectedRepo) body.repo = selectedRepo
+
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ name: FRIENDLY_NAMES[pendingSlug] ?? pendingSlug, template: pendingSlug }),
+        body: JSON.stringify(body),
       })
       if (!res.ok) return
       const wf = await res.json()
@@ -227,22 +274,64 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
             <div>
               <h2 className="text-sm font-semibold text-stone-900">Install to project</h2>
               <p className="text-xs text-stone-400 mt-1">
-                Choose which project to install <span className="font-medium text-stone-600">{FRIENDLY_NAMES[pendingSlug] ?? pendingSlug}</span> into.
+                Choose where to install <span className="font-medium text-stone-600">{FRIENDLY_NAMES[pendingSlug] ?? pendingSlug}</span>.
               </p>
             </div>
 
-            {projectsLoading ? (
-              <div className="h-9 rounded-lg bg-stone-100 animate-pulse" />
-            ) : (
-              <select
-                value={selectedProjectId}
-                onChange={e => setSelectedProjectId(e.target.value)}
-                className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
-              >
-                {projects.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
+            {/* Project picker */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-stone-500">Project</label>
+              {projectsLoading ? (
+                <div className="h-9 rounded-lg bg-stone-100 animate-pulse" />
+              ) : (
+                <select
+                  value={selectedProjectId}
+                  onChange={e => setSelectedProjectId(e.target.value)}
+                  className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
+                >
+                  {projects.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {/* Repo picker — GitHub webhook playbooks */}
+            {GITHUB_WEBHOOK_SLUGS.has(pendingSlug) && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-stone-500">
+                  GitHub repo
+                  <span className="ml-1 text-stone-400 font-normal">— webhook will be registered automatically</span>
+                </label>
+                {reposLoading ? (
+                  <div className="h-9 rounded-lg bg-stone-100 animate-pulse" />
+                ) : repos.length === 0 ? (
+                  <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    No repos found — make sure GitHub is connected in Settings → Integrations.
+                  </p>
+                ) : (
+                  <select
+                    value={selectedRepo}
+                    onChange={e => setSelectedRepo(e.target.value)}
+                    className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
+                  >
+                    {repos.map(r => (
+                      <option key={r.full_name} value={r.full_name}>{r.full_name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
+
+            {/* Manual setup instructions — non-GitHub webhook playbooks */}
+            {MANUAL_WEBHOOK_SLUGS.has(pendingSlug) && (
+              <div className="bg-stone-50 border border-stone-200 rounded-lg px-3 py-3 flex flex-col gap-1.5">
+                <p className="text-xs font-medium text-stone-700">Manual webhook setup required</p>
+                <p className="text-xs text-stone-500 leading-relaxed">
+                  After installing, copy the webhook URL from the workflow settings and paste it into your{" "}
+                  {pendingSlug === "incident_responder" ? "PagerDuty or OpsGenie" : "GitHub Actions"} configuration.
+                </p>
+              </div>
             )}
 
             <div className="flex gap-2 justify-end">
