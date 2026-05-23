@@ -5,6 +5,7 @@ import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import RunTrace from "@/components/runs/RunTrace"
+import AppShell from "@/components/AppShell"
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
@@ -63,38 +64,27 @@ export default function RunDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-stone-50 flex items-center justify-center">
-        <p className="text-stone-400 text-sm">Loading…</p>
-      </div>
+      <AppShell>
+        <div className="flex items-center justify-center h-64">
+          <p className="text-stone-400 text-sm">Loading…</p>
+        </div>
+      </AppShell>
     )
   }
 
   if (!run) {
     return (
-      <div className="min-h-screen bg-stone-50 flex items-center justify-center">
-        <p className="text-stone-500">Run not found.</p>
-      </div>
+      <AppShell>
+        <div className="flex items-center justify-center h-64">
+          <p className="text-stone-500">Run not found.</p>
+        </div>
+      </AppShell>
     )
   }
 
   return (
-    <div className="min-h-screen bg-stone-50">
-      <header className="border-b border-stone-200 bg-white px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link href={`/workflows/${workflowId}/runs`} className="text-stone-400 hover:text-stone-700 text-sm">←</Link>
-          <span className="font-semibold text-stone-900">{workflowName ?? "Agent"}</span>
-          <span className="text-xs text-stone-400">/ Runs /</span>
-          <span className="font-mono text-xs text-stone-500">{run.id.slice(0, 8)}…</span>
-        </div>
-        <Link
-          href={`/workflows/${workflowId}`}
-          className="text-xs text-stone-500 hover:text-stone-800 transition-colors"
-        >
-          Edit agent
-        </Link>
-      </header>
-
-      <main className="mx-auto max-w-3xl px-6 py-10">
+    <AppShell>
+      <div className="mx-auto max-w-3xl px-6 py-10">
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <h2 className="text-xl font-semibold text-stone-900">Run trace</h2>
@@ -158,7 +148,7 @@ export default function RunDetailPage() {
             getToken={getToken}
           />
         </div>
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }
