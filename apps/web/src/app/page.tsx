@@ -28,7 +28,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
       {/* Nav */}
       <header className="px-6 py-5 flex items-center justify-between max-w-6xl mx-auto w-full">
         <div className="flex items-center">
-          <img src="/logo.png" alt="Conduct AI" className="h-8 w-auto" />
+          <img src="/logo.png" alt="Conduct AI" className="h-10 w-auto" />
         </div>
         <div className="flex items-center gap-4">
           <a
