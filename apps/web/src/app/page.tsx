@@ -33,6 +33,12 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         </div>
         <div className="flex items-center gap-4">
           <a
+            href="/compare"
+            className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
+          >
+            Compare
+          </a>
+          <a
             href="https://github.com/sseshachala/conductai/discussions/new?category=ideas"
             target="_blank"
             rel="noopener noreferrer"
@@ -451,6 +457,8 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
           <span>MIT licensed</span>
           <span>·</span>
           <a href="https://github.com/sseshachala/conductai/discussions/new?category=ideas" target="_blank" rel="noopener noreferrer" className="hover:text-stone-600 transition-colors">💡 Request an idea</a>
+          <span>·</span>
+          <a href="/compare" className="hover:text-stone-600 transition-colors">Compare</a>
           <span>·</span>
           <a href="/privacy" className="hover:text-stone-600 transition-colors">Privacy</a>
           <span>·</span>
