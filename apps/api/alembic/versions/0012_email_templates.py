@@ -6,6 +6,7 @@ Create Date: 2026-05-23
 """
 from typing import Sequence, Union
 import sqlalchemy as sa
+from sqlalchemy import text
 from alembic import op
 
 revision: str = "0012"
@@ -109,15 +110,19 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), onupdate=sa.func.now()),
     )
 
-    op.execute("""
-        INSERT INTO email_templates (slug, subject, html_body, description, variables) VALUES (
-            'workspace_invite',
-            'You''re invited to {{ workspace_name }} on Conduct AI',
-            :html,
-            'Sent when an admin invites a new member to a workspace by email.',
-            '["workspace_name", "invited_by_email", "role", "role_description", "app_url"]'
-        )
-    """, {"html": WORKSPACE_INVITE_HTML})
+    conn = op.get_bind()
+    conn.execute(
+        text("""
+            INSERT INTO email_templates (slug, subject, html_body, description, variables) VALUES (
+                'workspace_invite',
+                'You''re invited to {{ workspace_name }} on Conduct AI',
+                :html,
+                'Sent when an admin invites a new member to a workspace by email.',
+                '["workspace_name", "invited_by_email", "role", "role_description", "app_url"]'
+            )
+        """),
+        {"html": WORKSPACE_INVITE_HTML},
+    )
 
 
 def downgrade() -> None:
