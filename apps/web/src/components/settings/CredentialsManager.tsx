@@ -84,18 +84,18 @@ function getWorkspaceId(): string | null {
   return document.cookie.split("; ").find(r => r.startsWith("delegator_project_id="))?.split("=")[1] ?? null
 }
 
-export default function CredentialsManager() {
+export default function CredentialsManager({ isAdmin = true }: { isAdmin?: boolean }) {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-  if (clerkEnabled) return <CredentialsManagerWithAuth />
-  return <CredentialsManagerInner getToken={null} />
+  if (clerkEnabled) return <CredentialsManagerWithAuth isAdmin={isAdmin} />
+  return <CredentialsManagerInner getToken={null} isAdmin={isAdmin} />
 }
 
-function CredentialsManagerWithAuth() {
+function CredentialsManagerWithAuth({ isAdmin }: { isAdmin: boolean }) {
   const { getToken } = useAuth()
-  return <CredentialsManagerInner getToken={getToken} />
+  return <CredentialsManagerInner getToken={getToken} isAdmin={isAdmin} />
 }
 
-function CredentialsManagerInner({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
+function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promise<string | null>) | null; isAdmin: boolean }) {
   const [credentials, setCredentials] = useState<Credential[]>([])
   const [openService, setOpenService] = useState<string | null>(null)
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({})
@@ -229,7 +229,7 @@ function CredentialsManagerInner({ getToken }: { getToken: (() => Promise<string
               </div>
 
               <div className="flex items-center gap-2">
-                {isConnected && cred && (
+                {isAdmin && isConnected && cred && (
                   <button
                     onClick={() => handleRemove(cred.handle)}
                     disabled={deleting === cred.handle}
@@ -238,21 +238,26 @@ function CredentialsManagerInner({ getToken }: { getToken: (() => Promise<string
                     {deleting === cred.handle ? "Removing…" : "Remove"}
                   </button>
                 )}
-                <button
-                  onClick={() => toggleService(svc.value)}
-                  className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
-                    isConnected
-                      ? "border border-stone-200 text-stone-500 hover:bg-stone-50"
-                      : "bg-stone-900 text-white hover:bg-stone-700"
-                  }`}
-                >
-                  {isConnected ? "Update" : "Connect"}
-                </button>
+                {isAdmin && (
+                  <button
+                    onClick={() => toggleService(svc.value)}
+                    className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
+                      isConnected
+                        ? "border border-stone-200 text-stone-500 hover:bg-stone-50"
+                        : "bg-stone-900 text-white hover:bg-stone-700"
+                    }`}
+                  >
+                    {isConnected ? "Update" : "Connect"}
+                  </button>
+                )}
+                {!isAdmin && isConnected && (
+                  <span className="text-xs text-stone-400">Connected</span>
+                )}
               </div>
             </div>
 
-            {/* Inline connect form */}
-            {isOpen && (
+            {/* Inline connect form — admin only */}
+            {isAdmin && isOpen && (
               <div className="px-4 pb-4 pt-1 border-t border-stone-100 space-y-3">
                 {svc.fields.map((f, i) => (
                   <div key={f.key}>

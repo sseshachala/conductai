@@ -66,7 +66,7 @@ def list_credentials(db: Session = Depends(get_db), workspace_id: str = Depends(
 
 
 @router.post("", status_code=201)
-def upsert_credential(body: CredentialUpsert, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _role: str = Depends(require_workspace_role("admin"))):
+def upsert_credential(body: CredentialUpsert, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _role: str = Depends(require_workspace_role("admin", "editor"))):
     if not body.credentials:
         raise HTTPException(status_code=422, detail="credentials dict must not be empty")
 

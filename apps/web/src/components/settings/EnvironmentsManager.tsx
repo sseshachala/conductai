@@ -75,18 +75,18 @@ function getWorkspaceId(): string | null {
   return document.cookie.split("; ").find(r => r.startsWith("delegator_project_id="))?.split("=")[1] ?? null
 }
 
-export default function EnvironmentsManager() {
+export default function EnvironmentsManager({ isAdmin = true }: { isAdmin?: boolean }) {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-  if (clerkEnabled) return <EnvironmentsManagerWithAuth />
-  return <EnvironmentsManagerInner getToken={null} />
+  if (clerkEnabled) return <EnvironmentsManagerWithAuth isAdmin={isAdmin} />
+  return <EnvironmentsManagerInner getToken={null} isAdmin={isAdmin} />
 }
 
-function EnvironmentsManagerWithAuth() {
+function EnvironmentsManagerWithAuth({ isAdmin }: { isAdmin: boolean }) {
   const { getToken } = useAuth()
-  return <EnvironmentsManagerInner getToken={getToken} />
+  return <EnvironmentsManagerInner getToken={getToken} isAdmin={isAdmin} />
 }
 
-function EnvironmentsManagerInner({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
+function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Promise<string | null>) | null; isAdmin: boolean }) {
   const [environments, setEnvironments] = useState<Environment[]>([])
   const [selected, setSelected] = useState<Environment | null>(null)
   const [newName, setNewName] = useState("")
@@ -189,6 +189,7 @@ function EnvironmentsManagerInner({ getToken }: { getToken: (() => Promise<strin
         environment={selected}
         buildHeaders={buildHeaders}
         onBack={() => setSelected(null)}
+        isAdmin={isAdmin}
       />
     )
   }
@@ -222,7 +223,7 @@ function EnvironmentsManagerInner({ getToken }: { getToken: (() => Promise<strin
             </button>
 
             <div className="flex items-center gap-2 ml-4">
-              {confirmDelete === env.id ? (
+              {isAdmin && (confirmDelete === env.id ? (
                   <>
                     <span className="text-xs text-stone-500">Delete?</span>
                     <button
@@ -246,15 +247,15 @@ function EnvironmentsManagerInner({ getToken }: { getToken: (() => Promise<strin
                   >
                     Delete
                   </button>
-                )}
+                ))}
               <span className="text-stone-300 text-sm">→</span>
             </div>
           </div>
         </div>
       ))}
 
-      {/* Create new environment */}
-      <div className="rounded-xl border border-dashed border-stone-200 bg-white px-4 py-4">
+      {/* Create new environment — admin only */}
+      {isAdmin && <div className="rounded-xl border border-dashed border-stone-200 bg-white px-4 py-4">
         <p className="text-xs font-medium text-stone-500 mb-2">New environment</p>
         <div className="flex gap-2">
           <input
@@ -274,7 +275,7 @@ function EnvironmentsManagerInner({ getToken }: { getToken: (() => Promise<strin
           </button>
         </div>
         {listError && <p className="text-xs text-red-500 mt-2">{listError}</p>}
-      </div>
+      </div>}
     </div>
   )
 }
@@ -287,10 +288,12 @@ function EnvironmentDetail({
   environment,
   buildHeaders,
   onBack,
+  isAdmin,
 }: {
   environment: Environment
   buildHeaders: (contentType?: boolean) => Promise<Record<string, string>>
   onBack: () => void
+  isAdmin: boolean
 }) {
   const [credentials, setCredentials] = useState<Credential[]>([])
   const [openService, setOpenService] = useState<string | null>(null)
@@ -416,7 +419,7 @@ function EnvironmentDetail({
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {isConnected && cred && (
+                  {isAdmin && isConnected && cred && (
                     <button
                       onClick={() => handleRemove(cred.handle)}
                       disabled={deleting === cred.handle}
@@ -425,20 +428,25 @@ function EnvironmentDetail({
                       {deleting === cred.handle ? "Removing…" : "Remove"}
                     </button>
                   )}
-                  <button
-                    onClick={() => toggleService(svc.value)}
-                    className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
-                      isConnected
-                        ? "border border-stone-200 text-stone-500 hover:bg-stone-50"
-                        : "bg-stone-900 text-white hover:bg-stone-700"
-                    }`}
-                  >
-                    {isConnected ? "Update" : "Connect"}
-                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={() => toggleService(svc.value)}
+                      className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
+                        isConnected
+                          ? "border border-stone-200 text-stone-500 hover:bg-stone-50"
+                          : "bg-stone-900 text-white hover:bg-stone-700"
+                      }`}
+                    >
+                      {isConnected ? "Update" : "Connect"}
+                    </button>
+                  )}
+                  {!isAdmin && isConnected && (
+                    <span className="text-xs text-stone-400">Connected</span>
+                  )}
                 </div>
               </div>
 
-              {isOpen && (
+              {isAdmin && isOpen && (
                 <div className="px-4 pb-4 pt-1 border-t border-stone-100 space-y-3">
                   {svc.fields.map((f, i) => (
                     <div key={f.key}>

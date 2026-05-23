@@ -77,8 +77,8 @@ function SettingsPageInner({ isAdmin }: { isAdmin: boolean }) {
           ))}
         </div>
 
-        {activeTab === "integrations" && <CredentialsManager />}
-        {activeTab === "environments" && <EnvironmentsManager />}
+        {activeTab === "integrations" && <CredentialsManager isAdmin={isAdmin} />}
+        {activeTab === "environments" && <EnvironmentsManager isAdmin={isAdmin} />}
         {activeTab === "members" && isAdmin && <MembersManager />}
       </div>
     </AppShell>
