@@ -110,21 +110,37 @@ def get_user_id(
     return user_id
 
 
+def _assert_workspace_member(db: Session, workspace_id: str, user_id: str) -> None:
+    """Raises 403 if user is not a member of the workspace (checks both join table and legacy owner_id)."""
+    from sqlalchemy import text
+    row = db.execute(
+        text("""
+            SELECT 1 FROM workspace_users
+            WHERE workspace_id = :ws AND clerk_user_id = :uid
+            UNION
+            SELECT 1 FROM workspaces
+            WHERE id = :ws AND owner_id = :uid
+            LIMIT 1
+        """),
+        {"ws": workspace_id, "uid": user_id},
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=403, detail="Not a member of this workspace")
+
+
 def get_workspace_id(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
     x_workspace_id: Annotated[str | None, Header()] = None,
     x_api_key: Annotated[str | None, Header()] = None,
+    db: Session = Depends(get_db),
 ) -> str:
     """
     Returns the active workspace/project ID for the request.
 
     Resolution order:
-    1. X-Workspace-ID header (explicit project selection from frontend)
+    1. X-Workspace-ID header (explicit project selection) — membership validated against DB
     2. Clerk JWT org_id or sub (single-workspace-per-user fallback)
     3. Dev workspace (when Clerk is not configured)
-
-    When Clerk is enabled, the workspace must exist and be owned by the user
-    — validated at the router level for project-scoped endpoints.
     """
     if not _clerk_enabled():
         return x_workspace_id or DEV_WORKSPACE_ID
@@ -140,8 +156,11 @@ def get_workspace_id(
     if not claims:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    # If the frontend passed an explicit project, use it (ownership validated by caller)
+    user_id = claims.get("sub")
+
     if x_workspace_id:
+        # Validate the user actually belongs to the requested workspace
+        _assert_workspace_member(db, x_workspace_id, user_id)
         return x_workspace_id
 
     workspace_id = claims.get("org_id") or claims.get("sub")
