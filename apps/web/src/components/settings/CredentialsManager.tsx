@@ -54,6 +54,19 @@ const SERVICES: ServiceDef[] = [
     fields: [{ key: "token", label: "Personal access token", placeholder: "dop_v1_…" }],
   },
   {
+    value: "vercel", label: "Vercel", abbr: "VC",
+    description: "Trigger deployments and receive deployment events",
+    color: "bg-stone-950 text-white",
+    fields: [
+      {
+        key: "token",
+        label: "Personal access token",
+        placeholder: "…",
+        tip: "Create at vercel.com/account/tokens — used to register deployment webhooks and trigger deploys.",
+      },
+    ],
+  },
+  {
     value: "email", label: "Email", abbr: "EM",
     description: "Send notifications via Resend or SendGrid",
     color: "bg-emerald-600 text-white",
