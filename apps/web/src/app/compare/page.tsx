@@ -9,7 +9,7 @@ export default function ComparePage() {
       {/* Nav */}
       <header className="px-6 py-5 flex items-center justify-between max-w-6xl mx-auto w-full border-b border-stone-100">
         <a href="/" className="flex items-center">
-          <img src="/logo.png" alt="Conduct AI" className="h-8 w-auto" />
+          <img src="/logo.png" alt="Conduct AI" className="h-10 w-auto" />
         </a>
         <div className="flex items-center gap-4">
           <a href="/marketplace" className="text-sm text-stone-500 hover:text-stone-900 transition-colors">Marketplace</a>
