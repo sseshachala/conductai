@@ -11,6 +11,7 @@ class User(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String(255), nullable=False, unique=True)
+    clerk_id = Column(String(255), nullable=True, index=True)
     workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False)
     role = Column(String(50), nullable=False, default="editor")  # owner/editor/viewer
     created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)

@@ -1,21 +1,21 @@
 """
-Projects (workspaces) CRUD + template listing.
+Projects (workspaces) CRUD + template listing + member management.
 
-A "project" is a workspace owned by a single user. Workflows and credentials
-are scoped to a project. Google sign-in is the access gate — all signed-in
-users get immediate access with no waitlist.
+A "project" is a workspace. Users belong to workspaces via workspace_users
+(many-to-many with per-workspace roles). All signed-in users get immediate
+access — the workspace_users table is the access gate.
 """
 import json
 import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_user_id
+from app.core.auth import get_user_id, require_workspace_role, get_user_workspace_role
 from app.core.config import settings
 from app.core.database import get_db
 
@@ -48,6 +48,18 @@ class ProjectCreate(BaseModel):
     template_id: str | None = None
 
 
+class MemberOut(BaseModel):
+    clerk_user_id: str
+    role: str
+    invited_by: str | None
+    joined_at: datetime
+
+
+class MemberAdd(BaseModel):
+    clerk_user_id: str
+    role: Literal["admin", "editor", "viewer"] = "editor"
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -65,23 +77,33 @@ def list_projects(
     user_id: Annotated[str, Depends(get_user_id)],
     db: Session = Depends(get_db),
 ):
+    # Query via workspace_users (new) with legacy owner_id fallback (UNION)
     rows = db.execute(text("""
-        SELECT w.id, w.name, w.owner_id, w.is_approved, w.created_at,
+        SELECT DISTINCT w.id, w.name, w.owner_id, w.is_approved, w.created_at,
                COUNT(wf.id) AS workflow_count
         FROM workspaces w
         LEFT JOIN workflows wf ON wf.workspace_id = w.id
-        WHERE w.owner_id = :owner_id
+        WHERE w.id IN (
+            SELECT workspace_id FROM workspace_users WHERE clerk_user_id = :uid
+            UNION
+            SELECT id FROM workspaces WHERE owner_id = :uid
+        )
         GROUP BY w.id
         ORDER BY w.created_at DESC
-    """), {"owner_id": user_id}).fetchall()
+    """), {"uid": user_id}).fetchall()
 
-    # Auto-register new users with an approved workspace — Google auth is the gate
+    # Auto-register new users — create a default workspace + membership
     if not rows:
         project_id, now = uuid.uuid4(), datetime.utcnow()
         db.execute(text("""
             INSERT INTO workspaces (id, name, owner_id, plan, is_approved, created_at, updated_at)
             VALUES (:id, 'My Workspace', :owner_id, 'free', true, :now, :now)
         """), {"id": str(project_id), "owner_id": user_id, "now": now})
+        db.execute(text("""
+            INSERT INTO workspace_users (workspace_id, clerk_user_id, role, joined_at)
+            VALUES (:ws, :uid, 'admin', :now)
+            ON CONFLICT DO NOTHING
+        """), {"ws": str(project_id), "uid": user_id, "now": now})
         db.commit()
         return [ProjectOut(id=str(project_id), name="My Workspace", owner_id=user_id,
                            is_approved=True, created_at=now, workflow_count=0)]
@@ -110,6 +132,13 @@ def create_project(
         INSERT INTO workspaces (id, name, owner_id, plan, is_approved, created_at, updated_at)
         VALUES (:id, :name, :owner_id, 'free', true, :now, :now)
     """), {"id": str(project_id), "name": body.name.strip(), "owner_id": user_id, "now": now})
+
+    # Creator is always admin of the new workspace
+    db.execute(text("""
+        INSERT INTO workspace_users (workspace_id, clerk_user_id, role, joined_at)
+        VALUES (:ws, :uid, 'admin', :now)
+        ON CONFLICT DO NOTHING
+    """), {"ws": str(project_id), "uid": user_id, "now": now})
 
     if body.template_id:
         tmpl = db.execute(text(
@@ -184,6 +213,94 @@ def delete_project(
     db.execute(text("DELETE FROM workflows WHERE workspace_id = :pid"), {"pid": project_id})
     db.execute(text("DELETE FROM integrations WHERE workspace_id = :pid"), {"pid": project_id})
     db.execute(text("DELETE FROM workspaces WHERE id = :pid"), {"pid": project_id})
+    db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Member management
+# ---------------------------------------------------------------------------
+
+@router.get("/{project_id}/members", response_model=list[MemberOut])
+def list_members(
+    project_id: str,
+    user_id: Annotated[str, Depends(get_user_id)],
+    _role: Annotated[str, Depends(require_workspace_role("admin", "editor", "viewer"))],
+    db: Session = Depends(get_db),
+):
+    rows = db.execute(text("""
+        SELECT clerk_user_id, role, invited_by, joined_at
+        FROM workspace_users
+        WHERE workspace_id = :ws
+        ORDER BY joined_at
+    """), {"ws": project_id}).fetchall()
+    return [MemberOut(clerk_user_id=r.clerk_user_id, role=r.role,
+                      invited_by=r.invited_by, joined_at=r.joined_at) for r in rows]
+
+
+@router.post("/{project_id}/members", response_model=MemberOut, status_code=201)
+def add_member(
+    project_id: str,
+    body: MemberAdd,
+    user_id: Annotated[str, Depends(get_user_id)],
+    _role: Annotated[str, Depends(require_workspace_role("admin"))],
+    db: Session = Depends(get_db),
+):
+    now = datetime.utcnow()
+    existing = db.execute(text("""
+        SELECT clerk_user_id FROM workspace_users
+        WHERE workspace_id = :ws AND clerk_user_id = :uid
+    """), {"ws": project_id, "uid": body.clerk_user_id}).fetchone()
+    if existing:
+        raise HTTPException(status_code=409, detail="User is already a member")
+
+    db.execute(text("""
+        INSERT INTO workspace_users (workspace_id, clerk_user_id, role, invited_by, joined_at)
+        VALUES (:ws, :uid, :role, :invited_by, :now)
+    """), {"ws": project_id, "uid": body.clerk_user_id,
+           "role": body.role, "invited_by": user_id, "now": now})
+    db.commit()
+    return MemberOut(clerk_user_id=body.clerk_user_id, role=body.role,
+                     invited_by=user_id, joined_at=now)
+
+
+@router.patch("/{project_id}/members/{clerk_user_id}")
+def update_member_role(
+    project_id: str,
+    clerk_user_id: str,
+    body: dict,
+    user_id: Annotated[str, Depends(get_user_id)],
+    _role: Annotated[str, Depends(require_workspace_role("admin"))],
+    db: Session = Depends(get_db),
+):
+    new_role = body.get("role", "")
+    if new_role not in ("admin", "editor", "viewer"):
+        raise HTTPException(status_code=422, detail="Role must be admin, editor, or viewer")
+    if clerk_user_id == user_id:
+        raise HTTPException(status_code=400, detail="Cannot change your own role")
+    result = db.execute(text("""
+        UPDATE workspace_users SET role = :role
+        WHERE workspace_id = :ws AND clerk_user_id = :uid
+        RETURNING clerk_user_id
+    """), {"role": new_role, "ws": project_id, "uid": clerk_user_id})
+    if not result.fetchone():
+        raise HTTPException(status_code=404, detail="Member not found")
+    db.commit()
+    return {"clerk_user_id": clerk_user_id, "role": new_role}
+
+
+@router.delete("/{project_id}/members/{clerk_user_id}", status_code=204)
+def remove_member(
+    project_id: str,
+    clerk_user_id: str,
+    user_id: Annotated[str, Depends(get_user_id)],
+    _role: Annotated[str, Depends(require_workspace_role("admin"))],
+    db: Session = Depends(get_db),
+):
+    if clerk_user_id == user_id:
+        raise HTTPException(status_code=400, detail="Cannot remove yourself")
+    db.execute(text("""
+        DELETE FROM workspace_users WHERE workspace_id = :ws AND clerk_user_id = :uid
+    """), {"ws": project_id, "uid": clerk_user_id})
     db.commit()
 
 

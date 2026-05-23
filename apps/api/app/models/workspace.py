@@ -20,6 +20,7 @@ class Workspace(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     users = relationship("User", back_populates="workspace")
+    members = relationship("WorkspaceUser", back_populates="workspace", cascade="all, delete-orphan")
     workflows = relationship("Workflow", back_populates="workspace")
     integrations = relationship("Integration", back_populates="workspace")
     environments = relationship("Environment", back_populates="workspace")
