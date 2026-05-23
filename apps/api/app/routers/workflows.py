@@ -314,8 +314,20 @@ class BlockCompileRequest(BaseModel):
 
 
 @router.post("/{workflow_id}/blocks/{block_id}/compile/stream")
-def stream_block_compile(workflow_id: UUID, block_id: str, body: BlockCompileRequest):
+def stream_block_compile(
+    workflow_id: UUID,
+    block_id: str,
+    body: BlockCompileRequest,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
     """Stream the compiled prompt for a single block using the current editor state."""
+    workflow = db.query(Workflow).filter(
+        Workflow.id == workflow_id,
+        Workflow.workspace_id == workspace_id,
+    ).first()
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
     block = {
         "id": block_id,
         "data": {
@@ -532,6 +544,7 @@ def estimate_workflow_cost(
     workflow_id: UUID,
     issues: int = 1,
     db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
 ):
     """
     Estimate token usage and cost for this workflow.
@@ -539,7 +552,10 @@ def estimate_workflow_cost(
     ?issues=N multiplies cost by number of matching GitHub issues.
     Pricing: Claude Sonnet 4.6 — $3/1M input, $15/1M output.
     """
-    workflow = db.query(Workflow).filter(Workflow.id == workflow_id).first()
+    workflow = db.query(Workflow).filter(
+        Workflow.id == workflow_id,
+        Workflow.workspace_id == workspace_id,
+    ).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
     if not workflow.current_version_id:
@@ -910,9 +926,13 @@ def update_workflow_source(
     workflow_id: UUID,
     body: WorkflowSourceRequest,
     db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
 ):
     """Configure (or clear) the GitHub-repo source binding for a workflow."""
-    workflow = db.query(Workflow).filter(Workflow.id == workflow_id).first()
+    workflow = db.query(Workflow).filter(
+        Workflow.id == workflow_id,
+        Workflow.workspace_id == workspace_id,
+    ).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
     workflow.source_repo = body.source_repo or None
