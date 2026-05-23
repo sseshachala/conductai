@@ -256,8 +256,10 @@ def update_workflow(
     body: WorkflowUpdate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor")),
 ):
-    workflow = db.query(Workflow).filter(Workflow.id == workflow_id).first()
+    workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
 
@@ -735,9 +737,14 @@ def estimate_workflow_cost(
 
 
 @router.post("/{workflow_id}/compile", response_model=WorkflowDetailOut)
-def compile_workflow_now(workflow_id: UUID, db: Session = Depends(get_db)):
+def compile_workflow_now(
+    workflow_id: UUID,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor")),
+):
     """Explicitly trigger compilation for the current version."""
-    workflow = db.query(Workflow).filter(Workflow.id == workflow_id).first()
+    workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
     if not workflow.current_version_id:
@@ -767,6 +774,8 @@ def update_workflow_yaml(
     background_tasks: BackgroundTasks,
     yaml_text: str = Body(..., media_type="application/x-yaml"),
     db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor")),
 ):
     """
     Replace the workflow definition with the provided YAML.
@@ -774,7 +783,7 @@ def update_workflow_yaml(
     Returns the workflow with its new current_version_id. The compiled
     artifacts are produced in the background — the caller doesn't wait.
     """
-    workflow = db.query(Workflow).filter(Workflow.id == workflow_id).first()
+    workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
 
@@ -802,7 +811,12 @@ def update_workflow_yaml(
 
 
 @router.get("/{workflow_id}/yaml", response_class=PlainTextResponse)
-def get_workflow_yaml(workflow_id: UUID, db: Session = Depends(get_db)):
+def get_workflow_yaml(
+    workflow_id: UUID,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+):
     """
     Return the YAML source for the workflow's current version.
 
@@ -810,7 +824,7 @@ def get_workflow_yaml(workflow_id: UUID, db: Session = Depends(get_db)):
     file as ``<projectname>-delegator.yml`` — the same convention the canvas
     suggests and the customer is expected to commit to their repo.
     """
-    workflow = db.query(Workflow).filter(Workflow.id == workflow_id).first()
+    workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
     if not workflow.current_version_id:
@@ -838,14 +852,19 @@ def get_workflow_yaml(workflow_id: UUID, db: Session = Depends(get_db)):
 
 
 @router.get("/{workflow_id}/yaml/filename")
-def get_workflow_yaml_filename(workflow_id: UUID, db: Session = Depends(get_db)):
+def get_workflow_yaml_filename(
+    workflow_id: UUID,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+):
     """
     Return the canonical YAML filename + a suggested ``source_path`` for the
     Settings UI to use as the default when binding the workflow to a repo.
     Keeps the naming convention in one place (``app.dsl.naming``) and lets the
     frontend just read it rather than re-implement the slug.
     """
-    workflow = db.query(Workflow).filter(Workflow.id == workflow_id).first()
+    workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
     filename = yaml_filename_for(workflow.name)
@@ -971,6 +990,8 @@ def sync_workflow(
     body: SyncRequest = Body(default=SyncRequest()),
     background_tasks: BackgroundTasks = None,  # type: ignore[assignment]
     db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor")),
 ):
     """
     Fetch the YAML at ``workflow.source_repo:source_path`` from GitHub,
@@ -979,7 +1000,7 @@ def sync_workflow(
     """
     from app.dsl.sync import SyncError, sync_workflow_from_repo
 
-    workflow = db.query(Workflow).filter(Workflow.id == workflow_id).first()
+    workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
 
