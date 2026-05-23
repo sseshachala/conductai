@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     railway_backend_service_id: str = ""   # delegator-backend service ID
     railway_frontend_service_id: str = ""  # delegator-ui service ID
 
+    # CORS — comma-separated allowed origins; defaults to all in dev
+    allowed_origins: str = "*"
+
     # Admin — used to approve waitlisted users via POST /projects/admin/approve
     admin_secret: str = ""
 
