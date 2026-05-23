@@ -112,14 +112,13 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
             ) : clerkEnabled ? (
               <SignInButton mode="modal">
                 <button className="inline-flex items-center gap-3 bg-stone-900 hover:bg-stone-700 text-white font-semibold px-7 py-3.5 rounded-xl text-sm transition-colors shadow-sm">
-                  <GoogleIcon />
-                  Sign in with Google — it&apos;s free
+                  Sign in — it&apos;s free
                 </button>
               </SignInButton>
             ) : null
           )}
           {isLoaded && !isSignedIn && clerkEnabled && (
-            <p className="text-xs text-stone-400">No credit card · No setup · Just your Google account</p>
+            <p className="text-xs text-stone-400">No credit card · No setup · Sign in with Google, GitHub, or Microsoft</p>
           )}
         </div>
 
@@ -414,7 +413,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         <p className="text-stone-500 mb-8 max-w-md mx-auto">
           {isLoaded && isSignedIn
             ? "Head to your projects and connect your first repo."
-            : "Sign in with Google, connect your GitHub repo, and let Conduct pick up its first ticket."}
+            : "Sign in, connect your GitHub repo, and let Conduct pick up its first ticket."}
         </p>
         {isLoaded && (
           isSignedIn ? (
@@ -427,12 +426,11 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
           ) : clerkEnabled ? (
             <>
               <SignInButton mode="modal">
-                <button className="inline-flex items-center gap-3 bg-stone-900 hover:bg-stone-700 text-white font-semibold px-7 py-3.5 rounded-xl text-sm transition-colors">
-                  <GoogleIcon />
+                <button className="inline-flex items-center gap-2 bg-stone-900 hover:bg-stone-700 text-white font-semibold px-7 py-3.5 rounded-xl text-sm transition-colors">
                   Get started — it&apos;s free
                 </button>
               </SignInButton>
-              <p className="text-xs text-stone-400 mt-4">No credit card · Instant access · Sign in with Google</p>
+              <p className="text-xs text-stone-400 mt-4">No credit card · Instant access · Google, GitHub, or Microsoft</p>
             </>
           ) : null
         )}
