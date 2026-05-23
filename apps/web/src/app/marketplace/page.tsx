@@ -58,8 +58,8 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   const [installing, setInstalling] = useState(false)
   const [uninstalling, setUninstalling] = useState<string | null>(null)
   const [confirmingUninstall, setConfirmingUninstall] = useState<string | null>(null)
-  // slug → workflow id (for uninstall)
-  const [installedMap, setInstalledMap] = useState<Map<string, string>>(new Map())
+  // slug → { id, workspaceId } (for uninstall)
+  const [installedMap, setInstalledMap] = useState<Map<string, { id: string; workspaceId: string }>>(new Map())
 
   // Install modal state
   const [pendingSlug, setPendingSlug] = useState<string | null>(null)
@@ -90,12 +90,12 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
       if (pbRes.ok) setPlaybooks(await pbRes.json())
 
       if (wfRes.ok) {
-        const workflows: { id: string; name: string }[] = await wfRes.json()
-        const nameToId = new Map(workflows.map(w => [w.name, w.id]))
-        const map = new Map<string, string>()
+        const workflows: { id: string; name: string; workspace_id: string }[] = await wfRes.json()
+        const nameToWf = new Map(workflows.map(w => [w.name, w]))
+        const map = new Map<string, { id: string; workspaceId: string }>()
         for (const [slug, friendlyName] of Object.entries(FRIENDLY_NAMES)) {
-          const id = nameToId.get(friendlyName)
-          if (id) map.set(slug, id)
+          const wf = nameToWf.get(friendlyName)
+          if (wf) map.set(slug, { id: wf.id, workspaceId: wf.workspace_id })
         }
         setInstalledMap(map)
       }
@@ -143,7 +143,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
       })
       if (!res.ok) return
       const wf = await res.json()
-      setInstalledMap(prev => new Map(prev).set(pendingSlug, wf.id))
+      setInstalledMap(prev => new Map(prev).set(pendingSlug, { id: wf.id, workspaceId: selectedProjectId }))
       closeInstallModal()
       router.push(`/workflows/${wf.id}`)
     } finally {
@@ -152,16 +152,15 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   }
 
   async function uninstall(slug: string) {
-    const workflowId = installedMap.get(slug)
-    if (!workflowId) return
+    const entry = installedMap.get(slug)
+    if (!entry) return
     setUninstalling(slug)
     setConfirmingUninstall(null)
     try {
       const headers = await authHeaders()
-      const workspaceId = getWorkspaceId()
-      if (workspaceId) headers["X-Workspace-Id"] = workspaceId
+      headers["X-Workspace-Id"] = entry.workspaceId
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${entry.id}`, {
         method: "DELETE",
         headers,
       })
