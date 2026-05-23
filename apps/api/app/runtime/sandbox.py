@@ -154,6 +154,7 @@ def _modal_dispatch(tool_name: str, tool_input: dict) -> str:
         import json
         import modal  # type: ignore[import]
 
+        app = modal.App.lookup("conduct-sandbox", create_if_missing=True)
         image = (
             modal.Image.debian_slim()
             .apt_install("git", "curl", "wget", "unzip", "python3", "python3-pip", "nodejs", "npm")
@@ -161,6 +162,7 @@ def _modal_dispatch(tool_name: str, tool_input: dict) -> str:
 
         sb = modal.Sandbox.create(
             "python3", "-c", _SANDBOX_SCRIPT,
+            app=app,
             image=image,
             timeout=300,
             env={
@@ -168,9 +170,9 @@ def _modal_dispatch(tool_name: str, tool_input: dict) -> str:
                 "TOOL_INPUT": json.dumps(tool_input),
             },
         )
-        sb.wait()
         result = sb.stdout.read()
         stderr = sb.stderr.read()
+        sb.wait()
         sb.terminate()
         return result or stderr or "(no output)"
     except Exception as e:
