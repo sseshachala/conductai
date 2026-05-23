@@ -105,7 +105,7 @@ def _get_modal_run_tool():
         .run_commands("git --version && node --version && python3 --version")  # verify at build time
     )
 
-    @_app.function(timeout=300, cpu=1, memory=1024, retries=0, image=_image)
+    @_app.function(timeout=300, cpu=1, memory=1024, retries=0, image=_image, serialized=True)
     def run_tool(name: str, inputs: dict) -> str:
         import os as _os
         import re as _re
