@@ -277,7 +277,7 @@ export default function BlockEditor({
     ? allStaticFields.filter(f => {
         if (f.key === "config.label" || f.key === "config.repo_allowlist")
           return triggerEventType === "github_issue_labeled"
-        if (f.key === "config.webhook_secret")
+        if (f.key === "config.webhook_secret" || f.key === "config.test_repo" || f.key === "config.test_pr_number")
           return triggerEventType === "webhook"
         return true
       })
