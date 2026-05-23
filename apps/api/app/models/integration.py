@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, ForeignKey
+from sqlalchemy import Column, String, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -22,3 +22,7 @@ class Integration(Base):
 
     workspace = relationship("Workspace", back_populates="integrations")
     environment = relationship("Environment", back_populates="integrations")
+
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "handle", name="uq_integrations_workspace_handle"),
+    )
