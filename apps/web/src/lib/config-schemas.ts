@@ -261,8 +261,11 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       required: true,
       defaultValue: "github_issue_labeled",
       options: [
-        { value: "github_issue_labeled", label: "GitHub — issue labeled" },
-        { value: "webhook",              label: "Inbound webhook" },
+        { value: "github_issue_labeled",  label: "GitHub — issue labeled" },
+        { value: "deployment.succeeded",  label: "Vercel — deployment succeeded" },
+        { value: "deployment.ready",      label: "Vercel — deployment ready" },
+        { value: "deployment.failed",     label: "Vercel — deployment failed / error" },
+        { value: "webhook",               label: "Inbound webhook" },
       ],
     },
     {
