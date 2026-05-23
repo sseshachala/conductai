@@ -14,6 +14,7 @@ class WorkflowCreate(BaseModel):
     name: str
     graph: WorkflowGraph = WorkflowGraph()
     template: Optional[str] = None
+    repo: Optional[str] = None  # owner/repo — triggers GitHub webhook auto-registration
 
 
 class WorkflowUpdate(BaseModel):

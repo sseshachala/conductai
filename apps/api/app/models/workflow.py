@@ -26,6 +26,10 @@ class Workflow(Base):
     source_path = Column(String(512), nullable=True)
     environment_id = Column(UUID(as_uuid=True), ForeignKey("environments.id"), nullable=True)
 
+    # Auto-registered GitHub webhook — stored so we can deregister on delete
+    github_hook_id = Column(String(255), nullable=True)
+    github_hook_repo = Column(String(255), nullable=True)  # owner/repo format
+
     created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 

@@ -1,3 +1,4 @@
+import logging
 from uuid import UUID
 from fastapi import APIRouter, Body, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import PlainTextResponse, StreamingResponse
@@ -5,6 +6,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.core.auth import get_workspace_id
 from app.core.database import get_db
+
+log = logging.getLogger(__name__)
 from app.dsl import (
     Workflow as DSLWorkflow,
     WorkflowValidationError,
@@ -89,6 +92,67 @@ _PLAYBOOK_META = {
 }
 
 
+# Templates that need a GitHub webhook registered — maps slug → GitHub event list
+_GITHUB_WEBHOOK_EVENTS: dict[str, list[str]] = {
+    "pr_reviewer":        ["pull_request"],
+    "copilot_reviewer":   ["pull_request"],
+    "issue_triage":       ["issues"],
+    "ci_notify":          ["workflow_run"],
+    "release_notes":      ["create"],
+    "autopilot_quick":    ["issues"],
+    "autopilot_full":     ["issues"],
+    "autopilot_approved": ["issues"],
+}
+
+
+def _register_github_webhook(token: str, repo: str, workflow_id: str, events: list[str]) -> str | None:
+    """Register a webhook on owner/repo and return the hook_id, or None on failure."""
+    import httpx
+    from app.core.config import settings
+    owner, repo_name = repo.split("/", 1)
+    webhook_url = f"{settings.api_base_url}/webhooks/inbound/{workflow_id}"
+    try:
+        r = httpx.post(
+            f"https://api.github.com/repos/{owner}/{repo_name}/hooks",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+            json={
+                "name": "web",
+                "active": True,
+                "events": events,
+                "config": {"url": webhook_url, "content_type": "json"},
+            },
+            timeout=10,
+        )
+        if r.status_code == 201:
+            return str(r.json()["id"])
+        log.warning("GitHub webhook registration returned %s: %s", r.status_code, r.text[:200])
+    except Exception as e:
+        log.warning("GitHub webhook registration failed: %s", e)
+    return None
+
+
+def _deregister_github_webhook(token: str, repo: str, hook_id: str) -> None:
+    """Delete a previously registered webhook. Best-effort — never raises."""
+    import httpx
+    owner, repo_name = repo.split("/", 1)
+    try:
+        httpx.delete(
+            f"https://api.github.com/repos/{owner}/{repo_name}/hooks/{hook_id}",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+            timeout=10,
+        )
+    except Exception as e:
+        log.warning("GitHub webhook deregistration failed: %s", e)
+
+
 @router.get("/playbooks")
 def list_playbooks():
     return [
@@ -143,6 +207,22 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
 
     workflow.current_version_id = version.id
     db.commit()
+
+    # Auto-register GitHub webhook if template needs one and repo was provided
+    if body.repo and body.template in _GITHUB_WEBHOOK_EVENTS:
+        try:
+            from app.routers.credentials import _github_token
+            token = _github_token(str(workspace_id), db)
+            hook_id = _register_github_webhook(
+                token, body.repo, str(workflow.id), _GITHUB_WEBHOOK_EVENTS[body.template]
+            )
+            if hook_id:
+                workflow.github_hook_id = hook_id
+                workflow.github_hook_repo = body.repo
+                db.commit()
+        except Exception as e:
+            log.warning("Webhook auto-registration skipped: %s", e)
+
     db.refresh(workflow)
     return workflow
 
@@ -199,6 +279,16 @@ def delete_workflow(
     workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
+
+    # Deregister GitHub webhook if one was auto-registered on install
+    if workflow.github_hook_id and workflow.github_hook_repo:
+        try:
+            from app.routers.credentials import _github_token
+            token = _github_token(str(workspace_id), db)
+            _deregister_github_webhook(token, workflow.github_hook_repo, workflow.github_hook_id)
+        except Exception as e:
+            log.warning("Webhook deregistration skipped: %s", e)
+
     from sqlalchemy import text
     db.execute(text("""
         DELETE FROM run_events WHERE run_id IN (
