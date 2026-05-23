@@ -4,18 +4,18 @@ import "./globals.css"
 import { ClerkProvider } from "@clerk/nextjs"
 
 export const metadata: Metadata = {
-  title: "Conduct — 9 Pre-Built AI Agents for GitHub Workflows",
+  title: "Conduct AI — 11 Pre-Built AI Agents for GitHub Workflows",
   description:
-    "Conduct ships 9 pre-built AI agents that execute inside GitHub, Slack, and your alerting stack. No prompt engineering. No custom infrastructure. Human approval before anything merges.",
+    "Conduct AI ships 11 pre-built AI agents that execute inside GitHub, Slack, and your alerting stack. No prompt engineering. No custom infrastructure. Human approval before anything merges.",
   icons: {
-    icon: "/icon.svg",
-    shortcut: "/icon.svg",
-    apple: "/icon.svg",
+    icon: "/icon.png",
+    shortcut: "/icon.png",
+    apple: "/icon.png",
   },
   openGraph: {
-    title: "Conduct — 9 Pre-Built AI Agents for GitHub Workflows",
+    title: "Conduct AI — 11 Pre-Built AI Agents for GitHub Workflows",
     description:
-      "Conduct ships 9 pre-built AI agents that execute inside GitHub, Slack, and your alerting stack. Human approval before anything merges.",
+      "Conduct AI ships 11 pre-built AI agents that execute inside GitHub, Slack, and your alerting stack. Human approval before anything merges.",
     url: "https://conductai.ai",
     siteName: "Conduct",
     type: "website",
@@ -30,7 +30,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Conduct — 9 Pre-Built AI Agents for GitHub Workflows",
+    title: "Conduct AI — 11 Pre-Built AI Agents for GitHub Workflows",
     description:
       "AI agents that execute inside your stack. Human approval before anything merges.",
   },

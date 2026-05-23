@@ -9,7 +9,7 @@ export default function ComparePage() {
       {/* Nav */}
       <header className="px-6 py-5 flex items-center justify-between max-w-6xl mx-auto w-full border-b border-stone-100">
         <a href="/" className="flex items-center gap-2">
-          <img src="/icon.svg" alt="Conduct" className="w-7 h-7" />
+          <img src="/icon.png" alt="Conduct" className="w-7 h-7" />
           <span className="font-bold text-stone-900 text-base tracking-tight">Conduct</span>
         </a>
         <div className="flex items-center gap-4">
