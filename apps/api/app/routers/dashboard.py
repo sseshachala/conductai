@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id
+from app.core.auth import get_workspace_id, require_workspace_role
 from app.core.database import get_db
 from app.models.run import Run
 from app.models.workflow import Workflow, WorkflowVersion
@@ -53,6 +53,7 @@ class DashboardOut(BaseModel):
 def get_dashboard(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
 ):
     # All workflow version IDs for this workspace
     version_ids_sq = (
