@@ -4,8 +4,9 @@ import { useState } from "react"
 import AppShell from "@/components/AppShell"
 import CredentialsManager from "@/components/settings/CredentialsManager"
 import EnvironmentsManager from "@/components/settings/EnvironmentsManager"
+import MembersManager from "@/components/settings/MembersManager"
 
-type Tab = "integrations" | "environments"
+type Tab = "integrations" | "environments" | "members"
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>("integrations")
@@ -29,30 +30,24 @@ export default function SettingsPage() {
 
         {/* Tab bar */}
         <div className="flex bg-stone-100 rounded-lg p-1 mb-6 w-fit">
-          <button
-            onClick={() => setActiveTab("integrations")}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              activeTab === "integrations"
-                ? "bg-white text-stone-900 shadow-sm"
-                : "text-stone-500 hover:text-stone-800"
-            }`}
-          >
-            Integrations
-          </button>
-          <button
-            onClick={() => setActiveTab("environments")}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              activeTab === "environments"
-                ? "bg-white text-stone-900 shadow-sm"
-                : "text-stone-500 hover:text-stone-800"
-            }`}
-          >
-            Environments
-          </button>
+          {(["integrations", "environments", "members"] as Tab[]).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium capitalize transition-colors ${
+                activeTab === tab
+                  ? "bg-white text-stone-900 shadow-sm"
+                  : "text-stone-500 hover:text-stone-800"
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
         </div>
 
         {activeTab === "integrations" && <CredentialsManager />}
         {activeTab === "environments" && <EnvironmentsManager />}
+        {activeTab === "members" && <MembersManager />}
       </div>
     </AppShell>
   )
