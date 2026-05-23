@@ -14,6 +14,7 @@ export default function ComparePage() {
         </a>
         <div className="flex items-center gap-4">
           <a href="/marketplace" className="text-sm text-stone-500 hover:text-stone-900 transition-colors">Marketplace</a>
+          <a href="https://narratr.ai/blog/conductai" target="_blank" rel="noopener noreferrer" className="text-sm text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
           <a href="https://github.com/sseshachala/conductai" target="_blank" rel="noopener noreferrer" className="text-sm text-stone-500 hover:text-stone-900 transition-colors">GitHub</a>
           <a href="/sign-in" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Sign in →</a>
         </div>
@@ -130,6 +131,8 @@ export default function ComparePage() {
           <span>© {new Date().getFullYear()} Conduct</span>
           <span>·</span>
           <a href="https://github.com/sseshachala/conductai" target="_blank" rel="noopener noreferrer" className="hover:text-stone-600 transition-colors">GitHub</a>
+          <span>·</span>
+          <a href="https://narratr.ai/blog/conductai" target="_blank" rel="noopener noreferrer" className="hover:text-stone-600 transition-colors">Blog</a>
           <span>·</span>
           <a href="/privacy" className="hover:text-stone-600 transition-colors">Privacy</a>
           <span>·</span>
