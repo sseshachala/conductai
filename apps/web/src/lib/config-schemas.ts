@@ -3,13 +3,14 @@ import { type BlockType } from "./block-types"
 export interface ConfigField {
   key: string          // dot-path into block.data, e.g. "config.params.owner"
   label: string
-  type: "text" | "textarea" | "select" | "toggle" | "number"
+  type: "text" | "textarea" | "select" | "toggle" | "number" | "tags"
   required?: boolean
   readOnly?: boolean   // show as a non-editable chip — value comes from a previous step
   placeholder?: string
   hint?: string
   options?: { value: string; label: string }[]
   defaultValue?: string | boolean | number
+  suggestions?: string[]  // for tags: pre-defined suggestions shown as quick-add chips
 }
 
 // ── GitHub ────────────────────────────────────────────────────────────────────
@@ -265,12 +266,13 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       ],
     },
     {
-      key: "config.label",
-      label: "Label",
-      type: "text",
+      key: "config.labels",
+      label: "Labels",
+      type: "tags",
       required: true,
-      placeholder: "autopilot ready",
-      hint: "GitHub label that fires this trigger",
+      placeholder: "Add a label…",
+      hint: "GitHub label(s) that fire this trigger — any one match triggers the workflow",
+      suggestions: ["autopilot ready", "ai_pilot_ready", "ai_ready"],
     },
     {
       key: "config.repo_allowlist",
