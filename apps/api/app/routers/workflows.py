@@ -208,6 +208,8 @@ def delete_workflow(
         )
     """), {"wid": str(workflow_id)})
     db.execute(text("DELETE FROM runs WHERE workflow_version_id IN (SELECT id FROM workflow_versions WHERE workflow_id = :wid)"), {"wid": str(workflow_id)})
+    # Null out FK before deleting versions to avoid FK violation
+    db.execute(text("UPDATE workflows SET current_version_id = NULL WHERE id = :wid"), {"wid": str(workflow_id)})
     db.execute(text("DELETE FROM workflow_versions WHERE workflow_id = :wid"), {"wid": str(workflow_id)})
     db.execute(text("DELETE FROM workflows WHERE id = :wid"), {"wid": str(workflow_id)})
     db.commit()
