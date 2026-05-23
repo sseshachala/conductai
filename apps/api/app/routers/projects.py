@@ -258,15 +258,18 @@ def delete_project(
 def list_members(
     project_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
+    workspace_id: Annotated[str, Depends(get_workspace_id)],
     _role: Annotated[str, Depends(require_workspace_role("admin", "editor", "viewer"))],
     db: Session = Depends(get_db),
 ):
+    if project_id != workspace_id:
+        raise HTTPException(status_code=404, detail="Project not found")
     rows = db.execute(text("""
         SELECT clerk_user_id, role, invited_by, joined_at
         FROM workspace_users
         WHERE workspace_id = :ws
         ORDER BY joined_at
-    """), {"ws": project_id}).fetchall()
+    """), {"ws": workspace_id}).fetchall()
     return [MemberOut(clerk_user_id=r.clerk_user_id, role=r.role,
                       invited_by=r.invited_by, joined_at=r.joined_at) for r in rows]
 
@@ -276,9 +279,12 @@ def add_member(
     project_id: str,
     body: MemberAdd,
     user_id: Annotated[str, Depends(get_user_id)],
+    workspace_id: Annotated[str, Depends(get_workspace_id)],
     _role: Annotated[str, Depends(require_workspace_role("admin"))],
     db: Session = Depends(get_db),
 ):
+    if project_id != workspace_id:
+        raise HTTPException(status_code=404, detail="Project not found")
     now = datetime.utcnow()
 
     # Email invite path — store as pending invite
@@ -287,19 +293,19 @@ def add_member(
         existing_invite = db.execute(text("""
             SELECT id FROM workspace_invites
             WHERE workspace_id = :ws AND invited_email = :email AND accepted_at IS NULL
-        """), {"ws": project_id, "email": email}).fetchone()
+        """), {"ws": workspace_id, "email": email}).fetchone()
         if existing_invite:
             raise HTTPException(status_code=409, detail="An invite for this email is already pending")
         invite_id = db.execute(text("""
             INSERT INTO workspace_invites (workspace_id, invited_email, role, invited_by, created_at)
             VALUES (:ws, :email, :role, :invited_by, :now)
             RETURNING id
-        """), {"ws": project_id, "email": email, "role": body.role,
+        """), {"ws": workspace_id, "email": email, "role": body.role,
                "invited_by": user_id, "now": now}).fetchone()[0]
         db.commit()
 
         # Resolve workspace name and inviter email for the notification
-        ws_row = db.execute(text("SELECT name FROM workspaces WHERE id = :id"), {"id": project_id}).fetchone()
+        ws_row = db.execute(text("SELECT name FROM workspaces WHERE id = :id"), {"id": workspace_id}).fetchone()
         workspace_name = ws_row.name if ws_row else "your workspace"
         inviter_email = get_clerk_user_email(user_id)
         send_template_email(
@@ -312,7 +318,7 @@ def add_member(
                 "role_description": _ROLE_DESCRIPTIONS.get(body.role, ""),
                 "app_url": APP_URL,
             },
-            workspace_id=project_id,
+            workspace_id=workspace_id,
             db=db,
         )
 
@@ -325,13 +331,13 @@ def add_member(
     existing = db.execute(text("""
         SELECT clerk_user_id FROM workspace_users
         WHERE workspace_id = :ws AND clerk_user_id = :uid
-    """), {"ws": project_id, "uid": body.clerk_user_id}).fetchone()
+    """), {"ws": workspace_id, "uid": body.clerk_user_id}).fetchone()
     if existing:
         raise HTTPException(status_code=409, detail="User is already a member")
     db.execute(text("""
         INSERT INTO workspace_users (workspace_id, clerk_user_id, role, invited_by, joined_at)
         VALUES (:ws, :uid, :role, :invited_by, :now)
-    """), {"ws": project_id, "uid": body.clerk_user_id,
+    """), {"ws": workspace_id, "uid": body.clerk_user_id,
            "role": body.role, "invited_by": user_id, "now": now})
     db.commit()
     return MemberOut(clerk_user_id=body.clerk_user_id, role=body.role,
@@ -342,15 +348,18 @@ def add_member(
 def list_invites(
     project_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
+    workspace_id: Annotated[str, Depends(get_workspace_id)],
     _role: Annotated[str, Depends(require_workspace_role("admin"))],
     db: Session = Depends(get_db),
 ):
+    if project_id != workspace_id:
+        raise HTTPException(status_code=404, detail="Project not found")
     rows = db.execute(text("""
         SELECT id, invited_email, role, invited_by, created_at
         FROM workspace_invites
         WHERE workspace_id = :ws AND accepted_at IS NULL
         ORDER BY created_at DESC
-    """), {"ws": project_id}).fetchall()
+    """), {"ws": workspace_id}).fetchall()
     return [InviteOut(id=str(r.id), invited_email=r.invited_email, role=r.role,
                       invited_by=r.invited_by, created_at=r.created_at) for r in rows]
 
@@ -360,14 +369,17 @@ def cancel_invite(
     project_id: str,
     invite_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
+    workspace_id: Annotated[str, Depends(get_workspace_id)],
     _role: Annotated[str, Depends(require_workspace_role("admin"))],
     db: Session = Depends(get_db),
 ):
+    if project_id != workspace_id:
+        raise HTTPException(status_code=404, detail="Project not found")
     result = db.execute(text("""
         DELETE FROM workspace_invites
         WHERE id = :id AND workspace_id = :ws AND accepted_at IS NULL
         RETURNING id
-    """), {"id": invite_id, "ws": project_id})
+    """), {"id": invite_id, "ws": workspace_id})
     if not result.fetchone():
         raise HTTPException(status_code=404, detail="Invite not found or already accepted")
     db.commit()
@@ -379,9 +391,12 @@ def update_member_role(
     clerk_user_id: str,
     body: dict,
     user_id: Annotated[str, Depends(get_user_id)],
+    workspace_id: Annotated[str, Depends(get_workspace_id)],
     _role: Annotated[str, Depends(require_workspace_role("admin"))],
     db: Session = Depends(get_db),
 ):
+    if project_id != workspace_id:
+        raise HTTPException(status_code=404, detail="Project not found")
     new_role = body.get("role", "")
     if new_role not in ("admin", "editor", "viewer"):
         raise HTTPException(status_code=422, detail="Role must be admin, editor, or viewer")
@@ -391,7 +406,7 @@ def update_member_role(
         UPDATE workspace_users SET role = :role
         WHERE workspace_id = :ws AND clerk_user_id = :uid
         RETURNING clerk_user_id
-    """), {"role": new_role, "ws": project_id, "uid": clerk_user_id})
+    """), {"role": new_role, "ws": workspace_id, "uid": clerk_user_id})
     if not result.fetchone():
         raise HTTPException(status_code=404, detail="Member not found")
     db.commit()
@@ -403,14 +418,17 @@ def remove_member(
     project_id: str,
     clerk_user_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
+    workspace_id: Annotated[str, Depends(get_workspace_id)],
     _role: Annotated[str, Depends(require_workspace_role("admin"))],
     db: Session = Depends(get_db),
 ):
+    if project_id != workspace_id:
+        raise HTTPException(status_code=404, detail="Project not found")
     if clerk_user_id == user_id:
         raise HTTPException(status_code=400, detail="Cannot remove yourself")
     db.execute(text("""
         DELETE FROM workspace_users WHERE workspace_id = :ws AND clerk_user_id = :uid
-    """), {"ws": project_id, "uid": clerk_user_id})
+    """), {"ws": workspace_id, "uid": clerk_user_id})
     db.commit()
 
 
