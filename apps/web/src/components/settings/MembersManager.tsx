@@ -11,6 +11,14 @@ interface Member {
   joined_at: string
 }
 
+interface Invite {
+  id: string
+  invited_email: string
+  role: string
+  invited_by: string | null
+  created_at: string
+}
+
 const ROLE_COLORS: Record<string, string> = {
   admin:  "bg-indigo-50 text-indigo-700",
   editor: "bg-emerald-50 text-emerald-700",
@@ -36,12 +44,14 @@ function MembersManagerWithAuth() {
 function MembersManagerInner({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
   const { activeWorkspace } = useWorkspace()
   const [members, setMembers] = useState<Member[]>([])
+  const [invites, setInvites] = useState<Invite[]>([])
   const [loading, setLoading] = useState(true)
   const [addOpen, setAddOpen] = useState(false)
-  const [newClerkId, setNewClerkId] = useState("")
-  const [newRole, setNewRole] = useState<"admin" | "editor" | "viewer">("editor")
+  const [inviteEmail, setInviteEmail] = useState("")
+  const [inviteRole, setInviteRole] = useState<"admin" | "editor" | "viewer">("editor")
   const [saving, setSaving] = useState(false)
   const [removing, setRemoving] = useState<string | null>(null)
+  const [cancelling, setCancelling] = useState<string | null>(null)
   const [error, setError] = useState("")
 
   async function buildHeaders(contentType = false): Promise<Record<string, string>> {
@@ -56,26 +66,33 @@ function MembersManagerInner({ getToken }: { getToken: (() => Promise<string | n
     return headers
   }
 
-  async function loadMembers() {
+  async function loadData() {
     if (!activeWorkspace) return
     setLoading(true)
     try {
       const headers = await buildHeaders()
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace.id}/members`, { headers })
-      if (res.ok) {
-        const data = await res.json()
+      const [membersRes, invitesRes] = await Promise.all([
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace.id}/members`, { headers }),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace.id}/invites`, { headers }),
+      ])
+      if (membersRes.ok) {
+        const data = await membersRes.json()
         if (Array.isArray(data)) setMembers(data)
+      }
+      if (invitesRes.ok) {
+        const data = await invitesRes.json()
+        if (Array.isArray(data)) setInvites(data)
       }
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => { loadMembers() }, [activeWorkspace?.id])
+  useEffect(() => { loadData() }, [activeWorkspace?.id])
 
-  async function handleAdd() {
-    const id = newClerkId.trim()
-    if (!id) { setError("Clerk user ID is required"); return }
+  async function handleInvite() {
+    const email = inviteEmail.trim()
+    if (!email || !email.includes("@")) { setError("Enter a valid email address"); return }
     setSaving(true)
     setError("")
     try {
@@ -83,17 +100,17 @@ function MembersManagerInner({ getToken }: { getToken: (() => Promise<string | n
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace!.id}/members`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ clerk_user_id: id, role: newRole }),
+        body: JSON.stringify({ email, role: inviteRole }),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        setError(body.detail ?? "Failed to add member")
+        setError(body.detail ?? "Failed to send invite")
         return
       }
-      setNewClerkId("")
-      setNewRole("editor")
+      setInviteEmail("")
+      setInviteRole("editor")
       setAddOpen(false)
-      await loadMembers()
+      await loadData()
     } finally {
       setSaving(false)
     }
@@ -114,12 +131,24 @@ function MembersManagerInner({ getToken }: { getToken: (() => Promise<string | n
     try {
       const headers = await buildHeaders()
       await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace!.id}/members/${clerk_user_id}`, {
-        method: "DELETE",
-        headers,
+        method: "DELETE", headers,
       })
       setMembers(prev => prev.filter(m => m.clerk_user_id !== clerk_user_id))
     } finally {
       setRemoving(null)
+    }
+  }
+
+  async function handleCancelInvite(invite_id: string) {
+    setCancelling(invite_id)
+    try {
+      const headers = await buildHeaders()
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace!.id}/invites/${invite_id}`, {
+        method: "DELETE", headers,
+      })
+      setInvites(prev => prev.filter(i => i.id !== invite_id))
+    } finally {
+      setCancelling(null)
     }
   }
 
@@ -128,36 +157,34 @@ function MembersManagerInner({ getToken }: { getToken: (() => Promise<string | n
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-stone-500">Members of <span className="font-medium text-stone-800">{activeWorkspace.name}</span></p>
-        </div>
+        <p className="text-sm text-stone-500">Members of <span className="font-medium text-stone-800">{activeWorkspace.name}</span></p>
         <button
           onClick={() => { setAddOpen(v => !v); setError("") }}
           className="text-xs font-medium bg-stone-900 text-white px-3 py-1.5 rounded-lg hover:bg-stone-700 transition-colors"
         >
-          + Add member
+          + Invite member
         </button>
       </div>
 
-      {/* Add member form */}
+      {/* Invite form */}
       {addOpen && (
         <div className="rounded-xl border border-stone-200 bg-white px-4 py-4 space-y-3">
-          <p className="text-xs font-medium text-stone-500 uppercase tracking-wider">Add member</p>
+          <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Invite by email</p>
           <div className="flex gap-2">
             <input
-              type="text"
-              value={newClerkId}
-              onChange={e => setNewClerkId(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && handleAdd()}
-              placeholder="Clerk user ID (user_…)"
-              className="flex-1 border border-stone-200 rounded-lg px-3 py-2 text-sm font-mono text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              type="email"
+              value={inviteEmail}
+              onChange={e => setInviteEmail(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleInvite()}
+              placeholder="colleague@company.com"
+              className="flex-1 border border-stone-200 rounded-lg px-3 py-2 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
               autoFocus
             />
             <select
-              value={newRole}
-              onChange={e => setNewRole(e.target.value as Member["role"])}
+              value={inviteRole}
+              onChange={e => setInviteRole(e.target.value as typeof inviteRole)}
               className="border border-stone-200 rounded-lg px-3 py-2 text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-indigo-200"
             >
               <option value="admin">Admin</option>
@@ -165,17 +192,17 @@ function MembersManagerInner({ getToken }: { getToken: (() => Promise<string | n
               <option value="viewer">Viewer</option>
             </select>
           </div>
-          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1">
-            💡 Find the Clerk user ID in your Clerk dashboard under Users. Format: <span className="font-mono">user_…</span>
+          <p className="text-[11px] text-stone-500 bg-stone-50 border border-stone-200 rounded-md px-2 py-1.5">
+            They'll be added automatically when they sign in to Conduct AI with this email address.
           </p>
           {error && <p className="text-xs text-red-500">{error}</p>}
           <div className="flex gap-2">
             <button
-              onClick={handleAdd}
+              onClick={handleInvite}
               disabled={saving}
               className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700 disabled:opacity-50 transition-colors"
             >
-              {saving ? "Adding…" : "Add"}
+              {saving ? "Sending…" : "Send invite"}
             </button>
             <button
               onClick={() => { setAddOpen(false); setError("") }}
@@ -187,49 +214,80 @@ function MembersManagerInner({ getToken }: { getToken: (() => Promise<string | n
         </div>
       )}
 
-      {/* Member list */}
+      {/* Pending invites */}
+      {invites.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Pending invites</p>
+          <div className="rounded-xl border border-amber-200 bg-amber-50 divide-y divide-amber-100 overflow-hidden">
+            {invites.map(inv => (
+              <div key={inv.id} className="flex items-center justify-between px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm text-stone-700 truncate">{inv.invited_email}</p>
+                  <p className="text-xs text-stone-400">
+                    Invited {new Date(inv.created_at).toLocaleDateString()} · awaiting sign-in
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 shrink-0 ml-4">
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ROLE_COLORS[inv.role]}`}>
+                    {inv.role}
+                  </span>
+                  <button
+                    onClick={() => handleCancelInvite(inv.id)}
+                    disabled={cancelling === inv.id}
+                    className="text-xs text-stone-400 hover:text-red-500 disabled:opacity-50 transition-colors"
+                  >
+                    {cancelling === inv.id ? "Cancelling…" : "Cancel"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Active members */}
       {loading ? (
-        <p className="text-sm text-stone-400">Loading members…</p>
+        <p className="text-sm text-stone-400">Loading…</p>
       ) : members.length === 0 ? (
-        <p className="text-sm text-stone-400">No members yet.</p>
+        <p className="text-sm text-stone-400">No active members yet.</p>
       ) : (
-        <div className="rounded-xl border border-stone-200 bg-white divide-y divide-stone-100 overflow-hidden">
-          {members.map(m => (
-            <div key={m.clerk_user_id} className="flex items-center justify-between px-4 py-3">
-              <div className="min-w-0">
-                <p className="text-sm font-mono text-stone-700 truncate">{m.clerk_user_id}</p>
-                <p className="text-xs text-stone-400">
-                  Joined {new Date(m.joined_at).toLocaleDateString()}
-                  {m.invited_by && ` · invited by ${m.invited_by}`}
-                </p>
+        <div>
+          <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Active members</p>
+          <div className="rounded-xl border border-stone-200 bg-white divide-y divide-stone-100 overflow-hidden">
+            {members.map(m => (
+              <div key={m.clerk_user_id} className="flex items-center justify-between px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-mono text-stone-700 truncate">{m.clerk_user_id}</p>
+                  <p className="text-xs text-stone-400">Joined {new Date(m.joined_at).toLocaleDateString()}</p>
+                </div>
+                <div className="flex items-center gap-3 shrink-0 ml-4">
+                  <select
+                    value={m.role}
+                    onChange={e => handleRoleChange(m.clerk_user_id, e.target.value)}
+                    className={`text-xs font-medium px-2 py-1 rounded-full border-0 focus:outline-none focus:ring-2 focus:ring-indigo-200 cursor-pointer ${ROLE_COLORS[m.role]}`}
+                  >
+                    <option value="admin">Admin</option>
+                    <option value="editor">Editor</option>
+                    <option value="viewer">Viewer</option>
+                  </select>
+                  <button
+                    onClick={() => handleRemove(m.clerk_user_id)}
+                    disabled={removing === m.clerk_user_id}
+                    className="text-xs text-stone-400 hover:text-red-500 disabled:opacity-50 transition-colors"
+                  >
+                    {removing === m.clerk_user_id ? "Removing…" : "Remove"}
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-3 shrink-0 ml-4">
-                <select
-                  value={m.role}
-                  onChange={e => handleRoleChange(m.clerk_user_id, e.target.value)}
-                  className={`text-xs font-medium px-2 py-1 rounded-full border-0 focus:outline-none focus:ring-2 focus:ring-indigo-200 cursor-pointer ${ROLE_COLORS[m.role]}`}
-                >
-                  <option value="admin">Admin</option>
-                  <option value="editor">Editor</option>
-                  <option value="viewer">Viewer</option>
-                </select>
-                <button
-                  onClick={() => handleRemove(m.clerk_user_id)}
-                  disabled={removing === m.clerk_user_id}
-                  className="text-xs text-stone-400 hover:text-red-500 disabled:opacity-50 transition-colors"
-                >
-                  {removing === m.clerk_user_id ? "Removing…" : "Remove"}
-                </button>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 
       <div className="rounded-lg bg-stone-50 border border-stone-200 px-4 py-3 text-xs text-stone-500 space-y-1">
         <p><span className="font-medium text-stone-700">Admin</span> — full access: manage members, credentials, environments, agents</p>
-        <p><span className="font-medium text-stone-700">Editor</span> — can run agents, edit workflows, manage credentials</p>
-        <p><span className="font-medium text-stone-700">Viewer</span> — read-only: can view runs, workflows, and settings</p>
+        <p><span className="font-medium text-stone-700">Editor</span> — run agents, edit workflows, manage credentials</p>
+        <p><span className="font-medium text-stone-700">Viewer</span> — read-only: view runs, workflows, and settings</p>
       </div>
     </div>
   )
