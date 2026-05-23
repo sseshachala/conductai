@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
+import AppShell from "@/components/AppShell"
 
 const FEATURED = [
   { id: "autopilot_quick",    icon: "⚡", label: "Autopilot Quick",    description: "Issue labeled → implement fix → open PR." },
@@ -132,13 +133,8 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
   }
 
   return (
-    <div className="min-h-screen bg-stone-50">
-      <header className="border-b border-stone-200 bg-white px-6 py-4 flex items-center gap-3">
-        <Link href="/workflows" className="text-stone-400 hover:text-stone-700 text-sm transition-colors">←</Link>
-        <span className="font-semibold text-stone-900">New agent</span>
-      </header>
-
-      <main className="mx-auto max-w-xl px-6 py-12">
+    <AppShell>
+      <div className="mx-auto max-w-xl px-6 py-12">
 
         {/* Quick-start featured playbooks */}
         <div className="mb-8">
@@ -242,7 +238,7 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
           {loading ? "Creating…" : "Create agent"}
         </button>
 
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }
