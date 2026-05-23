@@ -77,6 +77,63 @@ function WebhookRegisterButton({ owner, repo, getToken }: {
   )
 }
 
+// ── Vercel webhook registration ───────────────────────────────────────────────
+
+function VercelWebhookRegisterButton({ eventType, getToken }: {
+  eventType: string; getToken?: (() => Promise<string | null>) | null
+}) {
+  const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle")
+  const [msg, setMsg] = useState("")
+
+  async function register() {
+    setStatus("loading")
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL
+      if (!apiUrl) { setStatus("error"); setMsg("NEXT_PUBLIC_API_URL not set"); return }
+      const headers: Record<string, string> = { "Content-Type": "application/json" }
+      if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
+      const ws = typeof document !== "undefined"
+        ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
+      if (ws) headers["X-Workspace-Id"] = ws
+      const r = await fetch(`${apiUrl}/credentials/vercel/webhook`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ event_type: eventType }),
+      })
+      const data = await r.json()
+      if (!r.ok) { setStatus("error"); setMsg(data.detail || `HTTP ${r.status}`); return }
+      setStatus("done")
+      setMsg(data.existing ? "Already registered" : "Webhook registered!")
+    } catch (e) {
+      setStatus("error"); setMsg(e instanceof Error ? e.message : "Network error")
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2.5 text-xs">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="font-semibold text-indigo-800">Auto-register with Vercel</p>
+          <p className="text-indigo-600 mt-0.5">
+            {status === "done" ? msg : "Uses your saved Vercel token to register the workspace-scoped webhook"}
+            {status === "error" && <span className="text-red-600"> — {msg}</span>}
+          </p>
+        </div>
+        {status !== "done" && (
+          <button
+            onClick={register}
+            disabled={status === "loading"}
+            className="shrink-0 rounded-md bg-indigo-600 text-white px-3 py-1.5 font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          >
+            {status === "loading" ? "Registering…" : "Register"}
+          </button>
+        )}
+        {status === "done" && <span className="text-emerald-600 font-semibold shrink-0">✓ Active</span>}
+      </div>
+    </div>
+  )
+}
+
 // ── Ref chip renderer ─────────────────────────────────────────────────────────
 
 function SystemPromptWithChips({ text }: { text: string }) {
@@ -351,6 +408,9 @@ export default function BlockEditor({
   const triggerEventType = (getNestedValue(blockData, "config.event_type") as string) || ""
 
   // Derive config fields to show — filter trigger fields to only what's relevant
+  const VERCEL_EVENT_TYPES = new Set(["deployment.succeeded", "deployment.ready", "deployment.failed", "deployment.error"])
+  const isVercelTrigger = VERCEL_EVENT_TYPES.has(triggerEventType)
+
   const allStaticFields = BLOCK_CONFIG_SCHEMAS[blockType] || []
   const staticFields = blockType === "trigger"
     ? allStaticFields.filter(f => {
@@ -696,7 +756,7 @@ export default function BlockEditor({
                     {field.hint && <span className="text-[10px] text-stone-400">{field.hint}</span>}
                   </div>
                   {rendered}
-                  {/* Inject webhook URL right after the trigger-type dropdown */}
+                  {/* Inbound webhook URL panel */}
                   {blockType === "trigger" && field.key === "config.event_type" && triggerEventType === "webhook" && (
                     <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2.5 text-xs text-violet-800 mt-2 space-y-1.5">
                       <p className="font-semibold text-[10px] uppercase tracking-wide text-violet-500">Webhook URL</p>
@@ -712,6 +772,30 @@ export default function BlockEditor({
                       </div>
                     </div>
                   )}
+                  {/* Vercel deployment trigger URL + auto-register panel */}
+                  {blockType === "trigger" && field.key === "config.event_type" && isVercelTrigger && (() => {
+                    const ws = typeof document !== "undefined"
+                      ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
+                    const webhookUrl = ws
+                      ? `${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}/webhooks/vercel?workspace_id=${ws}`
+                      : null
+                    return (
+                      <div className="mt-2 space-y-2">
+                        <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2.5 text-xs text-violet-800 space-y-1.5">
+                          <p className="font-semibold text-[10px] uppercase tracking-wide text-violet-500">Vercel webhook URL</p>
+                          {webhookUrl
+                            ? <p className="font-mono break-all select-all text-violet-700 text-[11px]">{webhookUrl}</p>
+                            : <p className="text-violet-400 text-[11px]">Select a workspace to see your URL</p>
+                          }
+                          <p className="text-violet-500 text-[10px]">Paste in Vercel → Project → Settings → Webhooks</p>
+                          <div className="border-t border-violet-100 pt-1.5 space-y-0.5">
+                            <p className="text-[10px] text-violet-500">Payload available as <span className="font-mono">{"{{_trigger.vercel_webhook.*}}"}</span></p>
+                          </div>
+                        </div>
+                        <VercelWebhookRegisterButton eventType={triggerEventType} getToken={getToken} />
+                      </div>
+                    )
+                  })()}
                 </div>
               )
             })}

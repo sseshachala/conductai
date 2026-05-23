@@ -18,6 +18,7 @@ from app.models.integration import Integration
 from app.models.workflow import Workflow
 
 GITHUB_API = "https://api.github.com"
+VERCEL_API = "https://api.vercel.com"
 
 router = APIRouter(prefix="/credentials", tags=["credentials"])
 
@@ -187,6 +188,21 @@ def _github_token(workspace_id: str, db: Session) -> str:
     return token
 
 
+def _vercel_token(workspace_id: str, db: Session) -> str:
+    """Fetch and decrypt the Vercel token for the workspace."""
+    row = db.query(Integration).filter(
+        Integration.workspace_id == workspace_id,
+        Integration.handle == "vercel",
+    ).first()
+    if not row or not row.encrypted_credentials:
+        raise HTTPException(status_code=404, detail="Vercel credentials not connected — add them in Settings → Integrations")
+    creds = decrypt(row.encrypted_credentials)
+    token = creds.get("token")
+    if not token:
+        raise HTTPException(status_code=400, detail="Vercel credential is missing a 'token' field")
+    return token
+
+
 def _gh_headers(token: str) -> dict:
     return {
         "Authorization": f"Bearer {token}",
@@ -348,3 +364,61 @@ def register_github_webhook(
 
     hook = r.json()
     return {"registered": True, "hook_id": hook["id"], "url": webhook_url, "existing": False}
+
+
+# ---------------------------------------------------------------------------
+# Vercel webhook auto-registration
+# ---------------------------------------------------------------------------
+
+VERCEL_TRIGGER_EVENTS = {"deployment.succeeded", "deployment.ready", "deployment.failed", "deployment.error"}
+
+
+class VercelWebhookRequest(BaseModel):
+    event_type: str  # e.g. "deployment.succeeded"
+
+
+@router.post("/vercel/webhook")
+def register_vercel_webhook(
+    body: VercelWebhookRequest,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin")),
+):
+    """
+    Register a Vercel webhook scoped to this workspace using the stored Vercel token.
+    Idempotent — returns the existing webhook if already registered for this URL.
+    """
+    from app.core.config import settings
+
+    if body.event_type not in VERCEL_TRIGGER_EVENTS:
+        raise HTTPException(status_code=400, detail=f"Unsupported event_type '{body.event_type}'. Valid: {sorted(VERCEL_TRIGGER_EVENTS)}")
+
+    token = _vercel_token(workspace_id, db)
+    webhook_url = f"{settings.api_base_url.rstrip('/')}/webhooks/vercel?workspace_id={workspace_id}"
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    # Check for existing webhook with same URL to stay idempotent
+    try:
+        existing_resp = httpx.get(f"{VERCEL_API}/v1/webhooks", headers=headers, timeout=10)
+        if existing_resp.ok:
+            for hook in existing_resp.json():
+                if isinstance(hook, dict) and hook.get("url") == webhook_url:
+                    return {"registered": True, "hook_id": hook["id"], "url": webhook_url, "existing": True}
+    except Exception:
+        pass
+
+    try:
+        r = httpx.post(
+            f"{VERCEL_API}/v1/webhooks",
+            headers=headers,
+            json={"url": webhook_url, "events": list(VERCEL_TRIGGER_EVENTS)},
+            timeout=10,
+        )
+        r.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=f"Vercel API error: {e.response.text[:300]}")
+    except httpx.RequestError:
+        raise HTTPException(status_code=502, detail="Could not reach Vercel API")
+
+    hook = r.json()
+    return {"registered": True, "hook_id": hook.get("id"), "url": webhook_url, "existing": False}
