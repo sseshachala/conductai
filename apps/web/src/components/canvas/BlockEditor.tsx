@@ -161,6 +161,73 @@ function setNestedValue(obj: Record<string, unknown>, path: string, value: unkno
   return result
 }
 
+// ── Tag input ─────────────────────────────────────────────────────────────────
+
+function TagInput({
+  value,
+  suggestions,
+  placeholder,
+  onChange,
+}: {
+  value: string[]
+  suggestions?: string[]
+  placeholder?: string
+  onChange: (tags: string[]) => void
+}) {
+  const [inputVal, setInputVal] = useState("")
+  const unusedSuggestions = (suggestions ?? []).filter(s => !value.includes(s))
+
+  function addTag(tag: string) {
+    const trimmed = tag.trim()
+    if (trimmed && !value.includes(trimmed)) onChange([...value, trimmed])
+    setInputVal("")
+  }
+
+  function removeTag(tag: string) {
+    onChange(value.filter(t => t !== tag))
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault()
+      addTag(inputVal)
+    } else if (e.key === "Backspace" && !inputVal && value.length > 0) {
+      removeTag(value[value.length - 1])
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1.5 min-h-[34px] border border-stone-200 rounded-lg px-2.5 py-1.5 bg-white focus-within:ring-2 focus-within:ring-indigo-200">
+        {value.map(tag => (
+          <span key={tag} className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 text-xs font-medium px-2 py-0.5 rounded-full">
+            {tag}
+            <button type="button" onClick={() => removeTag(tag)} className="text-indigo-400 hover:text-indigo-700 leading-none">×</button>
+          </span>
+        ))}
+        <input
+          value={inputVal}
+          onChange={e => setInputVal(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={() => { if (inputVal.trim()) addTag(inputVal) }}
+          placeholder={value.length === 0 ? placeholder : ""}
+          className="flex-1 min-w-[80px] text-sm text-stone-900 bg-transparent outline-none"
+        />
+      </div>
+      {unusedSuggestions.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {unusedSuggestions.map(s => (
+            <button key={s} type="button" onClick={() => addTag(s)}
+              className="text-[11px] px-2 py-0.5 rounded-full border border-stone-200 text-stone-500 hover:border-indigo-300 hover:text-indigo-600 transition-colors">
+              + {s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Config field renderer ─────────────────────────────────────────────────────
 
 function FieldInput({
@@ -200,6 +267,18 @@ function FieldInput({
           boolVal ? "translate-x-4.5" : "translate-x-0.5"
         )} />
       </button>
+    )
+  }
+
+  if (field.type === "tags") {
+    const tags = Array.isArray(value) ? (value as string[]) : (typeof value === "string" && value ? value.split(",").map(s => s.trim()).filter(Boolean) : [])
+    return (
+      <TagInput
+        value={tags}
+        suggestions={field.suggestions}
+        placeholder={field.placeholder}
+        onChange={onChange}
+      />
     )
   }
 
@@ -275,7 +354,7 @@ export default function BlockEditor({
   const allStaticFields = BLOCK_CONFIG_SCHEMAS[blockType] || []
   const staticFields = blockType === "trigger"
     ? allStaticFields.filter(f => {
-        if (f.key === "config.label" || f.key === "config.repo_allowlist")
+        if (f.key === "config.labels" || f.key === "config.repo_allowlist")
           return triggerEventType === "github_issue_labeled"
         if (f.key === "config.webhook_secret" || f.key === "config.test_repo" || f.key === "config.test_pr_number")
           return triggerEventType === "webhook"
