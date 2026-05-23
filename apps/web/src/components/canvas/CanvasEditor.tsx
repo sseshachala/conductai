@@ -876,6 +876,18 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
         )}
       </div>
 
+      {/* No-environment warning banner */}
+      {!selectedEnvId && (
+        <div className="shrink-0 border-t border-amber-200 bg-amber-50 px-5 py-2.5 flex items-center gap-2">
+          <span className="text-amber-600 text-sm">⚠</span>
+          <p className="text-xs text-amber-800 flex-1">
+            <span className="font-semibold">No environment assigned</span> — credentials won&apos;t be available when this workflow runs.{" "}
+            Select one from the dropdown above, or{" "}
+            <a href="/settings" className="underline font-medium hover:text-amber-900">add an environment in Settings</a> first.
+          </p>
+        </div>
+      )}
+
       {/* Preflight turn-budget banner */}
       {preflight && (
         <div className="shrink-0 border-t border-amber-200 bg-amber-50 px-5 py-3">
