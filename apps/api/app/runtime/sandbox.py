@@ -84,87 +84,95 @@ def _local_search_code(pattern: str, path: str = ".", file_glob: str = "*") -> s
 
 
 # ── Modal sandbox (production) ────────────────────────────────────────────────
-# Modal requires @app.function at module (global) scope.
-# We guard the entire definition so the module still imports cleanly without Modal installed.
+# Uses modal.Sandbox for ephemeral container execution — no pre-deployment needed.
 
-_modal_fn = None
+_SANDBOX_SCRIPT = r"""
+import json, os, re, subprocess, sys
 
-try:
-    import modal as _modal  # type: ignore[import]
+name   = os.environ["TOOL_NAME"]
+inputs = json.loads(os.environ["TOOL_INPUT"])
 
-    _modal_app = _modal.App("delegator-brain-sandbox-v2")
-    _modal_image = (
-        _modal.Image.debian_slim()
-        .apt_install("git", "curl", "wget", "unzip", "python3", "python3-pip", "nodejs", "npm")
-        .run_commands("git --version && node --version && python3 --version")
-    )
+_forbidden = [
+    r"rm\s+-rf\s+/", r"rm\s+-fr\s+/", r"mkfs", r"dd\s+if=",
+    r":\(\)\{.*\}", r">\s*/dev/sd", r"chmod\s+777\s+/", r"chown.*root",
+]
 
-    @_modal_app.function(timeout=300, cpu=1, memory=1024, retries=0, image=_modal_image)
-    def _modal_fn(name: str, inputs: dict) -> str:  # type: ignore[misc]
-        import os as _os
-        import re as _re
-        import subprocess as _sp
+if name == "read_file":
+    try:
+        with open(inputs["path"]) as f:
+            c = f.read()
+        print(c[:20000] + "\n[... truncated]" if len(c) > 20000 else c, end="")
+    except Exception as e:
+        print(f"Error: {e}", end="")
 
-        _forbidden = [
-            r"rm\s+-rf\s+/", r"rm\s+-fr\s+/", r"mkfs", r"dd\s+if=",
-            r":\(\)\{.*\}", r">\s*/dev/sd", r"chmod\s+777\s+/", r"chown.*root",
-        ]
+elif name == "write_file":
+    try:
+        os.makedirs(os.path.dirname(os.path.abspath(inputs["path"])), exist_ok=True)
+        with open(inputs["path"], "w") as f:
+            f.write(inputs["content"])
+        print(f"Written {len(inputs['content'])} bytes to {inputs['path']}", end="")
+    except Exception as e:
+        print(f"Error: {e}", end="")
 
-        if name == "read_file":
-            try:
-                with open(inputs["path"]) as f:
-                    c = f.read()
-                return c[:20_000] + "\n[... truncated]" if len(c) > 20_000 else c
-            except Exception as e:
-                return f"Error: {e}"
+elif name == "run_shell":
+    cmd = inputs["command"]
+    for p in _forbidden:
+        if re.search(p, cmd):
+            print(f"Refused: matches forbidden pattern '{p}'", end="")
+            sys.exit(0)
+    try:
+        r = subprocess.run(
+            cmd, shell=True, capture_output=True, text=True,
+            timeout=110, cwd=inputs.get("working_dir"),
+        )
+        out = r.stdout + r.stderr
+        print((out[:10000] + "\n[... truncated]") if len(out) > 10000 else out or "(no output)", end="")
+    except subprocess.TimeoutExpired:
+        print("Error: timed out", end="")
+    except Exception as e:
+        print(f"Error: {e}", end="")
 
-        if name == "write_file":
-            try:
-                _os.makedirs(_os.path.dirname(_os.path.abspath(inputs["path"])), exist_ok=True)
-                with open(inputs["path"], "w") as f:
-                    f.write(inputs["content"])
-                return f"Written {len(inputs['content'])} bytes to {inputs['path']}"
-            except Exception as e:
-                return f"Error: {e}"
+elif name == "search_code":
+    try:
+        r = subprocess.run(
+            ["grep", "-r", "--include", inputs.get("file_glob", "*"), "-n",
+             inputs["pattern"], inputs.get("path", ".")],
+            capture_output=True, text=True, timeout=15,
+        )
+        out = r.stdout
+        print((out[:8000] + "\n[... truncated]") if len(out) > 8000 else out or "(no matches)", end="")
+    except Exception as e:
+        print(f"Error: {e}", end="")
 
-        if name == "run_shell":
-            cmd = inputs["command"]
-            for p in _forbidden:
-                if _re.search(p, cmd):
-                    return f"Refused: matches forbidden pattern '{p}'"
-            try:
-                r = _sp.run(
-                    cmd, shell=True, capture_output=True, text=True,
-                    timeout=110, cwd=inputs.get("working_dir"),
-                )
-                out = r.stdout + r.stderr
-                return (out[:10_000] + "\n[... truncated]") if len(out) > 10_000 else out or "(no output)"
-            except _sp.TimeoutExpired:
-                return "Error: timed out"
-            except Exception as e:
-                return f"Error: {e}"
-
-        if name == "search_code":
-            try:
-                r = _sp.run(
-                    ["grep", "-r", "--include", inputs.get("file_glob", "*"), "-n",
-                     inputs["pattern"], inputs.get("path", ".")],
-                    capture_output=True, text=True, timeout=15,
-                )
-                out = r.stdout
-                return (out[:8_000] + "\n[... truncated]") if len(out) > 8_000 else out or "(no matches)"
-            except Exception as e:
-                return f"Error: {e}"
-
-        return f"Unknown tool: {name}"
-
-except Exception:
-    pass  # Modal not installed or misconfigured — _modal_fn stays None
+else:
+    print(f"Unknown tool: {name}", end="")
+"""
 
 
 def _modal_dispatch(tool_name: str, tool_input: dict) -> str:
     try:
-        return _modal_fn.remote(tool_name, tool_input)
+        import json
+        import modal  # type: ignore[import]
+
+        image = (
+            modal.Image.debian_slim()
+            .apt_install("git", "curl", "wget", "unzip", "python3", "python3-pip", "nodejs", "npm")
+        )
+
+        sb = modal.Sandbox.create(
+            "python3", "-c", _SANDBOX_SCRIPT,
+            image=image,
+            timeout=300,
+            env={
+                "TOOL_NAME": tool_name,
+                "TOOL_INPUT": json.dumps(tool_input),
+            },
+        )
+        sb.wait()
+        result = sb.stdout.read()
+        stderr = sb.stderr.read()
+        sb.terminate()
+        return result or stderr or "(no output)"
     except Exception as e:
         error_type = type(e).__name__
         msg = f"[Modal error — {error_type}] {e}"
