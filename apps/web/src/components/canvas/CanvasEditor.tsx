@@ -146,6 +146,10 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
   const [environments, setEnvironments] = useState<Array<{ id: string; name: string }>>([])
   const [selectedEnvId, setSelectedEnvId] = useState<string>("")
   const [envCredentials, setEnvCredentials] = useState<Array<{ handle: string; service: string }>>([])
+  // Webhook test modal — shown when manually running a webhook-triggered workflow
+  const [webhookModal, setWebhookModal] = useState<{ dryRun: boolean } | null>(null)
+  const [webhookRepo, setWebhookRepo] = useState("")
+  const [webhookPrNumber, setWebhookPrNumber] = useState("")
 
   const STORAGE_KEY = `marshal:active-run:${workflowId}`
 
@@ -403,6 +407,18 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
         )
       })
 
+      // Webhook trigger — prompt for PR details before running
+      const webhookTriggerNode = nodes.find(n => {
+        const d = n.data as BlockNodeData
+        const cfg = (d.config as Record<string, unknown>) ?? {}
+        return d.type === "trigger" && cfg.event_type === "webhook"
+      })
+      if (webhookTriggerNode && !triggerNode) {
+        setRunning("idle")
+        setWebhookModal({ dryRun })
+        return
+      }
+
       if (triggerNode) {
         const cfg = (triggerNode.data as BlockNodeData).config as Record<string, unknown>
         const repoAllowlist = (cfg.repo_allowlist as string) || ""
@@ -531,6 +547,48 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
       setRunning("idle")
     }
   }, [workflowId, getToken, router, nodes, selectedEnvId])
+
+  const startWebhookRun = useCallback(async (dryRun: boolean, repo: string, prNumber: string) => {
+    setWebhookModal(null)
+    setRunning(dryRun ? "dry" : "live")
+    try {
+      const headers = await authHeaders(getToken)
+      const [owner, repoName] = repo.split("/")
+      const num = parseInt(prNumber, 10)
+      const initialState = {
+        _trigger: {
+          action: "opened",
+          number: num,
+          repository: { full_name: repo, name: repoName, owner: { login: owner } },
+          pull_request: {
+            number: num,
+            title: `Test PR #${num}`,
+            user: { login: "test-user", type: "User" },
+            html_url: `https://github.com/${repo}/pull/${num}`,
+            diff_url: `https://github.com/${repo}/pull/${num}.diff`,
+            base: { ref: "main" },
+            head: { ref: `test-branch-${num}` },
+          },
+        },
+      }
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ triggered_by: "manual", dry_run: dryRun, initial_state: initialState }),
+        }
+      )
+      if (!res.ok) throw new Error("Failed to start run")
+      const run = await res.json()
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ runId: run.id, startedAt: Date.now() }))
+      setActiveRunId(run.id)
+      setDrawerVisible(true)
+      setRunning("idle")
+    } catch {
+      setRunning("idle")
+    }
+  }, [workflowId, getToken, STORAGE_KEY])
 
   const _fireRun = useCallback(async (
     headers: Record<string, string>,
@@ -857,6 +915,47 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
                 </button>
                 <button onClick={() => { setPreflight(null); setRunning("idle") }} className="text-xs text-amber-400 hover:text-amber-600 ml-auto">Cancel</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Webhook test modal */}
+      {webhookModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6 flex flex-col gap-4">
+            <div>
+              <h2 className="text-sm font-semibold text-stone-900">Test with a pull request</h2>
+              <p className="text-xs text-stone-400 mt-1">Provide a real PR to review. The workflow will fetch the diff and post a review comment.</p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-stone-500">GitHub repo</label>
+              <input
+                placeholder="owner/repo"
+                value={webhookRepo}
+                onChange={e => setWebhookRepo(e.target.value)}
+                className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-stone-500">PR number</label>
+              <input
+                placeholder="42"
+                value={webhookPrNumber}
+                onChange={e => setWebhookPrNumber(e.target.value)}
+                className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setWebhookModal(null)}
+                className="px-4 py-2 text-xs text-stone-500 hover:text-stone-700 rounded-lg hover:bg-stone-100 transition-colors"
+              >Cancel</button>
+              <button
+                onClick={() => startWebhookRun(webhookModal.dryRun, webhookRepo, webhookPrNumber)}
+                disabled={!webhookRepo.includes("/") || !webhookPrNumber}
+                className="px-4 py-2 text-xs font-medium bg-stone-900 text-white rounded-lg hover:bg-stone-700 disabled:opacity-40 transition-colors"
+              >Run review</button>
             </div>
           </div>
         </div>
