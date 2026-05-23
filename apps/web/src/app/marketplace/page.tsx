@@ -26,7 +26,7 @@ interface Repo {
 // Playbooks that need a GitHub webhook registered on a specific repo
 const GITHUB_WEBHOOK_SLUGS = new Set([
   "pr_reviewer", "copilot_reviewer", "issue_triage",
-  "ci_notify", "release_notes",
+  "ci_notify", "release_notes", "security_scanner",
   "autopilot_quick", "autopilot_full", "autopilot_approved",
 ])
 
@@ -51,6 +51,7 @@ const FRIENDLY_NAMES: Record<string, string> = {
   incident_responder: "Incident Responder",
   dependency_updater: "Dependency Updater",
   copilot_reviewer:   "Copilot / AI PR Reviewer",
+  security_scanner:   "Security Scanner",
 }
 
 export default function MarketplacePage() {
