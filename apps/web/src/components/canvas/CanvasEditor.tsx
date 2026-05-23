@@ -414,6 +414,9 @@ function CanvasEditorInner({ workflowId, getToken }: CanvasEditorProps) {
         return d.type === "trigger" && cfg.event_type === "webhook"
       })
       if (webhookTriggerNode && !triggerNode) {
+        const cfg = (webhookTriggerNode.data as BlockNodeData).config as Record<string, unknown>
+        setWebhookRepo((cfg.test_repo as string) || "")
+        setWebhookPrNumber((cfg.test_pr_number as string) || "")
         setRunning("idle")
         setWebhookModal({ dryRun })
         return
