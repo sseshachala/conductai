@@ -42,26 +42,27 @@ function getActiveProject(): { id: string; name: string } | null {
 export default function WorkflowsPage() {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   if (clerkEnabled) return <WorkflowsWithAuth />
-  return <WorkflowsContent getToken={null} />
+  return <WorkflowsContent getToken={null} currentUserId={null} />
 }
 
 function WorkflowsWithAuth() {
   const router = useRouter()
-  const { getToken, isLoaded, isSignedIn } = useAuth()
+  const { getToken, isLoaded, isSignedIn, userId } = useAuth()
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) router.replace("/")
   }, [isLoaded, isSignedIn, router])
 
   if (!isLoaded) return null
-  return <WorkflowsContent getToken={getToken} />
+  return <WorkflowsContent getToken={getToken} currentUserId={userId ?? null} />
 }
 
-function WorkflowsContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
+function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promise<string | null>) | null; currentUserId: string | null }) {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [project, setProject] = useState<{ id: string; name: string } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isAdmin, setIsAdmin] = useState(!clerkEnabled)
 
   async function authHeaders(): Promise<Record<string, string>> {
     const h: Record<string, string> = {}
@@ -76,7 +77,19 @@ function WorkflowsContent({ getToken }: { getToken: (() => Promise<string | null
     const p = getActiveProject()
     setProject(p)
     loadWorkflows(p?.id ?? null)
-  }, [])
+    if (clerkEnabled && p?.id && currentUserId) loadRole(p.id)
+  }, [currentUserId])
+
+  async function loadRole(projectId: string) {
+    try {
+      const h = await authHeaders()
+      h["X-Workspace-Id"] = projectId
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${projectId}/members`, { headers: h })
+      if (!res.ok) return
+      const members: { clerk_user_id: string; role: string }[] = await res.json()
+      setIsAdmin(members.find(m => m.clerk_user_id === currentUserId)?.role === "admin")
+    } catch { /* stay false */ }
+  }
 
   async function loadWorkflows(pid: string | null) {
     try {
@@ -155,6 +168,7 @@ function WorkflowsContent({ getToken }: { getToken: (() => Promise<string | null
               <AgentCard
                 key={w.id}
                 workflow={w}
+                isAdmin={isAdmin}
                 onRename={(name) => renameAgent(w.id, name)}
                 onDelete={() => deleteAgent(w.id)}
               />
@@ -167,9 +181,10 @@ function WorkflowsContent({ getToken }: { getToken: (() => Promise<string | null
 }
 
 function AgentCard({
-  workflow, onRename, onDelete,
+  workflow, isAdmin, onRename, onDelete,
 }: {
   workflow: Workflow
+  isAdmin: boolean
   onRename: (name: string) => Promise<void>
   onDelete: () => Promise<void>
 }) {
@@ -243,32 +258,34 @@ function AgentCard({
         )}
         {workflow.last_run_at && <span className="text-xs text-stone-400">{timeAgo(workflow.last_run_at)}</span>}
 
-        <div className="relative" ref={menuRef}>
-          <button
-            onClick={e => { e.preventDefault(); setMenuOpen(v => !v) }}
-            className="p-1.5 rounded-lg text-stone-300 hover:text-stone-600 hover:bg-stone-100 transition-colors opacity-0 group-hover:opacity-100"
-          >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M10 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4z" />
-            </svg>
-          </button>
-          {menuOpen && (
-            <div className="absolute right-0 top-8 z-20 w-36 bg-white rounded-xl border border-stone-200 shadow-lg py-1">
-              <button
-                onClick={() => { setMenuOpen(false); setRenaming(true) }}
-                className="w-full text-left px-4 py-2 text-sm text-stone-700 hover:bg-stone-50"
-              >
-                Rename
-              </button>
-              <button
-                onClick={() => { setMenuOpen(false); setConfirmDelete(true) }}
-                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-              >
-                Delete
-              </button>
-            </div>
-          )}
-        </div>
+        {isAdmin && (
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={e => { e.preventDefault(); setMenuOpen(v => !v) }}
+              className="p-1.5 rounded-lg text-stone-300 hover:text-stone-600 hover:bg-stone-100 transition-colors opacity-0 group-hover:opacity-100"
+            >
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M10 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4z" />
+              </svg>
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-8 z-20 w-36 bg-white rounded-xl border border-stone-200 shadow-lg py-1">
+                <button
+                  onClick={() => { setMenuOpen(false); setRenaming(true) }}
+                  className="w-full text-left px-4 py-2 text-sm text-stone-700 hover:bg-stone-50"
+                >
+                  Rename
+                </button>
+                <button
+                  onClick={() => { setMenuOpen(false); setConfirmDelete(true) }}
+                  className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                >
+                  Delete
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

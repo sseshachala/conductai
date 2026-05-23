@@ -40,7 +40,7 @@ def get_workspace_id_sse(
     x_ws = request.headers.get("x-workspace-id")
 
     if not _clerk_enabled():
-        return x_ws or ws_qp or DEV_WORKSPACE_ID
+        return x_ws or DEV_WORKSPACE_ID
 
     # CLI API key — header only (query params are logged by proxies)
     api_key_hdr = request.headers.get("x-api-key")
