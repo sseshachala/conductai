@@ -89,6 +89,30 @@ def _clerk_enabled() -> bool:
     return bool(settings.clerk_secret_key and settings.clerk_frontend_api)
 
 
+def get_clerk_user_email(user_id: str) -> str | None:
+    """Fetch the primary email address for a Clerk user via the Clerk REST API."""
+    if not settings.clerk_secret_key or not user_id:
+        return None
+    try:
+        r = httpx.get(
+            f"https://api.clerk.com/v1/users/{user_id}",
+            headers={"Authorization": f"Bearer {settings.clerk_secret_key}"},
+            timeout=5,
+        )
+        if not r.is_success:
+            return None
+        data = r.json()
+        primary_id = data.get("primary_email_address_id")
+        for e in data.get("email_addresses", []):
+            if e.get("id") == primary_id:
+                return e.get("email_address")
+        emails = data.get("email_addresses", [])
+        return emails[0].get("email_address") if emails else None
+    except Exception as e:
+        log.warning("Could not fetch Clerk user email for %s: %s", user_id, e)
+        return None
+
+
 def get_user_id(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
 ) -> str:

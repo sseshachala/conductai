@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_user_id, require_workspace_role, get_user_workspace_role
+from app.core.auth import get_user_id, require_workspace_role, get_user_workspace_role, get_clerk_user_email
 from app.core.config import settings
 from app.core.database import get_db
 
@@ -56,8 +56,17 @@ class MemberOut(BaseModel):
 
 
 class MemberAdd(BaseModel):
-    clerk_user_id: str
+    clerk_user_id: str | None = None   # direct add (existing user)
+    email: str | None = None           # invite by email (pending until login)
     role: Literal["admin", "editor", "viewer"] = "editor"
+
+
+class InviteOut(BaseModel):
+    id: str
+    invited_email: str
+    role: str
+    invited_by: str | None
+    created_at: datetime
 
 
 # ---------------------------------------------------------------------------
@@ -72,11 +81,37 @@ def list_templates(db: Session = Depends(get_db)):
     return [TemplateOut(id=str(r.id), slug=r.slug, name=r.name, description=r.description, default_mode=r.default_mode) for r in rows]
 
 
+def _accept_pending_invites(user_id: str, db: Session) -> None:
+    """Resolve any email-based pending invites for the authenticated user on first login."""
+    email = get_clerk_user_email(user_id)
+    if not email:
+        return
+    now = datetime.utcnow()
+    invites = db.execute(text("""
+        SELECT id, workspace_id, role, invited_by FROM workspace_invites
+        WHERE invited_email = :email AND accepted_at IS NULL
+    """), {"email": email}).fetchall()
+    for inv in invites:
+        db.execute(text("""
+            INSERT INTO workspace_users (workspace_id, clerk_user_id, role, invited_by, joined_at)
+            VALUES (:ws, :uid, :role, :invited_by, :now)
+            ON CONFLICT DO NOTHING
+        """), {"ws": str(inv.workspace_id), "uid": user_id,
+               "role": inv.role, "invited_by": inv.invited_by, "now": now})
+        db.execute(text("UPDATE workspace_invites SET accepted_at = :now WHERE id = :id"),
+                   {"now": now, "id": str(inv.id)})
+    if invites:
+        db.commit()
+
+
 @router.get("", response_model=list[ProjectOut])
 def list_projects(
     user_id: Annotated[str, Depends(get_user_id)],
     db: Session = Depends(get_db),
 ):
+    # Auto-accept any pending email invites for this user
+    _accept_pending_invites(user_id, db)
+
     # Query via workspace_users (new) with legacy owner_id fallback (UNION)
     rows = db.execute(text("""
         SELECT DISTINCT w.id, w.name, w.owner_id, w.is_approved, w.created_at,
@@ -237,7 +272,7 @@ def list_members(
                       invited_by=r.invited_by, joined_at=r.joined_at) for r in rows]
 
 
-@router.post("/{project_id}/members", response_model=MemberOut, status_code=201)
+@router.post("/{project_id}/members", status_code=201)
 def add_member(
     project_id: str,
     body: MemberAdd,
@@ -246,13 +281,35 @@ def add_member(
     db: Session = Depends(get_db),
 ):
     now = datetime.utcnow()
+
+    # Email invite path — store as pending invite
+    if body.email:
+        email = body.email.strip().lower()
+        existing_invite = db.execute(text("""
+            SELECT id FROM workspace_invites
+            WHERE workspace_id = :ws AND invited_email = :email AND accepted_at IS NULL
+        """), {"ws": project_id, "email": email}).fetchone()
+        if existing_invite:
+            raise HTTPException(status_code=409, detail="An invite for this email is already pending")
+        invite_id = db.execute(text("""
+            INSERT INTO workspace_invites (workspace_id, invited_email, role, invited_by, created_at)
+            VALUES (:ws, :email, :role, :invited_by, :now)
+            RETURNING id
+        """), {"ws": project_id, "email": email, "role": body.role,
+               "invited_by": user_id, "now": now}).fetchone()[0]
+        db.commit()
+        return InviteOut(id=str(invite_id), invited_email=email, role=body.role,
+                         invited_by=user_id, created_at=now)
+
+    # Direct add path — clerk_user_id must be provided
+    if not body.clerk_user_id:
+        raise HTTPException(status_code=422, detail="Provide either email or clerk_user_id")
     existing = db.execute(text("""
         SELECT clerk_user_id FROM workspace_users
         WHERE workspace_id = :ws AND clerk_user_id = :uid
     """), {"ws": project_id, "uid": body.clerk_user_id}).fetchone()
     if existing:
         raise HTTPException(status_code=409, detail="User is already a member")
-
     db.execute(text("""
         INSERT INTO workspace_users (workspace_id, clerk_user_id, role, invited_by, joined_at)
         VALUES (:ws, :uid, :role, :invited_by, :now)
@@ -261,6 +318,41 @@ def add_member(
     db.commit()
     return MemberOut(clerk_user_id=body.clerk_user_id, role=body.role,
                      invited_by=user_id, joined_at=now)
+
+
+@router.get("/{project_id}/invites", response_model=list[InviteOut])
+def list_invites(
+    project_id: str,
+    user_id: Annotated[str, Depends(get_user_id)],
+    _role: Annotated[str, Depends(require_workspace_role("admin"))],
+    db: Session = Depends(get_db),
+):
+    rows = db.execute(text("""
+        SELECT id, invited_email, role, invited_by, created_at
+        FROM workspace_invites
+        WHERE workspace_id = :ws AND accepted_at IS NULL
+        ORDER BY created_at DESC
+    """), {"ws": project_id}).fetchall()
+    return [InviteOut(id=str(r.id), invited_email=r.invited_email, role=r.role,
+                      invited_by=r.invited_by, created_at=r.created_at) for r in rows]
+
+
+@router.delete("/{project_id}/invites/{invite_id}", status_code=204)
+def cancel_invite(
+    project_id: str,
+    invite_id: str,
+    user_id: Annotated[str, Depends(get_user_id)],
+    _role: Annotated[str, Depends(require_workspace_role("admin"))],
+    db: Session = Depends(get_db),
+):
+    result = db.execute(text("""
+        DELETE FROM workspace_invites
+        WHERE id = :id AND workspace_id = :ws AND accepted_at IS NULL
+        RETURNING id
+    """), {"id": invite_id, "ws": project_id})
+    if not result.fetchone():
+        raise HTTPException(status_code=404, detail="Invite not found or already accepted")
+    db.commit()
 
 
 @router.patch("/{project_id}/members/{clerk_user_id}")
