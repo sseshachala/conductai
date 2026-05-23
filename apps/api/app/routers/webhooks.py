@@ -37,7 +37,7 @@ def _redis():
 def _verify_slack_signature(request_body: bytes, timestamp: str, signature: str) -> bool:
     """Verify Slack's request signing (v0 scheme)."""
     if not settings.slack_signing_secret:
-        return True  # Skip verification in dev if secret not configured
+        return False  # Reject: no secret configured — set SLACK_SIGNING_SECRET
     if abs(time.time() - int(timestamp)) > 300:
         return False  # Replay attack guard: reject if older than 5 minutes
     base = f"v0:{timestamp}:{request_body.decode()}"
@@ -301,7 +301,7 @@ async def vercel_webhook(
 def _verify_github_signature(body: bytes, signature: str) -> bool:
     secret = settings.github_webhook_secret
     if not secret:
-        return True  # Skip in dev if not configured
+        return False  # Reject: no secret configured — set GITHUB_WEBHOOK_SECRET
     expected = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()  # type: ignore[attr-defined]
     return hmac.compare_digest(expected, signature)
 

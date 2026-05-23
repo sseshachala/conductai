@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_user_id, require_workspace_role, get_user_workspace_role, get_clerk_user_email
+from app.core.auth import get_user_id, get_workspace_id, require_workspace_role, get_user_workspace_role, get_clerk_user_email
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.email import send_template_email, _ROLE_DESCRIPTIONS, APP_URL
@@ -193,17 +193,16 @@ def create_project(
 def rename_project(
     project_id: str,
     body: dict,
-    user_id: Annotated[str, Depends(get_user_id)],
     db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin")),
 ):
     name = (body.get("name") or "").strip()
     if not name:
         raise HTTPException(status_code=422, detail="Name cannot be empty")
-    row = db.execute(text("SELECT owner_id FROM workspaces WHERE id = :id"), {"id": project_id}).fetchone()
+    row = db.execute(text("SELECT id FROM workspaces WHERE id = :id"), {"id": project_id}).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Project not found")
-    if row.owner_id != user_id:
-        raise HTTPException(status_code=403, detail="Not your project")
     db.execute(text("UPDATE workspaces SET name = :name WHERE id = :id"), {"name": name, "id": project_id})
     db.commit()
     row = db.execute(text("""
@@ -221,14 +220,13 @@ def rename_project(
 @router.delete("/{project_id}", status_code=204)
 def delete_project(
     project_id: str,
-    user_id: Annotated[str, Depends(get_user_id)],
     db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin")),
 ):
-    row = db.execute(text("SELECT owner_id FROM workspaces WHERE id = :id"), {"id": project_id}).fetchone()
+    row = db.execute(text("SELECT id FROM workspaces WHERE id = :id"), {"id": project_id}).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Project not found")
-    if row.owner_id != user_id:
-        raise HTTPException(status_code=403, detail="Not your project")
 
     db.execute(text("""
         DELETE FROM run_events WHERE run_id IN (

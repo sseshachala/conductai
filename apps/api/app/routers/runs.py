@@ -148,9 +148,14 @@ def get_run(
     workspace_id: str = Depends(get_workspace_id),
     _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
 ):
-    # Verify the workflow belongs to this workspace before exposing run data.
+    # Verify workflow belongs to this workspace, then scope run to that workflow.
     _get_workflow(workflow_id, workspace_id, db)
-    run = db.query(Run).filter(Run.id == run_id).first()
+    run = (
+        db.query(Run)
+        .join(WorkflowVersion, Run.workflow_version_id == WorkflowVersion.id)
+        .filter(Run.id == run_id, WorkflowVersion.workflow_id == workflow_id)
+        .first()
+    )
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     return run
