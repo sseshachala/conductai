@@ -3,8 +3,8 @@ Webhook endpoints for external services.
 
 POST /webhooks/slack/interactions  — Slack approval button clicks
 POST /webhooks/vercel              — Vercel deployment events (deployment.succeeded etc.)
-POST /webhooks/railway             — Railway deployment events
 POST /webhooks/github              — GitHub issue/PR events (issues.labeled, etc.)
+POST /webhooks/inbound/{id}        — Generic inbound webhook trigger
 """
 import hashlib
 import hmac
@@ -276,46 +276,6 @@ async def vercel_webhook(request: Request, db: Session = Depends(get_db)):
     return {"ok": True, "queued": len(queued), "run_ids": queued}
 
 
-@router.post("/railway")
-async def railway_webhook(request: Request, db: Session = Depends(get_db)):
-    """
-    Receive Railway deployment webhooks.
-    Configure in Railway → Project → Settings → Webhooks.
-    Events: DEPLOY_SUCCESS, DEPLOY_FAILED, etc.
-    """
-    body = await request.body()
-
-    try:
-        payload = json.loads(body)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid JSON")
-
-    event_type = payload.get("type", "UNKNOWN")
-    deployment = payload.get("deployment", {})
-    service = payload.get("service", {})
-    project = payload.get("project", {})
-
-    initial_state = {
-        "railway_webhook": {
-            "event": event_type,
-            "deployment_id": deployment.get("id"),
-            "status": deployment.get("status"),
-            "url": deployment.get("url"),
-            "service_name": service.get("name"),
-            "service_id": service.get("id"),
-            "project_name": project.get("name"),
-            "environment": payload.get("environment", {}).get("name"),
-        }
-    }
-
-    trigger_on = {"DEPLOY_SUCCESS", "DEPLOY_FAILED", "DEPLOY_CRASHED"}
-    if event_type not in trigger_on:
-        return {"ok": True, "queued": 0, "reason": f"event {event_type} not a trigger"}
-
-    queued = _trigger_webhook_workflows(db, event_type, initial_state)
-    return {"ok": True, "queued": len(queued), "run_ids": queued}
-
-
 # ── GitHub webhook ────────────────────────────────────────────────────────────
 
 def _verify_github_signature(body: bytes, signature: str) -> bool:
@@ -559,30 +519,4 @@ async def github_webhook(
     }
 
 
-# ── Deploy Delegator manual trigger ──────────────────────────────────────────
-
-@router.post("/deploy-delegator")
-async def deploy_delegator(request: Request, db: Session = Depends(get_db)):
-    """
-    Manually trigger the Deploy Delegator workflow (deploys delegator-backend
-    and delegator-ui to Railway). Looks for workflows with trigger block
-    event_type = 'deploy_delegator'.
-
-    Optionally accepts a JSON body: {"ref": "main", "triggered_by": "user"}
-    """
-    try:
-        body = await request.body()
-        payload = json.loads(body) if body else {}
-    except json.JSONDecodeError:
-        payload = {}
-
-    initial_state = {
-        "deploy_trigger": {
-            "ref": payload.get("ref", "main"),
-            "triggered_by": payload.get("triggered_by", "manual"),
-        }
-    }
-
-    queued = _trigger_webhook_workflows(db, "deploy_delegator", initial_state)
-    return {"ok": True, "queued": len(queued), "run_ids": queued}
 
