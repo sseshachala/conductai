@@ -389,27 +389,25 @@ def _parse_string_list(raw: Any) -> list[str]:
 
 
 def _labels_match(config: dict[str, Any], incoming_label: str, issue_labels: list[str], strict: bool) -> bool:
-    mode = str(config.get("label_mode") or "exact").strip()
-
-    if mode == "exact":
-        required = str(config.get("label") or "").strip()
-        if not required:
-            return not strict
-        return incoming_label == required
-
+    mode = str(config.get("label_mode") or "").strip()
     configured_labels = _parse_string_list(config.get("labels"))
-    if not configured_labels:
+
+    if configured_labels:
+        effective_mode = mode if mode in ("one_of", "all_of") else "one_of"
+        if effective_mode == "one_of":
+            return incoming_label in configured_labels or any(lbl in configured_labels for lbl in issue_labels)
+        # all_of: only fire when the triggering label is one we care about
+        if effective_mode == "all_of":
+            if incoming_label not in configured_labels:
+                return False
+            issue_set = set(issue_labels)
+            return all(lbl in issue_set for lbl in configured_labels)
+
+    # Legacy / fallback — handles label: singular and label_mode: one_of with no labels list
+    required = str(config.get("label") or "").strip()
+    if not required:
         return not strict
-
-    if mode == "one_of":
-        return incoming_label in configured_labels or any(lbl in configured_labels for lbl in issue_labels)
-
-    if mode == "all_of":
-        issue_set = set(issue_labels)
-        return all(lbl in issue_set for lbl in configured_labels)
-
-    # Unknown mode -> fail closed in strict mode
-    return not strict
+    return incoming_label == required
 
 
 def _repo_matches(config: dict[str, Any], incoming_repo: str, strict: bool) -> bool:
