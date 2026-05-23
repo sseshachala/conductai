@@ -1,11 +1,11 @@
 """
 AES-256-GCM encryption for credential storage.
-Key is derived via PBKDF2-HMAC-SHA256 (stdlib hashlib) from settings.encryption_key
-so any-length passphrase produces a full-entropy 32-byte key. Startup fails fast
-if the default dev key is used in production.
+Key is truncated/padded to 32 bytes from settings.encryption_key.
+The ENCRYPTION_KEY env var should be a strong random 32+ byte value (use
+`python3 -c "import secrets; print(secrets.token_hex(32))"` to generate one).
+Startup fails fast if the default dev key is used in production.
 """
 import base64
-import hashlib
 import json
 import os
 
@@ -14,7 +14,6 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from app.core.config import settings
 
 _DEV_KEY = "dev-only-32-byte-key-change-this!"
-_SALT = b"conductai-vault-v1"
 
 
 def _key() -> bytes:
@@ -24,7 +23,8 @@ def _key() -> bytes:
             "ENCRYPTION_KEY is still the default dev value in production. "
             "Set a random 32-byte ENCRYPTION_KEY environment variable."
         )
-    return hashlib.pbkdf2_hmac("sha256", raw.encode(), _SALT, iterations=1, dklen=32)
+    raw_bytes = raw.encode()
+    return (raw_bytes + b"\x00" * 32)[:32]
 
 
 def encrypt(data: dict) -> str:
