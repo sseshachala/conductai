@@ -207,7 +207,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
       {/* Trust strip */}
       <div className="border-y border-stone-100 bg-stone-50 py-4 px-6">
         <div className="max-w-3xl mx-auto flex flex-wrap items-center justify-center gap-6 text-xs font-medium text-stone-500">
-          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>9 ready-made agents</span>
+          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>10 ready-made agents</span>
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>Zero prompt engineering</span>
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>Human approval on every merge</span>
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>MIT licensed</span>
@@ -594,6 +594,13 @@ const TEMPLATES = [
     trigger: "Git tag pushed",
     what: "Tag pushed → AI reads every merged PR since the last tag → groups by feature/fix/maintenance → writes CHANGELOG entry → posts summary to Slack.",
     scenario: "Engineer pushes v1.4.0 tag. #releases gets a Slack message listing 12 PRs shipped, grouped by type. CHANGELOG.md updated automatically.",
+  },
+  {
+    icon: "🔒",
+    name: "Security Scanner",
+    trigger: "PR opened",
+    what: "PR opened → AI scans the diff for OWASP Top 10 vulnerabilities, hardcoded secrets, injection flaws, and insecure dependencies → posts a structured security report as a review comment.",
+    scenario: "Dev opens a PR at midnight. By morning it has a security review flagging a hardcoded API key and a missing auth check — before any human looked at it.",
   },
 ]
 
