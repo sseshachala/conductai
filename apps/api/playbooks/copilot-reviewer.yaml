@@ -97,8 +97,70 @@ blocks:
     label: Critical issues found?
     condition: "{{review_pr.critical}} > 0"
     next:
-      pass: create_fix_issue
+      pass: check_existing_issue
       fail: gate_merge
+
+  check_existing_issue:
+    type: brain
+    mode: agentic
+    label: Check for existing fix issue
+    description: |
+      Check if a fix issue already exists for this PR.
+
+      Repo: {{_trigger.repository.full_name}}
+      PR number: {{_trigger.number}}
+
+      Steps:
+      1. Retrieve the GitHub token from the Delegator credentials vault.
+      2. Search GitHub for existing open issues:
+         GET https://api.github.com/search/issues?q=repo:{{_trigger.repository.full_name}}+is:issue+is:open+"PR+%23{{_trigger.number}}"+in:title
+         Headers: Authorization: token <github_token>
+      3. If any issue has a title containing "PR #{{_trigger.number}}", return its number and URL.
+
+      Output ONLY the following JSON on the last line:
+        {"exists": true, "issue_url": "<url>", "issue_number": <number>} if found
+        {"exists": false} if not found
+    next: issue_exists_gate
+
+  issue_exists_gate:
+    type: logic
+    label: Issue already exists?
+    condition: "{{check_existing_issue.exists}} == true"
+    next:
+      pass: append_fix_issue
+      fail: create_fix_issue
+
+  append_fix_issue:
+    type: brain
+    mode: agentic
+    label: Append findings to existing issue
+    description: |
+      A follow-up review found more critical issues on the same PR.
+      Append the new findings to the existing issue and re-trigger Autopilot.
+
+      Existing issue: {{check_existing_issue.issue_url}}
+      Issue number: {{check_existing_issue.issue_number}}
+      Repo: {{_trigger.repository.full_name}}
+      Review: {{review_pr.review_url}}
+      Critical issues: {{review_pr.critical}}
+
+      Steps:
+      1. Retrieve the GitHub token from the Delegator credentials vault.
+      2. Append a comment to the existing issue:
+         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/{{check_existing_issue.issue_number}}/comments
+         Headers: Authorization: token <github_token>, Content-Type: application/json
+         Body: {"body": "## Follow-up review findings\n\nAI PR #{{_trigger.number}} was re-reviewed and {{review_pr.critical}} additional critical issue(s) were found.\n\nReview: {{review_pr.review_url}}\n\nPlease also address these findings."}
+      3. Remove the "autopilot ready" label (so re-adding it fires the webhook):
+         DELETE https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/{{check_existing_issue.issue_number}}/labels/autopilot%20ready
+         Headers: Authorization: token <github_token>
+      4. Re-add the label (this fires issues.labeled and re-triggers Autopilot):
+         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/{{check_existing_issue.issue_number}}/labels
+         Headers: Authorization: token <github_token>, Content-Type: application/json
+         Body: {"labels": ["autopilot ready"]}
+
+      Output ONLY the following JSON on the last line:
+        {"issue_url": "{{check_existing_issue.issue_url}}", "issue_number": {{check_existing_issue.issue_number}}}
+    next: gate_merge
 
   create_fix_issue:
     type: brain
@@ -111,17 +173,25 @@ blocks:
       Repo: {{_trigger.repository.full_name}}
       Critical issues: {{review_pr.critical}}
 
+      IMPORTANT: Create the issue WITHOUT labels first, then add the label in a
+      separate API call. GitHub only fires the `issues.labeled` webhook when a label
+      is added to an existing issue — not when an issue is created with labels attached.
+
       Steps:
-      1. Create a GitHub issue via the API:
+      1. Retrieve the GitHub token from the Delegator credentials vault.
+      2. Create the issue (no labels):
          POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues
          Headers: Authorization: token <github_token>, Content-Type: application/json
          Body:
          {
            "title": "fix: address critical review findings on AI PR #{{_trigger.number}}",
-           "body": "## Context\nAI-generated PR #{{_trigger.number}} was reviewed and {{review_pr.critical}} critical issue(s) were found.\n\nReview: {{review_pr.review_url}}\n\n## Task\nRead the review comment on the PR, identify all 🔴 Critical findings, and implement fixes.",
-           "labels": ["autopilot ready"]
+           "body": "## Context\nAI-generated PR #{{_trigger.number}} was reviewed and {{review_pr.critical}} critical issue(s) were found.\n\nReview: {{review_pr.review_url}}\n\n## Task\nRead the review comment on the PR, identify all 🔴 Critical findings, and implement fixes."
          }
-         (retrieve the GitHub token from the Delegator credentials vault)
+         Save the returned issue number.
+      3. Add the label in a separate call (this fires the webhook):
+         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/<issue_number>/labels
+         Headers: Authorization: token <github_token>, Content-Type: application/json
+         Body: {"labels": ["autopilot ready"]}
 
       Output ONLY the following JSON on the last line:
         {"issue_url": "<created issue URL>", "issue_number": <number>}
