@@ -33,15 +33,15 @@ function getCookie(name: string): string | null {
 export default function MembersManager() {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   if (clerkEnabled) return <MembersManagerWithAuth />
-  return <MembersManagerInner getToken={null} />
+  return <MembersManagerInner getToken={null} currentClerkId={null} />
 }
 
 function MembersManagerWithAuth() {
-  const { getToken } = useAuth()
-  return <MembersManagerInner getToken={getToken} />
+  const { getToken, userId } = useAuth()
+  return <MembersManagerInner getToken={getToken} currentClerkId={userId ?? null} />
 }
 
-function MembersManagerInner({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
+function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Promise<string | null>) | null; currentClerkId: string | null }) {
   const { activeWorkspace } = useWorkspace()
   const [members, setMembers] = useState<Member[]>([])
   const [invites, setInvites] = useState<Invite[]>([])
@@ -152,6 +152,9 @@ function MembersManagerInner({ getToken }: { getToken: (() => Promise<string | n
     }
   }
 
+  const currentUserRole = members.find(m => m.clerk_user_id === currentClerkId)?.role ?? null
+  const isAdmin = currentUserRole === "admin"
+
   if (!activeWorkspace) {
     return <p className="text-sm text-stone-400">No active workspace selected.</p>
   }
@@ -160,16 +163,18 @@ function MembersManagerInner({ getToken }: { getToken: (() => Promise<string | n
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <p className="text-sm text-stone-500">Members of <span className="font-medium text-stone-800">{activeWorkspace.name}</span></p>
-        <button
-          onClick={() => { setAddOpen(v => !v); setError("") }}
-          className="text-xs font-medium bg-stone-900 text-white px-3 py-1.5 rounded-lg hover:bg-stone-700 transition-colors"
-        >
-          + Invite member
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => { setAddOpen(v => !v); setError("") }}
+            className="text-xs font-medium bg-stone-900 text-white px-3 py-1.5 rounded-lg hover:bg-stone-700 transition-colors"
+          >
+            + Invite member
+          </button>
+        )}
       </div>
 
-      {/* Invite form */}
-      {addOpen && (
+      {/* Invite form — admin only */}
+      {isAdmin && addOpen && (
         <div className="rounded-xl border border-stone-200 bg-white px-4 py-4 space-y-3">
           <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Invite by email</p>
           <div className="flex gap-2">
@@ -214,8 +219,8 @@ function MembersManagerInner({ getToken }: { getToken: (() => Promise<string | n
         </div>
       )}
 
-      {/* Pending invites */}
-      {invites.length > 0 && (
+      {/* Pending invites — admin only */}
+      {isAdmin && invites.length > 0 && (
         <div>
           <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Pending invites</p>
           <div className="rounded-xl border border-amber-200 bg-amber-50 divide-y divide-amber-100 overflow-hidden">
@@ -261,22 +266,32 @@ function MembersManagerInner({ getToken }: { getToken: (() => Promise<string | n
                   <p className="text-xs text-stone-400">Joined {new Date(m.joined_at).toLocaleDateString()}</p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0 ml-4">
-                  <select
-                    value={m.role}
-                    onChange={e => handleRoleChange(m.clerk_user_id, e.target.value)}
-                    className={`text-xs font-medium px-2 py-1 rounded-full border-0 focus:outline-none focus:ring-2 focus:ring-indigo-200 cursor-pointer ${ROLE_COLORS[m.role]}`}
-                  >
-                    <option value="admin">Admin</option>
-                    <option value="editor">Editor</option>
-                    <option value="viewer">Viewer</option>
-                  </select>
-                  <button
-                    onClick={() => handleRemove(m.clerk_user_id)}
-                    disabled={removing === m.clerk_user_id}
-                    className="text-xs text-stone-400 hover:text-red-500 disabled:opacity-50 transition-colors"
-                  >
-                    {removing === m.clerk_user_id ? "Removing…" : "Remove"}
-                  </button>
+                  {isAdmin ? (
+                    <>
+                      <select
+                        value={m.role}
+                        onChange={e => handleRoleChange(m.clerk_user_id, e.target.value)}
+                        className={`text-xs font-medium px-2 py-1 rounded-full border-0 focus:outline-none focus:ring-2 focus:ring-indigo-200 cursor-pointer ${ROLE_COLORS[m.role]}`}
+                      >
+                        <option value="admin">Admin</option>
+                        <option value="editor">Editor</option>
+                        <option value="viewer">Viewer</option>
+                      </select>
+                      {m.clerk_user_id !== currentClerkId && (
+                        <button
+                          onClick={() => handleRemove(m.clerk_user_id)}
+                          disabled={removing === m.clerk_user_id}
+                          className="text-xs text-stone-400 hover:text-red-500 disabled:opacity-50 transition-colors"
+                        >
+                          {removing === m.clerk_user_id ? "Removing…" : "Remove"}
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ROLE_COLORS[m.role]}`}>
+                      {m.role}
+                    </span>
+                  )}
                 </div>
               </div>
             ))}
@@ -285,9 +300,9 @@ function MembersManagerInner({ getToken }: { getToken: (() => Promise<string | n
       )}
 
       <div className="rounded-lg bg-stone-50 border border-stone-200 px-4 py-3 text-xs text-stone-500 space-y-1">
-        <p><span className="font-medium text-stone-700">Admin</span> — full access: manage members, credentials, environments, agents</p>
-        <p><span className="font-medium text-stone-700">Editor</span> — run agents, edit workflows, manage credentials</p>
-        <p><span className="font-medium text-stone-700">Viewer</span> — read-only: view runs, workflows, and settings</p>
+        <p><span className="font-medium text-stone-700">Admin</span> — full access: manage members, credentials, environments, workflows, and runs</p>
+        <p><span className="font-medium text-stone-700">Editor</span> — run agents, edit workflows, manage credentials and environments; cannot manage members</p>
+        <p><span className="font-medium text-stone-700">Viewer</span> — read-only across all screens: view runs, workflows, credentials, and settings</p>
       </div>
     </div>
   )

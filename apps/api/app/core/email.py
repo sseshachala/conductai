@@ -21,7 +21,7 @@ log = logging.getLogger(__name__)
 
 APP_URL = "https://conductai.ai"
 
-_jinja = JinjaEnv(loader=BaseLoader(), autoescape=False)
+_jinja = JinjaEnv(loader=BaseLoader(), autoescape=True)
 
 # ---------------------------------------------------------------------------
 # Hardcoded fallback templates (used if DB table not yet migrated)
