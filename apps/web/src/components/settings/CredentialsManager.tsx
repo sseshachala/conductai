@@ -16,6 +16,7 @@ interface FieldDef {
   placeholder: string
   secret?: boolean   // true = password input (default true)
   optional?: boolean // true = not required to save
+  tip?: string       // helper text shown below the input
 }
 
 interface ServiceDef {
@@ -59,6 +60,8 @@ const SERVICES: ServiceDef[] = [
     fields: [
       { key: "resend_api_key",    label: "Resend API key (recommended)", placeholder: "re_…" },
       { key: "sendgrid_api_key",  label: "SendGrid API key (alternative)", placeholder: "SG.…" },
+      { key: "from_name",  label: "From name",          placeholder: "Conduct AI",                      secret: false, optional: true },
+      { key: "from_email", label: "From email address", placeholder: "notifications@yourdomain.com", secret: false, optional: true, tip: "The sender domain must be verified in Resend or SendGrid before emails will deliver." },
     ],
   },
 ]
@@ -247,6 +250,11 @@ function CredentialsManagerInner({ getToken }: { getToken: (() => Promise<string
                       placeholder={f.placeholder}
                       className="w-full border border-stone-200 rounded-lg px-3 py-2 text-sm font-mono text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
                     />
+                    {f.tip && (
+                      <p className="mt-1 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1 leading-relaxed">
+                        💡 {f.tip}
+                      </p>
+                    )}
                   </div>
                 ))}
 
