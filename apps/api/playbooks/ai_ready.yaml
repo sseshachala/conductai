@@ -40,7 +40,11 @@ params:
 on:
   github.issue_labeled:
     integration: github
-    label: ai-ready
+    # Fire on any of these labels — mirrors the autopilot.yaml pattern
+    labels:
+      - ai_ready
+      - ai-ready
+    label_mode: one_of
     next: fetch_issue
 
 blocks:
