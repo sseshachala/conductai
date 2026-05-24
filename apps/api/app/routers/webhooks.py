@@ -157,13 +157,11 @@ async def inbound_webhook(
     version = workflow.current_version
     nodes = version.graph.get("nodes", [])
     trigger_node = next(
-        (n for n in nodes
-         if n.get("data", {}).get("type") == "trigger"
-         and n.get("data", {}).get("config", {}).get("event_type") == "webhook"),
+        (n for n in nodes if n.get("data", {}).get("type") == "trigger"),
         None,
     )
     if not trigger_node:
-        raise HTTPException(status_code=400, detail="Workflow has no webhook trigger")
+        raise HTTPException(status_code=400, detail="Workflow has no trigger node")
 
     webhook_secret = trigger_node.get("data", {}).get("config", {}).get("webhook_secret", "")
     if webhook_secret:
