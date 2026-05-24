@@ -132,7 +132,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
       if (workspaceId) headers["X-Workspace-Id"] = workspaceId
 
       const promises: Promise<void>[] = [
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, { headers }).then(async res => {
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/projects`, { headers }).then(async res => {
           if (res.ok) {
             const data: Project[] = await res.json()
             setProjects(data)
@@ -174,12 +174,14 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
     try {
       const headers = await authHeaders()
       headers["Content-Type"] = "application/json"
-      headers["X-Workspace-Id"] = selectedProjectId
+      const workspaceId = getWorkspaceId()
+      if (workspaceId) headers["X-Workspace-Id"] = workspaceId
 
       const needsRepo = GITHUB_WEBHOOK_SLUGS.has(pendingSlug)
       const body: Record<string, string> = {
         name: FRIENDLY_NAMES[pendingSlug] ?? pendingSlug,
         template: pendingSlug,
+        project_id: selectedProjectId,
       }
       if (needsRepo && selectedRepo) body.repo = selectedRepo
 
@@ -190,7 +192,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
       })
       if (!res.ok) return
       const wf = await res.json()
-      setInstalledMap(prev => new Map(prev).set(pendingSlug, { id: wf.id, workspaceId: selectedProjectId }))
+      setInstalledMap(prev => new Map(prev).set(pendingSlug, { id: wf.id, workspaceId: workspaceId ?? "" }))
       closeInstallModal()
       router.push(`/workflows/${wf.id}`)
     } finally {
