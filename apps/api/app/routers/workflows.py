@@ -62,7 +62,7 @@ def list_workflows(db: Session = Depends(get_db), workspace_id: str = Depends(ge
                 SELECT DISTINCT ON (workflow_version_id)
                     id, workflow_version_id, status, created_at
                 FROM runs
-                WHERE workflow_version_id = ANY(:ids::uuid[])
+                WHERE workflow_version_id = ANY(CAST(:ids AS uuid[]))
                 ORDER BY workflow_version_id, created_at DESC
             """),
             {"ids": version_ids},
