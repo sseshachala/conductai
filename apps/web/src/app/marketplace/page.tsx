@@ -194,7 +194,11 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
       const wf = await res.json()
       setInstalledMap(prev => new Map(prev).set(pendingSlug, { id: wf.id, workspaceId: workspaceId ?? "" }))
       closeInstallModal()
-      router.push(`/workflows/${wf.id}`)
+      if (wf.webhook_error) {
+        router.push(`/workflows/${wf.id}?webhook_error=${encodeURIComponent(wf.webhook_error)}`)
+      } else {
+        router.push(`/workflows/${wf.id}`)
+      }
     } finally {
       setInstalling(false)
     }

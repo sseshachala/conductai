@@ -128,20 +128,31 @@ _GITHUB_WEBHOOK_EVENTS: dict[str, list[str]] = {
 }
 
 
-def _register_github_webhook(token: str, repo: str, workflow_id: str, events: list[str]) -> str | None:
-    """Register a webhook on owner/repo and return the hook_id, or None on failure."""
+def _register_github_webhook(token: str, repo: str, workflow_id: str, events: list[str]) -> tuple[str | None, str | None]:
+    """Register a webhook on owner/repo. Returns (hook_id, error_message)."""
     import httpx
     from app.core.config import settings
     owner, repo_name = repo.split("/", 1)
     webhook_url = f"{settings.api_base_url}/webhooks/inbound/{workflow_id}"
+    gh_headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
     try:
+        # Idempotency: return existing hook if URL already registered
+        existing = httpx.get(
+            f"https://api.github.com/repos/{owner}/{repo_name}/hooks",
+            headers=gh_headers, timeout=10,
+        )
+        if existing.status_code == 200:
+            for hook in existing.json():
+                if hook.get("config", {}).get("url") == webhook_url:
+                    return str(hook["id"]), None
+
         r = httpx.post(
             f"https://api.github.com/repos/{owner}/{repo_name}/hooks",
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-            },
+            headers=gh_headers,
             json={
                 "name": "web",
                 "active": True,
@@ -151,11 +162,13 @@ def _register_github_webhook(token: str, repo: str, workflow_id: str, events: li
             timeout=10,
         )
         if r.status_code == 201:
-            return str(r.json()["id"])
-        log.warning("GitHub webhook registration returned %s: %s", r.status_code, r.text[:200])
+            return str(r.json()["id"]), None
+        err = f"GitHub returned {r.status_code}: {r.text[:300]}"
+        log.warning("GitHub webhook registration failed: %s", err)
+        return None, err
     except Exception as e:
-        log.warning("GitHub webhook registration failed: %s", e)
-    return None
+        log.warning("GitHub webhook registration exception: %s", e)
+        return None, str(e)
 
 
 def _deregister_github_webhook(token: str, repo: str, hook_id: str) -> None:
@@ -253,11 +266,12 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
     db.commit()
 
     # Auto-register GitHub webhook if template needs one and repo was provided
+    webhook_error: str | None = None
     if body.repo and body.template in _GITHUB_WEBHOOK_EVENTS:
         try:
             from app.routers.credentials import _github_token
-            token = _github_token(str(workspace_id), db)
-            hook_id = _register_github_webhook(
+            token = _github_token(str(workspace_id), db, str(workflow.environment_id) if workflow.environment_id else None)
+            hook_id, webhook_error = _register_github_webhook(
                 token, body.repo, str(workflow.id), _GITHUB_WEBHOOK_EVENTS[body.template]
             )
             if hook_id:
@@ -265,9 +279,12 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
                 workflow.github_hook_repo = body.repo
                 db.commit()
         except Exception as e:
+            webhook_error = str(e)
             log.warning("Webhook auto-registration skipped: %s", e)
 
     db.refresh(workflow)
+    # Attach webhook_error as a transient attribute so the schema can include it
+    workflow.webhook_error = webhook_error  # type: ignore[attr-defined]
     return workflow
 
 
