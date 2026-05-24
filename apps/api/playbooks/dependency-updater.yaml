@@ -16,6 +16,24 @@ description: >
   Option B (any cron service — cron-job.org, EasyCron, etc.):
     Schedule a weekly POST to the webhook URL above with the same JSON body.
 
+inputs:
+  model:
+    label: AI Model
+    default: claude-haiku-4-5-20251001
+    type: select
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+  clone_depth:
+    label: Clone depth
+    default: "1"
+    type: select
+    options:
+      - "1"
+      - "0"
+    hint: "1 = fast (recommended), 0 = full history"
+
 on:
   webhook:
     next: scan_and_update
@@ -37,7 +55,7 @@ blocks:
 
       Steps:
       1. Clone the repo:
-         git clone {{_trigger.clone_url}} /tmp/dep_update_repo
+         git clone --depth {{inputs.clone_depth}} {{_trigger.clone_url}} /tmp/dep_update_repo
          cd /tmp/dep_update_repo
 
       2. Detect package manager:

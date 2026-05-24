@@ -37,6 +37,24 @@ params:
     type: string
     default: s-2vcpu-4gb
 
+inputs:
+  model:
+    label: AI Model
+    default: claude-sonnet-4-6
+    type: select
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+  clone_depth:
+    label: Clone depth
+    default: "1"
+    type: select
+    options:
+      - "1"
+      - "0"
+    hint: "1 = fast (recommended), 0 = full history"
+
 on:
   github.issue_labeled:
     integration: github
