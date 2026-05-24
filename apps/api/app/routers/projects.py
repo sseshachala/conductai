@@ -7,10 +7,10 @@ access — the workspace_users table is the access gate.
 """
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -87,7 +87,7 @@ def _accept_pending_invites(user_id: str, db: Session) -> None:
     email = get_clerk_user_email(user_id)
     if not email:
         return
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     invites = db.execute(text("""
         SELECT id, workspace_id, role, invited_by FROM workspace_invites
         WHERE invited_email = :email AND accepted_at IS NULL
@@ -105,13 +105,26 @@ def _accept_pending_invites(user_id: str, db: Session) -> None:
         db.commit()
 
 
+def _accept_pending_invites_bg(user_id: str) -> None:
+    """Background task wrapper — opens its own DB session so it doesn't block list_projects."""
+    from app.core.database import SessionLocal
+    db = SessionLocal()
+    try:
+        _accept_pending_invites(user_id, db)
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
+
 @router.get("", response_model=list[ProjectOut])
 def list_projects(
     user_id: Annotated[str, Depends(get_user_id)],
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
-    # Auto-accept any pending email invites for this user
-    _accept_pending_invites(user_id, db)
+    # Auto-accept pending invites in the background — don't block the response
+    background_tasks.add_task(_accept_pending_invites_bg, user_id)
 
     # Query via workspace_users (new) with legacy owner_id fallback (UNION)
     rows = db.execute(text("""
@@ -130,7 +143,7 @@ def list_projects(
 
     # Auto-register new users — create a default workspace + membership
     if not rows:
-        project_id, now = uuid.uuid4(), datetime.utcnow()
+        project_id, now = uuid.uuid4(), datetime.now(timezone.utc)
         db.execute(text("""
             INSERT INTO workspaces (id, name, owner_id, plan, is_approved, created_at, updated_at)
             VALUES (:id, 'My Workspace', :owner_id, 'free', true, :now, :now)
@@ -163,7 +176,7 @@ def create_project(
     if not body.name.strip():
         raise HTTPException(status_code=422, detail="Project name cannot be empty")
 
-    project_id, now = uuid.uuid4(), datetime.utcnow()
+    project_id, now = uuid.uuid4(), datetime.now(timezone.utc)
     db.execute(text("""
         INSERT INTO workspaces (id, name, owner_id, plan, is_approved, created_at, updated_at)
         VALUES (:id, :name, :owner_id, 'free', true, :now, :now)
@@ -285,7 +298,7 @@ def add_member(
 ):
     if project_id != workspace_id:
         raise HTTPException(status_code=404, detail="Project not found")
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # Email invite path — store as pending invite
     if body.email:

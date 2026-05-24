@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, String, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -13,6 +13,6 @@ class WorkspaceUser(Base):
     clerk_user_id = Column(String(255), primary_key=True)
     role = Column(String(50), nullable=False, default="editor")  # admin / editor / viewer
     invited_by = Column(String(255), nullable=True)
-    joined_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    joined_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
     workspace = relationship("Workspace", back_populates="members")

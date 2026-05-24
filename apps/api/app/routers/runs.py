@@ -4,7 +4,7 @@ from typing import Annotated
 from uuid import UUID
 
 import redis
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -158,6 +158,18 @@ def get_run(
     return run
 
 
+_RUN_CHANNEL_PREFIX = "marshal:run:"
+_SSE_TIMEOUT_SECONDS = 300  # close stream after 5 min of silence; client reconnects
+
+
+def publish_run_event(run_id: str) -> None:
+    """Notify SSE subscribers that a new event is available for this run."""
+    try:
+        _redis().publish(f"{_RUN_CHANNEL_PREFIX}{run_id}", "1")
+    except Exception:
+        pass
+
+
 @router.get("/{run_id}/stream")
 def stream_run_events(
     workflow_id: UUID,
@@ -165,48 +177,64 @@ def stream_run_events(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id_sse),
 ):
-    """SSE stream of run_events as they are written by the executor."""
+    """SSE stream of run_events driven by Redis pub/sub — one DB query per notification."""
     _get_workflow(workflow_id, workspace_id, db)
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
 
     def event_generator():
-        import time
         from app.core.database import SessionLocal
 
         seen_ids: set = set()
-        poll_db = SessionLocal()
-        try:
-            while True:
-                events = (
-                    poll_db.query(RunEvent)
-                    .filter(RunEvent.run_id == run_id)
-                    .order_by(RunEvent.created_at)
-                    .all()
-                )
-                for ev in events:
-                    if ev.id not in seen_ids:
-                        seen_ids.add(ev.id)
-                        data = {
-                            "id": str(ev.id),
-                            "kind": ev.kind,
-                            "block_id": ev.block_id,
-                            "payload": ev.payload,
-                        }
-                        yield f"data: {json.dumps(data)}\n\n"
+        stream_db = SessionLocal()
+        pubsub = _redis().pubsub()
+        pubsub.subscribe(f"{_RUN_CHANNEL_PREFIX}{str(run_id)}")
 
-                poll_db.expire_all()
-                current = poll_db.query(Run).filter(Run.id == run_id).first()
-                if current and current.status in ("succeeded", "failed", "paused"):
-                    if current.status == "paused":
-                        yield f"data: {json.dumps({'kind': 'run_paused', 'block_id': current.current_block_id, 'payload': {}})}\n\n"
+        def flush_new_events():
+            events = (
+                stream_db.query(RunEvent)
+                .filter(RunEvent.run_id == run_id)
+                .order_by(RunEvent.created_at)
+                .all()
+            )
+            for ev in events:
+                if ev.id not in seen_ids:
+                    seen_ids.add(ev.id)
+                    yield f"data: {json.dumps({'id': str(ev.id), 'kind': ev.kind, 'block_id': ev.block_id, 'payload': ev.payload})}\n\n"
+
+        def is_terminal() -> str | None:
+            stream_db.expire_all()
+            current = stream_db.query(Run).filter(Run.id == run_id).first()
+            return current.status if current and current.status in ("succeeded", "failed", "paused", "cancelled") else None
+
+        try:
+            # Flush any events already written before we subscribed
+            yield from flush_new_events()
+            terminal = is_terminal()
+            if terminal:
+                if terminal == "paused":
+                    r = stream_db.query(Run).filter(Run.id == run_id).first()
+                    yield f"data: {json.dumps({'kind': 'run_paused', 'block_id': r.current_block_id if r else None, 'payload': {}})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+
+            # Wait for notifications; timeout closes the stream so the client reconnects
+            for message in pubsub.listen():
+                if message["type"] != "message":
+                    continue
+                yield from flush_new_events()
+                terminal = is_terminal()
+                if terminal:
+                    if terminal == "paused":
+                        r = stream_db.query(Run).filter(Run.id == run_id).first()
+                        yield f"data: {json.dumps({'kind': 'run_paused', 'block_id': r.current_block_id if r else None, 'payload': {}})}\n\n"
                     yield "data: [DONE]\n\n"
                     break
-
-                time.sleep(0.5)
         finally:
-            poll_db.close()
+            pubsub.unsubscribe()
+            pubsub.close()
+            stream_db.close()
 
     return StreamingResponse(
         event_generator(),
@@ -303,7 +331,8 @@ def list_all_runs(
     workspace_id: str = Depends(get_workspace_id),
     _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
     status: str | None = None,
-    limit: int = 50,
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
 ):
     """All runs across all agents in the workspace, newest first."""
     q = (
@@ -312,12 +341,11 @@ def list_all_runs(
         .join(Workflow, WorkflowVersion.workflow_id == Workflow.id)
         .filter(Workflow.workspace_id == workspace_id)
         .order_by(Run.created_at.desc())
-        .limit(limit)
     )
     if status:
         q = q.filter(Run.status == status)
     results = []
-    for run, wf_id, wf_name in q.all():
+    for run, wf_id, wf_name in q.offset(offset).limit(limit).all():
         out = RunWithWorkflowOut(
             id=run.id,
             workflow_version_id=run.workflow_version_id,

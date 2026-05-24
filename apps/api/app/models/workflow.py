@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, String, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
@@ -30,8 +30,8 @@ class Workflow(Base):
     github_hook_id = Column(String(255), nullable=True)
     github_hook_repo = Column(String(255), nullable=True)  # owner/repo format
 
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     workspace = relationship("Workspace", back_populates="workflows")
     environment = relationship("Environment")
@@ -57,7 +57,7 @@ class WorkflowVersion(Base):
     # { "<block_id>": { "system_prompt": "...", "tool_schema": {...} } }
     compiled_artifacts = Column(JSONB, nullable=True)
     published_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
     workflow = relationship("Workflow", foreign_keys=[workflow_id], back_populates="versions")
     runs = relationship("Run", back_populates="workflow_version")
