@@ -36,7 +36,13 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
 
   // Team state
   const [teamOpen, setTeamOpen] = useState(false)
+  const [teamRenaming, setTeamRenaming] = useState(false)
+  const [teamNameValue, setTeamNameValue] = useState("")
+  const [creatingTeam, setCreatingTeam] = useState(false)
+  const [newTeamValue, setNewTeamValue] = useState("")
   const teamRef = useRef<HTMLDivElement>(null)
+  const teamInputRef = useRef<HTMLInputElement>(null)
+  const newTeamInputRef = useRef<HTMLInputElement>(null)
   const { workspaces, activeWorkspace, setActiveWorkspace, refresh: refreshWorkspaces } = useWorkspace()
 
   // Projects state
@@ -44,20 +50,30 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
   const [projectsOpen, setProjectsOpen] = useState(true)
   const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState("")
+  const [creatingProject, setCreatingProject] = useState(false)
+  const [newProjectValue, setNewProjectValue] = useState("")
   const renameInputRef = useRef<HTMLInputElement>(null)
+  const newProjectInputRef = useRef<HTMLInputElement>(null)
 
   // Close dropdowns on outside click
   useEffect(() => {
     function handle(e: MouseEvent) {
       if (orgRef.current && !orgRef.current.contains(e.target as Node)) setOrgOpen(false)
-      if (teamRef.current && !teamRef.current.contains(e.target as Node)) setTeamOpen(false)
+      if (teamRef.current && !teamRef.current.contains(e.target as Node)) {
+        setTeamOpen(false)
+        setTeamRenaming(false)
+        setCreatingTeam(false)
+      }
     }
     document.addEventListener("mousedown", handle)
     return () => document.removeEventListener("mousedown", handle)
   }, [])
 
   useEffect(() => { if (orgRenaming) orgInputRef.current?.focus() }, [orgRenaming])
+  useEffect(() => { if (teamRenaming) teamInputRef.current?.focus() }, [teamRenaming])
+  useEffect(() => { if (creatingTeam) newTeamInputRef.current?.focus() }, [creatingTeam])
   useEffect(() => { if (renamingProjectId) renameInputRef.current?.focus() }, [renamingProjectId])
+  useEffect(() => { if (creatingProject) newProjectInputRef.current?.focus() }, [creatingProject])
 
   async function headers(wsId?: string): Promise<Record<string, string>> {
     const h: Record<string, string> = {}
@@ -103,37 +119,40 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
     if (res.ok) { const updated = await res.json(); setActiveOrg(updated); fetchOrgs() }
   }
 
-  async function createTeam() {
-    const name = prompt("Team name:")
-    if (!name?.trim()) return
+  async function saveTeamRename() {
+    setTeamRenaming(false)
+    if (!teamNameValue.trim() || !activeWorkspace || teamNameValue === activeWorkspace.name) return
+    const h = await headers()
+    h["Content-Type"] = "application/json"
+    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace.id}`, {
+      method: "PATCH", headers: h, body: JSON.stringify({ name: teamNameValue.trim() })
+    })
+    refreshWorkspaces()
+  }
+
+  async function submitCreateTeam() {
+    const name = newTeamValue.trim()
+    setCreatingTeam(false)
+    setNewTeamValue("")
+    if (!name) return
     const h = await headers()
     h["Content-Type"] = "application/json"
     await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, {
-      method: "POST", headers: h, body: JSON.stringify({ name: name.trim() })
+      method: "POST", headers: h, body: JSON.stringify({ name })
     })
     setTeamOpen(false)
     refreshWorkspaces()
   }
 
-  async function renameTeam() {
-    if (!activeWorkspace) return
-    const name = prompt("Team name:", activeWorkspace.name)
-    if (!name?.trim() || name === activeWorkspace.name) return
-    const h = await headers()
-    h["Content-Type"] = "application/json"
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace.id}`, {
-      method: "PATCH", headers: h, body: JSON.stringify({ name: name.trim() })
-    })
-    refreshWorkspaces()
-  }
-
-  async function createProject() {
-    const name = prompt("Project name:")
-    if (!name?.trim() || !activeWorkspace) return
+  async function submitCreateProject() {
+    const name = newProjectValue.trim()
+    setCreatingProject(false)
+    setNewProjectValue("")
+    if (!name || !activeWorkspace) return
     const h = await headers()
     h["Content-Type"] = "application/json"
     await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${activeWorkspace.id}/projects`, {
-      method: "POST", headers: h, body: JSON.stringify({ name: name.trim() })
+      method: "POST", headers: h, body: JSON.stringify({ name })
     })
     fetchProjects()
   }
@@ -165,9 +184,9 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
           </Link>
         </div>
 
-        {/* Org switcher — GitHub style */}
+        {/* Org switcher */}
         <div ref={orgRef} className="relative border-b border-stone-100">
-          <div className={`flex items-center gap-1 px-2 py-2 ${collapsed ? "justify-center" : ""}`}>
+          <div className={`flex items-center gap-1 px-2 py-2 group ${collapsed ? "justify-center" : ""}`}>
             <span className="w-5 h-5 rounded-md bg-violet-100 text-violet-700 text-[10px] font-bold flex items-center justify-center shrink-0">
               {(activeOrg?.name ?? "O")[0].toUpperCase()}
             </span>
@@ -232,18 +251,33 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
             </span>
 
             {!collapsed && (
-              <button
-                onClick={() => setTeamOpen(v => !v)}
-                className="flex-1 flex items-center gap-1 text-sm font-medium text-stone-700 hover:text-stone-500 text-left"
-                title="Switch team"
-              >
-                <span className="truncate">{activeWorkspace?.name ?? "Team"}</span>
-                <span className="text-stone-400 text-[10px] shrink-0">{teamOpen ? "▴" : "▾"}</span>
-              </button>
+              teamRenaming ? (
+                <input
+                  ref={teamInputRef}
+                  value={teamNameValue}
+                  onChange={e => setTeamNameValue(e.target.value)}
+                  onBlur={saveTeamRename}
+                  onKeyDown={e => { if (e.key === "Enter") saveTeamRename(); if (e.key === "Escape") setTeamRenaming(false) }}
+                  className="flex-1 text-sm font-medium text-stone-900 bg-transparent border-b border-indigo-400 outline-none"
+                />
+              ) : (
+                <button
+                  onClick={() => setTeamOpen(v => !v)}
+                  className="flex-1 flex items-center gap-1 text-sm font-medium text-stone-700 hover:text-stone-500 text-left"
+                  title="Switch team"
+                >
+                  <span className="truncate">{activeWorkspace?.name ?? "Team"}</span>
+                  <span className="text-stone-400 text-[10px] shrink-0">{teamOpen ? "▴" : "▾"}</span>
+                </button>
+              )
             )}
 
-            {!collapsed && (
-              <button onClick={renameTeam} className="shrink-0 p-0.5 text-stone-300 hover:text-stone-600 text-xs" title="Rename team">✎</button>
+            {!collapsed && !teamRenaming && (
+              <button
+                onClick={() => { setTeamNameValue(activeWorkspace?.name ?? ""); setTeamRenaming(true) }}
+                className="shrink-0 p-0.5 text-stone-300 hover:text-stone-600 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                title="Rename team"
+              >✎</button>
             )}
           </div>
 
@@ -263,10 +297,25 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
                   {ws.id === activeWorkspace?.id && <span className="text-indigo-500">✓</span>}
                 </button>
               ))}
-              <div className="border-t border-stone-100 mt-1 pt-1">
-                <button onClick={createTeam} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-stone-500 hover:bg-stone-50 hover:text-stone-800">
-                  <span>＋</span> New team
-                </button>
+              <div className="border-t border-stone-100 mt-1 pt-1 px-3">
+                {creatingTeam ? (
+                  <input
+                    ref={newTeamInputRef}
+                    value={newTeamValue}
+                    onChange={e => setNewTeamValue(e.target.value)}
+                    onBlur={submitCreateTeam}
+                    onKeyDown={e => { if (e.key === "Enter") submitCreateTeam(); if (e.key === "Escape") { setCreatingTeam(false); setNewTeamValue("") } }}
+                    placeholder="Team name"
+                    className="w-full text-sm border border-stone-200 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-indigo-200"
+                  />
+                ) : (
+                  <button
+                    onClick={() => setCreatingTeam(true)}
+                    className="w-full flex items-center gap-2 py-2 text-xs text-stone-500 hover:text-stone-800"
+                  >
+                    <span>＋</span> New team
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -328,10 +377,28 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
                     </div>
                   )
                 })}
+
                 {!collapsed && (
-                  <button onClick={createProject} className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-stone-400 hover:text-stone-600 hover:bg-stone-50">
-                    <span>＋</span> New project
-                  </button>
+                  creatingProject ? (
+                    <div className="px-2 py-1">
+                      <input
+                        ref={newProjectInputRef}
+                        value={newProjectValue}
+                        onChange={e => setNewProjectValue(e.target.value)}
+                        onBlur={submitCreateProject}
+                        onKeyDown={e => { if (e.key === "Enter") submitCreateProject(); if (e.key === "Escape") { setCreatingProject(false); setNewProjectValue("") } }}
+                        placeholder="Project name"
+                        className="w-full text-sm border border-stone-200 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-indigo-200"
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setCreatingProject(true)}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-stone-400 hover:text-stone-600 hover:bg-stone-50"
+                    >
+                      <span>＋</span> New project
+                    </button>
+                  )
                 )}
               </div>
             )}
