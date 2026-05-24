@@ -13,6 +13,16 @@ description: >
   The agent reads the alert, fetches the last 10 commits and 5 deploys on the
   affected repo, correlates timing, and posts a structured hypothesis to #incidents.
 
+inputs:
+  model:
+    label: AI Model
+    default: claude-haiku-4-5-20251001
+    type: select
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+
 on:
   webhook:
     next: investigate

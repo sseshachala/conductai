@@ -10,6 +10,16 @@ description: >
   Events: choose individual → Workflow runs
   Note: The brain block checks conclusion == failure and skips silently on success.
 
+inputs:
+  model:
+    label: AI Model
+    default: claude-haiku-4-5-20251001
+    type: select
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+
 on:
   webhook:
     next: diagnose_failure

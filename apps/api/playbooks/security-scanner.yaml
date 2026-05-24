@@ -16,6 +16,16 @@ description: >
   security report as a PR review comment. Critical findings create a fix issue
   that triggers Autopilot.
 
+inputs:
+  model:
+    label: AI Model
+    default: claude-haiku-4-5-20251001
+    type: select
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+
 on:
   webhook:
     next: fetch_pr_diff
