@@ -4,6 +4,24 @@ description: >
   Watch for GitHub issues labeled `autopilot ready`, implement the fix, open a
   PR immediately. No test step — CI runs tests on the PR instead.
 
+inputs:
+  model:
+    label: AI Model
+    default: claude-haiku-4-5-20251001
+    type: select
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+  clone_depth:
+    label: Clone depth
+    default: "1"
+    type: select
+    options:
+      - "1"
+      - "0"
+    hint: "1 = fast (recommended), 0 = full history"
+
 on:
   github.issue_labeled:
     integration: github
@@ -41,7 +59,7 @@ blocks:
       Clone URL: {{_trigger.clone_url}}
 
       Steps:
-      1. Clone the repo: git clone {{_trigger.clone_url}} /tmp/autopilot_repo
+      1. Clone the repo: git clone --depth {{inputs.clone_depth}} {{_trigger.clone_url}} /tmp/autopilot_repo
       2. Create a branch: git checkout -b autopilot/issue-{{fetch_issue.issue_number}}
       3. Read relevant files to understand the codebase
       4. Implement the fix described in the issue

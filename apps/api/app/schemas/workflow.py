@@ -16,6 +16,8 @@ class WorkflowCreate(BaseModel):
     template: Optional[str] = None
     repo: Optional[str] = None  # owner/repo — triggers GitHub webhook auto-registration
     project_id: Optional[UUID] = None  # project grouping within workspace
+    environment_id: Optional[UUID] = None  # environment to use for this workflow
+    inputs: dict[str, Any] = {}  # install-time template values e.g. {"model": "claude-haiku-..."}
 
 
 class WorkflowUpdate(BaseModel):
