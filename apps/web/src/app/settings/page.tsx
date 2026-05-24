@@ -29,9 +29,11 @@ function SettingsPageWithAuth() {
         if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
         const ws = document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1]
         if (ws) headers["X-Workspace-Id"] = ws
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace!.id}/members`, { headers })
-        if (!res.ok) return
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${activeWorkspace!.id}/members`, { headers })
+        if (!res.ok) { setIsAdmin(true); return }
         const members: { clerk_user_id: string; role: string }[] = await res.json()
+        // default to admin when list is empty (e.g. fresh workspace with no workspace_users rows)
+        if (members.length === 0) { setIsAdmin(true); return }
         setIsAdmin(members.find(m => m.clerk_user_id === userId)?.role === "admin")
       } catch { /* stay false */ }
     }
