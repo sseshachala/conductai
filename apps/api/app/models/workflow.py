@@ -22,6 +22,7 @@ class Workflow(Base):
     # set, the runtime can (phase 2) re-fetch the YAML at run time so a
     # ``delegator.yml`` committed in the customer's repo becomes the source
     # of truth instead of the DB copy.
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True)
     source_repo = Column(String(255), nullable=True)
     source_path = Column(String(512), nullable=True)
     environment_id = Column(UUID(as_uuid=True), ForeignKey("environments.id"), nullable=True)
@@ -33,6 +34,7 @@ class Workflow(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
+    project = relationship("Project", back_populates="workflows")
     workspace = relationship("Workspace", back_populates="workflows")
     environment = relationship("Environment")
     versions = relationship("WorkflowVersion", foreign_keys="WorkflowVersion.workflow_id", back_populates="workflow")
