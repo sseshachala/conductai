@@ -173,14 +173,28 @@ def list_credentials_by_environment(
 # GitHub proxy — canvas dropdowns for repo/branch selection
 # ---------------------------------------------------------------------------
 
-def _github_token(workspace_id: str, db: Session) -> str:
-    """Fetch and decrypt the GitHub token for the workspace."""
-    row = db.query(Integration).filter(
+def _github_token(workspace_id: str, db: Session, environment_id: str | None = None) -> str:
+    """Fetch and decrypt the GitHub token for the workspace.
+
+    Lookup order:
+    1. Environment-scoped credential matching environment_id (if provided)
+    2. Any environment-scoped GitHub credential for the workspace
+    3. Legacy global credential with handle == 'github'
+    """
+    q = db.query(Integration).filter(
         Integration.workspace_id == workspace_id,
-        Integration.handle == "github",
-    ).first()
+        Integration.service == "github",
+    )
+
+    row = None
+    if environment_id:
+        row = q.filter(Integration.environment_id == environment_id).first()
+    if not row:
+        # prefer env-scoped over global
+        row = q.order_by(Integration.environment_id.nullslast()).first()
+
     if not row or not row.encrypted_credentials:
-        raise HTTPException(status_code=404, detail="GitHub credentials not connected — add them in Settings → Integrations")
+        raise HTTPException(status_code=404, detail="GitHub credentials not connected — add them in Settings → Environments")
     creds = decrypt(row.encrypted_credentials)
     token = creds.get("token")
     if not token:
@@ -252,12 +266,13 @@ def list_github_issues(
 
 @router.get("/github/repos")
 def list_github_repos(
+    environment_id: str | None = None,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
     _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
 ):
     """Return repos the stored GitHub token can access (up to 100, sorted by push date)."""
-    token = _github_token(workspace_id, db)
+    token = _github_token(workspace_id, db, environment_id)
     try:
         r = httpx.get(
             f"{GITHUB_API}/user/repos",

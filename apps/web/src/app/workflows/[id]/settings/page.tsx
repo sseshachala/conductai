@@ -4,7 +4,6 @@ import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
-import AgentTabs from "@/components/canvas/AgentTabs"
 
 interface WorkflowDetail {
   id: string
@@ -61,7 +60,6 @@ export default function AgentSettingsPage() {
 
   return (
     <AppShell noPadding>
-      <AgentTabs workflowId={workflowId} workflowName={workflow?.name} />
       <div className="flex-1 overflow-auto">
         <div className="mx-auto max-w-2xl px-6 py-10">
           <h2 className="text-xl font-semibold text-stone-900 mb-6">Agent Settings</h2>
