@@ -205,6 +205,28 @@ def list_playbooks():
     ]
 
 
+@router.get("/playbooks/{slug}")
+def get_playbook(slug: str):
+    import pathlib, yaml as _yaml
+    if slug not in _TEMPLATE_PLAYBOOKS or slug not in _PLAYBOOK_META:
+        raise HTTPException(status_code=404, detail="Playbook not found")
+    meta = _PLAYBOOK_META[slug]
+    inputs: dict = {}
+    playbook_path = pathlib.Path(__file__).parent.parent.parent / "playbooks" / _TEMPLATE_PLAYBOOKS[slug]
+    if playbook_path.exists():
+        raw = _yaml.safe_load(playbook_path.read_text()) or {}
+        inputs = raw.get("inputs", {})
+    return {
+        "slug": slug,
+        "name": slug.replace("_", " ").title(),
+        "icon": meta["icon"],
+        "description": meta["description"],
+        "tags": meta["tags"],
+        "featured": meta["featured"],
+        "inputs": inputs,
+    }
+
+
 @router.post("", response_model=WorkflowDetailOut, status_code=201)
 def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _role: str = Depends(require_workspace_role("admin", "editor"))):
     import pathlib
@@ -216,27 +238,43 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
         playbook_path = pathlib.Path(__file__).parent.parent.parent / "playbooks" / playbook_file
         if playbook_path.exists():
             dsl_text = playbook_path.read_text()
+            # Substitute {{inputs.xxx}} with user-supplied values (or YAML defaults)
+            if body.inputs or True:
+                import yaml as _yaml, re as _re
+                raw = _yaml.safe_load(dsl_text) or {}
+                declared = raw.get("inputs", {})
+                resolved = {k: body.inputs.get(k, v.get("default", "")) for k, v in declared.items()}
+                for key, val in resolved.items():
+                    dsl_text = dsl_text.replace(f"{{{{inputs.{key}}}}}", str(val))
             try:
                 dsl = load_workflow_yaml(dsl_text)
                 graph_data = yaml_to_graph(dsl)
             except Exception:
                 pass  # fall through to blank graph on parse error
 
-    # Auto-assign to the workspace's Default environment, creating it if needed
+    # Resolve environment: use provided, else find/create Default
     from app.models.environment import Environment
-    default_env = db.query(Environment).filter(
-        Environment.workspace_id == workspace_id,
-        Environment.name == "Default",
-    ).first()
-    if not default_env:
-        # Fall back to any existing environment, or auto-create one
-        default_env = db.query(Environment).filter(
+    if body.environment_id:
+        resolved_env = db.query(Environment).filter(
+            Environment.id == body.environment_id,
             Environment.workspace_id == workspace_id,
         ).first()
-    if not default_env:
-        default_env = Environment(workspace_id=workspace_id, name="Default")
-        db.add(default_env)
+    else:
+        resolved_env = None
+    if not resolved_env:
+        resolved_env = db.query(Environment).filter(
+            Environment.workspace_id == workspace_id,
+            Environment.name == "Default",
+        ).first()
+    if not resolved_env:
+        resolved_env = db.query(Environment).filter(
+            Environment.workspace_id == workspace_id,
+        ).first()
+    if not resolved_env:
+        resolved_env = Environment(workspace_id=workspace_id, name="Default")
+        db.add(resolved_env)
         db.flush()
+    default_env = resolved_env
 
     # Resolve project_id: use provided, else fall back to workspace's default project
     project_id = body.project_id
