@@ -66,6 +66,8 @@ const SERVICES: ServiceDef[] = [
     fields: [
       { key: "resend_api_key", label: "Resend API key (recommended)", placeholder: "re_…" },
       { key: "sendgrid_api_key", label: "SendGrid API key (alternative)", placeholder: "SG.…", optional: true },
+      { key: "from_name", label: "From name", placeholder: "e.g. Acme Alerts", secret: false },
+      { key: "from_email", label: "From email address", placeholder: "e.g. alerts@acme.com", secret: false },
     ],
   },
 ]
