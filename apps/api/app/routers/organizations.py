@@ -49,9 +49,32 @@ def list_organizations(
         GROUP BY o.id
         ORDER BY o.created_at DESC
     """), {"uid": user_id}).fetchall()
-    return [OrgOut(id=str(r.id), name=r.name, slug=r.slug,
-                   created_at=r.created_at, workspace_count=r.workspace_count or 0)
-            for r in rows]
+
+    if rows:
+        return [OrgOut(id=str(r.id), name=r.name, slug=r.slug,
+                       created_at=r.created_at, workspace_count=r.workspace_count or 0)
+                for r in rows]
+
+    # Auto-create a default org and link the user's workspace to it
+    workspace_row = db.execute(text("""
+        SELECT id FROM workspaces
+        WHERE id IN (
+            SELECT workspace_id FROM workspace_users WHERE clerk_user_id = :uid
+            UNION SELECT id FROM workspaces WHERE owner_id = :uid
+        )
+        ORDER BY created_at ASC LIMIT 1
+    """), {"uid": user_id}).fetchone()
+
+    org_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+    slug = f"org-{str(org_id)[:8]}"
+    db.execute(text("INSERT INTO organizations (id, name, slug, created_at) VALUES (:id, :name, :slug, :now)"),
+               {"id": str(org_id), "name": "My Organization", "slug": slug, "now": now})
+    if workspace_row:
+        db.execute(text("UPDATE workspaces SET org_id = :org WHERE id = :ws"),
+                   {"org": str(org_id), "ws": str(workspace_row.id)})
+    db.commit()
+    return [OrgOut(id=str(org_id), name="My Organization", slug=slug, created_at=now, workspace_count=1 if workspace_row else 0)]
 
 
 @router.post("", response_model=OrgOut, status_code=201)
