@@ -703,12 +703,12 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
             >
               YAML
             </button>
-            <a
-              href={`/workflows/${workflowId}/runs`}
-              className="px-2.5 py-1 rounded text-stone-500 hover:text-stone-800"
+            <button
+              onClick={() => router.push(`/workflows/${workflowId}/runs`)}
+              className="px-2.5 py-1 rounded text-stone-500 hover:text-stone-800 cursor-pointer"
             >
               Runs
-            </a>
+            </button>
           </div>
         </div>
         <div className="flex items-center gap-3">
