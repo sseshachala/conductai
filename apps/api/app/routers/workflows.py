@@ -54,19 +54,17 @@ def list_workflows(db: Session = Depends(get_db), workspace_id: str = Depends(ge
         return []
 
     # Single query: latest run per workflow_version_id using DISTINCT ON
-    version_ids = [str(wf.current_version_id) for wf in workflows if wf.current_version_id]
+    import uuid as _uuid
+    version_uuids = [wf.current_version_id for wf in workflows if wf.current_version_id]
     last_run_by_version: dict[str, Run] = {}
-    if version_ids:
-        rows = db.execute(
-            text("""
-                SELECT DISTINCT ON (workflow_version_id)
-                    id, workflow_version_id, status, created_at
-                FROM runs
-                WHERE workflow_version_id = ANY(CAST(:ids AS uuid[]))
-                ORDER BY workflow_version_id, created_at DESC
-            """),
-            {"ids": version_ids},
-        ).fetchall()
+    if version_uuids:
+        rows = (
+            db.query(Run.id, Run.workflow_version_id, Run.status, Run.created_at)
+            .distinct(Run.workflow_version_id)
+            .filter(Run.workflow_version_id.in_(version_uuids))
+            .order_by(Run.workflow_version_id, Run.created_at.desc())
+            .all()
+        )
         for row in rows:
             last_run_by_version[str(row.workflow_version_id)] = row
 
