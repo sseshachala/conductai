@@ -53,3 +53,6 @@ class WorkflowOut(BaseModel):
 
 class WorkflowDetailOut(WorkflowOut):
     current_version: Optional[WorkflowVersionOut] = None
+    github_hook_id: Optional[str] = None
+    github_hook_repo: Optional[str] = None
+    webhook_error: Optional[str] = None  # set when webhook registration failed on install
