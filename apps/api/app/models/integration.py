@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, String, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.orm import relationship
@@ -17,7 +17,7 @@ class Integration(Base):
     scopes = Column(ARRAY(String), nullable=True)
     encrypted_credentials = Column(String, nullable=True)  # AES-256-GCM encrypted blob
     last_used_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     environment_id = Column(UUID(as_uuid=True), ForeignKey("environments.id"), nullable=True)
 
     workspace = relationship("Workspace", back_populates="integrations")

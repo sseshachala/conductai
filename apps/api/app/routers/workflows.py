@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Body, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.core.auth import get_workspace_id, require_workspace_role
 from app.core.database import get_db
@@ -49,15 +50,30 @@ def list_workflows(db: Session = Depends(get_db), workspace_id: str = Depends(ge
         Workflow.workspace_id == workspace_id
     ).order_by(Workflow.updated_at.desc()).all()
 
-    # Attach last run status to each workflow
+    if not workflows:
+        return []
+
+    # Single query: latest run per workflow_version_id using DISTINCT ON
+    version_ids = [str(wf.current_version_id) for wf in workflows if wf.current_version_id]
+    last_run_by_version: dict[str, Run] = {}
+    if version_ids:
+        rows = db.execute(
+            text("""
+                SELECT DISTINCT ON (workflow_version_id)
+                    id, workflow_version_id, status, created_at
+                FROM runs
+                WHERE workflow_version_id = ANY(:ids)
+                ORDER BY workflow_version_id, created_at DESC
+            """),
+            {"ids": version_ids},
+        ).fetchall()
+        for row in rows:
+            last_run_by_version[str(row.workflow_version_id)] = row
+
     results = []
     for wf in workflows:
-        last_run = None
-        if wf.current_version_id:
-            last_run = db.query(Run).filter(
-                Run.workflow_version_id == wf.current_version_id
-            ).order_by(Run.created_at.desc()).first()
         out = WorkflowOut.model_validate(wf)
+        last_run = last_run_by_version.get(str(wf.current_version_id)) if wf.current_version_id else None
         if last_run:
             out.last_run_status = last_run.status
             out.last_run_at = last_run.created_at

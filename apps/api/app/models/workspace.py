@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 import sqlalchemy as sa
 from sqlalchemy import Column, String, DateTime
 from sqlalchemy.dialects.postgresql import UUID
@@ -16,8 +16,8 @@ class Workspace(Base):
     is_approved = Column(sa.Boolean, nullable=False, default=False)
     plan = Column(String(50), nullable=False, default="free")
     kms_key_id = Column(String(255), nullable=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     users = relationship("User", back_populates="workspace")
     members = relationship("WorkspaceUser", back_populates="workspace", cascade="all, delete-orphan")

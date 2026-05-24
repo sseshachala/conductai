@@ -12,6 +12,7 @@ Usage in routes:
     _: str = Depends(require_workspace_role("admin"))
 """
 import logging
+from functools import lru_cache
 from typing import Annotated
 
 import httpx
@@ -89,8 +90,13 @@ def _clerk_enabled() -> bool:
     return bool(settings.clerk_secret_key and settings.clerk_frontend_api)
 
 
+@lru_cache(maxsize=512)
 def get_clerk_user_email(user_id: str) -> str | None:
-    """Fetch the primary email address for a Clerk user via the Clerk REST API."""
+    """Fetch the primary email address for a Clerk user via the Clerk REST API.
+
+    Result is cached in-process (LRU, 512 entries) — email addresses rarely
+    change and the cache is only invalidated by process restart.
+    """
     if not settings.clerk_secret_key or not user_id:
         return None
     try:

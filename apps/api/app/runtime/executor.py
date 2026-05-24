@@ -71,6 +71,9 @@ def _emit(db, run_id, block_id: str | None, kind: str, payload: dict):
     event = RunEvent(run_id=run_id, block_id=block_id, kind=kind, payload=_redact_payload(payload))
     db.add(event)
     db.commit()
+    # Notify SSE subscribers that a new event is available
+    from app.routers.runs import publish_run_event
+    publish_run_event(str(run_id))
 
 
 def _resolve_refs(value: Any, state: dict) -> Any:
