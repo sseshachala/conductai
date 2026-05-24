@@ -111,11 +111,12 @@ interface RepoAllowlistFieldProps {
   value: string   // comma-separated "owner/repo" values
   onChange: (value: string) => void
   getToken?: (() => Promise<string | null>) | null
+  environmentId?: string
 }
 
-export function GitHubRepoAllowlistField({ value, onChange, getToken }: RepoAllowlistFieldProps) {
-  const [repos, setRepos] = useState<Repo[]>(reposCache ?? [])
-  const [loading, setLoading] = useState(!reposCache)
+export function GitHubRepoAllowlistField({ value, onChange, getToken, environmentId }: RepoAllowlistFieldProps) {
+  const [repos, setRepos] = useState<Repo[]>([])
+  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -123,7 +124,8 @@ export function GitHubRepoAllowlistField({ value, onChange, getToken }: RepoAllo
   const selected = value ? value.split(",").map(s => s.trim()).filter(Boolean) : []
 
   useEffect(() => {
-    if (reposCache) { setRepos(reposCache); setLoading(false); return }
+    reposCache = null  // invalidate cache when environment changes
+    setRepos([]); setLoading(true)
     ;(async () => {
       try {
         const headers: Record<string, string> = { ...getWorkspaceHeader() }
@@ -131,7 +133,9 @@ export function GitHubRepoAllowlistField({ value, onChange, getToken }: RepoAllo
           const token = await getToken()
           if (token) headers["Authorization"] = `Bearer ${token}`
         }
-        const r = await fetch(`${API}/credentials/github/repos`, { headers })
+        const url = new URL(`${API}/credentials/github/repos`)
+        if (environmentId) url.searchParams.set("environment_id", environmentId)
+        const r = await fetch(url.toString(), { headers })
         if (r.ok) {
           const data: Repo[] = await r.json()
           reposCache = data
@@ -139,7 +143,7 @@ export function GitHubRepoAllowlistField({ value, onChange, getToken }: RepoAllo
         }
       } finally { setLoading(false) }
     })()
-  }, [])
+  }, [environmentId])
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {

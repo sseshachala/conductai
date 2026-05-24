@@ -21,6 +21,7 @@ interface BlockEditorProps {
   blockData: Record<string, unknown>
   onChange: (blockId: string, changes: Record<string, unknown>) => void
   getToken?: (() => Promise<string | null>) | null
+  selectedEnvId?: string
 }
 
 // ── Webhook registration ──────────────────────────────────────────────────────
@@ -395,6 +396,7 @@ export default function BlockEditor({
   blockData,
   onChange,
   getToken,
+  selectedEnvId,
 }: BlockEditorProps) {
   const [promptOpen, setPromptOpen] = useState(false)
   const [streamedPrompt, setStreamedPrompt] = useState<string>("")
@@ -475,6 +477,7 @@ export default function BlockEditor({
         <GitHubRepoAllowlistField
           value={(val as string) || ""}
           getToken={getToken}
+          environmentId={selectedEnvId}
           onChange={v => handleFieldChange(field.key, v)}
         />
       )

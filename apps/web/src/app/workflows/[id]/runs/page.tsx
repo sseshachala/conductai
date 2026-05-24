@@ -5,7 +5,6 @@ import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
-import AgentTabs from "@/components/canvas/AgentTabs"
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
@@ -65,7 +64,6 @@ export default function RunsPage() {
 
   return (
     <AppShell noPadding>
-      <AgentTabs workflowId={workflowId} workflowName={workflowName ?? undefined} />
       <div className="flex-1 overflow-auto">
       <div className="mx-auto max-w-3xl px-6 py-10">
         <div className="flex items-center justify-between mb-6">
