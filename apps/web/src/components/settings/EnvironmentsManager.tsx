@@ -419,7 +419,7 @@ function EnvironmentDetail({
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {isAdmin && isConnected && cred && (
+                  {isConnected && cred && (
                     <button
                       onClick={() => handleRemove(cred.handle)}
                       disabled={deleting === cred.handle}
@@ -428,25 +428,20 @@ function EnvironmentDetail({
                       {deleting === cred.handle ? "Removing…" : "Remove"}
                     </button>
                   )}
-                  {isAdmin && (
-                    <button
-                      onClick={() => toggleService(svc.value)}
-                      className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
-                        isConnected
-                          ? "border border-stone-200 text-stone-500 hover:bg-stone-50"
-                          : "bg-stone-900 text-white hover:bg-stone-700"
-                      }`}
-                    >
-                      {isConnected ? "Update" : "Connect"}
-                    </button>
-                  )}
-                  {!isAdmin && isConnected && (
-                    <span className="text-xs text-stone-400">Connected</span>
-                  )}
+                  <button
+                    onClick={() => toggleService(svc.value)}
+                    className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
+                      isConnected
+                        ? "border border-stone-200 text-stone-500 hover:bg-stone-50"
+                        : "bg-stone-900 text-white hover:bg-stone-700"
+                    }`}
+                  >
+                    {isConnected ? "Update" : "Connect"}
+                  </button>
                 </div>
               </div>
 
-              {isAdmin && isOpen && (
+              {isOpen && (
                 <div className="px-4 pb-4 pt-1 border-t border-stone-100 space-y-3">
                   {svc.fields.map((f, i) => (
                     <div key={f.key}>
