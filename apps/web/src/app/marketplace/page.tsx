@@ -171,7 +171,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   }
 
   async function confirmInstall() {
-    if (!pendingSlug || !selectedProjectId) return
+    if (!pendingSlug) return
     setInstalling(true)
     try {
       const headers = await authHeaders()
@@ -183,8 +183,8 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
       const body: Record<string, string> = {
         name: FRIENDLY_NAMES[pendingSlug] ?? pendingSlug,
         template: pendingSlug,
-        project_id: selectedProjectId,
       }
+      if (selectedProjectId) body.project_id = selectedProjectId
       if (needsRepo && selectedRepo) body.repo = selectedRepo
 
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, {
@@ -192,7 +192,11 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
         headers,
         body: JSON.stringify(body),
       })
-      if (!res.ok) return
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        setWebhookError(`Install failed: ${err.detail ?? res.status}`)
+        return
+      }
       const wf = await res.json()
       setInstalledMap(prev => new Map(prev).set(pendingSlug, { id: wf.id, workspaceId: workspaceId ?? "" }))
       if (wf.webhook_error) {
@@ -364,7 +368,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
               </button>
               <button
                 onClick={confirmInstall}
-                disabled={installing || projectsLoading || !selectedProjectId || (GITHUB_WEBHOOK_SLUGS.has(pendingSlug ?? "") && !selectedRepo)}
+                disabled={installing || projectsLoading || (GITHUB_WEBHOOK_SLUGS.has(pendingSlug ?? "") && !selectedRepo)}
                 className="px-4 py-2 text-xs font-medium bg-stone-900 text-white rounded-lg hover:bg-stone-700 disabled:opacity-40 transition-colors"
               >
                 {installing ? "Installing…" : "Install"}
