@@ -43,9 +43,12 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
   const [teamNameValue, setTeamNameValue] = useState("")
   const [creatingTeam, setCreatingTeam] = useState(false)
   const [newTeamValue, setNewTeamValue] = useState("")
+  const [deletingTeamId, setDeletingTeamId] = useState<string | null>(null)
+  const [deleteConfirmValue, setDeleteConfirmValue] = useState("")
   const teamRef = useRef<HTMLDivElement>(null)
   const teamInputRef = useRef<HTMLInputElement>(null)
   const newTeamInputRef = useRef<HTMLInputElement>(null)
+  const deleteConfirmRef = useRef<HTMLInputElement>(null)
   const { workspaces, activeWorkspace, setActiveWorkspace, refresh: refreshWorkspaces } = useWorkspace()
 
   // Projects state
@@ -65,6 +68,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
       }
       if (teamRef.current && !teamRef.current.contains(e.target as Node)) {
         setTeamOpen(false); setTeamRenaming(false); setCreatingTeam(false)
+        setDeletingTeamId(null); setDeleteConfirmValue("")
       }
     }
     document.addEventListener("mousedown", handle)
@@ -75,6 +79,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
   useEffect(() => { if (creatingOrg) newOrgInputRef.current?.focus() }, [creatingOrg])
   useEffect(() => { if (teamRenaming) teamInputRef.current?.focus() }, [teamRenaming])
   useEffect(() => { if (creatingTeam) newTeamInputRef.current?.focus() }, [creatingTeam])
+  useEffect(() => { if (deletingTeamId) deleteConfirmRef.current?.focus() }, [deletingTeamId])
   useEffect(() => { if (renamingProjectId) renameInputRef.current?.focus() }, [renamingProjectId])
   useEffect(() => { if (creatingProject) newProjectInputRef.current?.focus() }, [creatingProject])
 
@@ -159,6 +164,16 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
     setTeamOpen(false); refreshWorkspaces()
   }
 
+  async function confirmDeleteTeam(ws: { id: string; name: string }) {
+    if (deleteConfirmValue !== ws.name) return
+    setDeletingTeamId(null); setDeleteConfirmValue("")
+    const h = await headers()
+    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${ws.id}`, { method: "DELETE", headers: h })
+    const next = workspaces.find(w => w.id !== ws.id)
+    if (activeWorkspace?.id === ws.id && next) setActiveWorkspace(next)
+    refreshWorkspaces()
+  }
+
   async function submitCreateProject() {
     const name = newProjectValue.trim()
     setCreatingProject(false); setNewProjectValue("")
@@ -237,16 +252,53 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
             <div className={`absolute z-50 bg-white border border-stone-200 rounded-xl shadow-lg py-1 ${collapsed ? "left-14 top-0 w-48" : "left-2 right-2 top-full"}`}>
               <p className="px-3 py-1.5 text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Teams</p>
               {workspaces.map(ws => (
-                <button key={ws.id}
-                  onClick={() => { setActiveWorkspace(ws); setTeamOpen(false); setProjects([]); router.refresh() }}
-                  className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-stone-50 ${ws.id === activeWorkspace?.id ? "font-semibold text-stone-900" : "text-stone-600"}`}
-                >
-                  <span className="w-5 h-5 rounded-md bg-indigo-100 text-indigo-700 text-[10px] font-bold flex items-center justify-center shrink-0">
-                    {ws.name[0].toUpperCase()}
-                  </span>
-                  <span className="flex-1 truncate">{ws.name}</span>
-                  {ws.id === activeWorkspace?.id && <span className="text-indigo-500">✓</span>}
-                </button>
+                <div key={ws.id}>
+                  {deletingTeamId === ws.id ? (
+                    <div className="px-3 py-2 bg-red-50 border-y border-red-100">
+                      <p className="text-xs text-red-700 mb-1.5">Type <strong>{ws.name}</strong> to confirm deletion</p>
+                      <div className="flex gap-1.5">
+                        <input
+                          ref={deleteConfirmRef}
+                          value={deleteConfirmValue}
+                          onChange={e => setDeleteConfirmValue(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Enter") confirmDeleteTeam(ws)
+                            if (e.key === "Escape") { setDeletingTeamId(null); setDeleteConfirmValue("") }
+                          }}
+                          placeholder={ws.name}
+                          className="flex-1 text-xs border border-red-200 rounded px-2 py-1 outline-none focus:ring-1 focus:ring-red-400"
+                        />
+                        <button
+                          onClick={() => confirmDeleteTeam(ws)}
+                          disabled={deleteConfirmValue !== ws.name}
+                          className="text-xs px-2 py-1 rounded bg-red-600 text-white disabled:opacity-40 hover:bg-red-700"
+                        >Delete</button>
+                        <button
+                          onClick={() => { setDeletingTeamId(null); setDeleteConfirmValue("") }}
+                          className="text-xs px-2 py-1 rounded text-stone-500 hover:bg-stone-100"
+                        >Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="group flex items-center gap-1 px-3 hover:bg-stone-50">
+                      <button
+                        onClick={() => { setActiveWorkspace(ws); setTeamOpen(false); setProjects([]); router.refresh() }}
+                        className={`flex-1 flex items-center gap-2 py-2 text-sm text-left ${ws.id === activeWorkspace?.id ? "font-semibold text-stone-900" : "text-stone-600"}`}
+                      >
+                        <span className="w-5 h-5 rounded-md bg-indigo-100 text-indigo-700 text-[10px] font-bold flex items-center justify-center shrink-0">
+                          {ws.name[0].toUpperCase()}
+                        </span>
+                        <span className="flex-1 truncate">{ws.name}</span>
+                        {ws.id === activeWorkspace?.id && <span className="text-indigo-500">✓</span>}
+                      </button>
+                      <button
+                        onClick={() => { setDeletingTeamId(ws.id); setDeleteConfirmValue("") }}
+                        className="opacity-0 group-hover:opacity-100 text-stone-300 hover:text-red-500 transition-all text-xs px-1"
+                        title="Delete team"
+                      >🗑</button>
+                    </div>
+                  )}
+                </div>
               ))}
               <div className="border-t border-stone-100 mt-1 pt-1 px-3">
                 {creatingTeam ? (
