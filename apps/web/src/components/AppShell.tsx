@@ -25,14 +25,17 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
   const { getToken } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
 
-  // Org state
+  // Org state (lives at bottom)
   const [orgs, setOrgs] = useState<Org[]>([])
   const [activeOrg, setActiveOrg] = useState<Org | null>(null)
   const [orgOpen, setOrgOpen] = useState(false)
   const [orgRenaming, setOrgRenaming] = useState(false)
   const [orgNameValue, setOrgNameValue] = useState("")
+  const [creatingOrg, setCreatingOrg] = useState(false)
+  const [newOrgValue, setNewOrgValue] = useState("")
   const orgRef = useRef<HTMLDivElement>(null)
   const orgInputRef = useRef<HTMLInputElement>(null)
+  const newOrgInputRef = useRef<HTMLInputElement>(null)
 
   // Team state
   const [teamOpen, setTeamOpen] = useState(false)
@@ -55,14 +58,13 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
   const renameInputRef = useRef<HTMLInputElement>(null)
   const newProjectInputRef = useRef<HTMLInputElement>(null)
 
-  // Close dropdowns on outside click
   useEffect(() => {
     function handle(e: MouseEvent) {
-      if (orgRef.current && !orgRef.current.contains(e.target as Node)) setOrgOpen(false)
+      if (orgRef.current && !orgRef.current.contains(e.target as Node)) {
+        setOrgOpen(false); setOrgRenaming(false); setCreatingOrg(false)
+      }
       if (teamRef.current && !teamRef.current.contains(e.target as Node)) {
-        setTeamOpen(false)
-        setTeamRenaming(false)
-        setCreatingTeam(false)
+        setTeamOpen(false); setTeamRenaming(false); setCreatingTeam(false)
       }
     }
     document.addEventListener("mousedown", handle)
@@ -70,6 +72,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
   }, [])
 
   useEffect(() => { if (orgRenaming) orgInputRef.current?.focus() }, [orgRenaming])
+  useEffect(() => { if (creatingOrg) newOrgInputRef.current?.focus() }, [creatingOrg])
   useEffect(() => { if (teamRenaming) teamInputRef.current?.focus() }, [teamRenaming])
   useEffect(() => { if (creatingTeam) newTeamInputRef.current?.focus() }, [creatingTeam])
   useEffect(() => { if (renamingProjectId) renameInputRef.current?.focus() }, [renamingProjectId])
@@ -119,6 +122,20 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
     if (res.ok) { const updated = await res.json(); setActiveOrg(updated); fetchOrgs() }
   }
 
+  async function submitCreateOrg() {
+    const name = newOrgValue.trim()
+    setCreatingOrg(false); setNewOrgValue("")
+    if (!name) return
+    const h = await headers()
+    h["Content-Type"] = "application/json"
+    const slug = name.toLowerCase().replace(/\s+/g, "-") + "-" + Math.random().toString(36).slice(2, 6)
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/organizations`, {
+      method: "POST", headers: h, body: JSON.stringify({ name, slug })
+    })
+    if (res.ok) { const org = await res.json(); setActiveOrg(org); fetchOrgs() }
+    setOrgOpen(false)
+  }
+
   async function saveTeamRename() {
     setTeamRenaming(false)
     if (!teamNameValue.trim() || !activeWorkspace || teamNameValue === activeWorkspace.name) return
@@ -132,22 +149,19 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
 
   async function submitCreateTeam() {
     const name = newTeamValue.trim()
-    setCreatingTeam(false)
-    setNewTeamValue("")
+    setCreatingTeam(false); setNewTeamValue("")
     if (!name) return
     const h = await headers()
     h["Content-Type"] = "application/json"
     await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, {
       method: "POST", headers: h, body: JSON.stringify({ name })
     })
-    setTeamOpen(false)
-    refreshWorkspaces()
+    setTeamOpen(false); refreshWorkspaces()
   }
 
   async function submitCreateProject() {
     const name = newProjectValue.trim()
-    setCreatingProject(false)
-    setNewProjectValue("")
+    setCreatingProject(false); setNewProjectValue("")
     if (!name || !activeWorkspace) return
     const h = await headers()
     h["Content-Type"] = "application/json"
@@ -184,72 +198,12 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
           </Link>
         </div>
 
-        {/* Org switcher */}
-        <div ref={orgRef} className="relative border-b border-stone-100">
-          <div className={`flex items-center gap-1 px-2 py-2 group ${collapsed ? "justify-center" : ""}`}>
-            <span className="w-5 h-5 rounded-md bg-violet-100 text-violet-700 text-[10px] font-bold flex items-center justify-center shrink-0">
-              {(activeOrg?.name ?? "O")[0].toUpperCase()}
-            </span>
-
-            {!collapsed && (
-              orgRenaming ? (
-                <input
-                  ref={orgInputRef}
-                  value={orgNameValue}
-                  onChange={e => setOrgNameValue(e.target.value)}
-                  onBlur={saveOrgRename}
-                  onKeyDown={e => { if (e.key === "Enter") saveOrgRename(); if (e.key === "Escape") setOrgRenaming(false) }}
-                  className="flex-1 text-sm font-semibold text-stone-900 bg-transparent border-b border-violet-400 outline-none"
-                />
-              ) : (
-                <button
-                  onClick={() => setOrgOpen(v => !v)}
-                  onDoubleClick={() => { setOrgNameValue(activeOrg?.name ?? ""); setOrgRenaming(true) }}
-                  className="flex-1 flex items-center gap-1 text-sm font-semibold text-stone-800 hover:text-stone-600 text-left"
-                  title="Click to switch · Double-click to rename"
-                >
-                  <span className="truncate">{activeOrg?.name ?? "Organization"}</span>
-                  <span className="text-stone-400 text-[10px] shrink-0">{orgOpen ? "▴" : "▾"}</span>
-                </button>
-              )
-            )}
-
-            {!collapsed && !orgRenaming && (
-              <button
-                onClick={() => { setOrgNameValue(activeOrg?.name ?? ""); setOrgRenaming(true) }}
-                className="shrink-0 p-0.5 text-stone-300 hover:text-stone-600 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                title="Rename organization"
-              >✎</button>
-            )}
-          </div>
-
-          {orgOpen && orgs.length > 0 && (
-            <div className="absolute z-50 left-2 right-2 top-full bg-white border border-stone-200 rounded-xl shadow-lg py-1">
-              <p className="px-3 py-1.5 text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Organizations</p>
-              {orgs.map(org => (
-                <button
-                  key={org.id}
-                  onClick={() => { setActiveOrg(org); setOrgOpen(false) }}
-                  className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-stone-50 ${org.id === activeOrg?.id ? "font-semibold text-stone-900" : "text-stone-600"}`}
-                >
-                  <span className="w-5 h-5 rounded-md bg-violet-100 text-violet-700 text-[10px] font-bold flex items-center justify-center shrink-0">
-                    {org.name[0].toUpperCase()}
-                  </span>
-                  <span className="flex-1 truncate">{org.name}</span>
-                  {org.id === activeOrg?.id && <span className="text-violet-500">✓</span>}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
         {/* Team switcher */}
         <div ref={teamRef} className="relative border-b border-stone-100">
           <div className={`flex items-center gap-1 px-2 py-2 group ${collapsed ? "justify-center" : ""}`}>
             <span className="w-5 h-5 rounded-md bg-indigo-100 text-indigo-700 text-[10px] font-bold flex items-center justify-center shrink-0">
               {(activeWorkspace?.name ?? "T")[0].toUpperCase()}
             </span>
-
             {!collapsed && (
               teamRenaming ? (
                 <input
@@ -264,14 +218,12 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
                 <button
                   onClick={() => setTeamOpen(v => !v)}
                   className="flex-1 flex items-center gap-1 text-sm font-medium text-stone-700 hover:text-stone-500 text-left"
-                  title="Switch team"
                 >
                   <span className="truncate">{activeWorkspace?.name ?? "Team"}</span>
                   <span className="text-stone-400 text-[10px] shrink-0">{teamOpen ? "▴" : "▾"}</span>
                 </button>
               )
             )}
-
             {!collapsed && !teamRenaming && (
               <button
                 onClick={() => { setTeamNameValue(activeWorkspace?.name ?? ""); setTeamRenaming(true) }}
@@ -285,8 +237,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
             <div className={`absolute z-50 bg-white border border-stone-200 rounded-xl shadow-lg py-1 ${collapsed ? "left-14 top-0 w-48" : "left-2 right-2 top-full"}`}>
               <p className="px-3 py-1.5 text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Teams</p>
               {workspaces.map(ws => (
-                <button
-                  key={ws.id}
+                <button key={ws.id}
                   onClick={() => { setActiveWorkspace(ws); setTeamOpen(false); setProjects([]); router.refresh() }}
                   className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-stone-50 ${ws.id === activeWorkspace?.id ? "font-semibold text-stone-900" : "text-stone-600"}`}
                 >
@@ -299,9 +250,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
               ))}
               <div className="border-t border-stone-100 mt-1 pt-1 px-3">
                 {creatingTeam ? (
-                  <input
-                    ref={newTeamInputRef}
-                    value={newTeamValue}
+                  <input ref={newTeamInputRef} value={newTeamValue}
                     onChange={e => setNewTeamValue(e.target.value)}
                     onBlur={submitCreateTeam}
                     onKeyDown={e => { if (e.key === "Enter") submitCreateTeam(); if (e.key === "Escape") { setCreatingTeam(false); setNewTeamValue("") } }}
@@ -309,8 +258,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
                     className="w-full text-sm border border-stone-200 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-indigo-200"
                   />
                 ) : (
-                  <button
-                    onClick={() => setCreatingTeam(true)}
+                  <button onClick={() => setCreatingTeam(true)}
                     className="w-full flex items-center gap-2 py-2 text-xs text-stone-500 hover:text-stone-800"
                   >
                     <span>＋</span> New team
@@ -326,18 +274,15 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
           <NavItem href="/dashboard" icon="◎" label="Dashboard" collapsed={collapsed} pathname={pathname} />
           <NavItem href="/marketplace" icon="📦" label="Playbooks" collapsed={collapsed} pathname={pathname} />
 
-          {/* Projects */}
           <div className="pt-3">
             {!collapsed && (
-              <button
-                onClick={() => setProjectsOpen(v => !v)}
+              <button onClick={() => setProjectsOpen(v => !v)}
                 className="w-full flex items-center justify-between px-2 mb-1 text-[10px] font-semibold text-stone-400 uppercase tracking-wider hover:text-stone-600"
               >
                 <span>Projects</span>
                 <span>{projectsOpen ? "▾" : "›"}</span>
               </button>
             )}
-
             {(projectsOpen || collapsed) && (
               <div className="space-y-0.5">
                 {projects.map(project => {
@@ -349,9 +294,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
                         {project.name[0].toUpperCase()}
                       </span>
                       {isRenaming ? (
-                        <input
-                          ref={renameInputRef}
-                          value={renameValue}
+                        <input ref={renameInputRef} value={renameValue}
                           onChange={e => setRenameValue(e.target.value)}
                           onBlur={() => submitProjectRename(project.id)}
                           onKeyDown={e => { if (e.key === "Enter") submitProjectRename(project.id); if (e.key === "Escape") setRenamingProjectId(null) }}
@@ -377,13 +320,10 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
                     </div>
                   )
                 })}
-
                 {!collapsed && (
                   creatingProject ? (
                     <div className="px-2 py-1">
-                      <input
-                        ref={newProjectInputRef}
-                        value={newProjectValue}
+                      <input ref={newProjectInputRef} value={newProjectValue}
                         onChange={e => setNewProjectValue(e.target.value)}
                         onBlur={submitCreateProject}
                         onKeyDown={e => { if (e.key === "Enter") submitCreateProject(); if (e.key === "Escape") { setCreatingProject(false); setNewProjectValue("") } }}
@@ -392,8 +332,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
                       />
                     </div>
                   ) : (
-                    <button
-                      onClick={() => setCreatingProject(true)}
+                    <button onClick={() => setCreatingProject(true)}
                       className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-stone-400 hover:text-stone-600 hover:bg-stone-50"
                     >
                       <span>＋</span> New project
@@ -410,18 +349,91 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
           </div>
         </nav>
 
-        <div className={`px-2 py-3 border-t border-stone-100 flex ${collapsed ? "justify-center" : ""}`}>
-          <AuthButton afterSignOutUrl="/sign-in" dropUp />
+        {/* Bottom: Org switcher + user */}
+        <div className="border-t border-stone-100">
+          {/* Org row */}
+          <div ref={orgRef} className="relative">
+            <div className={`flex items-center gap-1.5 px-2 py-2 group ${collapsed ? "justify-center" : ""}`}>
+              <span className="w-6 h-6 rounded-md bg-violet-100 text-violet-700 text-[10px] font-bold flex items-center justify-center shrink-0">
+                {(activeOrg?.name ?? "O")[0].toUpperCase()}
+              </span>
+              {!collapsed && (
+                orgRenaming ? (
+                  <input
+                    ref={orgInputRef}
+                    value={orgNameValue}
+                    onChange={e => setOrgNameValue(e.target.value)}
+                    onBlur={saveOrgRename}
+                    onKeyDown={e => { if (e.key === "Enter") saveOrgRename(); if (e.key === "Escape") setOrgRenaming(false) }}
+                    className="flex-1 text-sm font-medium text-stone-900 bg-transparent border-b border-violet-400 outline-none"
+                  />
+                ) : (
+                  <button
+                    onClick={() => setOrgOpen(v => !v)}
+                    className="flex-1 flex items-center gap-1 text-sm font-medium text-stone-700 hover:text-stone-500 text-left truncate"
+                  >
+                    <span className="truncate">{activeOrg?.name ?? "Organization"}</span>
+                    <span className="text-stone-400 text-[10px] shrink-0">{orgOpen ? "▴" : "▾"}</span>
+                  </button>
+                )
+              )}
+              {!collapsed && !orgRenaming && (
+                <button
+                  onClick={() => { setOrgNameValue(activeOrg?.name ?? ""); setOrgRenaming(true) }}
+                  className="shrink-0 p-0.5 text-stone-300 hover:text-stone-600 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Rename org"
+                >✎</button>
+              )}
+            </div>
+
+            {orgOpen && (
+              <div className="absolute z-50 bottom-full left-2 right-2 mb-1 bg-white border border-stone-200 rounded-xl shadow-lg py-1">
+                <p className="px-3 py-1.5 text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Organizations</p>
+                {orgs.map(org => (
+                  <button key={org.id}
+                    onClick={() => { setActiveOrg(org); setOrgOpen(false) }}
+                    className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-stone-50 ${org.id === activeOrg?.id ? "font-semibold text-stone-900" : "text-stone-600"}`}
+                  >
+                    <span className="w-5 h-5 rounded-md bg-violet-100 text-violet-700 text-[10px] font-bold flex items-center justify-center shrink-0">
+                      {org.name[0].toUpperCase()}
+                    </span>
+                    <span className="flex-1 truncate">{org.name}</span>
+                    {org.id === activeOrg?.id && <span className="text-violet-500">✓</span>}
+                  </button>
+                ))}
+                <div className="border-t border-stone-100 mt-1 pt-1 px-3">
+                  {creatingOrg ? (
+                    <input ref={newOrgInputRef} value={newOrgValue}
+                      onChange={e => setNewOrgValue(e.target.value)}
+                      onBlur={submitCreateOrg}
+                      onKeyDown={e => { if (e.key === "Enter") submitCreateOrg(); if (e.key === "Escape") { setCreatingOrg(false); setNewOrgValue("") } }}
+                      placeholder="Organization name"
+                      className="w-full text-sm border border-stone-200 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-violet-200"
+                    />
+                  ) : (
+                    <button onClick={() => setCreatingOrg(true)}
+                      className="w-full flex items-center gap-2 py-2 text-xs text-stone-500 hover:text-stone-800"
+                    >
+                      <span>＋</span> New organization
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* User / sign out */}
+          <div className={`px-2 pb-3 flex ${collapsed ? "justify-center" : ""}`}>
+            <AuthButton afterSignOutUrl="/sign-in" dropUp />
+          </div>
         </div>
 
-        <div className={`px-2 pb-1 flex ${collapsed ? "justify-center" : ""}`}>
+        {/* Collapse toggle + idea link */}
+        <div className="border-t border-stone-100 px-2 py-2 space-y-0.5">
           <a href="https://github.com/sseshachala/conductai/discussions/new?category=ideas" target="_blank" rel="noopener noreferrer"
             className={`flex items-center gap-1.5 text-xs text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-lg px-2 py-1.5 w-full ${collapsed ? "justify-center" : ""}`}>
             <span>💡</span>{!collapsed && <span>Request an idea</span>}
           </a>
-        </div>
-
-        <div className={`px-2 pb-3 flex ${collapsed ? "justify-center" : ""}`}>
           <button onClick={() => setCollapsed(v => !v)}
             className={`flex items-center gap-1.5 text-xs text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-lg px-2 py-1.5 w-full ${collapsed ? "justify-center" : ""}`}>
             <span>{collapsed ? "›" : "‹"}</span>{!collapsed && <span>Collapse</span>}
