@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
-from app.core.auth import get_workspace_id, require_workspace_role, _verify_clerk_token, _clerk_enabled, DEV_WORKSPACE_ID
+from app.core.auth import get_workspace_id, require_workspace_role, _verify_clerk_token, _clerk_enabled, DEV_WORKSPACE_ID, DEV_USER_ID
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.run import Run, RunEvent
@@ -33,9 +33,8 @@ def get_workspace_id_sse(
     request: Request,
     workspace_id: str | None = Depends(lambda: None),
 ) -> str:
-    """Auth dependency for SSE endpoints — also accepts token + workspace_id as query params
-    because EventSource cannot set custom headers."""
-    # Try header-based auth first
+    """Auth dependency for SSE endpoints — accepts token via Authorization header.
+    EventSource cannot set custom headers so workspace_id comes from x-workspace-id header."""
     auth_header = request.headers.get("Authorization", "")
     x_ws = request.headers.get("x-workspace-id")
 
@@ -51,7 +50,6 @@ def get_workspace_id_sse(
             raise HTTPException(status_code=500, detail="CLI_WORKSPACE_ID is not configured on the server")
         return _settings.cli_workspace_id
 
-    # Get token from Authorization header only — query params end up in server logs
     raw_token = None
     if auth_header.startswith("Bearer "):
         raw_token = auth_header.removeprefix("Bearer ")
@@ -67,6 +65,58 @@ def get_workspace_id_sse(
     if not ws:
         raise HTTPException(status_code=401, detail="No workspace in token claims")
     return ws
+
+
+def _get_user_id_from_request(request: Request) -> str:
+    """Extract Clerk user_id from the Authorization header for SSE endpoints."""
+    if not _clerk_enabled():
+        return DEV_USER_ID
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authorization required")
+    claims = _verify_clerk_token(auth_header.removeprefix("Bearer "))
+    if not claims:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    user_id = claims.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="No user ID in token")
+    return user_id
+
+
+def get_user_workspace_role_sse(
+    request: Request,
+    workspace_id: str = Depends(get_workspace_id_sse),
+    db: Session = Depends(get_db),
+) -> str:
+    """Role-checking dependency for SSE endpoints (mirrors get_user_workspace_role)."""
+    if not _clerk_enabled():
+        return "admin"
+
+    user_id = _get_user_id_from_request(request)
+
+    from sqlalchemy import text
+    row = db.execute(
+        text("SELECT role FROM workspace_users WHERE workspace_id = :ws AND clerk_user_id = :uid"),
+        {"ws": workspace_id, "uid": user_id},
+    ).fetchone()
+    if not row:
+        owner_row = db.execute(
+            text("SELECT owner_id FROM workspaces WHERE id = :ws AND owner_id = :uid"),
+            {"ws": workspace_id, "uid": user_id},
+        ).fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=403, detail="Not a member of this workspace")
+        return "admin"
+    return row.role
+
+
+def require_workspace_role_sse(*allowed_roles: str):
+    """Role-gating factory for SSE endpoints (mirrors require_workspace_role)."""
+    def _check(role: str = Depends(get_user_workspace_role_sse)) -> str:
+        if role not in allowed_roles:
+            raise HTTPException(status_code=403, detail=f"Requires role: {', '.join(allowed_roles)}")
+        return role
+    return _check
 
 
 def _redis():
@@ -176,6 +226,7 @@ def stream_run_events(
     run_id: UUID,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id_sse),
+    _role: str = Depends(require_workspace_role_sse("admin", "editor", "viewer")),
 ):
     """SSE stream of run_events driven by Redis pub/sub — one DB query per notification."""
     _get_workflow(workflow_id, workspace_id, db)
