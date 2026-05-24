@@ -15,6 +15,7 @@ class WorkflowCreate(BaseModel):
     graph: WorkflowGraph = WorkflowGraph()
     template: Optional[str] = None
     repo: Optional[str] = None  # owner/repo — triggers GitHub webhook auto-registration
+    project_id: Optional[UUID] = None  # project grouping within workspace
 
 
 class WorkflowUpdate(BaseModel):
@@ -37,6 +38,7 @@ class WorkflowVersionOut(BaseModel):
 class WorkflowOut(BaseModel):
     id: UUID
     workspace_id: UUID
+    project_id: Optional[UUID] = None
     name: str
     default_mode: str
     current_version_id: Optional[UUID] = None

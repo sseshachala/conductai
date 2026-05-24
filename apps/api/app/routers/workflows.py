@@ -45,10 +45,16 @@ def _run_compiler(version_id, graph: dict):
 
 
 @router.get("", response_model=list[WorkflowOut])
-def list_workflows(db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _role: str = Depends(require_workspace_role("admin", "editor", "viewer"))):
-    workflows = db.query(Workflow).filter(
-        Workflow.workspace_id == workspace_id
-    ).order_by(Workflow.updated_at.desc()).all()
+def list_workflows(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    project_id: str | None = None,
+):
+    q = db.query(Workflow).filter(Workflow.workspace_id == workspace_id)
+    if project_id:
+        q = q.filter(Workflow.project_id == project_id)
+    workflows = q.order_by(Workflow.updated_at.desc()).all()
 
     if not workflows:
         return []
@@ -219,8 +225,20 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
         db.add(default_env)
         db.flush()
 
+    # Resolve project_id: use provided, else fall back to workspace's default project
+    project_id = body.project_id
+    if not project_id:
+        from sqlalchemy import text as _text
+        row = db.execute(
+            _text("SELECT id FROM projects WHERE workspace_id = :ws ORDER BY created_at ASC LIMIT 1"),
+            {"ws": workspace_id},
+        ).fetchone()
+        if row:
+            project_id = row.id
+
     workflow = Workflow(
         workspace_id=workspace_id,
+        project_id=project_id,
         name=body.name,
         environment_id=default_env.id,
     )
