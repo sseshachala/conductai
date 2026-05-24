@@ -274,6 +274,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
     setSelectedEnvId(envId)
     try {
       const headers = await authHeaders(getToken)
+      headers["Content-Type"] = "application/json"
       await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/environment`, {
         method: "PATCH",
         headers,
