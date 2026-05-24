@@ -3,12 +3,11 @@
 import { useState, useEffect } from "react"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
-import CredentialsManager from "@/components/settings/CredentialsManager"
 import EnvironmentsManager from "@/components/settings/EnvironmentsManager"
 import MembersManager from "@/components/settings/MembersManager"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
-type Tab = "integrations" | "environments" | "members"
+type Tab = "environments" | "members"
 
 export default function SettingsPage() {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
@@ -32,10 +31,9 @@ function SettingsPageWithAuth() {
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${activeWorkspace!.id}/members`, { headers })
         if (!res.ok) { setIsAdmin(true); return }
         const members: { clerk_user_id: string; role: string }[] = await res.json()
-        // default to admin when list is empty (e.g. fresh workspace with no workspace_users rows)
         if (members.length === 0) { setIsAdmin(true); return }
         setIsAdmin(members.find(m => m.clerk_user_id === userId)?.role === "admin")
-      } catch { /* stay false */ }
+      } catch { setIsAdmin(true) }
     }
     check()
   }, [activeWorkspace?.id, userId])
@@ -44,8 +42,8 @@ function SettingsPageWithAuth() {
 }
 
 function SettingsPageInner({ isAdmin }: { isAdmin: boolean }) {
-  const tabs = (["integrations", "environments", ...(isAdmin ? ["members"] : [])] as Tab[])
-  const [activeTab, setActiveTab] = useState<Tab>("integrations")
+  const tabs = (["environments", ...(isAdmin ? ["members"] : [])] as Tab[])
+  const [activeTab, setActiveTab] = useState<Tab>("environments")
 
   return (
     <AppShell>
@@ -59,7 +57,7 @@ function SettingsPageInner({ isAdmin }: { isAdmin: boolean }) {
           <span className="text-amber-500 text-base leading-none mt-0.5">⚠</span>
           <p className="text-sm text-amber-800 leading-relaxed">
             <span className="font-semibold">Add credentials before running agents.</span>{" "}
-            Create an environment under <strong>Environments</strong>, add your GitHub and Slack tokens under <strong>Integrations</strong>, then assign the environment to your agent on the canvas.
+            Create an environment (e.g. "Production"), add your GitHub and Slack tokens inside it, then assign the environment to your agent on the canvas.
           </p>
         </div>
 
@@ -79,7 +77,6 @@ function SettingsPageInner({ isAdmin }: { isAdmin: boolean }) {
           ))}
         </div>
 
-        {activeTab === "integrations" && <CredentialsManager isAdmin={isAdmin} />}
         {activeTab === "environments" && <EnvironmentsManager isAdmin={isAdmin} />}
         {activeTab === "members" && isAdmin && <MembersManager />}
       </div>
