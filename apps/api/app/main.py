@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.routers import credentials, dashboard, email_templates, environments, projects, runs, webhooks, workflows
+from app.routers.organizations import router as organizations_router
+from app.routers.workspace_projects import router as workspace_projects_router
 from app.routers.runs import workspace_runs_router
 
 app = FastAPI(title="Marshal API", version="0.1.0")
@@ -27,6 +29,8 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
         headers={"Access-Control-Allow-Origin": origin},
     )
 
+app.include_router(organizations_router)
+app.include_router(workspace_projects_router)
 app.include_router(projects.router)
 app.include_router(dashboard.router)
 app.include_router(workflows.router)
