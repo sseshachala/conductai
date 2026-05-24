@@ -19,6 +19,19 @@ interface Project {
   name: string
 }
 
+interface Environment {
+  id: string
+  name: string
+}
+
+interface PlaybookInput {
+  label: string
+  default: string
+  type: "string" | "select"
+  options?: string[]
+  hint?: string
+}
+
 interface Repo {
   full_name: string
 }
@@ -80,6 +93,10 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   const [projects, setProjects] = useState<Project[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string>("")
   const [projectsLoading, setProjectsLoading] = useState(false)
+  const [environments, setEnvironments] = useState<Environment[]>([])
+  const [selectedEnvId, setSelectedEnvId] = useState<string>("")
+  const [playbookInputs, setPlaybookInputs] = useState<Record<string, PlaybookInput>>({})
+  const [inputValues, setInputValues] = useState<Record<string, string>>({})
   const [repos, setRepos] = useState<Repo[]>([])
   const [selectedRepo, setSelectedRepo] = useState<string>("")
   const [reposLoading, setReposLoading] = useState(false)
@@ -140,6 +157,21 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
             setSelectedProjectId(data[0]?.id ?? "")
           }
         }),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments`, { headers }).then(async res => {
+          if (res.ok) {
+            const data: Environment[] = await res.json()
+            setEnvironments(data)
+            setSelectedEnvId(data[0]?.id ?? "")
+          }
+        }),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/playbooks/${slug}`).then(async res => {
+          if (res.ok) {
+            const data = await res.json()
+            const inputs: Record<string, PlaybookInput> = data.inputs ?? {}
+            setPlaybookInputs(inputs)
+            setInputValues(Object.fromEntries(Object.entries(inputs).map(([k, v]) => [k, String(v.default ?? "")])))
+          }
+        }),
       ]
 
       if (GITHUB_WEBHOOK_SLUGS.has(slug)) {
@@ -165,6 +197,10 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
     setPendingSlug(null)
     setProjects([])
     setSelectedProjectId("")
+    setEnvironments([])
+    setSelectedEnvId("")
+    setPlaybookInputs({})
+    setInputValues({})
     setRepos([])
     setSelectedRepo("")
     setWebhookError(null)
@@ -180,12 +216,14 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
       if (workspaceId) headers["X-Workspace-Id"] = workspaceId
 
       const needsRepo = GITHUB_WEBHOOK_SLUGS.has(pendingSlug)
-      const body: Record<string, string> = {
+      const body: Record<string, unknown> = {
         name: FRIENDLY_NAMES[pendingSlug] ?? pendingSlug,
         template: pendingSlug,
       }
       if (selectedProjectId) body.project_id = selectedProjectId
+      if (selectedEnvId) body.environment_id = selectedEnvId
       if (needsRepo && selectedRepo) body.repo = selectedRepo
+      if (Object.keys(inputValues).length > 0) body.inputs = inputValues
 
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, {
         method: "POST",
@@ -308,6 +346,54 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                 </select>
               )}
             </div>
+
+            {/* Environment picker */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-stone-500">Environment</label>
+              {environments.length === 0 ? (
+                <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  No environments found. <a href="/settings/environments" className="underline font-medium">Create one first</a>.
+                </div>
+              ) : (
+                <select
+                  value={selectedEnvId}
+                  onChange={e => setSelectedEnvId(e.target.value)}
+                  className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
+                >
+                  {environments.map(e => (
+                    <option key={e.id} value={e.id}>{e.name}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {/* Playbook inputs */}
+            {Object.entries(playbookInputs).map(([key, input]) => (
+              <div key={key} className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-stone-500">
+                  {input.label ?? key}
+                  {input.hint && <span className="ml-1 font-normal text-stone-400">— {input.hint}</span>}
+                </label>
+                {input.type === "select" && input.options ? (
+                  <select
+                    value={inputValues[key] ?? String(input.default ?? "")}
+                    onChange={e => setInputValues(prev => ({ ...prev, [key]: e.target.value }))}
+                    className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
+                  >
+                    {input.options.map(opt => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={inputValues[key] ?? String(input.default ?? "")}
+                    onChange={e => setInputValues(prev => ({ ...prev, [key]: e.target.value }))}
+                    className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
+                  />
+                )}
+              </div>
+            ))}
 
             {/* Repo picker — GitHub webhook playbooks */}
             {GITHUB_WEBHOOK_SLUGS.has(pendingSlug) && (
