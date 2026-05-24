@@ -1,12 +1,14 @@
+from app.models.organization import Organization
 from app.models.workspace import Workspace
 from app.models.user import User
 from app.models.workspace_user import WorkspaceUser
+from app.models.project import Project
 from app.models.workflow import Workflow, WorkflowVersion
 from app.models.integration import Integration
 from app.models.run import Run, RunEvent
 from app.models.email_template import EmailTemplate
 
 __all__ = [
-    "Workspace", "User", "WorkspaceUser", "Workflow", "WorkflowVersion",
-    "Integration", "Run", "RunEvent", "EmailTemplate",
+    "Organization", "Workspace", "User", "WorkspaceUser", "Project",
+    "Workflow", "WorkflowVersion", "Integration", "Run", "RunEvent", "EmailTemplate",
 ]
