@@ -191,13 +191,18 @@ function AgentCard({
   const [menuOpen, setMenuOpen] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [nameValue, setNameValue] = useState(workflow.name)
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmValue, setConfirmValue] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const confirmInputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (renaming) inputRef.current?.focus()
   }, [renaming])
+
+  useEffect(() => {
+    if (confirmValue !== null) confirmInputRef.current?.focus()
+  }, [confirmValue])
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -216,13 +221,33 @@ function AgentCard({
 
   const status = workflow.last_run_status ? RUN_STATUS[workflow.last_run_status] : null
 
-  if (confirmDelete) {
+  if (confirmValue !== null) {
     return (
-      <div className="flex items-center justify-between rounded-xl border border-red-200 bg-red-50 px-5 py-4">
-        <p className="text-sm text-red-700">Delete <span className="font-semibold">{workflow.name}</span>? This removes all runs and history.</p>
-        <div className="flex gap-2 ml-4 shrink-0">
-          <button onClick={() => onDelete()} className="text-xs font-medium text-white bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded-lg transition-colors">Delete</button>
-          <button onClick={() => setConfirmDelete(false)} className="text-xs font-medium text-stone-600 border border-stone-200 hover:bg-stone-50 px-3 py-1.5 rounded-lg transition-colors">Cancel</button>
+      <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4">
+        <p className="text-sm text-red-700 mb-2">
+          Type <strong>{workflow.name}</strong> to permanently delete this agent and all its data.
+        </p>
+        <div className="flex gap-2">
+          <input
+            ref={confirmInputRef}
+            value={confirmValue}
+            onChange={e => setConfirmValue(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter" && confirmValue === workflow.name) onDelete()
+              if (e.key === "Escape") setConfirmValue(null)
+            }}
+            placeholder={workflow.name}
+            className="flex-1 text-sm border border-red-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-red-300 bg-white"
+          />
+          <button
+            onClick={() => onDelete()}
+            disabled={confirmValue !== workflow.name}
+            className="text-xs font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-40 px-3 py-1.5 rounded-lg transition-colors"
+          >Delete</button>
+          <button
+            onClick={() => setConfirmValue(null)}
+            className="text-xs font-medium text-stone-600 border border-stone-200 hover:bg-stone-50 px-3 py-1.5 rounded-lg transition-colors"
+          >Cancel</button>
         </div>
       </div>
     )
@@ -277,7 +302,7 @@ function AgentCard({
                   Rename
                 </button>
                 <button
-                  onClick={() => { setMenuOpen(false); setConfirmDelete(true) }}
+                  onClick={() => { setMenuOpen(false); setConfirmValue("") }}
                   className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
                 >
                   Delete
