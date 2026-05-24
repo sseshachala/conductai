@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 import sqlalchemy as sa
 from sqlalchemy import Column, String, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB
@@ -20,7 +20,7 @@ class Run(Base):
     current_block_id = Column(String(255), nullable=True)
     max_turns = Column(sa.Integer, nullable=True)
     state = Column(JSONB, nullable=False, default=dict)  # accumulated block outputs
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
     workflow_version = relationship("WorkflowVersion", back_populates="runs")
     events = relationship("RunEvent", back_populates="run", order_by="RunEvent.created_at")
@@ -34,6 +34,6 @@ class RunEvent(Base):
     block_id = Column(String(255), nullable=True)
     kind = Column(String(100), nullable=False)  # block_started/block_completed/block_failed/approval_requested/etc
     payload = Column(JSONB, nullable=False, default=dict)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
     run = relationship("Run", back_populates="events")
