@@ -143,7 +143,9 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
   } | null>(null)
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
-  const [activeView, setActiveView] = useState<"canvas" | "yaml">("canvas")
+  const [activeView, setActiveView] = useState<"canvas" | "yaml" | "runs">("canvas")
+  const [runs, setRuns] = useState<{id:string;status:string;triggered_by:string|null;created_at:string}[]>([])
+  const [runsLoading, setRunsLoading] = useState(false)
   const [environments, setEnvironments] = useState<Array<{ id: string; name: string }>>([])
   const [selectedEnvId, setSelectedEnvId] = useState<string>("")
   const [envCredentials, setEnvCredentials] = useState<Array<{ handle: string; service: string }>>([])
@@ -201,6 +203,17 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
         .catch(() => {})
     )
   }, [getToken, selectedEnvId])
+
+  useEffect(() => {
+    if (activeView !== "runs" || !workflowId) return
+    setRunsLoading(true)
+    authHeaders(getToken).then(headers =>
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs`, { headers })
+        .then(r => r.ok ? r.json() : [])
+        .then(data => { setRuns(data); setRunsLoading(false) })
+        .catch(() => setRunsLoading(false))
+    )
+  }, [activeView, workflowId, getToken])
 
   // Load workflow on mount. When a graph arrives without meaningful positions
   // (the YAML loader writes placeholder coords), run dagre so it doesn't open
@@ -704,8 +717,12 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
               YAML
             </button>
             <button
-              onClick={() => router.push(`/workflows/${workflowId}/runs`)}
-              className="px-2.5 py-1 rounded text-stone-500 hover:text-stone-800 cursor-pointer"
+              onClick={() => setActiveView("runs")}
+              className={`px-2.5 py-1 rounded ${
+                activeView === "runs"
+                  ? "bg-white text-stone-900 shadow-sm font-medium"
+                  : "text-stone-500 hover:text-stone-800"
+              }`}
             >
               Runs
             </button>
@@ -876,7 +893,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
               )}
             </div>
           </>
-        ) : (
+        ) : activeView === "yaml" ? (
           <div className="flex-1 flex">
             <YamlPanel
               workflowId={workflowId}
@@ -885,6 +902,48 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
               edges={edges}
               onLoaded={handleYamlLoaded}
             />
+          </div>
+        ) : (
+          <div className="flex-1 overflow-auto px-6 py-8">
+            {runsLoading ? (
+              <p className="text-sm text-stone-400">Loading…</p>
+            ) : runs.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-stone-300 p-16 text-center">
+                <p className="text-stone-500 text-sm">No runs yet.</p>
+              </div>
+            ) : (
+              <div className="mx-auto max-w-3xl grid gap-2">
+                {runs.map(run => {
+                  const STATUS_STYLES: Record<string, string> = {
+                    pending:   "bg-stone-100 text-stone-500",
+                    running:   "bg-blue-100 text-blue-700",
+                    succeeded: "bg-green-100 text-green-700",
+                    failed:    "bg-red-100 text-red-700",
+                    cancelled: "bg-stone-100 text-stone-400",
+                  }
+                  return (
+                    <button
+                      key={run.id}
+                      onClick={() => router.push(`/workflows/${workflowId}/runs/${run.id}`)}
+                      className="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-5 py-4 hover:border-stone-300 hover:shadow-sm transition-all text-left w-full"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_STYLES[run.status] ?? STATUS_STYLES.pending}`}>
+                          {run.status}
+                        </span>
+                        <span className="text-sm text-stone-700 font-mono">{run.id.slice(0, 8)}…</span>
+                        {run.triggered_by && (
+                          <span className="text-xs text-stone-400">{run.triggered_by}</span>
+                        )}
+                      </div>
+                      <span className="text-xs text-stone-400">
+                        {new Date(run.created_at).toLocaleString()}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>
