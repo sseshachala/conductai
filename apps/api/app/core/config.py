@@ -36,7 +36,8 @@ class Settings(BaseSettings):
     railway_backend_service_id: str = ""   # delegator-backend service ID
     railway_frontend_service_id: str = ""  # delegator-ui service ID
 
-    # CORS — comma-separated allowed origins; defaults to all in dev
+    # CORS — comma-separated allowed origins.
+    # Defaults to "*" in development only. Must be explicitly set in production.
     allowed_origins: str = "*"
 
     # Environment — used to gate dev-only defaults (e.g. encryption key check)
@@ -60,8 +61,15 @@ class Settings(BaseSettings):
 settings = Settings()
 
 _DEFAULT_ENCRYPTION_KEY = "dev-only-32-byte-key-change-this!"
-if settings.environment == "production" and settings.encryption_key == _DEFAULT_ENCRYPTION_KEY:
-    raise RuntimeError(
-        "Default encryption_key detected in production. "
-        "Set a strong ENCRYPTION_KEY environment variable before starting."
-    )
+if settings.environment == "production":
+    if settings.encryption_key == _DEFAULT_ENCRYPTION_KEY:
+        raise RuntimeError(
+            "Default encryption_key detected in production. "
+            "Set a strong ENCRYPTION_KEY environment variable before starting."
+        )
+    if settings.allowed_origins == "*":
+        raise RuntimeError(
+            "CORS allowed_origins is set to '*' in production. "
+            "Set ALLOWED_ORIGINS to a comma-separated list of allowed origins "
+            "(e.g. 'https://conductai.ai,https://app.conductai.ai')."
+        )
