@@ -453,7 +453,9 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
       })
       if (webhookTriggerNode && !triggerNode) {
         const cfg = (webhookTriggerNode.data as BlockNodeData).config as Record<string, unknown>
-        setWebhookRepo((cfg.test_repo as string) || "")
+        // Pre-fill from test_repo, or fall back to first repo in repo_allowlist
+        const repoAllowlistFallback = ((cfg.repo_allowlist as string) || "").split(",")[0].trim()
+        setWebhookRepo((cfg.test_repo as string) || repoAllowlistFallback || "")
         setWebhookPrNumber((cfg.test_pr_number as string) || "")
         setRunning("idle")
         setWebhookModal({ dryRun })
@@ -1060,7 +1062,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-stone-500">PR number</label>
+              <label className="text-xs font-medium text-stone-500">PR number <span className="font-normal text-stone-400">(from the PR URL — e.g. /pull/42)</span></label>
               <input
                 placeholder="42"
                 value={webhookPrNumber}
