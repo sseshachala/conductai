@@ -173,6 +173,31 @@ def list_credentials_by_environment(
 
 
 # ---------------------------------------------------------------------------
+# Reveal — decrypt and return credential values (admin only)
+# ---------------------------------------------------------------------------
+
+@router.get("/reveal/{handle}")
+def reveal_credential(
+    handle: str,
+    environment_id: str | None = None,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin")),
+):
+    """Return decrypted credential fields — admin only."""
+    q = db.query(Integration).filter(
+        Integration.workspace_id == workspace_id,
+        Integration.handle == handle,
+    )
+    if environment_id:
+        q = q.filter(Integration.environment_id == environment_id)
+    row = q.first()
+    if not row or not row.encrypted_credentials:
+        raise HTTPException(status_code=404, detail="Credential not found")
+    return decrypt(row.encrypted_credentials)
+
+
+# ---------------------------------------------------------------------------
 # GitHub proxy — canvas dropdowns for repo/branch selection
 # ---------------------------------------------------------------------------
 
