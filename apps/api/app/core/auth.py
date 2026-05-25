@@ -73,12 +73,21 @@ def _verify_clerk_token(token: str) -> dict | None:
             return None
 
         public_key = RSAAlgorithm.from_jwk(key)
+        clerk_domain = settings.clerk_frontend_api or ""
+        expected_issuer = f"https://{clerk_domain}" if clerk_domain else None
+        decode_options: dict = {"verify_aud": False}
+        decode_kwargs: dict = {}
+        if expected_issuer:
+            decode_kwargs["issuer"] = expected_issuer
+        else:
+            decode_options["verify_iss"] = False
         claims = pyjwt.decode(
             token,
             public_key,
             algorithms=["RS256"],
-            options={"verify_aud": False},
-            leeway=30,  # tolerate up to 30s clock skew
+            options=decode_options,
+            leeway=30,
+            **decode_kwargs,
         )
         return claims
     except Exception as e:

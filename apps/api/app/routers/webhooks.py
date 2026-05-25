@@ -218,7 +218,7 @@ async def inbound_webhook(
     db.commit()
     _redis().rpush(QUEUE_KEY, str(run.id))
     log.info("Inbound webhook triggered run %s for workflow %s", run.id, workflow_id)
-    return {"ok": True, "run_id": str(run.id)}
+    return {"ok": True}
 
 
 # ── Deploy webhook helpers ────────────────────────────────────────────────────

@@ -21,12 +21,16 @@ app.add_middleware(
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    """Return CORS headers even on 500 so the browser sees the error body."""
-    origin = request.headers.get("origin", "*")
+    """Return CORS headers on 500 — log internally, never expose exc details."""
+    import logging, uuid
+    error_id = str(uuid.uuid4())[:8]
+    logging.getLogger("app").error("Unhandled error %s: %s", error_id, exc, exc_info=True)
+    origin = request.headers.get("origin", "")
+    headers = {"Access-Control-Allow-Origin": origin} if origin in _origins else {}
     return JSONResponse(
         status_code=500,
-        content={"detail": str(exc)},
-        headers={"Access-Control-Allow-Origin": origin},
+        content={"detail": "An internal error occurred.", "error_id": error_id},
+        headers=headers,
     )
 
 app.include_router(organizations_router)
