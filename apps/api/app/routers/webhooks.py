@@ -165,8 +165,13 @@ async def inbound_webhook(
     if not trigger_node:
         raise HTTPException(status_code=400, detail="Workflow has no trigger node")
 
-    webhook_secret = trigger_node.get("data", {}).get("config", {}).get("webhook_secret", "")
-    if webhook_secret:
+    raw_secret = trigger_node.get("data", {}).get("config", {}).get("webhook_secret", "")
+    if raw_secret:
+        from app.core.crypto import decrypt as _decrypt
+        try:
+            webhook_secret = _decrypt(raw_secret)["secret"]
+        except Exception:
+            webhook_secret = raw_secret  # fallback: treat as plaintext (old installs)
         sig_header = request.headers.get("X-Hub-Signature-256", "")
         expected = "sha256=" + hmac.new(webhook_secret.encode(), body, hashlib.sha256).hexdigest()  # type: ignore[attr-defined]
         if not sig_header or not hmac.compare_digest(expected, sig_header):
