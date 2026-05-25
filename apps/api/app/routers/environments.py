@@ -24,15 +24,20 @@ class EnvironmentCreate(BaseModel):
     name: str
 
 
+class EnvironmentUpdate(BaseModel):
+    allowed_hosts: list[str] | None = None
+
+
 class EnvironmentOut(BaseModel):
     id: str
     name: str
     created_at: datetime
+    allowed_hosts: list[str] | None = None
     model_config = ConfigDict(from_attributes=True)
 
     @classmethod
     def from_orm_row(cls, row: Environment) -> "EnvironmentOut":
-        return cls(id=str(row.id), name=row.name, created_at=row.created_at)
+        return cls(id=str(row.id), name=row.name, created_at=row.created_at, allowed_hosts=row.allowed_hosts)
 
 
 @router.get("", response_model=list[EnvironmentOut])
@@ -71,6 +76,33 @@ def create_environment(
 
     env = Environment(workspace_id=workspace_id, name=name)
     db.add(env)
+    db.commit()
+    db.refresh(env)
+    return EnvironmentOut.from_orm_row(env)
+
+
+@router.patch("/{env_id}", response_model=EnvironmentOut)
+def update_environment(
+    env_id: UUID,
+    body: EnvironmentUpdate,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor")),
+):
+    env = (
+        db.query(Environment)
+        .filter(Environment.id == env_id, Environment.workspace_id == workspace_id)
+        .first()
+    )
+    if not env:
+        raise HTTPException(status_code=404, detail="Environment not found")
+
+    if body.allowed_hosts is not None:
+        cleaned = [h.strip().lower() for h in body.allowed_hosts if h.strip()]
+        env.allowed_hosts = cleaned if cleaned else None
+    else:
+        env.allowed_hosts = None
+
     db.commit()
     db.refresh(env)
     return EnvironmentOut.from_orm_row(env)

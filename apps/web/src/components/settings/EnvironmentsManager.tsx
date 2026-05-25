@@ -7,6 +7,7 @@ interface Environment {
   id: string
   name: string
   created_at: string
+  allowed_hosts?: string[] | null
   connectedServices?: string[]
 }
 
@@ -145,7 +146,7 @@ function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Prom
           return { ...env, connectedServices: creds.map(c => c.service) }
         } catch { return env }
       }))
-      setEnvironments(enriched)
+      setEnvironments(enriched.map((env, i) => ({ ...env, allowed_hosts: envs[i]?.allowed_hosts ?? null })))
     } catch { /* silent */ }
   }, [buildHeaders])
 
@@ -229,17 +230,21 @@ function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Prom
               </span>
               <div>
                 <p className="text-sm font-medium text-stone-900">{env.name}</p>
-                {env.connectedServices && env.connectedServices.length > 0 ? (
-                  <div className="flex items-center gap-1 mt-1 flex-wrap">
-                    {env.connectedServices.map(svc => (
-                      <span key={svc} className="text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-100 px-1.5 py-0.5 rounded-full">
-                        {svc}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-stone-400 mt-0.5">No integrations yet · click to add</p>
-                )}
+                <div className="flex items-center gap-1 mt-1 flex-wrap">
+                  {env.connectedServices && env.connectedServices.length > 0
+                    ? env.connectedServices.map(svc => (
+                        <span key={svc} className="text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-100 px-1.5 py-0.5 rounded-full">
+                          {svc}
+                        </span>
+                      ))
+                    : <span className="text-xs text-stone-400">No integrations yet · click to add</span>
+                  }
+                  {env.allowed_hosts && env.allowed_hosts.length > 0 && (
+                    <span className="text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-100 px-1.5 py-0.5 rounded-full">
+                      restricted
+                    </span>
+                  )}
+                </div>
               </div>
             </button>
 
@@ -329,6 +334,37 @@ function EnvironmentDetail({
   const [showNew, setShowNew] = useState(false)
   const [showPaste, setShowPaste] = useState(false)
   const [pasteText, setPasteText] = useState("")
+
+  // Egress allowlist chip state
+  const [hosts, setHosts] = useState<string[]>(environment.allowed_hosts ?? [])
+  const [hostInput, setHostInput] = useState("")
+  const [hostSaving, setHostSaving] = useState(false)
+
+  async function saveHosts(updated: string[]) {
+    setHostSaving(true)
+    try {
+      const headers = await buildHeaders(true)
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments/${environment.id}`, {
+        method: "PATCH", headers,
+        body: JSON.stringify({ allowed_hosts: updated.length > 0 ? updated : null }),
+      })
+    } finally { setHostSaving(false) }
+  }
+
+  function addHost() {
+    const h = hostInput.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "")
+    if (!h || hosts.includes(h)) { setHostInput(""); return }
+    const updated = [...hosts, h]
+    setHosts(updated)
+    setHostInput("")
+    saveHosts(updated)
+  }
+
+  function removeHost(h: string) {
+    const updated = hosts.filter(x => x !== h)
+    setHosts(updated)
+    saveHosts(updated)
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -544,6 +580,57 @@ function EnvironmentDetail({
             </button>
           </div>
         ))}
+      </div>
+
+      {/* Egress allowlist */}
+      <div className="mt-6">
+        <div className="flex items-center justify-between mb-2">
+          <div>
+            <p className="text-sm font-medium text-stone-900">Allowed hosts</p>
+            <p className="text-xs text-stone-400">Leave empty for unrestricted outbound access. Use <span className="font-mono">*.example.com</span> for subdomains.</p>
+          </div>
+          {hostSaving && <span className="text-[10px] text-stone-400">Saving…</span>}
+        </div>
+        <div className="rounded-xl border border-stone-200 bg-white px-4 py-3 space-y-3">
+          {hosts.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {hosts.map(h => (
+                <span key={h} className="inline-flex items-center gap-1.5 text-xs font-mono bg-amber-50 text-amber-800 border border-amber-100 px-2.5 py-1 rounded-full">
+                  {h}
+                  {isAdmin && (
+                    <button
+                      onClick={() => removeHost(h)}
+                      className="text-amber-400 hover:text-amber-700 leading-none transition-colors"
+                    >
+                      ×
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
+          {isAdmin && (
+            <div className="flex gap-2">
+              <input
+                value={hostInput}
+                onChange={e => setHostInput(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addHost() } }}
+                placeholder="e.g. api.github.com or *.slack.com"
+                className="flex-1 font-mono text-xs text-stone-800 border border-stone-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-200 placeholder:text-stone-300"
+              />
+              <button
+                onClick={addHost}
+                disabled={!hostInput.trim()}
+                className="text-xs font-medium bg-stone-900 text-white hover:bg-stone-700 px-3 py-2 rounded-lg transition-colors disabled:opacity-40"
+              >
+                Add
+              </button>
+            </div>
+          )}
+          {hosts.length === 0 && !isAdmin && (
+            <p className="text-xs text-stone-400">No restrictions — agents can reach any host.</p>
+          )}
+        </div>
       </div>
     </div>
   )
