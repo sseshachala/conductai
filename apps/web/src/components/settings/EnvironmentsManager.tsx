@@ -587,7 +587,7 @@ function EnvironmentDetail({
         <div className="flex items-center justify-between mb-2">
           <div>
             <p className="text-sm font-medium text-stone-900">Allowed hosts</p>
-            <p className="text-xs text-stone-400">Leave empty for unrestricted outbound access. Use <span className="font-mono">*.example.com</span> for subdomains.</p>
+            <p className="text-xs text-stone-400">Leave empty for unrestricted outbound access. Use <span className="font-mono">*.example.com</span> for subdomains. Applies to integration blocks only — shell commands in AI blocks are not network-restricted.</p>
           </div>
           {hostSaving && <span className="text-[10px] text-stone-400">Saving…</span>}
         </div>
