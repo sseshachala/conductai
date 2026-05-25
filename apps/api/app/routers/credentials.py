@@ -227,7 +227,10 @@ def list_env_vars(
             continue
         creds = decrypt(row.encrypted_credentials)
         for field, value in creds.items():
-            key = _ENV_VAR_REVERSE.get((row.handle, field)) or f"{row.handle.upper()}_{field.upper()}"
+            if row.handle == "env_vars":
+                key = field.upper()
+            else:
+                key = _ENV_VAR_REVERSE.get((row.handle, field)) or f"{row.handle.upper()}_{field.upper()}"
             result.append({"key": key, "value": value, "handle": row.handle, "field": field})
     return result
 
