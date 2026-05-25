@@ -82,6 +82,7 @@ class RunsOn(BaseModel):
 # ---------------------------------------------------------------------------
 class SlackOutput(BaseModel):
     channel: str
+    approval: bool = False  # when True, sends Approve/Reject buttons with the message
     model_config = ConfigDict(extra="allow")  # blocks/threading config later
 
 

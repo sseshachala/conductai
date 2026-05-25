@@ -100,21 +100,10 @@ async def slack_interactions(request: Request, db: Session = Depends(get_db)):
         log.warning("Slack interaction for unknown run %s", run_id_str)
         return {"ok": True}
 
-    if run.status != "paused":
-        log.info("Run %s already %s — ignoring duplicate approval", run_id_str, run.status)
-        return {"ok": True}
-
     block_id = run.current_block_id or ""
     approver = payload.get("user", {}).get("name", "slack-user")
 
-    state = dict(run.state or {})
-    state[f"__approval_{block_id}"] = decision
-    state[f"__approver_{block_id}"] = approver
-    run.state = state
-    run.status = "pending"
-    run.paused_at = None
-    db.commit()
-
+    # Always record the verdict as an event regardless of run status
     event = RunEvent(
         run_id=run_id_str,
         block_id=block_id,
@@ -122,10 +111,22 @@ async def slack_interactions(request: Request, db: Session = Depends(get_db)):
         payload={"decision": decision, "approver": approver, "source": "slack"},
     )
     db.add(event)
-    db.commit()
 
-    _redis().rpush(QUEUE_KEY, run_id_str)
-    log.info("Run %s approval: %s by %s — re-queued", run_id_str, decision, approver)
+    if run.status == "paused":
+        # Approval gate — resume the run
+        state = dict(run.state or {})
+        state[f"__approval_{block_id}"] = decision
+        state[f"__approver_{block_id}"] = approver
+        run.state = state
+        run.status = "pending"
+        run.paused_at = None
+        db.commit()
+        _redis().rpush(QUEUE_KEY, run_id_str)
+        log.info("Run %s approval gate: %s by %s — re-queued", run_id_str, decision, approver)
+    else:
+        # Post-run feedback — just log the human verdict, don't re-queue
+        db.commit()
+        log.info("Run %s post-run verdict: %s by %s", run_id_str, decision, approver)
 
     return {"ok": True}
 

@@ -118,3 +118,4 @@ blocks:
       via: slack
       slack:
         channel: "#security"
+        approval: true

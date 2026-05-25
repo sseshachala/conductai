@@ -407,6 +407,8 @@ def _block_to_node(block_id: str, block: Block, col: int) -> dict[str, Any]:
         config["integration"] = out.via
         if out.slack:
             config["channel"] = out.slack.channel
+            if out.slack.approval:
+                config["approval"] = True
         if out.email:
             config["to"] = out.email.to
             if out.email.from_address:

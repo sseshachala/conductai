@@ -792,7 +792,7 @@ def _fill_template(template: str, state: dict, workflow_name: str = "Agent", tra
     return subject, body
 
 
-def _execute_output(block: dict, state: dict, credentials: dict, workflow_name: str = "Agent", trace_url: str = "") -> dict:
+def _execute_output(block: dict, state: dict, credentials: dict, workflow_name: str = "Agent", trace_url: str = "", run_id: str = "") -> dict:
     from app.runtime.integrations import slack, email as email_integration
     from app.core.config import settings
 
@@ -815,7 +815,16 @@ def _execute_output(block: dict, state: dict, credentials: dict, workflow_name: 
         channel = config.get("channel", "#general")
         if slack_creds and channel:
             _, body = _fill_template(_load_template("slack_output.txt"), state, workflow_name, trace_url)
-            r = slack.execute("post_message", {"channel": channel, "text": body}, slack_creds)
+            use_approval = config.get("approval", False) and bool(run_id)
+            if use_approval:
+                r = slack.execute("post_approval_message", {
+                    "channel": channel,
+                    "text": body,
+                    "run_id": run_id,
+                    "callback_url": trace_url,
+                }, slack_creds)
+            else:
+                r = slack.execute("post_message", {"channel": channel, "text": body}, slack_creds)
             results["slack"] = r
         else:
             results["slack"] = {"sent": False, "reason": "No Slack credentials or channel configured"}
@@ -1134,7 +1143,7 @@ def execute_run(run_id: str):
                     wf_name = version.workflow.name if version.workflow else "Agent"
                     trace_url = f"{settings.api_base_url.rstrip('/')}/workflows/{version.workflow.id}/runs/{run_id}" if version.workflow else ""
                     try:
-                        result = _execute_output(block, state, credentials, workflow_name=wf_name, trace_url=trace_url)
+                        result = _execute_output(block, state, credentials, workflow_name=wf_name, trace_url=trace_url, run_id=run_id)
                     except Exception as out_err:
                         # Notification failures are non-fatal — the real work already succeeded.
                         log.warning("Output block %s failed (non-fatal): %s", block_id, out_err)

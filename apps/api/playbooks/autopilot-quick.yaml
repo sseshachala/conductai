@@ -90,3 +90,4 @@ blocks:
       via: slack
       slack:
         channel: "#general"
+        approval: true
