@@ -38,6 +38,14 @@ params:
     default: s-2vcpu-4gb
 
 inputs:
+  trigger_label:
+    label: Trigger label
+    default: ai_ready
+    type: select
+    options:
+      - autopilot ready
+      - ai_pilot_ready
+      - ai_ready
   model:
     label: AI Model
     default: claude-sonnet-4-6
@@ -59,7 +67,7 @@ on:
   github.issue_labeled:
     integration: github
     labels:
-      - ai_ready
+      - "{{inputs.trigger_label}}"
       - ai-ready
     label_mode: one_of
     next: fetch_issue
