@@ -165,6 +165,7 @@ blocks:
       via: slack
       slack:
         channel: "#engineering"
+        approval: true
 
   notify_failure:
     type: output
