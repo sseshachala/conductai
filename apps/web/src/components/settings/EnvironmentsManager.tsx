@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useAuth } from "@clerk/nextjs"
 
 interface Environment {
@@ -394,6 +394,88 @@ function EnvironmentDetail({
     }
   }
 
+  // .env key → { service, field } mapping
+  const ENV_KEY_MAP: Record<string, { service: string; field: string }> = {
+    GITHUB_TOKEN:        { service: "github",       field: "token" },
+    GITHUB_PAT:          { service: "github",       field: "token" },
+    SLACK_TOKEN:         { service: "slack",        field: "token" },
+    SLACK_BOT_TOKEN:     { service: "slack",        field: "token" },
+    LINEAR_API_KEY:      { service: "linear",       field: "api_key" },
+    DIGITALOCEAN_TOKEN:  { service: "digitalocean", field: "token" },
+    DO_TOKEN:            { service: "digitalocean", field: "token" },
+    VERCEL_TOKEN:        { service: "vercel",       field: "token" },
+    ANTHROPIC_API_KEY:   { service: "anthropic",    field: "api_key" },
+    RESEND_API_KEY:      { service: "email",        field: "resend_api_key" },
+    SENDGRID_API_KEY:    { service: "email",        field: "sendgrid_api_key" },
+  }
+
+  const [envImportPreview, setEnvImportPreview] = useState<
+    { service: string; field: string; key: string; value: string }[]
+  >([])
+  const [importing, setImporting] = useState(false)
+  const [importError, setImportError] = useState("")
+  const [importDone, setImportDone] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  function parseEnvFile(text: string) {
+    const results: { service: string; field: string; key: string; value: string }[] = []
+    for (const raw of text.split("\n")) {
+      const line = raw.trim()
+      if (!line || line.startsWith("#")) continue
+      const eq = line.indexOf("=")
+      if (eq === -1) continue
+      const key = line.slice(0, eq).trim()
+      const val = line.slice(eq + 1).trim().replace(/^["']|["']$/g, "")
+      const mapping = ENV_KEY_MAP[key]
+      if (mapping && val) results.push({ ...mapping, key, value: val })
+    }
+    return results
+  }
+
+  function handleEnvFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = ev => {
+      const text = ev.target?.result as string
+      const parsed = parseEnvFile(text)
+      setEnvImportPreview(parsed)
+      setImportError(parsed.length === 0 ? "No matching keys found in this .env file." : "")
+      setImportDone(false)
+    }
+    reader.readAsText(file)
+    e.target.value = ""
+  }
+
+  async function confirmImport() {
+    setImporting(true)
+    setImportError("")
+    // Group by service — one credential upsert per service
+    const byService: Record<string, Record<string, string>> = {}
+    for (const { service, field, value } of envImportPreview) {
+      byService[service] = { ...(byService[service] ?? {}), [field]: value }
+    }
+    try {
+      const headers = await buildHeaders(true)
+      await Promise.all(
+        Object.entries(byService).map(([service, credObj]) =>
+          fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ service, handle: service, credentials: credObj, environment_id: environment.id }),
+          })
+        )
+      )
+      await loadCredentials()
+      setEnvImportPreview([])
+      setImportDone(true)
+    } catch {
+      setImportError("Import failed — check the console and try again")
+    } finally {
+      setImporting(false)
+    }
+  }
+
   async function handleRemove(handle: string) {
     setDeleting(handle)
     try {
@@ -424,7 +506,57 @@ function EnvironmentDetail({
           <h2 className="text-sm font-semibold text-stone-900">{environment.name}</h2>
           <p className="text-xs text-stone-400">Credentials scoped to this environment</p>
         </div>
+        <div className="ml-auto">
+          <input ref={fileInputRef} type="file" accept=".env,text/plain" className="hidden" onChange={handleEnvFile} />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="text-xs font-medium border border-stone-200 text-stone-600 hover:bg-stone-50 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            ↑ Import .env
+          </button>
+        </div>
       </div>
+
+      {/* .env import preview */}
+      {envImportPreview.length > 0 && (
+        <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
+          <p className="text-xs font-semibold text-blue-800">
+            Found {envImportPreview.length} matching key{envImportPreview.length !== 1 ? "s" : ""} — review before importing:
+          </p>
+          <div className="space-y-1">
+            {envImportPreview.map(({ service, key, value }) => (
+              <div key={key} className="flex items-center gap-2 text-xs">
+                <span className="font-mono text-blue-700 w-48 truncate">{key}</span>
+                <span className="text-blue-400">→</span>
+                <span className="font-medium text-blue-800">{service}</span>
+                <span className="font-mono text-blue-500 truncate">{value.slice(0, 6)}{"*".repeat(Math.min(8, value.length - 6))}</span>
+              </div>
+            ))}
+          </div>
+          {importError && <p className="text-xs text-red-600">{importError}</p>}
+          <div className="flex gap-2">
+            <button
+              onClick={confirmImport}
+              disabled={importing}
+              className="text-xs font-medium bg-blue-700 hover:bg-blue-800 text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {importing ? "Importing…" : "Import all"}
+            </button>
+            <button
+              onClick={() => { setEnvImportPreview([]); setImportError("") }}
+              className="text-xs text-blue-600 hover:text-blue-800 px-3 py-1.5"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {importError && envImportPreview.length === 0 && (
+        <p className="mb-4 text-xs text-red-500">{importError}</p>
+      )}
+      {importDone && (
+        <p className="mb-4 text-xs text-green-600 font-medium">Credentials imported successfully.</p>
+      )}
 
       {/* Services */}
       <div className="space-y-3">
