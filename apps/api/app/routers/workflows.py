@@ -152,13 +152,20 @@ def _register_git_webhook(
     provider: str = "github",
     project_slug: str | None = None,
     secret: str | None = None,
+    workspace_id: str | None = None,
 ) -> tuple[str | None, str | None]:
     """Register a webhook on the git provider. Returns (hook_id, error_message)."""
     import httpx
     from app.core.config import settings
 
-    slug_segment = f"{project_slug}/" if project_slug else ""
-    webhook_url = f"{settings.api_base_url}/webhooks/inbound/{slug_segment}{workflow_id}"
+    # GitHub issue-based triggers must use /webhooks/github so label filtering
+    # (ai-ready, etc.) is enforced. The generic /webhooks/inbound endpoint has
+    # no label awareness and fires on every issues event.
+    if provider == "github" and "issues" in events and workspace_id:
+        webhook_url = f"{settings.api_base_url}/webhooks/github?workspace_id={workspace_id}"
+    else:
+        slug_segment = f"{project_slug}/" if project_slug else ""
+        webhook_url = f"{settings.api_base_url}/webhooks/inbound/{slug_segment}{workflow_id}"
 
     if provider == "gitlab":
         return _register_gitlab_webhook(token, repo, webhook_url, events, secret)
@@ -491,6 +498,7 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
                 provider=provider,
                 project_slug=project_slug,
                 secret=webhook_secret,
+                workspace_id=str(workspace_id),
             )
             if hook_id:
                 workflow.github_hook_id = hook_id
