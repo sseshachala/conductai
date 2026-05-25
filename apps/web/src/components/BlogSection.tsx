@@ -12,8 +12,12 @@ interface FeedPost {
 
 function formatDate(iso: string) {
   try {
-    const [year, month, day] = iso.split("T")[0].split("-").map(Number)
-    return new Date(year, month - 1, day).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    const parts = iso.split("T")[0].split("-")
+    if (parts.length !== 3) return ""
+    const [year, month, day] = parts.map(Number)
+    return new Date(year, month - 1, day).toLocaleDateString("en-US", {
+      month: "short", day: "numeric", year: "numeric",
+    })
   } catch {
     return ""
   }
@@ -24,13 +28,22 @@ export default function BlogSection() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch("https://narratr.ai/blog/conductai/feed.json")
-      .then(r => r.json())
-      .then(data => {
-        if (Array.isArray(data.posts)) setPosts(data.posts)
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    let cancelled = false
+    async function load() {
+      try {
+        const res = await fetch("https://narratr.ai/blog/conductai/feed.json")
+        const data = await res.json()
+        if (!cancelled && Array.isArray(data?.posts)) {
+          setPosts(data.posts)
+        }
+      } catch {
+        // Silently fail — no posts shown, page still works
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
   }, [])
 
   return (
