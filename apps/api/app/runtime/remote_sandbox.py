@@ -25,12 +25,12 @@ Brain block can route results back to Claude as a `tool_result`.
 from __future__ import annotations
 
 import io
-import logging
+import structlog
 import re
 import shlex
 from typing import Any
 
-log = logging.getLogger(__name__)
+log = structlog.get_logger(__name__)
 
 # Same denylist as the local/Modal paths so behaviour is consistent.
 _FORBIDDEN_SHELL_PATTERNS = [
