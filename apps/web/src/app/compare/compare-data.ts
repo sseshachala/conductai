@@ -8,8 +8,8 @@ export const TOOLS = [
     category: "Orchestration",
     categoryColor: "bg-indigo-100 text-indigo-700",
     url: "https://conductai.ai",
-    oneLiner: "Visual canvas for building AI agent workflows — from copilot to full autopilot — with human-in-the-loop gates and a playbook marketplace.",
-    description: "Conduct is an AI agent orchestration platform built for engineering teams. You compose workflows visually on a canvas — trigger blocks, brain (LLM) blocks, tool blocks, logic branches, and approval gates — and the platform executes them. It ships with 9 pre-built playbooks: Autopilot (fix GitHub issues), PR Reviewer, Issue Triage, CI Failure Alert, Incident Responder, Dependency Updater, Release Notes, and more. The key design philosophy is the copilot↔autopilot spectrum: you choose how much automation you want, from \"suggest and wait\" to \"implement, test, and open a PR while you sleep\". Nothing merges without a human approval gate unless you explicitly remove it. Every run is fully audited. MIT licensed.",
+    oneLiner: "YAML agent recipes your team can install, configure, and run as reusable automations with human-in-the-loop gates.",
+    description: "Conduct turns YAML agent recipes into reusable team automations. Teams install playbooks into projects, configure environments and credentials, and run agents for engineering work like fixing GitHub issues, reviewing PRs, triaging issues, diagnosing CI failures, responding to incidents, updating dependencies, and generating release notes. Nothing merges without a human approval gate unless you explicitly remove it. Every run is fully audited. MIT licensed.",
     strengths: [
       "Visual canvas — see and edit the entire agent workflow at a glance",
       "Copilot↔autopilot spectrum — tune automation level per workflow",
