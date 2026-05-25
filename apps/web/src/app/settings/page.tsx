@@ -5,20 +5,22 @@ import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import EnvironmentsManager from "@/components/settings/EnvironmentsManager"
 import MembersManager from "@/components/settings/MembersManager"
+import AuditLog from "@/components/settings/AuditLog"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
-type Tab = "environments" | "members"
+type Tab = "environments" | "members" | "audit"
 
 export default function SettingsPage() {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   if (clerkEnabled) return <SettingsPageWithAuth />
-  return <SettingsPageInner isAdmin={true} />
+  return <SettingsPageInner isAdmin={true} workspaceId="" getToken={null} />
 }
 
 function SettingsPageWithAuth() {
   const { getToken, userId } = useAuth()
   const { activeWorkspace } = useWorkspace()
   const [isAdmin, setIsAdmin] = useState(true)
+  const workspaceId = activeWorkspace?.id ?? ""
 
   useEffect(() => {
     if (!activeWorkspace || !userId) return
@@ -38,11 +40,11 @@ function SettingsPageWithAuth() {
     check()
   }, [activeWorkspace?.id, userId])
 
-  return <SettingsPageInner isAdmin={isAdmin} />
+  return <SettingsPageInner isAdmin={isAdmin} workspaceId={workspaceId} getToken={getToken} />
 }
 
-function SettingsPageInner({ isAdmin }: { isAdmin: boolean }) {
-  const tabs = (["environments", ...(isAdmin ? ["members"] : [])] as Tab[])
+function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolean; workspaceId: string; getToken: (() => Promise<string | null>) | null }) {
+  const tabs = (["environments", ...(isAdmin ? ["members", "audit"] : [])] as Tab[])
   const [activeTab, setActiveTab] = useState<Tab>("environments")
   const [showTip, setShowTip] = useState(true)
 
@@ -88,6 +90,7 @@ function SettingsPageInner({ isAdmin }: { isAdmin: boolean }) {
 
         {activeTab === "environments" && <EnvironmentsManager isAdmin={isAdmin} />}
         {activeTab === "members" && isAdmin && <MembersManager />}
+        {activeTab === "audit" && isAdmin && <AuditLog workspaceId={workspaceId} getToken={getToken} />}
       </div>
     </AppShell>
   )

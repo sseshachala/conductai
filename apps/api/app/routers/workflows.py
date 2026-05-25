@@ -5,7 +5,7 @@ from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from app.core.auth import get_workspace_id, require_workspace_role
+from app.core.auth import get_workspace_id, require_workspace_role, audit
 from app.core.database import get_db
 
 log = structlog.get_logger(__name__)
@@ -559,6 +559,9 @@ def update_workflow(
 
     db.commit()
     db.refresh(workflow)
+    audit(db, workspace_id, "workflow.created",
+          resource_type="workflow", resource_id=str(workflow.id),
+          metadata={"name": workflow.name, "template": body.template})
     return workflow
 
 
@@ -596,6 +599,8 @@ def delete_workflow(
     db.execute(text("DELETE FROM workflow_versions WHERE workflow_id = :wid"), {"wid": str(workflow_id)})
     db.execute(text("DELETE FROM workflows WHERE id = :wid"), {"wid": str(workflow_id)})
     db.commit()
+    audit(db, workspace_id, "workflow.deleted",
+          resource_type="workflow", resource_id=str(workflow_id))
 
 
 class BlockCompileRequest(BaseModel):
