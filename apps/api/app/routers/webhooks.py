@@ -34,19 +34,37 @@ def _redis():
     return redis.from_url(settings.redis_url, decode_responses=True)
 
 
-def _verify_slack_signature(request_body: bytes, timestamp: str, signature: str) -> bool:
+def _verify_slack_signature(request_body: bytes, timestamp: str, signature: str, signing_secret: str) -> bool:
     """Verify Slack's request signing (v0 scheme)."""
-    if not settings.slack_signing_secret:
-        return False  # Reject: no secret configured — set SLACK_SIGNING_SECRET
+    if not signing_secret:
+        return False
     if abs(time.time() - int(timestamp)) > 300:
-        return False  # Replay attack guard: reject if older than 5 minutes
+        return False  # Replay attack guard
     base = f"v0:{timestamp}:{request_body.decode()}"
     expected = "v0=" + hmac.new(
-        settings.slack_signing_secret.encode(),
+        signing_secret.encode(),
         base.encode(),
         hashlib.sha256,
     ).hexdigest()  # type: ignore[attr-defined]
     return hmac.compare_digest(expected, signature)
+
+
+def _get_slack_signing_secret(run: "Run", db: Session) -> str:
+    """Look up the Slack signing secret from the run's workspace credential."""
+    from app.models.integration import Integration
+    from app.core.crypto import decrypt
+    row = (
+        db.query(Integration)
+        .filter(
+            Integration.workspace_id == run.workspace_id,
+            Integration.handle == "slack",
+        )
+        .first()
+    )
+    if not row or not row.encrypted_credentials:
+        return settings.slack_signing_secret or ""
+    creds = decrypt(row.encrypted_credentials)
+    return creds.get("signing_secret") or settings.slack_signing_secret or ""
 
 
 @router.post("/slack/interactions")
@@ -56,14 +74,10 @@ async def slack_interactions(request: Request, db: Session = Depends(get_db)):
     Slack sends a URL-encoded body with a 'payload' field containing JSON.
     """
     body = await request.body()
-
-    # Verify signature if signing secret is configured
     timestamp = request.headers.get("X-Slack-Request-Timestamp", "0")
     signature = request.headers.get("X-Slack-Signature", "")
-    if not _verify_slack_signature(body, timestamp, signature):
-        raise HTTPException(status_code=401, detail="Invalid Slack signature")
 
-    # Slack sends application/x-www-form-urlencoded with a 'payload' key
+    # Parse payload first so we can look up workspace signing secret
     body_str = body.decode()
     if body_str.startswith("payload="):
         payload_str = unquote_plus(body_str[len("payload="):])
@@ -99,6 +113,11 @@ async def slack_interactions(request: Request, db: Session = Depends(get_db)):
     if not run:
         log.warning("Slack interaction for unknown run %s", run_id_str)
         return {"ok": True}
+
+    # Verify signature using workspace's Slack signing secret
+    signing_secret = _get_slack_signing_secret(run, db)
+    if not _verify_slack_signature(body, timestamp, signature, signing_secret):
+        raise HTTPException(status_code=401, detail="Invalid Slack signature")
 
     block_id = run.current_block_id or ""
     approver = payload.get("user", {}).get("name", "slack-user")
