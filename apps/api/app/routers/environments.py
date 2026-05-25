@@ -104,9 +104,7 @@ def delete_environment(
             detail=f"Remove this environment from {len(agents)} agent(s) first: {names}",
         )
 
-    # Safe to delete — remove any dangling integration references and the env
-    db.query(Integration).filter(Integration.environment_id == env_id).update(
-        {"environment_id": None}, synchronize_session=False
-    )
+    # Delete integrations scoped to this environment, then delete the env
+    db.query(Integration).filter(Integration.environment_id == env_id).delete(synchronize_session=False)
     db.delete(env)
     db.commit()
