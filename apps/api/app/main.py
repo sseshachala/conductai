@@ -1,16 +1,23 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+import structlog
 from app.core.config import settings
+from app.core.logging import setup_logging
+from app.middleware.logging import LoggingMiddleware
 from app.routers import credentials, dashboard, email_templates, environments, projects, runs, webhooks, workflows
 from app.routers.organizations import router as organizations_router
 from app.routers.workspace_projects import router as workspace_projects_router
 from app.routers.runs import workspace_runs_router
 
+setup_logging()
+log = structlog.get_logger(__name__)
+
 app = FastAPI(title="Marshal API", version="0.1.0")
 
 _origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
 
+app.add_middleware(LoggingMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
@@ -21,10 +28,9 @@ app.add_middleware(
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    """Return CORS headers on 500 — log internally, never expose exc details."""
-    import logging, uuid
+    import uuid
     error_id = str(uuid.uuid4())[:8]
-    logging.getLogger("app").error("Unhandled error %s: %s", error_id, exc, exc_info=True)
+    log.error("unhandled_exception", error_id=error_id, exc_info=exc)
     origin = request.headers.get("origin", "")
     headers = {"Access-Control-Allow-Origin": origin} if origin in _origins else {}
     return JSONResponse(

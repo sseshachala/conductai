@@ -3,14 +3,14 @@ Streaming compiler — generates a system prompt for a single block using Claude
 Returns an SSE generator for use with FastAPI StreamingResponse.
 """
 import json
-import logging
+import structlog
 from typing import Generator, Any
 
 import anthropic
 
 from app.core.config import settings
 
-log = logging.getLogger(__name__)
+log = structlog.get_logger(__name__)
 
 COMPILER_SYSTEM = """You are a system prompt compiler for an AI workflow platform called Delegator.
 
