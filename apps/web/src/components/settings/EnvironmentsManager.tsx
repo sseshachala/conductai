@@ -302,8 +302,10 @@ function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Prom
 }
 
 // ---------------------------------------------------------------------------
-// Environment detail — credential management for one environment
+// Environment detail — simple key-value env var editor
 // ---------------------------------------------------------------------------
+
+interface EnvVar { key: string; value: string; handle?: string }
 
 function EnvironmentDetail({
   environment,
@@ -316,120 +318,59 @@ function EnvironmentDetail({
   onBack: () => void
   isAdmin: boolean
 }) {
-  const [credentials, setCredentials] = useState<Credential[]>([])
-  const [openService, setOpenService] = useState<string | null>(null)
-  const [fieldValues, setFieldValues] = useState<Record<string, string>>({})
-  const [showFields, setShowFields] = useState<Record<string, boolean>>({})
-  const [revealedValues, setRevealedValues] = useState<Record<string, Record<string, string>>>({})
-  const [revealing, setRevealing] = useState<string | null>(null)
+  const [vars, setVars] = useState<EnvVar[]>([])
+  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [deleting, setDeleting] = useState<string | null>(null)
   const [error, setError] = useState("")
+  const [saved, setSaved] = useState(false)
+  const [showValues, setShowValues] = useState<Record<number, boolean>>({})
+  const [newKey, setNewKey] = useState("")
+  const [newValue, setNewValue] = useState("")
+  const [showNew, setShowNew] = useState(false)
 
-  const loadCredentials = useCallback(async () => {
-    try {
-      const headers = await buildHeaders()
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/credentials/by-environment/${environment.id}`,
-        { headers }
-      )
-      if (res.ok) setCredentials(await res.json())
-    } catch { /* silent */ }
-  }, [buildHeaders, environment.id])
-
-  useEffect(() => { loadCredentials() }, [loadCredentials])
-
-  const connectedServices = new Set(credentials.map(c => c.service))
-
-  async function revealCredential(handle: string) {
-    if (revealedValues[handle]) {
-      setRevealedValues(prev => { const n = { ...prev }; delete n[handle]; return n })
-      return
-    }
-    setRevealing(handle)
-    try {
-      const headers = await buildHeaders()
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/credentials/reveal/${handle}?environment_id=${environment.id}`,
-        { headers }
-      )
-      if (res.ok) setRevealedValues(prev => ({ ...prev, [handle]: await res.json() }))
-    } finally { setRevealing(null) }
-  }
-
-  function toggleService(svc: string) {
-    if (openService === svc) { setOpenService(null); setError("") }
-    else { setOpenService(svc); setFieldValues({}); setError("") }
-  }
-
-  async function handleSave(svc: ServiceDef) {
-    const credObj: Record<string, string> = {}
-    for (const f of svc.fields) {
-      const val = fieldValues[f.key]?.trim() ?? ""
-      if (!val && !f.optional) { setError(`${f.label} is required`); return }
-      if (val) credObj[f.key] = val
-    }
-    setSaving(true)
-    setError("")
-    try {
-      const headers = await buildHeaders(true)
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          service: svc.value,
-          handle: svc.value,
-          credentials: credObj,
-          environment_id: environment.id,
-        }),
-      })
-      if (!res.ok) throw new Error("Save failed")
-      await loadCredentials()
-      setOpenService(null)
-      setFieldValues({})
-    } catch {
-      setError("Failed to save — check your token and try again")
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  // .env key → { service, field } mapping
-  const ENV_KEY_MAP: Record<string, { service: string; field: string }> = {
-    GITHUB_TOKEN:        { service: "github",       field: "token" },
-    GITHUB_PAT:          { service: "github",       field: "token" },
-    SLACK_TOKEN:         { service: "slack",        field: "token" },
-    SLACK_BOT_TOKEN:     { service: "slack",        field: "token" },
-    LINEAR_API_KEY:      { service: "linear",       field: "api_key" },
-    DIGITALOCEAN_TOKEN:  { service: "digitalocean", field: "token" },
-    DO_TOKEN:            { service: "digitalocean", field: "token" },
-    VERCEL_TOKEN:        { service: "vercel",       field: "token" },
-    ANTHROPIC_API_KEY:   { service: "anthropic",    field: "api_key" },
-    RESEND_API_KEY:      { service: "email",        field: "resend_api_key" },
-    SENDGRID_API_KEY:    { service: "email",        field: "sendgrid_api_key" },
-  }
-
-  const [envImportPreview, setEnvImportPreview] = useState<
-    { service: string; field: string; key: string; value: string }[]
-  >([])
-  const [importing, setImporting] = useState(false)
-  const [importError, setImportError] = useState("")
-  const [importDone, setImportDone] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  function parseEnvFile(text: string) {
-    const results: { service: string; field: string; key: string; value: string }[] = []
-    for (const raw of text.split("\n")) {
-      const line = raw.trim()
-      if (!line || line.startsWith("#")) continue
-      const eq = line.indexOf("=")
-      if (eq === -1) continue
-      const key = line.slice(0, eq).trim()
-      const val = line.slice(eq + 1).trim().replace(/^["']|["']$/g, "")
-      const mapping = ENV_KEY_MAP[key]
-      if (mapping && val) results.push({ ...mapping, key, value: val })
-    }
-    return results
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const headers = await buildHeaders()
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/env-vars/${environment.id}`, { headers })
+      if (res.ok) setVars(await res.json())
+    } finally { setLoading(false) }
+  }, [buildHeaders, environment.id])
+
+  useEffect(() => { load() }, [load])
+
+  async function saveAll(updated: EnvVar[]) {
+    setSaving(true); setError(""); setSaved(false)
+    try {
+      const headers = await buildHeaders(true)
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/env-vars/${environment.id}`, {
+        method: "PUT", headers,
+        body: JSON.stringify(updated.map(v => ({ key: v.key, value: v.value }))),
+      })
+      if (!res.ok) throw new Error("Save failed")
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch { setError("Save failed") } finally { setSaving(false) }
+  }
+
+  function updateVar(i: number, field: "key" | "value", val: string) {
+    setVars(prev => prev.map((v, idx) => idx === i ? { ...v, [field]: val } : v))
+  }
+
+  function removeVar(i: number) {
+    const updated = vars.filter((_, idx) => idx !== i)
+    setVars(updated)
+    saveAll(updated)
+  }
+
+  function addVar() {
+    if (!newKey.trim()) return
+    const updated = [...vars, { key: newKey.trim(), value: newValue }]
+    setVars(updated)
+    setNewKey(""); setNewValue(""); setShowNew(false)
+    saveAll(updated)
   }
 
   function handleEnvFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -438,254 +379,144 @@ function EnvironmentDetail({
     const reader = new FileReader()
     reader.onload = ev => {
       const text = ev.target?.result as string
-      const parsed = parseEnvFile(text)
-      setEnvImportPreview(parsed)
-      setImportError(parsed.length === 0 ? "No matching keys found in this .env file." : "")
-      setImportDone(false)
+      const parsed: EnvVar[] = []
+      for (const raw of text.split("\n")) {
+        const line = raw.trim()
+        if (!line || line.startsWith("#")) continue
+        const eq = line.indexOf("=")
+        if (eq === -1) continue
+        const key = line.slice(0, eq).trim()
+        const value = line.slice(eq + 1).trim().replace(/^["']|["']$/g, "")
+        if (key && value) parsed.push({ key, value })
+      }
+      if (parsed.length === 0) { setError("No key=value pairs found in this file."); return }
+      const merged = [...vars]
+      for (const p of parsed) {
+        const existing = merged.findIndex(v => v.key === p.key)
+        if (existing >= 0) merged[existing] = p
+        else merged.push(p)
+      }
+      setVars(merged)
+      saveAll(merged)
     }
     reader.readAsText(file)
     e.target.value = ""
-  }
-
-  async function confirmImport() {
-    setImporting(true)
-    setImportError("")
-    // Group by service — one credential upsert per service
-    const byService: Record<string, Record<string, string>> = {}
-    for (const { service, field, value } of envImportPreview) {
-      byService[service] = { ...(byService[service] ?? {}), [field]: value }
-    }
-    try {
-      const headers = await buildHeaders(true)
-      await Promise.all(
-        Object.entries(byService).map(([service, credObj]) =>
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials`, {
-            method: "POST",
-            headers,
-            body: JSON.stringify({ service, handle: service, credentials: credObj, environment_id: environment.id }),
-          })
-        )
-      )
-      await loadCredentials()
-      setEnvImportPreview([])
-      setImportDone(true)
-    } catch {
-      setImportError("Import failed — check the console and try again")
-    } finally {
-      setImporting(false)
-    }
-  }
-
-  async function handleRemove(handle: string) {
-    setDeleting(handle)
-    try {
-      const headers = await buildHeaders()
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/${handle}`, {
-        method: "DELETE", headers,
-      })
-      setCredentials(prev => prev.filter(c => c.handle !== handle))
-    } finally {
-      setDeleting(null)
-    }
   }
 
   return (
     <div>
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <button
-          onClick={onBack}
-          className="text-stone-400 hover:text-stone-700 text-sm transition-colors"
-        >
-          ←
-        </button>
+        <button onClick={onBack} className="text-stone-400 hover:text-stone-700 text-sm transition-colors">←</button>
         <span className="w-8 h-8 rounded-lg text-xs font-bold flex items-center justify-center bg-violet-100 text-violet-700">
           {environment.name.slice(0, 2).toUpperCase()}
         </span>
         <div>
           <h2 className="text-sm font-semibold text-stone-900">{environment.name}</h2>
-          <p className="text-xs text-stone-400">Credentials scoped to this environment</p>
+          <p className="text-xs text-stone-400">{vars.length} variable{vars.length !== 1 ? "s" : ""}</p>
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
           <input ref={fileInputRef} type="file" accept=".env,text/plain" className="hidden" onChange={handleEnvFile} />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="text-xs font-medium border border-stone-200 text-stone-600 hover:bg-stone-50 px-3 py-1.5 rounded-lg transition-colors"
+            className="text-xs border border-stone-200 text-stone-600 hover:bg-stone-50 px-3 py-1.5 rounded-lg transition-colors"
           >
             ↑ Import .env
+          </button>
+          <button
+            onClick={() => saveAll(vars)}
+            disabled={saving}
+            className="text-xs font-medium bg-stone-900 text-white hover:bg-stone-700 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {saving ? "Saving…" : saved ? "Saved ✓" : "Save"}
           </button>
         </div>
       </div>
 
-      {/* .env import preview */}
-      {envImportPreview.length > 0 && (
-        <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
-          <p className="text-xs font-semibold text-blue-800">
-            Found {envImportPreview.length} matching key{envImportPreview.length !== 1 ? "s" : ""} — review before importing:
-          </p>
-          <div className="space-y-1">
-            {envImportPreview.map(({ service, key, value }) => (
-              <div key={key} className="flex items-center gap-2 text-xs">
-                <span className="font-mono text-blue-700 w-48 truncate">{key}</span>
-                <span className="text-blue-400">→</span>
-                <span className="font-medium text-blue-800">{service}</span>
-                <span className="font-mono text-blue-500 truncate">{value.slice(0, 6)}{"*".repeat(Math.min(8, value.length - 6))}</span>
-              </div>
-            ))}
-          </div>
-          {importError && <p className="text-xs text-red-600">{importError}</p>}
-          <div className="flex gap-2">
-            <button
-              onClick={confirmImport}
-              disabled={importing}
-              className="text-xs font-medium bg-blue-700 hover:bg-blue-800 text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-            >
-              {importing ? "Importing…" : "Import all"}
-            </button>
-            <button
-              onClick={() => { setEnvImportPreview([]); setImportError("") }}
-              className="text-xs text-blue-600 hover:text-blue-800 px-3 py-1.5"
-            >
-              Cancel
-            </button>
-          </div>
+      {error && <p className="mb-3 text-xs text-red-500">{error}</p>}
+
+      {/* Key-value table */}
+      <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
+        {/* Column headers */}
+        <div className="grid grid-cols-[1fr_1fr_auto] gap-0 border-b border-stone-100 px-4 py-2 bg-stone-50">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-stone-400">Key</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-stone-400">Value</p>
+          <p className="w-16" />
         </div>
-      )}
-      {importError && envImportPreview.length === 0 && (
-        <p className="mb-4 text-xs text-red-500">{importError}</p>
-      )}
-      {importDone && (
-        <p className="mb-4 text-xs text-green-600 font-medium">Credentials imported successfully.</p>
-      )}
 
-      {/* Services */}
-      <div className="space-y-3">
-        {SERVICES.map(svc => {
-          const isConnected = connectedServices.has(svc.value)
-          const isOpen = openService === svc.value
-          const cred = credentials.find(c => c.service === svc.value)
-
-          return (
-            <div
-              key={svc.value}
-              className={`rounded-xl border bg-white transition-all ${
-                isOpen ? "border-stone-300 shadow-sm" : "border-stone-200"
-              }`}
-            >
-              <div className="flex items-center justify-between px-4 py-3.5">
-                <div className="flex items-center gap-3">
-                  <span className={`w-9 h-9 rounded-lg text-xs font-bold flex items-center justify-center shrink-0 ${svc.color}`}>
-                    {svc.abbr}
-                  </span>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium text-stone-900">{svc.label}</p>
-                      {isConnected && (
-                        <span className="flex items-center gap-1 text-[10px] font-medium text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full">
-                          <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-                          Connected
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-stone-400">{svc.description}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {isAdmin && isConnected && cred && (
-                    <button
-                      onClick={() => revealCredential(cred.handle)}
-                      disabled={revealing === cred.handle}
-                      title={revealedValues[cred.handle] ? "Hide" : "Reveal credential"}
-                      className="text-stone-300 hover:text-stone-600 disabled:opacity-50 transition-colors"
-                    >
-                      <EyeIcon open={!!revealedValues[cred.handle]} />
-                    </button>
-                  )}
-                  {isConnected && cred && (
-                    <button
-                      onClick={() => handleRemove(cred.handle)}
-                      disabled={deleting === cred.handle}
-                      className="text-xs text-stone-400 hover:text-red-500 disabled:opacity-50 transition-colors"
-                    >
-                      {deleting === cred.handle ? "Removing…" : "Remove"}
-                    </button>
-                  )}
-                  <button
-                    onClick={() => toggleService(svc.value)}
-                    className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
-                      isConnected
-                        ? "border border-stone-200 text-stone-500 hover:bg-stone-50"
-                        : "bg-stone-900 text-white hover:bg-stone-700"
-                    }`}
-                  >
-                    {isConnected ? "Update" : "Connect"}
-                  </button>
-                </div>
+        {loading ? (
+          <p className="text-sm text-stone-400 px-4 py-6">Loading…</p>
+        ) : vars.length === 0 ? (
+          <p className="text-sm text-stone-400 px-4 py-6">No variables yet — add one or import a .env file.</p>
+        ) : (
+          vars.map((v, i) => (
+            <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-0 border-b border-stone-100 last:border-0 px-4 py-2 items-center group">
+              <input
+                value={v.key}
+                onChange={e => updateVar(i, "key", e.target.value)}
+                onBlur={() => saveAll(vars)}
+                className="font-mono text-xs text-stone-800 bg-transparent border-none outline-none w-full pr-4"
+              />
+              <div className="relative flex items-center">
+                <input
+                  type={showValues[i] ? "text" : "password"}
+                  value={v.value}
+                  onChange={e => updateVar(i, "value", e.target.value)}
+                  onBlur={() => saveAll(vars)}
+                  className="font-mono text-xs text-stone-600 bg-transparent border-none outline-none w-full pr-7"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowValues(prev => ({ ...prev, [i]: !prev[i] }))}
+                  className="absolute right-1 text-stone-300 hover:text-stone-600 transition-colors"
+                >
+                  <EyeIcon open={!!showValues[i]} />
+                </button>
               </div>
-
-              {/* Revealed values panel */}
-              {cred && revealedValues[cred.handle] && (
-                <div className="px-4 pb-3 pt-2 border-t border-stone-100 bg-stone-50 rounded-b-xl space-y-1">
-                  {Object.entries(revealedValues[cred.handle]).map(([k, v]) => (
-                    <div key={k} className="flex items-center gap-2">
-                      <span className="text-[10px] font-medium text-stone-400 w-24 shrink-0">{k}</span>
-                      <span className="text-xs font-mono text-stone-700 break-all">{v as string}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {isOpen && (
-                <div className="px-4 pb-4 pt-1 border-t border-stone-100 space-y-3">
-                  {svc.fields.map((f, i) => (
-                    <div key={f.key}>
-                      <label className="text-xs font-medium text-stone-500 block mb-1">
-                        {f.label}
-                        {f.optional && <span className="ml-1 text-stone-300 font-normal">optional</span>}
-                      </label>
-                      <div className="relative">
-                        <input
-                          type={f.secret !== false && !showFields[f.key] ? "password" : "text"}
-                          autoFocus={i === 0}
-                          value={fieldValues[f.key] ?? ""}
-                          onChange={e => setFieldValues(prev => ({ ...prev, [f.key]: e.target.value }))}
-                          onKeyDown={e => e.key === "Enter" && handleSave(svc)}
-                          placeholder={f.placeholder}
-                          className="w-full border border-stone-200 rounded-lg px-3 py-2 pr-9 text-sm font-mono text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                        />
-                        {f.secret !== false && (
-                          <button
-                            type="button"
-                            onClick={() => setShowFields(prev => ({ ...prev, [f.key]: !prev[f.key] }))}
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-300 hover:text-stone-600 transition-colors"
-                          >
-                            <EyeIcon open={!!showFields[f.key]} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                  {error && <p className="text-xs text-red-500">{error}</p>}
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      onClick={() => handleSave(svc)}
-                      disabled={saving}
-                      className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700 disabled:opacity-50 transition-colors"
-                    >
-                      {saving ? "Saving…" : "Save"}
-                    </button>
-                    <button
-                      onClick={() => { setOpenService(null); setError("") }}
-                      className="rounded-lg border border-stone-200 px-4 py-2 text-sm text-stone-600 hover:bg-stone-50 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
+              <button
+                onClick={() => removeVar(i)}
+                className="text-stone-200 hover:text-red-500 transition-colors w-16 text-right text-xs"
+              >
+                Remove
+              </button>
             </div>
-          )
-        })}
+          ))
+        )}
+
+        {/* Add new row */}
+        {isAdmin && (showNew ? (
+          <div className="grid grid-cols-[1fr_1fr_auto] gap-0 border-t border-stone-100 px-4 py-2 items-center bg-stone-50">
+            <input
+              autoFocus
+              value={newKey}
+              onChange={e => setNewKey(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && addVar()}
+              placeholder="VARIABLE_NAME"
+              className="font-mono text-xs text-stone-800 bg-transparent border-none outline-none w-full pr-4 placeholder:text-stone-300"
+            />
+            <input
+              value={newValue}
+              onChange={e => setNewValue(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && addVar()}
+              placeholder="value"
+              type="password"
+              className="font-mono text-xs text-stone-600 bg-transparent border-none outline-none w-full pr-4 placeholder:text-stone-300"
+            />
+            <div className="flex gap-2 w-16 justify-end">
+              <button onClick={addVar} className="text-xs font-medium text-green-600 hover:text-green-800">Add</button>
+              <button onClick={() => { setShowNew(false); setNewKey(""); setNewValue("") }} className="text-xs text-stone-400 hover:text-stone-600">✕</button>
+            </div>
+          </div>
+        ) : (
+          <div className="border-t border-stone-100 px-4 py-2">
+            <button
+              onClick={() => setShowNew(true)}
+              className="text-xs text-stone-400 hover:text-stone-700 transition-colors"
+            >
+              + Add variable
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   )
