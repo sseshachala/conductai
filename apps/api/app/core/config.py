@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     # Clerk (optional — if unset, all requests use the dev workspace)
     clerk_secret_key: str = ""
     clerk_frontend_api: str = ""  # e.g. "clerk.your-domain.com"
+    clerk_audience: str = ""      # set to the expected aud claim to enable audience verification
     # Email — system-level default; can also be added per-workspace in Settings
     resend_api_key: str = ""
     email_from: str = "Delegator <notifications@delegator.dev>"

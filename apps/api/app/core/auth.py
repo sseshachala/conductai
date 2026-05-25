@@ -75,12 +75,17 @@ def _verify_clerk_token(token: str) -> dict | None:
         public_key = RSAAlgorithm.from_jwk(key)
         clerk_domain = settings.clerk_frontend_api or ""
         expected_issuer = f"https://{clerk_domain}" if clerk_domain else None
-        decode_options: dict = {"verify_aud": False}
+        audience = settings.clerk_audience or None
+        decode_options: dict = {}
+        if not audience:
+            decode_options["verify_aud"] = False
         decode_kwargs: dict = {}
         if expected_issuer:
             decode_kwargs["issuer"] = expected_issuer
         else:
             decode_options["verify_iss"] = False
+        if audience:
+            decode_kwargs["audience"] = audience
         claims = pyjwt.decode(
             token,
             public_key,
