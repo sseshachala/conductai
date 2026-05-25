@@ -1,37 +1,62 @@
 # Conduct
 
-> **AI agents that act inside your stack — GitHub, Slack, Linear, and beyond.**
+**YAML playbooks that turn AI agents into reusable team automations.**
 
-Conduct lets engineering teams build, run, and govern AI agents on a drag-and-drop canvas (or in YAML). Label a GitHub issue `ai-ready` → an agent clones your repo, writes the fix, runs tests, and opens a draft PR. One-click Approve or Reject in Slack before anything merges.
+Label a GitHub issue `ai-ready` → an agent clones your repo, writes the fix, runs tests, and opens a draft PR. One-click Approve or Reject before anything merges.
 
-MIT licensed · Built for teams of 10–80 engineers · Every action is event-sourced and audit-logged.
+[![MIT License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/sseshachala/conductai?style=social)](https://github.com/sseshachala/conductai/stargazers)
+[![conductai.ai](https://img.shields.io/badge/hosted-conductai.ai-black)](https://conductai.ai)
+
+> ⭐ If this saves you time, star it — it helps others find it.
 
 ---
 
-## Why Conduct
+<!-- Record a 30-second demo and drop it here:
+![Conduct demo](docs/demo.gif)
+-->
+
+## What it does
+
+Conduct runs AI agents on a drag-and-drop canvas (or in YAML). Agents have real tool access — they read code, call APIs, open PRs, post to Slack. You control what they can touch and approve before anything ships.
+
+```
+GitHub issue labeled "ai-ready"
+  → Brain block (Claude) reads the issue, clones the repo, writes the fix
+  → Tool block opens a draft PR
+  → Approval block pauses — Slack DM: [Approve] [Reject]
+  → Output block posts result to #eng channel
+```
+
+Every step is visible. Every run is logged. Nothing merges without a human in the loop.
+
+---
+
+## Why teams pick Conduct
 
 | Problem | Conduct's answer |
 |---------|-----------------|
-| Autonomous agents (Devin, Cursor) are black boxes | Every step is visible — live trace, event log, approval gates |
-| Zapier/n8n have no AI in the middle | Brain blocks are agentic — Claude reads your codebase, iterates, hands off |
+| Autonomous agents (Devin, Cursor) are black boxes | Live trace, event log, and approval gates on every run |
+| Zapier / n8n have no AI in the middle | Brain blocks are agentic — Claude reads your codebase, iterates, hands off |
 | One shared credential set across all agents | Per-agent environments — each agent gets its own scoped credentials |
 | Hard to move from demo to production | Human-in-the-loop by design — nothing merges without approval |
+| Agent errors disappear into a void | Structured logs + Sentry integration — every failure is captured and triageable |
 
 ---
 
-## What you can build
+## 9 ready-made playbooks
 
-9 ready-made agent templates ship out of the box:
+Install any of these in one click, configure credentials, and run.
 
-| Template | Trigger | What it does |
+| Playbook | Trigger | What it does |
 |----------|---------|-------------|
 | **Autopilot Git → Slack** | GitHub issue label | Implements fix, opens PR, posts to Slack |
 | **Dependency Updater** | Weekly cron | Bumps patch/minor deps, opens PR |
 | **Incident Responder** | PagerDuty / OpsGenie webhook | Correlates commits, posts hypothesis to Slack |
-| **Release Notes** | Git tag webhook | Reads merged PRs, writes CHANGELOG, posts to #releases |
-| **Issue Triage** | GitHub issue.opened | Labels, prioritises, posts clarifying comment |
+| **Release Notes** | Git tag | Reads merged PRs, writes CHANGELOG, posts to #releases |
+| **Issue Triage** | GitHub issue opened | Labels, prioritises, posts clarifying comment |
 | **Deploy Monitor** | Vercel / Railway webhook | Monitors deployment, alerts on failure |
-| **PR Review** | GitHub PR webhook | Reviews diff, posts structured feedback |
+| **PR Review** | GitHub PR opened | Reviews diff, posts structured feedback |
 | **Scheduled Report** | Daily cron | Aggregates Linear issues, emails summary |
 | **Custom Agent** | Any trigger | Build from scratch on the canvas |
 
@@ -39,15 +64,29 @@ MIT licensed · Built for teams of 10–80 engineers · Every action is event-so
 
 ## Block types
 
-| Block | Purpose |
-|-------|---------|
-| **Trigger** | Starts a run — webhook, schedule, or manual |
-| **Brain** | Agentic LLM step (Claude) with tool access and bounded autonomy |
-| **Tool** | Deterministic integration call (GitHub, Slack, Linear, etc.) |
-| **Logic** | Conditional branch — pass / fail paths |
-| **Approval** | Pauses the run, sends a Slack DM with Approve / Reject buttons |
-| **Output** | Sends a formatted summary via Slack, Email, or both |
-| **Cleanup** | Always runs at the end — tear down sandboxes, close resources |
+| Block | What it does |
+|-------|-------------|
+| **Trigger** | Starts a run — webhook, cron, or manual |
+| **Brain** | Agentic Claude step with tool access and bounded autonomy |
+| **Tool** | Deterministic API call — GitHub, Slack, Linear, Vercel, Railway |
+| **Logic** | Branch on pass / fail |
+| **Approval** | Pauses the run, sends Slack DM with Approve / Reject |
+| **Output** | Sends formatted summary via Slack or email |
+| **Cleanup** | Always runs last — tear down resources, close loops |
+
+---
+
+## Integrations
+
+| Integration | Actions |
+|-------------|---------|
+| **GitHub** | clone repo, push file, create branch, open PR, merge PR, add secret |
+| **Slack** | post message, send DM, handle approval buttons |
+| **Linear** | fetch / create / update issues, add comments |
+| **Vercel** | list / get / wait for deployments |
+| **Railway** | trigger / monitor deployments |
+| **DigitalOcean** | create / destroy droplets |
+| **Email** | send via Resend or SendGrid |
 
 ---
 
@@ -55,37 +94,27 @@ MIT licensed · Built for teams of 10–80 engineers · Every action is event-so
 
 ```
 apps/
-  web/          Next.js 14 — canvas UI, runs feed, settings
+  web/          Next.js — canvas UI, run feed, settings
   api/          FastAPI + SQLAlchemy + Alembic
   api/worker.py Background run executor (Redis queue)
 packages/
-  conduct-cli/  Python CLI — run agents from the terminal or CI
-```
-
-**Infrastructure (local dev)**
-
-```
-postgres   pgvector/pgvector:pg16
-redis      redis:7-alpine
-api        FastAPI on :8000
-worker     Run executor (same image, different entrypoint)
-web        Next.js on :3000
+  conduct-cli/  Python CLI — trigger agents from terminal or CI
 ```
 
 ---
 
-## Getting started (UI)
+## Quick start (self-hosted)
 
 ### Prerequisites
 
 - Docker + Docker Compose
-- An Anthropic API key
+- Anthropic API key
 
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/sseshachala/delegator.git
-cd delegator
+git clone https://github.com/sseshachala/conductai.git
+cd conductai
 cp .env.example .env
 ```
 
@@ -96,14 +125,14 @@ ANTHROPIC_API_KEY=sk-ant-...
 ENCRYPTION_KEY=<32-char random string>
 ```
 
-### 2. Start all services
+### 2. Start
 
 ```bash
 docker compose up -d
 docker compose exec api alembic upgrade head
 ```
 
-### 3. Open the app
+### 3. Open
 
 - **UI**: http://localhost:3000
 - **API docs**: http://localhost:8000/docs
@@ -112,33 +141,24 @@ docker compose exec api alembic upgrade head
 
 1. **Projects** → New project
 2. **Agents** → New agent (or pick a template)
-3. **Settings** → Environments → add GitHub + Slack credentials
-4. Assign the environment to your agent from the canvas dropdown
+3. **Settings → Environments** → add GitHub + Slack credentials
+4. Assign the environment to your agent on the canvas
 5. Hit **Run**
 
 ---
 
-## Getting started (CLI)
-
-The `conduct` CLI lets you trigger agents from your terminal, CI pipeline, or scripts.
-
-### Install
+## Quick start (CLI)
 
 ```bash
 pip install conduct-cli
-```
 
-### Run an agent from a YAML file
-
-```bash
 conduct --server https://api.conductai.ai \
         --api-key YOUR_CLI_API_KEY \
         run autopilot.yaml
 ```
 
-### YAML agent definition
-
 ```yaml
+# autopilot.yaml
 name: Fix GitHub Issue
 workflow_id: <your-workflow-id>
 workspace_id: <your-workspace-id>
@@ -152,45 +172,8 @@ trigger:
 issue:
   number: 42
   title: "Button not responding on mobile"
-  body: "Tap on the submit button does nothing on iOS Safari."
+  body: "Tap on submit — nothing happens on iOS Safari."
 ```
-
-### CLI flags
-
-| Flag | Description |
-|------|-------------|
-| `--server` | Conduct API URL (e.g. `https://api.conductai.ai`) |
-| `--api-key` | CLI API key — set `CLI_API_KEY` on the server |
-| `--token` | Bearer token for Clerk auth (alternative to api-key) |
-| `--workspace` | Workspace ID (overrides YAML `workspace_id`) |
-
----
-
-## Integrations
-
-Configure credentials in **Settings → Environments → [environment]**.
-One credential per provider per environment. Need two GitHub accounts? Create two environments.
-
-| Integration | Actions |
-|-------------|---------|
-| **GitHub** | create_repo, push_file, create_branch, open_pr, merge_pr, add_repo_secret |
-| **Slack** | post_message, send_dm |
-| **Linear** | fetch_issue, list_issues, create_issue, create_comment, update_issue_status |
-| **Vercel** | list_deployments, get_deployment, wait_for_deployment, get_latest_deployment |
-| **Railway** | trigger_deployment, list_services, get_deployment, wait_for_deployment |
-| **DigitalOcean** | create_droplet, get_droplet, destroy_droplet, wait_for_droplet |
-| **Email** | send_email (Resend or SendGrid) |
-
----
-
-## Webhooks
-
-| Endpoint | Service | Events |
-|----------|---------|--------|
-| `POST /webhooks/vercel` | Vercel | deployment.succeeded, deployment.ready, deployment.failed |
-| `POST /webhooks/railway` | Railway | DEPLOY_SUCCESS, DEPLOY_FAILED, DEPLOY_CRASHED |
-| `POST /webhooks/slack/interactions` | Slack | Approval button clicks |
-| `POST /webhooks/inbound/{workflow_id}` | Generic | Any JSON payload |
 
 ---
 
@@ -202,35 +185,68 @@ One credential per provider per environment. Need two GitHub accounts? Create tw
 | `ENCRYPTION_KEY` | Yes | 32-byte key for credential encryption |
 | `DATABASE_URL` | Yes | Postgres connection string |
 | `REDIS_URL` | Yes | Redis connection string |
-| `API_BASE_URL` | Yes | Public URL of the API (for webhook callbacks) |
+| `API_BASE_URL` | Yes | Public API URL (for webhook callbacks) |
 | `CLI_API_KEY` | Optional | Shared secret for CLI / CI access |
-| `SLACK_SIGNING_SECRET` | Optional | Verifies Slack interactive component payloads |
-| `RESEND_API_KEY` | Optional | Resend key for email output |
-| `VERCEL_WEBHOOK_SECRET` | Optional | Verifies Vercel webhook signatures |
+| `SLACK_SIGNING_SECRET` | Optional | Verifies Slack interactive payloads |
+| `RESEND_API_KEY` | Optional | Email output via Resend |
+| `SENTRY_DSN` | Optional | Error capture — unhandled exceptions + block failures |
 | `CLERK_SECRET_KEY` | Optional | Enables Clerk authentication |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Optional | Clerk publishable key for the frontend |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Optional | Clerk frontend key |
 
 ---
 
 ## Deployment
 
-### Render (API + worker)
+### API + worker (Render)
 
 1. New Web Service → connect GitHub → root directory: `apps/api`
-2. Add a **PostgreSQL** database
+2. Add a **PostgreSQL** database and a **Redis** instance
 3. Add a second service (same repo, root `apps/api`, start command: `python -m app.worker`)
-4. Set environment variables
+4. Set environment variables above
 5. After first deploy: run `alembic upgrade head` via Render shell
-6. Custom domain: add CNAME `api.conductai.ai → your-service.onrender.com`
 
-### Vercel (frontend)
+### Frontend (Vercel)
 
 1. Connect GitHub repo → root directory: `apps/web`
 2. Set `NEXT_PUBLIC_API_URL=https://api.conductai.ai`
-3. Preview deployments automatically created for each PR
+3. Preview deployments created automatically for every PR
+
+---
+
+## Webhooks
+
+| Endpoint | Service | Events |
+|----------|---------|--------|
+| `POST /webhooks/vercel` | Vercel | deployment.succeeded / failed |
+| `POST /webhooks/railway` | Railway | DEPLOY_SUCCESS / FAILED / CRASHED |
+| `POST /webhooks/slack/interactions` | Slack | Approval button clicks |
+| `POST /webhooks/inbound/{workflow_id}` | Any | Generic JSON trigger |
+
+---
+
+## Security
+
+- All credentials encrypted at rest (AES-256-GCM) — decrypted only at point of use
+- Per-workspace environments — agents only access credentials you assign
+- Audit log — every credential change, workflow create/delete, and run trigger recorded (admin-only)
+- Approval gates — human confirmation before any action ships to production
+- Sentry integration — block failures captured with `run_id`, `block_id`, `workspace_id` tags
+
+---
+
+## Contributing
+
+PRs welcome. Open an issue first for anything beyond a small fix.
+
+```bash
+git clone https://github.com/sseshachala/conductai.git
+cd conductai
+docker compose up -d
+docker compose exec api alembic upgrade head
+```
 
 ---
 
 ## License
 
-MIT
+MIT — use it, fork it, build on it.
