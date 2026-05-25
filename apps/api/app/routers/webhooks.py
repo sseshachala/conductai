@@ -167,8 +167,8 @@ async def inbound_webhook(
 
     webhook_secret = trigger_node.get("data", {}).get("config", {}).get("webhook_secret", "")
     if webhook_secret:
-        sig_header = request.headers.get("X-Webhook-Signature", "")
-        expected = hmac.new(webhook_secret.encode(), body, hashlib.sha256).hexdigest()  # type: ignore[attr-defined]
+        sig_header = request.headers.get("X-Hub-Signature-256", "")
+        expected = "sha256=" + hmac.new(webhook_secret.encode(), body, hashlib.sha256).hexdigest()  # type: ignore[attr-defined]
         if not sig_header or not hmac.compare_digest(expected, sig_header):
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
