@@ -84,9 +84,8 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   const [loading, setLoading] = useState(true)
   const [activeTag, setActiveTag] = useState("all")
   const [installing, setInstalling] = useState(false)
-  const [uninstalling, setUninstalling] = useState<string | null>(null)
-  // slug → { id, workspaceId } (for uninstall)
-  const [installedMap, setInstalledMap] = useState<Map<string, { id: string; workspaceId: string }>>(new Map())
+  // slug → count of installs in this workspace
+  const [installedCount, setInstalledCount] = useState<Map<string, number>>(new Map())
 
   // Install modal state
   const [pendingSlug, setPendingSlug] = useState<string | null>(null)
@@ -126,13 +125,12 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
 
       if (wfRes.ok) {
         const workflows: { id: string; name: string; workspace_id: string }[] = await wfRes.json()
-        const nameToWf = new Map(workflows.map(w => [w.name, w]))
-        const map = new Map<string, { id: string; workspaceId: string }>()
+        const counts = new Map<string, number>()
         for (const [slug, friendlyName] of Object.entries(FRIENDLY_NAMES)) {
-          const wf = nameToWf.get(friendlyName)
-          if (wf) map.set(slug, { id: wf.id, workspaceId: wf.workspace_id })
+          const n = workflows.filter(w => w.name === friendlyName).length
+          if (n > 0) counts.set(slug, n)
         }
-        setInstalledMap(map)
+        setInstalledCount(counts)
       }
 
       setLoading(false)
@@ -236,7 +234,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
         return
       }
       const wf = await res.json()
-      setInstalledMap(prev => new Map(prev).set(pendingSlug, { id: wf.id, workspaceId: workspaceId ?? "" }))
+      setInstalledCount(prev => new Map(prev).set(pendingSlug, (prev.get(pendingSlug) ?? 0) + 1))
       if (wf.webhook_error) {
         setWebhookError(wf.webhook_error)
       } else {
@@ -245,26 +243,6 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
       }
     } finally {
       setInstalling(false)
-    }
-  }
-
-  async function uninstall(slug: string) {
-    const entry = installedMap.get(slug)
-    if (!entry) return
-    setUninstalling(slug)
-    try {
-      const headers = await authHeaders()
-      headers["X-Workspace-Id"] = entry.workspaceId
-
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${entry.id}`, {
-        method: "DELETE",
-        headers,
-      })
-      if (res.ok) {
-        setInstalledMap(prev => { const m = new Map(prev); m.delete(slug); return m })
-      }
-    } finally {
-      setUninstalling(null)
     }
   }
 
@@ -308,10 +286,8 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                 key={p.slug}
                 playbook={p}
                 installing={false}
-                installed={installedMap.has(p.slug)}
-                uninstalling={uninstalling === p.slug}
+                installCount={installedCount.get(p.slug) ?? 0}
                 onInstall={openInstallModal}
-                onUninstall={() => uninstall(p.slug)}
               />
             ))}
           </div>
@@ -467,21 +443,22 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   )
 }
 
-function PlaybookCard({ playbook, installing, installed, uninstalling, onInstall, onUninstall }: {
+function PlaybookCard({ playbook, installing, installCount, onInstall }: {
   playbook: Playbook
   installing: boolean
-  installed: boolean
-  uninstalling: boolean
+  installCount: number
   onInstall: (slug: string) => void
-  onUninstall: () => void
 }) {
   return (
-    <div className={`rounded-xl border bg-white p-5 flex flex-col gap-3 transition-colors ${
-      installed ? "border-emerald-200 bg-emerald-50/30" : "border-stone-200 hover:border-stone-300"
-    }`}>
+    <div className="rounded-xl border border-stone-200 bg-white p-5 flex flex-col gap-3 hover:border-stone-300 transition-colors">
       <div className="flex items-start justify-between gap-2">
         <span className="text-2xl leading-none">{playbook.icon}</span>
         <div className="flex flex-wrap gap-1 justify-end">
+          {installCount > 0 && (
+            <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-medium">
+              {installCount} installed
+            </span>
+          )}
           {playbook.tags.map(tag => (
             <span key={tag} className="text-[10px] bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded">
               {tag}
@@ -495,29 +472,13 @@ function PlaybookCard({ playbook, installing, installed, uninstalling, onInstall
         </p>
         <p className="text-xs text-stone-500 leading-relaxed">{playbook.description}</p>
       </div>
-
-      {installed ? (
-        <div className="mt-auto flex gap-2">
-          <div className="flex-1 rounded-lg px-3 py-2 text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 text-center">
-            ✓ Installed
-          </div>
-          <button
-            onClick={onUninstall}
-            disabled={uninstalling}
-            className="rounded-lg px-3 py-2 text-xs font-medium border border-stone-200 text-stone-400 hover:text-red-600 hover:border-red-200 disabled:opacity-40 transition-colors"
-          >
-            {uninstalling ? "Removing…" : "Remove"}
-          </button>
-        </div>
-      ) : (
-        <button
-          onClick={() => onInstall(playbook.slug)}
-          disabled={installing}
-          className="mt-auto w-full rounded-lg px-3 py-2 text-xs font-medium bg-stone-900 text-white hover:bg-stone-700 disabled:opacity-40 transition-colors"
-        >
-          {installing ? "Installing…" : "+ Install"}
-        </button>
-      )}
+      <button
+        onClick={() => onInstall(playbook.slug)}
+        disabled={installing}
+        className="mt-auto w-full rounded-lg px-3 py-2 text-xs font-medium bg-stone-900 text-white hover:bg-stone-700 disabled:opacity-40 transition-colors"
+      >
+        {installing ? "Installing…" : "+ Install"}
+      </button>
     </div>
   )
 }
