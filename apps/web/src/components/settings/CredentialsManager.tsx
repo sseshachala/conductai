@@ -179,7 +179,11 @@ function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promi
     try {
       const headers = await buildHeaders()
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/reveal/${handle}`, { headers })
-      if (res.ok) { const data = await res.json(); setRevealedValues(prev => ({ ...prev, [handle]: data })) }
+      if (res.ok) {
+        const data = await res.json()
+        setRevealedValues(prev => ({ ...prev, [handle]: data }))
+        setTimeout(() => setRevealedValues(prev => { const n = { ...prev }; delete n[handle]; return n }), 30_000)
+      }
     } finally { setRevealing(null) }
   }
 
@@ -338,9 +342,9 @@ function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promi
             {cred && revealedValues[cred.handle] && (
               <div className="px-4 pb-3 pt-2 border-t border-stone-100 bg-stone-50 rounded-b-xl space-y-1">
                 {Object.entries(revealedValues[cred.handle]).map(([k, v]) => (
-                  <div key={k} className="flex items-center gap-2">
+                  <div key={k} className="flex items-center gap-2 group">
                     <span className="text-[10px] font-medium text-stone-400 w-24 shrink-0">{k}</span>
-                    <span className="text-xs font-mono text-stone-700 break-all">{v as string}</span>
+                    <span className="text-xs font-mono text-stone-700 break-all blur-sm group-hover:blur-none transition-all select-all">{v as string}</span>
                   </div>
                 ))}
               </div>
