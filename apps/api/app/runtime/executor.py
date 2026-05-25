@@ -1038,9 +1038,12 @@ def execute_run(run_id: str):
         state: dict[str, Any] = dict(run.state or {})
 
         env_id = version.workflow.environment_id
+        workspace_id_str = version.workflow.workspace_id
+
+        # Load credentials from the workflow's environment
         if env_id:
             cred_rows = db.query(Integration).filter(
-                Integration.workspace_id == version.workflow.workspace_id,
+                Integration.workspace_id == workspace_id_str,
                 Integration.environment_id == env_id,
             ).all()
         else:
@@ -1051,6 +1054,23 @@ def execute_run(run_id: str):
             for row in cred_rows
             if row.encrypted_credentials
         }
+
+        # Fallback: merge in any missing handles from the Default environment
+        # so integrations connected globally are always available
+        if env_id:
+            from app.models.environment import Environment as _Env
+            default_env = db.query(_Env).filter(
+                _Env.workspace_id == workspace_id_str,
+                _Env.name == "Default",
+            ).first()
+            if default_env and str(default_env.id) != str(env_id):
+                fallback_rows = db.query(Integration).filter(
+                    Integration.workspace_id == workspace_id_str,
+                    Integration.environment_id == default_env.id,
+                ).all()
+                for row in fallback_rows:
+                    if row.handle not in credentials and row.encrypted_credentials:
+                        credentials[row.handle] = decrypt(row.encrypted_credentials)
 
         failed = False
         fail_error = ""
