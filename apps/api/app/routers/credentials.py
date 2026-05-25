@@ -70,11 +70,6 @@ def upsert_credential(body: CredentialUpsert, db: Session = Depends(get_db), wor
     if not body.credentials:
         raise HTTPException(status_code=422, detail="credentials dict must not be empty")
 
-    existing = db.query(Integration).filter(
-        Integration.workspace_id == workspace_id,
-        Integration.handle == body.handle,
-    ).first()
-
     auth_method = "api_key" if "api_key" in body.credentials else "oauth"
 
     # Resolve environment: explicit ID > Default environment > error
@@ -93,6 +88,14 @@ def upsert_credential(body: CredentialUpsert, db: Session = Depends(get_db), wor
                 detail="No Default environment found. Create an environment first in Settings → Environments.",
             )
         env_id = str(default_env.id)
+
+    # Upsert keyed on (workspace, handle, environment) — same handle can exist
+    # in multiple environments since the constraint changed in migration 0015.
+    existing = db.query(Integration).filter(
+        Integration.workspace_id == workspace_id,
+        Integration.handle == body.handle,
+        Integration.environment_id == env_id,
+    ).first()
 
     if existing:
         existing.service = body.service

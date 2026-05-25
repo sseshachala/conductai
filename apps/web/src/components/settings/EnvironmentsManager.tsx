@@ -346,7 +346,7 @@ function EnvironmentDetail({
         headers,
         body: JSON.stringify({
           service: svc.value,
-          handle: `${svc.value}_${environment.name.toLowerCase().replace(/\s+/g, "_")}`,
+          handle: svc.value,
           credentials: credObj,
           environment_id: environment.id,
         }),
