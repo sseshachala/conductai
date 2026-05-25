@@ -173,6 +173,109 @@ def list_credentials_by_environment(
 
 
 # ---------------------------------------------------------------------------
+# Flat key-value env-var interface (admin only)
+# Maps between standard env var names and internal (handle, field) storage.
+# ---------------------------------------------------------------------------
+
+# Standard env var name → (handle, field)
+_ENV_VAR_MAP: dict[str, tuple[str, str]] = {
+    "GITHUB_TOKEN":       ("github",       "token"),
+    "GITHUB_PAT":         ("github",       "token"),
+    "SLACK_TOKEN":        ("slack",        "token"),
+    "SLACK_BOT_TOKEN":    ("slack",        "token"),
+    "LINEAR_API_KEY":     ("linear",       "api_key"),
+    "DIGITALOCEAN_TOKEN": ("digitalocean", "token"),
+    "DO_TOKEN":           ("digitalocean", "token"),
+    "VERCEL_TOKEN":       ("vercel",       "token"),
+    "ANTHROPIC_API_KEY":  ("anthropic",    "api_key"),
+    "RESEND_API_KEY":     ("email",        "resend_api_key"),
+    "SENDGRID_API_KEY":   ("email",        "sendgrid_api_key"),
+}
+# Reverse: (handle, field) → canonical env var name
+_ENV_VAR_REVERSE: dict[tuple[str, str], str] = {v: k for k, v in _ENV_VAR_MAP.items() if k == k.upper()}
+
+
+@router.get("/env-vars/{env_id}")
+def list_env_vars(
+    env_id: str,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin")),
+):
+    """Return all credentials for an environment as flat key-value pairs."""
+    rows = db.query(Integration).filter(
+        Integration.workspace_id == workspace_id,
+        Integration.environment_id == env_id,
+    ).order_by(Integration.created_at).all()
+
+    result = []
+    for row in rows:
+        if not row.encrypted_credentials:
+            continue
+        creds = decrypt(row.encrypted_credentials)
+        for field, value in creds.items():
+            key = _ENV_VAR_REVERSE.get((row.handle, field)) or f"{row.handle.upper()}_{field.upper()}"
+            result.append({"key": key, "value": value, "handle": row.handle, "field": field})
+    return result
+
+
+class EnvVarUpsert(BaseModel):
+    key: str
+    value: str
+
+
+@router.put("/env-vars/{env_id}", status_code=200)
+def save_env_vars(
+    env_id: str,
+    body: list[EnvVarUpsert],
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin")),
+):
+    """Save a full list of env vars for an environment — groups by handle and upserts."""
+    from app.models.environment import Environment as _Env
+    env = db.query(_Env).filter(_Env.id == env_id, _Env.workspace_id == workspace_id).first()
+    if not env:
+        raise HTTPException(status_code=404, detail="Environment not found")
+
+    # Group by handle, merging fields
+    grouped: dict[str, dict[str, str]] = {}
+    for item in body:
+        handle, field = _ENV_VAR_MAP.get(item.key, ("env_vars", item.key.lower()))
+        grouped.setdefault(handle, {})[field] = item.value
+
+    for handle, creds in grouped.items():
+        existing = db.query(Integration).filter(
+            Integration.workspace_id == workspace_id,
+            Integration.handle == handle,
+            Integration.environment_id == env_id,
+        ).first()
+        if existing:
+            existing.encrypted_credentials = encrypt(creds)
+        else:
+            db.add(Integration(
+                workspace_id=workspace_id,
+                service=handle,
+                handle=handle,
+                auth_method="api_key",
+                encrypted_credentials=encrypt(creds),
+                environment_id=env_id,
+            ))
+
+    # Remove handles that were deleted (not present in new list)
+    new_handles = set(grouped.keys())
+    for row in db.query(Integration).filter(
+        Integration.workspace_id == workspace_id,
+        Integration.environment_id == env_id,
+    ).all():
+        if row.handle not in new_handles:
+            db.delete(row)
+
+    db.commit()
+    return {"saved": len(body)}
+
+
+# ---------------------------------------------------------------------------
 # Reveal — decrypt and return credential values (admin only)
 # ---------------------------------------------------------------------------
 
