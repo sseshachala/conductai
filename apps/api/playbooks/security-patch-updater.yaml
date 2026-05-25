@@ -1,0 +1,120 @@
+name: Security Patch Updater
+version: 1
+description: >
+  Triggered by a Dependabot alert webhook or a GitHub security advisory event.
+  Automatically applies the security patch, runs tests, and opens a PR with a
+  clear CVE reference — no waiting for the weekly cron cycle.
+
+  Setup:
+  1. Go to your repo → Settings → Webhooks → Add webhook
+  2. Payload URL: https://<your-api>/webhooks/inbound/<this-workflow-id>
+  3. Content type: application/json
+  4. Events: select "Dependabot alerts" and/or "Repository vulnerability alerts"
+
+  Can also be triggered manually:
+    curl -X POST <webhook-url> \
+      -H "Content-Type: application/json" \
+      -d '{"repo":"owner/repo","clone_url":"https://github.com/owner/repo.git","default_branch":"main","advisory":{"package":"lodash","severity":"high","cve":"CVE-2021-23337","patched_versions":">=4.17.21"}}'
+
+inputs:
+  model:
+    label: AI Model
+    default: claude-haiku-4-5-20251001
+    type: select
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+  auto_merge_low:
+    label: Auto-open PR for low/medium severity (no approval gate)
+    default: "yes"
+    type: select
+    options:
+      - "yes"
+      - "no"
+
+on:
+  webhook:
+    next: assess_and_patch
+
+blocks:
+  assess_and_patch:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    label: Assess CVE and apply security patch
+    description: |
+      You are a security-focused engineer responding to a vulnerability alert.
+
+      Trigger payload: {{_trigger}}
+
+      Extract from the payload (Dependabot or manual format):
+      - repo: {{_trigger.repository.full_name}} OR {{_trigger.repo}}
+      - clone_url: {{_trigger.repository.clone_url}} OR {{_trigger.clone_url}}
+      - default_branch: {{_trigger.repository.default_branch}} OR {{_trigger.default_branch}} (fallback "main")
+      - package: {{_trigger.alert.dependency.package.name}} OR {{_trigger.advisory.package}}
+      - severity: {{_trigger.alert.severity}} OR {{_trigger.advisory.severity}} (low/medium/high/critical)
+      - cve: {{_trigger.alert.security_advisory.cve_id}} OR {{_trigger.advisory.cve}}
+      - patched_version: {{_trigger.alert.security_advisory.references[0]}} OR {{_trigger.advisory.patched_versions}}
+      - summary: {{_trigger.alert.security_advisory.summary}} OR {{_trigger.advisory.description}}
+
+      Steps:
+
+      1. Clone the repository:
+         git clone --depth 1 <clone_url> /tmp/sec_patch_repo
+         cd /tmp/sec_patch_repo
+
+      2. Confirm the vulnerable package is present:
+         - Node.js: check package.json and package-lock.json
+         - Python: check requirements.txt, pyproject.toml, or Pipfile
+         - Go: check go.mod
+         If the package is NOT present, output:
+           {"pr_url": null, "patched": false, "severity": "<severity>", "cve": "<cve>", "message": "Package not found in this repo — alert may be a false positive."}
+         and stop.
+
+      3. Apply the security patch (patch version only — never change major/minor unless the fix requires it):
+         Node.js: npm install <package>@<patched_version>
+         Python:  pip install "<package>==<patched_version>" && pip freeze > requirements.txt
+         Go:      go get <package>@<patched_version> && go mod tidy
+
+      4. Run tests (non-blocking — note failure but continue):
+         Node.js: npm test --if-present
+         Python:  pytest --tb=short -q 2>&1 | tail -20 || true
+         Go:      go test ./... 2>&1 | tail -20 || true
+
+      5. Create branch and commit:
+         git checkout -b security/patch-<package>-<cve or date>
+         git add .
+         git commit -m "security: patch <package> for <cve> (<severity> severity)
+
+         <summary of the vulnerability>
+         Patched to: <patched_version>"
+
+      6. Push and open PR:
+         git push origin security/patch-<package>-<cve or date>
+
+         POST https://api.github.com/repos/<repo>/pulls
+         Headers: Authorization: token <github_token>
+         Body:
+         {
+           "title": "security: patch <package> (<cve>, <severity>)",
+           "head": "security/patch-<package>-<cve or date>",
+           "base": "<default_branch>",
+           "body": "## Security Patch\n\n**Package:** <package>\n**CVE:** <cve>\n**Severity:** <severity>\n**Patched to:** <patched_version>\n\n### Vulnerability summary\n<summary>\n\n---\n*Automated security patch by Conduct AI. Review the diff and merge when CI is green.*"
+         }
+
+      Output ONLY the following JSON on the last line:
+        {"pr_url": "<full PR URL>", "patched": true, "severity": "<severity>", "cve": "<cve>", "tests_passed": true|false, "message": null}
+
+      On any failure:
+        {"pr_url": null, "patched": false, "severity": "<severity>", "cve": "<cve>", "tests_passed": false, "message": "<error>"}
+    next: notify_security_patch
+
+  notify_security_patch:
+    type: output
+    label: Notify security patch PR
+    description: "Security patch opened for {{assess_and_patch.cve}} ({{assess_and_patch.severity}}). PR: {{assess_and_patch.pr_url}}"
+    output:
+      via: slack
+      slack:
+        channel: "#security"

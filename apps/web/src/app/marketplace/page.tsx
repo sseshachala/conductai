@@ -47,6 +47,7 @@ const GITHUB_WEBHOOK_SLUGS = new Set([
   "pr_reviewer", "copilot_reviewer", "issue_triage",
   "ci_notify", "release_notes", "security_scanner",
   "autopilot_quick", "autopilot_full", "autopilot_approved",
+  "security_patch_updater",
 ])
 
 // Playbooks that need manual webhook setup (show instructions instead)
