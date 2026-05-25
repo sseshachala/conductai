@@ -101,6 +101,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   const [reposLoading, setReposLoading] = useState(false)
   const [webhookError, setWebhookError] = useState<string | null>(null)
   const [lastInstalledId, setLastInstalledId] = useState<string | null>(null)
+  const [conflictWarning, setConflictWarning] = useState<string | null>(null)
 
   async function authHeaders(): Promise<Record<string, string>> {
     const headers: Record<string, string> = {}
@@ -203,7 +204,29 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
     setRepos([])
     setSelectedRepo("")
     setWebhookError(null)
+    setConflictWarning(null)
   }
+
+  useEffect(() => {
+    if (!pendingSlug || !selectedRepo) { setConflictWarning(null); return }
+    authHeaders().then(async headers => {
+      const workspaceId = getWorkspaceId()
+      if (workspaceId) headers["X-Workspace-Id"] = workspaceId
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/workflows/conflict-check?template=${pendingSlug}&repo=${encodeURIComponent(selectedRepo)}`,
+        { headers }
+      )
+      if (res.ok) {
+        const data = await res.json()
+        if (data.conflicts.length > 0) {
+          setConflictWarning(`This playbook is already watching ${selectedRepo} (${data.conflicts.length} agent${data.conflicts.length > 1 ? "s" : ""}). Use a different trigger label to avoid both firing on the same issue.`)
+        } else {
+          setConflictWarning(null)
+        }
+      }
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRepo, pendingSlug])
 
   async function confirmInstall() {
     if (!pendingSlug) return
@@ -410,6 +433,13 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                   After installing, copy the webhook URL from the workflow settings and paste it into your{" "}
                   {pendingSlug === "incident_responder" ? "PagerDuty or OpsGenie" : "GitHub Actions"} configuration.
                 </p>
+              </div>
+            )}
+
+            {conflictWarning && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-3 flex gap-2">
+                <span className="text-amber-500 text-sm">⚠️</span>
+                <p className="text-xs text-amber-700 leading-relaxed">{conflictWarning}</p>
               </div>
             )}
 
