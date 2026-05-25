@@ -34,7 +34,7 @@ import { type BlockType } from "@/lib/block-types"
 
 const nodeTypes = { block: BlockNode }
 
-type SaveStatus = "idle" | "saving" | "saved"
+type SaveStatus = "idle" | "saving" | "saved" | "error"
 
 interface ValidationError {
   blockId: string
@@ -756,9 +756,10 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
           <span className={`text-xs transition-opacity duration-300 ${
             saveStatus === "saving" ? "text-amber-500 opacity-100" :
             saveStatus === "saved"  ? "text-green-500 opacity-100" :
+            saveStatus === "error"  ? "text-red-500 opacity-100" :
             "opacity-0"
           }`}>
-            {saveStatus === "saving" ? "Saving…" : "Saved ✓"}
+            {saveStatus === "saving" ? "Saving…" : saveStatus === "error" ? "Save failed" : "Saved ✓"}
           </span>
           <CostEstimate workflowId={workflowId} nodes={nodes} getToken={getToken} />
           <a
