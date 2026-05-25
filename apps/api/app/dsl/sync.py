@@ -19,7 +19,7 @@ versioned by git, reviewed in PRs.
 from __future__ import annotations
 
 import hashlib
-import logging
+import structlog
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -31,7 +31,7 @@ from app.models.integration import Integration
 from app.models.workflow import Workflow, WorkflowVersion
 from app.runtime.integrations import github
 
-log = logging.getLogger(__name__)
+log = structlog.get_logger(__name__)
 
 
 class SyncError(Exception):
