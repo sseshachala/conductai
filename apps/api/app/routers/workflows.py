@@ -645,30 +645,18 @@ class PreflightRequest(BaseModel):
     issue_body: str = ""
 
 
-@router.post("/{workflow_id}/preflight")
-def preflight_workflow(
-    workflow_id: UUID,
-    body: PreflightRequest,
-    db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor")),
-):
+def _estimate_turns_for_graph(graph: dict, issue_title: str = "", issue_body: str = "") -> dict:
     """
-    Estimate the turn budget needed before starting a run.
-    Makes a single cheap Claude call per agentic brain block — no tools, pure reasoning.
-    Returns suggested_max_turns and a per-block breakdown.
+    Core turn-budget estimation logic — shared between the preflight HTTP endpoint
+    and server-side webhook queueing.
+
+    Makes one cheap Haiku call per agentic brain block and returns:
+      { suggested_max_turns, blocks, total_files }
+    Falls back to defaults on any error so callers are never blocked.
     """
+    import anthropic, json, re
     from app.core.config import settings
-    import anthropic
 
-    workflow = db.query(Workflow).filter(
-        Workflow.id == workflow_id,
-        Workflow.workspace_id == workspace_id,
-    ).first()
-    if not workflow or not workflow.current_version:
-        raise HTTPException(status_code=404, detail="Workflow not found")
-
-    graph = workflow.current_version.graph or {}
     nodes = graph.get("nodes", [])
     brain_blocks = [
         n for n in nodes
@@ -690,8 +678,8 @@ def preflight_workflow(
 
         prompt = (
             f"You are estimating work for an AI coding agent.\n\n"
-            f"Issue title: {body.issue_title}\n"
-            f"Issue body: {body.issue_body}\n\n"
+            f"Issue title: {issue_title}\n"
+            f"Issue body: {issue_body}\n\n"
             f"Brain block task:\n{description}\n\n"
             f"Estimate: how many tool calls (shell commands, file reads, file writes) "
             f"will this block need to complete this task?\n"
@@ -705,9 +693,7 @@ def preflight_workflow(
                 max_tokens=256,
                 messages=[{"role": "user", "content": prompt}],
             )
-            import json, re
             text = resp.content[0].text.strip()
-            # extract JSON even if wrapped in markdown
             m = re.search(r"\{.*\}", text, re.DOTALL)
             parsed = json.loads(m.group()) if m else {}
             est = int(parsed.get("estimated_turns", 20))
@@ -726,14 +712,37 @@ def preflight_workflow(
         all_files.extend(files)
 
     total = sum(b["estimated_turns"] for b in block_estimates)
-    # add 5 turns buffer for commit/push/PR steps
     suggested = max(total + 5, 20)
 
     return {
         "suggested_max_turns": suggested,
         "blocks": block_estimates,
-        "total_files": list(dict.fromkeys(all_files)),  # deduplicated
+        "total_files": list(dict.fromkeys(all_files)),
     }
+
+
+@router.post("/{workflow_id}/preflight")
+def preflight_workflow(
+    workflow_id: UUID,
+    body: PreflightRequest,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor")),
+):
+    """
+    Estimate the turn budget needed before starting a run.
+    Makes a single cheap Claude call per agentic brain block — no tools, pure reasoning.
+    Returns suggested_max_turns and a per-block breakdown.
+    """
+    workflow = db.query(Workflow).filter(
+        Workflow.id == workflow_id,
+        Workflow.workspace_id == workspace_id,
+    ).first()
+    if not workflow or not workflow.current_version:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    graph = workflow.current_version.graph or {}
+    return _estimate_turns_for_graph(graph, body.issue_title, body.issue_body)
 
 
 @router.post("/{workflow_id}/validate")

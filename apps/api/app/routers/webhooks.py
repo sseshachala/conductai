@@ -211,17 +211,43 @@ async def inbound_webhook(
         if not sig_header or not hmac.compare_digest(expected, sig_header):
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
+    # Estimate turn budget from the trigger payload so webhook runs are guarded
+    # the same way manual runs are when the preflight banner is accepted.
+    from app.routers.workflows import _estimate_turns_for_graph
+    issue_title = (
+        payload.get("issue", {}).get("title")
+        or payload.get("pull_request", {}).get("title")
+        or ""
+    )
+    issue_body = (
+        payload.get("issue", {}).get("body")
+        or payload.get("pull_request", {}).get("body")
+        or ""
+    )
+    try:
+        graph = version.graph or {}
+        pf = _estimate_turns_for_graph(graph, issue_title, issue_body)
+        suggested_turns = pf["suggested_max_turns"]
+    except Exception:
+        suggested_turns = 20
+
+    initial_state = {
+        "_trigger": payload,
+        "__triggered_by": "webhook:inbound",
+        "__max_turns": suggested_turns,
+    }
     run = Run(
         workflow_version_id=version.id,
         triggered_by="webhook:inbound",
         status="pending",
-        state={"_trigger": payload, "__triggered_by": "webhook:inbound"},
+        state=initial_state,
+        max_turns=suggested_turns,
     )
     db.add(run)
     db.flush()
     db.commit()
     _redis().rpush(QUEUE_KEY, str(run.id))
-    log.info("Inbound webhook triggered run %s for workflow %s", run.id, workflow_id)
+    log.info("Inbound webhook triggered run %s for workflow %s (max_turns=%s)", run.id, workflow_id, suggested_turns)
     return {"ok": True}
 
 
