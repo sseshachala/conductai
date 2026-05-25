@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
@@ -81,6 +81,8 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
   const urlProjectId = searchParams.get("project_id") ?? ""
 
   const [template, setTemplate]           = useState("autopilot_quick")
+  const [templateOpen, setTemplateOpen]   = useState(false)
+  const templateRef                        = useRef<HTMLDivElement>(null)
   const [agentName, setAgentName]         = useState(FRIENDLY_NAMES["autopilot_quick"])
   const [projects, setProjects]           = useState<Project[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState(urlProjectId)
@@ -108,6 +110,15 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
     if (ws) h["X-Workspace-Id"] = ws
     return h
   }, [getToken])
+
+  // Close template dropdown on outside click
+  useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (templateRef.current && !templateRef.current.contains(e.target as Node)) setTemplateOpen(false)
+    }
+    document.addEventListener("mousedown", handle)
+    return () => document.removeEventListener("mousedown", handle)
+  }, [])
 
   // Bootstrap: load projects + environments once
   useEffect(() => {
@@ -238,31 +249,54 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
 
         <div className="flex flex-col gap-5">
 
-          {/* Template picker */}
-          <div className="flex flex-col gap-2">
+          {/* Template picker — rich dropdown */}
+          <div className="flex flex-col gap-1.5" ref={templateRef}>
             <label className="text-xs font-medium text-stone-500">Playbook</label>
-            <div className="grid grid-cols-2 gap-2">
-              {TEMPLATES.map(t => (
-                <button
-                  key={t.id}
-                  onClick={() => setTemplate(t.id)}
-                  className={`text-left rounded-xl border p-3 transition-all ${
-                    template === t.id
-                      ? "border-stone-900 bg-white shadow-sm ring-1 ring-stone-900"
-                      : "border-stone-200 bg-white hover:border-stone-300"
-                  }`}
-                >
-                  <p className={`text-xs font-medium mb-0.5 ${template === t.id ? "text-stone-900" : "text-stone-700"}`}>{t.label}</p>
-                  <p className="text-[10px] text-stone-400 leading-relaxed">{t.description}</p>
-                  {t.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1.5">
-                      {t.tags.map(tag => (
-                        <span key={tag} className="text-[10px] bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded">{tag}</span>
-                      ))}
-                    </div>
-                  )}
-                </button>
-              ))}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setTemplateOpen(o => !o)}
+                className="w-full flex items-center justify-between rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400 hover:border-stone-300 transition-colors"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-medium truncate">{TEMPLATES.find(t => t.id === template)?.label}</span>
+                  <span className="text-stone-300">·</span>
+                  <span className="text-xs text-stone-400 truncate">{TEMPLATES.find(t => t.id === template)?.description}</span>
+                </div>
+                <svg className={`w-4 h-4 text-stone-400 shrink-0 ml-2 transition-transform ${templateOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {templateOpen && (
+                <div className="absolute z-20 mt-1 w-full rounded-xl border border-stone-200 bg-white shadow-lg overflow-hidden">
+                  {TEMPLATES.map(t => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => { setTemplate(t.id); setTemplateOpen(false) }}
+                      className={`w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-stone-50 transition-colors border-b border-stone-100 last:border-0 ${template === t.id ? "bg-stone-50" : ""}`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-sm font-medium ${template === t.id ? "text-stone-900" : "text-stone-700"}`}>{t.label}</span>
+                          <div className="flex gap-1">
+                            {t.tags.map(tag => (
+                              <span key={tag} className="text-[10px] bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded">{tag}</span>
+                            ))}
+                          </div>
+                        </div>
+                        <p className="text-xs text-stone-400 mt-0.5">{t.description}</p>
+                      </div>
+                      {template === t.id && (
+                        <svg className="w-4 h-4 text-stone-900 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
