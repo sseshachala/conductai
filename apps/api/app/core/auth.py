@@ -268,6 +268,39 @@ def get_user_workspace_role(
     return row.role
 
 
+def audit(
+    db,
+    workspace_id: str,
+    action: str,
+    *,
+    actor_id: str | None = None,
+    actor_email: str | None = None,
+    actor_role: str | None = None,
+    resource_type: str | None = None,
+    resource_id: str | None = None,
+    metadata: dict | None = None,
+) -> None:
+    """Write one audit_log row. Fire-and-forget — never raises."""
+    try:
+        from app.models.audit_log import AuditLog
+        db.add(AuditLog(
+            workspace_id=workspace_id,
+            actor_id=actor_id,
+            actor_email=actor_email,
+            actor_role=actor_role,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            metadata=metadata,
+        ))
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
 def require_workspace_role(*allowed_roles: str):
     """
     Dependency factory that enforces minimum role for an endpoint.

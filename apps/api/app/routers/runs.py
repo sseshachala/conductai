@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
-from app.core.auth import get_workspace_id, require_workspace_role, _verify_clerk_token, _clerk_enabled, DEV_WORKSPACE_ID, DEV_USER_ID
+from app.core.auth import get_workspace_id, require_workspace_role, audit, _verify_clerk_token, _clerk_enabled, DEV_WORKSPACE_ID, DEV_USER_ID
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.run import Run, RunEvent
@@ -219,6 +219,10 @@ def create_run(
     db.refresh(run)
 
     _redis().rpush(QUEUE_KEY, str(run.id))
+
+    audit(db, workspace_id, "run.triggered",
+          resource_type="run", resource_id=str(run.id),
+          metadata={"workflow_id": str(workflow_id), "dry_run": body.dry_run})
 
     return run
 
