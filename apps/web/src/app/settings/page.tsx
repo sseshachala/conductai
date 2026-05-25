@@ -44,21 +44,30 @@ function SettingsPageWithAuth() {
 function SettingsPageInner({ isAdmin }: { isAdmin: boolean }) {
   const tabs = (["environments", ...(isAdmin ? ["members"] : [])] as Tab[])
   const [activeTab, setActiveTab] = useState<Tab>("environments")
+  const [showTip, setShowTip] = useState(true)
 
   return (
     <AppShell>
+      {showTip && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-sm w-full rounded-xl bg-amber-50 border border-amber-200 shadow-lg px-4 py-3 flex items-start gap-3">
+          <span className="text-amber-500 text-base leading-none mt-0.5 shrink-0">⚠</span>
+          <p className="text-sm text-amber-800 leading-relaxed flex-1">
+            <span className="font-semibold">Add credentials before running agents.</span>{" "}
+            Create an environment (e.g. "Production"), add your GitHub and Slack tokens inside it, then assign the environment to your agent on the canvas.
+          </p>
+          <button
+            onClick={() => setShowTip(false)}
+            className="shrink-0 text-amber-400 hover:text-amber-700 transition-colors ml-1 text-base leading-none"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       <div className="mx-auto max-w-3xl px-6 py-10">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-semibold text-stone-900">Settings</h1>
           <span className="text-xs text-stone-400">Tokens encrypted at rest</span>
-        </div>
-
-        <div className="mb-6 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 flex items-start gap-3">
-          <span className="text-amber-500 text-base leading-none mt-0.5">⚠</span>
-          <p className="text-sm text-amber-800 leading-relaxed">
-            <span className="font-semibold">Add credentials before running agents.</span>{" "}
-            Create an environment (e.g. "Production"), add your GitHub and Slack tokens inside it, then assign the environment to your agent on the canvas.
-          </p>
         </div>
 
         <div className="flex bg-stone-100 rounded-lg p-1 mb-6 w-fit">
