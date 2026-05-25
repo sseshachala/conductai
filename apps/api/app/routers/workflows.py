@@ -246,23 +246,63 @@ def get_playbook(slug: str):
 def conflict_check(
     template: str,
     repo: str,
+    trigger_label: str = "",
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
     _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
 ):
-    """Return any existing agents in this workspace that watch the same template+repo."""
-    friendly_name = FRIENDLY_NAMES_SERVER.get(template)
-    conflicts = db.query(Workflow).filter(
+    """
+    Check for conflicts when installing a playbook on a repo.
+
+    Conflict rules:
+    - ISSUES_LABELED templates (autopilot variants): conflict = same repo + same label
+      → 3 agents on same repo with different labels is valid
+    - PULL_REQUEST templates (pr-reviewer, security-scanner, copilot-reviewer): never conflict
+      → they complement each other, all run independently on PR open
+    - SINGLE_TRIGGER templates (issue-triage, ci-notify, release-notes): conflict = same repo
+      → only one instance makes sense
+    """
+    # Pull-request playbooks never conflict — they complement each other
+    _PR_TEMPLATES = {"pr_reviewer", "copilot_reviewer", "security_scanner"}
+    if template in _PR_TEMPLATES:
+        return {"conflicts": [], "conflict_type": None}
+
+    # Issues-labeled playbooks: conflict only on same label
+    _ISSUES_LABELED = {"autopilot_quick", "autopilot_full", "autopilot_approved", "ai_ready"}
+
+    existing = db.query(Workflow).filter(
         Workflow.workspace_id == workspace_id,
         Workflow.github_hook_repo == repo,
-        Workflow.name == friendly_name,
-    ).all() if friendly_name else []
-    return {
-        "conflicts": [
-            {"id": str(w.id), "name": w.name}
-            for w in conflicts
-        ]
-    }
+    ).all()
+
+    conflicts = []
+    for wf in existing:
+        if not wf.current_version:
+            continue
+        nodes = (wf.current_version.graph or {}).get("nodes", [])
+        trigger = next((n for n in nodes if n.get("data", {}).get("type") == "trigger"), None)
+        if not trigger:
+            continue
+        cfg = trigger.get("data", {}).get("config", {})
+
+        if template in _ISSUES_LABELED:
+            # Only conflict if the existing agent watches the same label
+            existing_labels = cfg.get("labels", [])
+            if trigger_label and trigger_label in existing_labels:
+                conflicts.append({"id": str(wf.id), "name": wf.name, "label": trigger_label})
+        else:
+            # Single-trigger templates: conflict if same event type on same repo
+            existing_event = cfg.get("event_type", "")
+            new_event = {
+                "issue_triage": "github_issues",
+                "ci_notify": "workflow_run",
+                "release_notes": "create",
+            }.get(template, "")
+            if new_event and existing_event == new_event:
+                conflicts.append({"id": str(wf.id), "name": wf.name, "label": None})
+
+    conflict_type = "label" if template in _ISSUES_LABELED else "duplicate"
+    return {"conflicts": conflicts, "conflict_type": conflict_type if conflicts else None}
 
 
 @router.post("", response_model=WorkflowDetailOut, status_code=201)
