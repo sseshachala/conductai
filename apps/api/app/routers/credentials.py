@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, require_workspace_role
+from app.core.auth import get_workspace_id, require_workspace_role, audit
 from app.core.crypto import decrypt, encrypt
 from app.core.database import get_db
 from app.models.integration import Integration
@@ -114,6 +114,9 @@ def upsert_credential(body: CredentialUpsert, db: Session = Depends(get_db), wor
         db.add(row)
 
     db.commit()
+    audit(db, workspace_id, "credential.upserted",
+          resource_type="credential", resource_id=body.handle,
+          metadata={"service": body.service, "handle": body.handle})
     return {"handle": body.handle, "service": body.service, "saved": True}
 
 
@@ -140,8 +143,12 @@ def delete_credential(handle: str, db: Session = Depends(get_db), workspace_id: 
                 detail=f"This credential's environment is used by {len(agents)} agent(s): {names}. Remove the environment from those agents first.",
             )
 
+    service = row.service
     db.delete(row)
     db.commit()
+    audit(db, workspace_id, "credential.deleted",
+          resource_type="credential", resource_id=handle,
+          metadata={"service": service, "handle": handle})
 
 
 # ---------------------------------------------------------------------------
