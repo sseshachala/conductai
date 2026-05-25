@@ -147,7 +147,7 @@ class Block(BaseModel):
     # or    next: { pass: push_pr, fail: notify_failure }
     next: Union[str, dict[str, str]] | None = None
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")  # ignore unknown keys e.g. `credentials` in YAML
 
     # ----- per-type validation ---------------------------------------------
     @model_validator(mode="after")
