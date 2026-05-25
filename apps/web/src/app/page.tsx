@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import { useAuth, SignInButton } from "@clerk/nextjs"
+import BlogSection from "@/components/BlogSection"
 
 export default function Home() {
   return <LandingPage />
@@ -438,41 +439,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
       </section>
 
       {/* Blog */}
-      <section className="px-6 py-20 border-t border-stone-100">
-        <div className="max-w-5xl mx-auto">
-          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">From the blog</p>
-          <h2 className="text-2xl font-bold text-stone-900 text-center mb-10">Thinking out loud on AI + engineering</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {BLOG_POSTS.map(post => (
-              <a
-                key={post.slug}
-                href={`https://narratr.ai/blog/conductai/${post.slug}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group bg-white rounded-2xl border border-stone-200 p-6 flex flex-col gap-3 hover:border-stone-300 hover:shadow-sm transition-all"
-              >
-                <div className="flex items-center justify-between">
-                  <span className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full ${post.tagColor}`}>{post.tag}</span>
-                  <span className="text-[11px] text-stone-400">{post.date}</span>
-                </div>
-                <p className="font-semibold text-stone-900 text-sm leading-snug group-hover:text-indigo-600 transition-colors">{post.title}</p>
-                <p className="text-xs text-stone-500 leading-relaxed flex-1">{post.excerpt}</p>
-                <span className="text-xs font-medium text-indigo-600 group-hover:underline mt-auto">Read on Narratr →</span>
-              </a>
-            ))}
-          </div>
-          <div className="text-center mt-8">
-            <a
-              href="https://narratr.ai/blog/conductai"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-6 py-3 text-sm font-medium text-stone-700 hover:border-stone-300 hover:shadow-sm transition-all"
-            >
-              View all posts →
-            </a>
-          </div>
-        </div>
-      </section>
+      <BlogSection />
 
       {/* CLI section */}
       <section className="border-t border-stone-100 py-16 px-6">
@@ -743,24 +710,6 @@ const VAULT_SECURITY = [
 
 const INTEGRATIONS = ["GitHub", "GitLab", "Bitbucket", "Slack", "Linear", "PagerDuty", "OpsGenie", "Vercel", "DigitalOcean", "Email / Resend", "Modal", "Any webhook"]
 
-const BLOG_POSTS = [
-  {
-    slug: "saving-60-90-on-ai-coding-tokens-with-one-cli-tool-rtk",
-    title: "Saving 60–90% on AI coding tokens with one CLI tool — rtk",
-    excerpt: "rtk sits as a hook between your IDE and the shell, filtering noise out of command output before the model receives context. Real savings, measured.",
-    date: "May 23, 2026",
-    tag: "Engineering",
-    tagColor: "bg-blue-100 text-blue-700",
-  },
-  {
-    slug: "your-code-is-the-new-factory-floor-don-t-outsource-it-to-china",
-    title: "Your Code Is the New Factory Floor — Don't Outsource It to China",
-    excerpt: "Your source code, your business logic, your API keys, your architecture decisions — where do they go when you hit Enter? A technical and cultural case for AI data sovereignty.",
-    date: "May 23, 2026",
-    tag: "Opinion",
-    tagColor: "bg-amber-100 text-amber-700",
-  },
-]
 
 const FAQ = [
   {
