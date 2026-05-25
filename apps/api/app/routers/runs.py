@@ -134,6 +134,20 @@ def _get_workflow(workflow_id: UUID, workspace_id: str, db: Session) -> Workflow
     return workflow
 
 
+def _get_run(run_id: UUID, workflow_id: UUID, db: Session) -> Run:
+    """Fetch run and verify it belongs to the given workflow (prevents cross-tenant access)."""
+    version_ids = db.query(WorkflowVersion.id).filter(
+        WorkflowVersion.workflow_id == workflow_id
+    ).subquery()
+    run = db.query(Run).filter(
+        Run.id == run_id,
+        Run.workflow_version_id.in_(version_ids),
+    ).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return run
+
+
 @router.get("", response_model=list[RunOut])
 def list_runs(
     workflow_id: UUID,
@@ -230,9 +244,7 @@ def stream_run_events(
 ):
     """SSE stream of run_events driven by Redis pub/sub — one DB query per notification."""
     _get_workflow(workflow_id, workspace_id, db)
-    run = db.query(Run).filter(Run.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+    run = _get_run(run_id, workflow_id, db)
 
     def event_generator():
         from app.core.database import SessionLocal
@@ -311,9 +323,7 @@ def cancel_run(
 ):
     """Mark a running or pending run as cancelled. The worker will abort on next check."""
     _get_workflow(workflow_id, workspace_id, db)
-    run = db.query(Run).filter(Run.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+    run = _get_run(run_id, workflow_id, db)
     if run.status not in ("running", "pending"):
         raise HTTPException(status_code=400, detail=f"Run cannot be cancelled (status: {run.status})")
     run.status = "cancelled"
@@ -340,10 +350,7 @@ def approve_run(
         raise HTTPException(status_code=422, detail="decision must be 'approved' or 'rejected'")
 
     _get_workflow(workflow_id, workspace_id, db)
-
-    run = db.query(Run).filter(Run.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+    run = _get_run(run_id, workflow_id, db)
     if run.status != "paused":
         raise HTTPException(status_code=400, detail=f"Run is not paused (status: {run.status})")
 

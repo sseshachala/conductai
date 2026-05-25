@@ -29,6 +29,11 @@ class ProjectCreate(BaseModel):
     name: str
 
 
+def _enforce_workspace(path_id: str, active_id: str) -> None:
+    if path_id != active_id:
+        raise HTTPException(status_code=403, detail="Project not found")
+
+
 @router.get("", response_model=list[ProjectOut])
 def list_projects(
     workspace_id: str,
@@ -37,6 +42,7 @@ def list_projects(
     _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
     db: Session = Depends(get_db),
 ):
+    _enforce_workspace(workspace_id, active_workspace_id)
     rows = db.execute(text("""
         SELECT p.id, p.workspace_id, p.name, p.created_at,
                COUNT(w.id) AS agent_count
@@ -60,6 +66,7 @@ def create_project(
     _role: str = Depends(require_workspace_role("admin", "editor")),
     db: Session = Depends(get_db),
 ):
+    _enforce_workspace(workspace_id, active_workspace_id)
     if not body.name.strip():
         raise HTTPException(status_code=422, detail="Project name cannot be empty")
 
@@ -83,6 +90,7 @@ def rename_project(
     _role: str = Depends(require_workspace_role("admin")),
     db: Session = Depends(get_db),
 ):
+    _enforce_workspace(workspace_id, active_workspace_id)
     name = (body.get("name") or "").strip()
     if not name:
         raise HTTPException(status_code=422, detail="Name cannot be empty")
@@ -112,6 +120,7 @@ def delete_project(
     _role: str = Depends(require_workspace_role("admin")),
     db: Session = Depends(get_db),
 ):
+    _enforce_workspace(workspace_id, active_workspace_id)
     row = db.execute(text(
         "SELECT id FROM projects WHERE id = :id AND workspace_id = :ws"
     ), {"id": project_id, "ws": workspace_id}).fetchone()
