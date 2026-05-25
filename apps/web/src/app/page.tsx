@@ -91,14 +91,14 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         </div>
 
         <h1 className="text-5xl sm:text-6xl font-bold text-stone-900 leading-[1.1] tracking-tight max-w-3xl">
-          Your AI engineering team.<br />
-          <span className="text-indigo-600">Running 24 / 7.</span>
+          Conduct turns YAML agent recipes<br />
+          <span className="text-indigo-600">into team automations.</span>
         </h1>
 
         <p className="mt-6 text-xl text-stone-500 max-w-2xl leading-relaxed">
-          Conduct ships with 11 ready-made agents — label a GitHub issue, get a PR.
-          CI fails, get a diagnosis. Alert fires, get a hypothesis. All in Slack.
-          Nothing merges without your approval.
+          Install a playbook into a project, connect the right environment, and run it.
+          Agents can open PRs, review code, triage issues, and post to Slack with
+          human approval before anything merges.
         </p>
 
         <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
@@ -316,12 +316,12 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         <div className="max-w-4xl mx-auto text-center">
           <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-4">Works with GitHub Copilot · Cursor · Claude Code</p>
           <h2 className="text-3xl font-bold text-white mb-4">
-            You have AI that writes code.<br />Conduct decides when it ships.
+            You have AI that writes code.<br />Conduct turns it into a workflow.
           </h2>
           <p className="text-stone-400 text-sm max-w-2xl mx-auto mb-10 leading-relaxed">
-            Every engineering team now has an AI writing code. Nobody has a system that governs when that code actually merges.
-            Conduct is the orchestration layer above Copilot, Cursor, and Claude Code — it catches AI-generated PRs, reviews the diff,
-            gates on a human approval, and posts structured findings to Slack before a single line hits main.
+            Every engineering team now has an AI writing code. Conduct gives teams reusable YAML recipes for the work around it:
+            catch AI-generated PRs, review the diff, gate on human approval, and post structured findings to Slack before a single
+            line hits main.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-left mb-10">
             {[
@@ -717,7 +717,7 @@ const INTEGRATIONS = ["GitHub", "GitLab", "Bitbucket", "Slack", "Linear", "Pager
 const FAQ = [
   {
     q: "What does Conduct actually do?",
-    a: "Conduct ships 11 pre-built AI agents that execute directly inside GitHub and alerting workflows. The agents handle discrete engineering tasks — labeling issues, opening pull requests, generating incident hypotheses from alerts, writing release notes, security scanning, and more. Nothing needs to be built from scratch.",
+    a: "Conduct turns YAML agent recipes into reusable team automations. Your team installs a playbook into a project, configures the environment and credentials, then runs agents for tasks like issue triage, PR review, incident response, release notes, and security scanning.",
   },
   {
     q: "Is Conduct a good fit for my engineering team?",
@@ -729,7 +729,7 @@ const FAQ = [
   },
   {
     q: "How is Conduct different from GitHub Copilot or other AI coding assistants?",
-    a: "Conduct is a team substitute, not a copilot. Agents take ownership of full tasks like opening a PR or responding to an incident, rather than offering suggestions you still have to act on. The 12 agents ship pre-configured and ready to run — no framework to wire up, no prompts to engineer.",
+    a: "Copilot and coding assistants help individuals write code. Conduct gives teams reusable agent recipes that run as shared workflows, with project configuration, credentials, run history, and approval gates built in.",
   },
   {
     q: "What specific agents come included?",

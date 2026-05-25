@@ -293,7 +293,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-xl font-semibold text-stone-900">Playbooks</h1>
-          <p className="text-xs text-stone-400 mt-0.5">Pre-built agent workflows — install in one click, configure and run</p>
+          <p className="text-xs text-stone-400 mt-0.5">YAML-based agent recipes — install one into a project, configure it, and run it.</p>
         </div>
 
         {/* Tag filters */}
