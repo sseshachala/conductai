@@ -116,6 +116,9 @@ def _topological_sort(nodes: list[dict], edges: list[dict]) -> list[dict]:
             if in_degree[neighbor] == 0:
                 queue.append(neighbor)
 
+    if len(order) != len(nodes):
+        cycle_ids = [n["id"] for n in nodes if n["id"] not in {o["id"] for o in order}]
+        raise RuntimeError(f"Workflow contains a cycle involving blocks: {cycle_ids}")
     return order
 
 
@@ -949,8 +952,8 @@ def _execute_logic(block: dict, state: dict) -> dict:
     if any(k in last_output for k in ("fail", "error", "false", "exception", "traceback")):
         return {"route": "fail", "condition": condition_expr, "evaluated_on": last_output[:200]}
 
-    # Default: pass (non-blocking)
-    return {"route": "pass", "condition": condition_expr, "evaluated_on": last_output[:200]}
+    # Default: fail (fail-closed — ambiguous output is not a success signal)
+    return {"route": "fail", "condition": condition_expr, "evaluated_on": last_output[:200]}
 
 
 def _execute_approval(block: dict, state: dict, credentials: dict, run_id: str) -> dict:

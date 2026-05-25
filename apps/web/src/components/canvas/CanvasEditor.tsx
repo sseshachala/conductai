@@ -238,7 +238,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
     if (!workflowId || workflowId === "undefined") return
     authHeaders(getToken).then(headers =>
     fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, { headers })
-      .then((r) => r.json())
+      .then(async (r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
       .then((data) => {
         setWorkflowName(data.name)
         setSelectedEnvId(data.environment_id ?? "")
@@ -317,15 +317,21 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
     setSaveStatus("saving")
     try {
       const headers = await authHeaders(getToken)
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, {
         method: "PUT",
         headers,
         body: JSON.stringify({ name, graph: { nodes: currentNodes, edges: currentEdges } }),
       })
+      if (!res.ok) {
+        setSaveStatus("error")
+        setTimeout(() => setSaveStatus("idle"), 3000)
+        return
+      }
       setSaveStatus("saved")
       setTimeout(() => setSaveStatus("idle"), 2000)
     } catch {
-      setSaveStatus("idle")
+      setSaveStatus("error")
+      setTimeout(() => setSaveStatus("idle"), 3000)
     }
   }, [workflowId, getToken])
 
@@ -420,7 +426,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
         }
       }
     } catch {
-      // validate is best-effort — don't block the run if the endpoint fails
+      setRunning("idle")
+      return
     }
 
     try {
