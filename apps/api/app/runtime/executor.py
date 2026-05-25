@@ -426,21 +426,41 @@ def _execute_brain(
     remote_host = _resolve_remote_host(block, state, credentials or {})
 
     def _local_dispatch(tool_name: str, tool_input: dict) -> str:
+        # Inject credential env vars into run_shell so the model never needs raw values
+        if tool_name == "run_shell" and cred_env:
+            tool_input = {**tool_input, "env": {**cred_env, **tool_input.get("env", {})}}
         return _dispatch_tool(tool_name, tool_input, remote_host=remote_host, credentials=credentials)
 
     context = json.dumps({k: v for k, v in state.items() if not k.startswith("__")}, default=str)[:4000]
 
-    # Append available integration tokens so Brain blocks can use them directly
-    # (e.g. git push with GitHub token, Slack API calls). Tokens are runtime-only
-    # and never written to run_events.
-    cred_lines: list[str] = []
+    # Tell the model what credentials are available by env var name only.
+    # Raw values are NEVER sent to the LLM — they are injected as env vars
+    # into run_shell calls by the sandbox so the model never sees the secret.
+    cred_env: dict[str, str] = {}
+    cred_names: list[str] = []
+    _ENV_NAME_MAP = {
+        ("git", "token"): "GIT_TOKEN", ("git", "provider"): "GIT_PROVIDER",
+        ("slack", "token"): "SLACK_BOT_TOKEN",
+        ("slack", "signing_secret"): "SLACK_SIGNING_SECRET",
+        ("linear", "api_key"): "LINEAR_API_KEY",
+        ("digitalocean", "token"): "DIGITALOCEAN_TOKEN",
+        ("vercel", "token"): "VERCEL_TOKEN",
+        ("anthropic", "api_key"): "ANTHROPIC_API_KEY",
+        ("modal", "token_id"): "MODAL_TOKEN_ID",
+        ("modal", "token_secret"): "MODAL_TOKEN_SECRET",
+        ("email", "resend_api_key"): "RESEND_API_KEY",
+    }
     for handle, creds in (credentials or {}).items():
         if isinstance(creds, dict):
             for field, val in creds.items():
                 if val and isinstance(val, str):
-                    cred_lines.append(f"  {handle}.{field}: {val}")
-    cred_section = ("\n\nAvailable credentials (use these for API calls, git push, etc.):\n"
-                    + "\n".join(cred_lines)) if cred_lines else ""
+                    env_name = _ENV_NAME_MAP.get((handle, field), f"{handle.upper()}_{field.upper()}")
+                    cred_env[env_name] = val
+                    cred_names.append(env_name)
+    cred_section = (
+        "\n\nAvailable credentials as environment variables (pre-injected into every shell command):\n"
+        + "\n".join(f"  ${n}" for n in cred_names)
+    ) if cred_names else ""
 
     user_message = f"Workflow context so far:\n{context}{cred_section}\n\nExecute your task."
 
