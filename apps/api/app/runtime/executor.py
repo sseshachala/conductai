@@ -289,9 +289,9 @@ def _tool_search_code(pattern: str, path: str = ".", file_glob: str = "*") -> st
         return f"Error searching: {e}"
 
 
-def _dispatch_tool(tool_name: str, tool_input: dict, remote_host: dict | None = None) -> str:
+def _dispatch_tool(tool_name: str, tool_input: dict, remote_host: dict | None = None, credentials: dict | None = None) -> str:
     from app.runtime.sandbox import dispatch_brain_tool
-    return dispatch_brain_tool(tool_name, tool_input, remote_host=remote_host)
+    return dispatch_brain_tool(tool_name, tool_input, remote_host=remote_host, credentials=credentials)
 
 
 def _resolve_remote_host(
@@ -426,7 +426,7 @@ def _execute_brain(
     remote_host = _resolve_remote_host(block, state, credentials or {})
 
     def _local_dispatch(tool_name: str, tool_input: dict) -> str:
-        return _dispatch_tool(tool_name, tool_input, remote_host=remote_host)
+        return _dispatch_tool(tool_name, tool_input, remote_host=remote_host, credentials=credentials)
 
     context = json.dumps({k: v for k, v in state.items() if not k.startswith("__")}, default=str)[:4000]
 

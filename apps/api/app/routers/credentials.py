@@ -179,17 +179,30 @@ def list_credentials_by_environment(
 
 # Standard env var name → (handle, field)
 _ENV_VAR_MAP: dict[str, tuple[str, str]] = {
-    "GITHUB_TOKEN":       ("github",       "token"),
-    "GITHUB_PAT":         ("github",       "token"),
+    # Git (unified handle — provider stored as a field within the credential)
+    "GIT_TOKEN":          ("git",          "token"),
+    "GITHUB_TOKEN":       ("git",          "token"),   # alias
+    "GITHUB_PAT":         ("git",          "token"),   # alias
+    "GITLAB_TOKEN":       ("git",          "token"),   # alias
+    "BITBUCKET_TOKEN":    ("git",          "token"),   # alias
+    "GIT_PROVIDER":       ("git",          "provider"),
+    # Collaboration
     "SLACK_TOKEN":        ("slack",        "token"),
     "SLACK_BOT_TOKEN":    ("slack",        "token"),
     "LINEAR_API_KEY":     ("linear",       "api_key"),
+    # Cloud / infra
     "DIGITALOCEAN_TOKEN": ("digitalocean", "token"),
     "DO_TOKEN":           ("digitalocean", "token"),
     "VERCEL_TOKEN":       ("vercel",       "token"),
+    "MODAL_TOKEN_ID":     ("modal",        "token_id"),
+    "MODAL_TOKEN_SECRET": ("modal",        "token_secret"),
+    # AI
     "ANTHROPIC_API_KEY":  ("anthropic",    "api_key"),
+    # Email
     "RESEND_API_KEY":     ("email",        "resend_api_key"),
     "SENDGRID_API_KEY":   ("email",        "sendgrid_api_key"),
+    "EMAIL_FROM_NAME":    ("email",        "from_name"),
+    "EMAIL_FROM_EMAIL":   ("email",        "from_email"),
 }
 # Reverse: (handle, field) → canonical env var name
 _ENV_VAR_REVERSE: dict[tuple[str, str], str] = {v: k for k, v in _ENV_VAR_MAP.items() if k == k.upper()}
@@ -304,32 +317,41 @@ def reveal_credential(
 # GitHub proxy — canvas dropdowns for repo/branch selection
 # ---------------------------------------------------------------------------
 
-def _github_token(workspace_id: str, db: Session, environment_id: str | None = None) -> str:
-    """Fetch and decrypt the GitHub token for the workspace.
+def _git_token(workspace_id: str, db: Session, environment_id: str | None = None) -> tuple[str, str]:
+    """Fetch and decrypt the git token + provider for the workspace.
 
     Lookup order:
-    1. Environment-scoped credential matching environment_id (if provided)
-    2. Any environment-scoped GitHub credential for the workspace
-    3. Legacy global credential with handle == 'github'
+    1. `git` handle scoped to environment_id (if provided)
+    2. Any `git` handle for the workspace
+    3. Legacy `github` handle (backward compat)
+
+    Returns (token, provider) where provider is 'github' | 'gitlab' | 'bitbucket'.
     """
-    q = db.query(Integration).filter(
-        Integration.workspace_id == workspace_id,
-        Integration.service == "github",
-    )
+    def _resolve(service: str) -> Integration | None:
+        q = db.query(Integration).filter(
+            Integration.workspace_id == workspace_id,
+            Integration.service == service,
+        )
+        if environment_id:
+            row = q.filter(Integration.environment_id == environment_id).first()
+            if row:
+                return row
+        return q.order_by(Integration.environment_id.nullslast()).first()
 
-    row = None
-    if environment_id:
-        row = q.filter(Integration.environment_id == environment_id).first()
-    if not row:
-        # prefer env-scoped over global
-        row = q.order_by(Integration.environment_id.nullslast()).first()
-
+    row = _resolve("git") or _resolve("github")
     if not row or not row.encrypted_credentials:
-        raise HTTPException(status_code=404, detail="GitHub credentials not connected — add them in Settings → Environments")
+        raise HTTPException(status_code=404, detail="Git credentials not connected — add them in Settings → Environments")
     creds = decrypt(row.encrypted_credentials)
     token = creds.get("token")
     if not token:
-        raise HTTPException(status_code=400, detail="GitHub credential is missing a 'token' field")
+        raise HTTPException(status_code=400, detail="Git credential is missing a 'token' field")
+    provider = creds.get("provider", "github")
+    return token, provider
+
+
+def _github_token(workspace_id: str, db: Session, environment_id: str | None = None) -> str:
+    """Backward-compat shim — returns just the token."""
+    token, _ = _git_token(workspace_id, db, environment_id)
     return token
 
 
@@ -402,25 +424,49 @@ def list_github_repos(
     workspace_id: str = Depends(get_workspace_id),
     _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
 ):
-    """Return repos the stored GitHub token can access (up to 100, sorted by push date)."""
-    token = _github_token(workspace_id, db, environment_id)
+    """Return repos the workspace's git token can access (provider-aware)."""
+    token, provider = _git_token(workspace_id, db, environment_id)
     try:
-        r = httpx.get(
-            f"{GITHUB_API}/user/repos",
-            headers=_gh_headers(token),
-            params={"per_page": 100, "sort": "pushed", "affiliation": "owner,collaborator,organization_member"},
-            timeout=10,
-        )
-        r.raise_for_status()
+        if provider == "gitlab":
+            r = httpx.get(
+                "https://gitlab.com/api/v4/projects",
+                headers={"PRIVATE-TOKEN": token},
+                params={"membership": True, "per_page": 100, "order_by": "last_activity_at"},
+                timeout=10,
+            )
+            r.raise_for_status()
+            return [
+                {"full_name": p["path_with_namespace"], "owner": p["namespace"]["path"], "name": p["path"]}
+                for p in r.json()
+            ]
+        elif provider == "bitbucket":
+            r = httpx.get(
+                "https://api.bitbucket.org/2.0/repositories",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"pagelen": 100, "sort": "-updated_on", "role": "member"},
+                timeout=10,
+            )
+            r.raise_for_status()
+            return [
+                {"full_name": repo["full_name"], "owner": repo["workspace"]["slug"], "name": repo["slug"]}
+                for repo in r.json().get("values", [])
+            ]
+        else:
+            r = httpx.get(
+                f"{GITHUB_API}/user/repos",
+                headers=_gh_headers(token),
+                params={"per_page": 100, "sort": "pushed", "affiliation": "owner,collaborator,organization_member"},
+                timeout=10,
+            )
+            r.raise_for_status()
+            return [
+                {"full_name": repo["full_name"], "owner": repo["owner"]["login"], "name": repo["name"]}
+                for repo in r.json()
+            ]
     except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=e.response.status_code, detail=f"GitHub API error: {e.response.text[:200]}")
+        raise HTTPException(status_code=e.response.status_code, detail=f"Git API error: {e.response.text[:200]}")
     except httpx.RequestError:
-        raise HTTPException(status_code=502, detail="Could not reach GitHub API")
-
-    return [
-        {"full_name": repo["full_name"], "owner": repo["owner"]["login"], "name": repo["name"]}
-        for repo in r.json()
-    ]
+        raise HTTPException(status_code=502, detail="Could not reach git provider API")
 
 
 @router.get("/github/repos/{owner}/{repo}/branches")
@@ -431,22 +477,42 @@ def list_github_branches(
     workspace_id: str = Depends(get_workspace_id),
     _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
 ):
-    """Return branch names for the given repo using the workspace's GitHub token."""
-    token = _github_token(workspace_id, db)
+    """Return branch names for the given repo (provider-aware)."""
+    token, provider = _git_token(workspace_id, db)
     try:
-        r = httpx.get(
-            f"{GITHUB_API}/repos/{owner}/{repo}/branches",
-            headers=_gh_headers(token),
-            params={"per_page": 100},
-            timeout=10,
-        )
-        r.raise_for_status()
+        if provider == "gitlab":
+            from urllib.parse import quote
+            encoded = quote(f"{owner}/{repo}", safe="")
+            r = httpx.get(
+                f"https://gitlab.com/api/v4/projects/{encoded}/repository/branches",
+                headers={"PRIVATE-TOKEN": token},
+                params={"per_page": 100},
+                timeout=10,
+            )
+            r.raise_for_status()
+            return [{"name": b["name"]} for b in r.json()]
+        elif provider == "bitbucket":
+            r = httpx.get(
+                f"https://api.bitbucket.org/2.0/repositories/{owner}/{repo}/refs/branches",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"pagelen": 100},
+                timeout=10,
+            )
+            r.raise_for_status()
+            return [{"name": b["name"]} for b in r.json().get("values", [])]
+        else:
+            r = httpx.get(
+                f"{GITHUB_API}/repos/{owner}/{repo}/branches",
+                headers=_gh_headers(token),
+                params={"per_page": 100},
+                timeout=10,
+            )
+            r.raise_for_status()
+            return [{"name": b["name"]} for b in r.json()]
     except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=e.response.status_code, detail=f"GitHub API error: {e.response.text[:200]}")
+        raise HTTPException(status_code=e.response.status_code, detail=f"Git API error: {e.response.text[:200]}")
     except httpx.RequestError:
-        raise HTTPException(status_code=502, detail="Could not reach GitHub API")
-
-    return [{"name": b["name"]} for b in r.json()]
+        raise HTTPException(status_code=502, detail="Could not reach git provider API")
 
 
 @router.post("/github/repos/{owner}/{repo}/webhook")

@@ -214,6 +214,7 @@ def dispatch_brain_tool(
     tool_name: str,
     tool_input: dict,
     remote_host: dict | None = None,
+    credentials: dict | None = None,
 ) -> str:
     """
     Main entry point for Brain block tool execution.
@@ -221,7 +222,7 @@ def dispatch_brain_tool(
     Routing precedence:
       1. ``remote_host`` set on the block (e.g. a DO droplet provisioned by an
          earlier tool block in the same run) -> run over SSH on that host.
-      2. Modal sandbox configured -> ephemeral container.
+      2. Modal sandbox configured (platform env or BYO workspace credential) -> ephemeral container.
       3. Local subprocess -> dev fallback.
     """
     if remote_host and remote_host.get("ip"):
@@ -229,6 +230,28 @@ def dispatch_brain_tool(
 
         log.debug("Dispatching %s to remote host %s", tool_name, remote_host.get("ip"))
         return remote_dispatch(tool_name, tool_input, remote_host)
+
+    # BYO Modal: workspace credential takes precedence over platform env var
+    modal_creds = (credentials or {}).get("modal", {})
+    byo_token_id = modal_creds.get("token_id", "")
+    byo_token_secret = modal_creds.get("token_secret", "")
+    if byo_token_id and byo_token_secret:
+        old_id = os.environ.get("MODAL_TOKEN_ID")
+        old_secret = os.environ.get("MODAL_TOKEN_SECRET")
+        os.environ["MODAL_TOKEN_ID"] = byo_token_id
+        os.environ["MODAL_TOKEN_SECRET"] = byo_token_secret
+        try:
+            log.debug("Dispatching %s to Modal sandbox (BYO credential)", tool_name)
+            return _modal_dispatch(tool_name, tool_input)
+        finally:
+            if old_id is None:
+                os.environ.pop("MODAL_TOKEN_ID", None)
+            else:
+                os.environ["MODAL_TOKEN_ID"] = old_id
+            if old_secret is None:
+                os.environ.pop("MODAL_TOKEN_SECRET", None)
+            else:
+                os.environ["MODAL_TOKEN_SECRET"] = old_secret
 
     if _modal_available():
         log.debug("Dispatching %s to Modal sandbox", tool_name)
