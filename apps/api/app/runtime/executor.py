@@ -1313,6 +1313,13 @@ def execute_run(run_id: str):
 
             except Exception as e:
                 log.exception("block.failed", block_id=block_id)
+                if settings.sentry_dsn:
+                    import sentry_sdk
+                    with sentry_sdk.push_scope() as scope:
+                        scope.set_tag("run_id", str(run_id))
+                        scope.set_tag("block_id", block_id)
+                        scope.set_tag("workspace_id", str(run.workspace_id) if hasattr(run, "workspace_id") else "")
+                        sentry_sdk.capture_exception(e)
                 failed = True
                 fail_error = str(e)
                 _emit(db, run_id, block_id, "block_failed", {"error": str(e)})
@@ -1342,6 +1349,11 @@ def execute_run(run_id: str):
 
     except Exception as e:
         log.exception("run.executor_crash", run_id=run_id)
+        if settings.sentry_dsn:
+            import sentry_sdk
+            with sentry_sdk.push_scope() as scope:
+                scope.set_tag("run_id", str(run_id))
+                sentry_sdk.capture_exception(e)
         try:
             run = db.query(Run).filter(Run.id == run_id).first()
             if run:

@@ -13,6 +13,18 @@ from app.routers.runs import workspace_runs_router
 setup_logging()
 log = structlog.get_logger(__name__)
 
+if settings.sentry_dsn:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.starlette import StarletteIntegration
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        integrations=[FastApiIntegration(), StarletteIntegration()],
+        traces_sample_rate=0.1,
+        environment=settings.environment,
+        release=settings.app_version,
+    )
+
 app = FastAPI(title="Marshal API", version="0.1.0")
 
 _origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
