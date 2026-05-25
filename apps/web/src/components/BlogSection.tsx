@@ -11,7 +11,10 @@ interface FeedPost {
 }
 
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+  const normalized = iso.replace(/(\.\d{3})\d+/, "$1")
+  const d = new Date(normalized)
+  if (isNaN(d.getTime())) return ""
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
 }
 
 export default function BlogSection() {
