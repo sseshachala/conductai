@@ -424,8 +424,9 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
             try:
                 dsl = load_workflow_yaml(dsl_text)
                 graph_data = yaml_to_graph(dsl)
-            except Exception:
-                pass  # fall through to blank graph on parse error
+            except Exception as _yaml_err:
+                log.error("workflow.yaml_parse_failed", template=body.template, error=str(_yaml_err))
+                raise HTTPException(status_code=422, detail=f"Template parse error: {_yaml_err}")
 
     # Resolve environment: use provided, else find/create Default
     from app.models.environment import Environment
