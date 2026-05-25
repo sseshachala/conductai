@@ -335,6 +335,43 @@ class ApprovalDecision(BaseModel):
     approver: str | None = None
 
 
+@router.get("/{run_id}/trace")
+def get_run_trace(
+    workflow_id: UUID,
+    run_id: UUID,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+):
+    """Return the full AI conversation trace for a run — ordered by turn and role."""
+    _get_workflow(workflow_id, workspace_id, db)
+    _get_run(run_id, workflow_id, db)
+    from app.models.run_trace import RunTrace
+    rows = (
+        db.query(RunTrace)
+        .filter(RunTrace.run_id == run_id)
+        .order_by(RunTrace.block_id, RunTrace.turn, RunTrace.created_at)
+        .all()
+    )
+    return [
+        {
+            "id": str(r.id),
+            "block_id": r.block_id,
+            "turn": r.turn,
+            "role": r.role,
+            "content": r.content,
+            "tool_name": r.tool_name,
+            "tool_input": r.tool_input,
+            "tool_use_id": r.tool_use_id,
+            "input_tokens": r.input_tokens,
+            "output_tokens": r.output_tokens,
+            "duration_ms": r.duration_ms,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]
+
+
 @router.post("/{run_id}/cancel")
 def cancel_run(
     workflow_id: UUID,
