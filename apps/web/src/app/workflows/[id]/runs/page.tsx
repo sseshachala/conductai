@@ -40,23 +40,26 @@ export default function RunsPage() {
 
   useEffect(() => {
     async function load() {
-      const token = await getToken()
-      const workspaceId = getCookie("delegator_project_id")
-      const headers: Record<string, string> = {}
-      if (token) headers["Authorization"] = `Bearer ${token}`
-      if (workspaceId) headers["X-Workspace-Id"] = workspaceId
+      try {
+        const token = await getToken()
+        const workspaceId = getCookie("delegator_project_id")
+        const headers: Record<string, string> = {}
+        if (token) headers["Authorization"] = `Bearer ${token}`
+        if (workspaceId) headers["X-Workspace-Id"] = workspaceId
 
-      const [runsRes, wfRes] = await Promise.all([
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs`, { headers }),
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, { headers }),
-      ])
+        const [runsRes, wfRes] = await Promise.all([
+          fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs`, { headers }),
+          fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, { headers }),
+        ])
 
-      if (runsRes.ok) setRuns(await runsRes.json())
-      if (wfRes.ok) {
-        const wf = await wfRes.json()
-        setWorkflowName(wf.name ?? null)
+        if (runsRes.ok) setRuns(await runsRes.json())
+        if (wfRes.ok) {
+          const wf = await wfRes.json()
+          setWorkflowName(wf.name ?? null)
+        }
+      } finally {
+        setLoading(false)
       }
-      setLoading(false)
     }
     load()
   // eslint-disable-next-line react-hooks/exhaustive-deps
