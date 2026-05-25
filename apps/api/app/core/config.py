@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     # Environment — used to gate dev-only defaults (e.g. encryption key check)
     environment: str = "development"
 
+    # Logging
+    log_level: str = "INFO"
+
     # Admin — used to approve waitlisted users via POST /projects/admin/approve
     admin_secret: str = ""
 

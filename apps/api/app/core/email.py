@@ -9,7 +9,7 @@ Credential resolution order:
 1. Workspace email credential (stored in integrations table)
 2. Platform-level RESEND_API_KEY / EMAIL_FROM env vars
 """
-import logging
+import structlog
 from dataclasses import dataclass
 
 import httpx
@@ -17,7 +17,7 @@ from jinja2 import BaseLoader, Environment as JinjaEnv, TemplateError
 
 from app.core.config import settings
 
-log = logging.getLogger(__name__)
+log = structlog.get_logger(__name__)
 
 APP_URL = "https://conductai.ai"
 

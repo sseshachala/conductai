@@ -8,7 +8,7 @@ Two-step process for Brain blocks:
 All other block types use lighter single-step compilation.
 """
 import json
-import logging
+import structlog
 from typing import Any
 
 import anthropic
@@ -19,7 +19,7 @@ from app.compiler.templates import (
     output_prompt, logic_prompt, generic_prompt,
 )
 
-log = logging.getLogger(__name__)
+log = structlog.get_logger(__name__)
 
 EXTRACTION_TOOL = {
     "name": "extract_block_slots",
@@ -167,7 +167,7 @@ def compile_block(block: dict[str, Any]) -> dict[str, Any] | None:
             }
 
     except Exception as e:
-        log.error("Compiler error for block %s: %s", block.get("id"), e)
+        log.error("compile.block_error", block_id=block.get("id"), error=str(e))
         return {
             "system_prompt": f"[Compiler error: {e}]\n\nOriginal description: {description}",
             "model": None,
@@ -191,6 +191,6 @@ def compile_workflow(graph: dict[str, Any]) -> dict[str, Any]:
         artifact = compile_block(node)
         if artifact:
             artifacts[block_id] = artifact
-            log.info("Compiled block %s (%s)", block_id, node.get("data", {}).get("type"))
+            log.info("compile.block_done", block_id=block_id, block_type=node.get("data", {}).get("type"))
 
     return artifacts

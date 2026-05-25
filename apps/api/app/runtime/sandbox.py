@@ -8,12 +8,12 @@ destroyed after the block completes.
 When those env vars are NOT set (local dev), falls back to direct subprocess
 execution on the host (existing behaviour).
 """
-import logging
 import os
 import re
+import structlog
 import subprocess
 
-log = logging.getLogger(__name__)
+log = structlog.get_logger(__name__)
 
 # Shared across local and Modal execution paths — single source of truth.
 _FORBIDDEN_SHELL_PATTERNS = [
