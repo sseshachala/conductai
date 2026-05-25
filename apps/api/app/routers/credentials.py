@@ -180,15 +180,16 @@ def list_credentials_by_environment(
 # Standard env var name → (handle, field)
 _ENV_VAR_MAP: dict[str, tuple[str, str]] = {
     # Git (unified handle — provider stored as a field within the credential)
-    "GIT_TOKEN":          ("git",          "token"),
-    "GITHUB_TOKEN":       ("git",          "token"),   # alias
+    # First entry per (handle, field) is the canonical display name
+    "GITHUB_TOKEN":       ("git",          "token"),   # canonical display name
+    "GIT_TOKEN":          ("git",          "token"),   # alias
     "GITHUB_PAT":         ("git",          "token"),   # alias
     "GITLAB_TOKEN":       ("git",          "token"),   # alias
     "BITBUCKET_TOKEN":    ("git",          "token"),   # alias
     "GIT_PROVIDER":       ("git",          "provider"),
     # Collaboration
-    "SLACK_TOKEN":        ("slack",        "token"),
-    "SLACK_BOT_TOKEN":    ("slack",        "token"),
+    "SLACK_BOT_TOKEN":    ("slack",        "token"),   # canonical
+    "SLACK_TOKEN":        ("slack",        "token"),   # alias
     "LINEAR_API_KEY":     ("linear",       "api_key"),
     # Cloud / infra
     "DIGITALOCEAN_TOKEN": ("digitalocean", "token"),
@@ -204,8 +205,11 @@ _ENV_VAR_MAP: dict[str, tuple[str, str]] = {
     "EMAIL_FROM_NAME":    ("email",        "from_name"),
     "EMAIL_FROM_EMAIL":   ("email",        "from_email"),
 }
-# Reverse: (handle, field) → canonical env var name
-_ENV_VAR_REVERSE: dict[tuple[str, str], str] = {v: k for k, v in _ENV_VAR_MAP.items() if k == k.upper()}
+# Reverse: (handle, field) → canonical env var name (first occurrence wins)
+_ENV_VAR_REVERSE: dict[tuple[str, str], str] = {}
+for _k, _v in _ENV_VAR_MAP.items():
+    if _v not in _ENV_VAR_REVERSE:
+        _ENV_VAR_REVERSE[_v] = _k
 
 
 @router.get("/env-vars/{env_id}")
