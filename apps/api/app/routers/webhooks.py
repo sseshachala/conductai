@@ -188,24 +188,28 @@ async def inbound_webhook(
     trigger_config = trigger_node.get("data", {}).get("config", {})
     raw_secret = trigger_config.get("webhook_secret", "")
     git_provider = trigger_config.get("git_provider", "github")
-    if raw_secret:
-        from app.core.crypto import decrypt as _decrypt
-        try:
-            webhook_secret = _decrypt(raw_secret)["secret"]
-        except Exception:
-            webhook_secret = raw_secret  # fallback: treat as plaintext (old installs)
 
-        if git_provider == "gitlab":
-            # GitLab sends the secret as a static token header
-            incoming = request.headers.get("X-Gitlab-Token", "")
-            if not incoming or not hmac.compare_digest(webhook_secret, incoming):
-                raise HTTPException(status_code=401, detail="Invalid webhook signature")
-        else:
-            # GitHub and Bitbucket both use HMAC-SHA256 (X-Hub-Signature-256)
-            sig_header = request.headers.get("X-Hub-Signature-256", "")
-            expected = "sha256=" + hmac.new(webhook_secret.encode(), body, hashlib.sha256).hexdigest()  # type: ignore[attr-defined]
-            if not sig_header or not hmac.compare_digest(expected, sig_header):
-                raise HTTPException(status_code=401, detail="Invalid webhook signature")
+    # Fail-closed: require a webhook secret on every inbound trigger.
+    if not raw_secret:
+        raise HTTPException(status_code=401, detail="Workflow has no webhook secret configured")
+
+    from app.core.crypto import decrypt as _decrypt
+    try:
+        webhook_secret = _decrypt(raw_secret)["secret"]
+    except Exception:
+        webhook_secret = raw_secret  # fallback: treat as plaintext (old installs)
+
+    if git_provider == "gitlab":
+        # GitLab sends the secret as a static token header
+        incoming = request.headers.get("X-Gitlab-Token", "")
+        if not incoming or not hmac.compare_digest(webhook_secret, incoming):
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+    else:
+        # GitHub and Bitbucket both use HMAC-SHA256 (X-Hub-Signature-256)
+        sig_header = request.headers.get("X-Hub-Signature-256", "")
+        expected = "sha256=" + hmac.new(webhook_secret.encode(), body, hashlib.sha256).hexdigest()  # type: ignore[attr-defined]
+        if not sig_header or not hmac.compare_digest(expected, sig_header):
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
     run = Run(
         workflow_version_id=version.id,
