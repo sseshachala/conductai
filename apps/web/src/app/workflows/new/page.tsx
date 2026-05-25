@@ -424,9 +424,9 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
 
               {webhookError && (
                 <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-3">
-                  <p className="text-xs font-semibold text-red-700 mb-1">Webhook registration failed</p>
+                  <p className="text-xs font-semibold text-red-700 mb-1">Webhook not registered</p>
                   <p className="text-xs text-red-600 leading-relaxed">{webhookError}</p>
-                  <p className="text-xs text-red-500 mt-1">Agent was created. Add <strong>Administration (read &amp; write)</strong> to your GitHub PAT then reinstall.</p>
+                  <p className="text-xs text-stone-400 mt-2">The agent was installed — the webhook can be added once the token is updated.</p>
                 </div>
               )}
 
