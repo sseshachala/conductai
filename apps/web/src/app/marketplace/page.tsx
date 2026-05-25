@@ -24,6 +24,12 @@ interface Environment {
   name: string
 }
 
+const MODEL_HINTS: Record<string, string> = {
+  "claude-haiku-4-5-20251001": "Fastest & cheapest — great for simple fixes and triage tasks",
+  "claude-sonnet-4-6": "Balanced speed and capability — recommended for most autopilot tasks",
+  "claude-opus-4-7": "Most capable — best for complex multi-file refactors, slower and costlier",
+}
+
 interface PlaybookInput {
   label: string
   default: string
@@ -382,15 +388,22 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                   {input.hint && <span className="ml-1 font-normal text-stone-400">— {input.hint}</span>}
                 </label>
                 {input.type === "select" && input.options ? (
-                  <select
-                    value={inputValues[key] ?? String(input.default ?? "")}
-                    onChange={e => setInputValues(prev => ({ ...prev, [key]: e.target.value }))}
-                    className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
-                  >
-                    {input.options.map(opt => (
-                      <option key={opt} value={opt}>{opt}</option>
-                    ))}
-                  </select>
+                  <>
+                    <select
+                      value={inputValues[key] ?? String(input.default ?? "")}
+                      onChange={e => setInputValues(prev => ({ ...prev, [key]: e.target.value }))}
+                      className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
+                    >
+                      {input.options.map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                    {key === "model" && (
+                      <p className="text-xs text-stone-400">
+                        {MODEL_HINTS[inputValues["model"] ?? String(input.default ?? "")] ?? ""}
+                      </p>
+                    )}
+                  </>
                 ) : (
                   <input
                     type="text"
