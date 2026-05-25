@@ -58,6 +58,13 @@ class Settings(BaseSettings):
     modal_token_id: str = ""
     modal_token_secret: str = ""
 
+    # Sentry — leave blank to disable
+    sentry_dsn: str = ""
+    app_version: str = "1.0.0"
+
+    # Logging
+    log_level: str = "INFO"
+
     class Config:
         env_file = ".env"
 
