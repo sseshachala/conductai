@@ -22,6 +22,7 @@ interface BlockEditorProps {
   onChange: (blockId: string, changes: Record<string, unknown>) => void
   getToken?: (() => Promise<string | null>) | null
   selectedEnvId?: string
+  githubHookRepo?: string | null  // set when workflow has a GitHub webhook registered
 }
 
 // ── Webhook registration ──────────────────────────────────────────────────────
@@ -397,6 +398,7 @@ export default function BlockEditor({
   onChange,
   getToken,
   selectedEnvId,
+  githubHookRepo,
 }: BlockEditorProps) {
   const [promptOpen, setPromptOpen] = useState(false)
   const [streamedPrompt, setStreamedPrompt] = useState<string>("")
@@ -418,8 +420,10 @@ export default function BlockEditor({
     ? allStaticFields.filter(f => {
         if (f.key === "config.labels" || f.key === "config.repo_allowlist")
           return triggerEventType === "github_issue_labeled"
-        if (f.key === "config.webhook_secret" || f.key === "config.test_repo" || f.key === "config.test_pr_number")
+        if (f.key === "config.webhook_secret" || f.key === "config.test_pr_number")
           return triggerEventType === "webhook"
+        if (f.key === "config.test_repo")
+          return false  // redundant — repo is known from github_hook_repo
         return true
       })
     : blockType === "output"
@@ -760,21 +764,35 @@ export default function BlockEditor({
                   </div>
                   {rendered}
                   {/* Inbound webhook URL panel */}
-                  {blockType === "trigger" && field.key === "config.event_type" && triggerEventType === "webhook" && (
-                    <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2.5 text-xs text-violet-800 mt-2 space-y-1.5">
-                      <p className="font-semibold text-[10px] uppercase tracking-wide text-violet-500">Webhook URL</p>
-                      <p className="font-mono break-all select-all text-violet-700 text-[11px]">
-                        {(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}/webhooks/inbound/{workflowId}
-                      </p>
-                      <p className="text-violet-500 text-[10px]">POST any JSON to this URL — payload available as <span className="font-mono">{"{{_trigger.*}}"}</span></p>
-                      <div className="border-t border-violet-100 pt-1.5 space-y-0.5">
-                        <p className="font-semibold text-[10px] uppercase tracking-wide text-violet-400">GitHub setup</p>
-                        <p className="text-[10px] text-violet-500">Repo → Settings → Webhooks → Add webhook</p>
-                        <p className="text-[10px] text-violet-500">Content type: <span className="font-mono">application/json</span></p>
-                        <p className="text-[10px] text-violet-500">Events: choose individual → <span className="font-mono">Pull requests</span></p>
+                  {blockType === "trigger" && field.key === "config.event_type" && triggerEventType === "webhook" && (() => {
+                    const ws = typeof document !== "undefined"
+                      ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
+                    const githubUrl = ws
+                      ? `${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}/webhooks/github?workspace_id=${ws}`
+                      : null
+                    const inboundUrl = `${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}/webhooks/inbound/${workflowId}`
+                    const webhookUrl = githubHookRepo ? githubUrl : inboundUrl
+                    return (
+                      <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2.5 text-xs text-violet-800 mt-2 space-y-1.5">
+                        <p className="font-semibold text-[10px] uppercase tracking-wide text-violet-500">Webhook URL</p>
+                        <p className="font-mono break-all select-all text-violet-700 text-[11px]">
+                          {webhookUrl ?? inboundUrl}
+                        </p>
+                        {githubHookRepo
+                          ? <p className="text-violet-500 text-[10px]">Registered on <span className="font-mono">{githubHookRepo}</span> — GitHub sends PR events here automatically.</p>
+                          : <>
+                              <p className="text-violet-500 text-[10px]">POST any JSON to this URL — payload available as <span className="font-mono">{"{{_trigger.*}}"}</span></p>
+                              <div className="border-t border-violet-100 pt-1.5 space-y-0.5">
+                                <p className="font-semibold text-[10px] uppercase tracking-wide text-violet-400">GitHub setup</p>
+                                <p className="text-[10px] text-violet-500">Repo → Settings → Webhooks → Add webhook</p>
+                                <p className="text-[10px] text-violet-500">Content type: <span className="font-mono">application/json</span></p>
+                                <p className="text-[10px] text-violet-500">Events: choose individual → <span className="font-mono">Pull requests</span></p>
+                              </div>
+                            </>
+                        }
                       </div>
-                    </div>
-                  )}
+                    )
+                  })()}
                   {/* Vercel deployment trigger URL + auto-register panel */}
                   {blockType === "trigger" && field.key === "config.event_type" && isVercelTrigger && (() => {
                     const ws = typeof document !== "undefined"

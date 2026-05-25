@@ -289,16 +289,9 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       label: "Webhook secret",
       type: "text",
       required: false,
-      placeholder: "optional — verify HMAC-SHA256 signature",
+      placeholder: "auto-generated on install",
       hint: "If set, callers must send X-Webhook-Signature: sha256=<hmac> header",
-    },
-    {
-      key: "config.test_repo",
-      label: "Test repo",
-      type: "text",
-      required: false,
-      placeholder: "owner/repo",
-      hint: "Used when manually triggering — pre-fills the run dialog",
+      readOnly: true,
     },
     {
       key: "config.test_pr_number",
@@ -306,7 +299,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       type: "text",
       required: false,
       placeholder: "42",
-      hint: "PR number to review when triggering manually",
+      hint: "PR number from the URL — e.g. /pull/42 — used when triggering manually",
     },
   ],
   output: [

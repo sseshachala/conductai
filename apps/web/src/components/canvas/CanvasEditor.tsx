@@ -125,6 +125,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
   const [workflowName, setWorkflowName] = useState("Untitled agent")
+  const [githubHookRepo, setGithubHookRepo] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle")
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isFirstLoad = useRef(true)
@@ -242,6 +243,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
       .then((data) => {
         setWorkflowName(data.name)
         setSelectedEnvId(data.environment_id ?? "")
+        setGithubHookRepo(data.github_hook_repo ?? null)
         const graph = data.current_version?.graph
         if (graph?.nodes && graph?.edges) {
           // Run auto-layout when:
@@ -453,9 +455,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
       })
       if (webhookTriggerNode && !triggerNode) {
         const cfg = (webhookTriggerNode.data as BlockNodeData).config as Record<string, unknown>
-        // Pre-fill from test_repo, or fall back to first repo in repo_allowlist
-        const repoAllowlistFallback = ((cfg.repo_allowlist as string) || "").split(",")[0].trim()
-        setWebhookRepo((cfg.test_repo as string) || repoAllowlistFallback || "")
+        // Use github_hook_repo (authoritative) — test_repo is removed
+        setWebhookRepo(githubHookRepo || "")
         setWebhookPrNumber((cfg.test_pr_number as string) || "")
         setRunning("idle")
         setWebhookModal({ dryRun })
@@ -906,6 +907,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
                       blockData={selectedNode.data as Record<string, unknown>}
                       onChange={handleBlockChange}
                       getToken={getToken}
+                      githubHookRepo={githubHookRepo}
                     />
                   </div>
                 ) : (
@@ -1050,23 +1052,29 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6 flex flex-col gap-4">
             <div>
               <h2 className="text-sm font-semibold text-stone-900">Test with a pull request</h2>
-              <p className="text-xs text-stone-400 mt-1">Provide a real PR to review. The workflow will fetch the diff and post a review comment.</p>
+              <p className="text-xs text-stone-400 mt-1">
+                {webhookRepo ? <>Repo: <span className="font-mono text-stone-600">{webhookRepo}</span></> : "Provide a PR to review."}
+              </p>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-stone-500">GitHub repo</label>
-              <input
-                placeholder="owner/repo"
-                value={webhookRepo}
-                onChange={e => setWebhookRepo(e.target.value)}
-                className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
-              />
-            </div>
+            {!webhookRepo && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-stone-500">GitHub repo</label>
+                <input
+                  placeholder="owner/repo"
+                  value={webhookRepo}
+                  onChange={e => setWebhookRepo(e.target.value)}
+                  className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
+                />
+              </div>
+            )}
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-stone-500">PR number <span className="font-normal text-stone-400">(from the PR URL — e.g. /pull/42)</span></label>
               <input
+                autoFocus
                 placeholder="42"
                 value={webhookPrNumber}
                 onChange={e => setWebhookPrNumber(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && webhookRepo && webhookPrNumber && startWebhookRun(webhookModal.dryRun, webhookRepo, webhookPrNumber)}
                 className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
               />
             </div>
