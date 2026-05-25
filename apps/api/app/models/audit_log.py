@@ -17,5 +17,5 @@ class AuditLog(Base):
     action = Column(String(100), nullable=False)     # credential.added, run.triggered, etc.
     resource_type = Column(String(50), nullable=True)
     resource_id = Column(String(255), nullable=True)
-    metadata = Column(JSONB, nullable=True)
+    meta = Column("metadata", JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
