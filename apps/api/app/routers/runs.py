@@ -183,14 +183,36 @@ def create_run(
     initial_state = body.initial_state or {}
     if body.dry_run:
         initial_state["__dry_run"] = True
-    if body.max_turns:
-        initial_state["__max_turns"] = body.max_turns
+
+    # If the caller didn't provide an explicit turn budget, estimate it server-side
+    # so CLI and API callers get the same guard as the canvas preflight banner.
+    max_turns = body.max_turns
+    if not max_turns:
+        from app.routers.workflows import _estimate_turns_for_graph
+        issue = (
+            initial_state.get("github_issue")
+            or initial_state.get("_trigger", {}).get("issue")
+            or initial_state.get("_trigger", {}).get("pull_request")
+            or {}
+        )
+        try:
+            graph = workflow.current_version.graph or {} if workflow.current_version else {}
+            pf = _estimate_turns_for_graph(
+                graph,
+                issue.get("title", ""),
+                issue.get("body", ""),
+            )
+            max_turns = pf["suggested_max_turns"]
+        except Exception:
+            max_turns = 20
+
+    initial_state["__max_turns"] = max_turns
     run = Run(
         workflow_version_id=workflow.current_version_id,
         triggered_by=body.triggered_by,
         status="pending",
         state=initial_state,
-        max_turns=body.max_turns or None,
+        max_turns=max_turns,
     )
     db.add(run)
     db.commit()
