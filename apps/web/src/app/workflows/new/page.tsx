@@ -67,6 +67,18 @@ const TEMPLATES = [
     description: "Weekly cron webhook fires → AI scans for outdated patch/minor deps → bumps versions → opens a single clean PR. Never bumps major versions.",
     tags: ["GitHub", "Slack"],
   },
+  {
+    id: "security_scanner",
+    label: "Security Scanner",
+    description: "PR opened → AI scans for OWASP Top 10, hardcoded secrets, auth bypasses, weak crypto → posts structured security report → creates fix issue for critical findings.",
+    tags: ["GitHub"],
+  },
+  {
+    id: "copilot_reviewer",
+    label: "Copilot Reviewer",
+    description: "PR opened by Copilot/Cursor/Claude Code → AI reviews the diff → human approves before merge. The orchestration layer above your AI coding tool.",
+    tags: ["GitHub", "Slack"],
+  },
 ]
 
 function getWorkspaceId(): string | null {
