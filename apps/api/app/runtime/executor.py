@@ -10,10 +10,10 @@ Execution model:
 - On any failure, mark the run failed and run cleanup blocks
 """
 import json
-import logging
 import os
 import re
 import subprocess
+import structlog
 from collections import defaultdict, deque
 from datetime import datetime, timezone
 from typing import Any
@@ -28,7 +28,7 @@ from app.models.integration import Integration
 from app.models.run import Run, RunEvent
 from app.models.workflow import WorkflowVersion
 
-log = logging.getLogger(__name__)
+log = structlog.get_logger(__name__)
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -138,9 +138,9 @@ def _emit_run_analytics(run, version, state: dict, db, *, outcome: str, error: s
             error=error[:2000] if error else None,
         ))
         db.commit()
-        log.debug("RunAnalyticsEvent written for run %s (outcome=%s)", run.id, outcome)
+        log.debug("run_analytics.written", run_id=str(run.id), outcome=outcome)
     except Exception:
-        log.exception("_emit_run_analytics failed — ignoring")
+        log.exception("run_analytics.failed")
 
 
 def _resolve_refs(value: Any, state: dict) -> Any:
@@ -394,17 +394,14 @@ def _resolve_remote_host(
     ip = _resolve_refs(ip_ref, state) if isinstance(ip_ref, str) else ip_ref
     if not ip or (isinstance(ip, str) and ip.startswith("{{")):
         # Couldn't resolve — fall back to local execution rather than fail the block.
-        log.warning("Brain block %s remote_host ip_ref did not resolve: %r", block.get("id"), ip_ref)
+        log.warning("brain.remote_host_unresolved", block_id=block.get("id"), ip_ref=ip_ref)
         return None
 
     handle = rh.get("credentials_from") or "digitalocean"
     creds = credentials.get(handle, {}) if isinstance(credentials, dict) else {}
     private_key = creds.get("ssh_private_key") or rh.get("private_key")
     if not private_key:
-        log.warning(
-            "Brain block %s declared remote_host but no ssh_private_key in '%s' credentials",
-            block.get("id"), handle,
-        )
+        log.warning("brain.remote_host_no_key", block_id=block.get("id"), credentials_from=handle)
         return None
 
     return {
@@ -1074,7 +1071,7 @@ def _execute_approval(block: dict, state: dict, credentials: dict, run_id: str) 
                     slack_creds,
                 )
             except Exception as e:
-                log.warning("Approval Slack send failed: %s", e)
+                log.warning("approval.slack_failed", error=str(e))
 
     # ── Email ──────────────────────────────────────────────────────────────────
     if via in ("email", "both") and approval_email:
@@ -1098,7 +1095,7 @@ def _execute_approval(block: dict, state: dict, credentials: dict, run_id: str) 
                 email_creds,
             )
         except Exception as e:
-            log.warning("Approval email send failed: %s", e)
+            log.warning("approval.email_failed", error=str(e))
 
     raise ApprovalRequired(block_id, message)
 
@@ -1117,7 +1114,7 @@ def execute_run(run_id: str):
     try:
         run = db.query(Run).filter(Run.id == run_id).first()
         if not run:
-            log.error("Run %s not found", run_id)
+            log.error("run.not_found", run_id=run_id)
             return
 
         from sqlalchemy.orm import joinedload
@@ -1187,7 +1184,7 @@ def execute_run(run_id: str):
             # Check if user cancelled the run between blocks
             db.refresh(run)
             if run.status == "cancelled":
-                log.info("Run %s cancelled by user", run_id)
+                log.info("run.cancelled", run_id=run_id)
                 return
 
             block_id = block["id"]
@@ -1195,7 +1192,7 @@ def execute_run(run_id: str):
 
             # Skip blocks already completed in a previous run segment (resume support)
             if block_id in state:
-                log.debug("Block %s already in state — skipping (resume)", block_id)
+                log.debug("block.skipped_resume", block_id=block_id)
                 if block_type == "logic":
                     logic_routes[block_id] = state[block_id].get("route", "pass")
                 continue
@@ -1238,7 +1235,7 @@ def execute_run(run_id: str):
                         result = _execute_output(block, state, credentials, workflow_name=wf_name, trace_url=trace_url, run_id=run_id)
                     except Exception as out_err:
                         # Notification failures are non-fatal — the real work already succeeded.
-                        log.warning("Output block %s failed (non-fatal): %s", block_id, out_err)
+                        log.warning("block.output_failed", block_id=block_id, error=str(out_err))
                         result = {"sent": False, "error": str(out_err)}
                         _emit(db, run_id, block_id, "block_completed", {"output": result, "warning": str(out_err)})
                         state[block_id] = result
@@ -1273,11 +1270,11 @@ def execute_run(run_id: str):
                     "block_id": ap.block_id,
                     "message": ap.message,
                 })
-                log.info("Run %s paused at approval block %s", run_id, ap.block_id)
+                log.info("run.paused", run_id=run_id, block_id=ap.block_id)
                 return  # Exit without marking failed
 
             except Exception as e:
-                log.exception("Block %s failed", block_id)
+                log.exception("block.failed", block_id=block_id)
                 failed = True
                 fail_error = str(e)
                 _emit(db, run_id, block_id, "block_failed", {"error": str(e)})
@@ -1302,11 +1299,11 @@ def execute_run(run_id: str):
             "status": run.status,
             "error": fail_error,
         })
-        log.info("Run %s finished: %s", run_id, run.status)
+        log.info("run.finished", run_id=run_id, status=run.status)
         _emit_run_analytics(run, version, state, db, outcome=run.status, error=fail_error)
 
     except Exception as e:
-        log.exception("Executor crash for run %s", run_id)
+        log.exception("run.executor_crash", run_id=run_id)
         try:
             run = db.query(Run).filter(Run.id == run_id).first()
             if run:

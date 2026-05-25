@@ -9,7 +9,7 @@ POST /webhooks/inbound/{id}        — Generic inbound webhook trigger
 import hashlib
 import hmac
 import json
-import logging
+import structlog
 import time
 from typing import Any
 from urllib.parse import unquote_plus
@@ -24,7 +24,7 @@ from app.core.database import get_db
 from app.models.run import Run, RunEvent
 from app.models.workflow import Workflow, WorkflowVersion
 
-log = logging.getLogger(__name__)
+log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 QUEUE_KEY = "marshal:runs:queue"
@@ -111,7 +111,7 @@ async def slack_interactions(request: Request, db: Session = Depends(get_db)):
 
     run = db.query(Run).filter(Run.id == run_id_str).first()
     if not run:
-        log.warning("Slack interaction for unknown run %s", run_id_str)
+        log.warning("slack.unknown_run", run_id=run_id_str)
         return {"ok": True}
 
     # Verify signature using workspace's Slack signing secret
@@ -141,11 +141,11 @@ async def slack_interactions(request: Request, db: Session = Depends(get_db)):
         run.paused_at = None
         db.commit()
         _redis().rpush(QUEUE_KEY, run_id_str)
-        log.info("Run %s approval gate: %s by %s — re-queued", run_id_str, decision, approver)
+        log.info("run.approval_gate", run_id=run_id_str, decision=decision, approver=approver)
     else:
         # Post-run feedback — just log the human verdict, don't re-queue
         db.commit()
-        log.info("Run %s post-run verdict: %s by %s", run_id_str, decision, approver)
+        log.info("run.post_run_verdict", run_id=run_id_str, decision=decision, approver=approver)
 
     return {"ok": True}
 
@@ -247,7 +247,7 @@ async def inbound_webhook(
     db.flush()
     db.commit()
     _redis().rpush(QUEUE_KEY, str(run.id))
-    log.info("Inbound webhook triggered run %s for workflow %s (max_turns=%s)", run.id, workflow_id, suggested_turns)
+    log.info("webhook.inbound_triggered", run_id=str(run.id), workflow_id=workflow_id, max_turns=suggested_turns)
     return {"ok": True}
 
 
@@ -298,7 +298,7 @@ def _trigger_webhook_workflows(
         db.commit()
         _redis().rpush(QUEUE_KEY, str(run.id))
         queued.append(str(run.id))
-        log.info("Webhook %s triggered run %s for version %s", event_type, run.id, version.id)
+        log.info("webhook.triggered", event_type=event_type, run_id=str(run.id), version_id=str(version.id))
 
     return queued
 
@@ -354,7 +354,7 @@ async def vercel_webhook(
         return {"ok": True, "queued": 0, "reason": f"event {event_type} not a trigger"}
 
     if not workspace_id:
-        log.warning("Vercel webhook received with no workspace_id — ignoring to prevent cross-tenant fanout")
+        log.warning("webhook.vercel_no_workspace")
         return {"ok": False, "reason": "workspace_id query param required; re-register the webhook URL with ?workspace_id=<your-workspace-id>"}
 
     queued = _trigger_webhook_workflows(db, event_type, initial_state, workspace_id=workspace_id)
@@ -538,7 +538,7 @@ def _trigger_github_workflows(
         db.commit()
         _redis().rpush(QUEUE_KEY, str(run.id))
         queued.append(str(run.id))
-        log.info("GitHub %s (label=%s repo=%s) triggered run %s for version %s", event_type, incoming_label, incoming_repo, run.id, version.id)
+        log.info("github.triggered", event_type=event_type, label=incoming_label, repo=incoming_repo, run_id=str(run.id))
 
     return queued
 

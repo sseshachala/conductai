@@ -11,7 +11,7 @@ Usage in routes:
     # role-gated:
     _: str = Depends(require_workspace_role("admin"))
 """
-import logging
+import structlog
 from functools import lru_cache
 from typing import Annotated
 
@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 
-log = logging.getLogger(__name__)
+log = structlog.get_logger(__name__)
 
 DEV_WORKSPACE_ID = "00000000-0000-0000-0000-000000000001"
 DEV_USER_ID = "dev"

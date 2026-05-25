@@ -1,4 +1,4 @@
-import logging
+import structlog
 from uuid import UUID
 from fastapi import APIRouter, Body, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import PlainTextResponse, StreamingResponse
@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_workspace_id, require_workspace_role
 from app.core.database import get_db
 
-log = logging.getLogger(__name__)
+log = structlog.get_logger(__name__)
 from app.dsl import (
     Workflow as DSLWorkflow,
     WorkflowValidationError,
@@ -38,8 +38,7 @@ def _run_compiler(version_id, graph: dict):
             version.compiled_artifacts = artifacts
             db.commit()
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).error("Background compile failed: %s", e)
+        log.error("compile.background_failed", error=str(e))
     finally:
         db.close()
 
