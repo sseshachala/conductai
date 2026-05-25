@@ -142,14 +142,33 @@ _GITHUB_WEBHOOK_EVENTS: dict[str, list[str]] = {
 }
 
 
-def _register_github_webhook(token: str, repo: str, workflow_id: str, events: list[str], project_slug: str | None = None, secret: str | None = None) -> tuple[str | None, str | None]:
-    """Register a webhook on owner/repo. Returns (hook_id, error_message)."""
+def _register_git_webhook(
+    token: str,
+    repo: str,
+    workflow_id: str,
+    events: list[str],
+    provider: str = "github",
+    project_slug: str | None = None,
+    secret: str | None = None,
+) -> tuple[str | None, str | None]:
+    """Register a webhook on the git provider. Returns (hook_id, error_message)."""
     import httpx
     from app.core.config import settings
-    owner, repo_name = repo.split("/", 1)
+
     slug_segment = f"{project_slug}/" if project_slug else ""
     webhook_url = f"{settings.api_base_url}/webhooks/inbound/{slug_segment}{workflow_id}"
-    gh_headers = {
+
+    if provider == "gitlab":
+        return _register_gitlab_webhook(token, repo, webhook_url, events, secret)
+    if provider == "bitbucket":
+        return _register_bitbucket_webhook(token, repo, webhook_url, events, secret)
+    return _register_github_webhook(token, repo, webhook_url, events, secret)
+
+
+def _register_github_webhook(token: str, repo: str, webhook_url: str, events: list[str], secret: str | None) -> tuple[str | None, str | None]:
+    import httpx
+    owner, repo_name = repo.split("/", 1)
+    headers = {
         "Authorization": f"Bearer {token}",
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
@@ -158,19 +177,14 @@ def _register_github_webhook(token: str, repo: str, workflow_id: str, events: li
     if secret:
         hook_config["secret"] = secret
     try:
-        # Idempotency: return existing hook if URL already registered
-        existing = httpx.get(
-            f"https://api.github.com/repos/{owner}/{repo_name}/hooks",
-            headers=gh_headers, timeout=10,
-        )
+        existing = httpx.get(f"https://api.github.com/repos/{owner}/{repo_name}/hooks", headers=headers, timeout=10)
         if existing.status_code == 200:
             for hook in existing.json():
                 if hook.get("config", {}).get("url") == webhook_url:
                     return str(hook["id"]), None
-
         r = httpx.post(
             f"https://api.github.com/repos/{owner}/{repo_name}/hooks",
-            headers=gh_headers,
+            headers=headers,
             json={"name": "web", "active": True, "events": events, "config": hook_config},
             timeout=10,
         )
@@ -184,22 +198,98 @@ def _register_github_webhook(token: str, repo: str, workflow_id: str, events: li
         return None, str(e)
 
 
-def _deregister_github_webhook(token: str, repo: str, hook_id: str) -> None:
+def _register_gitlab_webhook(token: str, repo: str, webhook_url: str, events: list[str], secret: str | None) -> tuple[str | None, str | None]:
+    """Register a webhook on a GitLab project. repo = 'namespace/project'."""
+    import httpx
+    from urllib.parse import quote
+    encoded = quote(repo, safe="")
+    headers = {"PRIVATE-TOKEN": token}
+    payload: dict = {
+        "url": webhook_url,
+        "push_events": "push" in events or "push_events" in events,
+        "merge_requests_events": any(e in events for e in ("pull_request", "merge_request", "merge_requests_events")),
+        "issues_events": any(e in events for e in ("issues", "issues_events")),
+        "enable_ssl_verification": True,
+    }
+    if secret:
+        payload["token"] = secret
+    try:
+        existing = httpx.get(f"https://gitlab.com/api/v4/projects/{encoded}/hooks", headers=headers, timeout=10)
+        if existing.status_code == 200:
+            for hook in existing.json():
+                if hook.get("url") == webhook_url:
+                    return str(hook["id"]), None
+        r = httpx.post(f"https://gitlab.com/api/v4/projects/{encoded}/hooks", headers=headers, json=payload, timeout=10)
+        if r.status_code == 201:
+            return str(r.json()["id"]), None
+        err = f"GitLab returned {r.status_code}: {r.text[:300]}"
+        log.warning("GitLab webhook registration failed: %s", err)
+        return None, err
+    except Exception as e:
+        log.warning("GitLab webhook registration exception: %s", e)
+        return None, str(e)
+
+
+def _register_bitbucket_webhook(token: str, repo: str, webhook_url: str, events: list[str], secret: str | None) -> tuple[str | None, str | None]:
+    """Register a webhook on a Bitbucket repository. repo = 'workspace/repo_slug'."""
+    import httpx
+    workspace_slug, repo_slug = repo.split("/", 1)
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    # Map generic event names to Bitbucket event keys
+    bb_events = []
+    for e in events:
+        if e in ("push", "push_events"):
+            bb_events.append("repo:push")
+        elif e in ("pull_request", "merge_request"):
+            bb_events += ["pullrequest:created", "pullrequest:updated", "pullrequest:fulfilled"]
+        elif e in ("issues",):
+            bb_events += ["issue:created", "issue:updated"]
+    if not bb_events:
+        bb_events = ["repo:push"]
+    payload: dict = {"description": "Conduct AI", "url": webhook_url, "active": True, "events": bb_events}
+    if secret:
+        payload["secret"] = secret
+    try:
+        existing = httpx.get(f"https://api.bitbucket.org/2.0/repositories/{workspace_slug}/{repo_slug}/hooks", headers=headers, timeout=10)
+        if existing.status_code == 200:
+            for hook in existing.json().get("values", []):
+                if hook.get("url") == webhook_url:
+                    return str(hook["uuid"]), None
+        r = httpx.post(f"https://api.bitbucket.org/2.0/repositories/{workspace_slug}/{repo_slug}/hooks", headers=headers, json=payload, timeout=10)
+        if r.status_code == 201:
+            return str(r.json()["uuid"]), None
+        err = f"Bitbucket returned {r.status_code}: {r.text[:300]}"
+        log.warning("Bitbucket webhook registration failed: %s", err)
+        return None, err
+    except Exception as e:
+        log.warning("Bitbucket webhook registration exception: %s", e)
+        return None, str(e)
+
+
+def _deregister_git_webhook(token: str, repo: str, hook_id: str, provider: str = "github") -> None:
     """Delete a previously registered webhook. Best-effort — never raises."""
     import httpx
-    owner, repo_name = repo.split("/", 1)
     try:
-        httpx.delete(
-            f"https://api.github.com/repos/{owner}/{repo_name}/hooks/{hook_id}",
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-            },
-            timeout=10,
-        )
+        if provider == "gitlab":
+            from urllib.parse import quote
+            encoded = quote(repo, safe="")
+            httpx.delete(f"https://gitlab.com/api/v4/projects/{encoded}/hooks/{hook_id}", headers={"PRIVATE-TOKEN": token}, timeout=10)
+        elif provider == "bitbucket":
+            workspace_slug, repo_slug = repo.split("/", 1)
+            httpx.delete(f"https://api.bitbucket.org/2.0/repositories/{workspace_slug}/{repo_slug}/hooks/{hook_id}", headers={"Authorization": f"Bearer {token}"}, timeout=10)
+        else:
+            owner, repo_name = repo.split("/", 1)
+            httpx.delete(
+                f"https://api.github.com/repos/{owner}/{repo_name}/hooks/{hook_id}",
+                headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
+                timeout=10,
+            )
     except Exception as e:
-        log.warning("GitHub webhook deregistration failed: %s", e)
+        log.warning("Webhook deregistration failed (%s): %s", provider, e)
+
+
+def _deregister_github_webhook(token: str, repo: str, hook_id: str) -> None:
+    _deregister_git_webhook(token, repo, hook_id, provider="github")
 
 
 @router.get("/playbooks")
@@ -379,14 +469,14 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
     workflow.current_version_id = version.id
     db.commit()
 
-    # Auto-register GitHub webhook if template needs one and repo was provided
+    # Auto-register git webhook if template needs one and repo was provided
     webhook_error: str | None = None
     if body.repo and body.template in _GITHUB_WEBHOOK_EVENTS:
         try:
             import secrets as _secrets
             import re as _re
-            from app.routers.credentials import _github_token
-            token = _github_token(str(workspace_id), db, str(workflow.environment_id) if workflow.environment_id else None)
+            from app.routers.credentials import _git_token
+            token, provider = _git_token(str(workspace_id), db, str(workflow.environment_id) if workflow.environment_id else None)
             project_slug: str | None = None
             if workflow.project_id:
                 from app.models.project import Project as _Project
@@ -394,21 +484,23 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
                 if proj:
                     project_slug = _re.sub(r"[^a-z0-9]+", "-", proj.name.lower()).strip("-")
             webhook_secret = _secrets.token_hex(32)
-            hook_id, webhook_error = _register_github_webhook(
+            hook_id, webhook_error = _register_git_webhook(
                 token, body.repo, str(workflow.id), _GITHUB_WEBHOOK_EVENTS[body.template],
+                provider=provider,
                 project_slug=project_slug,
                 secret=webhook_secret,
             )
             if hook_id:
                 workflow.github_hook_id = hook_id
                 workflow.github_hook_repo = body.repo
-                # Store the secret encrypted so it's not readable from the DB alone
+                # Store secret + provider encrypted in trigger node config
                 from app.core.crypto import encrypt as _encrypt
                 encrypted_secret = _encrypt({"secret": webhook_secret})
                 graph = version.graph
                 for node in graph.get("nodes", []):
                     if node.get("data", {}).get("type") == "trigger":
                         node["data"].setdefault("config", {})["webhook_secret"] = encrypted_secret
+                        node["data"]["config"]["git_provider"] = provider
                 version.graph = graph
                 from sqlalchemy.orm.attributes import flag_modified
                 flag_modified(version, "graph")
@@ -479,12 +571,12 @@ def delete_workflow(
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
 
-    # Deregister GitHub webhook if one was auto-registered on install
+    # Deregister git webhook if one was auto-registered on install
     if workflow.github_hook_id and workflow.github_hook_repo:
         try:
-            from app.routers.credentials import _github_token
-            token = _github_token(str(workspace_id), db)
-            _deregister_github_webhook(token, workflow.github_hook_repo, workflow.github_hook_id)
+            from app.routers.credentials import _git_token
+            token, provider = _git_token(str(workspace_id), db)
+            _deregister_git_webhook(token, workflow.github_hook_repo, workflow.github_hook_id, provider=provider)
         except Exception as e:
             log.warning("Webhook deregistration skipped: %s", e)
 

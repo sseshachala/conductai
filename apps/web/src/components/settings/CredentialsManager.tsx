@@ -17,6 +17,7 @@ interface FieldDef {
   secret?: boolean   // true = password input (default true)
   optional?: boolean // true = not required to save
   tip?: string       // helper text shown below the input
+  options?: { value: string; label: string }[]  // renders a <select> instead of <input>
 }
 
 interface ServiceDef {
@@ -30,10 +31,23 @@ interface ServiceDef {
 
 const SERVICES: ServiceDef[] = [
   {
-    value: "github", label: "GitHub", abbr: "GH",
-    description: "Create repos, branches, and pull requests",
+    value: "git", label: "Git", abbr: "GIT",
+    description: "GitHub, GitLab, or Bitbucket — create repos, branches, and pull requests",
     color: "bg-stone-900 text-white",
-    fields: [{ key: "token", label: "Personal access token", placeholder: "ghp_… or gho_…" }],
+    fields: [
+      {
+        key: "provider",
+        label: "Provider",
+        placeholder: "",
+        secret: false,
+        options: [
+          { value: "github",    label: "GitHub" },
+          { value: "gitlab",    label: "GitLab" },
+          { value: "bitbucket", label: "Bitbucket" },
+        ],
+      },
+      { key: "token", label: "Personal access token", placeholder: "ghp_… / glpat-… / ATB…" },
+    ],
   },
   {
     value: "slack", label: "Slack", abbr: "SL",
@@ -156,7 +170,7 @@ function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promi
     try {
       const headers = await buildHeaders()
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/reveal/${handle}`, { headers })
-      if (res.ok) setRevealedValues(prev => ({ ...prev, [handle]: await res.json() }))
+      if (res.ok) { const data = await res.json(); setRevealedValues(prev => ({ ...prev, [handle]: data })) }
     } finally { setRevealing(null) }
   }
 
@@ -187,7 +201,9 @@ function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promi
   async function handleSave(svc: ServiceDef) {
     const credObj: Record<string, string> = {}
     for (const f of svc.fields) {
-      const val = fieldValues[f.key]?.trim() ?? ""
+      // For select fields, fall back to first option if user never touched it
+      const defaultVal = f.options ? f.options[0].value : ""
+      const val = (fieldValues[f.key] ?? defaultVal).trim()
       if (!val && !f.optional) {
         setError(`${f.label} is required`)
         return
@@ -331,23 +347,38 @@ function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promi
                       {f.optional && <span className="ml-1 text-stone-300 font-normal">optional</span>}
                     </label>
                     <div className="relative">
-                      <input
-                        type={f.secret !== false && !showFields[f.key] ? "password" : "text"}
-                        autoFocus={i === 0}
-                        value={fieldValues[f.key] ?? ""}
-                        onChange={e => setFieldValues(prev => ({ ...prev, [f.key]: e.target.value }))}
-                        onKeyDown={e => e.key === "Enter" && handleSave(svc)}
-                        placeholder={f.placeholder}
-                        className="w-full border border-stone-200 rounded-lg px-3 py-2 pr-9 text-sm font-mono text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                      />
-                      {f.secret !== false && (
-                        <button
-                          type="button"
-                          onClick={() => setShowFields(prev => ({ ...prev, [f.key]: !prev[f.key] }))}
-                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-300 hover:text-stone-600 transition-colors"
+                      {f.options ? (
+                        <select
+                          autoFocus={i === 0}
+                          value={fieldValues[f.key] ?? f.options[0].value}
+                          onChange={e => setFieldValues(prev => ({ ...prev, [f.key]: e.target.value }))}
+                          className="w-full border border-stone-200 rounded-lg px-3 py-2 text-sm text-stone-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200"
                         >
-                          <EyeIcon open={!!showFields[f.key]} />
-                        </button>
+                          {f.options.map(o => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <>
+                          <input
+                            type={f.secret !== false && !showFields[f.key] ? "password" : "text"}
+                            autoFocus={i === 0}
+                            value={fieldValues[f.key] ?? ""}
+                            onChange={e => setFieldValues(prev => ({ ...prev, [f.key]: e.target.value }))}
+                            onKeyDown={e => e.key === "Enter" && handleSave(svc)}
+                            placeholder={f.placeholder}
+                            className="w-full border border-stone-200 rounded-lg px-3 py-2 pr-9 text-sm font-mono text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                          />
+                          {f.secret !== false && (
+                            <button
+                              type="button"
+                              onClick={() => setShowFields(prev => ({ ...prev, [f.key]: !prev[f.key] }))}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-300 hover:text-stone-600 transition-colors"
+                            >
+                              <EyeIcon open={!!showFields[f.key]} />
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                     {f.tip && (
