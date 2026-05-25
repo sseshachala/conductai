@@ -100,6 +100,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   const [selectedRepo, setSelectedRepo] = useState<string>("")
   const [reposLoading, setReposLoading] = useState(false)
   const [webhookError, setWebhookError] = useState<string | null>(null)
+  const [lastInstalledId, setLastInstalledId] = useState<string | null>(null)
 
   async function authHeaders(): Promise<Record<string, string>> {
     const headers: Record<string, string> = {}
@@ -235,6 +236,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
       }
       const wf = await res.json()
       setInstalledCount(prev => new Map(prev).set(pendingSlug, (prev.get(pendingSlug) ?? 0) + 1))
+      setLastInstalledId(wf.id)
       if (wf.webhook_error) {
         setWebhookError(wf.webhook_error)
       } else {
@@ -416,7 +418,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                 <p className="text-xs font-semibold text-red-700 mb-1">Webhook registration failed</p>
                 <p className="text-xs text-red-600 leading-relaxed">{webhookError}</p>
                 <p className="text-xs text-red-500 mt-2">Agent was installed. Add <strong>Administration (read &amp; write)</strong> permission to your GitHub PAT in Settings → Environments, then reinstall.</p>
-                <button onClick={() => { closeInstallModal(); router.push(`/workflows/${installedMap.get(pendingSlug ?? "")?.id ?? ""}`) }}
+                <button onClick={() => { closeInstallModal(); router.push(`/workflows/${lastInstalledId ?? ""}`) }}
                   className="mt-2 text-xs underline text-red-700">Open agent anyway →</button>
               </div>
             )}
