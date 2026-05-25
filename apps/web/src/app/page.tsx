@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation"
 import { useAuth, SignInButton } from "@clerk/nextjs"
 import BlogSection from "@/components/BlogSection"
+import BlogErrorBoundary from "@/components/BlogErrorBoundary"
 
 export default function Home() {
   return <LandingPage />
@@ -439,7 +440,9 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
       </section>
 
       {/* Blog */}
-      <BlogSection />
+      <BlogErrorBoundary>
+        <BlogSection />
+      </BlogErrorBoundary>
 
       {/* CLI section */}
       <section className="border-t border-stone-100 py-16 px-6">
