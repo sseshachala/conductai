@@ -58,6 +58,7 @@ blocks:
   review_pr:
     type: brain
     mode: agentic
+    model: "{{inputs.model}}"
     label: Review AI-generated PR
     description: |
       You are a senior code reviewer auditing a pull request written by an AI coding assistant
@@ -113,6 +114,7 @@ blocks:
   check_existing_issue:
     type: brain
     mode: agentic
+    model: "{{inputs.model}}"
     label: Check for existing fix issue
     description: |
       Check if a fix issue already exists for this PR.
@@ -143,6 +145,7 @@ blocks:
   append_fix_issue:
     type: brain
     mode: agentic
+    model: "{{inputs.model}}"
     label: Append findings to existing issue
     description: |
       A follow-up review found more critical issues on the same PR.
@@ -175,6 +178,7 @@ blocks:
   create_fix_issue:
     type: brain
     mode: agentic
+    model: "{{inputs.model}}"
     label: Create fix issue
     description: |
       A PR review found critical issues that need to be fixed before this PR can be approved.

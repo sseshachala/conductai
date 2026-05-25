@@ -64,6 +64,7 @@ blocks:
   implement_fix:
     type: brain
     mode: agentic
+    model: "{{inputs.model}}"
     label: Implement fix
     description: |
       You are an expert software engineer.
@@ -96,6 +97,7 @@ blocks:
   run_tests:
     type: brain
     mode: agentic
+    model: "{{inputs.model}}"
     label: Run tests & fix
     description: |
       IMPORTANT: This is a fresh sandbox — there is no pre-existing repo directory.
@@ -133,6 +135,7 @@ blocks:
   push_pr:
     type: brain
     mode: agentic
+    model: "{{inputs.model}}"
     label: Push & open PR
     description: |
       IMPORTANT: This is a fresh sandbox. The branch is already pushed to the remote —

@@ -124,6 +124,7 @@ class Block(BaseModel):
 
     # — brain blocks —
     mode: Literal["single", "agentic"] | None = None
+    model: str | None = None  # Claude model ID, e.g. "claude-haiku-4-5-20251001"
     runs_on: RunsOn | None = None
     custom_instructions: str | None = None  # user-editable zone, appended to description at runtime
 

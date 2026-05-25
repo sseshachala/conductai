@@ -28,6 +28,7 @@ blocks:
   diagnose_failure:
     type: brain
     mode: single
+    model: "{{inputs.model}}"
     label: Diagnose CI failure
     description: |
       A CI/CD webhook has fired. Only act if the build failed — skip silently otherwise.

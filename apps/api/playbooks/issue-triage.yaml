@@ -28,6 +28,7 @@ blocks:
   triage_issue:
     type: brain
     mode: agentic
+    model: "{{inputs.model}}"
     label: Triage issue
     description: |
       A new GitHub issue has been opened. Triage it: classify, label, and ask
