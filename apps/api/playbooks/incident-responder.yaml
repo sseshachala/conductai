@@ -31,6 +31,7 @@ blocks:
   investigate:
     type: brain
     mode: agentic
+    model: "{{inputs.model}}"
     label: Investigate incident
     description: |
       An incident alert has fired. Investigate and post a root cause hypothesis.

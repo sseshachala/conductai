@@ -42,6 +42,7 @@ blocks:
   scan_and_update:
     type: brain
     mode: agentic
+    model: "{{inputs.model}}"
     label: Scan and update dependencies
     description: |
       You are an expert software engineer updating outdated dependencies.
