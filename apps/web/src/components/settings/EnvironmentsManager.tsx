@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useAuth } from "@clerk/nextjs"
 
 interface Environment {
@@ -327,8 +327,8 @@ function EnvironmentDetail({
   const [newKey, setNewKey] = useState("")
   const [newValue, setNewValue] = useState("")
   const [showNew, setShowNew] = useState(false)
-
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [showPaste, setShowPaste] = useState(false)
+  const [pasteText, setPasteText] = useState("")
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -373,34 +373,33 @@ function EnvironmentDetail({
     saveAll(updated)
   }
 
-  function handleEnvFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = ev => {
-      const text = ev.target?.result as string
-      const parsed: EnvVar[] = []
-      for (const raw of text.split("\n")) {
-        const line = raw.trim()
-        if (!line || line.startsWith("#")) continue
-        const eq = line.indexOf("=")
-        if (eq === -1) continue
-        const key = line.slice(0, eq).trim()
-        const value = line.slice(eq + 1).trim().replace(/^["']|["']$/g, "")
-        if (key && value) parsed.push({ key, value })
-      }
-      if (parsed.length === 0) { setError("No key=value pairs found in this file."); return }
-      const merged = [...vars]
-      for (const p of parsed) {
-        const existing = merged.findIndex(v => v.key === p.key)
-        if (existing >= 0) merged[existing] = p
-        else merged.push(p)
-      }
-      setVars(merged)
-      saveAll(merged)
+  function parseEnvText(text: string): EnvVar[] {
+    const parsed: EnvVar[] = []
+    for (const raw of text.split("\n")) {
+      const line = raw.trim()
+      if (!line || line.startsWith("#")) continue
+      const eq = line.indexOf("=")
+      if (eq === -1) continue
+      const key = line.slice(0, eq).trim()
+      const value = line.slice(eq + 1).trim().replace(/^["']|["']$/g, "")
+      if (key) parsed.push({ key, value })
     }
-    reader.readAsText(file)
-    e.target.value = ""
+    return parsed
+  }
+
+  function handlePasteImport() {
+    const parsed = parseEnvText(pasteText)
+    if (parsed.length === 0) { setError("No KEY=value pairs found — check the format."); return }
+    const merged = [...vars]
+    for (const p of parsed) {
+      const existing = merged.findIndex(v => v.key === p.key)
+      if (existing >= 0) merged[existing] = p
+      else merged.push(p)
+    }
+    setVars(merged)
+    saveAll(merged)
+    setPasteText("")
+    setShowPaste(false)
   }
 
   return (
@@ -416,12 +415,11 @@ function EnvironmentDetail({
           <p className="text-xs text-stone-400">{vars.length} variable{vars.length !== 1 ? "s" : ""}</p>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <input ref={fileInputRef} type="file" accept=".env,text/plain" className="hidden" onChange={handleEnvFile} />
           <button
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => { setShowPaste(p => !p); setError("") }}
             className="text-xs border border-stone-200 text-stone-600 hover:bg-stone-50 px-3 py-1.5 rounded-lg transition-colors"
           >
-            ↑ Import .env
+            Paste .env
           </button>
           <button
             onClick={() => saveAll(vars)}
@@ -432,6 +430,35 @@ function EnvironmentDetail({
           </button>
         </div>
       </div>
+
+      {/* Paste .env panel */}
+      {showPaste && (
+        <div className="mb-4 rounded-xl border border-stone-200 bg-stone-50 p-4 space-y-3">
+          <p className="text-xs text-stone-500">Paste the contents of your <span className="font-mono">.env</span> file. Existing keys will be overwritten; new keys will be added.</p>
+          <textarea
+            autoFocus
+            value={pasteText}
+            onChange={e => setPasteText(e.target.value)}
+            placeholder={"GITHUB_TOKEN=ghp_...\nANTHROPIC_API_KEY=sk-ant-...\nSLACK_BOT_TOKEN=xoxb-..."}
+            rows={7}
+            className="w-full font-mono text-xs text-stone-800 border border-stone-200 rounded-lg px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 resize-none"
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={handlePasteImport}
+              className="text-xs font-medium bg-stone-900 text-white hover:bg-stone-700 px-4 py-2 rounded-lg transition-colors"
+            >
+              Import
+            </button>
+            <button
+              onClick={() => { setShowPaste(false); setPasteText(""); setError("") }}
+              className="text-xs border border-stone-200 text-stone-600 hover:bg-stone-50 px-4 py-2 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {error && <p className="mb-3 text-xs text-red-500">{error}</p>}
 
@@ -513,7 +540,7 @@ function EnvironmentDetail({
               onClick={() => setShowNew(true)}
               className="text-xs text-stone-400 hover:text-stone-700 transition-colors"
             >
-              + Add variable
+              + Add Environment Variable
             </button>
           </div>
         ))}
