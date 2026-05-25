@@ -109,6 +109,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   const [webhookError, setWebhookError] = useState<string | null>(null)
   const [lastInstalledId, setLastInstalledId] = useState<string | null>(null)
   const [conflictWarning, setConflictWarning] = useState<string | null>(null)
+  const [agentName, setAgentName] = useState<string>("")
 
   async function authHeaders(): Promise<Record<string, string>> {
     const headers: Record<string, string> = {}
@@ -150,6 +151,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
 
   async function openInstallModal(slug: string) {
     setPendingSlug(slug)
+    setAgentName(FRIENDLY_NAMES[slug] ?? slug)
     setProjectsLoading(true)
     try {
       const headers = await authHeaders()
@@ -252,7 +254,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
 
       const needsRepo = GITHUB_WEBHOOK_SLUGS.has(pendingSlug)
       const body: Record<string, unknown> = {
-        name: FRIENDLY_NAMES[pendingSlug] ?? pendingSlug,
+        name: agentName.trim() || (FRIENDLY_NAMES[pendingSlug] ?? pendingSlug),
         template: pendingSlug,
       }
       if (selectedProjectId) body.project_id = selectedProjectId
@@ -341,6 +343,19 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
               <p className="text-xs text-stone-400 mt-1">
                 Choose where to install <span className="font-medium text-stone-600">{FRIENDLY_NAMES[pendingSlug] ?? pendingSlug}</span>.
               </p>
+            </div>
+
+            {/* Agent name */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-stone-500">Agent name</label>
+              <input
+                type="text"
+                value={agentName}
+                onChange={e => setAgentName(e.target.value)}
+                placeholder={FRIENDLY_NAMES[pendingSlug ?? ""] ?? pendingSlug ?? ""}
+                className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
+              />
+              <p className="text-[10px] text-stone-400">Give this instance a name — e.g. "Autopilot — conductai prod"</p>
             </div>
 
             {/* Project picker */}
