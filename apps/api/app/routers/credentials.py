@@ -188,8 +188,9 @@ _ENV_VAR_MAP: dict[str, tuple[str, str]] = {
     "BITBUCKET_TOKEN":    ("git",          "token"),   # alias
     "GIT_PROVIDER":       ("git",          "provider"),
     # Collaboration
-    "SLACK_BOT_TOKEN":    ("slack",        "token"),   # canonical
-    "SLACK_TOKEN":        ("slack",        "token"),   # alias
+    "SLACK_BOT_TOKEN":      ("slack",        "token"),          # canonical
+    "SLACK_TOKEN":          ("slack",        "token"),          # alias
+    "SLACK_SIGNING_SECRET": ("slack",        "signing_secret"), # for approve/reject buttons
     "LINEAR_API_KEY":     ("linear",       "api_key"),
     # Cloud / infra
     "DIGITALOCEAN_TOKEN": ("digitalocean", "token"),
