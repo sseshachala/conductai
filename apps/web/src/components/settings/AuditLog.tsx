@@ -78,7 +78,7 @@ export default function AuditLog({ workspaceId, getToken }: Props) {
     const cols = ["created_at", "action", "actor_email", "actor_role", "resource_type", "resource_id"]
     const rows = [cols.join(",")]
     for (const e of entries) {
-      rows.push(cols.map(c => JSON.stringify((e as Record<string, unknown>)[c] ?? "")).join(","))
+      rows.push(cols.map(c => JSON.stringify((e as unknown as Record<string, unknown>)[c] ?? "")).join(","))
     }
     const blob = new Blob([rows.join("\n")], { type: "text/csv" })
     const url = URL.createObjectURL(blob)
