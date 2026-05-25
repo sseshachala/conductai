@@ -204,10 +204,12 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
 
       {/* Trust strip */}
       <div className="border-y border-stone-100 bg-stone-50 py-4 px-6">
-        <div className="max-w-3xl mx-auto flex flex-wrap items-center justify-center gap-6 text-xs font-medium text-stone-500">
+        <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-center gap-6 text-xs font-medium text-stone-500">
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>11 ready-made agents</span>
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>Zero prompt engineering</span>
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>Human approval on every merge</span>
+          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>RBAC — admin, editor, viewer</span>
+          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>Model per agent — Haiku to Opus</span>
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>MIT licensed</span>
         </div>
       </div>
@@ -274,7 +276,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
           <h2 className="text-2xl font-bold text-stone-900 text-center mb-12">Live on day one.</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             {[
-              { step: "1", icon: "🔗", title: "Connect your repo", body: "Link GitHub, Slack, and Linear. No migration, no new tooling — Conduct wraps around what you already use." },
+              { step: "1", icon: "🔗", title: "Connect your repo", body: "Link GitHub, GitLab, or Bitbucket. Add Slack, Linear, and your API keys. No migration, no new tooling — Conduct wraps around what you already use." },
               { step: "2", icon: "📦", title: "Install from the Marketplace", body: "Browse 11 pre-built playbooks, click Install — canvas is pre-wired. Add credentials and the agent is ready to run." },
               { step: "3", icon: "✅", title: "Get output in Slack", body: "PRs, diagnoses, triage comments, changelogs — delivered to Slack. Approve or reject with one click." },
             ].map(s => (
@@ -667,8 +669,18 @@ const WHY_DELEGATOR = [
   },
   {
     icon: "🧩",
-    title: "Fits your existing stack",
-    body: "GitHub, Slack, PagerDuty, OpsGenie, email, and any inbound webhook. No new tools, no migration — Conduct plugs into what your team already uses.",
+    title: "GitHub, GitLab, or Bitbucket — your choice",
+    body: "Connect any git provider. Webhook registration, signature verification, and repo/branch selection all work across GitHub, GitLab, and Bitbucket with zero extra config. Standardized env vars (GITHUB_TOKEN, GITLAB_TOKEN, BITBUCKET_TOKEN) — paste your .env and go.",
+  },
+  {
+    icon: "👥",
+    title: "Teams, projects, and role-based access",
+    body: "Organize agents into projects. Invite teammates as admin, editor, or viewer — each with enforced permissions at the API level. Environments and credentials are workspace-scoped, so staging and production never cross-contaminate.",
+  },
+  {
+    icon: "🧠",
+    title: "Right model for the right job",
+    body: "Choose the LLM per agent at install time — Claude Haiku for fast triage, Sonnet for complex code review, Opus for deep incident analysis. Bring your own Anthropic key; the platform key is the fallback. Architecture-ready for additional providers.",
   },
   {
     icon: "🔐",
@@ -704,9 +716,15 @@ const VAULT_SECURITY = [
   },
   {
     icon: "🔑",
-    title: "You own your keys",
-    body: "Your GitHub token, Slack token, and API keys are yours. You can revoke or rotate them at any time in Settings → Integrations. Removing a credential immediately locks all workflows that depend on it.",
-    badge: "Full key control",
+    title: "You own your keys — including the LLM key",
+    body: "Bring your own Anthropic key and it takes precedence over the platform key — your spend, your rate limits, your control. GitHub, Slack, Modal, and any other token can be rotated at any time. Removing a credential immediately locks all agents that depend on it.",
+    badge: "BYO keys",
+  },
+  {
+    icon: "📋",
+    title: "Standardized env vars — paste and go",
+    body: "Industry-standard names (GITHUB_TOKEN, SLACK_BOT_TOKEN, ANTHROPIC_API_KEY, MODAL_TOKEN_ID…) are routed to the right integration automatically. Paste your .env file directly — no form fields, no provider-specific UI to maintain.",
+    badge: "Zero-code credentials",
   },
   {
     icon: "🏠",
@@ -716,7 +734,7 @@ const VAULT_SECURITY = [
   },
 ]
 
-const INTEGRATIONS = ["GitHub", "Slack", "PagerDuty", "OpsGenie", "Email / Resend", "Any webhook"]
+const INTEGRATIONS = ["GitHub", "GitLab", "Bitbucket", "Slack", "Linear", "PagerDuty", "OpsGenie", "Vercel", "DigitalOcean", "Email / Resend", "Modal", "Any webhook"]
 
 const BLOG_POSTS = [
   {
@@ -756,7 +774,7 @@ const FAQ = [
   },
   {
     q: "Will our security team approve this?",
-    a: "Conduct is designed with approval gates as first-class blocks — nothing merges without a human gate via Slack DM. Agents run in ephemeral sandboxes when executing code changes, limiting exposure. Every action is event-sourced and audit-logged.",
+    a: "Conduct is designed for security-first teams. All secrets (API keys, tokens, webhook secrets) are encrypted with AES-256-GCM before they touch the database and decrypted only at runtime inside an ephemeral sandbox — never logged. Webhooks are verified with HMAC-SHA256 signatures. Approval gates are first-class blocks — nothing merges without a human gate via Slack DM. Role-based access (admin / editor / viewer) is enforced at the API level. Every action is event-sourced and audit-logged.",
   },
 ]
 
