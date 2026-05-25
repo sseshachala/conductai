@@ -6,6 +6,7 @@ import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import RunTrace from "@/components/runs/RunTrace"
 import AppShell from "@/components/AppShell"
+import Link from "next/link"
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
@@ -32,6 +33,7 @@ export default function RunDetailPage() {
 
   const [run, setRun] = useState<RunMeta | null>(null)
   const [workflowName, setWorkflowName] = useState<string | null>(null)
+  const [agentModel, setAgentModel] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -55,6 +57,10 @@ export default function RunDetailPage() {
       if (wfRes.ok) {
         const wf = await wfRes.json()
         setWorkflowName(wf.name ?? null)
+        // Extract the model from the first brain block in the graph
+        const nodes: {data?: {type?: string; model?: string}}[] = wf.graph?.nodes ?? []
+        const brainNode = nodes.find(n => n.data?.type === "brain")
+        if (brainNode?.data?.model) setAgentModel(brainNode.data.model)
       }
       setLoading(false)
     }
@@ -85,10 +91,30 @@ export default function RunDetailPage() {
   return (
     <AppShell>
       <div className="mx-auto max-w-3xl px-6 py-10">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-1.5 text-xs text-stone-400 mb-5">
+          <Link href="/runs" className="hover:text-stone-600">All runs</Link>
+          <span>/</span>
+          <Link href={`/workflows/${workflowId}`} className="hover:text-stone-600">
+            {workflowName ?? workflowId.slice(0, 8)}
+          </Link>
+          <span>/</span>
+          <span className="font-mono text-stone-500">{run.id.slice(0, 8)}…</span>
+        </div>
+
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-xl font-semibold text-stone-900">Run trace</h2>
-            <p className="text-sm text-stone-400 mt-1 font-mono">{run.id}</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-xl font-semibold text-stone-900">
+                {workflowName ?? "Run trace"}
+              </h2>
+              {agentModel && (
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-purple-50 text-purple-600 border border-purple-100">
+                  {agentModel.replace("claude-", "").replace(/-\d{10,}$/, "")}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-stone-400 mt-1 font-mono">{run.id}</p>
             {/* Trigger context */}
             {(() => {
               const trigger = (run.state as Record<string, unknown> | null | undefined)

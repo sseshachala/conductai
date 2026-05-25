@@ -204,8 +204,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
     )
   }, [getToken, selectedEnvId])
 
-  useEffect(() => {
-    if (activeView !== "runs" || !workflowId) return
+  const fetchRuns = () => {
+    if (!workflowId) return
     setRunsLoading(true)
     authHeaders(getToken).then(headers =>
       fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs`, { headers })
@@ -213,7 +213,23 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
         .then(data => { setRuns(data); setRunsLoading(false) })
         .catch(() => setRunsLoading(false))
     )
+  }
+
+  useEffect(() => {
+    if (activeView !== "runs") return
+    fetchRuns()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView, workflowId, getToken])
+
+  // Auto-poll every 5s while any run is active
+  useEffect(() => {
+    if (activeView !== "runs") return
+    const hasActive = runs.some(r => r.status === "pending" || r.status === "running")
+    if (!hasActive) return
+    const t = setInterval(fetchRuns, 5000)
+    return () => clearInterval(t)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView, runs])
 
   // Load workflow on mount. When a graph arrives without meaningful positions
   // (the YAML loader writes placeholder coords), run dagre so it doesn't open
@@ -905,6 +921,15 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
           </div>
         ) : (
           <div className="flex-1 overflow-auto px-6 py-8">
+            <div className="mx-auto max-w-3xl flex items-center justify-between mb-4">
+              <p className="text-sm font-semibold text-stone-700">{workflowName}</p>
+              <button
+                onClick={fetchRuns}
+                className="text-xs text-stone-400 hover:text-stone-700 border border-stone-200 hover:border-stone-300 rounded-lg px-2.5 py-1 transition-colors"
+              >
+                Refresh
+              </button>
+            </div>
             {runsLoading ? (
               <p className="text-sm text-stone-400">Loading…</p>
             ) : runs.length === 0 ? (
@@ -921,6 +946,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
                     failed:    "bg-red-100 text-red-700",
                     cancelled: "bg-stone-100 text-stone-400",
                   }
+                  const isActive = run.status === "pending" || run.status === "running"
                   return (
                     <button
                       key={run.id}
@@ -929,6 +955,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
                     >
                       <div className="flex items-center gap-3">
                         <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_STYLES[run.status] ?? STATUS_STYLES.pending}`}>
+                          {isActive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse mr-1 align-middle" />}
                           {run.status}
                         </span>
                         <span className="text-sm text-stone-700 font-mono">{run.id.slice(0, 8)}…</span>
