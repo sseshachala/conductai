@@ -24,5 +24,5 @@ class Integration(Base):
     environment = relationship("Environment", back_populates="integrations")
 
     __table_args__ = (
-        UniqueConstraint("workspace_id", "handle", name="uq_integrations_workspace_handle"),
+        UniqueConstraint("workspace_id", "handle", "environment_id", name="uq_integrations_workspace_handle_env"),
     )
