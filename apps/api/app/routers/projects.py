@@ -213,10 +213,12 @@ def rename_project(
     name = (body.get("name") or "").strip()
     if not name:
         raise HTTPException(status_code=422, detail="Name cannot be empty")
-    row = db.execute(text("SELECT id FROM workspaces WHERE id = :id"), {"id": project_id}).fetchone()
+    if project_id != workspace_id:
+        raise HTTPException(status_code=403, detail="Project not found")
+    row = db.execute(text("SELECT id FROM workspaces WHERE id = :id AND id = :ws"), {"id": project_id, "ws": workspace_id}).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Project not found")
-    db.execute(text("UPDATE workspaces SET name = :name WHERE id = :id"), {"name": name, "id": project_id})
+    db.execute(text("UPDATE workspaces SET name = :name WHERE id = :id AND id = :ws"), {"name": name, "id": project_id, "ws": workspace_id})
     db.commit()
     row = db.execute(text("""
         SELECT w.id, w.name, w.owner_id, w.is_approved, w.created_at,
@@ -237,7 +239,9 @@ def delete_project(
     workspace_id: str = Depends(get_workspace_id),
     _role: str = Depends(require_workspace_role("admin")),
 ):
-    row = db.execute(text("SELECT id FROM workspaces WHERE id = :id"), {"id": project_id}).fetchone()
+    if project_id != workspace_id:
+        raise HTTPException(status_code=403, detail="Project not found")
+    row = db.execute(text("SELECT id FROM workspaces WHERE id = :id AND id = :ws"), {"id": project_id, "ws": workspace_id}).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Project not found")
 
