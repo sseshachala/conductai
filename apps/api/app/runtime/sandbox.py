@@ -55,13 +55,16 @@ def _local_write_file(path: str, content: str) -> str:
         return f"Error writing file: {e}"
 
 
-def _local_run_shell(command: str, working_dir: str | None = None) -> str:
+def _local_run_shell(command: str, working_dir: str | None = None, env: dict | None = None) -> str:
     for pattern in _FORBIDDEN_SHELL_PATTERNS:
         if re.search(pattern, command):
             return f"Refused: command matches forbidden pattern '{pattern}'"
     try:
+        import os as _os
+        merged_env = {**_os.environ, **(env or {})}
         result = subprocess.run(
-            command, shell=True, capture_output=True, text=True, timeout=120, cwd=working_dir,
+            command, shell=True, capture_output=True, text=True, timeout=120,
+            cwd=working_dir, env=merged_env,
         )
         output = result.stdout + result.stderr
         return (output[:10_000] + "\n[... truncated]") if len(output) > 10_000 else output or "(no output)"
@@ -202,7 +205,7 @@ def _dispatch_local(tool_name: str, tool_input: dict) -> str:
     if tool_name == "run_shell":
         if "command" not in tool_input:
             return "Error: missing required parameter 'command'"
-        return _local_run_shell(tool_input["command"], tool_input.get("working_dir"))
+        return _local_run_shell(tool_input["command"], tool_input.get("working_dir"), tool_input.get("env"))
     if tool_name == "search_code":
         if "pattern" not in tool_input:
             return "Error: missing required parameter 'pattern'"
