@@ -161,6 +161,7 @@ interface BlockRow {
   filesChanged?: FileChanged[]
   diffStat?: string
   toolCalls?: ToolCall[]
+  budgetExhausted?: { turns: number; costUsd: number }
 }
 
 const FILE_ACTION_COLOR: Record<string, string> = {
@@ -219,6 +220,13 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
               </p>
             ))}
           </div>
+        )}
+
+        {/* Budget exhausted warning */}
+        {row.budgetExhausted && (
+          <p className="mt-1.5 text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 inline-block">
+            ⚠ Turn budget exhausted ({row.budgetExhausted.turns} turns · ${row.budgetExhausted.costUsd.toFixed(4)})
+          </p>
         )}
 
         {/* Error */}
@@ -445,6 +453,11 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
       }
       blockMap[ev.block_id] = row
       blockRows.push(row)
+    } else if (ev.kind === "brain_budget_exhausted" && blockMap[ev.block_id]) {
+      blockMap[ev.block_id].budgetExhausted = {
+        turns: ev.payload.turns as number,
+        costUsd: ev.payload.cost_usd as number,
+      }
     } else if (ev.kind === "brain_tool_call" && blockMap[ev.block_id]) {
       const call: ToolCall = {
         tool:    ev.payload.tool as string,

@@ -641,16 +641,18 @@ def _execute_brain(
                     "summary": "--- Cleaning Modal Assets ---",
                     "turn": max_turns,
                 })
-        return {
-            "output": "Turn budget exhausted",
-            "turns": max_turns,
-            "input_tokens": total_input_tokens,
-            "output_tokens": total_output_tokens,
-            "cost_usd": cost_usd,
-            "files_changed": files_changed,
-            "diff_stat": diff_stat,
-            "remote_host_ip": remote_host.get("ip") if remote_host else None,
-        }
+            _emit(db, run_id, block_id, "brain_budget_exhausted", {
+                "turns": max_turns,
+                "input_tokens": total_input_tokens,
+                "output_tokens": total_output_tokens,
+                "cost_usd": cost_usd,
+                "files_changed": files_changed,
+                "diff_stat": diff_stat,
+            })
+        raise RuntimeError(
+            f"Turn budget exhausted: agent did not reach end_turn after {max_turns} turns "
+            f"({total_input_tokens} input / {total_output_tokens} output tokens, ${cost_usd:.4f})"
+        )
 
     else:
         # Single call (no tools)

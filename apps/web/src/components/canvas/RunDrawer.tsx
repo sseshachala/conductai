@@ -21,6 +21,7 @@ interface BlockRow {
   error?: string
   costUsd?: number
   toolCalls?: ToolCallRow[]
+  budgetExhausted?: { turns: number; costUsd: number }
 }
 
 interface RunDrawerProps {
@@ -162,6 +163,17 @@ export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, 
           onBlockStatus(block_id, "skipped")
         }
 
+        if (kind === "brain_budget_exhausted" && block_id && rowMapRef.current[block_id]) {
+          rowMapRef.current[block_id] = {
+            ...rowMapRef.current[block_id],
+            budgetExhausted: {
+              turns: payload.turns as number,
+              costUsd: payload.cost_usd as number,
+            },
+          }
+          setRows(Object.values(rowMapRef.current))
+        }
+
         if (kind === "brain_tool_call" && block_id && rowMapRef.current[block_id]) {
           const call: ToolCallRow = {
             id: `${block_id}-${payload.turn}-${payload.tool}`,
@@ -273,6 +285,11 @@ export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, 
                     </p>
                   ))}
                 </div>
+              )}
+              {row.budgetExhausted && (
+                <p className="mt-1 text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 inline-block">
+                  ⚠ Turn budget exhausted ({row.budgetExhausted.turns} turns · ${row.budgetExhausted.costUsd.toFixed(4)})
+                </p>
               )}
               {row.output && (
                 <p className="text-stone-500 mt-0.5 truncate">{row.output}</p>
