@@ -142,7 +142,7 @@ _GITHUB_WEBHOOK_EVENTS: dict[str, list[str]] = {
 }
 
 
-def _register_github_webhook(token: str, repo: str, workflow_id: str, events: list[str], project_slug: str | None = None) -> tuple[str | None, str | None]:
+def _register_github_webhook(token: str, repo: str, workflow_id: str, events: list[str], project_slug: str | None = None, secret: str | None = None) -> tuple[str | None, str | None]:
     """Register a webhook on owner/repo. Returns (hook_id, error_message)."""
     import httpx
     from app.core.config import settings
@@ -154,6 +154,9 @@ def _register_github_webhook(token: str, repo: str, workflow_id: str, events: li
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }
+    hook_config: dict = {"url": webhook_url, "content_type": "json"}
+    if secret:
+        hook_config["secret"] = secret
     try:
         # Idempotency: return existing hook if URL already registered
         existing = httpx.get(
@@ -168,12 +171,7 @@ def _register_github_webhook(token: str, repo: str, workflow_id: str, events: li
         r = httpx.post(
             f"https://api.github.com/repos/{owner}/{repo_name}/hooks",
             headers=gh_headers,
-            json={
-                "name": "web",
-                "active": True,
-                "events": events,
-                "config": {"url": webhook_url, "content_type": "json"},
-            },
+            json={"name": "web", "active": True, "events": events, "config": hook_config},
             timeout=10,
         )
         if r.status_code == 201:
@@ -385,6 +383,8 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
     webhook_error: str | None = None
     if body.repo and body.template in _GITHUB_WEBHOOK_EVENTS:
         try:
+            import secrets as _secrets
+            import re as _re
             from app.routers.credentials import _github_token
             token = _github_token(str(workspace_id), db, str(workflow.environment_id) if workflow.environment_id else None)
             project_slug: str | None = None
@@ -392,15 +392,24 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
                 from app.models.project import Project as _Project
                 proj = db.query(_Project).filter(_Project.id == workflow.project_id).first()
                 if proj:
-                    import re as _re
                     project_slug = _re.sub(r"[^a-z0-9]+", "-", proj.name.lower()).strip("-")
+            webhook_secret = _secrets.token_hex(32)
             hook_id, webhook_error = _register_github_webhook(
                 token, body.repo, str(workflow.id), _GITHUB_WEBHOOK_EVENTS[body.template],
                 project_slug=project_slug,
+                secret=webhook_secret,
             )
             if hook_id:
                 workflow.github_hook_id = hook_id
                 workflow.github_hook_repo = body.repo
+                # Store the secret in the trigger node so inbound handler can verify
+                graph = version.graph
+                for node in graph.get("nodes", []):
+                    if node.get("data", {}).get("type") == "trigger":
+                        node["data"].setdefault("config", {})["webhook_secret"] = webhook_secret
+                version.graph = graph
+                from sqlalchemy.orm.attributes import flag_modified
+                flag_modified(version, "graph")
                 db.commit()
         except Exception as e:
             webhook_error = str(e)
