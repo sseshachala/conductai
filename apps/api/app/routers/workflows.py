@@ -85,6 +85,20 @@ def list_workflows(
     return results
 
 
+FRIENDLY_NAMES_SERVER = {
+    "autopilot_quick":    "Autopilot Quick",
+    "autopilot_full":     "Autopilot Full",
+    "autopilot_approved": "Autopilot + Approval",
+    "pr_reviewer":        "PR Reviewer",
+    "issue_triage":       "Issue Triage",
+    "release_notes":      "Release Notes",
+    "ci_notify":          "CI Failure Alert",
+    "incident_responder": "Incident Responder",
+    "dependency_updater": "Dependency Updater",
+    "copilot_reviewer":   "Copilot / AI PR Reviewer",
+    "security_scanner":   "Security Scanner",
+}
+
 _TEMPLATE_PLAYBOOKS = {
     "autopilot_quick":    "autopilot-quick.yaml",
     "autopilot_full":     "autopilot.yaml",
@@ -128,12 +142,13 @@ _GITHUB_WEBHOOK_EVENTS: dict[str, list[str]] = {
 }
 
 
-def _register_github_webhook(token: str, repo: str, workflow_id: str, events: list[str]) -> tuple[str | None, str | None]:
+def _register_github_webhook(token: str, repo: str, workflow_id: str, events: list[str], project_slug: str | None = None) -> tuple[str | None, str | None]:
     """Register a webhook on owner/repo. Returns (hook_id, error_message)."""
     import httpx
     from app.core.config import settings
     owner, repo_name = repo.split("/", 1)
-    webhook_url = f"{settings.api_base_url}/webhooks/inbound/{workflow_id}"
+    slug_segment = f"{project_slug}/" if project_slug else ""
+    webhook_url = f"{settings.api_base_url}/webhooks/inbound/{slug_segment}{workflow_id}"
     gh_headers = {
         "Authorization": f"Bearer {token}",
         "Accept": "application/vnd.github+json",
@@ -227,6 +242,29 @@ def get_playbook(slug: str):
     }
 
 
+@router.get("/conflict-check")
+def conflict_check(
+    template: str,
+    repo: str,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+):
+    """Return any existing agents in this workspace that watch the same template+repo."""
+    friendly_name = FRIENDLY_NAMES_SERVER.get(template)
+    conflicts = db.query(Workflow).filter(
+        Workflow.workspace_id == workspace_id,
+        Workflow.github_hook_repo == repo,
+        Workflow.name == friendly_name,
+    ).all() if friendly_name else []
+    return {
+        "conflicts": [
+            {"id": str(w.id), "name": w.name}
+            for w in conflicts
+        ]
+    }
+
+
 @router.post("", response_model=WorkflowDetailOut, status_code=201)
 def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _role: str = Depends(require_workspace_role("admin", "editor"))):
     import pathlib
@@ -309,8 +347,16 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
         try:
             from app.routers.credentials import _github_token
             token = _github_token(str(workspace_id), db, str(workflow.environment_id) if workflow.environment_id else None)
+            project_slug: str | None = None
+            if workflow.project_id:
+                from app.models.project import Project as _Project
+                proj = db.query(_Project).filter(_Project.id == workflow.project_id).first()
+                if proj:
+                    import re as _re
+                    project_slug = _re.sub(r"[^a-z0-9]+", "-", proj.name.lower()).strip("-")
             hook_id, webhook_error = _register_github_webhook(
-                token, body.repo, str(workflow.id), _GITHUB_WEBHOOK_EVENTS[body.template]
+                token, body.repo, str(workflow.id), _GITHUB_WEBHOOK_EVENTS[body.template],
+                project_slug=project_slug,
             )
             if hook_id:
                 workflow.github_hook_id = hook_id
