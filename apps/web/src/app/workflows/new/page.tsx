@@ -1,91 +1,67 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect, useCallback } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
-import Link from "next/link"
 import AppShell from "@/components/AppShell"
 
-const FEATURED = [
-  { id: "autopilot_quick",    icon: "⚡", label: "Autopilot Quick",    description: "Issue labeled → implement fix → open PR." },
-  { id: "pr_reviewer",        icon: "🔍", label: "PR Reviewer",        description: "PR opened → AI reviews diff → posts comment." },
-  { id: "autopilot_approved", icon: "✋", label: "Autopilot + Approval",description: "Fix → tests → human approves → open PR." },
-]
+interface Project   { id: string; name: string }
+interface Environment { id: string; name: string }
+interface Repo      { full_name: string }
+interface PlaybookInput {
+  label: string
+  default: string
+  type: "string" | "select"
+  options?: string[]
+  hint?: string
+}
+
+const MODEL_HINTS: Record<string, string> = {
+  "claude-haiku-4-5-20251001": "Fastest & cheapest — great for simple fixes and triage tasks",
+  "claude-sonnet-4-6":         "Balanced speed and capability — recommended for most autopilot tasks",
+  "claude-opus-4-7":           "Most capable — best for complex multi-file refactors, slower and costlier",
+}
+
+const FRIENDLY_NAMES: Record<string, string> = {
+  autopilot_quick:    "Autopilot Quick",
+  autopilot_full:     "Autopilot Full",
+  autopilot_approved: "Autopilot + Approval",
+  pr_reviewer:        "PR Reviewer",
+  issue_triage:       "Issue Triage",
+  release_notes:      "Release Notes",
+  ci_notify:          "CI Failure Alert",
+  incident_responder: "Incident Responder",
+  dependency_updater: "Dependency Updater",
+  copilot_reviewer:   "Copilot / AI PR Reviewer",
+  security_scanner:   "Security Scanner",
+}
+
+const GITHUB_WEBHOOK_SLUGS = new Set([
+  "pr_reviewer", "copilot_reviewer", "issue_triage",
+  "ci_notify", "release_notes", "security_scanner",
+  "autopilot_quick", "autopilot_full", "autopilot_approved",
+  "security_patch_updater",
+])
+
+const MANUAL_WEBHOOK_SLUGS = new Set(["incident_responder", "dependency_updater"])
 
 const TEMPLATES = [
-  {
-    id: "autopilot_quick",
-    label: "Autopilot Quick",
-    description: "GitHub issue labeled → implement fix → open PR immediately. No test step — CI runs tests on the PR.",
-    tags: ["GitHub", "Slack"],
-  },
-  {
-    id: "autopilot_full",
-    label: "Autopilot Full",
-    description: "GitHub issue labeled → implement fix → run tests with retry → open PR.",
-    tags: ["GitHub", "Slack"],
-  },
-  {
-    id: "autopilot_approved",
-    label: "Autopilot + Approval",
-    description: "GitHub issue labeled → implement fix → run tests → human approves in Slack → open PR. Nothing ships without a gate.",
-    tags: ["GitHub", "Slack"],
-  },
-  {
-    id: "pr_reviewer",
-    label: "PR Reviewer",
-    description: "Any PR opened → AI reviews the diff for bugs, security issues, and style → posts a review comment on the PR.",
-    tags: ["GitHub", "Slack"],
-  },
-  {
-    id: "issue_triage",
-    label: "Issue Triage",
-    description: "New GitHub issue opened → AI classifies type and priority → adds labels → posts a clarifying comment if the issue is vague.",
-    tags: ["GitHub", "Slack"],
-  },
-  {
-    id: "release_notes",
-    label: "Release Notes",
-    description: "Git tag pushed → AI reads merged PRs since the last tag → groups by type → writes CHANGELOG entry → posts summary to Slack.",
-    tags: ["GitHub", "Slack"],
-  },
-  {
-    id: "ci_notify",
-    label: "CI Failure Alert",
-    description: "CI build fails → AI diagnoses the failed step → posts root cause and suggested fix to Slack. Skips silently on success.",
-    tags: ["GitHub", "Slack"],
-  },
-  {
-    id: "incident_responder",
-    label: "Incident Responder",
-    description: "PagerDuty or OpsGenie alert fires → AI correlates recent commits and deploys → posts root cause hypothesis to #incidents within 60 seconds.",
-    tags: ["Slack"],
-  },
-  {
-    id: "dependency_updater",
-    label: "Dependency Updater",
-    description: "Weekly cron webhook fires → AI scans for outdated patch/minor deps → bumps versions → opens a single clean PR. Never bumps major versions.",
-    tags: ["GitHub", "Slack"],
-  },
-  {
-    id: "security_scanner",
-    label: "Security Scanner",
-    description: "PR opened → AI scans for OWASP Top 10, hardcoded secrets, auth bypasses, weak crypto → posts structured security report → creates fix issue for critical findings.",
-    tags: ["GitHub"],
-  },
-  {
-    id: "copilot_reviewer",
-    label: "Copilot Reviewer",
-    description: "PR opened by Copilot/Cursor/Claude Code → AI reviews the diff → human approves before merge. The orchestration layer above your AI coding tool.",
-    tags: ["GitHub", "Slack"],
-  },
+  { id: "autopilot_quick",    label: "Autopilot Quick",         description: "Issue labeled → implement fix → open PR immediately.", tags: ["GitHub", "Slack"] },
+  { id: "autopilot_full",     label: "Autopilot Full",          description: "Issue labeled → implement fix → run tests → open PR.", tags: ["GitHub", "Slack"] },
+  { id: "autopilot_approved", label: "Autopilot + Approval",    description: "Fix → tests → human approves in Slack → open PR.", tags: ["GitHub", "Slack"] },
+  { id: "pr_reviewer",        label: "PR Reviewer",             description: "PR opened → AI reviews diff → posts comment.", tags: ["GitHub", "Slack"] },
+  { id: "issue_triage",       label: "Issue Triage",            description: "New issue → AI classifies and adds labels.", tags: ["GitHub", "Slack"] },
+  { id: "release_notes",      label: "Release Notes",           description: "Tag pushed → AI writes CHANGELOG → posts to Slack.", tags: ["GitHub", "Slack"] },
+  { id: "ci_notify",          label: "CI Failure Alert",        description: "CI fails → AI diagnoses → posts root cause to Slack.", tags: ["GitHub", "Slack"] },
+  { id: "incident_responder", label: "Incident Responder",      description: "Alert fires → AI correlates commits → posts to #incidents.", tags: ["Slack"] },
+  { id: "dependency_updater", label: "Dependency Updater",      description: "Weekly cron → bump patch/minor deps → open PR.", tags: ["GitHub", "Slack"] },
+  { id: "security_scanner",   label: "Security Scanner",        description: "PR opened → OWASP scan → structured security report.", tags: ["GitHub"] },
+  { id: "copilot_reviewer",   label: "Copilot Reviewer",        description: "Copilot/Cursor PR → AI reviews → human approves before merge.", tags: ["GitHub", "Slack"] },
 ]
 
 function getWorkspaceId(): string | null {
-  return document.cookie
-    .split("; ")
-    .find(r => r.startsWith("delegator_project_id="))
-    ?.split("=")[1] ?? null
+  if (typeof document === "undefined") return null
+  return document.cookie.split("; ").find(r => r.startsWith("delegator_project_id="))?.split("=")[1] ?? null
 }
 
 export default function NewWorkflowPage() {
@@ -100,43 +76,153 @@ function NewWorkflowWithAuth() {
 }
 
 function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
-  const [name, setName] = useState("")
-  const [template, setTemplate] = useState("autopilot_quick")
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const urlProjectId = searchParams.get("project_id") ?? ""
 
-  async function handleCreate() {
-    if (!name.trim()) return
-    setLoading(true)
-    setError(null)
-    try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" }
-      if (getToken) {
-        const token = await getToken()
-        if (token) headers["Authorization"] = `Bearer ${token}`
-      }
+  const [template, setTemplate]           = useState("autopilot_quick")
+  const [agentName, setAgentName]         = useState(FRIENDLY_NAMES["autopilot_quick"])
+  const [projects, setProjects]           = useState<Project[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState(urlProjectId)
+  const [environments, setEnvironments]   = useState<Environment[]>([])
+  const [selectedEnvId, setSelectedEnvId] = useState("")
+  const [playbookInputs, setPlaybookInputs] = useState<Record<string, PlaybookInput>>({})
+  const [inputValues, setInputValues]     = useState<Record<string, string>>({})
+  const [repos, setRepos]                 = useState<Repo[]>([])
+  const [selectedRepo, setSelectedRepo]   = useState("")
+  const [reposLoading, setReposLoading]   = useState(false)
+  const [loading, setLoading]             = useState(false)
+  const [bootstrapping, setBootstrapping] = useState(true)
+  const [conflictWarning, setConflictWarning] = useState<string | null>(null)
+  const [webhookError, setWebhookError]   = useState<string | null>(null)
+  const [error, setError]                 = useState<string | null>(null)
+
+  const buildHeaders = useCallback(async (contentType = false): Promise<Record<string, string>> => {
+    const h: Record<string, string> = {}
+    if (contentType) h["Content-Type"] = "application/json"
+    if (getToken) {
+      const t = await getToken()
+      if (t) h["Authorization"] = `Bearer ${t}`
+    }
+    const ws = getWorkspaceId()
+    if (ws) h["X-Workspace-Id"] = ws
+    return h
+  }, [getToken])
+
+  // Bootstrap: load projects + environments once
+  useEffect(() => {
+    async function boot() {
+      setBootstrapping(true)
+      const headers = await buildHeaders()
       const workspaceId = getWorkspaceId()
-      if (workspaceId) headers["X-Workspace-Id"] = workspaceId
+      await Promise.all([
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/projects`, { headers }).then(async res => {
+          if (res.ok) {
+            const data: Project[] = await res.json()
+            setProjects(data)
+            if (!urlProjectId) setSelectedProjectId(data[0]?.id ?? "")
+          }
+        }),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments`, { headers }).then(async res => {
+          if (res.ok) {
+            const data: Environment[] = await res.json()
+            setEnvironments(data)
+            setSelectedEnvId(data[0]?.id ?? "")
+          }
+        }),
+      ])
+      setBootstrapping(false)
+    }
+    boot()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ name: name.trim(), template }),
+  // When template changes: load playbook inputs + repos if needed
+  useEffect(() => {
+    async function loadTemplate(slug: string) {
+      const headers = await buildHeaders()
+      setAgentName(FRIENDLY_NAMES[slug] ?? slug)
+      setConflictWarning(null)
+      setWebhookError(null)
+
+      const pbPromise = fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/playbooks/${slug}`).then(async res => {
+        if (res.ok) {
+          const data = await res.json()
+          const inputs: Record<string, PlaybookInput> = data.inputs ?? {}
+          setPlaybookInputs(inputs)
+          setInputValues(Object.fromEntries(Object.entries(inputs).map(([k, v]) => [k, String(v.default ?? "")])))
+        }
       })
 
+      if (GITHUB_WEBHOOK_SLUGS.has(slug)) {
+        setReposLoading(true)
+        await Promise.all([
+          pbPromise,
+          fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/github/repos`, { headers }).then(async res => {
+            if (res.ok) {
+              const data: Repo[] = await res.json()
+              setRepos(data)
+              setSelectedRepo(data[0]?.full_name ?? "")
+            }
+          }).finally(() => setReposLoading(false)),
+        ])
+      } else {
+        setRepos([])
+        setSelectedRepo("")
+        await pbPromise
+      }
+    }
+    loadTemplate(template)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [template])
+
+  // Conflict check when repo or trigger_label changes
+  useEffect(() => {
+    if (!selectedRepo) { setConflictWarning(null); return }
+    const triggerLabel = inputValues["trigger_label"] ?? ""
+    buildHeaders().then(async headers => {
+      const params = new URLSearchParams({ template, repo: selectedRepo })
+      if (triggerLabel) params.set("trigger_label", triggerLabel)
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/conflict-check?${params}`, { headers })
+      if (res.ok) {
+        const data = await res.json()
+        setConflictWarning(data.conflicts.length > 0
+          ? data.conflict_type === "label"
+            ? `An agent is already watching "${triggerLabel}" on ${selectedRepo}. Choose a different trigger label.`
+            : `This playbook is already installed on ${selectedRepo}. Installing again runs two independent agents.`
+          : null)
+      }
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRepo, template, inputValues["trigger_label"]])
+
+  async function handleCreate() {
+    setLoading(true)
+    setError(null)
+    setWebhookError(null)
+    try {
+      const headers = await buildHeaders(true)
+      const needsRepo = GITHUB_WEBHOOK_SLUGS.has(template)
+      const body: Record<string, unknown> = {
+        name: agentName.trim() || (FRIENDLY_NAMES[template] ?? template),
+        template,
+        ...inputValues,
+      }
+      if (selectedProjectId) body.project_id = selectedProjectId
+      if (selectedEnvId)     body.environment_id = selectedEnvId
+      if (needsRepo && selectedRepo) body.repo = selectedRepo
+
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, {
+        method: "POST", headers, body: JSON.stringify(body),
+      })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
+        if (err.webhook_error) { setWebhookError(err.webhook_error); return }
         setError(err.detail ?? `Error ${res.status}`)
         return
       }
-
-      const workflow = await res.json()
-      if (!workflow.id) {
-        setError("Unexpected response from server")
-        return
-      }
-      router.push(`/workflows/${workflow.id}`)
+      const wf = await res.json()
+      router.push(`/workflows/${wf.id}`)
     } catch {
       setError("Network error — please try again")
     } finally {
@@ -146,110 +232,186 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-xl px-6 py-12">
+      <div className="mx-auto max-w-md px-6 py-10">
+        <h1 className="text-base font-semibold text-stone-900 mb-1">New agent</h1>
+        <p className="text-xs text-stone-400 mb-8">Choose a playbook and configure it — webhook registered automatically on create.</p>
 
-        {/* Quick-start featured playbooks */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-semibold text-stone-400 uppercase tracking-wide">Quick start</p>
-            <Link href="/marketplace" className="text-xs text-stone-400 hover:text-stone-700 transition-colors">Browse all →</Link>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {FEATURED.map(f => (
-              <button
-                key={f.id}
-                onClick={() => setTemplate(f.id)}
-                className={`text-left rounded-xl border p-3 transition-all ${
-                  template === f.id
-                    ? "border-stone-900 bg-white shadow-sm ring-1 ring-stone-900"
-                    : "border-stone-200 bg-white hover:border-stone-300"
-                }`}
-              >
-                <span className="text-xl leading-none block mb-2">{f.icon}</span>
-                <p className={`text-xs font-semibold mb-1 ${template === f.id ? "text-stone-900" : "text-stone-700"}`}>{f.label}</p>
-                <p className="text-[10px] text-stone-400 leading-relaxed">{f.description}</p>
-              </button>
-            ))}
-          </div>
-        </div>
+        <div className="flex flex-col gap-5">
 
-        {/* Name */}
-        <div className="mb-8">
-          <label className="block text-xs font-semibold text-stone-500 uppercase tracking-wide mb-2">
-            Agent name
-          </label>
-          <input
-            autoFocus
-            value={name}
-            onChange={e => setName(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && handleCreate()}
-            placeholder="e.g. Story → PR agent"
-            className="w-full rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-200 shadow-sm"
-          />
-        </div>
-
-        {/* Template picker */}
-        <div className="mb-10">
-          <label className="block text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">
-            Choose a starting point
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            {TEMPLATES.map(t => (
-              <button
-                key={t.id}
-                onClick={() => setTemplate(t.id)}
-                className={`text-left rounded-xl border p-4 transition-all ${
-                  template === t.id
-                    ? "border-stone-900 bg-white shadow-sm ring-1 ring-stone-900"
-                    : "border-stone-200 bg-white hover:border-stone-300"
-                }`}
-              >
-                <p className={`text-sm font-medium mb-1 ${template === t.id ? "text-stone-900" : "text-stone-700"}`}>
-                  {t.label}
-                </p>
-                <p className="text-xs text-stone-400 leading-relaxed">{t.description}</p>
-                {t.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-2.5">
-                    {t.tags.map(tag => (
-                      <span key={tag} className="text-[10px] bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {error && (
-          <div className="mb-4 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-            <p className="text-sm text-red-600 mb-2">{error}</p>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleCreate}
-                disabled={!name.trim() || loading}
-                className="text-xs font-medium text-red-700 hover:text-red-900 underline underline-offset-2"
-              >
-                Try again
-              </button>
-              <span className="text-red-200">·</span>
-              <Link href="/workflows" className="text-xs font-medium text-red-700 hover:text-red-900 underline underline-offset-2">
-                Back to agents
-              </Link>
+          {/* Template picker */}
+          <div className="flex flex-col gap-2">
+            <label className="text-xs font-medium text-stone-500">Playbook</label>
+            <div className="grid grid-cols-2 gap-2">
+              {TEMPLATES.map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => setTemplate(t.id)}
+                  className={`text-left rounded-xl border p-3 transition-all ${
+                    template === t.id
+                      ? "border-stone-900 bg-white shadow-sm ring-1 ring-stone-900"
+                      : "border-stone-200 bg-white hover:border-stone-300"
+                  }`}
+                >
+                  <p className={`text-xs font-medium mb-0.5 ${template === t.id ? "text-stone-900" : "text-stone-700"}`}>{t.label}</p>
+                  <p className="text-[10px] text-stone-400 leading-relaxed">{t.description}</p>
+                  {t.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {t.tags.map(tag => (
+                        <span key={tag} className="text-[10px] bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded">{tag}</span>
+                      ))}
+                    </div>
+                  )}
+                </button>
+              ))}
             </div>
           </div>
-        )}
 
-        {/* Create button */}
-        <button
-          onClick={handleCreate}
-          disabled={!name.trim() || loading}
-          className="w-full rounded-xl bg-stone-900 px-4 py-3 text-sm font-medium text-white hover:bg-stone-700 transition-colors disabled:opacity-40"
-        >
-          {loading ? "Creating…" : "Create agent"}
-        </button>
+          {bootstrapping ? (
+            <div className="space-y-3">
+              {[1,2,3].map(i => <div key={i} className="h-9 rounded-lg bg-stone-100 animate-pulse" />)}
+            </div>
+          ) : (
+            <>
+              {/* Agent name */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-stone-500">Agent name</label>
+                <input
+                  value={agentName}
+                  onChange={e => setAgentName(e.target.value)}
+                  placeholder={FRIENDLY_NAMES[template] ?? template}
+                  className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
+                />
+                <p className="text-[10px] text-stone-400">Give this instance a name — e.g. "Autopilot — conductai prod"</p>
+              </div>
 
+              {/* Project */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-stone-500">Project</label>
+                <select
+                  value={selectedProjectId}
+                  onChange={e => setSelectedProjectId(e.target.value)}
+                  className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
+                >
+                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+
+              {/* Environment */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-stone-500">Environment</label>
+                {environments.length === 0 ? (
+                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    No environments found. <a href="/settings/environments" className="underline font-medium">Create one first</a>.
+                  </div>
+                ) : (
+                  <select
+                    value={selectedEnvId}
+                    onChange={e => setSelectedEnvId(e.target.value)}
+                    className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
+                  >
+                    {environments.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                  </select>
+                )}
+              </div>
+
+              {/* Dynamic playbook inputs (trigger label, model, clone depth…) */}
+              {Object.entries(playbookInputs).map(([key, input]) => (
+                <div key={key} className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-stone-500">
+                    {input.label ?? key}
+                    {input.hint && <span className="ml-1 font-normal text-stone-400">— {input.hint}</span>}
+                  </label>
+                  {input.type === "select" && input.options ? (
+                    <>
+                      <select
+                        value={inputValues[key] ?? String(input.default ?? "")}
+                        onChange={e => setInputValues(prev => ({ ...prev, [key]: e.target.value }))}
+                        className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
+                      >
+                        {input.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                      </select>
+                      {key === "model" && (
+                        <p className="text-xs text-stone-400">{MODEL_HINTS[inputValues["model"] ?? String(input.default ?? "")] ?? ""}</p>
+                      )}
+                    </>
+                  ) : (
+                    <input
+                      type="text"
+                      value={inputValues[key] ?? String(input.default ?? "")}
+                      onChange={e => setInputValues(prev => ({ ...prev, [key]: e.target.value }))}
+                      className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
+                    />
+                  )}
+                </div>
+              ))}
+
+              {/* GitHub repo */}
+              {GITHUB_WEBHOOK_SLUGS.has(template) && (
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-stone-500">
+                    GitHub repo
+                    <span className="ml-1 text-stone-400 font-normal">— webhook registered automatically on create</span>
+                  </label>
+                  {reposLoading ? (
+                    <div className="h-9 rounded-lg bg-stone-100 animate-pulse" />
+                  ) : repos.length === 0 ? (
+                    <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      No repos found. Connect GitHub in <a href="/settings/environments" className="underline font-medium">Settings → Environments</a>.
+                    </div>
+                  ) : (
+                    <select
+                      value={selectedRepo}
+                      onChange={e => setSelectedRepo(e.target.value)}
+                      className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
+                    >
+                      {repos.map(r => <option key={r.full_name} value={r.full_name}>{r.full_name}</option>)}
+                    </select>
+                  )}
+                </div>
+              )}
+
+              {/* Manual webhook note */}
+              {MANUAL_WEBHOOK_SLUGS.has(template) && (
+                <div className="bg-stone-50 border border-stone-200 rounded-lg px-3 py-3">
+                  <p className="text-xs font-medium text-stone-700 mb-1">Manual webhook setup required</p>
+                  <p className="text-xs text-stone-500 leading-relaxed">
+                    After creating, copy the webhook URL from agent settings and paste it into your{" "}
+                    {template === "incident_responder" ? "PagerDuty or OpsGenie" : "GitHub Actions"} configuration.
+                  </p>
+                </div>
+              )}
+
+              {conflictWarning && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-3 flex gap-2">
+                  <span className="text-amber-500">⚠</span>
+                  <p className="text-xs text-amber-700 leading-relaxed">{conflictWarning}</p>
+                </div>
+              )}
+
+              {webhookError && (
+                <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-3">
+                  <p className="text-xs font-semibold text-red-700 mb-1">Webhook registration failed</p>
+                  <p className="text-xs text-red-600 leading-relaxed">{webhookError}</p>
+                  <p className="text-xs text-red-500 mt-1">Agent was created. Add <strong>Administration (read &amp; write)</strong> to your GitHub PAT then reinstall.</p>
+                </div>
+              )}
+
+              {error && (
+                <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  <p className="text-xs text-red-600">{error}</p>
+                </div>
+              )}
+
+              <button
+                onClick={handleCreate}
+                disabled={loading || (GITHUB_WEBHOOK_SLUGS.has(template) && !selectedRepo)}
+                className="w-full rounded-xl bg-stone-900 px-4 py-3 text-sm font-medium text-white hover:bg-stone-700 transition-colors disabled:opacity-40"
+              >
+                {loading ? "Creating…" : "Create agent"}
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </AppShell>
   )
