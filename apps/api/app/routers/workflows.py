@@ -402,11 +402,13 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
             if hook_id:
                 workflow.github_hook_id = hook_id
                 workflow.github_hook_repo = body.repo
-                # Store the secret in the trigger node so inbound handler can verify
+                # Store the secret encrypted so it's not readable from the DB alone
+                from app.core.crypto import encrypt as _encrypt
+                encrypted_secret = _encrypt({"secret": webhook_secret})
                 graph = version.graph
                 for node in graph.get("nodes", []):
                     if node.get("data", {}).get("type") == "trigger":
-                        node["data"].setdefault("config", {})["webhook_secret"] = webhook_secret
+                        node["data"].setdefault("config", {})["webhook_secret"] = encrypted_secret
                 version.graph = graph
                 from sqlalchemy.orm.attributes import flag_modified
                 flag_modified(version, "graph")
