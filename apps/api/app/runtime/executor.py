@@ -506,17 +506,21 @@ def _execute_brain(
     remote_host = _resolve_remote_host(block, state, credentials or {})
 
     def _local_dispatch(tool_name: str, tool_input: dict) -> str:
-        # Inject credential env vars into run_shell so the model never needs raw values
+        # Merge credential placeholders into run_shell env, then swap placeholders
+        # for real values immediately before subprocess execution. Real values never
+        # appear in tool_input (which is logged to DB) — only in the subprocess env.
         if tool_name == "run_shell" and cred_env:
-            tool_input = {**tool_input, "env": {**cred_env, **tool_input.get("env", {})}}
+            merged_env = {**cred_env, **tool_input.get("env", {})}
+            resolved_env = {k: _cred_real.get(v, v) for k, v in merged_env.items()}
+            tool_input = {**tool_input, "env": resolved_env}
         return _dispatch_tool(tool_name, tool_input, remote_host=remote_host, credentials=credentials)
 
     context = json.dumps({k: v for k, v in state.items() if not k.startswith("__")}, default=str)[:4000]
 
-    # Tell the model what credentials are available by env var name only.
-    # Raw values are NEVER sent to the LLM — they are injected as env vars
-    # into run_shell calls by the sandbox so the model never sees the secret.
-    cred_env: dict[str, str] = {}
+    # Credential placeholder pattern: model and DB see placeholder tokens, never raw secrets.
+    # Real values live only in _cred_real and are swapped into subprocess env at dispatch time.
+    cred_env: dict[str, str] = {}   # placeholder values — safe to log / send to LLM
+    _cred_real: dict[str, str] = {}  # placeholder → real value — never leaves this function
     cred_names: list[str] = []
     _ENV_NAME_MAP = {
         ("git", "token"): "GIT_TOKEN", ("git", "provider"): "GIT_PROVIDER",
@@ -535,7 +539,9 @@ def _execute_brain(
             for field, val in creds.items():
                 if val and isinstance(val, str):
                     env_name = _ENV_NAME_MAP.get((handle, field), f"{handle.upper()}_{field.upper()}")
-                    cred_env[env_name] = val
+                    placeholder = f"__CREDENTIAL_{env_name}__"
+                    cred_env[env_name] = placeholder
+                    _cred_real[placeholder] = val
                     cred_names.append(env_name)
     cred_section = (
         "\n\nAvailable credentials as environment variables (pre-injected into every shell command):\n"
