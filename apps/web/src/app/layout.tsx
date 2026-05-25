@@ -4,18 +4,18 @@ import "./globals.css"
 import { ClerkProvider } from "@clerk/nextjs"
 
 export const metadata: Metadata = {
-  title: "Conduct AI — 11 Pre-Built AI Agents for GitHub Workflows",
+  title: "Conduct AI — YAML Agent Recipes for Team Automations",
   description:
-    "Conduct AI ships 11 pre-built AI agents that execute inside GitHub, Slack, and your alerting stack. No prompt engineering. No custom infrastructure. Human approval before anything merges.",
+    "Conduct turns YAML agent recipes into reusable automations your team can install, configure, and run.",
   icons: {
     icon: "/icon.png",
     shortcut: "/icon.png",
     apple: "/icon.png",
   },
   openGraph: {
-    title: "Conduct AI — 11 Pre-Built AI Agents for GitHub Workflows",
+    title: "Conduct AI — YAML Agent Recipes for Team Automations",
     description:
-      "Conduct AI ships 11 pre-built AI agents that execute inside GitHub, Slack, and your alerting stack. Human approval before anything merges.",
+      "Conduct turns YAML agent recipes into reusable automations your team can install, configure, and run.",
     url: "https://conductai.ai",
     siteName: "Conduct",
     type: "website",
@@ -24,15 +24,15 @@ export const metadata: Metadata = {
         url: "https://conductai.ai/og.png",
         width: 1200,
         height: 630,
-        alt: "Conduct — AI agents for GitHub workflows",
+        alt: "Conduct — YAML agent recipes for team automations",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Conduct AI — 11 Pre-Built AI Agents for GitHub Workflows",
+    title: "Conduct AI — YAML Agent Recipes for Team Automations",
     description:
-      "AI agents that execute inside your stack. Human approval before anything merges.",
+      "YAML agent recipes your team can install, configure, and run.",
   },
 }
 
@@ -45,7 +45,7 @@ const softwareAppJsonLd = {
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "Web",
   "url": "https://conductai.ai",
-  "description": "9 pre-built AI agents for GitHub workflows. Automate issue triage, PR reviews, incident response, and release notes — with human approval before anything merges.",
+  "description": "YAML agent recipes for reusable team automations. Install, configure, and run engineering playbooks with human approval before anything merges.",
   "offers": {
     "@type": "Offer",
     "price": "0",
