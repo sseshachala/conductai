@@ -173,7 +173,7 @@ def list_audit_log(
             "action": r.action,
             "resource_type": r.resource_type,
             "resource_id": r.resource_id,
-            "metadata": r.metadata,
+            "metadata": r.meta,
             "created_at": r.created_at.isoformat() if r.created_at else None,
         }
         for r in rows
