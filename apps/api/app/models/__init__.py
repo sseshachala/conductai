@@ -6,9 +6,11 @@ from app.models.project import Project
 from app.models.workflow import Workflow, WorkflowVersion
 from app.models.integration import Integration
 from app.models.run import Run, RunEvent
+from app.models.run_analytics_event import RunAnalyticsEvent
 from app.models.email_template import EmailTemplate
 
 __all__ = [
     "Organization", "Workspace", "User", "WorkspaceUser", "Project",
-    "Workflow", "WorkflowVersion", "Integration", "Run", "RunEvent", "EmailTemplate",
+    "Workflow", "WorkflowVersion", "Integration", "Run", "RunEvent",
+    "RunAnalyticsEvent", "EmailTemplate",
 ]

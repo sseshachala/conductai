@@ -76,6 +76,73 @@ def _emit(db, run_id, block_id: str | None, kind: str, payload: dict):
     publish_run_event(str(run_id))
 
 
+def _emit_run_analytics(run, version, state: dict, db, *, outcome: str, error: str = "") -> None:
+    """
+    Write one RunAnalyticsEvent row at the end of every run.
+    Fire-and-forget — never raises, never blocks the run result.
+    One row per run (not per block); feeds benchmark, eval harness, cross-tenant analytics.
+    """
+    try:
+        import hashlib
+        from app.models.run_analytics_event import RunAnalyticsEvent
+
+        blocks_executed = sum(1 for k, v in state.items() if not k.startswith("__") and isinstance(v, dict))
+
+        total_input = total_output = total_tools = 0
+        total_cost: float | None = None
+        human_verdict: str | None = None
+        for k, v in state.items():
+            if k.startswith("__") or not isinstance(v, dict):
+                continue
+            total_input  += v.get("input_tokens", 0) or 0
+            total_output += v.get("output_tokens", 0) or 0
+            total_tools  += v.get("turns", 0) or 0
+            if v.get("cost_usd"):
+                total_cost = (total_cost or 0) + float(v["cost_usd"])
+            if "decision" in v:
+                human_verdict = v["decision"]
+
+        duration_ms: int | None = None
+        if run.completed_at and run.created_at:
+            duration_ms = int((run.completed_at - run.created_at).total_seconds() * 1000)
+
+        wf = getattr(version, "workflow", None) if version else None
+        wf_name = (getattr(wf, "name", None) or "custom").lower()
+        playbook_slug = re.sub(r"[^a-z0-9]+", "_", wf_name).strip("_") or "custom"
+
+        raw_trigger = str(run.triggered_by or "manual")
+        if raw_trigger.startswith("webhook"):
+            trigger_type = "webhook"
+        elif raw_trigger.startswith(("schedule", "cron")):
+            trigger_type = "cron"
+        else:
+            trigger_type = "manual"
+
+        workspace_raw = str(getattr(wf, "workspace_id", run.id) if wf else run.id)
+        workspace_hash = hashlib.sha256(workspace_raw.encode()).hexdigest()[:16]
+
+        db.add(RunAnalyticsEvent(
+            run_id=run.id,
+            workspace_id=workspace_hash,
+            playbook_slug=playbook_slug,
+            model=state.get("__model") or "unknown",
+            trigger_type=trigger_type,
+            blocks_executed=blocks_executed,
+            tool_calls=total_tools,
+            input_tokens=total_input,
+            output_tokens=total_output,
+            duration_ms=duration_ms,
+            outcome=outcome,
+            human_verdict=human_verdict,
+            cost_usd=total_cost,
+            error=error[:2000] if error else None,
+        ))
+        db.commit()
+        log.debug("RunAnalyticsEvent written for run %s (outcome=%s)", run.id, outcome)
+    except Exception:
+        log.exception("_emit_run_analytics failed — ignoring")
+
+
 def _resolve_refs(value: Any, state: dict) -> Any:
     """Replace {{block_id.field}} references with values from run state."""
     if isinstance(value, str):
@@ -1236,6 +1303,7 @@ def execute_run(run_id: str):
             "error": fail_error,
         })
         log.info("Run %s finished: %s", run_id, run.status)
+        _emit_run_analytics(run, version, state, db, outcome=run.status, error=fail_error)
 
     except Exception as e:
         log.exception("Executor crash for run %s", run_id)
@@ -1245,6 +1313,7 @@ def execute_run(run_id: str):
                 run.status = "failed"
                 run.completed_at = _now()
                 db.commit()
+                _emit_run_analytics(run, None, {}, db, outcome="failed", error=str(e))
         except Exception:
             pass
     finally:
