@@ -2,7 +2,49 @@ from __future__ import annotations
 from typing import Any, Optional
 from uuid import UUID
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
+
+
+def _extract_trigger_summary(state: dict | None) -> str | None:
+    """Pull a human-readable line from the run's trigger payload."""
+    if not state:
+        return None
+    trigger = state.get("_trigger") or {}
+
+    # GitHub issue
+    issue = trigger.get("issue") or {}
+    if issue.get("title"):
+        repo = trigger.get("repository", {}).get("full_name", "")
+        num  = issue.get("number", "")
+        title = issue["title"]
+        return f"#{num} {title}" if num else title
+
+    # GitHub / Bitbucket PR
+    pr = trigger.get("pull_request") or {}
+    if pr.get("title"):
+        num   = pr.get("number", "")
+        title = pr["title"]
+        return f"PR #{num} — {title}" if num else title
+
+    # GitLab MR
+    mr = trigger.get("object_attributes") or {}
+    if mr.get("title"):
+        num   = mr.get("iid", "")
+        title = mr["title"]
+        return f"MR !{num} — {title}" if num else title
+
+    # Dependabot / vulnerability alert
+    alert = trigger.get("alert") or {}
+    if alert.get("summary"):
+        return alert["summary"]
+
+    # Generic action label
+    action = trigger.get("action") or trigger.get("event_type")
+    if action:
+        repo = (trigger.get("repository") or {}).get("full_name", "")
+        return f"{repo} — {action}" if repo else action
+
+    return None
 
 
 class RunCreate(BaseModel):
@@ -35,9 +77,20 @@ class RunOut(BaseModel):
     current_block_id: Optional[str] = None
     max_turns: Optional[int] = None
     created_at: datetime
+    trigger_summary: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def compute_trigger_summary(cls, data: Any) -> Any:
+        if hasattr(data, "__dict__"):
+            state = getattr(data, "state", None)
+            data.__dict__.setdefault("trigger_summary", _extract_trigger_summary(state))
+        elif isinstance(data, dict) and "trigger_summary" not in data:
+            data["trigger_summary"] = _extract_trigger_summary(data.get("state"))
+        return data
 
 
 class RunDetailOut(RunOut):

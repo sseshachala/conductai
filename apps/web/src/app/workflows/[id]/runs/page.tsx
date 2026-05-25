@@ -20,6 +20,7 @@ interface Run {
   completed_at: string | null
   created_at: string
   max_turns: number | null
+  trigger_summary: string | null
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -101,13 +102,17 @@ export default function RunsPage() {
                 href={`/workflows/${workflowId}/runs/${run.id}`}
                 className="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-5 py-4 hover:border-stone-300 hover:shadow-sm transition-all"
               >
-                <div className="flex items-center gap-3">
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_STYLES[run.status] ?? STATUS_STYLES.pending}`}>
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_STYLES[run.status] ?? STATUS_STYLES.pending}`}>
                     {run.status}
                   </span>
-                  <span className="text-sm text-stone-700 font-mono">{run.id.slice(0, 8)}…</span>
+                  {run.trigger_summary ? (
+                    <span className="text-sm text-stone-800 truncate">{run.trigger_summary}</span>
+                  ) : (
+                    <span className="text-sm text-stone-400 font-mono">{run.id.slice(0, 8)}…</span>
+                  )}
                   {run.triggered_by && (
-                    <span className="text-xs text-stone-400">{run.triggered_by}</span>
+                    <span className="shrink-0 text-xs text-stone-400">{run.triggered_by}</span>
                   )}
                 </div>
                 <div className="flex items-center gap-4">
