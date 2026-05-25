@@ -478,7 +478,12 @@ def _execute_brain(
         "Do NOT switch between options mid-task. Pick one and finish completely."
     )
 
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    # BYO key: workspace credential takes precedence over platform env var
+    _anthropic_key = (
+        (credentials or {}).get("anthropic", {}).get("api_key")
+        or settings.anthropic_api_key
+    )
+    client = anthropic.Anthropic(api_key=_anthropic_key)
 
     if is_agentic:
         # Bounded agentic loop — max_turns from run state, default 20
