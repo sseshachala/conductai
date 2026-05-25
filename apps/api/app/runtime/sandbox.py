@@ -1,12 +1,17 @@
 """
 Isolated execution sandbox for Brain block tool calls.
 
-When MODAL_TOKEN_ID + MODAL_TOKEN_SECRET are set, each Brain block run
-dispatches file/shell tools into an ephemeral Modal container — fully isolated,
-destroyed after the block completes.
+Modal credentials must come from the workspace environment (Settings →
+Environments → MODAL_TOKEN_ID / MODAL_TOKEN_SECRET). There is no
+platform-level Modal fallback.
 
-When those env vars are NOT set (local dev), falls back to direct subprocess
-execution on the host (existing behaviour).
+When Modal credentials are present, each Brain block tool call is dispatched
+into an ephemeral Modal container via a short-lived subprocess — credentials
+exist only for that subprocess's lifetime and never touch the shared API
+worker process env (Centaur-inspired isolation pattern).
+
+When Modal credentials are absent, falls back to direct local subprocess
+execution (dev mode only).
 """
 import os
 import re
@@ -29,9 +34,9 @@ _FORBIDDEN_SHELL_PATTERNS = [
 
 
 def _modal_available() -> bool:
-    """Check at call time so .env loading order doesn't matter."""
-    from app.core.config import settings
-    return bool(settings.modal_token_id and settings.modal_token_secret)
+    """Legacy check — used only by /health/sandbox. Always False now that
+    platform-level Modal credentials are removed (see #202)."""
+    return False
 
 
 # ── Local fallback (dev mode) ─────────────────────────────────────────────────
@@ -228,44 +233,37 @@ def dispatch_brain_tool(
     Main entry point for Brain block tool execution.
 
     Routing precedence:
-      1. ``remote_host`` set on the block (e.g. a DO droplet provisioned by an
-         earlier tool block in the same run) -> run over SSH on that host.
-      2. Modal sandbox configured (platform env or BYO workspace credential) -> ephemeral container.
-      3. Local subprocess -> dev fallback.
+      1. remote_host set on the block → SSH dispatch to that host.
+      2. Modal credentials in workspace environment → ephemeral Modal container
+         via isolated subprocess (credentials never touch shared API worker env).
+      3. Local subprocess → dev fallback (no Modal configured).
     """
     if remote_host and remote_host.get("ip"):
         from app.runtime.remote_sandbox import remote_dispatch
-
-        log.debug("Dispatching %s to remote host %s", tool_name, remote_host.get("ip"))
+        log.debug("sandbox.dispatch", tool=tool_name, backend="remote", host=remote_host.get("ip"))
         return remote_dispatch(tool_name, tool_input, remote_host)
 
-    # BYO Modal: workspace credential takes precedence over platform env var
     modal_creds = (credentials or {}).get("modal", {})
-    byo_token_id = modal_creds.get("token_id", "")
-    byo_token_secret = modal_creds.get("token_secret", "")
-    if byo_token_id and byo_token_secret:
-        old_id = os.environ.get("MODAL_TOKEN_ID")
-        old_secret = os.environ.get("MODAL_TOKEN_SECRET")
-        os.environ["MODAL_TOKEN_ID"] = byo_token_id
-        os.environ["MODAL_TOKEN_SECRET"] = byo_token_secret
-        try:
-            log.debug("Dispatching %s to Modal sandbox (BYO credential)", tool_name)
-            return _modal_dispatch(tool_name, tool_input)
-        finally:
-            if old_id is None:
-                os.environ.pop("MODAL_TOKEN_ID", None)
-            else:
-                os.environ["MODAL_TOKEN_ID"] = old_id
-            if old_secret is None:
-                os.environ.pop("MODAL_TOKEN_SECRET", None)
-            else:
-                os.environ["MODAL_TOKEN_SECRET"] = old_secret
+    token_id = modal_creds.get("token_id", "")
+    token_secret = modal_creds.get("token_secret", "")
 
-    if _modal_available():
-        log.debug("Dispatching %s to Modal sandbox", tool_name)
-        return _modal_dispatch(tool_name, tool_input)
+    if token_id and token_secret:
+        import json
+        import sys
+        payload = json.dumps({"tool_name": tool_name, "tool_input": tool_input})
+        log.debug("sandbox.dispatch", tool=tool_name, backend="modal_subprocess")
+        proc = subprocess.run(
+            [sys.executable, "-m", "app.runtime.modal_runner", payload],
+            env={**os.environ, "MODAL_TOKEN_ID": token_id, "MODAL_TOKEN_SECRET": token_secret},
+            capture_output=True,
+            text=True,
+            timeout=360,
+        )
+        if proc.returncode != 0:
+            err = proc.stderr[:500] or "unknown error"
+            log.error("sandbox.modal_subprocess_failed", tool=tool_name, error=err)
+            raise RuntimeError(f"Modal sandbox failed: {err}")
+        return proc.stdout
 
-    raise RuntimeError(
-        "No sandbox configured — agentic brain blocks require Modal credentials. "
-        "Set MODAL_TOKEN_ID and MODAL_TOKEN_SECRET in your environment."
-    )
+    log.debug("sandbox.dispatch", tool=tool_name, backend="local")
+    return _dispatch_local(tool_name, tool_input)
