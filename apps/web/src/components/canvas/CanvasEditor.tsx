@@ -1177,6 +1177,8 @@ function EnvironmentPanel({
 }) {
   const env = environments.find(e => e.id === selectedEnvId)
   const connectedServices = new Set(credentials.map(c => c.service))
+  // "git" handle covers GitHub/GitLab/Bitbucket — treat as "github" for display
+  if (connectedServices.has("git")) connectedServices.add("github")
 
   // Derive the services this workflow actually uses from block integrations
   const usedServices = Array.from(
