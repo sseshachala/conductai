@@ -738,6 +738,14 @@ const INTEGRATIONS = ["GitHub", "GitLab", "Bitbucket", "Slack", "Linear", "Pager
 
 const BLOG_POSTS = [
   {
+    slug: "saving-60-90-on-ai-coding-tokens-with-one-cli-tool-rtk",
+    title: "Saving 60–90% on AI coding tokens with one CLI tool — rtk",
+    excerpt: "rtk sits as a hook between your IDE and the shell, filtering noise out of command output before the model receives context. Real savings, measured.",
+    date: "May 23, 2026",
+    tag: "Engineering",
+    tagColor: "bg-blue-100 text-blue-700",
+  },
+  {
     slug: "your-code-is-the-new-factory-floor-don-t-outsource-it-to-china",
     title: "Your Code Is the New Factory Floor — Don't Outsource It to China",
     excerpt: "Your source code, your business logic, your API keys, your architecture decisions — where do they go when you hit Enter? A technical and cultural case for AI data sovereignty.",
