@@ -53,7 +53,16 @@ const SERVICES: ServiceDef[] = [
     value: "slack", label: "Slack", abbr: "SL",
     description: "Post messages, DMs, and approval requests",
     color: "bg-purple-600 text-white",
-    fields: [{ key: "token", label: "Bot token", placeholder: "xoxb-…" }],
+    fields: [
+      { key: "token", label: "Bot token", placeholder: "xoxb-…" },
+      {
+        key: "signing_secret",
+        label: "Signing secret",
+        placeholder: "a1b2c3…",
+        optional: true,
+        tip: `Required for Approve/Reject buttons. Slack app → Basic Information → Signing Secret. Set Interactivity URL to: ${process.env.NEXT_PUBLIC_API_URL}/webhooks/slack/interactions`,
+      },
+    ],
   },
   {
     value: "linear", label: "Linear", abbr: "LN",
