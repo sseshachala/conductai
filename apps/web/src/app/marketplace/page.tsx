@@ -209,24 +209,30 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
 
   useEffect(() => {
     if (!pendingSlug || !selectedRepo) { setConflictWarning(null); return }
+    const triggerLabel = inputValues["trigger_label"] ?? ""
     authHeaders().then(async headers => {
       const workspaceId = getWorkspaceId()
       if (workspaceId) headers["X-Workspace-Id"] = workspaceId
+      const params = new URLSearchParams({ template: pendingSlug, repo: selectedRepo })
+      if (triggerLabel) params.set("trigger_label", triggerLabel)
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workflows/conflict-check?template=${pendingSlug}&repo=${encodeURIComponent(selectedRepo)}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/workflows/conflict-check?${params}`,
         { headers }
       )
       if (res.ok) {
         const data = await res.json()
         if (data.conflicts.length > 0) {
-          setConflictWarning(`This playbook is already watching ${selectedRepo} (${data.conflicts.length} agent${data.conflicts.length > 1 ? "s" : ""}). Use a different trigger label to avoid both firing on the same issue.`)
+          const msg = data.conflict_type === "label"
+            ? `An agent is already watching the "${triggerLabel}" label on ${selectedRepo}. Select a different trigger label above — you can have up to 3 agents on the same repo using different labels.`
+            : `This playbook is already installed on ${selectedRepo}. Installing again will run two independent agents on the same events.`
+          setConflictWarning(msg)
         } else {
           setConflictWarning(null)
         }
       }
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRepo, pendingSlug])
+  }, [selectedRepo, pendingSlug, inputValues["trigger_label"]])
 
   async function confirmInstall() {
     if (!pendingSlug) return
