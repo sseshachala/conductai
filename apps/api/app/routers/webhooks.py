@@ -133,11 +133,13 @@ async def slack_interactions(request: Request, db: Session = Depends(get_db)):
 
 # ── Inbound webhook trigger ───────────────────────────────────────────────────
 
+@router.post("/inbound/{project_slug}/{workflow_id}")
 @router.post("/inbound/{workflow_id}")
 async def inbound_webhook(
     workflow_id: str,
     request: Request,
     db: Session = Depends(get_db),
+    project_slug: str | None = None,
 ):
     """
     Receive an inbound POST and fire a workflow run whose trigger is configured
