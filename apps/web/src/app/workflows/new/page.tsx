@@ -217,7 +217,7 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
       const body: Record<string, unknown> = {
         name: agentName.trim() || (FRIENDLY_NAMES[template] ?? template),
         template,
-        ...inputValues,
+        inputs: inputValues,
       }
       if (selectedProjectId) body.project_id = selectedProjectId
       if (selectedEnvId)     body.environment_id = selectedEnvId
