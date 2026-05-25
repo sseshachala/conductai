@@ -806,7 +806,30 @@ def _dry_run_mock(integration: str, action: str, params: dict) -> dict:
     }
 
 
-def _execute_tool(block: dict, state: dict, credentials: dict) -> dict:
+_INTEGRATION_HOSTS: dict[str, str] = {
+    "github": "api.github.com",
+    "slack": "slack.com",
+    "linear": "api.linear.app",
+    "digitalocean": "api.digitalocean.com",
+    "vercel": "api.vercel.com",
+    "railway": "backboard.railway.app",
+}
+
+
+def _check_egress(host: str, allowed_hosts: list[str] | None) -> None:
+    """Raise PermissionError if host is not in the environment's allowlist."""
+    if not allowed_hosts:
+        return
+    for pattern in allowed_hosts:
+        if pattern.startswith("*."):
+            if host == pattern[2:] or host.endswith("." + pattern[2:]):
+                return
+        elif host == pattern:
+            return
+    raise PermissionError(f"Host {host!r} is not in this environment's allowed_hosts list")
+
+
+def _execute_tool(block: dict, state: dict, credentials: dict, allowed_hosts: list[str] | None = None) -> dict:
     from app.runtime.integrations import github, slack, linear, digitalocean, vercel, railway
 
     dry_run = state.get("__dry_run", False)
@@ -829,6 +852,10 @@ def _execute_tool(block: dict, state: dict, credentials: dict) -> dict:
     creds = credentials.get(integration, {})
     if not creds:
         return {"skipped": True, "reason": f"No credentials for {integration}"}
+
+    target_host = _INTEGRATION_HOSTS.get(integration)
+    if target_host:
+        _check_egress(target_host, allowed_hosts)
 
     if integration == "github":
         return github.execute(action, params, creds)
@@ -1188,8 +1215,13 @@ def execute_run(run_id: str):
         env_id = version.workflow.environment_id
         workspace_id_str = version.workflow.workspace_id
 
-        # Load credentials from the workflow's environment
+        # Load credentials and egress allowlist from the workflow's environment
+        allowed_hosts: list[str] | None = None
         if env_id:
+            from app.models.environment import Environment as _Env
+            env_row = db.query(_Env).filter(_Env.id == env_id).first()
+            if env_row:
+                allowed_hosts = env_row.allowed_hosts or None
             cred_rows = db.query(Integration).filter(
                 Integration.workspace_id == workspace_id_str,
                 Integration.environment_id == env_id,
@@ -1206,7 +1238,6 @@ def execute_run(run_id: str):
         # Fallback: merge in any missing handles from the Default environment
         # so integrations connected globally are always available
         if env_id:
-            from app.models.environment import Environment as _Env
             default_env = db.query(_Env).filter(
                 _Env.workspace_id == workspace_id_str,
                 _Env.name == "Default",
@@ -1270,7 +1301,7 @@ def execute_run(run_id: str):
                                             db=db, run_id=run_id, block_id=block_id)
 
                 elif block_type == "tool":
-                    result = _execute_tool(block, state, credentials)
+                    result = _execute_tool(block, state, credentials, allowed_hosts=allowed_hosts)
 
                 elif block_type == "output":
                     wf_name = version.workflow.name if version.workflow else "Agent"
@@ -1317,6 +1348,20 @@ def execute_run(run_id: str):
                 log.info("run.paused", run_id=run_id, block_id=ap.block_id)
                 return  # Exit without marking failed
 
+            except PermissionError as e:
+                blocked_host = str(e).split("'")[1] if "'" in str(e) else "unknown"
+                log.warning("block.egress_blocked", block_id=block_id, host=blocked_host, run_id=run_id)
+                if settings.sentry_dsn:
+                    import sentry_sdk
+                    with sentry_sdk.push_scope() as scope:
+                        scope.set_tag("run_id", str(run_id))
+                        scope.set_tag("blocked_host", blocked_host)
+                        sentry_sdk.capture_exception(e)
+                failed = True
+                fail_error = str(e)
+                _emit(db, run_id, block_id, "block_failed", {"error": str(e)})
+                break
+
             except Exception as e:
                 log.exception("block.failed", block_id=block_id)
                 if settings.sentry_dsn:
@@ -1335,7 +1380,7 @@ def execute_run(run_id: str):
         for block in cleanup_blocks:
             try:
                 _emit(db, run_id, block["id"], "block_started", {"type": "cleanup"})
-                result = _execute_tool(block, state, credentials)
+                result = _execute_tool(block, state, credentials, allowed_hosts=allowed_hosts)
                 _emit(db, run_id, block["id"], "block_completed", {"output": result})
             except Exception as e:
                 _emit(db, run_id, block["id"], "block_failed", {"error": str(e)})
