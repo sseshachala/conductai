@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_user_id, get_workspace_id, require_workspace_role
+from app.core.auth import get_user_id, get_workspace_id, require_workspace_role, audit as _audit
 from app.core.database import get_db
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/projects", tags=["workspace-projects"])
@@ -132,3 +132,49 @@ def delete_project(
                {"pid": project_id})
     db.execute(text("DELETE FROM projects WHERE id = :id"), {"id": project_id})
     db.commit()
+
+
+# ── Audit log endpoint ────────────────────────────────────────────────────────
+
+audit_router = APIRouter(prefix="/workspaces/{workspace_id}/audit-log", tags=["audit-log"])
+
+
+@audit_router.get("")
+def list_audit_log(
+    workspace_id: str,
+    active_workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin")),
+    db: Session = Depends(get_db),
+    action: str | None = None,
+    actor_id: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+):
+    """Return paginated audit log entries. Admin-only."""
+    _enforce_workspace(workspace_id, active_workspace_id)
+    q = "SELECT id, actor_id, actor_email, actor_role, action, resource_type, resource_id, metadata, created_at FROM audit_log WHERE workspace_id = :ws"
+    params: dict = {"ws": workspace_id}
+    if action:
+        q += " AND action = :action"
+        params["action"] = action
+    if actor_id:
+        q += " AND actor_id = :actor_id"
+        params["actor_id"] = actor_id
+    q += " ORDER BY created_at DESC LIMIT :limit OFFSET :offset"
+    params["limit"] = min(limit, 200)
+    params["offset"] = offset
+    rows = db.execute(text(q), params).fetchall()
+    return [
+        {
+            "id": str(r.id),
+            "actor_id": r.actor_id,
+            "actor_email": r.actor_email,
+            "actor_role": r.actor_role,
+            "action": r.action,
+            "resource_type": r.resource_type,
+            "resource_id": r.resource_id,
+            "metadata": r.metadata,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]
