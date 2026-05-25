@@ -5,6 +5,14 @@ description: >
   tests, then pause for human approval before pushing the PR.
 
 inputs:
+  trigger_label:
+    label: Trigger label
+    default: autopilot ready
+    type: select
+    options:
+      - autopilot ready
+      - ai_pilot_ready
+      - ai_ready
   model:
     label: AI Model
     default: claude-sonnet-4-6
@@ -26,9 +34,7 @@ on:
   github.issue_labeled:
     integration: github
     labels:
-      - autopilot ready
-      - ai_pilot_ready
-      - ai_ready
+      - "{{inputs.trigger_label}}"
     label_mode: one_of
     next: fetch_issue
 
