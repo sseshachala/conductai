@@ -60,6 +60,12 @@ const SERVICES: ServiceDef[] = [
     fields: [{ key: "token", label: "Personal access token", placeholder: "dop_v1_…" }],
   },
   {
+    value: "anthropic", label: "Anthropic", abbr: "AI",
+    description: "Bring your own API key — agents use this instead of the platform key",
+    color: "bg-amber-600 text-white",
+    fields: [{ key: "api_key", label: "API key", placeholder: "sk-ant-…" }],
+  },
+  {
     value: "email", label: "Email", abbr: "EM",
     description: "Send notifications via Resend or SendGrid",
     color: "bg-emerald-600 text-white",

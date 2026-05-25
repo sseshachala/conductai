@@ -18,7 +18,7 @@ export default function SettingsPage() {
 function SettingsPageWithAuth() {
   const { getToken, userId } = useAuth()
   const { activeWorkspace } = useWorkspace()
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(true)
 
   useEffect(() => {
     if (!activeWorkspace || !userId) return
