@@ -54,6 +54,7 @@ blocks:
   implement_fix:
     type: brain
     mode: agentic
+    model: "{{inputs.model}}"
     label: Implement fix
     description: |
       You are an expert software engineer.

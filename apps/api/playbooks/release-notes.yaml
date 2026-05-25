@@ -28,6 +28,7 @@ blocks:
   draft_release_notes:
     type: brain
     mode: agentic
+    model: "{{inputs.model}}"
     label: Draft release notes
     description: |
       A new git tag has been pushed. Draft release notes from merged PRs.

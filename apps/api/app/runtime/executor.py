@@ -490,9 +490,10 @@ def _execute_brain(
         working_dir: str | None = None  # track if Brain cloned a repo
         full_system = f"{environment_preamble}\n\n{system_prompt}\n\n{sufficiency_instruction}"
 
+        model_id = block["data"].get("model") or "claude-sonnet-4-6"
         while turns < max_turns:
             response = client.messages.create(
-                model="claude-sonnet-4-6",
+                model=model_id,
                 max_tokens=4096,
                 system=full_system,
                 tools=BRAIN_TOOLS,

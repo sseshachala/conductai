@@ -34,6 +34,7 @@ blocks:
   fetch_pr_diff:
     type: brain
     mode: agentic
+    model: "{{inputs.model}}"
     label: Fetch PR diff
     # Credentials are injected by the runtime via the assigned environment.
     # Do NOT log, echo, or include credential values in any output.
@@ -68,6 +69,7 @@ blocks:
   security_scan:
     type: brain
     mode: agentic
+    model: "{{inputs.model}}"
     label: Run security scan
     credentials:
       github: github
@@ -184,6 +186,7 @@ blocks:
   check_existing_issue:
     type: brain
     mode: agentic
+    model: "{{inputs.model}}"
     label: Check for existing security issue
     credentials:
       github: github
@@ -216,6 +219,7 @@ blocks:
   append_security_issue:
     type: brain
     mode: agentic
+    model: "{{inputs.model}}"
     label: Append findings to existing issue
     credentials:
       github: github
@@ -245,6 +249,7 @@ blocks:
   create_security_issue:
     type: brain
     mode: agentic
+    model: "{{inputs.model}}"
     label: Create security fix issue
     credentials:
       github: github

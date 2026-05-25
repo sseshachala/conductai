@@ -109,6 +109,7 @@ blocks:
   implement:
     type: brain
     mode: agentic
+    model: "{{inputs.model}}"
     runs_on:
       ip: "{{wait_droplet.ip_address}}"
       credentials_from: digitalocean
