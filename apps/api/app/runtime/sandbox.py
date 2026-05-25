@@ -124,9 +124,10 @@ elif name == "run_shell":
             print(f"Refused: matches forbidden pattern '{p}'", end="")
             sys.exit(0)
     try:
+        merged_env = {**os.environ, **(inputs.get("env") or {})}
         r = subprocess.run(
             cmd, shell=True, capture_output=True, text=True,
-            timeout=110, cwd=inputs.get("working_dir"),
+            timeout=110, cwd=inputs.get("working_dir"), env=merged_env,
         )
         out = r.stdout + r.stderr
         print((out[:10000] + "\n[... truncated]") if len(out) > 10000 else out or "(no output)", end="")
