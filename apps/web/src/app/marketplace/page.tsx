@@ -480,9 +480,9 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
 
             {webhookError && (
               <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-3">
-                <p className="text-xs font-semibold text-red-700 mb-1">Webhook registration failed</p>
+                <p className="text-xs font-semibold text-red-700 mb-1">Webhook not registered</p>
                 <p className="text-xs text-red-600 leading-relaxed">{webhookError}</p>
-                <p className="text-xs text-red-500 mt-2">Agent was installed. Add <strong>Administration (read &amp; write)</strong> permission to your GitHub PAT in Settings → Environments, then reinstall.</p>
+                <p className="text-xs text-stone-400 mt-2">The agent was installed — the webhook can be added once the token is updated.</p>
                 <button onClick={() => { closeInstallModal(); router.push(`/workflows/${lastInstalledId ?? ""}`) }}
                   className="mt-2 text-xs underline text-red-700">Open agent anyway →</button>
               </div>

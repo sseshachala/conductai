@@ -199,8 +199,15 @@ def _register_github_webhook(token: str, repo: str, webhook_url: str, events: li
         )
         if r.status_code == 201:
             return str(r.json()["id"]), None
-        err = f"GitHub returned {r.status_code}: {r.text[:300]}"
-        log.warning("GitHub webhook registration failed: %s", err)
+        log.warning("GitHub webhook registration failed: %s %s", r.status_code, r.text[:300])
+        if r.status_code == 403:
+            err = "GitHub rejected the request — your token is missing the Administration (read & write) permission. Go to Settings → Environments, update your GitHub token, and reinstall the agent."
+        elif r.status_code == 404:
+            err = f"Repository '{repo}' not found or your token doesn't have access to it. Check the repo name and token scopes in Settings → Environments."
+        elif r.status_code == 422:
+            err = "Webhook already exists on this repo for this URL. You may already have this agent installed — check your agents list."
+        else:
+            err = f"GitHub returned an unexpected error (HTTP {r.status_code}). Check your token permissions in Settings → Environments."
         return None, err
     except Exception as e:
         log.warning("GitHub webhook registration exception: %s", e)
