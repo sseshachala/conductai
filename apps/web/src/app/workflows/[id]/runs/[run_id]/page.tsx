@@ -6,7 +6,6 @@ import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import RunTrace from "@/components/runs/RunTrace"
 import AppShell from "@/components/AppShell"
-import Link from "next/link"
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
