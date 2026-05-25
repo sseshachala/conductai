@@ -5,6 +5,7 @@ import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import RunTrace from "@/components/runs/RunTrace"
+import ConversationTrace from "@/components/runs/ConversationTrace"
 import AppShell from "@/components/AppShell"
 
 function getCookie(name: string): string | null {
@@ -34,6 +35,7 @@ export default function RunDetailPage() {
   const [workflowName, setWorkflowName] = useState<string | null>(null)
   const [agentModel, setAgentModel] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState<"timeline" | "trace">("timeline")
 
   useEffect(() => {
     if (!isLoaded) return  // wait for Clerk to initialize before fetching
@@ -156,22 +158,47 @@ export default function RunDetailPage() {
           </button>
         </div>
 
+        {/* Tab bar */}
+        <div className="flex gap-1 border-b border-stone-200 mb-4">
+          {(["timeline", "trace"] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2 text-xs font-medium capitalize rounded-t-lg transition-colors ${
+                activeTab === tab
+                  ? "bg-white border border-b-white border-stone-200 text-stone-900 -mb-px"
+                  : "text-stone-400 hover:text-stone-600"
+              }`}
+            >
+              {tab === "trace" ? "AI Trace" : "Timeline"}
+            </button>
+          ))}
+        </div>
+
         <div className="bg-white rounded-xl border border-stone-200 p-6">
-          <RunTrace
-            workflowId={workflowId}
-            runId={runId}
-            initialStatus={run.status}
-            initialMeta={{
-              triggered_by: run.triggered_by,
-              started_at: run.started_at,
-              completed_at: run.completed_at,
-              paused_at: run.paused_at,
-              current_block_id: run.current_block_id,
-              workflow_version_id: run.workflow_version_id ?? null,
-            }}
-            maxTurns={run.max_turns ?? null}
-            getToken={getToken}
-          />
+          {activeTab === "timeline" ? (
+            <RunTrace
+              workflowId={workflowId}
+              runId={runId}
+              initialStatus={run.status}
+              initialMeta={{
+                triggered_by: run.triggered_by,
+                started_at: run.started_at,
+                completed_at: run.completed_at,
+                paused_at: run.paused_at,
+                current_block_id: run.current_block_id,
+                workflow_version_id: run.workflow_version_id ?? null,
+              }}
+              maxTurns={run.max_turns ?? null}
+              getToken={getToken}
+            />
+          ) : (
+            <ConversationTrace
+              workflowId={workflowId}
+              runId={runId}
+              getToken={getToken}
+            />
+          )}
         </div>
       </div>
     </AppShell>

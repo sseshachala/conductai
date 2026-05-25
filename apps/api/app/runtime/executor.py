@@ -67,6 +67,19 @@ def _redact_payload(payload: dict) -> dict:
     return out
 
 
+def _write_trace(db, run_id, block_id: str, turn: int, role: str, **kwargs) -> None:
+    """Write one run_trace row. Fire-and-forget — never raises."""
+    try:
+        from app.models.run_trace import RunTrace
+        db.add(RunTrace(run_id=run_id, block_id=block_id, turn=turn, role=role, **kwargs))
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
 def _emit(db, run_id, block_id: str | None, kind: str, payload: dict):
     event = RunEvent(run_id=run_id, block_id=block_id, kind=kind, payload=_redact_payload(payload))
     db.add(event)
@@ -587,6 +600,13 @@ def _execute_brain(
 
         model_id = block["data"].get("model") or "claude-sonnet-4-6"
         while turns < max_turns:
+            # Trace: user turn
+            if db and run_id and block_id:
+                turn_msg = messages[-1] if messages else {}
+                user_content = turn_msg.get("content", "") if isinstance(turn_msg.get("content"), str) else ""
+                _write_trace(db, run_id, block_id, turns + 1, "user",
+                             content=user_content[:8000] if user_content else None)
+
             response = client.messages.create(
                 model=model_id,
                 max_tokens=4096,
@@ -595,14 +615,22 @@ def _execute_brain(
                 messages=messages,
             )
             turns += 1
-            if hasattr(response, "usage") and response.usage:
-                total_input_tokens += getattr(response.usage, "input_tokens", 0)
-                total_output_tokens += getattr(response.usage, "output_tokens", 0)
+            in_tok = getattr(getattr(response, "usage", None), "input_tokens", 0)
+            out_tok = getattr(getattr(response, "usage", None), "output_tokens", 0)
+            if in_tok or out_tok:
+                total_input_tokens += in_tok
+                total_output_tokens += out_tok
 
             # Collect tool calls from response
             tool_calls = [b for b in response.content if b.type == "tool_use"]
             text_blocks = [b for b in response.content if b.type == "text"]
             final_text = " ".join(b.text for b in text_blocks)
+
+            # Trace: assistant response
+            if db and run_id and block_id:
+                _write_trace(db, run_id, block_id, turns, "assistant",
+                             content=final_text[:8000] if final_text else None,
+                             input_tokens=in_tok, output_tokens=out_tok)
 
             # First-turn sufficiency check — fail fast before any tools are used
             if turns == 1 and final_text.strip().startswith("NEEDS_CLARIFICATION:"):
@@ -667,14 +695,19 @@ def _execute_brain(
             # Execute tool calls and build tool_result message
             tool_results = []
             for tc in tool_calls:
+                # Trace: tool_use
+                if db and run_id and block_id:
+                    _write_trace(db, run_id, block_id, turns, "tool_use",
+                                 tool_name=tc.name,
+                                 tool_input=dict(tc.input) if tc.input else None,
+                                 tool_use_id=tc.id)
+
                 # Track working dir if Brain runs shell commands
                 if tc.name == "run_shell" and tc.input.get("working_dir"):
                     working_dir = tc.input["working_dir"]
                 try:
                     result_content = _local_dispatch(tc.name, tc.input)
                 except RuntimeError as sandbox_err:
-                    # Surface Modal/sandbox errors into the run trace so they're
-                    # visible in the RunDrawer instead of silently failing.
                     if db and run_id:
                         _emit(db, run_id, block_id, "brain_tool_call", {
                             "tool": "modal_error",
@@ -687,6 +720,11 @@ def _execute_brain(
                     "tool_use_id": tc.id,
                     "content": result_content,
                 })
+                # Trace: tool_result
+                if db and run_id and block_id:
+                    _write_trace(db, run_id, block_id, turns, "tool_result",
+                                 content=result_content[:8000] if result_content else None,
+                                 tool_use_id=tc.id)
                 if db and run_id:
                     _emit(db, run_id, block_id, "brain_tool_call", {
                         "tool": tc.name,
