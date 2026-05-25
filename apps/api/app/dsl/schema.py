@@ -228,6 +228,7 @@ class Workflow(BaseModel):
     description: str | None = None
 
     params: dict[str, WorkflowParam] = Field(default_factory=dict)
+    inputs: dict[str, Any] = Field(default_factory=dict)  # install-time config — declared here so extra="forbid" doesn't reject it
 
     # YAML key is the event name, e.g. ``github.issue_labeled``. We use an
     # alias so authors can write ``on:`` even though ``on`` is a Python keyword.
