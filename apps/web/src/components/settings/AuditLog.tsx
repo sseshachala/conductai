@@ -39,6 +39,11 @@ function actionLabel(action: string) {
   return action.replace(".", " ").replace(/_/g, " ")
 }
 
+function getCookieWorkspaceId(): string {
+  if (typeof document === "undefined") return ""
+  return document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] ?? ""
+}
+
 export default function AuditLog({ workspaceId, getToken }: Props) {
   const [entries, setEntries] = useState<AuditEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -53,20 +58,25 @@ export default function AuditLog({ workspaceId, getToken }: Props) {
     try {
       const h: Record<string, string> = {}
       if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
-      const ws = document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1]
+      const ws = getCookieWorkspaceId()
+      const effectiveWorkspaceId = workspaceId || ws
+      if (!effectiveWorkspaceId) {
+        setEntries([])
+        return
+      }
       if (ws) h["X-Workspace-Id"] = ws
 
       const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
       if (actionFilter) params.set("action", actionFilter)
 
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/audit-log?${params}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${effectiveWorkspaceId}/audit-log?${params}`,
         { headers: h }
       )
       if (!res.ok) throw new Error(`${res.status}`)
       setEntries(await res.json())
-    } catch (e) {
-      setError(String(e))
+    } catch {
+      setError("Could not load audit log. Check workspace access or refresh.")
     } finally {
       setLoading(false)
     }
@@ -96,21 +106,29 @@ export default function AuditLog({ workspaceId, getToken }: Props) {
             onChange={e => { setActionFilter(e.target.value); setPage(0) }}
             className="text-xs border border-stone-200 rounded-lg px-2 py-1.5 text-stone-600 bg-white"
           >
-            <option value="">All actions</option>
-            <option value="credential.upserted">credential.upserted</option>
-            <option value="credential.deleted">credential.deleted</option>
-            <option value="workflow.created">workflow.created</option>
-            <option value="workflow.deleted">workflow.deleted</option>
-            <option value="run.triggered">run.triggered</option>
-            <option value="member.invited">member.invited</option>
-            <option value="member.removed">member.removed</option>
-            <option value="member.role_changed">member.role_changed</option>
+            <option value="">Action</option>
+            <optgroup label="Credentials">
+              <option value="credential.upserted">Credential added / updated</option>
+              <option value="credential.deleted">Credential deleted</option>
+            </optgroup>
+            <optgroup label="Agents">
+              <option value="workflow.created">Agent created</option>
+              <option value="workflow.deleted">Agent deleted</option>
+            </optgroup>
+            <optgroup label="Runs">
+              <option value="run.triggered">Run triggered</option>
+            </optgroup>
+            <optgroup label="Members">
+              <option value="member.invited">Member invited</option>
+              <option value="member.removed">Member removed</option>
+              <option value="member.role_changed">Role changed</option>
+            </optgroup>
           </select>
           <button
             onClick={exportCsv}
             className="text-xs text-stone-500 hover:text-stone-800 border border-stone-200 rounded-lg px-3 py-1.5 transition-colors"
           >
-            ↓ CSV
+            Export
           </button>
         </div>
       </div>
@@ -120,7 +138,7 @@ export default function AuditLog({ workspaceId, getToken }: Props) {
       {loading ? (
         <p className="text-xs text-stone-400 py-4 text-center">Loading…</p>
       ) : entries.length === 0 ? (
-        <p className="text-xs text-stone-400 py-6 text-center">No audit entries yet.</p>
+        <p className="text-xs text-stone-400 py-6 text-center">No audit events yet. Credential changes, agent runs, and member changes will appear here.</p>
       ) : (
         <div className="divide-y divide-stone-100 border border-stone-200 rounded-xl overflow-hidden">
           {entries.map(e => (

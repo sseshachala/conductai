@@ -8,8 +8,8 @@ export const TOOLS = [
     category: "Orchestration",
     categoryColor: "bg-indigo-100 text-indigo-700",
     url: "https://conductai.ai",
-    oneLiner: "YAML agent recipes your team can install, configure, and run as reusable automations with human-in-the-loop gates.",
-    description: "Conduct turns YAML agent recipes into reusable team automations. Teams install playbooks into projects, configure environments and credentials, and run agents for engineering work like fixing GitHub issues, reviewing PRs, triaging issues, diagnosing CI failures, responding to incidents, updating dependencies, and generating release notes. Nothing merges without a human approval gate unless you explicitly remove it. Every run is fully audited. MIT licensed.",
+    oneLiner: "AI agent orchestration that runs around your Git workflow — not instead of it. Install playbooks, add approval gates, ship with confidence.",
+    description: "Conduct is an AI agent orchestration platform for engineering teams. It doesn't replace GitHub, Git, or your IDE — it wraps around your existing Git workflow to automate the repetitive parts: reviewing PRs, fixing labeled issues, triaging incoming bugs, diagnosing CI failures, patching dependencies, and responding to incidents. Every automation is a visual YAML playbook your team can read, fork, and customise. Human-in-the-loop approval gates are first-class blocks — nothing ships without a reviewer unless you explicitly remove the gate. Every run is fully audited with cost visibility. MIT licensed.",
     strengths: [
       "Visual canvas — see and edit the entire agent workflow at a glance",
       "Copilot↔autopilot spectrum — tune automation level per workflow",
@@ -28,7 +28,7 @@ export const TOOLS = [
       "No IDE extension — purely web canvas + CLI",
       "Self-hosted option not yet available",
     ],
-    bestFor: "Engineering teams (2–15 people) using GitHub + Slack who want full control over what gets automated and how far it goes. Teams that want to see the logic, own the playbook, and add approval gates before anything ships.",
+    bestFor: "Engineering teams (2–20 people) on GitHub + Slack who want AI automation that works with their existing Git workflow — not a replacement for it. Teams that want to see the agent logic, own the playbook, and put a human in the loop before anything ships.",
   },
   {
     id: "copilot",

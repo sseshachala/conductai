@@ -10,7 +10,15 @@ import PreferencesPanel from "@/components/settings/PreferencesPanel"
 import ApiKeysManager from "@/components/settings/ApiKeysManager"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
-type Tab = "environments" | "members" | "audit" | "preferences" | "api-keys"
+type Tab = "credentials" | "members" | "audit-log" | "preferences" | "api-keys"
+
+const TAB_LABELS: Record<Tab, string> = {
+  credentials: "Credentials",
+  preferences: "Preferences",
+  members: "Members",
+  "audit-log": "Audit Log",
+  "api-keys": "API Keys",
+}
 
 export default function SettingsPage() {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
@@ -46,8 +54,8 @@ function SettingsPageWithAuth() {
 }
 
 function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolean; workspaceId: string; getToken: (() => Promise<string | null>) | null }) {
-  const tabs = (["environments", "preferences", ...(isAdmin ? ["members", "audit", "api-keys"] : [])] as Tab[])
-  const [activeTab, setActiveTab] = useState<Tab>("environments")
+  const tabs = (["credentials", "preferences", ...(isAdmin ? ["members", "audit-log", "api-keys"] : [])] as Tab[])
+  const [activeTab, setActiveTab] = useState<Tab>("credentials")
   const [showTip, setShowTip] = useState(true)
 
   return (
@@ -57,7 +65,7 @@ function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolea
           <span className="text-amber-500 text-base leading-none mt-0.5 shrink-0">⚠</span>
           <p className="text-sm text-amber-800 leading-relaxed flex-1">
             <span className="font-semibold">Add credentials before running agents.</span>{" "}
-            Create an environment (e.g. "Production"), add your GitHub and Slack tokens inside it, then assign the environment to your agent on the canvas.
+            Go to Credentials, add your GitHub token, Slack token, and any other API keys. Agents pick them up automatically — no extra config needed.
           </p>
           <button
             onClick={() => setShowTip(false)}
@@ -79,21 +87,21 @@ function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolea
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium capitalize transition-colors ${
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
                 activeTab === tab
                   ? "bg-white text-stone-900 shadow-sm"
                   : "text-stone-500 hover:text-stone-800"
               }`}
             >
-              {tab}
+              {TAB_LABELS[tab]}
             </button>
           ))}
         </div>
 
-        {activeTab === "environments" && <EnvironmentsManager isAdmin={isAdmin} />}
+        {activeTab === "credentials" && <EnvironmentsManager isAdmin={isAdmin} />}
         {activeTab === "preferences" && <PreferencesPanel />}
         {activeTab === "members" && isAdmin && <MembersManager />}
-        {activeTab === "audit" && isAdmin && <AuditLog workspaceId={workspaceId} getToken={getToken} />}
+        {activeTab === "audit-log" && isAdmin && <AuditLog workspaceId={workspaceId} getToken={getToken} />}
         {activeTab === "api-keys" && isAdmin && <ApiKeysManager />}
       </div>
     </AppShell>
