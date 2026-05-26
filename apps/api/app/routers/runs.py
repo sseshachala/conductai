@@ -31,42 +31,35 @@ QUEUE_KEY = "marshal:runs:queue"
 
 def get_workspace_id_sse(
     request: Request,
-    workspace_id: str | None = Depends(lambda: None),
+    db: Session = Depends(get_db),
 ) -> str:
     """Auth dependency for SSE endpoints.
     EventSource cannot set custom headers, so token and workspace_id come via query params."""
-    # Accept token from Authorization header OR ?token= query param (EventSource workaround)
     auth_header = request.headers.get("Authorization", "")
     x_ws = request.headers.get("x-workspace-id") or request.query_params.get("workspace_id")
 
     if not _clerk_enabled():
         return x_ws or DEV_WORKSPACE_ID
 
-    # CLI API key — header only (query params are logged by proxies)
     api_key_hdr = request.headers.get("x-api-key")
-    from app.core.config import settings as _settings
-    cli_key = _settings.cli_api_key
-    if cli_key and api_key_hdr == cli_key:
-        if not _settings.cli_workspace_id:
-            raise HTTPException(status_code=500, detail="CLI_WORKSPACE_ID is not configured on the server")
-        return _settings.cli_workspace_id
 
-    # Per-user cond_live_... API key — same logic as get_workspace_id
+    # Master server-level CLI key
+    cli_key = settings.cli_api_key
+    if cli_key and api_key_hdr == cli_key:
+        if not settings.cli_workspace_id:
+            raise HTTPException(status_code=500, detail="CLI_WORKSPACE_ID is not configured on the server")
+        return settings.cli_workspace_id
+
+    # Per-user cond_live_... API key
     if api_key_hdr and api_key_hdr.startswith("cond_live_"):
         import hashlib
         from app.models.conduct_api_key import ConductApiKey
-        from app.core.database import get_db as _get_db
-        from datetime import datetime, timezone
-        db = next(_get_db())
-        try:
-            key_hash = hashlib.sha256(api_key_hdr.encode()).hexdigest()
-            row = db.query(ConductApiKey).filter(ConductApiKey.key_hash == key_hash).first()
-            if row and (row.expires_at is None or row.expires_at > datetime.now(timezone.utc)):
-                row.last_used_at = datetime.now(timezone.utc)
-                db.commit()
-                return str(row.workspace_id)
-        finally:
-            db.close()
+        key_hash = hashlib.sha256(api_key_hdr.encode()).hexdigest()
+        row = db.query(ConductApiKey).filter(ConductApiKey.key_hash == key_hash).first()
+        if row and (row.expires_at is None or row.expires_at > datetime.now(timezone.utc)):
+            row.last_used_at = datetime.now(timezone.utc)
+            db.commit()
+            return str(row.workspace_id)
 
     raw_token = None
     if auth_header.startswith("Bearer "):
