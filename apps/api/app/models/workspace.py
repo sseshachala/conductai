@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 import sqlalchemy as sa
 from sqlalchemy import Column, String, DateTime, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 
@@ -16,6 +16,7 @@ class Workspace(Base):
     is_approved = Column(sa.Boolean, nullable=False, default=False)
     plan = Column(String(50), nullable=False, default="free")
     kms_key_id = Column(String(255), nullable=True)
+    preferences = Column(JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

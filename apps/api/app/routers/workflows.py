@@ -475,6 +475,7 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
         project_id=project_id,
         name=body.name,
         environment_id=default_env.id,
+        playbook_slug=body.template or None,
     )
     db.add(workflow)
     db.flush()
@@ -1286,6 +1287,67 @@ def update_workflow_source(
     db.commit()
     db.refresh(workflow)
     return workflow
+
+
+@router.post("/{workflow_id}/trigger")
+def test_trigger(
+    workflow_id: UUID,
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor")),
+):
+    """
+    Authenticated test trigger. When payload is empty, uses the playbook's
+    built-in test_trigger.payload (defined in the YAML). Bypasses webhook
+    HMAC — callers authenticate via Clerk JWT instead.
+    """
+    import pathlib, yaml as _yaml
+    import redis as _redis_mod
+    from app.core.config import settings as _settings
+
+    workflow = db.query(Workflow).filter(
+        Workflow.id == workflow_id,
+        Workflow.workspace_id == workspace_id,
+    ).first()
+    if not workflow or not workflow.current_version:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    # If no payload supplied, use the playbook's built-in test_trigger.payload
+    if not payload and workflow.playbook_slug and workflow.playbook_slug in _TEMPLATE_PLAYBOOKS:
+        playbook_file = _TEMPLATE_PLAYBOOKS[workflow.playbook_slug]
+        playbook_path = pathlib.Path(__file__).parent.parent.parent / "playbooks" / playbook_file
+        if playbook_path.exists():
+            raw = _yaml.safe_load(playbook_path.read_text()) or {}
+            payload = raw.get("test_trigger", {}).get("payload", {})
+
+    if not payload:
+        raise HTTPException(status_code=400, detail="No payload provided and no test_trigger defined for this playbook")
+
+    version = workflow.current_version
+    try:
+        graph = version.graph or {}
+        pf = _estimate_turns_for_graph(graph, payload.get("title", ""), payload.get("body", ""))
+        suggested_turns = pf["suggested_max_turns"]
+    except Exception:
+        suggested_turns = 20
+
+    run = Run(
+        workflow_version_id=version.id,
+        triggered_by="manual:test_trigger",
+        status="pending",
+        state={"_trigger": payload, "__triggered_by": "manual:test_trigger", "__max_turns": suggested_turns},
+        max_turns=suggested_turns,
+    )
+    db.add(run)
+    db.flush()
+    db.commit()
+
+    r = _redis_mod.from_url(_settings.redis_url, decode_responses=True)
+    r.rpush("marshal:runs:queue", str(run.id))
+
+    log.info("workflow.test_triggered", workflow_id=str(workflow_id), run_id=str(run.id), playbook_slug=workflow.playbook_slug)
+    return {"ok": True, "run_id": str(run.id), "max_turns": suggested_turns}
 
 
 class SyncRequest(BaseModel):

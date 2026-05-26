@@ -31,6 +31,7 @@ import CostEstimate from "./CostEstimate"
 import YamlPanel from "./YamlPanel"
 import { autoLayout } from "@/lib/auto-layout"
 import { type BlockType } from "@/lib/block-types"
+import { usePreferences } from "@/lib/PreferencesContext"
 
 const nodeTypes = { block: BlockNode }
 
@@ -154,6 +155,11 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
   const [webhookModal, setWebhookModal] = useState<{ dryRun: boolean } | null>(null)
   const [webhookRepo, setWebhookRepo] = useState("")
   const [webhookPrNumber, setWebhookPrNumber] = useState("")
+  const [testTriggerModal, setTestTriggerModal] = useState(false)
+  const [testRunning, setTestRunning] = useState(false)
+  const [testRunId, setTestRunId] = useState<string | null>(null)
+  const { prefs } = usePreferences()
+  const [playbookSlug, setPlaybookSlug] = useState<string | null>(null)
 
   const STORAGE_KEY = `marshal:active-run:${workflowId}`
 
@@ -244,6 +250,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
         setWorkflowName(data.name)
         setSelectedEnvId(data.environment_id ?? "")
         setGithubHookRepo(data.github_hook_repo ?? null)
+        setPlaybookSlug(data.playbook_slug ?? null)
         const graph = data.current_version?.graph
         if (graph?.nodes && graph?.edges) {
           // Run auto-layout when:
@@ -665,6 +672,26 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
     }
   }, [workflowId, router, STORAGE_KEY])
 
+  const startTestTrigger = useCallback(async () => {
+    setTestTriggerModal(false)
+    setTestRunning(true)
+    try {
+      const headers = await authHeaders(getToken)
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/trigger`,
+        { method: "POST", headers, body: JSON.stringify({}) }
+      )
+      if (!res.ok) throw new Error("Failed to start test run")
+      const data = await res.json()
+      setTestRunId(data.run_id)
+      router.push(`/workflows/${workflowId}/runs/${data.run_id}`)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setTestRunning(false)
+    }
+  }, [workflowId, getToken, router])
+
   const handleBlockStatus = useCallback((blockId: string, status: "running" | "completed" | "failed" | "skipped") => {
     setNodes(nds => nds.map(n =>
       n.id === blockId ? { ...n, data: { ...n.data, runStatus: status } } : n
@@ -780,13 +807,24 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
           </button>
           {!isViewer && (
             <>
-              <button
-                onClick={() => startRun(true)}
-                disabled={running !== "idle"}
-                className="rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-500 hover:bg-stone-50 transition-colors disabled:opacity-50"
-              >
-                {running === "dry" ? "Simulating…" : "Dry run"}
-              </button>
+              {prefs.show_test_trigger && playbookSlug && (
+                <button
+                  onClick={() => setTestTriggerModal(true)}
+                  disabled={running !== "idle" || testRunning}
+                  className="rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-medium text-emerald-600 hover:bg-emerald-50 transition-colors disabled:opacity-50"
+                >
+                  {testRunning ? "Starting…" : "⚗ Test Run"}
+                </button>
+              )}
+              {prefs.show_dry_run && (
+                <button
+                  onClick={() => startRun(true)}
+                  disabled={running !== "idle"}
+                  className="rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-500 hover:bg-stone-50 transition-colors disabled:opacity-50"
+                >
+                  {running === "dry" ? "Simulating…" : "Dry run"}
+                </button>
+              )}
               <button
                 onClick={() => activeRunId ? setDrawerVisible(true) : startRun(false)}
                 disabled={running === "live" || running === "dry"}
@@ -1088,6 +1126,32 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
                 disabled={!webhookRepo.includes("/") || !webhookPrNumber}
                 className="px-4 py-2 text-xs font-medium bg-stone-900 text-white rounded-lg hover:bg-stone-700 disabled:opacity-40 transition-colors"
               >Run review</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {testTriggerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6 flex flex-col gap-4">
+            <div>
+              <h2 className="text-sm font-semibold text-stone-900">⚗ Test Run</h2>
+              <p className="text-xs text-stone-500 mt-1">
+                This fires a real run using a built-in dummy payload. All artifacts (branches, PRs, files) are prefixed with <span className="font-mono font-medium text-stone-700">[TEST]</span> — safe to close without merging.
+              </p>
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-xs text-amber-800">
+              The agent will execute against your connected repo using your environment credentials.
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setTestTriggerModal(false)}
+                className="px-4 py-2 text-xs text-stone-500 hover:text-stone-700 rounded-lg hover:bg-stone-100 transition-colors"
+              >Cancel</button>
+              <button
+                onClick={startTestTrigger}
+                className="px-4 py-2 text-xs font-medium bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+              >Fire test run</button>
             </div>
           </div>
         </div>
