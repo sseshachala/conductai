@@ -48,9 +48,9 @@ def req_text(method: str, url: str, hdrs: dict, body_text: str) -> dict:
         sys.exit(1)
 
 
-def stream(url: str):
+def stream(url: str, hdrs: dict | None = None):
     """Yield parsed SSE data dicts."""
-    r = urllib.request.Request(url)
+    r = urllib.request.Request(url, headers=hdrs or {})
     try:
         resp = urllib.request.urlopen(r)
     except urllib.error.HTTPError as e:

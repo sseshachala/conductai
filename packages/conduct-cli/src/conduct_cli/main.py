@@ -1,6 +1,7 @@
 import argparse
 import json
 import sys
+import time
 import urllib.parse
 from pathlib import Path
 
@@ -8,26 +9,67 @@ import yaml
 
 from conduct_cli import api
 
-RESET = "\033[0m"
-BOLD  = "\033[1m"
-GREEN = "\033[32m"
-RED   = "\033[31m"
-BLUE  = "\033[34m"
-GRAY  = "\033[90m"
-CYAN  = "\033[36m"
+RESET  = "\033[0m"
+BOLD   = "\033[1m"
+GREEN  = "\033[32m"
+RED    = "\033[31m"
+BLUE   = "\033[34m"
+GRAY   = "\033[90m"
+CYAN   = "\033[36m"
+YELLOW = "\033[33m"
 
-DEV_WORKSPACE = "00000000-0000-0000-0000-000000000001"
+CONFIG_PATH = Path.home() / ".conduct" / "config.json"
 
+
+# ── Config helpers ────────────────────────────────────────────────────────────
+
+def _load_config() -> dict:
+    if CONFIG_PATH.exists():
+        return json.loads(CONFIG_PATH.read_text())
+    return {}
+
+
+def _save_config(data: dict):
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CONFIG_PATH.write_text(json.dumps(data, indent=2))
+
+
+def _resolve(args, key: str, config_key: str | None = None):
+    """Return value from CLI args first, then config file."""
+    val = getattr(args, key.replace("-", "_"), None)
+    if val:
+        return val
+    cfg = _load_config()
+    return cfg.get(config_key or key)
+
+
+def _require_auth(args) -> tuple[str, str, str | None, str | None]:
+    """Return (server, workspace_id, api_key, token) — exit if not configured."""
+    server     = _resolve(args, "server")
+    workspace  = _resolve(args, "workspace")
+    api_key    = _resolve(args, "api_key", "api_key")
+    token      = _resolve(args, "token")
+
+    if not server:
+        print(f"{RED}No server set. Run: conduct login --server <url> --api-key <key>{RESET}")
+        sys.exit(1)
+    if not workspace:
+        print(f"{RED}No workspace set. Run: conduct login --workspace <id>{RESET}")
+        sys.exit(1)
+    if not api_key and not token:
+        print(f"{RED}No credentials. Run: conduct login --api-key <key>{RESET}")
+        sys.exit(1)
+
+    return server.rstrip("/"), workspace, api_key, token
+
+
+# ── Stream helper ─────────────────────────────────────────────────────────────
 
 def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, token=None, api_key=None) -> bool:
-    qs = f"?workspace_id={workspace_id}"
-    if api_key:
-        qs += f"&api_key={api_key}"
-    elif token:
-        qs += f"&token={token}"
-    url = f"{server}/workflows/{workflow_id}/runs/{run_id}/stream{qs}"
+    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+    url  = f"{server}/workflows/{workflow_id}/runs/{run_id}/stream"
 
-    for data in api.stream(url):
+    for data in api.stream(url, hdrs):
         kind    = data.get("kind", "")
         bid     = data.get("block_id") or ""
         payload = data.get("payload", data)
@@ -59,6 +101,190 @@ def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, t
     return False
 
 
+def _poll_run(server: str, workflow_id: str, run_id: str, hdrs: dict) -> bool:
+    """Poll run status until terminal — fallback when SSE stream unavailable."""
+    terminal = {"succeeded", "failed", "cancelled"}
+    for _ in range(120):  # max 10 min
+        time.sleep(5)
+        try:
+            run = api.req("GET", f"{server}/workflows/{workflow_id}/runs/{run_id}", hdrs)
+            status = run.get("status", "")
+            print(f"{GRAY}    status: {status}{RESET}", end="\r")
+            if status in terminal:
+                print()
+                return status == "succeeded"
+        except Exception:
+            pass
+    print(f"{RED}    timed out waiting for run{RESET}")
+    return False
+
+
+# ── Commands ──────────────────────────────────────────────────────────────────
+
+def cmd_login(args):
+    server    = args.server
+    api_key   = args.api_key
+    workspace = args.workspace
+    token     = args.token
+
+    if not server and not api_key and not workspace:
+        cfg = _load_config()
+        if cfg:
+            print(f"{BOLD}Current config ({CONFIG_PATH}):{RESET}")
+            print(f"  server:    {cfg.get('server', '—')}")
+            print(f"  workspace: {cfg.get('workspace', '—')}")
+            print(f"  api_key:   {'set' if cfg.get('api_key') else '—'}")
+        else:
+            print("No config found. Run: conduct login --server <url> --api-key <key> --workspace <id>")
+        return
+
+    cfg = _load_config()
+    if server:    cfg["server"]    = server.rstrip("/")
+    if api_key:   cfg["api_key"]   = api_key
+    if workspace: cfg["workspace"] = workspace
+    if token:     cfg["token"]     = token
+
+    # Validate by hitting /workflows
+    s   = cfg["server"]
+    ws  = cfg.get("workspace", "")
+    ak  = cfg.get("api_key")
+    tok = cfg.get("token")
+    if ws and (ak or tok):
+        hdrs = api.headers(ws, tok, "application/json", ak)
+        try:
+            api.req("GET", f"{s}/workflows", hdrs)
+            print(f"{GREEN}✓ Connected to {s}{RESET}")
+        except SystemExit:
+            print(f"{RED}Could not connect — check your server URL, workspace ID, and API key.{RESET}")
+            sys.exit(1)
+
+    _save_config(cfg)
+    print(f"{GREEN}✓ Config saved to {CONFIG_PATH}{RESET}")
+
+
+def cmd_agents(args):
+    server, workspace_id, api_key, token = _require_auth(args)
+    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+
+    project_filter = getattr(args, "project", None)
+    url = f"{server}/workflows"
+    if project_filter:
+        # find project by name first
+        projects = api.req("GET", f"{server}/workspaces/{workspace_id}/projects", hdrs)
+        match = next((p for p in projects if p["name"].lower() == project_filter.lower()), None)
+        if not match:
+            print(f"{RED}Project '{project_filter}' not found.{RESET}")
+            sys.exit(1)
+        url += f"?project_id={match['id']}"
+
+    workflows = api.req("GET", url, hdrs)
+
+    if not workflows:
+        print("No agents found.")
+        return
+
+    # Fetch projects for name lookup
+    try:
+        projects = api.req("GET", f"{server}/workspaces/{workspace_id}/projects", hdrs)
+        proj_map = {str(p["id"]): p["name"] for p in projects}
+    except Exception:
+        proj_map = {}
+
+    print(f"\n{BOLD}{'Agent':<35} {'Project':<20} {'Playbook':<25} {'Last run':<12} {'ID'}{RESET}")
+    print("─" * 110)
+
+    for wf in workflows:
+        name        = wf.get("name", "")[:34]
+        project     = proj_map.get(str(wf.get("project_id", "")), "—")[:19]
+        slug        = (wf.get("playbook_slug") or "—")[:24]
+        last_status = wf.get("last_run_status") or "—"
+        wf_id       = str(wf.get("id", ""))
+
+        status_color = GREEN if last_status == "succeeded" else RED if last_status == "failed" else GRAY
+        print(f"  {name:<35} {project:<20} {slug:<25} {status_color}{last_status:<12}{RESET} {GRAY}{wf_id}{RESET}")
+
+    print()
+
+
+def cmd_test(args):
+    server, workspace_id, api_key, token = _require_auth(args)
+    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+
+    agent_names = args.agents  # list, or empty if --all
+    run_all     = getattr(args, "all", False)
+
+    # Get full workflow list
+    workflows = api.req("GET", f"{server}/workflows", hdrs)
+
+    if run_all:
+        targets = [wf for wf in workflows if wf.get("playbook_slug")]
+        if not targets:
+            print("No playbook-based agents found.")
+            return
+    else:
+        targets = []
+        for name in agent_names:
+            match = next((wf for wf in workflows if wf["name"].lower() == name.lower()), None)
+            if not match:
+                print(f"{RED}Agent '{name}' not found. Run 'conduct agents' to see available agents.{RESET}")
+                sys.exit(1)
+            if not match.get("playbook_slug"):
+                print(f"{YELLOW}⚠ '{name}' has no playbook_slug — no built-in test payload. Skipping.{RESET}")
+                continue
+            targets.append(match)
+
+    if not targets:
+        print("Nothing to test.")
+        return
+
+    print(f"\n{BOLD}▶ conduct test — {len(targets)} agent(s){RESET}\n")
+
+    results = []
+    for wf in targets:
+        name    = wf["name"]
+        wf_id   = str(wf["id"])
+        slug    = wf.get("playbook_slug", "")
+
+        print(f"{CYAN}── {name}{RESET} {GRAY}({slug}){RESET}")
+
+        # Fire test trigger
+        try:
+            run = api.req("POST", f"{server}/workflows/{wf_id}/trigger", hdrs, {})
+        except SystemExit:
+            results.append((name, False, None))
+            print()
+            continue
+
+        run_id = run.get("run_id")
+        print(f"  {GRAY}run: {run_id}{RESET}")
+
+        # Stream or poll
+        try:
+            ok = _stream_run(server, wf_id, run_id, workspace_id, token, api_key)
+        except Exception:
+            ok = _poll_run(server, wf_id, run_id, hdrs)
+
+        results.append((name, ok, run_id))
+        print()
+
+    # Summary table
+    passed = sum(1 for _, ok, _ in results if ok)
+    failed = len(results) - passed
+
+    print(f"{BOLD}{'─' * 60}{RESET}")
+    print(f"{BOLD}Results:{RESET}")
+    for name, ok, run_id in results:
+        icon = f"{GREEN}✓{RESET}" if ok else f"{RED}✗{RESET}"
+        rid  = f"{GRAY}{run_id[:8]}…{RESET}" if run_id else ""
+        print(f"  {icon}  {name:<40} {rid}")
+
+    print()
+    color = GREEN if failed == 0 else RED
+    print(f"{BOLD}{color}{passed}/{len(results)} passed{RESET}\n")
+
+    sys.exit(0 if failed == 0 else 1)
+
+
 def _build_state(issue: dict, repo_full_name: str) -> dict:
     owner, repo = repo_full_name.split("/", 1)
     trigger = {
@@ -75,10 +301,7 @@ def _build_state(issue: dict, repo_full_name: str) -> dict:
         "default_branch": "main",
         "clone_url":      issue["clone_url"],
     }
-    return {
-        "github_issue": trigger,
-        "_trigger":     trigger,
-    }
+    return {"github_issue": trigger, "_trigger": trigger}
 
 
 def cmd_run(args):
@@ -91,10 +314,7 @@ def cmd_run(args):
     cfg          = yaml.safe_load(raw_yaml)
     name         = cfg.get("name", path.stem)
     workflow_id  = cfg.get("id")
-    server       = args.server.rstrip("/")
-    workspace_id = args.workspace or cfg.get("workspace_id") or DEV_WORKSPACE
-    token        = args.token
-    api_key      = args.api_key
+    server, workspace_id, api_key, token = _require_auth(args)
     on_block     = cfg.get("on") or {}
     trigger_type = next(iter(on_block), None)
     trigger_cfg  = on_block.get(trigger_type, {})
@@ -105,7 +325,6 @@ def cmd_run(args):
     print(f"\n{BOLD}▶ conduct run — {name}{RESET}")
     print(f"  server: {server}\n")
 
-    # Use id from YAML; fall back to name lookup
     if not workflow_id:
         workflow_id = api.find_or_create_workflow(server, name, json_h)
     print(f"  workflow: {workflow_id}")
@@ -132,7 +351,6 @@ def cmd_run(args):
             print(f"{CYAN}  ── Issue #{issue['number']}: {issue['title']}{RESET}")
             state = _build_state(issue, repo)
 
-            # Preflight: estimate turn budget before starting the run
             max_turns = None
             try:
                 pf = api.req("POST", f"{server}/workflows/{workflow_id}/preflight", json_h, {
@@ -144,13 +362,13 @@ def cmd_run(args):
                     print(f"{GRAY}  ⚠ estimated {suggested} turns — bumping max_turns{RESET}")
                     max_turns = suggested
             except Exception:
-                pass  # preflight is best-effort
+                pass
 
             payload = {"triggered_by": f"cli:issue#{issue['number']}", "initial_state": state}
             if max_turns:
                 payload["max_turns"] = max_turns
-            run   = api.req("POST", f"{server}/workflows/{workflow_id}/runs", json_h, payload)
-            ok = _stream_run(server, workflow_id, run["id"], workspace_id, token, api_key)
+            run = api.req("POST", f"{server}/workflows/{workflow_id}/runs", json_h, payload)
+            ok  = _stream_run(server, workflow_id, run["id"], workspace_id, token, api_key)
             passed += ok
             failed += not ok
             print()
@@ -165,19 +383,53 @@ def cmd_run(args):
         _stream_run(server, workflow_id, run["id"], workspace_id, token)
 
 
-def main():
-    parser = argparse.ArgumentParser(prog="conduct")
-    parser.add_argument("--server",    required=True, help="Marshal API URL")
-    parser.add_argument("--api-key",  help="CLI API key (set CLI_API_KEY on the server)")
-    parser.add_argument("--token",    help="Bearer token for Clerk auth")
-    parser.add_argument("--workspace", help="Workspace ID (overrides YAML workspace_id)")
+# ── Entry point ───────────────────────────────────────────────────────────────
 
-    sub   = parser.add_subparsers(dest="command")
+def main():
+    parser = argparse.ArgumentParser(
+        prog="conduct",
+        description="Conduct AI — agent CLI",
+    )
+    # Global overrides (optional — config file is preferred)
+    parser.add_argument("--server",    help="API URL (default: from ~/.conduct/config.json)")
+    parser.add_argument("--api-key",   dest="api_key", help="CLI API key")
+    parser.add_argument("--token",     help="Bearer token (Clerk)")
+    parser.add_argument("--workspace", help="Workspace ID")
+
+    sub = parser.add_subparsers(dest="command")
+
+    # conduct login
+    login_p = sub.add_parser("login", help="Save connection config (~/.conduct/config.json)")
+    login_p.add_argument("--server",    help="API base URL e.g. https://api.conductai.ai")
+    login_p.add_argument("--api-key",   dest="api_key", help="CLI API key (set CLI_API_KEY on server)")
+    login_p.add_argument("--workspace", help="Workspace ID")
+    login_p.add_argument("--token",     help="Bearer token (alternative to API key)")
+
+    # conduct agents
+    agents_p = sub.add_parser("agents", help="List all agents")
+    agents_p.add_argument("--project", help="Filter by project name")
+
+    # conduct test
+    test_p = sub.add_parser("test", help="Fire test trigger on one or more agents")
+    test_p.add_argument("agents", nargs="*", metavar="agent_name", help="Agent name(s) to test")
+    test_p.add_argument("--all", action="store_true", help="Test all playbook-based agents")
+
+    # conduct run (existing)
     run_p = sub.add_parser("run", help="Run a workflow from a YAML file")
     run_p.add_argument("yaml", help="Path to workflow YAML")
 
     args = parser.parse_args()
-    if args.command == "run":
+
+    if args.command == "login":
+        cmd_login(args)
+    elif args.command == "agents":
+        cmd_agents(args)
+    elif args.command == "test":
+        if not args.agents and not args.all:
+            test_p.print_help()
+            sys.exit(1)
+        cmd_test(args)
+    elif args.command == "run":
         cmd_run(args)
     else:
         parser.print_help()
