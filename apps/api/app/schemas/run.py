@@ -101,3 +101,5 @@ class RunDetailOut(RunOut):
 class RunWithWorkflowOut(RunOut):
     workflow_id: str
     workflow_name: str
+    project_id: Optional[str] = None
+    project_name: Optional[str] = None

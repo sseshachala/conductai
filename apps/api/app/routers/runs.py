@@ -18,6 +18,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.run import Run, RunEvent
 from app.models.workflow import Workflow, WorkflowVersion
+from app.models.project import Project
 from app.schemas.run import RunCreate, RunDetailOut, RunOut, RunWithWorkflowOut
 
 router = APIRouter(prefix="/workflows/{workflow_id}/runs", tags=["runs"])
@@ -475,16 +476,18 @@ def list_all_runs(
 ):
     """All runs across all agents in the workspace, newest first."""
     q = (
-        db.query(Run, Workflow.id.label("wf_id"), Workflow.name.label("wf_name"))
+        db.query(Run, Workflow.id.label("wf_id"), Workflow.name.label("wf_name"),
+                 Workflow.project_id.label("proj_id"), Project.name.label("proj_name"))
         .join(WorkflowVersion, Run.workflow_version_id == WorkflowVersion.id)
         .join(Workflow, WorkflowVersion.workflow_id == Workflow.id)
+        .outerjoin(Project, Workflow.project_id == Project.id)
         .filter(Workflow.workspace_id == workspace_id)
         .order_by(Run.created_at.desc())
     )
     if status:
         q = q.filter(Run.status == status)
     results = []
-    for run, wf_id, wf_name in q.offset(offset).limit(limit).all():
+    for run, wf_id, wf_name, proj_id, proj_name in q.offset(offset).limit(limit).all():
         out = RunWithWorkflowOut(
             id=run.id,
             workflow_version_id=run.workflow_version_id,
@@ -497,6 +500,8 @@ def list_all_runs(
             created_at=run.created_at,
             workflow_id=str(wf_id),
             workflow_name=wf_name,
+            project_id=str(proj_id) if proj_id else None,
+            project_name=proj_name,
         )
         results.append(out)
     return results
@@ -511,15 +516,17 @@ def get_workspace_run(
 ):
     """Single run by ID, scoped to workspace, with workflow name."""
     row = (
-        db.query(Run, Workflow.id.label("wf_id"), Workflow.name.label("wf_name"))
+        db.query(Run, Workflow.id.label("wf_id"), Workflow.name.label("wf_name"),
+                 Workflow.project_id.label("proj_id"), Project.name.label("proj_name"))
         .join(WorkflowVersion, Run.workflow_version_id == WorkflowVersion.id)
         .join(Workflow, WorkflowVersion.workflow_id == Workflow.id)
+        .outerjoin(Project, Workflow.project_id == Project.id)
         .filter(Workflow.workspace_id == workspace_id, Run.id == run_id)
         .first()
     )
     if not row:
         raise HTTPException(status_code=404, detail="Run not found")
-    run, wf_id, wf_name = row
+    run, wf_id, wf_name, proj_id, proj_name = row
     return RunWithWorkflowOut(
         id=run.id,
         workflow_version_id=run.workflow_version_id,
@@ -532,4 +539,6 @@ def get_workspace_run(
         created_at=run.created_at,
         workflow_id=str(wf_id),
         workflow_name=wf_name,
+        project_id=str(proj_id) if proj_id else None,
+        project_name=proj_name,
     )
