@@ -930,7 +930,7 @@ def _fill_template(template: str, state: dict, workflow_name: str = "Agent", tra
 
     # Split subject line if present (first line starting with "Subject:")
     lines = template.strip().splitlines()
-    subject = f"Delegator: {workflow_name} completed"
+    subject = f"Conduct AI: {workflow_name} completed"
     body_lines = lines
     if lines and lines[0].lower().startswith("subject:"):
         subject = lines[0][8:].strip()
@@ -943,7 +943,7 @@ def _fill_template(template: str, state: dict, workflow_name: str = "Agent", tra
         "{duration}": "—",
         "{triggered_by}": triggered_by,
         "{run_summary}": run_summary,
-        "{trace_url}": trace_url or "(see Delegator dashboard)",
+        "{trace_url}": trace_url or "(see Conduct AI dashboard)",
     }
     for k, v in replacements.items():
         subject = subject.replace(k, v)
@@ -1015,10 +1015,10 @@ def _execute_output(block: dict, state: dict, credentials: dict, workflow_name: 
             "trace_url": trace_url,
             "state": {k: v for k, v in state.items() if not k.startswith("__")},
         }, default=str).encode()
-        headers = {"Content-Type": "application/json", "User-Agent": "Delegator/1.0"}
+        headers = {"Content-Type": "application/json", "User-Agent": "ConductAI/1.0"}
         if webhook_secret:
             sig = hmac_lib.new(webhook_secret.encode(), payload, hashlib.sha256).hexdigest()
-            headers["X-Delegator-Signature"] = f"sha256={sig}"
+            headers["X-ConductAI-Signature"] = f"sha256={sig}"
         try:
             req = urllib.request.Request(webhook_url, data=payload, headers=headers, method="POST")
             with urllib.request.urlopen(req, timeout=15) as resp:
