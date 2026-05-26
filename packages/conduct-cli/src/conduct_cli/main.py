@@ -285,6 +285,171 @@ def cmd_test(args):
     sys.exit(0 if failed == 0 else 1)
 
 
+# ── Project commands ──────────────────────────────────────────────────────────
+
+def _list_projects(server: str, workspace_id: str, hdrs: dict) -> list:
+    return api.req("GET", f"{server}/workspaces/{workspace_id}/projects", hdrs)
+
+
+def _resolve_project(server: str, workspace_id: str, hdrs: dict, name: str) -> dict:
+    projects = _list_projects(server, workspace_id, hdrs)
+    match = next((p for p in projects if p["name"].lower() == name.lower()), None)
+    if not match:
+        print(f"{RED}Project '{name}' not found. Run 'conduct projects' to see available projects.{RESET}")
+        sys.exit(1)
+    return match
+
+
+def cmd_projects(args):
+    server, workspace_id, api_key, token = _require_auth(args)
+    hdrs     = api.headers(workspace_id, token, "application/json", api_key)
+    projects = _list_projects(server, workspace_id, hdrs)
+
+    if not projects:
+        print("No projects found. Create one: conduct create project <name>")
+        return
+
+    print(f"\n{BOLD}{'Project':<35} {'Agents':>6}  {'ID'}{RESET}")
+    print("─" * 70)
+    for p in projects:
+        agents = p.get("agent_count", 0)
+        print(f"  {p['name']:<35} {agents:>6}  {GRAY}{p['id']}{RESET}")
+    print()
+
+
+def cmd_create(args):
+    server, workspace_id, api_key, token = _require_auth(args)
+    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+
+    if args.resource == "project":
+        name = args.name.strip()
+        result = api.req("POST", f"{server}/workspaces/{workspace_id}/projects", hdrs, {"name": name})
+        print(f"{GREEN}✓ Project created:{RESET} {result['name']}  {GRAY}({result['id']}){RESET}")
+    else:
+        print(f"{RED}Unknown resource '{args.resource}'. Try: conduct create project <name>{RESET}")
+        sys.exit(1)
+
+
+# ── Playbook commands ─────────────────────────────────────────────────────────
+
+def cmd_playbooks(args):
+    server, workspace_id, api_key, token = _require_auth(args)
+    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+    slug = getattr(args, "slug", None)
+
+    if slug:
+        pb = api.req("GET", f"{server}/workflows/playbooks/{slug}", hdrs)
+        print(f"\n{BOLD}{pb['icon']}  {pb['name']}{RESET}")
+        print(f"  {pb['description']}")
+        tags = "  ".join(pb.get("tags", []))
+        if tags:
+            print(f"  {GRAY}{tags}{RESET}")
+        inputs = pb.get("inputs", {})
+        if inputs:
+            print(f"\n{BOLD}  Inputs:{RESET}")
+            for k, v in inputs.items():
+                default = v.get("default", "")
+                required = "" if default != "" else f" {RED}(required){RESET}"
+                desc = v.get("description", "")
+                print(f"    {CYAN}--input {k}=<value>{RESET}{required}  {GRAY}{desc}{RESET}")
+        print()
+    else:
+        pbs = api.req("GET", f"{server}/workflows/playbooks", hdrs)
+        if not pbs:
+            print("No playbooks available.")
+            return
+        print(f"\n{BOLD}{'Playbook':<30} {'Slug':<30} {'Tags'}{RESET}")
+        print("─" * 80)
+        for pb in pbs:
+            tags = ", ".join(pb.get("tags", []))[:25]
+            icon = pb.get("icon", "")
+            name = f"{icon} {pb['name']}"[:29]
+            print(f"  {name:<30} {pb['slug']:<30} {GRAY}{tags}{RESET}")
+        print(f"\n  Run {CYAN}conduct playbooks <slug>{RESET} for input details.\n")
+
+
+# ── Install command ───────────────────────────────────────────────────────────
+
+def cmd_install(args):
+    server, workspace_id, api_key, token = _require_auth(args)
+    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+
+    slug = args.slug
+
+    # Fetch playbook to validate slug + get declared inputs
+    pb = api.req("GET", f"{server}/workflows/playbooks/{slug}", hdrs)
+    declared_inputs = pb.get("inputs", {})
+
+    # Parse --input key=val pairs
+    raw_inputs: dict = {}
+    for pair in (args.input or []):
+        if "=" not in pair:
+            print(f"{RED}Bad --input format '{pair}'. Expected key=value.{RESET}")
+            sys.exit(1)
+        k, v = pair.split("=", 1)
+        raw_inputs[k.strip()] = v.strip()
+
+    # Check required inputs (no default and not supplied)
+    missing = [
+        k for k, v in declared_inputs.items()
+        if v.get("default", "__MISSING__") == "__MISSING__" and k not in raw_inputs
+    ]
+    if missing:
+        print(f"{RED}Missing required inputs: {', '.join(missing)}{RESET}")
+        print(f"  Use: conduct install {slug} --input key=value ...")
+        sys.exit(1)
+
+    # Resolve project
+    project_id = None
+    if args.project:
+        proj = _resolve_project(server, workspace_id, hdrs, args.project)
+        project_id = proj["id"]
+
+    # Agent name — default to playbook name
+    agent_name = args.name or pb["name"]
+
+    # Repo input — inject into inputs if playbook expects github_repo
+    if args.repo:
+        if "github_repo" in declared_inputs:
+            raw_inputs.setdefault("github_repo", args.repo)
+        if "repo" in declared_inputs:
+            raw_inputs.setdefault("repo", args.repo)
+
+    body: dict = {
+        "name":     agent_name,
+        "template": slug,
+        "inputs":   raw_inputs,
+        "graph":    {"nodes": [], "edges": []},
+    }
+    if project_id:
+        body["project_id"] = project_id
+    if args.repo:
+        body["repo"] = args.repo
+
+    print(f"\n{BOLD}Installing {pb['icon']} {pb['name']}…{RESET}")
+    if project_id:
+        print(f"  project:  {args.project}")
+    print(f"  agent:    {agent_name}")
+    if raw_inputs:
+        for k, v in raw_inputs.items():
+            masked = v if "token" not in k.lower() and "secret" not in k.lower() else "***"
+            print(f"  {k}: {masked}")
+    print()
+
+    result = api.req("POST", f"{server}/workflows", hdrs, body)
+
+    wf_id = result.get("id", "")
+    print(f"{GREEN}✓ Agent installed:{RESET} {result['name']}  {GRAY}({wf_id}){RESET}")
+
+    webhook_error = result.get("webhook_error")
+    if webhook_error:
+        print(f"{YELLOW}⚠ Webhook:{RESET} {webhook_error}")
+    else:
+        print(f"{GREEN}✓ Webhook registered{RESET}" if args.repo else "")
+
+    print(f"\n  Run a test: {CYAN}conduct test \"{agent_name}\"{RESET}\n")
+
+
 def _build_state(issue: dict, repo_full_name: str) -> dict:
     owner, repo = repo_full_name.split("/", 1)
     trigger = {
@@ -414,6 +579,27 @@ def main():
     test_p.add_argument("agents", nargs="*", metavar="agent_name", help="Agent name(s) to test")
     test_p.add_argument("--all", action="store_true", help="Test all playbook-based agents")
 
+    # conduct projects
+    sub.add_parser("projects", help="List all projects in the workspace")
+
+    # conduct create project <name>
+    create_p = sub.add_parser("create", help="Create a resource (project, ...)")
+    create_p.add_argument("resource", choices=["project"], help="Resource type")
+    create_p.add_argument("name",     help="Name of the resource to create")
+
+    # conduct playbooks [slug]
+    pb_p = sub.add_parser("playbooks", help="List available playbooks or show detail for one")
+    pb_p.add_argument("slug", nargs="?", help="Playbook slug for detail view")
+
+    # conduct install <slug>
+    install_p = sub.add_parser("install", help="Install an agent from a playbook")
+    install_p.add_argument("slug",             help="Playbook slug (from 'conduct playbooks')")
+    install_p.add_argument("--project",        help="Project name to install into")
+    install_p.add_argument("--name",           help="Override agent name")
+    install_p.add_argument("--repo",           help="GitHub repo (owner/repo) for webhook-based playbooks")
+    install_p.add_argument("--input", action="append", metavar="key=value",
+                           help="Playbook input value (repeatable, e.g. --input github_token=xxx)")
+
     # conduct run (existing)
     run_p = sub.add_parser("run", help="Run a workflow from a YAML file")
     run_p.add_argument("yaml", help="Path to workflow YAML")
@@ -424,6 +610,14 @@ def main():
         cmd_login(args)
     elif args.command == "agents":
         cmd_agents(args)
+    elif args.command == "projects":
+        cmd_projects(args)
+    elif args.command == "create":
+        cmd_create(args)
+    elif args.command == "playbooks":
+        cmd_playbooks(args)
+    elif args.command == "install":
+        cmd_install(args)
     elif args.command == "test":
         if not args.agents and not args.all:
             test_p.print_help()
