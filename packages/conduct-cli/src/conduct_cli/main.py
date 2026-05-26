@@ -295,8 +295,9 @@ def _resolve_project(server: str, workspace_id: str, hdrs: dict, name: str) -> d
     projects = _list_projects(server, workspace_id, hdrs)
     match = next((p for p in projects if p["name"].lower() == name.lower()), None)
     if not match:
-        print(f"{RED}Project '{name}' not found. Run 'conduct projects' to see available projects.{RESET}")
-        sys.exit(1)
+        print(f"{YELLOW}Project '{name}' not found — creating it…{RESET}")
+        match = api.req("POST", f"{server}/workspaces/{workspace_id}/projects", hdrs, {"name": name})
+        print(f"  {GREEN}✓ Project created:{RESET} {match['name']}  {GRAY}({match['id']}){RESET}")
     return match
 
 
