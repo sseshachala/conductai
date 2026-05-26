@@ -379,34 +379,24 @@ def cmd_projects(args):
 def cmd_create(args):
     server, workspace_id, api_key, token = _require_auth(args)
     hdrs = api.headers(workspace_id, token, "application/json", api_key)
-
-    if args.resource == "project":
-        name = args.name.strip()
-        result = api.req("POST", f"{server}/workspaces/{workspace_id}/projects", hdrs, {"name": name})
-        print(f"{GREEN}✓ Project created:{RESET} {result['name']}  {GRAY}({result['id']}){RESET}")
-    else:
-        print(f"{RED}Unknown resource '{args.resource}'. Try: conduct create project <name>{RESET}")
-        sys.exit(1)
+    name = args.name.strip()
+    result = api.req("POST", f"{server}/workspaces/{workspace_id}/projects", hdrs, {"name": name})
+    print(f"{GREEN}✓ Project created:{RESET} {result['name']}  {GRAY}({result['id']}){RESET}")
 
 
 def cmd_delete(args):
     server, workspace_id, api_key, token = _require_auth(args)
     hdrs = api.headers(workspace_id, token, "application/json", api_key)
+    proj = _resolve_project(server, workspace_id, hdrs, args.name)
 
-    if args.resource == "project":
-        proj = _resolve_project(server, workspace_id, hdrs, args.name)
+    if not args.yes:
+        confirm = input(f"{YELLOW}Delete project '{proj['name']}' and all its agents? Type 'yes' to confirm: {RESET}").strip().lower()
+        if confirm != "yes":
+            print("Cancelled.")
+            return
 
-        if not args.yes:
-            confirm = input(f"{YELLOW}Delete project '{proj['name']}' and all its agents? Type 'yes' to confirm: {RESET}").strip().lower()
-            if confirm != "yes":
-                print("Cancelled.")
-                return
-
-        api.req("DELETE", f"{server}/workspaces/{workspace_id}/projects/{proj['id']}", hdrs)
-        print(f"{GREEN}✓ Project '{proj['name']}' deleted.{RESET}")
-    else:
-        print(f"{RED}Unknown resource '{args.resource}'. Try: conduct delete project <name>{RESET}")
-        sys.exit(1)
+    api.req("DELETE", f"{server}/workspaces/{workspace_id}/projects/{proj['id']}", hdrs)
+    print(f"{GREEN}✓ Project '{proj['name']}' deleted.{RESET}")
 
 
 # ── Playbook commands ─────────────────────────────────────────────────────────
@@ -556,43 +546,38 @@ def cmd_install(args):
 def cmd_reset(args):
     server, workspace_id, api_key, token = _require_auth(args)
     hdrs = api.headers(workspace_id, token, "application/json", api_key)
+    proj = _resolve_project(server, workspace_id, hdrs, args.name)
+    project_id = proj["id"]
 
-    if args.resource == "project":
-        proj = _resolve_project(server, workspace_id, hdrs, args.name)
-        project_id = proj["id"]
+    workflows = api.req("GET", f"{server}/workflows?project_id={project_id}", hdrs)
+    if not workflows:
+        print(f"{YELLOW}Project '{args.name}' has no agents — nothing to reset.{RESET}")
+        return
 
-        # Fetch all workflows in project
-        workflows = api.req("GET", f"{server}/workflows?project_id={project_id}", hdrs)
-        if not workflows:
-            print(f"{YELLOW}Project '{args.name}' has no agents — nothing to reset.{RESET}")
+    print(f"\n{BOLD}Reset project '{args.name}' — {len(workflows)} agent(s) will be deleted:{RESET}")
+    for wf in workflows:
+        print(f"  {GRAY}· {wf['name']}{RESET}")
+
+    if not args.yes:
+        confirm = input(f"\n{YELLOW}Type 'yes' to confirm: {RESET}").strip().lower()
+        if confirm != "yes":
+            print("Cancelled.")
             return
 
-        print(f"\n{BOLD}Reset project '{args.name}' — {len(workflows)} agent(s) will be deleted:{RESET}")
-        for wf in workflows:
-            print(f"  {GRAY}· {wf['name']}{RESET}")
+    deleted = failed = 0
+    for wf in workflows:
+        try:
+            api.req("DELETE", f"{server}/workflows/{wf['id']}", hdrs)
+            print(f"  {GREEN}✓ deleted:{RESET} {wf['name']}")
+            deleted += 1
+        except SystemExit:
+            print(f"  {RED}✗ failed:{RESET} {wf['name']}")
+            failed += 1
 
-        if not args.yes:
-            confirm = input(f"\n{YELLOW}Type 'yes' to confirm: {RESET}").strip().lower()
-            if confirm != "yes":
-                print("Cancelled.")
-                return
-
-        deleted = failed = 0
-        for wf in workflows:
-            try:
-                api.req("DELETE", f"{server}/workflows/{wf['id']}", hdrs)
-                print(f"  {GREEN}✓ deleted:{RESET} {wf['name']}")
-                deleted += 1
-            except SystemExit:
-                print(f"  {RED}✗ failed:{RESET} {wf['name']}")
-                failed += 1
-
-        print(f"\n{BOLD}{GREEN}{deleted} deleted{RESET}", end="")
-        if failed:
-            print(f"  {RED}{failed} failed{RESET}", end="")
-        print()
-    else:
-        print(f"{RED}Unknown resource '{args.resource}'. Try: conduct reset project <name>{RESET}")
+    print(f"\n{BOLD}{GREEN}{deleted} deleted{RESET}", end="")
+    if failed:
+        print(f"  {RED}{failed} failed{RESET}", end="")
+    print()
         sys.exit(1)
 
 
@@ -791,7 +776,7 @@ def main():
     # Global overrides (optional — config file is preferred)
     parser.add_argument("--server",    help="API URL (default: from ~/.conduct/config.json)")
     parser.add_argument("--api-key",   dest="api_key", help="CLI API key")
-    parser.add_argument("--token",     help="Bearer token (Clerk)")
+    parser.add_argument("--token",     help=argparse.SUPPRESS)
     parser.add_argument("--workspace", help="Workspace ID")
 
     sub = parser.add_subparsers(dest="command")
@@ -801,7 +786,7 @@ def main():
     login_p.add_argument("--server",    help="API base URL e.g. https://api.conductai.ai")
     login_p.add_argument("--api-key",   dest="api_key", help="CLI API key (set CLI_API_KEY on server)")
     login_p.add_argument("--workspace", help="Workspace ID (auto-discovered from API key if omitted)")
-    login_p.add_argument("--token",     help="Bearer token (alternative to API key)")
+    login_p.add_argument("--token",     help=argparse.SUPPRESS)
 
     # conduct agents
     agents_p = sub.add_parser("agents", help="List all agents")
@@ -818,10 +803,9 @@ def main():
     # conduct projects
     sub.add_parser("projects", help="List all projects in the workspace")
 
-    # conduct create project <name>
-    create_p = sub.add_parser("create", help="Create a resource (project, ...)")
-    create_p.add_argument("resource", choices=["project"], help="Resource type")
-    create_p.add_argument("name",     help="Name of the resource to create")
+    # conduct create <name>
+    create_p = sub.add_parser("create", help="Create a project")
+    create_p.add_argument("name", help="Project name")
 
     # conduct playbooks [slug]
     pb_p = sub.add_parser("playbooks", help="List available playbooks or show detail for one")
@@ -836,21 +820,19 @@ def main():
     install_p.add_argument("--input", action="append", metavar="key=value",
                            help="Playbook input value (repeatable, e.g. --input github_token=xxx)")
 
-    # conduct delete project <name>
+    # conduct delete <name>
     delete_p = sub.add_parser("delete", help="Delete a project and all its agents")
-    delete_p.add_argument("resource", choices=["project"], help="Resource type")
-    delete_p.add_argument("name",     help="Project name to delete")
-    delete_p.add_argument("--yes",    action="store_true", help="Skip confirmation prompt")
+    delete_p.add_argument("name",  help="Project name")
+    delete_p.add_argument("--yes", action="store_true", help="Skip confirmation prompt")
 
-    # conduct reset project <name>
+    # conduct reset <name>
     reset_p = sub.add_parser("reset", help="Delete all agents in a project (clean slate)")
-    reset_p.add_argument("resource", choices=["project"], help="Resource type")
-    reset_p.add_argument("name",     help="Project name to reset")
-    reset_p.add_argument("--yes",    action="store_true", help="Skip confirmation prompt")
+    reset_p.add_argument("name",  help="Project name")
+    reset_p.add_argument("--yes", action="store_true", help="Skip confirmation prompt")
 
     # conduct install-all
     ia_p = sub.add_parser("install-all", help="Install all playbooks into a project")
-    ia_p.add_argument("--project",  required=True, help="Project name")
+    ia_p.add_argument("--project",  help="Project name (uses default project if omitted)")
     ia_p.add_argument("--repo",     help="GitHub repo (owner/repo)")
     ia_p.add_argument("--input",    action="append", metavar="key=value",
                       help="Input value applied to all playbooks (repeatable)")
