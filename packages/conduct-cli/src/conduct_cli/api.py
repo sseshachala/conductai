@@ -22,7 +22,8 @@ def req(method: str, url: str, hdrs: dict, body=None) -> dict:
     r = urllib.request.Request(url, data=data, headers=hdrs, method=method)
     try:
         with urllib.request.urlopen(r) as resp:
-            return json.loads(resp.read())
+            raw = resp.read()
+            return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as e:
         raw = e.read().decode()
         try:
@@ -37,7 +38,8 @@ def req_text(method: str, url: str, hdrs: dict, body_text: str) -> dict:
     r = urllib.request.Request(url, data=body_text.encode(), headers=hdrs, method=method)
     try:
         with urllib.request.urlopen(r) as resp:
-            return json.loads(resp.read())
+            raw = resp.read()
+            return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as e:
         raw = e.read().decode()
         try:
