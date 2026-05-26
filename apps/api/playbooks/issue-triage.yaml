@@ -112,3 +112,23 @@ blocks:
       via: slack
       slack:
         channel: "#engineering"
+
+test_trigger:
+  payload:
+    action: opened
+    issue:
+      number: 9999
+      title: "[TEST] Button does not respond on mobile"
+      body: |
+        [TEST] When tapping the submit button on iOS Safari, nothing happens.
+        Steps to reproduce: open the app on iPhone, go to the form, tap Submit.
+        Expected: form submits. Actual: nothing.
+      html_url: "https://github.com/sseshachala/conductai/issues/9999"
+      user:
+        login: conductai-test-bot
+      labels: []
+    repository:
+      full_name: sseshachala/conductai
+      name: conductai
+      owner:
+        login: sseshachala

@@ -31,6 +31,7 @@ import CostEstimate from "./CostEstimate"
 import YamlPanel from "./YamlPanel"
 import { autoLayout } from "@/lib/auto-layout"
 import { type BlockType } from "@/lib/block-types"
+import { usePreferences } from "@/lib/PreferencesContext"
 
 const nodeTypes = { block: BlockNode }
 
@@ -154,8 +155,15 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
   const [webhookModal, setWebhookModal] = useState<{ dryRun: boolean } | null>(null)
   const [webhookRepo, setWebhookRepo] = useState("")
   const [webhookPrNumber, setWebhookPrNumber] = useState("")
+  const [testTriggerModal, setTestTriggerModal] = useState(false)
+  const [testRunning, setTestRunning] = useState(false)
+  const [testRunId, setTestRunId] = useState<string | null>(null)
+  const [testRunStatus, setTestRunStatus] = useState<string | null>(null)
+  const { prefs } = usePreferences()
+  const [playbookSlug, setPlaybookSlug] = useState<string | null>(null)
 
   const STORAGE_KEY = `marshal:active-run:${workflowId}`
+  const TEST_RUN_KEY = `marshal:test-run:${workflowId}`
 
   // On mount, check if there's an in-progress run we navigated away from.
   useEffect(() => {
@@ -183,6 +191,37 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
     )
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId])
+
+  // Restore test run banner on mount + poll status until terminal
+  useEffect(() => {
+    const stored = localStorage.getItem(TEST_RUN_KEY)
+    if (!stored) return
+    const { runId } = JSON.parse(stored)
+    setTestRunId(runId)
+    setTestRunStatus("pending")
+  }, [workflowId])
+
+  useEffect(() => {
+    if (!testRunId) return
+    const terminal = new Set(["succeeded", "failed", "cancelled"])
+    if (testRunStatus && terminal.has(testRunStatus)) return
+
+    const poll = async () => {
+      try {
+        const headers = await authHeaders(getToken)
+        const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${testRunId}`, { headers })
+        if (!r.ok) return
+        const run = await r.json()
+        setTestRunStatus(run.status)
+        if (terminal.has(run.status)) localStorage.removeItem(TEST_RUN_KEY)
+      } catch {}
+    }
+
+    poll()
+    const interval = setInterval(poll, 4000)
+    return () => clearInterval(interval)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [testRunId, testRunStatus])
 
   // Load available environments for the environment picker
   useEffect(() => {
@@ -244,6 +283,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
         setWorkflowName(data.name)
         setSelectedEnvId(data.environment_id ?? "")
         setGithubHookRepo(data.github_hook_repo ?? null)
+        setPlaybookSlug(data.playbook_slug ?? null)
         const graph = data.current_version?.graph
         if (graph?.nodes && graph?.edges) {
           // Run auto-layout when:
@@ -665,6 +705,28 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
     }
   }, [workflowId, router, STORAGE_KEY])
 
+  const startTestTrigger = useCallback(async () => {
+    setTestTriggerModal(false)
+    setTestRunning(true)
+    setTestRunId(null)
+    try {
+      const headers = await authHeaders(getToken)
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/trigger`,
+        { method: "POST", headers, body: JSON.stringify({}) }
+      )
+      if (!res.ok) throw new Error("Failed to start test run")
+      const data = await res.json()
+      localStorage.setItem(TEST_RUN_KEY, JSON.stringify({ runId: data.run_id, startedAt: Date.now() }))
+      setTestRunId(data.run_id)
+      setTestRunStatus("pending")
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setTestRunning(false)
+    }
+  }, [workflowId, getToken, TEST_RUN_KEY])
+
   const handleBlockStatus = useCallback((blockId: string, status: "running" | "completed" | "failed" | "skipped") => {
     setNodes(nds => nds.map(n =>
       n.id === blockId ? { ...n, data: { ...n.data, runStatus: status } } : n
@@ -780,13 +842,24 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
           </button>
           {!isViewer && (
             <>
-              <button
-                onClick={() => startRun(true)}
-                disabled={running !== "idle"}
-                className="rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-500 hover:bg-stone-50 transition-colors disabled:opacity-50"
-              >
-                {running === "dry" ? "Simulating…" : "Dry run"}
-              </button>
+              {prefs.show_test_trigger && playbookSlug && (
+                <button
+                  onClick={() => setTestTriggerModal(true)}
+                  disabled={running !== "idle" || testRunning}
+                  className="rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-medium text-emerald-600 hover:bg-emerald-50 transition-colors disabled:opacity-50"
+                >
+                  {testRunning ? "Starting…" : "⚗ Test Run"}
+                </button>
+              )}
+              {prefs.show_dry_run && (
+                <button
+                  onClick={() => startRun(true)}
+                  disabled={running !== "idle"}
+                  className="rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-500 hover:bg-stone-50 transition-colors disabled:opacity-50"
+                >
+                  {running === "dry" ? "Simulating…" : "Dry run"}
+                </button>
+              )}
               <button
                 onClick={() => activeRunId ? setDrawerVisible(true) : startRun(false)}
                 disabled={running === "live" || running === "dry"}
@@ -1088,6 +1161,65 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
                 disabled={!webhookRepo.includes("/") || !webhookPrNumber}
                 className="px-4 py-2 text-xs font-medium bg-stone-900 text-white rounded-lg hover:bg-stone-700 disabled:opacity-40 transition-colors"
               >Run review</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {testRunId && (() => {
+        const failed = testRunStatus === "failed" || testRunStatus === "cancelled"
+        const done = testRunStatus === "succeeded"
+        const active = testRunStatus === "pending" || testRunStatus === "running"
+        const color = failed ? "red" : done ? "emerald" : "indigo"
+        const statusLabel = testRunStatus === "pending" ? "Queued…"
+          : testRunStatus === "running" ? "Running…"
+          : testRunStatus === "succeeded" ? "Succeeded"
+          : testRunStatus === "failed" ? "Failed"
+          : testRunStatus ?? "Starting…"
+        return (
+          <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-${color}-50 border border-${color}-200 rounded-xl px-4 py-3 shadow-lg max-w-sm`}>
+            <span className="text-base shrink-0">
+              {active ? <span className="inline-block animate-spin">⚙</span> : done ? "✓" : "✕"}
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className={`text-xs font-semibold text-${color}-800`}>⚗ Test run · {statusLabel}</p>
+              <p className={`text-xs text-${color}-600 truncate font-mono`}>{testRunId.slice(0, 8)}…</p>
+            </div>
+            <a
+              href={`/workflows/${workflowId}/runs/${testRunId}`}
+              className={`shrink-0 text-xs font-medium text-${color}-700 hover:text-${color}-900 underline underline-offset-2`}
+            >
+              View →
+            </a>
+            <button
+              onClick={() => { localStorage.removeItem(TEST_RUN_KEY); setTestRunId(null); setTestRunStatus(null) }}
+              className={`shrink-0 text-${color}-400 hover:text-${color}-700 text-sm`}
+            >✕</button>
+          </div>
+        )
+      })()}
+
+      {testTriggerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6 flex flex-col gap-4">
+            <div>
+              <h2 className="text-sm font-semibold text-stone-900">⚗ Test Run</h2>
+              <p className="text-xs text-stone-500 mt-1">
+                This fires a real run using a built-in dummy payload. All artifacts (branches, PRs, files) are prefixed with <span className="font-mono font-medium text-stone-700">[TEST]</span> — safe to close without merging.
+              </p>
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-xs text-amber-800">
+              The agent will execute against your connected repo using your environment credentials.
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setTestTriggerModal(false)}
+                className="px-4 py-2 text-xs text-stone-500 hover:text-stone-700 rounded-lg hover:bg-stone-100 transition-colors"
+              >Cancel</button>
+              <button
+                onClick={startTestTrigger}
+                className="px-4 py-2 text-xs font-medium bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+              >Fire test run</button>
             </div>
           </div>
         </div>

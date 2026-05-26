@@ -120,3 +120,14 @@ blocks:
       via: slack
       slack:
         channel: "#engineering"
+
+test_trigger:
+  payload:
+    repository:
+      full_name: sseshachala/conductai
+      name: conductai
+      owner:
+        login: sseshachala
+      default_branch: main
+      clone_url: "https://github.com/sseshachala/conductai.git"
+    trigger: "[TEST] manual dependency scan"

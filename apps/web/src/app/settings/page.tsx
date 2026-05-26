@@ -6,9 +6,10 @@ import AppShell from "@/components/AppShell"
 import EnvironmentsManager from "@/components/settings/EnvironmentsManager"
 import MembersManager from "@/components/settings/MembersManager"
 import AuditLog from "@/components/settings/AuditLog"
+import PreferencesPanel from "@/components/settings/PreferencesPanel"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
-type Tab = "environments" | "members" | "audit"
+type Tab = "environments" | "members" | "audit" | "preferences"
 
 export default function SettingsPage() {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
@@ -44,7 +45,7 @@ function SettingsPageWithAuth() {
 }
 
 function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolean; workspaceId: string; getToken: (() => Promise<string | null>) | null }) {
-  const tabs = (["environments", ...(isAdmin ? ["members", "audit"] : [])] as Tab[])
+  const tabs = (["environments", "preferences", ...(isAdmin ? ["members", "audit"] : [])] as Tab[])
   const [activeTab, setActiveTab] = useState<Tab>("environments")
   const [showTip, setShowTip] = useState(true)
 
@@ -89,6 +90,7 @@ function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolea
         </div>
 
         {activeTab === "environments" && <EnvironmentsManager isAdmin={isAdmin} />}
+        {activeTab === "preferences" && <PreferencesPanel />}
         {activeTab === "members" && isAdmin && <MembersManager />}
         {activeTab === "audit" && isAdmin && <AuditLog workspaceId={workspaceId} getToken={getToken} />}
       </div>
