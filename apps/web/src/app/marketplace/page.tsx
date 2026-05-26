@@ -42,16 +42,19 @@ interface Repo {
   full_name: string
 }
 
-// Playbooks that need a GitHub webhook registered on a specific repo
+// Playbooks that show the GitHub repo selector on install.
+// For most, a webhook is registered automatically. For dependency_updater and
+// incident_responder the repo is stored as the target repo but no webhook is registered
+// (they receive webhooks from external systems — cron, PagerDuty, etc.)
 const GITHUB_WEBHOOK_SLUGS = new Set([
   "pr_reviewer", "copilot_reviewer", "issue_triage",
   "ci_notify", "release_notes", "security_scanner",
   "autopilot_quick", "autopilot_full", "autopilot_approved",
-  "security_patch_updater",
+  "security_patch_updater", "dependency_updater", "incident_responder",
 ])
 
 // Playbooks that need manual webhook setup (show instructions instead)
-const MANUAL_WEBHOOK_SLUGS = new Set(["incident_responder", "dependency_updater"])
+const MANUAL_WEBHOOK_SLUGS = new Set<string>()
 
 const ALL_TAGS = ["all", "github", "code", "code-review", "ops", "notifications", "approval"]
 
