@@ -134,11 +134,12 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
       if (pbRes.ok) setPlaybooks(await pbRes.json())
 
       if (wfRes.ok) {
-        const workflows: { id: string; name: string; workspace_id: string }[] = await wfRes.json()
+        const workflows: { id: string; name: string; playbook_slug?: string }[] = await wfRes.json()
         const counts = new Map<string, number>()
-        for (const [slug, friendlyName] of Object.entries(FRIENDLY_NAMES)) {
-          const n = workflows.filter(w => w.name === friendlyName).length
-          if (n > 0) counts.set(slug, n)
+        for (const wf of workflows) {
+          if (wf.playbook_slug) {
+            counts.set(wf.playbook_slug, (counts.get(wf.playbook_slug) ?? 0) + 1)
+          }
         }
         setInstalledCount(counts)
       }
