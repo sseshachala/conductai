@@ -92,7 +92,7 @@ blocks:
       region: "{{params.droplet_region}}"
       size: "{{params.droplet_size}}"
       image: ubuntu-22-04-x64
-      tags: ["delegator", "ai-ready"]
+      tags: ["conduct-ai", "ai-ready"]
       ssh_keys:
         - "{{credentials.digitalocean.ssh_key_fingerprint}}"
     next: wait_droplet
