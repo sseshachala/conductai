@@ -487,8 +487,13 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
     workflow.current_version_id = version.id
     db.commit()
 
-    # Auto-register git webhook if template needs one and repo was provided
+    # Always store the repo when provided (used by BlockEditor to show which repo is targeted)
     webhook_error: str | None = None
+    if body.repo and not workflow.github_hook_repo:
+        workflow.github_hook_repo = body.repo
+        db.commit()
+
+    # Auto-register git webhook if template needs one and repo was provided
     if body.repo and body.template in _GITHUB_WEBHOOK_EVENTS:
         try:
             import secrets as _secrets
