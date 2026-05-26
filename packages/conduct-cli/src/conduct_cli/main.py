@@ -578,7 +578,6 @@ def cmd_reset(args):
     if failed:
         print(f"  {RED}{failed} failed{RESET}", end="")
     print()
-        sys.exit(1)
 
 
 # ── Install-all command ───────────────────────────────────────────────────────
