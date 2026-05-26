@@ -49,6 +49,7 @@ class WorkflowOut(BaseModel):
     last_run_status: Optional[str] = None
     last_run_at: Optional[datetime] = None
     environment_id: Optional[UUID] = None
+    playbook_slug: Optional[str] = None
 
     class Config:
         from_attributes = True
