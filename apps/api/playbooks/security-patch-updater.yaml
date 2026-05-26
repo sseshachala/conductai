@@ -17,11 +17,6 @@ description: >
       -d '{"repo":"owner/repo","clone_url":"https://github.com/owner/repo.git","default_branch":"main","advisory":{"package":"lodash","severity":"high","cve":"CVE-2021-23337","patched_versions":">=4.17.21"}}'
 
 inputs:
-  repo:
-    label: GitHub repository (owner/repo)
-    hint: "e.g. myorg/my-repo — used as the default target when testing via CLI"
-    type: text
-    default: ""
   model:
     label: AI Model
     default: claude-haiku-4-5-20251001
@@ -54,8 +49,8 @@ blocks:
       Trigger payload: {{_trigger}}
 
       Extract from the payload (Dependabot or manual format):
-      - repo: {{_trigger.repository.full_name}} OR {{_trigger.repo}} OR {{inputs.repo}}
-      - clone_url: {{_trigger.repository.clone_url}} OR {{_trigger.clone_url}} OR https://github.com/{{inputs.repo}}.git
+      - repo: {{_trigger.repository.full_name}} OR {{_trigger.repo}}
+      - clone_url: {{_trigger.repository.clone_url}} OR {{_trigger.clone_url}}
       - default_branch: {{_trigger.repository.default_branch}} OR {{_trigger.default_branch}} (fallback "main")
       - package: {{_trigger.alert.dependency.package.name}} OR {{_trigger.advisory.package}}
       - severity: {{_trigger.alert.severity}} OR {{_trigger.advisory.severity}} (low/medium/high/critical)
