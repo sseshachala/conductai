@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
@@ -35,37 +35,69 @@ export default function RunDetailPage() {
   const [workflowName, setWorkflowName] = useState<string | null>(null)
   const [agentModel, setAgentModel] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [activeTab, setActiveTab] = useState<"timeline" | "trace">("timeline")
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const TERMINAL = new Set(["succeeded", "failed", "cancelled"])
+
+  async function fetchRun(headers: Record<string, string>) {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}`, { headers })
+    if (res.ok) {
+      const data = await res.json()
+      setRun(data)
+      return data as RunMeta
+    }
+    return null
+  }
+
+  async function buildHeaders() {
+    const token = await getToken()
+    const workspaceId = getCookie("delegator_project_id")
+    const headers: Record<string, string> = {}
+    if (token) headers["Authorization"] = `Bearer ${token}`
+    if (workspaceId) headers["X-Workspace-Id"] = workspaceId
+    return headers
+  }
+
+  async function refresh() {
+    setRefreshing(true)
+    const headers = await buildHeaders()
+    await fetchRun(headers)
+    setRefreshing(false)
+  }
 
   useEffect(() => {
-    if (!isLoaded) return  // wait for Clerk to initialize before fetching
+    if (!isLoaded) return
     async function load() {
-      const token = await getToken()
-      const workspaceId = getCookie("delegator_project_id")
-      const headers: Record<string, string> = {}
-      if (token) headers["Authorization"] = `Bearer ${token}`
-      if (workspaceId) headers["X-Workspace-Id"] = workspaceId
-
-      const [runRes, wfRes] = await Promise.all([
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}`, { headers }),
+      const headers = await buildHeaders()
+      const [runData, wfRes] = await Promise.all([
+        fetchRun(headers),
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, { headers }),
       ])
-
-      if (runRes.ok) {
-          const runData = await runRes.json()
-          setRun(runData)
-        }
       if (wfRes.ok) {
         const wf = await wfRes.json()
         setWorkflowName(wf.name ?? null)
-        // Extract the model from the first brain block in the graph
         const nodes: {data?: {type?: string; model?: string}}[] = wf.graph?.nodes ?? []
         const brainNode = nodes.find(n => n.data?.type === "brain")
         if (brainNode?.data?.model) setAgentModel(brainNode.data.model)
       }
       setLoading(false)
+
+      // Auto-poll every 4s while run is non-terminal
+      if (runData && !TERMINAL.has(runData.status)) {
+        pollRef.current = setInterval(async () => {
+          const h = await buildHeaders()
+          const updated = await fetchRun(h)
+          if (updated && TERMINAL.has(updated.status)) {
+            clearInterval(pollRef.current!)
+            pollRef.current = null
+          }
+        }, 4000)
+      }
     }
     load()
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId, runId, isLoaded])
 
@@ -141,6 +173,19 @@ export default function RunDetailPage() {
               )
             })()}
           </div>
+          <div className="flex items-center gap-2 shrink-0">
+          {/* Refresh button — always visible, spins while polling or manual refresh */}
+          <button
+            onClick={refresh}
+            disabled={refreshing}
+            title="Refresh"
+            className="text-xs text-stone-400 hover:text-stone-700 border border-stone-200 hover:border-stone-300 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-40"
+          >
+            <svg className={`w-3.5 h-3.5 inline-block mr-1 ${refreshing || (run && !TERMINAL.has(run.status)) ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            {run && !TERMINAL.has(run.status) ? "Live" : "Refresh"}
+          </button>
           {/* Export button */}
           <button
             onClick={() => {
@@ -152,10 +197,11 @@ export default function RunDetailPage() {
               a.click()
               URL.revokeObjectURL(url)
             }}
-            className="shrink-0 text-xs text-stone-400 hover:text-stone-700 border border-stone-200 hover:border-stone-300 rounded-lg px-3 py-1.5 transition-colors"
+            className="text-xs text-stone-400 hover:text-stone-700 border border-stone-200 hover:border-stone-300 rounded-lg px-3 py-1.5 transition-colors"
           >
             ↓ Export JSON
           </button>
+          </div>
         </div>
 
         {/* Tab bar */}
