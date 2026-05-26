@@ -1,4 +1,4 @@
-*Delegator agent run complete* ✓
+*Conduct AI* — agent run complete ✓
 
 *Agent:* {workflow_name}
 *Status:* {status}
