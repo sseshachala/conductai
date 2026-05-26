@@ -45,7 +45,7 @@ blocks:
       Steps:
       1. Fetch the diff:
          GET {{_trigger.pull_request.diff_url}}
-         Use Authorization: token <github_token> header
+         Use Authorization: token $GIT_TOKEN header
       2. Review the diff for:
          - Bugs or logic errors
          - Security issues (hardcoded secrets, SQL injection, XSS, etc.)
@@ -58,7 +58,7 @@ blocks:
            "event": "COMMENT",
            "comments": []
          }
-         Use Authorization: token <github_token> header
+         Use Authorization: token $GIT_TOKEN header
 
       Be concise. Group findings by severity (critical / warning / suggestion).
       If the PR looks clean, say so clearly.
@@ -90,7 +90,7 @@ blocks:
       1. Retrieve the GitHub token from the Conduct AI credentials vault.
       2. Search GitHub for existing open issues:
          GET https://api.github.com/search/issues?q=repo:{{_trigger.repository.full_name}}+is:issue+is:open+"PR+%23{{_trigger.number}}"+in:title
-         Headers: Authorization: token <github_token>
+         Headers: Authorization: token $GIT_TOKEN
       3. If any issue has a title containing "PR #{{_trigger.number}}", return its number and URL.
 
       Output ONLY the following JSON on the last line:
@@ -125,14 +125,14 @@ blocks:
       1. Retrieve the GitHub token from the Conduct AI credentials vault.
       2. Append a comment to the existing issue:
          POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/{{check_existing_issue.issue_number}}/comments
-         Headers: Authorization: token <github_token>, Content-Type: application/json
+         Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
          Body: {"body": "## Follow-up review findings\n\nPR #{{_trigger.number}} was re-reviewed and {{review_pr.critical}} additional critical issue(s) were found.\n\nReview: {{review_pr.review_url}}\n\nPlease also address these findings."}
       3. Remove the "autopilot ready" label (so re-adding it fires the webhook):
          DELETE https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/{{check_existing_issue.issue_number}}/labels/autopilot%20ready
-         Headers: Authorization: token <github_token>
+         Headers: Authorization: token $GIT_TOKEN
       4. Re-add the label (this fires issues.labeled and re-triggers Autopilot):
          POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/{{check_existing_issue.issue_number}}/labels
-         Headers: Authorization: token <github_token>, Content-Type: application/json
+         Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
          Body: {"labels": ["autopilot ready"]}
 
       Output ONLY the following JSON on the last line:
@@ -159,7 +159,7 @@ blocks:
       1. Retrieve the GitHub token from the Conduct AI credentials vault.
       2. Create the issue (no labels):
          POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues
-         Headers: Authorization: token <github_token>, Content-Type: application/json
+         Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
          Body:
          {
            "title": "fix: address critical review findings on PR #{{_trigger.number}}",
@@ -168,7 +168,7 @@ blocks:
          Save the returned issue number.
       3. Add the label in a separate call (this fires the webhook):
          POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/<issue_number>/labels
-         Headers: Authorization: token <github_token>, Content-Type: application/json
+         Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
          Body: {"labels": ["autopilot ready"]}
 
       Output ONLY the following JSON on the last line:

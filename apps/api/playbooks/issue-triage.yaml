@@ -74,7 +74,7 @@ blocks:
         {
           "labels": ["<type label>", "<priority label>"]
         }
-        Use Authorization: token <github_token>
+        Use Authorization: token $GIT_TOKEN
         Only add labels that exist in the repo — do not create new ones.
         Map type → label name (best match from what exists):
           bug → "bug", "Bug", "type: bug"
@@ -95,7 +95,7 @@ blocks:
         {
           "body": "Thanks for opening this issue, @<author>! To help us triage faster, could you provide:\n\n<bullet list of 2-3 specific questions based on what's missing>\n\nThis will help us reproduce and fix it more quickly."
         }
-        Use Authorization: token <github_token>
+        Use Authorization: token $GIT_TOKEN
 
         If the issue is clear and well-described, post a brief acknowledgment:
         "Thanks @<author> — triaged as <type>, <priority>. We'll review shortly."
