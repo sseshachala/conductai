@@ -9,6 +9,7 @@ from app.routers import credentials, dashboard, email_templates, environments, p
 from app.routers.organizations import router as organizations_router
 from app.routers.workspace_projects import router as workspace_projects_router, audit_router as audit_log_router, preferences_router as workspace_preferences_router
 from app.routers.runs import workspace_runs_router
+from app.routers.api_keys import router as api_keys_router
 
 setup_logging()
 log = structlog.get_logger(__name__)
@@ -55,6 +56,7 @@ app.include_router(organizations_router)
 app.include_router(workspace_projects_router)
 app.include_router(audit_log_router)
 app.include_router(workspace_preferences_router)
+app.include_router(api_keys_router)
 app.include_router(projects.router)
 app.include_router(dashboard.router)
 app.include_router(workflows.router)
