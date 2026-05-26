@@ -1,0 +1,32 @@
+name: Publish conduct-cli to PyPI
+
+on:
+  push:
+    tags:
+      - "cli/v*"   # trigger on tags like cli/v0.2.0
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write   # required for trusted publishing (no API token needed)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tools
+        run: pip install build
+
+      - name: Build package
+        working-directory: packages/conduct-cli
+        run: python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/conduct-cli/dist/
