@@ -33,10 +33,11 @@ def get_workspace_id_sse(
     request: Request,
     workspace_id: str | None = Depends(lambda: None),
 ) -> str:
-    """Auth dependency for SSE endpoints — accepts token via Authorization header.
-    EventSource cannot set custom headers so workspace_id comes from x-workspace-id header."""
+    """Auth dependency for SSE endpoints.
+    EventSource cannot set custom headers, so token and workspace_id come via query params."""
+    # Accept token from Authorization header OR ?token= query param (EventSource workaround)
     auth_header = request.headers.get("Authorization", "")
-    x_ws = request.headers.get("x-workspace-id")
+    x_ws = request.headers.get("x-workspace-id") or request.query_params.get("workspace_id")
 
     if not _clerk_enabled():
         return x_ws or DEV_WORKSPACE_ID
@@ -53,6 +54,8 @@ def get_workspace_id_sse(
     raw_token = None
     if auth_header.startswith("Bearer "):
         raw_token = auth_header.removeprefix("Bearer ")
+    elif request.query_params.get("token"):
+        raw_token = request.query_params.get("token")
 
     if not raw_token:
         raise HTTPException(status_code=401, detail="Authorization required")
@@ -68,13 +71,18 @@ def get_workspace_id_sse(
 
 
 def _get_user_id_from_request(request: Request) -> str:
-    """Extract Clerk user_id from the Authorization header for SSE endpoints."""
+    """Extract Clerk user_id from Authorization header or ?token= query param for SSE endpoints."""
     if not _clerk_enabled():
         return DEV_USER_ID
     auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
+    raw_token = None
+    if auth_header.startswith("Bearer "):
+        raw_token = auth_header.removeprefix("Bearer ")
+    elif request.query_params.get("token"):
+        raw_token = request.query_params.get("token")
+    if not raw_token:
         raise HTTPException(status_code=401, detail="Authorization required")
-    claims = _verify_clerk_token(auth_header.removeprefix("Bearer "))
+    claims = _verify_clerk_token(raw_token)
     if not claims:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     user_id = claims.get("sub")
