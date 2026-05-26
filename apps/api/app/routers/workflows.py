@@ -1326,3 +1326,52 @@ def sync_workflow(
             background_tasks.add_task(_run_compiler, version.id, version.graph)
 
     return result
+
+
+@router.post("/{workflow_id}/trigger")
+def test_trigger(
+    workflow_id: UUID,
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor")),
+):
+    """
+    Authenticated test trigger — enqueues a run with the given payload as _trigger.
+    Bypasses webhook HMAC so dev/test callers don't need the raw secret.
+    Scoped to the caller's workspace; 404 if the workflow belongs to another workspace.
+    """
+    import redis as _redis_mod
+    from app.core.config import settings as _settings
+
+    workflow = db.query(Workflow).filter(
+        Workflow.id == workflow_id,
+        Workflow.workspace_id == workspace_id,
+    ).first()
+    if not workflow or not workflow.current_version:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    version = workflow.current_version
+    try:
+        graph = version.graph or {}
+        pf = _estimate_turns_for_graph(graph, payload.get("title", ""), payload.get("body", ""))
+        suggested_turns = pf["suggested_max_turns"]
+    except Exception:
+        suggested_turns = 20
+
+    run = Run(
+        workflow_version_id=version.id,
+        triggered_by="manual:test_trigger",
+        status="pending",
+        state={"_trigger": payload, "__triggered_by": "manual:test_trigger", "__max_turns": suggested_turns},
+        max_turns=suggested_turns,
+    )
+    db.add(run)
+    db.flush()
+    db.commit()
+
+    r = _redis_mod.from_url(_settings.redis_url, decode_responses=True)
+    r.rpush("marshal:runs:queue", str(run.id))
+
+    log.info("workflow.test_triggered", workflow_id=str(workflow_id), run_id=str(run.id))
+    return {"ok": True, "run_id": str(run.id), "max_turns": suggested_turns}
