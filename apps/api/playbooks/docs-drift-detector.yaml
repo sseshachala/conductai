@@ -1,0 +1,162 @@
+name: Docs Drift Detector
+version: 1
+description: >
+  PR merged → AI checks if related docs, README, or runbooks are out of date →
+  opens a follow-up docs PR or creates a tracking issue.
+
+  Trigger: GitHub pull_request webhook (closed + merged)
+
+inputs:
+  model:
+    label: AI Model
+    default: claude-sonnet-4-6
+    type: select
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+  docs_paths:
+    label: Docs paths to check (comma-separated)
+    default: "docs/,README.md,CHANGELOG.md"
+    type: string
+  slack_channel:
+    label: Slack channel for alerts
+    default: "#engineering"
+    type: string
+
+on:
+  webhook:
+    next: check_merged
+
+blocks:
+  check_merged:
+    type: logic
+    label: Was PR actually merged?
+    condition: "{{_trigger.pull_request.merged}} == true"
+    next:
+      pass: analyze_drift
+      fail: skip
+
+  analyze_drift:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    label: Analyze docs drift
+    description: |
+      A PR was just merged. Check if the code changes require documentation updates.
+
+      PR details:
+      - Repo: {{_trigger.repository.full_name}}
+      - PR number: {{_trigger.number}}
+      - Title: {{_trigger.pull_request.title}}
+      - Author: {{_trigger.pull_request.user.login}}
+      - Merged by: {{_trigger.pull_request.merged_by.login}}
+      - Diff URL: {{_trigger.pull_request.diff_url}}
+      - PR URL: {{_trigger.pull_request.html_url}}
+
+      Docs paths to check: {{inputs.docs_paths}}
+
+      Steps:
+      1. Fetch the PR diff:
+         GET {{_trigger.pull_request.diff_url}}
+         Headers: Authorization: token $GIT_TOKEN
+         Identify what changed: new APIs, changed function signatures, new env vars,
+         changed config, new CLI commands, changed behavior.
+
+      2. Fetch current docs files to check for drift:
+         For each path in {{inputs.docs_paths}}, try:
+         GET https://api.github.com/repos/{{_trigger.repository.full_name}}/contents/<path>
+         Headers: Authorization: token $GIT_TOKEN
+         Read the content (base64 decode).
+
+      3. Determine if docs need updating:
+         - New public API endpoint not in docs?
+         - Changed env var not reflected in README?
+         - New CLI command not documented?
+         - Deprecated behavior still documented?
+
+      4. If docs need updating, draft the specific changes needed.
+
+      Output ONLY the following JSON on the last line:
+        {
+          "needs_update": true/false,
+          "stale_docs": ["path/to/file.md", ...],
+          "changes_needed": "description of what needs updating",
+          "draft_content": "proposed doc updates in markdown or null"
+        }
+    next: needs_update_gate
+
+  needs_update_gate:
+    type: logic
+    label: Docs need updating?
+    condition: "{{analyze_drift.needs_update}} == true"
+    next:
+      pass: create_docs_issue
+      fail: skip
+
+  create_docs_issue:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    label: Create docs update issue
+    description: |
+      Docs are out of date after PR #{{_trigger.number}}. Create a tracking issue.
+
+      Repo: {{_trigger.repository.full_name}}
+      Stale docs: {{analyze_drift.stale_docs}}
+      Changes needed: {{analyze_drift.changes_needed}}
+      Merged PR: {{_trigger.pull_request.html_url}}
+
+      Steps:
+      1. Create the issue:
+         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues
+         Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
+         Body: {
+           "title": "docs: update docs after PR #{{_trigger.number}} — {{_trigger.pull_request.title}}",
+           "body": "## Docs drift detected\n\nPR #{{_trigger.number}} was merged but the following docs need updating:\n\n**Stale files:** {{analyze_drift.stale_docs}}\n\n**What needs updating:**\n{{analyze_drift.changes_needed}}\n\n**Merged PR:** {{_trigger.pull_request.html_url}}\n\n---\n**Proposed changes:**\n{{analyze_drift.draft_content}}"
+         }
+      2. Add label: {"labels": ["documentation", "autopilot ready"]}
+
+      Output ONLY the following JSON on the last line:
+        {"issue_url": "<url>", "issue_number": <number>}
+    next: notify_drift
+
+  notify_drift:
+    type: output
+    label: Notify docs drift
+    description: |
+      📖 *Docs drift detected* after merging PR #{{_trigger.number}}
+      Stale: {{analyze_drift.stale_docs}}
+      Issue: {{create_docs_issue.issue_url}}
+    output:
+      via: slack
+      slack:
+        channel: "{{inputs.slack_channel}}"
+
+  skip:
+    type: output
+    label: No docs update needed
+    description: "PR #{{_trigger.number}} merged — docs are up to date."
+    output:
+      via: log
+
+test_trigger:
+  payload:
+    action: closed
+    number: 247
+    pull_request:
+      number: 247
+      title: "feat: add --pr flag to conduct test CLI"
+      merged: true
+      html_url: "https://github.com/sseshachala/conductai/pull/247"
+      diff_url: "https://github.com/sseshachala/conductai/pull/247.diff"
+      user:
+        login: sseshachala
+      merged_by:
+        login: sseshachala
+      base:
+        ref: main
+    repository:
+      full_name: sseshachala/conductai
+      name: conductai
+      clone_url: "https://github.com/sseshachala/conductai.git"

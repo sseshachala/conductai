@@ -11,6 +11,7 @@ interface Playbook {
   icon: string
   description: string
   tags: string[]
+  category: string
   featured: boolean
 }
 
@@ -42,21 +43,31 @@ interface Repo {
   full_name: string
 }
 
-// Playbooks that show the GitHub repo selector on install.
-// For most, a webhook is registered automatically. For dependency_updater and
-// incident_responder the repo is stored as the target repo but no webhook is registered
-// (they receive webhooks from external systems — cron, PagerDuty, etc.)
+// Playbooks that show the GitHub repo selector on install (webhook registered automatically).
 const GITHUB_WEBHOOK_SLUGS = new Set([
   "pr_reviewer", "copilot_reviewer", "issue_triage",
   "ci_notify", "release_notes", "security_scanner",
   "autopilot_quick", "autopilot_full", "autopilot_approved",
   "security_patch_updater", "dependency_updater", "incident_responder",
+  "flaky_test_detective", "release_readiness", "docs_drift_detector",
+  "terraform_reviewer",
 ])
 
-// Playbooks that need manual webhook setup (show instructions instead)
-const MANUAL_WEBHOOK_SLUGS = new Set<string>()
+// Playbooks that need manual webhook setup (show instructions instead).
+const MANUAL_WEBHOOK_SLUGS = new Set(["postmortem_drafter"])
 
-const ALL_TAGS = ["all", "github", "code", "code-review", "ops", "notifications", "approval"]
+const CATEGORY_ORDER = [
+  "All",
+  "Issue to PR",
+  "Code Review",
+  "Issue Triage",
+  "CI/CD",
+  "Release Management",
+  "Incidents & Ops",
+  "Security",
+  "Docs",
+  "Platform & Infra",
+]
 
 function getWorkspaceId(): string | null {
   if (typeof document === "undefined") return null
@@ -64,17 +75,22 @@ function getWorkspaceId(): string | null {
 }
 
 const FRIENDLY_NAMES: Record<string, string> = {
-  autopilot_quick:    "Autopilot Quick",
-  autopilot_full:     "Autopilot Full",
-  autopilot_approved: "Autopilot + Approval",
-  pr_reviewer:        "PR Reviewer",
-  issue_triage:       "Issue Triage",
-  release_notes:      "Release Notes",
-  ci_notify:          "CI Failure Alert",
-  incident_responder: "Incident Responder",
-  dependency_updater: "Dependency Updater",
-  copilot_reviewer:   "Copilot / AI PR Reviewer",
-  security_scanner:   "Security Scanner",
+  autopilot_quick:      "Autopilot Quick",
+  autopilot_full:       "Autopilot Full",
+  autopilot_approved:   "Autopilot + Approval",
+  pr_reviewer:          "PR Reviewer",
+  issue_triage:         "Issue Triage",
+  release_notes:        "Release Notes",
+  ci_notify:            "CI Failure Alert",
+  incident_responder:   "Incident Responder",
+  dependency_updater:   "Dependency Updater",
+  copilot_reviewer:     "Copilot / AI PR Reviewer",
+  security_scanner:     "Security Scanner",
+  flaky_test_detective: "Flaky Test Detective",
+  release_readiness:    "Release Readiness Reviewer",
+  postmortem_drafter:   "Postmortem Drafter",
+  docs_drift_detector:  "Docs Drift Detector",
+  terraform_reviewer:   "Terraform Plan Reviewer",
 }
 
 export default function MarketplacePage() {
@@ -92,9 +108,8 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   const router = useRouter()
   const [playbooks, setPlaybooks] = useState<Playbook[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeTag, setActiveTag] = useState("all")
+  const [activeCategory, setActiveCategory] = useState("All")
   const [installing, setInstalling] = useState(false)
-  // slug → count of installs in this workspace
   const [installedCount, setInstalledCount] = useState<Map<string, number>>(new Map())
 
   // Install modal state
@@ -290,7 +305,23 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
     }
   }
 
-  const filtered = activeTag === "all" ? playbooks : playbooks.filter(p => p.tags.includes(activeTag))
+  // Build category list from loaded playbooks, maintaining defined order
+  const availableCategories = ["All", ...CATEGORY_ORDER.filter(c =>
+    c !== "All" && playbooks.some(p => p.category === c)
+  )]
+
+  const filtered = activeCategory === "All"
+    ? playbooks
+    : playbooks.filter(p => p.category === activeCategory)
+
+  // Group filtered playbooks by category for "All" view
+  const grouped: Record<string, Playbook[]> = {}
+  if (activeCategory === "All") {
+    for (const cat of CATEGORY_ORDER.filter(c => c !== "All")) {
+      const items = playbooks.filter(p => p.category === cat)
+      if (items.length > 0) grouped[cat] = items
+    }
+  }
 
   return (
     <AppShell>
@@ -302,19 +333,19 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
           <p className="text-xs text-stone-400 mt-0.5">YAML-based agent recipes — install one into a project, configure it, and run it.</p>
         </div>
 
-        {/* Tag filters */}
-        <div className="flex flex-wrap gap-2 mb-8">
-          {ALL_TAGS.map(tag => (
+        {/* Category tabs */}
+        <div className="flex flex-wrap gap-1.5 mb-8 border-b border-stone-100 pb-4">
+          {availableCategories.map(cat => (
             <button
-              key={tag}
-              onClick={() => setActiveTag(tag)}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                activeTag === tag
+              key={cat}
+              onClick={() => setActiveCategory(cat)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                activeCategory === cat
                   ? "bg-stone-900 text-white"
                   : "bg-stone-100 text-stone-500 hover:bg-stone-200"
               }`}
             >
-              {tag}
+              {cat}
             </button>
           ))}
         </div>
@@ -323,7 +354,32 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
           <div className="grid grid-cols-3 gap-4">
             {[1,2,3,4,5,6,7,8,9].map(i => <div key={i} className="h-48 rounded-xl bg-stone-100 animate-pulse" />)}
           </div>
+        ) : activeCategory === "All" ? (
+          // Grouped by category
+          <div className="flex flex-col gap-10">
+            {Object.entries(grouped).map(([cat, items]) => (
+              <div key={cat}>
+                <div className="flex items-center gap-3 mb-4">
+                  <h2 className="text-xs font-semibold text-stone-500 uppercase tracking-wider">{cat}</h2>
+                  <div className="flex-1 h-px bg-stone-100" />
+                  <span className="text-[10px] text-stone-300">{items.length}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  {items.map(p => (
+                    <PlaybookCard
+                      key={p.slug}
+                      playbook={p}
+                      installing={false}
+                      installCount={installedCount.get(p.slug) ?? 0}
+                      onInstall={openInstallModal}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
+          // Single category flat grid
           <div className="grid grid-cols-3 gap-4">
             {filtered.map(p => (
               <PlaybookCard
@@ -341,7 +397,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
       {/* Install modal */}
       {pendingSlug && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6 flex flex-col gap-5">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6 flex flex-col gap-5 max-h-[90vh] overflow-y-auto">
             <div>
               <h2 className="text-sm font-semibold text-stone-900">Install to project</h2>
               <p className="text-xs text-stone-400 mt-1">
@@ -464,13 +520,13 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
               </div>
             )}
 
-            {/* Manual setup instructions — non-GitHub webhook playbooks */}
+            {/* Manual setup instructions — inbound webhook playbooks */}
             {MANUAL_WEBHOOK_SLUGS.has(pendingSlug) && (
               <div className="bg-stone-50 border border-stone-200 rounded-lg px-3 py-3 flex flex-col gap-1.5">
                 <p className="text-xs font-medium text-stone-700">Manual webhook setup required</p>
                 <p className="text-xs text-stone-500 leading-relaxed">
                   After installing, copy the webhook URL from the workflow settings and paste it into your{" "}
-                  {pendingSlug === "incident_responder" ? "PagerDuty or OpsGenie" : "GitHub Actions"} configuration.
+                  PagerDuty, OpsGenie, or incident management tool.
                 </p>
               </div>
             )}
@@ -524,18 +580,11 @@ function PlaybookCard({ playbook, installing, installCount, onInstall }: {
     <div className="rounded-xl border border-stone-200 bg-white p-5 flex flex-col gap-3 hover:border-stone-300 transition-colors">
       <div className="flex items-start justify-between gap-2">
         <span className="text-2xl leading-none">{playbook.icon}</span>
-        <div className="flex flex-wrap gap-1 justify-end">
-          {installCount > 0 && (
-            <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-medium">
-              {installCount} installed
-            </span>
-          )}
-          {playbook.tags.map(tag => (
-            <span key={tag} className="text-[10px] bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded">
-              {tag}
-            </span>
-          ))}
-        </div>
+        {installCount > 0 && (
+          <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-medium">
+            {installCount} installed
+          </span>
+        )}
       </div>
       <div>
         <p className="text-sm font-semibold text-stone-900 mb-1">
