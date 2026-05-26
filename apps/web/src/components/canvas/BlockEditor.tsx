@@ -22,7 +22,8 @@ interface BlockEditorProps {
   onChange: (blockId: string, changes: Record<string, unknown>) => void
   getToken?: (() => Promise<string | null>) | null
   selectedEnvId?: string
-  githubHookRepo?: string | null  // set when workflow has a GitHub webhook registered
+  githubHookRepo?: string | null
+  githubHookId?: string | null
 }
 
 // ── Webhook registration ──────────────────────────────────────────────────────
@@ -407,6 +408,7 @@ export default function BlockEditor({
   getToken,
   selectedEnvId,
   githubHookRepo,
+  githubHookId,
 }: BlockEditorProps) {
   const [promptOpen, setPromptOpen] = useState(false)
   const [streamedPrompt, setStreamedPrompt] = useState<string>("")
@@ -786,8 +788,10 @@ export default function BlockEditor({
                         <p className="font-mono break-all select-all text-violet-700 text-[11px]">
                           {webhookUrl ?? inboundUrl}
                         </p>
-                        {githubHookRepo
-                          ? <p className="text-violet-500 text-[10px]">Registered on <span className="font-mono">{githubHookRepo}</span> — GitHub sends PR events here automatically.</p>
+                        {githubHookRepo && githubHookId
+                          ? <p className="text-violet-500 text-[10px]">Registered on <span className="font-mono">{githubHookRepo}</span> — GitHub sends events here automatically.</p>
+                          : githubHookRepo
+                          ? <p className="text-violet-500 text-[10px]">Target repo: <span className="font-mono">{githubHookRepo}</span> — passed to the agent as context.</p>
                           : <>
                               <p className="text-violet-500 text-[10px]">POST any JSON to this URL — payload available as <span className="font-mono">{"{{_trigger.*}}"}</span></p>
                               <div className="border-t border-violet-100 pt-1.5 space-y-0.5">
