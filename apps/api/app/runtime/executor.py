@@ -905,7 +905,8 @@ def _build_run_summary(state: dict) -> str:
         elif val.get("triggered") and val.get("service_id"):
             summary = f"Railway service {val['service_id']} redeployed"
         elif val.get("route"):
-            summary = f"Logic route: {val['route']}"
+            route = val["route"]
+            summary = f"→ {route}" if route in ("pass", "fail") else f"Logic route: {route}"
         elif isinstance(val.get("output"), str):
             summary = val["output"][:120]
         if summary:
@@ -1305,7 +1306,7 @@ def execute_run(run_id: str):
 
                 elif block_type == "output":
                     wf_name = version.workflow.name if version.workflow else "Agent"
-                    trace_url = f"{settings.api_base_url.rstrip('/')}/workflows/{version.workflow.id}/runs/{run_id}" if version.workflow else ""
+                    trace_url = f"{settings.app_url.rstrip('/')}/workflows/{version.workflow.id}/runs/{run_id}" if version.workflow else ""
                     try:
                         result = _execute_output(block, state, credentials, workflow_name=wf_name, trace_url=trace_url, run_id=run_id)
                     except Exception as out_err:
