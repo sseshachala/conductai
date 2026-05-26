@@ -105,3 +105,16 @@ blocks:
       via: slack
       slack:
         channel: "#incidents"
+
+test_trigger:
+  payload:
+    alert:
+      id: "test-alert-9999"
+      title: "[TEST] High error rate on /api/workflows"
+      severity: high
+      description: "Error rate spiked to 15% on the workflows endpoint. This is a test alert."
+      started_at: "2026-05-25T20:00:00Z"
+      service: conductai-api
+    repository:
+      full_name: sseshachala/conductai
+      name: conductai
