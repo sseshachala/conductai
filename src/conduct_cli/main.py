@@ -144,11 +144,21 @@ def cmd_login(args):
     if workspace: cfg["workspace"] = workspace
     if token:     cfg["token"]     = token
 
-    # Validate by hitting /workflows
     s   = cfg["server"]
-    ws  = cfg.get("workspace", "")
     ak  = cfg.get("api_key")
     tok = cfg.get("token")
+
+    # Auto-discover workspace from API key if not provided
+    if ak and ak.startswith("cond_live_") and not cfg.get("workspace"):
+        try:
+            hdrs = {"X-Api-Key": ak, "Content-Type": "application/json"}
+            me = api.req("GET", f"{s}/me", hdrs)
+            cfg["workspace"] = me["workspace_id"]
+            print(f"{GREEN}✓ Workspace discovered:{RESET} {cfg['workspace']}")
+        except SystemExit:
+            print(f"{YELLOW}⚠ Could not auto-discover workspace. Pass --workspace <id> manually.{RESET}")
+
+    ws  = cfg.get("workspace", "")
     if ws and (ak or tok):
         hdrs = api.headers(ws, tok, "application/json", ak)
         try:
@@ -790,7 +800,7 @@ def main():
     login_p = sub.add_parser("login", help="Save connection config (~/.conduct/config.json)")
     login_p.add_argument("--server",    help="API base URL e.g. https://api.conductai.ai")
     login_p.add_argument("--api-key",   dest="api_key", help="CLI API key (set CLI_API_KEY on server)")
-    login_p.add_argument("--workspace", help="Workspace ID")
+    login_p.add_argument("--workspace", help="Workspace ID (auto-discovered from API key if omitted)")
     login_p.add_argument("--token",     help="Bearer token (alternative to API key)")
 
     # conduct agents
