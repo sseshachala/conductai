@@ -67,6 +67,15 @@ export default function RunDetailPage() {
     setRefreshing(false)
   }
 
+  // Stop polling as soon as run reaches a terminal state
+  useEffect(() => {
+    if (run && TERMINAL.has(run.status) && pollRef.current) {
+      clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [run?.status])
+
   useEffect(() => {
     if (!isLoaded) return
     async function load() {
@@ -84,15 +93,10 @@ export default function RunDetailPage() {
       }
       setLoading(false)
 
-      // Auto-poll every 4s while run is non-terminal
       if (runData && !TERMINAL.has(runData.status)) {
         pollRef.current = setInterval(async () => {
           const h = await buildHeaders()
-          const updated = await fetchRun(h)
-          if (updated && TERMINAL.has(updated.status)) {
-            clearInterval(pollRef.current!)
-            pollRef.current = null
-          }
+          await fetchRun(h)
         }, 4000)
       }
     }
