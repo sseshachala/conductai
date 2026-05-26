@@ -120,7 +120,7 @@ export default function RunDetailPage() {
   const s = statusStyle(run.status)
   const tabs: { id: Tab; label: string }[] = [
     { id: "summary",  label: "Summary"  },
-    { id: "trace",    label: "Trace"    },
+    { id: "trace",    label: "Steps"    },
     { id: "ai-trace", label: "AI Trace" },
     { id: "files",    label: "Files"    },
     { id: "approvals",label: "Approvals"},
