@@ -450,6 +450,123 @@ def cmd_install(args):
     print(f"\n  Run a test: {CYAN}conduct test \"{agent_name}\"{RESET}\n")
 
 
+# ── Reset command ─────────────────────────────────────────────────────────────
+
+def cmd_reset(args):
+    server, workspace_id, api_key, token = _require_auth(args)
+    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+
+    if args.resource == "project":
+        proj = _resolve_project(server, workspace_id, hdrs, args.name)
+        project_id = proj["id"]
+
+        # Fetch all workflows in project
+        workflows = api.req("GET", f"{server}/workflows?project_id={project_id}", hdrs)
+        if not workflows:
+            print(f"{YELLOW}Project '{args.name}' has no agents — nothing to reset.{RESET}")
+            return
+
+        print(f"\n{BOLD}Reset project '{args.name}' — {len(workflows)} agent(s) will be deleted:{RESET}")
+        for wf in workflows:
+            print(f"  {GRAY}· {wf['name']}{RESET}")
+
+        if not args.yes:
+            confirm = input(f"\n{YELLOW}Type 'yes' to confirm: {RESET}").strip().lower()
+            if confirm != "yes":
+                print("Cancelled.")
+                return
+
+        deleted = failed = 0
+        for wf in workflows:
+            try:
+                api.req("DELETE", f"{server}/workflows/{wf['id']}", hdrs)
+                print(f"  {GREEN}✓ deleted:{RESET} {wf['name']}")
+                deleted += 1
+            except SystemExit:
+                print(f"  {RED}✗ failed:{RESET} {wf['name']}")
+                failed += 1
+
+        print(f"\n{BOLD}{GREEN}{deleted} deleted{RESET}", end="")
+        if failed:
+            print(f"  {RED}{failed} failed{RESET}", end="")
+        print()
+    else:
+        print(f"{RED}Unknown resource '{args.resource}'. Try: conduct reset project <name>{RESET}")
+        sys.exit(1)
+
+
+# ── Install-all command ───────────────────────────────────────────────────────
+
+# All known playbook slugs in install order
+_ALL_SLUGS = [
+    "autopilot_quick",
+    "autopilot_full",
+    "autopilot_approved",
+    "pr_reviewer",
+    "ci_notify",
+    "incident_responder",
+    "dependency_updater",
+    "release_notes",
+    "issue_triage",
+    "copilot_reviewer",
+    "security_scanner",
+    "security_patch_updater",
+]
+
+
+def cmd_install_all(args):
+    server, workspace_id, api_key, token = _require_auth(args)
+    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+
+    slugs = _ALL_SLUGS
+
+    print(f"\n{BOLD}▶ conduct install-all — {len(slugs)} playbooks → project '{args.project}'{RESET}")
+    if args.repo:
+        print(f"  repo: {args.repo}")
+    print()
+
+    installed = []
+    failed    = []
+
+    for slug in slugs:
+        # Build a minimal args-like namespace for cmd_install
+        class _A:
+            pass
+        a          = _A()
+        a.slug     = slug
+        a.project  = args.project
+        a.repo     = args.repo
+        a.name     = None
+        a.input    = args.input or []
+
+        # Patch server/workspace/auth into the namespace so _require_auth works
+        a.server    = server
+        a.workspace = workspace_id
+        a.api_key   = api_key
+        a.token     = token
+
+        try:
+            cmd_install(a)
+            installed.append(slug)
+        except SystemExit:
+            failed.append(slug)
+
+    # Summary
+    print(f"\n{BOLD}{'─' * 50}{RESET}")
+    color = GREEN if not failed else RED
+    print(f"{BOLD}{color}{len(installed)}/{len(slugs)} installed{RESET}\n")
+
+    for s in installed:
+        print(f"  {GREEN}✓{RESET}  {s}")
+    for s in failed:
+        print(f"  {RED}✗{RESET}  {s}")
+    print()
+
+    if failed:
+        print(f"{RED}Some installs failed. Fix the issue, run 'conduct reset project {args.project}', then retry.{RESET}\n")
+        sys.exit(1)
+
+
 def _build_state(issue: dict, repo_full_name: str) -> dict:
     owner, repo = repo_full_name.split("/", 1)
     trigger = {
@@ -600,6 +717,19 @@ def main():
     install_p.add_argument("--input", action="append", metavar="key=value",
                            help="Playbook input value (repeatable, e.g. --input github_token=xxx)")
 
+    # conduct reset project <name>
+    reset_p = sub.add_parser("reset", help="Delete all agents in a project (clean slate)")
+    reset_p.add_argument("resource", choices=["project"], help="Resource type")
+    reset_p.add_argument("name",     help="Project name to reset")
+    reset_p.add_argument("--yes",    action="store_true", help="Skip confirmation prompt")
+
+    # conduct install-all
+    ia_p = sub.add_parser("install-all", help="Install all playbooks into a project")
+    ia_p.add_argument("--project",  required=True, help="Project name")
+    ia_p.add_argument("--repo",     help="GitHub repo (owner/repo)")
+    ia_p.add_argument("--input",    action="append", metavar="key=value",
+                      help="Input value applied to all playbooks (repeatable)")
+
     # conduct run (existing)
     run_p = sub.add_parser("run", help="Run a workflow from a YAML file")
     run_p.add_argument("yaml", help="Path to workflow YAML")
@@ -618,6 +748,10 @@ def main():
         cmd_playbooks(args)
     elif args.command == "install":
         cmd_install(args)
+    elif args.command == "reset":
+        cmd_reset(args)
+    elif args.command == "install-all":
+        cmd_install_all(args)
     elif args.command == "test":
         if not args.agents and not args.all:
             test_p.print_help()
