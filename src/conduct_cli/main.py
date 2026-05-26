@@ -248,29 +248,44 @@ def cmd_test(args):
     proj_label = f" [{project_filter}]" if project_filter else ""
     print(f"\n{BOLD}▶ conduct test{proj_label} — {len(targets)} agent(s){RESET}\n")
 
-    # Build test payload — empty lets server use built-in test_trigger; repo override patches it
+    pr_override = getattr(args, "pr", None)
+
+    # Build test payload — empty lets server use built-in test_trigger; overrides patch it
     def _build_payload(slug):
-        if not repo_override:
-            return {}
-        owner, repo = (repo_override.split("/", 1) + [""])[:2]
-        clone_url = f"https://github.com/{repo_override}.git"
-        return {
-            # flat fields (security-patch-updater, dependency-updater)
-            "repo": repo_override,
-            "clone_url": clone_url,
-            # structured fields (autopilot, pr-reviewer, copilot-reviewer)
-            "repo_owner": owner,
-            "repo_name": repo,
-            "repo_full_name": repo_override,
-            # nested repository block (GitHub webhook format)
-            "repository": {
-                "full_name": repo_override,
-                "name": repo,
-                "owner": {"login": owner},
+        payload: dict = {}
+        if repo_override:
+            owner, repo = (repo_override.split("/", 1) + [""])[:2]
+            clone_url = f"https://github.com/{repo_override}.git"
+            payload.update({
+                "repo": repo_override,
                 "clone_url": clone_url,
-                "default_branch": "main",
-            },
-        }
+                "repo_owner": owner,
+                "repo_name": repo,
+                "repo_full_name": repo_override,
+                "repository": {
+                    "full_name": repo_override,
+                    "name": repo,
+                    "owner": {"login": owner},
+                    "clone_url": clone_url,
+                    "default_branch": "main",
+                },
+            })
+        if pr_override:
+            pr = int(pr_override)
+            repo_path = repo_override or ""
+            payload.update({
+                "number": pr,
+                "pull_request": {
+                    "number": pr,
+                    "html_url": f"https://github.com/{repo_path}/pull/{pr}" if repo_path else "",
+                    "diff_url": f"https://github.com/{repo_path}/pull/{pr}.diff" if repo_path else "",
+                    "title": f"PR #{pr}",
+                    "user": {"login": ""},
+                    "base": {"ref": "main"},
+                    "head": {"ref": ""},
+                },
+            })
+        return payload
 
     results = []
     for wf in targets:
@@ -788,6 +803,7 @@ def main():
     test_p.add_argument("--all", action="store_true", help="Test all playbook-based agents")
     test_p.add_argument("--project", metavar="name", help="Limit to agents in this project")
     test_p.add_argument("--repo", metavar="owner/repo", help="Override repo in test payload (e.g. sseshachala/conductai-testbed-node)")
+    test_p.add_argument("--pr", metavar="number", help="Inject a real PR number into the test payload (e.g. 246)")
 
     # conduct projects
     sub.add_parser("projects", help="List all projects in the workspace")
