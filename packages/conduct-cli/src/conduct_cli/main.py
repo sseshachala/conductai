@@ -212,9 +212,17 @@ def cmd_test(args):
 
     agent_names = args.agents  # list, or empty if --all
     run_all     = getattr(args, "all", False)
+    project_filter = getattr(args, "project", None)
+    repo_override  = getattr(args, "repo", None)
 
     # Get full workflow list
     workflows = api.req("GET", f"{server}/workflows", hdrs)
+
+    # Filter by project if specified
+    if project_filter:
+        proj = _resolve_project(server, workspace_id, hdrs, project_filter)
+        proj_id = str(proj["id"])
+        workflows = [wf for wf in workflows if str(wf.get("project_id") or "") == proj_id]
 
     if run_all:
         targets = [wf for wf in workflows if wf.get("playbook_slug")]
@@ -237,7 +245,20 @@ def cmd_test(args):
         print("Nothing to test.")
         return
 
-    print(f"\n{BOLD}▶ conduct test — {len(targets)} agent(s){RESET}\n")
+    proj_label = f" [{project_filter}]" if project_filter else ""
+    print(f"\n{BOLD}▶ conduct test{proj_label} — {len(targets)} agent(s){RESET}\n")
+
+    # Build test payload — empty lets server use built-in test_trigger; repo override patches it
+    def _build_payload(slug):
+        if not repo_override:
+            return {}
+        owner, repo = (repo_override.split("/", 1) + [""])[:2]
+        return {
+            "repo_owner": owner,
+            "repo_name": repo,
+            "repo_full_name": repo_override,
+            "clone_url": f"https://github.com/{repo_override}.git",
+        }
 
     results = []
     for wf in targets:
@@ -249,7 +270,7 @@ def cmd_test(args):
 
         # Fire test trigger
         try:
-            run = api.req("POST", f"{server}/workflows/{wf_id}/trigger", hdrs, {})
+            run = api.req("POST", f"{server}/workflows/{wf_id}/trigger", hdrs, _build_payload(slug))
         except SystemExit:
             results.append((name, False, None))
             print()
@@ -731,6 +752,8 @@ def main():
     test_p = sub.add_parser("test", help="Fire test trigger on one or more agents")
     test_p.add_argument("agents", nargs="*", metavar="agent_name", help="Agent name(s) to test")
     test_p.add_argument("--all", action="store_true", help="Test all playbook-based agents")
+    test_p.add_argument("--project", metavar="name", help="Limit to agents in this project")
+    test_p.add_argument("--repo", metavar="owner/repo", help="Override repo in test payload (e.g. sseshachala/conductai-testbed-node)")
 
     # conduct projects
     sub.add_parser("projects", help="List all projects in the workspace")
