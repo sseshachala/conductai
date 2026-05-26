@@ -398,6 +398,13 @@ def cmd_playbooks(args):
         tags = "  ".join(pb.get("tags", []))
         if tags:
             print(f"  {GRAY}{tags}{RESET}")
+        if pb.get("github_webhook"):
+            events = ", ".join(pb.get("github_events", []))
+            print(f"  {GRAY}Trigger: GitHub webhook ({events}){RESET}")
+            print(f"  {GRAY}Requires: --repo owner/repo{RESET}")
+        elif pb.get("requires_repo"):
+            print(f"  {GRAY}Trigger: inbound webhook (target repo stored for agent context){RESET}")
+            print(f"  {GRAY}Recommended: --repo owner/repo{RESET}")
         inputs = pb.get("inputs", {})
         if inputs:
             print(f"\n{BOLD}  Inputs:{RESET}")
@@ -433,6 +440,17 @@ def cmd_install(args):
     # Fetch playbook to validate slug + get declared inputs
     pb = api.req("GET", f"{server}/workflows/playbooks/{slug}", hdrs)
     declared_inputs = pb.get("inputs", {})
+
+    # Warn early if repo is required/recommended but not provided
+    if not args.repo:
+        if pb.get("github_webhook"):
+            events = ", ".join(pb.get("github_events", []))
+            print(f"{YELLOW}⚠  This agent listens for GitHub {events} events.{RESET}")
+            print(f"   Run with {CYAN}--repo owner/repo{RESET} to register the webhook automatically.")
+            print(f"   Without it, GitHub will not send events and the agent will never fire.\n")
+        elif pb.get("requires_repo"):
+            print(f"{YELLOW}⚠  This agent operates on a GitHub repo.{RESET}")
+            print(f"   Run with {CYAN}--repo owner/repo{RESET} to set the target repository.\n")
 
     # Parse --input key=val pairs
     raw_inputs: dict = {}
@@ -498,8 +516,11 @@ def cmd_install(args):
     webhook_error = result.get("webhook_error")
     if webhook_error:
         print(f"{YELLOW}⚠ Webhook:{RESET} {webhook_error}")
-    else:
-        print(f"{GREEN}✓ Webhook registered{RESET}" if args.repo else "")
+    elif args.repo:
+        if pb.get("github_webhook"):
+            print(f"{GREEN}✓ GitHub webhook registered{RESET} on {args.repo}")
+        else:
+            print(f"{GREEN}✓ Target repo stored:{RESET} {args.repo}")
 
     print(f"\n  Run a test: {CYAN}conduct test \"{agent_name}\"{RESET}\n")
 
