@@ -1,0 +1,150 @@
+name: Postmortem Drafter
+version: 1
+description: >
+  Incident resolved → AI reads the timeline, alerts, recent commits and deploys →
+  drafts a structured postmortem with root cause, timeline, and action items →
+  posts draft to Slack and opens a GitHub issue for tracking.
+
+inputs:
+  model:
+    label: AI Model
+    default: claude-sonnet-4-6
+    type: select
+    options:
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+  slack_channel:
+    label: Slack channel for postmortem draft
+    default: "#incidents"
+    type: string
+  docs_repo:
+    label: Repo to open postmortem issue in
+    default: ""
+    type: string
+
+on:
+  webhook:
+    next: gather_context
+
+blocks:
+  gather_context:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    label: Gather incident context
+    description: |
+      An incident has been resolved. Gather context to draft the postmortem.
+
+      Incident details from trigger:
+      - Title: {{_trigger.title}}
+      - Severity: {{_trigger.severity}}
+      - Started: {{_trigger.started_at}}
+      - Resolved: {{_trigger.resolved_at}}
+      - Service: {{_trigger.service}}
+      - Repo: {{_trigger.repository.full_name}}
+
+      Steps:
+      1. Fetch recent commits at time of incident (last 20 commits before resolution):
+         GET https://api.github.com/repos/{{_trigger.repository.full_name}}/commits?until={{_trigger.resolved_at}}&per_page=20
+         Headers: Authorization: token $GIT_TOKEN
+         Identify commits deployed within 2 hours before incident start.
+
+      2. Fetch recent closed issues/PRs that may be related:
+         GET https://api.github.com/search/issues?q=repo:{{_trigger.repository.full_name}}+is:closed+label:incident
+         Headers: Authorization: token $GIT_TOKEN
+
+      3. Draft a structured postmortem with these sections:
+         - **Summary**: 2 sentences — what happened and impact
+         - **Timeline**: bullet list with timestamps
+         - **Root cause**: what caused the incident
+         - **Contributing factors**: what made it worse or harder to detect
+         - **Impact**: users affected, duration, services down
+         - **What went well**: detection, response, comms
+         - **Action items**: specific tasks with owners (leave TBD if unknown)
+
+      Output ONLY the following JSON on the last line:
+        {
+          "title": "Postmortem: <incident title>",
+          "summary": "two sentence summary",
+          "root_cause": "root cause description",
+          "duration_minutes": <number>,
+          "action_items": ["item 1", "item 2"],
+          "draft_markdown": "full postmortem in markdown"
+        }
+    next: human_review
+
+  human_review:
+    type: approval
+    label: Review postmortem draft
+    description: |
+      AI has drafted a postmortem for: {{_trigger.title}}
+
+      Root cause: {{gather_context.root_cause}}
+      Duration: {{gather_context.duration_minutes}} minutes
+      Action items: {{gather_context.action_items}}
+
+      Approve to publish to Slack and open a tracking issue. Reject to discard.
+    next:
+      approved: publish_postmortem
+      rejected: discard
+
+  publish_postmortem:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    label: Publish postmortem
+    description: |
+      The postmortem draft has been approved. Publish it.
+
+      Repo: {{_trigger.repository.full_name}}
+      Title: {{gather_context.title}}
+      Draft: {{gather_context.draft_markdown}}
+      Action items: {{gather_context.action_items}}
+
+      Steps:
+      1. Create a GitHub issue to track action items:
+         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues
+         Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
+         Body: {
+           "title": "{{gather_context.title}}",
+           "body": "{{gather_context.draft_markdown}}",
+           "labels": ["postmortem"]
+         }
+
+      Output ONLY the following JSON on the last line:
+        {"issue_url": "<url>", "issue_number": <number>}
+    next: notify_published
+
+  notify_published:
+    type: output
+    label: Postmortem published
+    description: |
+      📋 *Postmortem published* — {{gather_context.title}}
+      Root cause: {{gather_context.root_cause}}
+      Duration: {{gather_context.duration_minutes}} min · Action items: {{gather_context.action_items}}
+      Full doc: {{publish_postmortem.issue_url}}
+    output:
+      via: slack
+      slack:
+        channel: "{{inputs.slack_channel}}"
+
+  discard:
+    type: output
+    label: Postmortem discarded
+    description: "Postmortem draft for '{{_trigger.title}}' was rejected and discarded."
+    output:
+      via: slack
+      slack:
+        channel: "{{inputs.slack_channel}}"
+
+test_trigger:
+  payload:
+    title: "API latency spike — checkout service"
+    severity: "P1"
+    started_at: "2026-05-26T14:00:00Z"
+    resolved_at: "2026-05-26T15:30:00Z"
+    service: "checkout-api"
+    repository:
+      full_name: sseshachala/conductai
+      name: conductai
+      clone_url: "https://github.com/sseshachala/conductai.git"
