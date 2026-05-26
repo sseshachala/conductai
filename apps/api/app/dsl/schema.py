@@ -239,7 +239,7 @@ class Workflow(BaseModel):
     blocks: dict[str, Block]
     cleanup: dict[str, CleanupBlock] = Field(default_factory=dict)
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
     # ----- structural validation -------------------------------------------
     @field_validator("name")
