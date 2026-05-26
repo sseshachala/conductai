@@ -675,6 +675,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
   const startTestTrigger = useCallback(async () => {
     setTestTriggerModal(false)
     setTestRunning(true)
+    setTestRunId(null)
     try {
       const headers = await authHeaders(getToken)
       const res = await fetch(
@@ -683,14 +684,13 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
       )
       if (!res.ok) throw new Error("Failed to start test run")
       const data = await res.json()
-      setTestRunId(data.run_id)
-      router.push(`/workflows/${workflowId}/runs/${data.run_id}`)
+      setTestRunId(data.run_id) // banner appears, user can navigate when ready
     } catch (e) {
       console.error(e)
     } finally {
       setTestRunning(false)
     }
-  }, [workflowId, getToken, router])
+  }, [workflowId, getToken])
 
   const handleBlockStatus = useCallback((blockId: string, status: "running" | "completed" | "failed" | "skipped") => {
     setNodes(nds => nds.map(n =>
@@ -1128,6 +1128,23 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
               >Run review</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {testRunId && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 shadow-lg max-w-sm">
+          <span className="text-emerald-500 text-base shrink-0">⚗</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-emerald-800">Test run queued</p>
+            <p className="text-xs text-emerald-600 truncate font-mono">{testRunId}</p>
+          </div>
+          <a
+            href={`/workflows/${workflowId}/runs/${testRunId}`}
+            className="shrink-0 text-xs font-medium text-emerald-700 hover:text-emerald-900 underline underline-offset-2"
+          >
+            View run →
+          </a>
+          <button onClick={() => setTestRunId(null)} className="shrink-0 text-emerald-400 hover:text-emerald-700 text-sm">✕</button>
         </div>
       )}
 
