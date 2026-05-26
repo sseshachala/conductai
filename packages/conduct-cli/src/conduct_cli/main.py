@@ -441,16 +441,17 @@ def cmd_install(args):
     pb = api.req("GET", f"{server}/workflows/playbooks/{slug}", hdrs)
     declared_inputs = pb.get("inputs", {})
 
-    # Warn early if repo is required/recommended but not provided
-    if not args.repo:
+    # Require --repo for all playbooks
+    if not args.repo and pb.get("requires_repo"):
         if pb.get("github_webhook"):
             events = ", ".join(pb.get("github_events", []))
-            print(f"{YELLOW}⚠  This agent listens for GitHub {events} events.{RESET}")
-            print(f"   Run with {CYAN}--repo owner/repo{RESET} to register the webhook automatically.")
-            print(f"   Without it, GitHub will not send events and the agent will never fire.\n")
-        elif pb.get("requires_repo"):
-            print(f"{YELLOW}⚠  This agent clones and operates on a GitHub repo.{RESET}")
-            print(f"   Run with {CYAN}--repo owner/repo{RESET} to set the target repository.\n")
+            print(f"{RED}Error: --repo is required for this agent.{RESET}")
+            print(f"  It listens for GitHub {events} events — Conduct must register a webhook on the target repo.")
+        else:
+            print(f"{RED}Error: --repo is required for this agent.{RESET}")
+            print(f"  It clones and operates on a GitHub repository at runtime.")
+        print(f"\n  Usage: conduct install {slug} --repo owner/repo\n")
+        sys.exit(1)
 
     # Parse --input key=val pairs
     raw_inputs: dict = {}
