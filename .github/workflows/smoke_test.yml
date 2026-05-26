@@ -1,0 +1,72 @@
+name: Nightly Smoke Test
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # 1 AM CDT (UTC-5) every night
+  workflow_dispatch:       # allow manual trigger from GitHub UI
+    inputs:
+      project:
+        description: 'Conduct project name'
+        default: 'DevOps'
+      repo:
+        description: 'Target GitHub repo (owner/repo)'
+        default: 'sseshachala/conductai'
+      pr:
+        description: 'PR number (optional)'
+        default: ''
+
+jobs:
+  smoke:
+    name: Install & Test All Agents
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      PROJECT:  ${{ github.event.inputs.project || 'DevOps' }}
+      REPO:     ${{ github.event.inputs.repo    || 'sseshachala/conductai' }}
+      PR:       ${{ github.event.inputs.pr      || '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install conduct CLI
+        run: pip install -e packages/conduct-cli --quiet
+
+      - name: Write conduct config from secrets
+        run: |
+          mkdir -p ~/.conduct
+          cat > ~/.conduct/config.json <<EOF
+          {
+            "server":       "${{ secrets.CONDUCT_SERVER }}",
+            "workspace_id": "${{ secrets.CONDUCT_WORKSPACE_ID }}",
+            "api_key":      "${{ secrets.CONDUCT_API_KEY }}"
+          }
+          EOF
+
+      - name: Run smoke test
+        id: smoke
+        run: |
+          PR_FLAG=""
+          [[ -n "$PR" ]] && PR_FLAG="--pr $PR"
+          bash scripts/smoke_test.sh \
+            --project "$PROJECT" \
+            --repo    "$REPO" \
+            $PR_FLAG
+        continue-on-error: true  # upload report even on failure
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-report-${{ github.run_id }}
+          path: reports/smoke_*.txt
+          retention-days: 30
+
+      - name: Fail if smoke test failed
+        if: steps.smoke.outcome == 'failure'
+        run: exit 1
