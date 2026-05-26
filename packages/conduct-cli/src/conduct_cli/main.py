@@ -253,11 +253,23 @@ def cmd_test(args):
         if not repo_override:
             return {}
         owner, repo = (repo_override.split("/", 1) + [""])[:2]
+        clone_url = f"https://github.com/{repo_override}.git"
         return {
+            # flat fields (security-patch-updater, dependency-updater)
+            "repo": repo_override,
+            "clone_url": clone_url,
+            # structured fields (autopilot, pr-reviewer, copilot-reviewer)
             "repo_owner": owner,
             "repo_name": repo,
             "repo_full_name": repo_override,
-            "clone_url": f"https://github.com/{repo_override}.git",
+            # nested repository block (GitHub webhook format)
+            "repository": {
+                "full_name": repo_override,
+                "name": repo,
+                "owner": {"login": owner},
+                "clone_url": clone_url,
+                "default_branch": "main",
+            },
         }
 
     results = []

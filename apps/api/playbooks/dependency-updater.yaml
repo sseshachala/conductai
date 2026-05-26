@@ -17,6 +17,11 @@ description: >
     Schedule a weekly POST to the webhook URL above with the same JSON body.
 
 inputs:
+  repo:
+    label: GitHub repository (owner/repo)
+    hint: "e.g. myorg/my-repo — used as the default target when testing via CLI"
+    type: text
+    default: ""
   model:
     label: AI Model
     default: claude-haiku-4-5-20251001
@@ -50,9 +55,9 @@ blocks:
       Trigger payload: {{_trigger}}
 
       Extract from payload:
-      - repo: {{_trigger.repo}} (owner/repo format)
-      - clone_url: {{_trigger.clone_url}}
-      - default_branch: {{_trigger.default_branch}} (default "main" if missing)
+      - repo: {{_trigger.repo}} OR {{_trigger.repository.full_name}} OR {{inputs.repo}}
+      - clone_url: {{_trigger.clone_url}} OR https://github.com/{{inputs.repo}}.git
+      - default_branch: {{_trigger.default_branch}} OR {{_trigger.repository.default_branch}} (default "main" if missing)
 
       CRITICAL: Each run_shell call gets a FRESH container — do ALL git work in a
       SINGLE run_shell call. Do NOT split clone/update/push across multiple calls.

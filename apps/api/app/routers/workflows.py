@@ -1313,13 +1313,17 @@ def test_trigger(
     if not workflow or not workflow.current_version:
         raise HTTPException(status_code=404, detail="Workflow not found")
 
-    # If no payload supplied, use the playbook's built-in test_trigger.payload
-    if not payload and workflow.playbook_slug and workflow.playbook_slug in _TEMPLATE_PLAYBOOKS:
+    # Always load the playbook's built-in test_trigger.payload, then merge any
+    # caller-supplied overrides on top. This lets --repo override the repo fields
+    # without wiping advisory/issue data baked into the test_trigger.
+    base_payload: dict = {}
+    if workflow.playbook_slug and workflow.playbook_slug in _TEMPLATE_PLAYBOOKS:
         playbook_file = _TEMPLATE_PLAYBOOKS[workflow.playbook_slug]
         playbook_path = pathlib.Path(__file__).parent.parent.parent / "playbooks" / playbook_file
         if playbook_path.exists():
             raw = _yaml.safe_load(playbook_path.read_text()) or {}
-            payload = raw.get("test_trigger", {}).get("payload", {})
+            base_payload = raw.get("test_trigger", {}).get("payload", {})
+    payload = {**base_payload, **payload}  # caller overrides win
 
     if not payload:
         raise HTTPException(status_code=400, detail="No payload provided and no test_trigger defined for this playbook")
