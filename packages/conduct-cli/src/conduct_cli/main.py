@@ -426,8 +426,8 @@ def cmd_install(args):
         proj = _resolve_project(server, workspace_id, hdrs, args.project)
         project_id = proj["id"]
 
-    # Agent name — default to playbook name
-    agent_name = args.name or pb["name"]
+    # Agent name — use friendly name, fall back to playbook API name
+    agent_name = args.name or _FRIENDLY_NAMES.get(slug) or pb["name"]
 
     # Repo input — inject into inputs if playbook expects github_repo
     if args.repo:
@@ -533,6 +533,21 @@ _ALL_SLUGS = [
     "security_scanner",
     "security_patch_updater",
 ]
+
+_FRIENDLY_NAMES = {
+    "autopilot_quick":        "Autopilot Quick",
+    "autopilot_full":         "Autopilot Full",
+    "autopilot_approved":     "Autopilot + Approval",
+    "pr_reviewer":            "PR Reviewer",
+    "ci_notify":              "CI Failure Alert",
+    "incident_responder":     "Incident Responder",
+    "dependency_updater":     "Dependency Updater",
+    "release_notes":          "Release Notes",
+    "issue_triage":           "Issue Triage",
+    "copilot_reviewer":       "Copilot / AI PR Reviewer",
+    "security_scanner":       "Security Scanner",
+    "security_patch_updater": "Security Patch Updater",
+}
 
 
 def cmd_install_all(args):
