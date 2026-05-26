@@ -65,22 +65,19 @@ blocks:
       Repo: {{_trigger.repo_full_name}}
       Clone URL: {{_trigger.clone_url}}
 
-      IMPORTANT: Each step runs in a fresh sandbox — you MUST push the branch
-      to the remote before finishing so the next block can access your work.
+      CRITICAL: Each run_shell call gets a FRESH container — do ALL git work in a
+      SINGLE run_shell call. Do NOT split across multiple calls — /tmp is gone after each call.
+      You MUST push the branch to the remote before this block finishes.
 
-      Steps:
-      1. Clean up any previous clone, then clone the repo:
-         rm -rf /tmp/repo
-         git clone --depth {{inputs.clone_depth}} {{_trigger.clone_url}} /tmp/repo
-      2. cd /tmp/repo
-      3. Create a branch: git checkout -b autopilot/issue-{{fetch_issue.issue_number}}
-      4. Read relevant files to understand the codebase
-      5. Implement the fix described in the issue
-      6. Stage and commit: git add -A && git commit -m 'fix: <short description> (closes #{{fetch_issue.issue_number}})'
-      7. Set remote with credentials and push:
-         git remote set-url origin https://<github_token>@github.com/{{_trigger.repo_full_name}}.git
-         (retrieve the GitHub token from the Conduct AI credentials vault)
-         git push origin autopilot/issue-{{fetch_issue.issue_number}}
+      Do ALL of the following in ONE run_shell call:
+      - rm -rf /tmp/repo
+      - git clone --depth {{inputs.clone_depth}} https://$GIT_TOKEN@github.com/{{_trigger.repo_full_name}}.git /tmp/repo
+      - cd /tmp/repo && git config user.email "bot@conductai.ai" && git config user.name "Conduct AI"
+      - git checkout -b autopilot/issue-{{fetch_issue.issue_number}}
+      - Read relevant files to understand the codebase (use read_file tool if needed, then come back to one final run_shell)
+      - Apply the fix with python3/sed inline in the script
+      - git add -A && git commit -m "fix: <short description> (closes #{{fetch_issue.issue_number}})"
+      - git push https://$GIT_TOKEN@github.com/{{_trigger.repo_full_name}}.git autopilot/issue-{{fetch_issue.issue_number}}
 
       Output ONLY the following JSON on the last line of your response:
         {"branch_name": "autopilot/issue-{{fetch_issue.issue_number}}", "summary": "<brief description of changes>"}
@@ -98,18 +95,17 @@ blocks:
       Repo: {{_trigger.repo_full_name}}
       Branch to test: {{implement_fix.branch_name}}
 
-      Steps:
-      1. Clone the repo with the pushed branch:
-         git clone --branch {{implement_fix.branch_name}} https://<github_token>@github.com/{{_trigger.repo_full_name}}.git /tmp/repo
-         (retrieve the GitHub token from the Conduct AI credentials vault)
-      2. cd /tmp/repo
-      3. Detect the test runner by reading package.json or requirements.txt
-      4. Run the tests
-      5. If tests fail: read the failure output, patch the code, re-run (up to 3 times)
-      6. If any fixes were made, commit and push them:
-         git add -A && git commit -m 'fix: address test failures'
-         git push origin {{implement_fix.branch_name}}
-      7. After up to 3 fix attempts, stop regardless of outcome
+      CRITICAL: Each run_shell call gets a FRESH container — do ALL of the following
+      in a SINGLE run_shell call (clone → test → fix → push):
+
+      - git clone --branch {{implement_fix.branch_name}} https://$GIT_TOKEN@github.com/{{_trigger.repo_full_name}}.git /tmp/repo
+      - cd /tmp/repo && git config user.email "bot@conductai.ai" && git config user.name "Conduct AI"
+      - Detect test runner (check package.json / requirements.txt / go.mod)
+      - Run tests; if they fail: patch code inline, re-run (up to 3 attempts total)
+      - If any fixes were committed:
+          git add -A && git commit -m "fix: address test failures"
+          git push https://$GIT_TOKEN@github.com/{{_trigger.repo_full_name}}.git {{implement_fix.branch_name}}
+      - After up to 3 fix attempts, stop regardless of outcome
 
       Output as JSON on the final line:
         {"passed": true/false, "attempts": <number>, "output": "<brief summary>"}
@@ -156,7 +152,7 @@ blocks:
       1. Retrieve the GitHub token from the Conduct AI credentials vault
       2. Open a PR via the GitHub API:
          POST https://api.github.com/repos/{{_trigger.repo_full_name}}/pulls
-         Headers: Authorization: token <github_token>, Content-Type: application/json
+         Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
          Body: {"title": "fix: {{fetch_issue.title}} (closes #{{fetch_issue.issue_number}})",
                 "head":  "{{implement_fix.branch_name}}",
                 "base":  "{{_trigger.default_branch}}",

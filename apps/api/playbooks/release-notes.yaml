@@ -46,7 +46,7 @@ blocks:
 
       Step 2 — Find the previous tag:
         GET https://api.github.com/repos/{{_trigger.repository.full_name}}/tags?per_page=5
-        Use Authorization: token <github_token>
+        Use Authorization: token $GIT_TOKEN
         The current tag will appear first. Use the second tag as the base.
         If no previous tag exists, use the 20 most recent merged PRs instead.
 
