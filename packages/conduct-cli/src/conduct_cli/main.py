@@ -403,8 +403,8 @@ def cmd_playbooks(args):
             print(f"  {GRAY}Trigger: GitHub webhook ({events}){RESET}")
             print(f"  {GRAY}Requires: --repo owner/repo{RESET}")
         elif pb.get("requires_repo"):
-            print(f"  {GRAY}Trigger: inbound webhook (target repo stored for agent context){RESET}")
-            print(f"  {GRAY}Recommended: --repo owner/repo{RESET}")
+            print(f"  {GRAY}Trigger: inbound webhook — POST your payload to the webhook URL{RESET}")
+            print(f"  {GRAY}Requires: --repo owner/repo (agent clones this repo at runtime){RESET}")
         inputs = pb.get("inputs", {})
         if inputs:
             print(f"\n{BOLD}  Inputs:{RESET}")
@@ -449,7 +449,7 @@ def cmd_install(args):
             print(f"   Run with {CYAN}--repo owner/repo{RESET} to register the webhook automatically.")
             print(f"   Without it, GitHub will not send events and the agent will never fire.\n")
         elif pb.get("requires_repo"):
-            print(f"{YELLOW}⚠  This agent operates on a GitHub repo.{RESET}")
+            print(f"{YELLOW}⚠  This agent clones and operates on a GitHub repo.{RESET}")
             print(f"   Run with {CYAN}--repo owner/repo{RESET} to set the target repository.\n")
 
     # Parse --input key=val pairs
