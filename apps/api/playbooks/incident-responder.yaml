@@ -14,6 +14,11 @@ description: >
   affected repo, correlates timing, and posts a structured hypothesis to #incidents.
 
 inputs:
+  repo:
+    label: GitHub repository (owner/repo)
+    hint: "e.g. myorg/my-repo — repo to correlate commits and deploys against"
+    type: text
+    default: ""
   model:
     label: AI Model
     default: claude-haiku-4-5-20251001
@@ -50,7 +55,8 @@ blocks:
         Generic:    look for fields named: title, message, service, severity, timestamp, created_at
 
       Step 2 — Identify the GitHub repo:
-        Map the service name to a GitHub repo (owner/repo).
+        Use {{inputs.repo}} if set — it is the configured repo for this agent.
+        Otherwise map the service name to a GitHub repo (owner/repo).
         If no mapping is obvious, search for a repo whose name contains the service name:
           GET https://api.github.com/search/repositories?q=<service_name>+in:name
         Use Authorization: token $GIT_TOKEN on all GitHub API calls.

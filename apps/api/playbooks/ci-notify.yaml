@@ -11,6 +11,11 @@ description: >
   Note: The brain block checks conclusion == failure and skips silently on success.
 
 inputs:
+  repo:
+    label: GitHub repository (owner/repo)
+    hint: "e.g. myorg/my-repo — the repo whose CI failures this agent watches"
+    type: text
+    default: ""
   model:
     label: AI Model
     default: claude-haiku-4-5-20251001
@@ -42,7 +47,7 @@ blocks:
          If the build succeeded, output: {"status": "success", "message": "", "skip": true}
 
       2. If failed, extract:
-         - Repo name and branch
+         - Repo name and branch (use {{_trigger.repository.full_name}} OR {{inputs.repo}})
          - Workflow/pipeline name
          - Commit SHA (short, 7 chars) and commit message
          - Author of the failing commit
