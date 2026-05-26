@@ -153,7 +153,7 @@ def list_audit_log(
 ):
     """Return paginated audit log entries. Admin-only."""
     _enforce_workspace(workspace_id, active_workspace_id)
-    q = "SELECT id, actor_id, actor_email, actor_role, action, resource_type, resource_id, metadata, created_at FROM audit_log WHERE workspace_id = :ws"
+    q = "SELECT id, actor_id, actor_email, actor_role, action, resource_type, resource_id, metadata AS meta, created_at FROM audit_log WHERE workspace_id = :ws"
     params: dict = {"ws": workspace_id}
     if action:
         q += " AND action = :action"
