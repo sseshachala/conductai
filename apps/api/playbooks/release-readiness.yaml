@@ -1,0 +1,123 @@
+name: Release Readiness Reviewer
+version: 1
+description: >
+  Release branch cut or tag pushed → AI checks open blockers, failed CI,
+  pending reviews, and unresolved incidents → posts a go/no-go summary.
+
+inputs:
+  model:
+    label: AI Model
+    default: claude-sonnet-4-6
+    type: select
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+  slack_channel:
+    label: Slack channel for release summary
+    default: "#releases"
+    type: string
+  base_branch:
+    label: Base branch to compare against
+    default: main
+    type: string
+
+on:
+  webhook:
+    next: check_readiness
+
+blocks:
+  check_readiness:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    label: Check release readiness
+    description: |
+      A new tag or release branch has been created. Evaluate release readiness.
+
+      Repo: {{_trigger.repository.full_name}}
+      Ref: {{_trigger.ref}}
+      Created by: {{_trigger.sender.login}}
+      Base branch: {{inputs.base_branch}}
+
+      Run these checks and collect results:
+
+      1. **Open PRs targeting this release**
+         GET https://api.github.com/repos/{{_trigger.repository.full_name}}/pulls?state=open&base={{inputs.base_branch}}
+         Headers: Authorization: token $GIT_TOKEN
+         List any open PRs — these are blockers.
+
+      2. **Recent CI status on base branch**
+         GET https://api.github.com/repos/{{_trigger.repository.full_name}}/actions/runs?branch={{inputs.base_branch}}&per_page=5
+         Headers: Authorization: token $GIT_TOKEN
+         Check if the last run passed.
+
+      3. **Open issues labeled "release-blocker" or "critical"**
+         GET https://api.github.com/search/issues?q=repo:{{_trigger.repository.full_name}}+is:open+is:issue+label:release-blocker
+         Headers: Authorization: token $GIT_TOKEN
+
+      4. **Commits since last tag**
+         GET https://api.github.com/repos/{{_trigger.repository.full_name}}/commits?sha={{inputs.base_branch}}&per_page=20
+         Headers: Authorization: token $GIT_TOKEN
+         Summarise what changed (feat/fix/chore).
+
+      5. **Determine go/no-go:**
+         - BLOCKED if: any open release-blocker issues OR CI failing
+         - CAUTION if: open PRs targeting base OR > 15 commits since last tag
+         - GO if: CI green, no blockers, PRs merged
+
+      Output ONLY the following JSON on the last line:
+        {
+          "verdict": "GO" | "CAUTION" | "BLOCKED",
+          "ci_status": "passing" | "failing" | "unknown",
+          "open_prs": <number>,
+          "blocker_issues": <number>,
+          "commits_since_last_tag": <number>,
+          "summary": "one sentence summary",
+          "blockers": ["list of blocker descriptions"]
+        }
+    next: verdict_gate
+
+  verdict_gate:
+    type: logic
+    label: Release blocked?
+    condition: "{{check_readiness.verdict}} == 'BLOCKED'"
+    next:
+      pass: notify_blocked
+      fail: notify_ready
+
+  notify_blocked:
+    type: output
+    label: Release blocked notification
+    description: |
+      🚫 *Release BLOCKED* — `{{_trigger.ref}}` in `{{_trigger.repository.full_name}}`
+      {{check_readiness.summary}}
+      Blockers: {{check_readiness.blockers}}
+      CI: {{check_readiness.ci_status}} · Open PRs: {{check_readiness.open_prs}} · Blocker issues: {{check_readiness.blocker_issues}}
+    output:
+      via: slack
+      slack:
+        channel: "{{inputs.slack_channel}}"
+
+  notify_ready:
+    type: output
+    label: Release ready notification
+    description: |
+      {{check_readiness.verdict == 'GO' && '✅' || '⚠️'}} *Release {{check_readiness.verdict}}* — `{{_trigger.ref}}` in `{{_trigger.repository.full_name}}`
+      {{check_readiness.summary}}
+      CI: {{check_readiness.ci_status}} · {{check_readiness.commits_since_last_tag}} commits · {{check_readiness.open_prs}} open PRs
+    output:
+      via: slack
+      slack:
+        channel: "{{inputs.slack_channel}}"
+
+test_trigger:
+  payload:
+    ref: "refs/tags/v1.2.0"
+    ref_type: "tag"
+    sender:
+      login: "release-bot"
+    repository:
+      full_name: sseshachala/conductai
+      name: conductai
+      clone_url: "https://github.com/sseshachala/conductai.git"

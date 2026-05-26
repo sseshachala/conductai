@@ -1,0 +1,157 @@
+name: Flaky Test Detective
+version: 1
+description: >
+  CI run fails repeatedly on the same test(s) → AI identifies flaky tests,
+  finds the offending commit, and posts a fix recommendation to Slack and GitHub.
+
+  Trigger: GitHub workflow_run webhook (completed, conclusion: failure)
+
+inputs:
+  model:
+    label: AI Model
+    default: claude-sonnet-4-6
+    type: select
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+  slack_channel:
+    label: Slack channel for alerts
+    default: "#engineering"
+    type: string
+
+on:
+  webhook:
+    next: investigate_failures
+
+blocks:
+  investigate_failures:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    label: Investigate CI failures
+    description: |
+      A CI workflow run has failed. Investigate whether this is a flaky test or a real failure.
+
+      Workflow run details:
+      - Repo: {{_trigger.repository.full_name}}
+      - Workflow: {{_trigger.workflow_run.name}}
+      - Run ID: {{_trigger.workflow_run.id}}
+      - Branch: {{_trigger.workflow_run.head_branch}}
+      - Commit: {{_trigger.workflow_run.head_sha}}
+      - Run URL: {{_trigger.workflow_run.html_url}}
+
+      Steps:
+      1. Fetch recent workflow runs for this workflow to check failure frequency:
+         GET https://api.github.com/repos/{{_trigger.repository.full_name}}/actions/runs?event=push&branch={{_trigger.workflow_run.head_branch}}&per_page=10
+         Headers: Authorization: token $GIT_TOKEN
+         Count how many of the last 10 runs failed.
+
+      2. Fetch the failed jobs for this run:
+         GET https://api.github.com/repos/{{_trigger.repository.full_name}}/actions/runs/{{_trigger.workflow_run.id}}/jobs
+         Headers: Authorization: token $GIT_TOKEN
+         Identify failing job names and steps.
+
+      3. Fetch logs for the first failing job (truncate to last 200 lines if large):
+         GET https://api.github.com/repos/{{_trigger.repository.full_name}}/actions/jobs/<job_id>/logs
+         Headers: Authorization: token $GIT_TOKEN, Accept: application/vnd.github+json
+
+      4. Determine:
+         - Is this a flaky test (passes sometimes, fails sometimes on same branch)?
+         - Which test(s) are failing?
+         - What is the failure message / stack trace?
+         - Is there a recent commit that likely caused it?
+
+      5. Search for the offending commit:
+         GET https://api.github.com/repos/{{_trigger.repository.full_name}}/commits?sha={{_trigger.workflow_run.head_branch}}&per_page=5
+         Headers: Authorization: token $GIT_TOKEN
+
+      Output ONLY the following JSON on the last line:
+        {
+          "is_flaky": true/false,
+          "failing_tests": ["test name 1", "test name 2"],
+          "failure_rate": "X/10 recent runs",
+          "likely_cause": "short description",
+          "offending_commit": "sha or null",
+          "recommendation": "what to do",
+          "run_url": "{{_trigger.workflow_run.html_url}}"
+        }
+    next: is_flaky_gate
+
+  is_flaky_gate:
+    type: logic
+    label: Flaky or real failure?
+    condition: "{{investigate_failures.is_flaky}} == true"
+    next:
+      pass: create_flaky_issue
+      fail: notify_real_failure
+
+  create_flaky_issue:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    label: Create flaky test issue
+    description: |
+      These tests are confirmed flaky. Create a GitHub issue to track and fix them.
+
+      Repo: {{_trigger.repository.full_name}}
+      Failing tests: {{investigate_failures.failing_tests}}
+      Failure rate: {{investigate_failures.failure_rate}}
+      Recommendation: {{investigate_failures.recommendation}}
+      Run: {{investigate_failures.run_url}}
+
+      Steps:
+      1. Create the issue (no labels):
+         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues
+         Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
+         Body: {
+           "title": "fix: flaky test(s) — {{investigate_failures.failing_tests}}",
+           "body": "## Flaky Test Report\n\n**Failure rate:** {{investigate_failures.failure_rate}}\n**Branch:** {{_trigger.workflow_run.head_branch}}\n**Run:** {{investigate_failures.run_url}}\n\n### Failing tests\n{{investigate_failures.failing_tests}}\n\n### Likely cause\n{{investigate_failures.likely_cause}}\n\n### Recommendation\n{{investigate_failures.recommendation}}"
+         }
+      2. Add label: POST .../labels with {"labels": ["flaky-test", "autopilot ready"]}
+
+      Output ONLY the following JSON on the last line:
+        {"issue_url": "<url>", "issue_number": <number>}
+    next: notify_flaky
+
+  notify_flaky:
+    type: output
+    label: Notify flaky test found
+    description: |
+      🔬 *Flaky test detected* in `{{_trigger.repository.full_name}}`
+      Branch: `{{_trigger.workflow_run.head_branch}}` · Failure rate: {{investigate_failures.failure_rate}}
+      Tests: {{investigate_failures.failing_tests}}
+      Issue created: {{create_flaky_issue.issue_url}}
+    output:
+      via: slack
+      slack:
+        channel: "{{inputs.slack_channel}}"
+
+  notify_real_failure:
+    type: output
+    label: Notify real failure
+    description: |
+      🚨 *CI failure* in `{{_trigger.repository.full_name}}`
+      Branch: `{{_trigger.workflow_run.head_branch}}`
+      Cause: {{investigate_failures.likely_cause}}
+      Recommendation: {{investigate_failures.recommendation}}
+      Run: {{investigate_failures.run_url}}
+    output:
+      via: slack
+      slack:
+        channel: "{{inputs.slack_channel}}"
+
+test_trigger:
+  payload:
+    action: completed
+    workflow_run:
+      id: 12345678
+      name: "CI"
+      head_branch: "main"
+      head_sha: "abc1234"
+      conclusion: "failure"
+      html_url: "https://github.com/sseshachala/conductai/actions/runs/12345678"
+    repository:
+      full_name: sseshachala/conductai
+      name: conductai
+      clone_url: "https://github.com/sseshachala/conductai.git"

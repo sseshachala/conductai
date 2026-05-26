@@ -1,0 +1,201 @@
+name: Terraform Plan Reviewer
+version: 1
+description: >
+  PR with Terraform changes opened → AI fetches the plan output, reviews for
+  security misconfigs, cost anomalies, and drift from approved patterns →
+  posts structured findings as a PR review comment.
+
+  Trigger: GitHub pull_request webhook (opened, synchronize)
+
+inputs:
+  model:
+    label: AI Model
+    default: claude-sonnet-4-6
+    type: select
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+  slack_channel:
+    label: Slack channel for critical findings
+    default: "#platform"
+    type: string
+  approved_regions:
+    label: Approved AWS/GCP regions (comma-separated)
+    default: "us-east-1,us-west-2,eu-west-1"
+    type: string
+
+on:
+  webhook:
+    next: check_tf_changes
+
+blocks:
+  check_tf_changes:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    label: Check for Terraform changes
+    description: |
+      A PR was opened or updated. Check whether it contains Terraform (.tf) file changes.
+
+      PR details:
+      - Repo: {{_trigger.repository.full_name}}
+      - PR number: {{_trigger.pull_request.number}}
+      - Title: {{_trigger.pull_request.title}}
+      - Diff URL: {{_trigger.pull_request.diff_url}}
+
+      Steps:
+      1. Fetch the PR diff:
+         GET {{_trigger.pull_request.diff_url}}
+         Headers: Authorization: token $GIT_TOKEN
+
+      2. Check if any `.tf` or `.tfvars` files are in the diff.
+
+      3. If yes, also fetch the list of changed files:
+         GET https://api.github.com/repos/{{_trigger.repository.full_name}}/pulls/{{_trigger.pull_request.number}}/files
+         Headers: Authorization: token $GIT_TOKEN
+         Filter for .tf/.tfvars files only.
+
+      Output ONLY the following JSON on the last line:
+        {
+          "has_tf_changes": true/false,
+          "tf_files_changed": ["main.tf", "variables.tf"],
+          "diff_summary": "brief description of what changed"
+        }
+    next: tf_gate
+
+  tf_gate:
+    type: logic
+    label: Has Terraform changes?
+    condition: "{{check_tf_changes.has_tf_changes}} == true"
+    next:
+      pass: review_plan
+      fail: skip
+
+  review_plan:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    label: Review Terraform plan
+    description: |
+      This PR contains Terraform changes. Review for security, cost, and compliance issues.
+
+      PR details:
+      - Repo: {{_trigger.repository.full_name}}
+      - PR number: {{_trigger.pull_request.number}}
+      - PR URL: {{_trigger.pull_request.html_url}}
+      - Changed TF files: {{check_tf_changes.tf_files_changed}}
+      - Diff summary: {{check_tf_changes.diff_summary}}
+
+      Approved regions: {{inputs.approved_regions}}
+
+      Steps:
+      1. Re-fetch the full diff to read the Terraform changes in detail:
+         GET {{_trigger.pull_request.diff_url}}
+         Headers: Authorization: token $GIT_TOKEN
+
+      2. Look for a terraform plan output in recent PR comments:
+         GET https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/{{_trigger.pull_request.number}}/comments
+         Headers: Authorization: token $GIT_TOKEN
+         Look for comments containing "terraform plan" or "Plan:" output.
+
+      3. Analyze the changes for:
+
+         SECURITY:
+         - Public S3 buckets / storage buckets (block_public_acls, block_public_policy false)
+         - Security groups with 0.0.0.0/0 ingress on sensitive ports (22, 3389, 5432, etc.)
+         - Missing encryption at rest (storage_encrypted = false, kms_key_id absent)
+         - IAM roles with * Action or * Resource (overly permissive policies)
+         - Hardcoded secrets or credentials in variables
+         - Unencrypted secrets in plaintext tfvars
+         - Resources deployed outside approved regions: {{inputs.approved_regions}}
+
+         COST:
+         - Expensive instance types (db.r5.24xlarge, p3.16xlarge, etc.) in non-prod
+         - Deletion of NAT gateways, Reserved instances, or Savings Plans resources
+         - Multi-region replication enabled on large storage resources
+
+         DRIFT:
+         - Resources being destroyed (look for "-" lines in plan for critical resources)
+         - Naming convention violations (resources not matching existing patterns)
+         - Tags missing (environment, owner, cost-center tags absent)
+         - State backend changes
+
+      4. Classify findings:
+         - CRITICAL: public exposure, credential exposure, wildcard IAM, resource destruction
+         - WARNING: cost anomalies, missing tags, non-approved regions
+         - INFO: naming conventions, minor drift
+
+      5. Post findings as a PR review comment:
+         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/{{_trigger.pull_request.number}}/comments
+         Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
+         Body: {
+           "body": "## Terraform Plan Review\n\n**Changed files:** {{check_tf_changes.tf_files_changed}}\n\n### <findings in structured markdown>\n\n<critical, warning, info sections>\n\n---\n*Reviewed by Conduct Terraform Reviewer*"
+         }
+
+      Output ONLY the following JSON on the last line:
+        {
+          "critical_count": <number>,
+          "warning_count": <number>,
+          "info_count": <number>,
+          "verdict": "APPROVE" | "REQUEST_CHANGES" | "COMMENT",
+          "findings_summary": "one sentence summary of key findings",
+          "has_critical": true/false
+        }
+    next: critical_gate
+
+  critical_gate:
+    type: logic
+    label: Critical findings?
+    condition: "{{review_plan.has_critical}} == true"
+    next:
+      pass: notify_critical
+      fail: notify_clean
+
+  notify_critical:
+    type: output
+    label: Notify critical findings
+    description: |
+      🚨 *Critical Terraform findings* — PR #{{_trigger.pull_request.number}} in `{{_trigger.repository.full_name}}`
+      {{review_plan.findings_summary}}
+      Critical: {{review_plan.critical_count}} · Warnings: {{review_plan.warning_count}}
+      PR: {{_trigger.pull_request.html_url}}
+    output:
+      via: slack
+      slack:
+        channel: "{{inputs.slack_channel}}"
+
+  notify_clean:
+    type: output
+    label: Notify clean review
+    description: |
+      ✅ *Terraform review complete* — PR #{{_trigger.pull_request.number}} in `{{_trigger.repository.full_name}}`
+      {{review_plan.findings_summary}}
+      Warnings: {{review_plan.warning_count}} · Info: {{review_plan.info_count}}
+    output:
+      via: log
+
+  skip:
+    type: output
+    label: No Terraform changes
+    description: "PR #{{_trigger.pull_request.number}} — no .tf changes, skipping review."
+    output:
+      via: log
+
+test_trigger:
+  payload:
+    action: opened
+    number: 312
+    pull_request:
+      number: 312
+      title: "infra: add RDS instance for analytics"
+      html_url: "https://github.com/sseshachala/conductai/pull/312"
+      diff_url: "https://github.com/sseshachala/conductai/pull/312.diff"
+      user:
+        login: sseshachala
+      base:
+        ref: main
+    repository:
+      full_name: sseshachala/conductai
+      name: conductai
+      clone_url: "https://github.com/sseshachala/conductai.git"
