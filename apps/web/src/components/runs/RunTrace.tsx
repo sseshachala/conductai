@@ -347,6 +347,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
         const run = await res.json()
         setMeta({ triggered_by: run.triggered_by, started_at: run.started_at, completed_at: run.completed_at, paused_at: run.paused_at, current_block_id: run.current_block_id, workflow_version_id: run.workflow_version_id ?? null })
         if (run.status === "paused") { setStatus("paused"); setApprovalPending(true); setApprovalBlockId(run.current_block_id) }
+        else if (["succeeded", "failed", "cancelled"].includes(run.status)) { setStatus(run.status) }
       }
     } catch { /* ignore */ }
   }
@@ -510,10 +511,12 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
 
       {/* Summary stats grid */}
       <div className="grid grid-cols-5 gap-3 rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
+        {(totalDur || !done) && (
         <div>
           <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-0.5">Duration</p>
-          <p className="text-sm font-semibold text-stone-800">{totalDur ?? (done ? "—" : "…")}</p>
+          <p className="text-sm font-semibold text-stone-800">{totalDur ?? "…"}</p>
         </div>
+        )}
         <div>
           <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-0.5">Turns</p>
           <p className="text-sm font-semibold text-stone-800">
@@ -546,7 +549,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
         <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${STATUS_COLORS[status] ?? STATUS_COLORS.pending}`}>
           {status}
         </span>
-        {totalDur && <span className="text-xs text-stone-400">{totalDur} total</span>}
+        {totalDur && <span className="text-xs text-stone-400">{totalDur}</span>}
         {!done && (
           <span className="flex items-center gap-1.5 text-xs text-stone-400">
             <span className="inline-block w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" />
