@@ -87,7 +87,7 @@ blocks:
       6. Stage and commit: git add -A && git commit -m 'fix: <short description> (closes #{{fetch_issue.issue_number}})'
       7. Set remote with credentials and push:
          git remote set-url origin https://<github_token>@github.com/{{_trigger.repo_full_name}}.git
-         (retrieve the GitHub token from the Delegator credentials vault)
+         (retrieve the GitHub token from the Conduct AI credentials vault)
          git push origin autopilot/issue-{{fetch_issue.issue_number}}
 
       Output ONLY the following JSON on the last line of your response:
@@ -109,7 +109,7 @@ blocks:
       Steps:
       1. Clone the repo with the pushed branch:
          git clone --branch {{implement_fix.branch_name}} https://<github_token>@github.com/{{_trigger.repo_full_name}}.git /tmp/repo
-         (retrieve the GitHub token from the Delegator credentials vault)
+         (retrieve the GitHub token from the Conduct AI credentials vault)
       2. cd /tmp/repo
       3. Detect the test runner by reading package.json or requirements.txt
       4. Run the tests
@@ -145,14 +145,14 @@ blocks:
       Branch: {{implement_fix.branch_name}}
       Base: {{_trigger.default_branch}}
 
-      1. Retrieve the GitHub token from the Delegator credentials vault
+      1. Retrieve the GitHub token from the Conduct AI credentials vault
       2. Open a PR via the GitHub API:
          POST https://api.github.com/repos/{{_trigger.repo_full_name}}/pulls
          Headers: Authorization: token <github_token>, Content-Type: application/json
          Body: {"title": "fix: {{fetch_issue.title}} (closes #{{fetch_issue.issue_number}})",
                 "head":  "{{implement_fix.branch_name}}",
                 "base":  "{{_trigger.default_branch}}",
-                "body":  "Automated fix by Delegator.\n\nCloses #{{fetch_issue.issue_number}}"}
+                "body":  "Automated fix by Conduct AI.\n\nCloses #{{fetch_issue.issue_number}}"}
 
       Output ONLY the following JSON on the last line of your response:
         {"pr_url": "<full PR URL>"}
