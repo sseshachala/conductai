@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -13,6 +13,7 @@ from app.core.database import get_db
 from app.models.conduct_api_key import ConductApiKey
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/api-keys", tags=["api-keys"])
+me_router = APIRouter(prefix="/me", tags=["api-keys"])
 
 PREFIX = "cond_live_"
 
@@ -118,3 +119,25 @@ def revoke_api_key(
         raise HTTPException(status_code=404, detail="API key not found")
     db.delete(row)
     db.commit()
+
+
+# ── /me — workspace discovery for CLI login ───────────────────────────────────
+
+@me_router.get("")
+def get_me(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Return workspace_id for the authenticated API key. Used by CLI login to auto-discover workspace."""
+    from fastapi import Request as _Request
+    api_key_hdr = request.headers.get("x-api-key", "")
+    if not api_key_hdr.startswith("cond_live_"):
+        raise HTTPException(status_code=401, detail="API key required")
+    key_hash = _hash_key(api_key_hdr)
+    row = db.query(ConductApiKey).filter(ConductApiKey.key_hash == key_hash).first()
+    if not row:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    from datetime import datetime, timezone
+    if row.expires_at and row.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=401, detail="API key expired")
+    return {"workspace_id": str(row.workspace_id), "key_prefix": row.key_prefix}
