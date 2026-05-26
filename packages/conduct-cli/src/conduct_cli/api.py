@@ -48,7 +48,7 @@ def req_text(method: str, url: str, hdrs: dict, body_text: str) -> dict:
         sys.exit(1)
 
 
-def stream(url: str, hdrs: dict | None = None):
+def stream(url: str, hdrs=None):
     """Yield parsed SSE data dicts."""
     r = urllib.request.Request(url, headers=hdrs or {})
     try:

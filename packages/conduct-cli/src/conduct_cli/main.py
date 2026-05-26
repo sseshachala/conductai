@@ -34,7 +34,7 @@ def _save_config(data: dict):
     CONFIG_PATH.write_text(json.dumps(data, indent=2))
 
 
-def _resolve(args, key: str, config_key: str | None = None):
+def _resolve(args, key: str, config_key=None):
     """Return value from CLI args first, then config file."""
     val = getattr(args, key.replace("-", "_"), None)
     if val:
@@ -43,7 +43,7 @@ def _resolve(args, key: str, config_key: str | None = None):
     return cfg.get(config_key or key)
 
 
-def _require_auth(args) -> tuple[str, str, str | None, str | None]:
+def _require_auth(args):
     """Return (server, workspace_id, api_key, token) — exit if not configured."""
     server     = _resolve(args, "server")
     workspace  = _resolve(args, "workspace")
