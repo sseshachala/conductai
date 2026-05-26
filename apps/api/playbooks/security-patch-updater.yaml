@@ -64,6 +64,7 @@ blocks:
          Use it wherever <github_token> appears below.
 
       1. Clone the repository using the token for authentication:
+         rm -rf /tmp/sec_patch_repo
          git clone --depth 1 https://<github_token>@github.com/<repo> /tmp/sec_patch_repo
          (use the repo path extracted above, e.g. sseshachala/conductai)
          cd /tmp/sec_patch_repo

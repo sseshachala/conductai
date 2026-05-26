@@ -524,6 +524,7 @@ def _execute_brain(
     cred_names: list[str] = []
     _ENV_NAME_MAP = {
         ("git", "token"): "GIT_TOKEN", ("git", "provider"): "GIT_PROVIDER",
+        ("github", "token"): "GIT_TOKEN", ("github", "api_key"): "GIT_TOKEN",
         ("slack", "token"): "SLACK_BOT_TOKEN",
         ("slack", "signing_secret"): "SLACK_SIGNING_SECRET",
         ("linear", "api_key"): "LINEAR_API_KEY",
@@ -560,28 +561,36 @@ def _execute_brain(
 
     environment_preamble = (
         "EXECUTION ENVIRONMENT:\n"
-        "You are running inside a fresh isolated container. Every run starts clean.\n"
+        "CRITICAL: Each run_shell call gets a BRAND NEW isolated container — /tmp is EMPTY at the\n"
+        "start of every single tool call. Files from a previous run_shell call DO NOT persist.\n"
         "Pre-installed: git, python3, pip3, curl, wget, node, npm, unzip.\n"
         "\n"
         "CRITICAL — DO NOT waste turns checking if tools exist:\n"
         "- Do NOT run: which git, apt-get, find / -name git, ls /usr/bin/git\n"
         "- Do NOT run: apt-get install anything\n"
-        "- If git clone fails on the first try, immediately fall back to the GitHub API\n"
-        "  approach using python3 + urllib (no third-party libraries needed).\n"
+        "- Do NOT split clone + work across multiple run_shell calls — the clone will be GONE.\n"
         "\n"
-        "STANDARD REPO SETUP — try git first, fall back to GitHub API if it fails:\n"
-        "Option A (git available):\n"
-        "  git clone https://<token>@github.com/<owner>/<repo>.git /tmp/repo\n"
-        "  cd /tmp/repo && git checkout -b fix/<issue-number>-<slug>\n"
-        "  <make changes> && git add -A && git commit -m 'fix: ...' && git push origin <branch>\n"
-        "  Then open PR via GitHub API.\n"
+        "STANDARD REPO SETUP — do ALL of the following in ONE single run_shell call:\n"
+        "Option A (preferred — git):\n"
+        "  Write a bash script that in one call does: clone → configure git → checkout branch\n"
+        "  → read/edit files → git add → git commit → git push → open PR via curl.\n"
+        "  Example one-liner chain:\n"
+        "    git clone https://$GIT_TOKEN@github.com/<owner>/<repo>.git /tmp/repo &&\n"
+        "    cd /tmp/repo && git config user.email 'bot@conductai.ai' && git config user.name 'Conduct AI' &&\n"
+        "    git checkout -b fix/<slug> &&\n"
+        "    <edit files with python3 or sed> &&\n"
+        "    git add -A && git commit -m 'fix: ...' &&\n"
+        "    git push https://$GIT_TOKEN@github.com/<owner>/<repo>.git fix/<slug> &&\n"
+        "    curl -s -X POST https://api.github.com/repos/<owner>/<repo>/pulls \\\n"
+        "      -H 'Authorization: token '$GIT_TOKEN -H 'Content-Type: application/json' \\\n"
+        "      -d '{\"title\":\"...\",\"head\":\"fix/<slug>\",\"base\":\"main\",\"body\":\"...\"}'\n"
         "\n"
-        "Option B (git not available — use immediately if Option A fails):\n"
+        "Option B (fallback — if git clone fails on first attempt, switch immediately):\n"
         "  Use python3 urllib to: GET file contents, PATCH/PUT changes, POST branch, POST PR.\n"
-        "  Do NOT try curl, wget, or any other approach — go straight to python3 urllib.\n"
         "  Complete ALL steps in one python3 script: read files, apply changes, commit, create PR.\n"
         "\n"
-        "Do NOT switch between options mid-task. Pick one and finish completely."
+        "Do NOT switch between options mid-task. Pick one and finish completely.\n"
+        "Do NOT split work across multiple run_shell calls — you will lose all state."
     )
 
     # BYO key: workspace credential takes precedence over platform env var
