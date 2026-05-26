@@ -59,7 +59,8 @@ echo "" | run_and_tee
 
 # ── Step 2: Install all agents ────────────────────────────────────────────────
 echo "── Step 2: Install all agents ──" | run_and_tee
-conduct install-all --project "$PROJECT" --repo "$REPO" 2>&1 | run_and_tee
+# 5-minute cap per install-all; individual API calls now have 30s socket timeout
+timeout 300 conduct install-all --project "$PROJECT" --repo "$REPO" 2>&1 | run_and_tee || true
 echo "" | run_and_tee
 
 # ── Step 3: Run all tests ─────────────────────────────────────────────────────

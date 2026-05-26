@@ -1,4 +1,5 @@
 import json
+import socket
 import sys
 import urllib.request
 import urllib.error
@@ -17,11 +18,11 @@ def headers(workspace_id: str, token=None, content_type="application/json", api_
     return h
 
 
-def req(method: str, url: str, hdrs: dict, body=None) -> dict:
+def req(method: str, url: str, hdrs: dict, body=None, timeout: int = 30) -> dict:
     data = json.dumps(body).encode() if body is not None else None
     r = urllib.request.Request(url, data=data, headers=hdrs, method=method)
     try:
-        with urllib.request.urlopen(r) as resp:
+        with urllib.request.urlopen(r, timeout=timeout) as resp:
             raw = resp.read()
             return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as e:
@@ -32,12 +33,15 @@ def req(method: str, url: str, hdrs: dict, body=None) -> dict:
             detail = raw
         print(f"{RED}HTTP {e.code}: {detail}{RESET}")
         sys.exit(1)
+    except (socket.timeout, TimeoutError):
+        print(f"{RED}Request timed out: {url}{RESET}")
+        sys.exit(1)
 
 
-def req_text(method: str, url: str, hdrs: dict, body_text: str) -> dict:
+def req_text(method: str, url: str, hdrs: dict, body_text: str, timeout: int = 30) -> dict:
     r = urllib.request.Request(url, data=body_text.encode(), headers=hdrs, method=method)
     try:
-        with urllib.request.urlopen(r) as resp:
+        with urllib.request.urlopen(r, timeout=timeout) as resp:
             raw = resp.read()
             return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as e:
@@ -47,6 +51,9 @@ def req_text(method: str, url: str, hdrs: dict, body_text: str) -> dict:
         except Exception:
             detail = raw
         print(f"{RED}HTTP {e.code}: {detail}{RESET}")
+        sys.exit(1)
+    except (socket.timeout, TimeoutError):
+        print(f"{RED}Request timed out: {url}{RESET}")
         sys.exit(1)
 
 
