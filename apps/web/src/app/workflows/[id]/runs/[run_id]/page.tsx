@@ -260,19 +260,68 @@ export default function RunDetailPage() {
             <ConversationTrace workflowId={workflowId} runId={runId} getToken={getToken} />
           )}
 
-          {/* Files — stub */}
-          {activeTab === "files" && (
-            <div className="text-center py-12">
-              <p className="text-stone-500 font-medium mb-1">Files & artifacts</p>
-              <p className="text-stone-400 text-sm">PRs opened, files changed, and other outputs will appear here.</p>
-              {prUrl && (
-                <a href={prUrl} target="_blank" rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 mt-4 text-sm text-indigo-600 hover:underline font-medium">
-                  View PR {prNum ? `#${prNum}` : ""} →
-                </a>
-              )}
-            </div>
-          )}
+          {/* Files */}
+          {activeTab === "files" && (() => {
+            const state = (run.state ?? {}) as Record<string, unknown>
+            // Collect all block outputs that have pr_url, files_changed, or diff_stat
+            const blocks = Object.entries(state).filter(([k]) => !k.startsWith("__") && !k.startsWith("_"))
+            const allPrUrls: {url: string; num?: number; block: string}[] = []
+            const allFiles: {file: string; block: string}[] = []
+            let diffStat = ""
+            for (const [blockId, val] of blocks) {
+              const v = val as Record<string, unknown>
+              if (v?.pr_url) allPrUrls.push({ url: v.pr_url as string, num: v.pr_number as number | undefined, block: blockId })
+              if (Array.isArray(v?.files_changed)) {
+                for (const f of v.files_changed as string[]) allFiles.push({ file: f, block: blockId })
+              }
+              if (v?.diff_stat && !diffStat) diffStat = v.diff_stat as string
+            }
+            // Also check top-level trigger state
+            if (prUrl && !allPrUrls.find(p => p.url === prUrl)) allPrUrls.push({ url: prUrl, num: prNum, block: "trigger" })
+
+            if (allPrUrls.length === 0 && allFiles.length === 0 && !diffStat) return (
+              <div className="text-center py-12">
+                <p className="text-stone-500 font-medium mb-1">No file artifacts yet</p>
+                <p className="text-stone-400 text-sm">PRs opened and files changed will appear here once the run completes.</p>
+              </div>
+            )
+            return (
+              <div className="space-y-5">
+                {allPrUrls.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-2">Pull Requests</p>
+                    <div className="divide-y divide-stone-100 rounded-xl border border-stone-200 overflow-hidden">
+                      {allPrUrls.map((pr, i) => (
+                        <a key={i} href={pr.url} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center justify-between px-4 py-3 hover:bg-stone-50 transition-colors group">
+                          <span className="text-sm text-stone-700 font-medium group-hover:text-indigo-600">
+                            {pr.num ? `PR #${pr.num}` : "Pull Request"}
+                          </span>
+                          <span className="text-xs text-indigo-500">Open →</span>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {allFiles.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-2">Files Changed ({allFiles.length})</p>
+                    <div className="rounded-xl border border-stone-200 overflow-hidden divide-y divide-stone-100">
+                      {allFiles.map(({ file }, i) => (
+                        <div key={i} className="px-4 py-2 font-mono text-xs text-stone-700">{file}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {diffStat && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-2">Diff Summary</p>
+                    <pre className="bg-stone-900 text-stone-200 rounded-xl px-4 py-3 text-xs font-mono overflow-x-auto whitespace-pre-wrap">{diffStat}</pre>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
 
           {/* Approvals */}
           {activeTab === "approvals" && (
@@ -307,13 +356,78 @@ export default function RunDetailPage() {
             </div>
           )}
 
-          {/* Cost — stub */}
-          {activeTab === "cost" && (
-            <div className="text-center py-12">
-              <p className="text-stone-500 font-medium mb-1">Cost & token usage</p>
-              <p className="text-stone-400 text-sm">Per-run token tracking is coming soon.</p>
-            </div>
-          )}
+          {/* Cost */}
+          {activeTab === "cost" && (() => {
+            const state = (run.state ?? {}) as Record<string, unknown>
+            const blocks = Object.entries(state).filter(([k]) => !k.startsWith("__") && !k.startsWith("_"))
+            let totalInput = 0, totalOutput = 0, totalCost = 0
+            const rows: {block: string; input: number; output: number; cost: number; turns: number}[] = []
+            for (const [blockId, val] of blocks) {
+              const v = val as Record<string, unknown>
+              const input  = (v?.input_tokens  as number) || 0
+              const output = (v?.output_tokens as number) || 0
+              const cost   = (v?.cost_usd      as number) || 0
+              const turns  = (v?.turns         as number) || 0
+              if (input || output || cost) {
+                rows.push({ block: blockId, input, output, cost, turns })
+                totalInput  += input
+                totalOutput += output
+                totalCost   += cost
+              }
+            }
+            if (rows.length === 0) return (
+              <div className="text-center py-12">
+                <p className="text-stone-500 font-medium mb-1">No cost data yet</p>
+                <p className="text-stone-400 text-sm">Token usage is recorded once the run completes.</p>
+              </div>
+            )
+            return (
+              <div className="space-y-5">
+                {/* Totals */}
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { label: "Total cost",      value: `$${totalCost.toFixed(4)}`,                        color: "text-stone-900" },
+                    { label: "Input tokens",    value: totalInput.toLocaleString(),                        color: "text-blue-700"  },
+                    { label: "Output tokens",   value: totalOutput.toLocaleString(),                       color: "text-purple-700"},
+                  ].map(({ label, value, color }) => (
+                    <div key={label} className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3">
+                      <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-1">{label}</p>
+                      <p className={`text-xl font-bold ${color}`}>{value}</p>
+                    </div>
+                  ))}
+                </div>
+                {/* Per-block breakdown */}
+                <div>
+                  <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-2">Per block</p>
+                  <div className="rounded-xl border border-stone-200 overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-stone-100 bg-stone-50">
+                          <th className="text-left px-4 py-2.5 text-xs font-medium text-stone-400">Block</th>
+                          <th className="text-right px-4 py-2.5 text-xs font-medium text-stone-400">Input</th>
+                          <th className="text-right px-4 py-2.5 text-xs font-medium text-stone-400">Output</th>
+                          <th className="text-right px-4 py-2.5 text-xs font-medium text-stone-400">Turns</th>
+                          <th className="text-right px-4 py-2.5 text-xs font-medium text-stone-400">Cost</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-100">
+                        {rows.map(r => (
+                          <tr key={r.block}>
+                            <td className="px-4 py-2.5 font-mono text-xs text-stone-700">{r.block}</td>
+                            <td className="px-4 py-2.5 text-xs text-stone-500 text-right">{r.input.toLocaleString()}</td>
+                            <td className="px-4 py-2.5 text-xs text-stone-500 text-right">{r.output.toLocaleString()}</td>
+                            <td className="px-4 py-2.5 text-xs text-stone-500 text-right">{r.turns}</td>
+                            <td className="px-4 py-2.5 text-xs text-stone-700 text-right font-medium">${r.cost.toFixed(4)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-[10px] text-stone-400 mt-2">Pricing: $3/1M input · $15/1M output (claude-sonnet-4-6)</p>
+                </div>
+              </div>
+            )
+          })()}
         </div>
       </div>
     </AppShell>
