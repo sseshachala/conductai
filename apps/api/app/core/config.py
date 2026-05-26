@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     debug: bool = True
     # Base URL for callbacks (approval webhooks, etc.)
     api_base_url: str = "http://localhost:8000"
+    # Frontend URL — used for trace links in Slack/email notifications
+    app_url: str = "https://conductai.ai"
     # Slack signing secret for verifying interactive component payloads
     slack_signing_secret: str = ""
     # Clerk (optional — if unset, all requests use the dev workspace)
