@@ -12,7 +12,7 @@ from app.core.config import settings
 
 log = structlog.get_logger(__name__)
 
-COMPILER_SYSTEM = """You are a system prompt compiler for an AI workflow platform called Delegator.
+COMPILER_SYSTEM = """You are a system prompt compiler for an AI workflow platform called Conduct AI.
 
 Given a plain-English block description, generate a precise, well-structured system prompt.
 The prompt should:

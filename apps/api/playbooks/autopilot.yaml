@@ -152,7 +152,7 @@ blocks:
          Body: {"title": "fix: {{fetch_issue.title}} (closes #{{fetch_issue.issue_number}})",
                 "head":  "{{implement_fix.branch_name}}",
                 "base":  "{{_trigger.default_branch}}",
-                "body":  "Automated fix by Delegator.\n\nCloses #{{fetch_issue.issue_number}}"}
+                "body":  "Automated fix by Conduct AI.\n\nCloses #{{fetch_issue.issue_number}}"}
 
       Output ONLY the following JSON on the last line of your response:
         {"pr_url": "<full PR URL>"}

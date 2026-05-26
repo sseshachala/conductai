@@ -171,7 +171,7 @@ blocks:
            {"title": "fix: {{fetch_issue.title}} (closes #{{fetch_issue.issue_number}})",
             "head":  "ai-ready/issue-{{fetch_issue.issue_number}}",
             "base":  "<default branch>",
-            "body":  "Automated fix by Delegator. Closes #{{fetch_issue.issue_number}}.",
+            "body":  "Automated fix by Conduct AI. Closes #{{fetch_issue.issue_number}}.",
             "draft": true}
 
       10. Output as the FINAL line of your response, JSON only:
