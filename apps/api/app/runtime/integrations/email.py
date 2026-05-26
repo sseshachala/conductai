@@ -5,7 +5,7 @@ Actions: send_email.
 import httpx
 
 
-def send_via_resend(api_key: str, to: str, subject: str, body: str, from_address: str = "Delegator <notifications@delegator.dev>") -> dict:
+def send_via_resend(api_key: str, to: str, subject: str, body: str, from_address: str = "Conduct AI <notifications@conductai.ai>") -> dict:
     r = httpx.post(
         "https://api.resend.com/emails",
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
@@ -17,7 +17,7 @@ def send_via_resend(api_key: str, to: str, subject: str, body: str, from_address
     return {"sent": True, "provider": "resend", "id": d.get("id"), "to": to, "subject": subject}
 
 
-def send_via_sendgrid(api_key: str, to: str, subject: str, body: str, from_address: str = "notifications@delegator.dev") -> dict:
+def send_via_sendgrid(api_key: str, to: str, subject: str, body: str, from_address: str = "notifications@conductai.ai") -> dict:
     r = httpx.post(
         "https://api.sendgrid.com/v3/mail/send",
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},

@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     clerk_audience: str = ""      # set to the expected aud claim to enable audience verification
     # Email — system-level default; can also be added per-workspace in Settings
     resend_api_key: str = ""
-    email_from: str = "Delegator <notifications@delegator.dev>"
+    email_from: str = "Conduct AI <notifications@conductai.ai>"
     # Webhook secrets
     vercel_webhook_secret: str = ""
     github_webhook_secret: str = ""
