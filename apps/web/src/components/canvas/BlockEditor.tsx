@@ -300,11 +300,11 @@ function FieldInput({
 }) {
   const strVal = value === undefined || value === null ? (field.defaultValue !== undefined ? String(field.defaultValue) : "") : String(value)
   const boolVal = value === undefined ? (field.defaultValue as boolean ?? false) : Boolean(value)
+  const [visible, setVisible] = React.useState(false)
 
   const base = "w-full border border-stone-200 rounded-lg px-2.5 py-1.5 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-200 bg-white"
 
   if (field.readOnly) {
-    const [visible, setVisible] = React.useState(false)
     const display = strVal || field.placeholder || ""
     const masked = display.replace(/./g, "•").slice(0, 24)
     return (
