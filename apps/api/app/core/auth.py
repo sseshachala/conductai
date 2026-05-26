@@ -189,11 +189,30 @@ def get_workspace_id(
     if not _clerk_enabled():
         return x_workspace_id or DEV_WORKSPACE_ID
 
-    # CLI / server-to-server API key bypasses Clerk
+    # Master server-to-server key (env var) — unchanged
     if x_api_key and settings.cli_api_key and x_api_key == settings.cli_api_key:
         if not settings.cli_workspace_id:
             raise HTTPException(status_code=500, detail="CLI_WORKSPACE_ID is not configured on the server")
         return settings.cli_workspace_id
+
+    # Per-user CONDUCT_API_KEY (cond_live_...) — verified against DB hash
+    if x_api_key and x_api_key.startswith("cond_live_"):
+        import hashlib
+        from app.models.conduct_api_key import ConductApiKey
+        from datetime import datetime, timezone
+        key_hash = hashlib.sha256(x_api_key.encode()).hexdigest()
+        row = db.query(ConductApiKey).filter(ConductApiKey.key_hash == key_hash).first()
+        if not row:
+            raise HTTPException(status_code=401, detail="Invalid API key")
+        if row.expires_at and row.expires_at < datetime.now(timezone.utc):
+            raise HTTPException(status_code=401, detail="API key expired")
+        # Update last_used_at async-style (best effort, don't block)
+        try:
+            row.last_used_at = datetime.now(timezone.utc)
+            db.commit()
+        except Exception:
+            db.rollback()
+        return row.workspace_id
 
     if not credentials:
         raise HTTPException(status_code=401, detail="Authorization header required")
