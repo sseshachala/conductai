@@ -119,3 +119,15 @@ blocks:
       slack:
         channel: "#security"
         approval: true
+
+test_trigger:
+  payload:
+    repo: sseshachala/conductai
+    clone_url: "https://github.com/sseshachala/conductai.git"
+    default_branch: main
+    advisory:
+      package: lodash
+      severity: high
+      cve: CVE-2021-23337
+      patched_versions: ">=4.17.21"
+      description: "[TEST] Prototype pollution in lodash before 4.17.21. This is a test run — prefix branch and PR with [TEST]."

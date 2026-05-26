@@ -174,3 +174,32 @@ blocks:
       via: slack
       slack:
         channel: "#engineering"
+
+test_trigger:
+  payload:
+    action: labeled
+    label:
+      name: "[TEST] autopilot ready"
+    issue:
+      number: 9999
+      title: "[TEST] Create conductai_test.py"
+      body: |
+        Create a file `conductai_test.py` in the repo root that prints:
+        ```
+        print("Hello, Conduct AI!")
+        ```
+        This is a test run — prefix the branch and PR with [TEST].
+      html_url: "https://github.com/sseshachala/conductai/issues/9999"
+      user:
+        login: conductai-test-bot
+      labels:
+        - name: "[TEST] autopilot ready"
+    repository:
+      full_name: sseshachala/conductai
+      name: conductai
+      owner:
+        login: sseshachala
+      default_branch: main
+      clone_url: "https://github.com/sseshachala/conductai.git"
+    sender:
+      login: conductai-test-bot
