@@ -135,10 +135,26 @@ def get_clerk_user_email(user_id: str) -> str | None:
 
 def get_user_id(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
+    x_api_key: Annotated[str | None, Header()] = None,
+    db: Session = Depends(get_db),
 ) -> str:
     """Returns the Clerk user_id (sub claim), or 'dev' in local dev mode."""
     if not _clerk_enabled():
         return DEV_USER_ID
+
+    # Master API key — return synthetic user ID scoped to the CLI workspace
+    if x_api_key and settings.cli_api_key and x_api_key == settings.cli_api_key:
+        return f"api-key:{settings.cli_workspace_id}"
+
+    # Per-user cond_live_ key — return the stored user_id
+    if x_api_key and x_api_key.startswith("cond_live_"):
+        import hashlib
+        from app.models.conduct_api_key import ConductApiKey
+        key_hash = hashlib.sha256(x_api_key.encode()).hexdigest()
+        row = db.query(ConductApiKey).filter(ConductApiKey.key_hash == key_hash).first()
+        if row:
+            return row.user_id
+        raise HTTPException(status_code=401, detail="Invalid API key")
 
     if not credentials:
         raise HTTPException(status_code=401, detail="Authorization header required")
