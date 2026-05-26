@@ -87,6 +87,11 @@ export default function DocsPage() {
             <li><a href="#cli-commands" className="hover:text-stone-900 transition-colors block py-0.5">Commands</a></li>
           </ul>
 
+          <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mt-6 mb-3">Testing</p>
+          <ul className="space-y-1 text-sm text-stone-600">
+            <li><a href="#ci" className="hover:text-stone-900 transition-colors block py-0.5">CI / GitHub Actions</a></li>
+          </ul>
+
           <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mt-6 mb-3">API Reference</p>
           <ul className="space-y-1 text-sm text-stone-600">
             <li><a href="#api-auth" className="hover:text-stone-900 transition-colors block py-0.5">Authentication</a></li>
@@ -179,9 +184,9 @@ conduct --version`}</Pre>
                   {[
                     ["conduct login", "Save connection config to ~/.conduct/config.json"],
                     ["conduct projects", "List all projects in the workspace"],
-                    ["conduct create project <name>", "Create a project"],
-                    ["conduct delete project <name> --yes", "Delete a project and all its agents"],
-                    ["conduct reset project <name> --yes", "Remove all agents from a project (clean slate)"],
+                    ["conduct create <name>", "Create a project"],
+                    ["conduct delete <name> --yes", "Delete a project and all its agents"],
+                    ["conduct reset <name> --yes", "Remove all agents from a project (clean slate)"],
                     ["conduct playbooks", "Browse all available playbooks"],
                     ["conduct playbooks <slug>", "Show detail and inputs for one playbook"],
                     ["conduct install <slug>", "Install one agent from a playbook into a project"],
@@ -282,6 +287,132 @@ conduct install dependency_updater \\
 
 # Step 2 — test (agent clones the repo and scans dependencies)
 conduct test "Dependency Updater" --repo owner/repo`}</Pre>
+          </section>
+
+          {/* ── CI / GitHub Actions ── */}
+          <section id="ci">
+            <SectionHeading id="ci">CI / GitHub Actions</SectionHeading>
+            <p className="text-stone-500 text-sm mb-4">
+              Run a full smoke test on every push or on a nightly schedule — install all agents, fire test runs, and get a downloadable report.
+            </p>
+
+            <SubHeading>1. Add the workflow file</SubHeading>
+            <p className="text-stone-600 text-sm mb-3">
+              Copy <Code>.github/workflows/smoke_test.yml</Code> from the <Code>conductai</Code> repo into your own repository,
+              or create it with the contents below.
+            </p>
+            <Pre>{`# .github/workflows/smoke_test.yml
+name: Nightly Smoke Test
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # 1 AM CDT every night
+  workflow_dispatch:       # also triggerable manually from GitHub UI
+    inputs:
+      project:
+        description: 'Conduct project name'
+        default: 'DevOps'
+      repo:
+        description: 'Target GitHub repo (owner/repo)'
+        default: 'myorg/my-repo'
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PROJECT: \${{ github.event.inputs.project || 'DevOps' }}
+      REPO:    \${{ github.event.inputs.repo    || 'myorg/my-repo' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install conduct CLI
+        run: pip install conduct-cli --quiet
+
+      - name: Write conduct config
+        run: |
+          mkdir -p ~/.conduct
+          cat > ~/.conduct/config.json <<EOF
+          {
+            "server":       "\${{ secrets.CONDUCT_SERVER }}",
+            "workspace_id": "\${{ secrets.CONDUCT_WORKSPACE_ID }}",
+            "api_key":      "\${{ secrets.CONDUCT_API_KEY }}"
+          }
+          EOF
+
+      - name: Run smoke test
+        id: smoke
+        run: |
+          bash scripts/smoke_test.sh \\
+            --project "$PROJECT" \\
+            --repo    "$REPO"
+        continue-on-error: true
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-report-\${{ github.run_id }}
+          path: reports/smoke_*.txt
+          retention-days: 30
+
+      - name: Fail if smoke test failed
+        if: steps.smoke.outcome == 'failure'
+        run: exit 1`}</Pre>
+
+            <SubHeading>2. Add GitHub secrets</SubHeading>
+            <p className="text-stone-600 text-sm mb-3">
+              Go to your repo → <strong>Settings → Secrets and variables → Actions → New repository secret</strong> and add:
+            </p>
+            <div className="rounded-xl border border-stone-200 overflow-hidden mb-4">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-stone-50 border-b border-stone-200">
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Secret</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Value</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100">
+                  {[
+                    ["CONDUCT_SERVER", "https://api.conductai.ai"],
+                    ["CONDUCT_WORKSPACE_ID", "Your workspace UUID (Settings page)"],
+                    ["CONDUCT_API_KEY", "A cond_live_… key (Settings → API Keys)"],
+                  ].map(([secret, value]) => (
+                    <tr key={secret}>
+                      <td className="px-4 py-3 font-mono text-xs text-stone-800">{secret}</td>
+                      <td className="px-4 py-3 text-stone-500">{value}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <SubHeading>3. Run manually from GitHub UI</SubHeading>
+            <p className="text-stone-600 text-sm mb-3">
+              Go to <strong>Actions → Nightly Smoke Test → Run workflow</strong>. You can override the project name, repo, and PR number inline — useful for testing a branch before merging.
+            </p>
+
+            <SubHeading>What the smoke test does</SubHeading>
+            <div className="rounded-xl border border-stone-200 divide-y divide-stone-100 text-sm mb-4">
+              {[
+                ["Step 1 — Reset", "Deletes all agents in the project for a clean slate."],
+                ["Step 2 — Install all", "Installs every Conduct playbook against your repo."],
+                ["Step 3 — Test all", "Fires a test run per agent, streams output, collects pass/fail."],
+                ["Report", "Saved to reports/smoke_TIMESTAMP.txt and uploaded as a CI artifact."],
+              ].map(([step, desc]) => (
+                <div key={step} className="flex gap-4 px-4 py-3">
+                  <span className="font-medium text-stone-700 w-40 shrink-0">{step}</span>
+                  <span className="text-stone-500">{desc}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-xl bg-stone-100 border border-stone-200 px-4 py-3 text-sm text-stone-700">
+              <strong>Exit code:</strong> the workflow fails (red check, email notification) if any agent test fails.
+              Exit 0 only when every agent passes.
+            </div>
           </section>
 
           {/* ── API Auth ── */}
