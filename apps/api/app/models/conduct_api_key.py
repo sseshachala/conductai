@@ -1,6 +1,6 @@
 from datetime import datetime
 from sqlalchemy import Column, String, DateTime
-from app.db.base import Base
+from app.core.database import Base
 
 
 class ConductApiKey(Base):
