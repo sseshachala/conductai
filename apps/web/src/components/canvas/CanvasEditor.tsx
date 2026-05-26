@@ -158,10 +158,12 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
   const [testTriggerModal, setTestTriggerModal] = useState(false)
   const [testRunning, setTestRunning] = useState(false)
   const [testRunId, setTestRunId] = useState<string | null>(null)
+  const [testRunStatus, setTestRunStatus] = useState<string | null>(null)
   const { prefs } = usePreferences()
   const [playbookSlug, setPlaybookSlug] = useState<string | null>(null)
 
   const STORAGE_KEY = `marshal:active-run:${workflowId}`
+  const TEST_RUN_KEY = `marshal:test-run:${workflowId}`
 
   // On mount, check if there's an in-progress run we navigated away from.
   useEffect(() => {
@@ -189,6 +191,37 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
     )
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId])
+
+  // Restore test run banner on mount + poll status until terminal
+  useEffect(() => {
+    const stored = localStorage.getItem(TEST_RUN_KEY)
+    if (!stored) return
+    const { runId } = JSON.parse(stored)
+    setTestRunId(runId)
+    setTestRunStatus("pending")
+  }, [workflowId])
+
+  useEffect(() => {
+    if (!testRunId) return
+    const terminal = new Set(["succeeded", "failed", "cancelled"])
+    if (testRunStatus && terminal.has(testRunStatus)) return
+
+    const poll = async () => {
+      try {
+        const headers = await authHeaders(getToken)
+        const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${testRunId}`, { headers })
+        if (!r.ok) return
+        const run = await r.json()
+        setTestRunStatus(run.status)
+        if (terminal.has(run.status)) localStorage.removeItem(TEST_RUN_KEY)
+      } catch {}
+    }
+
+    poll()
+    const interval = setInterval(poll, 4000)
+    return () => clearInterval(interval)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [testRunId, testRunStatus])
 
   // Load available environments for the environment picker
   useEffect(() => {
@@ -684,13 +717,15 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
       )
       if (!res.ok) throw new Error("Failed to start test run")
       const data = await res.json()
-      setTestRunId(data.run_id) // banner appears, user can navigate when ready
+      localStorage.setItem(TEST_RUN_KEY, JSON.stringify({ runId: data.run_id, startedAt: Date.now() }))
+      setTestRunId(data.run_id)
+      setTestRunStatus("pending")
     } catch (e) {
       console.error(e)
     } finally {
       setTestRunning(false)
     }
-  }, [workflowId, getToken])
+  }, [workflowId, getToken, TEST_RUN_KEY])
 
   const handleBlockStatus = useCallback((blockId: string, status: "running" | "completed" | "failed" | "skipped") => {
     setNodes(nds => nds.map(n =>
@@ -1131,22 +1166,38 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
         </div>
       )}
 
-      {testRunId && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 shadow-lg max-w-sm">
-          <span className="text-emerald-500 text-base shrink-0">⚗</span>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-emerald-800">Test run queued</p>
-            <p className="text-xs text-emerald-600 truncate font-mono">{testRunId}</p>
+      {testRunId && (() => {
+        const failed = testRunStatus === "failed" || testRunStatus === "cancelled"
+        const done = testRunStatus === "succeeded"
+        const active = testRunStatus === "pending" || testRunStatus === "running"
+        const color = failed ? "red" : done ? "emerald" : "indigo"
+        const statusLabel = testRunStatus === "pending" ? "Queued…"
+          : testRunStatus === "running" ? "Running…"
+          : testRunStatus === "succeeded" ? "Succeeded"
+          : testRunStatus === "failed" ? "Failed"
+          : testRunStatus ?? "Starting…"
+        return (
+          <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-${color}-50 border border-${color}-200 rounded-xl px-4 py-3 shadow-lg max-w-sm`}>
+            <span className="text-base shrink-0">
+              {active ? <span className="inline-block animate-spin">⚙</span> : done ? "✓" : "✕"}
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className={`text-xs font-semibold text-${color}-800`}>⚗ Test run · {statusLabel}</p>
+              <p className={`text-xs text-${color}-600 truncate font-mono`}>{testRunId.slice(0, 8)}…</p>
+            </div>
+            <a
+              href={`/workflows/${workflowId}/runs/${testRunId}`}
+              className={`shrink-0 text-xs font-medium text-${color}-700 hover:text-${color}-900 underline underline-offset-2`}
+            >
+              View →
+            </a>
+            <button
+              onClick={() => { localStorage.removeItem(TEST_RUN_KEY); setTestRunId(null); setTestRunStatus(null) }}
+              className={`shrink-0 text-${color}-400 hover:text-${color}-700 text-sm`}
+            >✕</button>
           </div>
-          <a
-            href={`/workflows/${workflowId}/runs/${testRunId}`}
-            className="shrink-0 text-xs font-medium text-emerald-700 hover:text-emerald-900 underline underline-offset-2"
-          >
-            View run →
-          </a>
-          <button onClick={() => setTestRunId(null)} className="shrink-0 text-emerald-400 hover:text-emerald-700 text-sm">✕</button>
-        </div>
-      )}
+        )
+      })()}
 
       {testTriggerModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
