@@ -974,34 +974,44 @@ def _execute_output(block: dict, state: dict, credentials: dict, workflow_name: 
     if send_slack:
         slack_creds = credentials.get("slack", {})
         channel = config.get("channel", "#general")
-        if slack_creds and channel:
-            _, body = _fill_template(_load_template("slack_output.txt"), state, workflow_name, trace_url)
-            use_approval = config.get("approval", False) and bool(run_id)
-            if use_approval:
-                r = slack.execute("post_approval_message", {
-                    "channel": channel,
-                    "text": body,
-                    "run_id": run_id,
-                    "callback_url": trace_url,
-                }, slack_creds)
-            else:
-                r = slack.execute("post_message", {"channel": channel, "text": body}, slack_creds)
-            results["slack"] = r
+        if not slack_creds:
+            results["slack"] = {"sent": False, "reason": "No Slack credentials configured"}
+        elif not channel:
+            results["slack"] = {"sent": False, "reason": "No Slack channel configured"}
         else:
-            results["slack"] = {"sent": False, "reason": "No Slack credentials or channel configured"}
+            try:
+                _, body = _fill_template(_load_template("slack_output.txt"), state, workflow_name, trace_url)
+                use_approval = config.get("approval", False) and bool(run_id)
+                if use_approval:
+                    r = slack.execute("post_approval_message", {
+                        "channel": channel,
+                        "text": body,
+                        "run_id": run_id,
+                        "callback_url": trace_url,
+                    }, slack_creds)
+                else:
+                    r = slack.execute("post_message", {"channel": channel, "text": body}, slack_creds)
+                results["slack"] = r
+            except Exception as e:
+                results["slack"] = {"sent": False, "error": str(e)}
 
     if send_email:
-        email_creds = dict(credentials.get("email", {}))
+        email_creds = dict(credentials.get("email", credentials.get("resend", {})))
         if not email_creds.get("resend_api_key") and settings.resend_api_key:
             email_creds["resend_api_key"] = settings.resend_api_key
         to = _resolve_refs(config.get("to", ""), state)
         from_address = config.get("from_address") or settings.email_from
-        if email_creds and to:
-            subject, body = _fill_template(_load_template("email_output.txt"), state, workflow_name, trace_url)
-            r = email_integration.execute("send_email", {"to": to, "subject": subject, "body": body, "from_address": from_address}, email_creds)
-            results["email"] = r
+        if not email_creds:
+            results["email"] = {"sent": False, "reason": "No email credentials configured — add Resend or SendGrid in Settings"}
+        elif not to:
+            results["email"] = {"sent": False, "reason": "No recipient address configured — set 'Email address' on the output block"}
         else:
-            results["email"] = {"sent": False, "reason": "No email credentials or recipient configured"}
+            try:
+                subject, body = _fill_template(_load_template("email_output.txt"), state, workflow_name, trace_url)
+                r = email_integration.execute("send_email", {"to": to, "subject": subject, "body": body, "from_address": from_address}, email_creds)
+                results["email"] = r
+            except Exception as e:
+                results["email"] = {"sent": False, "error": str(e)}
 
     if integration == "webhook":
         import hashlib
