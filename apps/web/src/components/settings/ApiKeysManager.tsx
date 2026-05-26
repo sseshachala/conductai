@@ -94,7 +94,7 @@ export default function ApiKeysManager() {
       {/* New key — shown once after creation */}
       {newKey && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
-          <p className="text-sm font-semibold text-amber-800">Copy your API key — it won't be shown again.</p>
+          <p className="text-sm font-semibold text-amber-800">Copy your API key — it won&apos;t be shown again.</p>
           <div className="flex items-center gap-2">
             <code className="flex-1 bg-white border border-amber-200 rounded px-3 py-2 text-xs font-mono text-stone-800 break-all select-all">
               {newKey}
@@ -118,7 +118,7 @@ export default function ApiKeysManager() {
             onClick={() => setNewKey(null)}
             className="text-xs text-amber-500 hover:text-amber-700 underline"
           >
-            I've saved it, dismiss
+            I&apos;ve saved it, dismiss
           </button>
         </div>
       )}
