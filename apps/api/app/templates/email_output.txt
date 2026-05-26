@@ -1,8 +1,8 @@
-Subject: Delegator: {workflow_name} completed ✓
+Subject: Conduct AI: {workflow_name} completed ✓
 
 Hi,
 
-Your Delegator agent "{workflow_name}" finished running.
+Your Conduct AI agent "{workflow_name}" finished running.
 
 Status: {status}
 Duration: {duration}
@@ -18,4 +18,4 @@ View the full trace here:
 {trace_url}
 
 —
-Delegator · AI agent orchestration
+Conduct AI · AI agent orchestration

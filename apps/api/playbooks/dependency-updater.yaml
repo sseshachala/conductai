@@ -101,7 +101,7 @@ blocks:
            "title": "chore: auto-update patch/minor dependencies",
            "head": "deps/auto-update-<date>",
            "base": "{{_trigger.default_branch}}",
-           "body": "Automated dependency update by Delegator.\n\n**Patch and minor bumps only — no breaking changes.**\n\nMerge when CI passes."
+           "body": "Automated dependency update by Conduct AI.\n\n**Patch and minor bumps only — no breaking changes.**\n\nMerge when CI passes."
          }
          Header: Authorization: token <github_token>
 
