@@ -4,42 +4,24 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
+import { statusStyle, needsAttention, isActive, formatTrigger, timeAgo, duration } from "@/lib/runUtils"
 
-interface RunWithWorkflow {
+interface Run {
   id: string
   workflow_id: string
   workflow_name: string
+  project_id: string | null
+  project_name: string | null
   status: string
   triggered_by: string | null
+  trigger_summary: string | null
   started_at: string | null
   completed_at: string | null
+  paused_at: string | null
   created_at: string
 }
 
-const STATUS_STYLES: Record<string, { dot: string; text: string; bg: string }> = {
-  pending:   { dot: "bg-stone-300",              text: "text-stone-500",  bg: "bg-stone-100"  },
-  running:   { dot: "bg-blue-400 animate-pulse", text: "text-blue-700",  bg: "bg-blue-50"    },
-  succeeded: { dot: "bg-green-400",              text: "text-green-700", bg: "bg-green-50"   },
-  failed:    { dot: "bg-red-400",                text: "text-red-600",   bg: "bg-red-50"     },
-  cancelled: { dot: "bg-stone-300",              text: "text-stone-400", bg: "bg-stone-100"  },
-}
-
-function timeAgo(ts: string): string {
-  const diff = Date.now() - new Date(ts).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return "just now"
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  return `${Math.floor(hrs / 24)}d ago`
-}
-
-function duration(started_at: string | null, completed_at: string | null): string {
-  if (!started_at || !completed_at) return "—"
-  const secs = Math.round((new Date(completed_at).getTime() - new Date(started_at).getTime()) / 1000)
-  if (secs < 60) return `${secs}s`
-  return `${Math.floor(secs / 60)}m ${secs % 60}s`
-}
+type View = "all" | "by-agent" | "needs-attention"
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
@@ -47,125 +29,302 @@ function getCookie(name: string): string | null {
   return m ? decodeURIComponent(m[1]) : null
 }
 
-export default function GlobalRunsPage() {
+function StatusBadge({ status }: { status: string }) {
+  const s = statusStyle(status)
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${s.bg} ${s.text}`}>
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
+      {s.label}
+    </span>
+  )
+}
+
+function RunRow({ run }: { run: Run }) {
+  const ts = run.started_at ?? run.created_at
+  return (
+    <tr
+      onClick={() => window.location.href = `/workflows/${run.workflow_id}/runs/${run.id}`}
+      className="border-b border-stone-100 last:border-0 hover:bg-stone-50 cursor-pointer transition-colors group"
+    >
+      <td className="px-4 py-3">
+        <div className="font-medium text-stone-900 text-sm group-hover:text-indigo-600 transition-colors">
+          {run.workflow_name}
+        </div>
+        {run.project_name && (
+          <div className="text-[11px] text-stone-400 mt-0.5">{run.project_name}</div>
+        )}
+      </td>
+      <td className="px-4 py-3"><StatusBadge status={run.status} /></td>
+      <td className="px-4 py-3">
+        <div className="text-xs text-stone-600">{formatTrigger(run.triggered_by)}</div>
+        {run.trigger_summary && (
+          <div className="text-[11px] text-stone-400 mt-0.5 truncate max-w-[180px]">{run.trigger_summary}</div>
+        )}
+      </td>
+      <td className="px-4 py-3 text-xs text-stone-500 whitespace-nowrap">{timeAgo(ts)}</td>
+      <td className="px-4 py-3 text-xs text-stone-500 whitespace-nowrap">
+        {duration(run.started_at, run.completed_at)}
+      </td>
+    </tr>
+  )
+}
+
+function RunTable({ runs }: { runs: Run[] }) {
+  if (runs.length === 0) return (
+    <div className="rounded-xl border border-dashed border-stone-300 py-16 text-center">
+      <p className="text-stone-500 font-medium">No runs</p>
+      <p className="text-stone-400 text-sm mt-1">Nothing to show here yet.</p>
+    </div>
+  )
+  return (
+    <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-stone-100 text-left">
+            <th className="px-4 py-3 text-xs font-medium text-stone-400">Agent · Project</th>
+            <th className="px-4 py-3 text-xs font-medium text-stone-400">Status</th>
+            <th className="px-4 py-3 text-xs font-medium text-stone-400">Trigger</th>
+            <th className="px-4 py-3 text-xs font-medium text-stone-400">Started</th>
+            <th className="px-4 py-3 text-xs font-medium text-stone-400">Duration</th>
+          </tr>
+        </thead>
+        <tbody>
+          {runs.map(run => <RunRow key={run.id} run={run} />)}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function ByAgentView({ runs }: { runs: Run[] }) {
+  const grouped = runs.reduce<Record<string, { wfId: string; runs: Run[] }>>((acc, r) => {
+    if (!acc[r.workflow_name]) acc[r.workflow_name] = { wfId: r.workflow_id, runs: [] }
+    acc[r.workflow_name].runs.push(r)
+    return acc
+  }, {})
+
+  return (
+    <div className="space-y-6">
+      {Object.entries(grouped).map(([name, { wfId, runs: agentRuns }]) => {
+        const latest = agentRuns[0]
+        const s = statusStyle(latest.status)
+        return (
+          <div key={name} className="rounded-xl border border-stone-200 bg-white overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-stone-100 bg-stone-50">
+              <div className="flex items-center gap-2">
+                <Link href={`/workflows/${wfId}`} onClick={e => e.stopPropagation()}
+                  className="font-medium text-stone-900 hover:text-indigo-600 transition-colors text-sm">
+                  {name}
+                </Link>
+                {latest.project_name && (
+                  <span className="text-[10px] text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded-full">{latest.project_name}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <span className={`text-xs font-medium ${s.text}`}>{agentRuns.length} run{agentRuns.length !== 1 ? "s" : ""}</span>
+                <StatusBadge status={latest.status} />
+              </div>
+            </div>
+            <table className="w-full text-sm">
+              <tbody>
+                {agentRuns.slice(0, 5).map(run => (
+                  <tr key={run.id}
+                    onClick={() => window.location.href = `/workflows/${run.workflow_id}/runs/${run.id}`}
+                    className="border-b border-stone-100 last:border-0 hover:bg-stone-50 cursor-pointer transition-colors">
+                    <td className="px-4 py-2.5"><StatusBadge status={run.status} /></td>
+                    <td className="px-4 py-2.5 text-xs text-stone-500">{formatTrigger(run.triggered_by)}</td>
+                    <td className="px-4 py-2.5 text-xs text-stone-400">{timeAgo(run.started_at ?? run.created_at)}</td>
+                    <td className="px-4 py-2.5 text-xs text-stone-400">{duration(run.started_at, run.completed_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+export default function RunsPage() {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-  if (clerkEnabled) return <GlobalRunsWithAuth />
-  return <GlobalRunsContent getToken={null} />
+  if (clerkEnabled) return <RunsWithAuth />
+  return <RunsContent getToken={null} />
 }
 
-function GlobalRunsWithAuth() {
+function RunsWithAuth() {
   const { getToken } = useAuth()
-  return <GlobalRunsContent getToken={getToken} />
+  return <RunsContent getToken={getToken} />
 }
 
-function GlobalRunsContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
-  const [runs, setRuns] = useState<RunWithWorkflow[]>([])
+function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
+  const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
-  const [agentFilter, setAgentFilter] = useState<string>("")
+  const [view, setView] = useState<View>("all")
+  const [filterProject, setFilterProject] = useState("")
+  const [filterStatus, setFilterStatus] = useState("")
 
   useEffect(() => {
     async function load() {
       const headers: Record<string, string> = {}
-      if (getToken) {
-        const token = await getToken()
-        if (token) headers["Authorization"] = `Bearer ${token}`
-      }
-      const workspaceId = getCookie("delegator_project_id")
-      if (workspaceId) headers["X-Workspace-Id"] = workspaceId
-
+      if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
+      const wsId = getCookie("delegator_project_id")
+      if (wsId) headers["X-Workspace-Id"] = wsId
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/runs`, { headers })
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/runs?limit=200`, { headers })
         if (res.ok) setRuns(await res.json())
-      } finally {
-        setLoading(false)
-      }
+      } finally { setLoading(false) }
     }
     load()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const agentNames = Array.from(new Set(runs.map(r => r.workflow_name))).sort()
-  const filtered = agentFilter ? runs.filter(r => r.workflow_name === agentFilter) : runs
+  const projects = Array.from(new Set(runs.map(r => r.project_name).filter(Boolean))) as string[]
+
+  const filtered = runs.filter(r => {
+    if (filterProject && r.project_name !== filterProject) return false
+    if (filterStatus && r.status !== filterStatus) return false
+    return true
+  })
+
+  const running   = runs.filter(r => r.status === "running").length
+  const waiting   = runs.filter(r => r.status === "paused").length
+  const today     = new Date(); today.setHours(0, 0, 0, 0)
+  const todayRuns = runs.filter(r => new Date(r.created_at) >= today)
+  const failedToday    = todayRuns.filter(r => r.status === "failed").length
+  const succeededToday = todayRuns.filter(r => r.status === "succeeded").length
+
+  const attentionRuns = filtered.filter(r => needsAttention(r.status))
+  const activeRuns    = filtered.filter(r => isActive(r.status))
+  const recentRuns    = filtered.filter(r => !needsAttention(r.status) && !isActive(r.status))
+
+  const viewRuns: Record<View, Run[]> = {
+    "all":            filtered,
+    "by-agent":       filtered,
+    "needs-attention": attentionRuns,
+  }
+
+  const defaultView: View = attentionRuns.length > 0 ? "needs-attention" : "all"
+  useEffect(() => { if (!loading) setView(defaultView) }, [loading])
+
+  const VIEWS: { id: View; label: string; count?: number }[] = [
+    { id: "all",            label: "All Runs",       count: filtered.length },
+    { id: "by-agent",       label: "By Agent" },
+    { id: "needs-attention",label: "Needs Attention", count: attentionRuns.length },
+  ]
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-3xl px-6 py-10">
-        <div className="flex items-center justify-between mb-5">
-          <h1 className="text-xl font-semibold text-stone-900">Runs</h1>
-          <div className="flex items-center gap-3">
-            {agentNames.length > 1 && (
-              <select
-                value={agentFilter}
-                onChange={e => setAgentFilter(e.target.value)}
-                className="text-xs border border-stone-200 rounded-lg px-2 py-1.5 text-stone-600 bg-white focus:outline-none focus:ring-2 focus:ring-stone-200"
-              >
-                <option value="">All agents</option>
-                {agentNames.map(n => <option key={n} value={n}>{n}</option>)}
+      <div className="mx-auto max-w-5xl px-6 py-8">
+        <h1 className="text-xl font-semibold text-stone-900 mb-6">Runs</h1>
+
+        {/* Top strip */}
+        <div className="grid grid-cols-4 gap-3 mb-6">
+          {[
+            { label: "Running",        value: running,        color: "text-blue-600",  bg: "bg-blue-50",   border: "border-blue-100" },
+            { label: "Waiting",        value: waiting,        color: "text-amber-600", bg: "bg-amber-50",  border: "border-amber-100" },
+            { label: "Failed today",   value: failedToday,    color: "text-red-600",   bg: "bg-red-50",    border: "border-red-100" },
+            { label: "Succeeded today",value: succeededToday, color: "text-green-600", bg: "bg-green-50",  border: "border-green-100" },
+          ].map(({ label, value, color, bg, border }) => (
+            <div key={label} className={`rounded-xl border ${border} ${bg} px-4 py-3`}>
+              <div className={`text-2xl font-bold ${color}`}>{loading ? "—" : value}</div>
+              <div className="text-xs text-stone-500 mt-0.5">{label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* View tabs + filters */}
+        <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
+          <div className="flex gap-1 border-b border-stone-200">
+            {VIEWS.map(v => (
+              <button key={v.id} onClick={() => setView(v.id)}
+                className={`px-4 py-2 text-sm font-medium transition-colors rounded-t-lg flex items-center gap-1.5 ${
+                  view === v.id
+                    ? "bg-white border border-b-white border-stone-200 text-stone-900 -mb-px"
+                    : "text-stone-400 hover:text-stone-700"
+                }`}>
+                {v.label}
+                {v.count !== undefined && (
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                    view === v.id ? "bg-stone-100 text-stone-600" : "bg-stone-100 text-stone-400"
+                  }`}>{v.count}</span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {projects.length > 1 && (
+              <select value={filterProject} onChange={e => setFilterProject(e.target.value)}
+                className="text-xs border border-stone-200 rounded-lg px-2 py-1.5 text-stone-600 bg-white focus:outline-none focus:ring-2 focus:ring-stone-200">
+                <option value="">All projects</option>
+                {projects.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
             )}
-            <span className="text-xs text-stone-400">{filtered.length} run{filtered.length !== 1 ? "s" : ""}</span>
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+              className="text-xs border border-stone-200 rounded-lg px-2 py-1.5 text-stone-600 bg-white focus:outline-none focus:ring-2 focus:ring-stone-200">
+              <option value="">All statuses</option>
+              {["running","paused","succeeded","failed","cancelled"].map(s => (
+                <option key={s} value={s}>{statusStyle(s).label}</option>
+              ))}
+            </select>
           </div>
         </div>
 
+        {/* Content */}
         {loading ? (
           <div className="space-y-2">
-            {[1, 2, 3].map(i => <div key={i} className="h-12 rounded-xl border border-stone-200 bg-white animate-pulse" />)}
+            {[1,2,3,4].map(i => <div key={i} className="h-14 rounded-xl border border-stone-200 bg-white animate-pulse" />)}
           </div>
-        ) : runs.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-stone-300 p-16 text-center">
-            <p className="text-stone-800 font-medium mb-1">No runs yet</p>
-            <p className="text-stone-400 text-sm">Run an agent to see activity here.</p>
+        ) : view === "by-agent" ? (
+          <ByAgentView runs={filtered} />
+        ) : view === "needs-attention" ? (
+          <div className="space-y-6">
+            {activeRuns.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Active</p>
+                <RunTable runs={activeRuns} />
+              </div>
+            )}
+            <div>
+              {attentionRuns.length === 0
+                ? <div className="rounded-xl border border-dashed border-stone-300 py-16 text-center">
+                    <p className="text-stone-500 font-medium">All clear</p>
+                    <p className="text-stone-400 text-sm mt-1">No failed, paused, or cancelled runs.</p>
+                  </div>
+                : <>
+                    <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Needs attention</p>
+                    <RunTable runs={attentionRuns} />
+                  </>
+              }
+            </div>
           </div>
         ) : (
-          <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-stone-100 text-left">
-                  <th className="px-4 py-3 text-xs font-medium text-stone-500">Agent</th>
-                  <th className="px-4 py-3 text-xs font-medium text-stone-500">Status</th>
-                  <th className="px-4 py-3 text-xs font-medium text-stone-500">Triggered by</th>
-                  <th className="px-4 py-3 text-xs font-medium text-stone-500">Started</th>
-                  <th className="px-4 py-3 text-xs font-medium text-stone-500">Duration</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((run) => {
-                  const style = STATUS_STYLES[run.status] ?? STATUS_STYLES.pending
-                  return (
-                    <tr
-                      key={run.id}
-                      onClick={() => window.location.href = `/workflows/${run.workflow_id}/runs/${run.id}`}
-                      className="border-b border-stone-100 last:border-0 hover:bg-stone-50 cursor-pointer transition-colors"
-                    >
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/workflows/${run.workflow_id}`}
-                          onClick={e => e.stopPropagation()}
-                          className="font-medium text-stone-900 hover:text-indigo-600 transition-colors"
-                        >
-                          {run.workflow_name}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${style.bg} ${style.text}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
-                          {run.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-stone-500">
-                        {run.triggered_by ?? <span className="text-stone-300">—</span>}
-                      </td>
-                      <td className="px-4 py-3 text-stone-500">
-                        {run.started_at ? timeAgo(run.started_at) : timeAgo(run.created_at)}
-                      </td>
-                      <td className="px-4 py-3 text-stone-500">
-                        {duration(run.started_at, run.completed_at)}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+          <div className="space-y-6">
+            {activeRuns.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Active</p>
+                <RunTable runs={activeRuns} />
+              </div>
+            )}
+            {attentionRuns.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Needs attention</p>
+                <RunTable runs={attentionRuns} />
+              </div>
+            )}
+            {recentRuns.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Recent</p>
+                <RunTable runs={recentRuns} />
+              </div>
+            )}
+            {runs.length === 0 && (
+              <div className="rounded-xl border border-dashed border-stone-300 py-20 text-center">
+                <p className="text-stone-800 font-medium mb-1">No runs yet</p>
+                <p className="text-stone-400 text-sm">Runs are executions of installed agents. Open an agent and trigger a test run.</p>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { statusStyle, formatTrigger } from "@/lib/runUtils"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
@@ -38,22 +39,6 @@ interface DashboardData {
   week: WeekStats
   recent_runs: RecentRun[]
   agents: AgentStatus[]
-}
-
-const STATUS_DOT: Record<string, string> = {
-  succeeded: "bg-emerald-400",
-  failed:    "bg-red-400",
-  running:   "bg-blue-400 animate-pulse",
-  pending:   "bg-stone-300",
-  cancelled: "bg-stone-300",
-}
-
-const STATUS_TEXT: Record<string, string> = {
-  succeeded: "text-emerald-700 bg-emerald-50",
-  failed:    "text-red-600 bg-red-50",
-  running:   "text-blue-700 bg-blue-50",
-  pending:   "text-stone-500 bg-stone-100",
-  cancelled: "text-stone-400 bg-stone-100",
 }
 
 function timeAgo(ts: string): string {
@@ -182,8 +167,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                     </thead>
                     <tbody>
                       {data.recent_runs.map(run => {
-                        const dot = STATUS_DOT[run.status] ?? "bg-stone-300"
-                        const badge = STATUS_TEXT[run.status] ?? "text-stone-500 bg-stone-100"
+                        const s = statusStyle(run.status)
                         return (
                           <tr
                             key={run.run_id}
@@ -200,9 +184,9 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                               </Link>
                             </td>
                             <td className="px-4 py-3">
-                              <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${badge}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
-                                {run.status}
+                              <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+                                {s.label}
                               </span>
                             </td>
                             <td className="px-4 py-3 text-stone-500 text-xs">
@@ -237,7 +221,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
               ) : (
                 <div className="grid gap-2">
                   {data.agents.map(agent => {
-                    const dot = agent.last_run_status ? STATUS_DOT[agent.last_run_status] : "bg-stone-200"
+                    const dot = agent.last_run_status ? statusStyle(agent.last_run_status).dot : "bg-stone-200"
                     return (
                       <div key={agent.workflow_id} className="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-4 py-3 hover:border-stone-300 transition-colors">
                         <div className="flex items-center gap-3">
