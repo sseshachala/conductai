@@ -15,6 +15,7 @@ from app.core.auth import get_user_id, get_workspace_id, require_workspace_role,
 from app.core.database import get_db
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/projects", tags=["workspace-projects"])
+preferences_router = APIRouter(prefix="/workspaces/{workspace_id}/preferences", tags=["workspace-preferences"])
 
 
 class ProjectOut(BaseModel):
@@ -178,3 +179,53 @@ def list_audit_log(
         }
         for r in rows
     ]
+
+
+# ── Workspace preferences ─────────────────────────────────────────────────────
+
+_PREFERENCE_DEFAULTS = {
+    "show_dry_run": False,
+    "show_test_trigger": True,
+}
+
+
+class PreferencesUpdate(BaseModel):
+    show_dry_run: bool | None = None
+    show_test_trigger: bool | None = None
+
+
+@preferences_router.get("")
+def get_preferences(
+    workspace_id: str,
+    active_workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    db: Session = Depends(get_db),
+):
+    _enforce_workspace(workspace_id, active_workspace_id)
+    from app.models.workspace import Workspace
+    ws = db.query(Workspace).filter(Workspace.id == workspace_id).first()
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    stored = ws.preferences or {}
+    return {**_PREFERENCE_DEFAULTS, **stored}
+
+
+@preferences_router.patch("")
+def update_preferences(
+    workspace_id: str,
+    body: PreferencesUpdate,
+    active_workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor")),
+    db: Session = Depends(get_db),
+):
+    _enforce_workspace(workspace_id, active_workspace_id)
+    from app.models.workspace import Workspace
+    ws = db.query(Workspace).filter(Workspace.id == workspace_id).first()
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    current = dict(ws.preferences or {})
+    patch = body.model_dump(exclude_none=True)
+    current.update(patch)
+    ws.preferences = current
+    db.commit()
+    return {**_PREFERENCE_DEFAULTS, **current}

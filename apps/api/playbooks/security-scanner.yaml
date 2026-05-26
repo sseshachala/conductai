@@ -292,3 +292,28 @@ blocks:
       via: slack
       slack:
         channel: "#security"
+
+test_trigger:
+  payload:
+    action: opened
+    number: 9999
+    pull_request:
+      number: 9999
+      title: "[TEST] Security scan — sample vulnerable code"
+      body: |
+        [TEST] This PR contains intentionally weak code for security scanner validation.
+        Do not merge.
+      html_url: "https://github.com/sseshachala/conductai/pull/9999"
+      head:
+        ref: test/security-scanner-trigger
+        sha: "abc1234def5678"
+      base:
+        ref: main
+      user:
+        login: conductai-test-bot
+    repository:
+      full_name: sseshachala/conductai
+      name: conductai
+      owner:
+        login: sseshachala
+      clone_url: "https://github.com/sseshachala/conductai.git"

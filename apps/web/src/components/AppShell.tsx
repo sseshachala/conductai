@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AuthButton from "@/components/AuthButton"
 import { WorkspaceProvider, useWorkspace } from "@/lib/WorkspaceContext"
+import { PreferencesProvider } from "@/lib/PreferencesContext"
 
 interface Project { id: string; name: string; agent_count: number }
 interface Org { id: string; name: string; slug: string }
@@ -201,6 +202,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
   const activeProjectId = pathname.match(/\/projects\/([^/]+)/)?.[1]
 
   return (
+    <PreferencesProvider workspaceId={activeWorkspace?.id ?? ""} getToken={getToken}>
     <div className="flex h-screen bg-stone-50">
       <aside className={`relative shrink-0 bg-white border-r border-stone-200 flex flex-col transition-all duration-200 ${collapsed ? "w-14" : "w-52"}`}>
 
@@ -495,6 +497,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
 
       <main className={`flex-1 min-h-0 ${noPadding ? "overflow-hidden flex flex-col" : "overflow-auto"}`}>{children}</main>
     </div>
+    </PreferencesProvider>
   )
 }
 
