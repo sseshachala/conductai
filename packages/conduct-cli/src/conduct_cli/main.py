@@ -331,6 +331,26 @@ def cmd_create(args):
         sys.exit(1)
 
 
+def cmd_delete(args):
+    server, workspace_id, api_key, token = _require_auth(args)
+    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+
+    if args.resource == "project":
+        proj = _resolve_project(server, workspace_id, hdrs, args.name)
+
+        if not args.yes:
+            confirm = input(f"{YELLOW}Delete project '{proj['name']}' and all its agents? Type 'yes' to confirm: {RESET}").strip().lower()
+            if confirm != "yes":
+                print("Cancelled.")
+                return
+
+        api.req("DELETE", f"{server}/workspaces/{workspace_id}/projects/{proj['id']}", hdrs)
+        print(f"{GREEN}✓ Project '{proj['name']}' deleted.{RESET}")
+    else:
+        print(f"{RED}Unknown resource '{args.resource}'. Try: conduct delete project <name>{RESET}")
+        sys.exit(1)
+
+
 # ── Playbook commands ─────────────────────────────────────────────────────────
 
 def cmd_playbooks(args):
@@ -718,6 +738,12 @@ def main():
     install_p.add_argument("--input", action="append", metavar="key=value",
                            help="Playbook input value (repeatable, e.g. --input github_token=xxx)")
 
+    # conduct delete project <name>
+    delete_p = sub.add_parser("delete", help="Delete a project and all its agents")
+    delete_p.add_argument("resource", choices=["project"], help="Resource type")
+    delete_p.add_argument("name",     help="Project name to delete")
+    delete_p.add_argument("--yes",    action="store_true", help="Skip confirmation prompt")
+
     # conduct reset project <name>
     reset_p = sub.add_parser("reset", help="Delete all agents in a project (clean slate)")
     reset_p.add_argument("resource", choices=["project"], help="Resource type")
@@ -749,6 +775,8 @@ def main():
         cmd_playbooks(args)
     elif args.command == "install":
         cmd_install(args)
+    elif args.command == "delete":
+        cmd_delete(args)
     elif args.command == "reset":
         cmd_reset(args)
     elif args.command == "install-all":
