@@ -55,7 +55,7 @@ def get_workspace_id_sse(
     if api_key_hdr and api_key_hdr.startswith("cond_live_"):
         import hashlib
         from app.models.conduct_api_key import ConductApiKey
-        from app.db.session import get_db as _get_db
+        from app.core.database import get_db as _get_db
         from datetime import datetime, timezone
         db = next(_get_db())
         try:
