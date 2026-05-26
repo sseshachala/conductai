@@ -160,6 +160,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
   const [testRunning, setTestRunning] = useState(false)
   const [testRunId, setTestRunId] = useState<string | null>(null)
   const [testRunStatus, setTestRunStatus] = useState<string | null>(null)
+  const [testPrNumber, setTestPrNumber] = useState("")
   const { prefs } = usePreferences()
   const [playbookSlug, setPlaybookSlug] = useState<string | null>(null)
 
@@ -713,9 +714,24 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
     setTestRunId(null)
     try {
       const headers = await authHeaders(getToken)
+      const payload: Record<string, unknown> = {}
+      if (testPrNumber.trim()) {
+        const pr = parseInt(testPrNumber.trim(), 10)
+        const repo = githubHookRepo ?? ""
+        payload.number = pr
+        payload.pull_request = {
+          number: pr,
+          html_url: repo ? `https://github.com/${repo}/pull/${pr}` : "",
+          diff_url: repo ? `https://github.com/${repo}/pull/${pr}.diff` : "",
+          title: `PR #${pr}`,
+          user: { login: "" },
+          base: { ref: "main" },
+          head: { ref: "" },
+        }
+      }
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/trigger`,
-        { method: "POST", headers, body: JSON.stringify({}) }
+        { method: "POST", headers, body: JSON.stringify(payload) }
       )
       if (!res.ok) throw new Error("Failed to start test run")
       const data = await res.json()
@@ -1227,6 +1243,17 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
             </div>
             <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-xs text-amber-800">
               The agent will execute against your connected repo using your environment credentials.
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-stone-700">PR number <span className="text-stone-400 font-normal">(optional — overrides test payload)</span></label>
+              <input
+                type="number"
+                min="1"
+                placeholder="e.g. 246"
+                value={testPrNumber}
+                onChange={e => setTestPrNumber(e.target.value)}
+                className="w-full border border-stone-200 rounded-lg px-3 py-2 text-xs text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-violet-400"
+              />
             </div>
             <div className="flex gap-2 justify-end">
               <button
