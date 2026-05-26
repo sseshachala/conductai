@@ -250,6 +250,38 @@ conduct test --all --project DevOps --repo sseshachala/conductai-testbed-node
               <strong>--repo</strong> replaces the <code className="font-mono text-xs bg-white px-1 rounded">clone_url</code> and <code className="font-mono text-xs bg-white px-1 rounded">repo</code> fields in the <code className="font-mono text-xs bg-white px-1 rounded">test_trigger</code> payload.
               Useful for pointing agents at a small testbed repo so they don't run against your production codebase.
             </div>
+
+            <SubHeading>Dependency path</SubHeading>
+            <p className="text-stone-600 text-sm mb-3">
+              <code className="font-mono text-xs bg-stone-100 px-1 rounded">conduct test</code> requires the agent to already be installed.
+              Every agent requires <code className="font-mono text-xs bg-stone-100 px-1 rounded">--repo</code> at install time — the repo is baked in and used at every run.
+            </p>
+            <Pre>{`# PR-based agents (security-scanner, pr-reviewer, copilot-reviewer)
+# Step 1 — install and register GitHub webhook
+conduct install security_scanner \\
+  --project MyProject \\
+  --repo    owner/repo
+
+# Step 2 — test against a real PR (--pr injects PR number into the payload)
+conduct test "Security Scanner" \\
+  --repo owner/repo \\
+  --pr   246`}</Pre>
+            <Pre>{`# Issue-based agents (autopilot-quick, autopilot-full, issue-triage)
+# Step 1 — install and register GitHub webhook
+conduct install autopilot_quick \\
+  --project MyProject \\
+  --repo    owner/repo
+
+# Step 2 — test (uses built-in dummy issue payload)
+conduct test "Autopilot Quick" --repo owner/repo`}</Pre>
+            <Pre>{`# Scheduled / inbound-webhook agents (dependency-updater, incident-responder)
+# Step 1 — install (no GitHub webhook registered; repo stored as agent context)
+conduct install dependency_updater \\
+  --project MyProject \\
+  --repo    owner/repo
+
+# Step 2 — test (agent clones the repo and scans dependencies)
+conduct test "Dependency Updater" --repo owner/repo`}</Pre>
           </section>
 
           {/* ── API Auth ── */}
