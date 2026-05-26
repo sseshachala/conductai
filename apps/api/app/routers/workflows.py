@@ -324,8 +324,6 @@ def list_playbooks():
     ]
 
 
-_REPO_OPTIONAL_SLUGS: set[str] = {"dependency_updater", "incident_responder"}
-
 @router.get("/playbooks/{slug}")
 def get_playbook(slug: str):
     import pathlib, yaml as _yaml
@@ -338,7 +336,6 @@ def get_playbook(slug: str):
         raw = _yaml.safe_load(playbook_path.read_text()) or {}
         inputs = raw.get("inputs", {})
     github_webhook = slug in _GITHUB_WEBHOOK_EVENTS
-    repo_optional = slug in _REPO_OPTIONAL_SLUGS
     return {
         "slug": slug,
         "name": slug.replace("_", " ").title(),
@@ -347,9 +344,10 @@ def get_playbook(slug: str):
         "tags": meta["tags"],
         "featured": meta["featured"],
         "inputs": inputs,
-        # requires_repo: True → agent needs a target repo (either for webhook or agent context)
-        # github_webhook: True → Conduct registers a GitHub webhook; False → caller POSTs manually
-        "requires_repo": github_webhook or repo_optional,
+        # All agents operate on a repo — requires_repo is always True.
+        # github_webhook: True → Conduct registers a GitHub webhook automatically.
+        # False → caller POSTs to the inbound URL (cron, PagerDuty, etc.) — repo is still needed.
+        "requires_repo": True,
         "github_webhook": github_webhook,
         "github_events": _GITHUB_WEBHOOK_EVENTS.get(slug, []),
     }
