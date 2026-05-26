@@ -36,6 +36,7 @@ export default function RunDetailPage() {
   const [agentModel, setAgentModel] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [stopping, setStopping] = useState(false)
   const [activeTab, setActiveTab] = useState<"timeline" | "trace">("timeline")
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -65,6 +66,22 @@ export default function RunDetailPage() {
     const headers = await buildHeaders()
     await fetchRun(headers)
     setRefreshing(false)
+  }
+
+  async function stopRun() {
+    setStopping(true)
+    try {
+      const headers = await buildHeaders()
+      headers["Content-Type"] = "application/json"
+      await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}/cancel`,
+        { method: "POST", headers }
+      )
+      setRun(prev => prev ? { ...prev, status: "cancelled" } : prev)
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+    } finally {
+      setStopping(false)
+    }
   }
 
   // Stop polling as soon as run reaches a terminal state
@@ -178,6 +195,16 @@ export default function RunDetailPage() {
             })()}
           </div>
           <div className="flex items-center gap-2 shrink-0">
+          {/* Stop button — only when running */}
+          {run && !TERMINAL.has(run.status) && (
+            <button
+              onClick={stopRun}
+              disabled={stopping}
+              className="text-xs text-red-500 hover:text-red-700 border border-red-200 hover:border-red-300 bg-red-50 hover:bg-red-100 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-40 font-medium"
+            >
+              {stopping ? "Stopping…" : "⏹ Stop"}
+            </button>
+          )}
           {/* Refresh button — always visible, spins while polling or manual refresh */}
           <button
             onClick={refresh}
