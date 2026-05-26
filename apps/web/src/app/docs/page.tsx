@@ -183,12 +183,16 @@ conduct --version`}</Pre>
                     ["conduct delete project <name> --yes", "Delete a project and all its agents"],
                     ["conduct reset project <name> --yes", "Remove all agents from a project (clean slate)"],
                     ["conduct playbooks", "Browse all available playbooks"],
-                    ["conduct playbooks <slug>", "Show inputs and details for a playbook"],
+                    ["conduct playbooks <slug>", "Show detail and inputs for one playbook"],
                     ["conduct install <slug>", "Install one agent from a playbook into a project"],
-                    ["conduct install-all", "Install all 12 playbooks into a project"],
+                    ["conduct install-all --project <p>", "Install all playbooks into a project"],
                     ["conduct agents", "List all installed agents in the workspace"],
-                    ["conduct test <name>", "Fire test trigger on a named agent, stream results"],
+                    ["conduct agents --project <name>", "Filter agents by project name"],
+                    ["conduct test <name>", "Fire test trigger on a named agent, stream live output"],
+                    ["conduct test <n1> <n2> ...", "Test multiple named agents in sequence"],
                     ["conduct test --all", "Test every playbook-based agent in sequence"],
+                    ["conduct test --all --project <name>", "Limit --all to one project"],
+                    ["conduct test --all --repo owner/repo", "Override test repo for all agents"],
                   ].map(([cmd, desc]) => (
                     <tr key={cmd}>
                       <td className="px-4 py-3 font-mono text-xs text-stone-800 whitespace-nowrap">{cmd}</td>
@@ -203,7 +207,7 @@ conduct --version`}</Pre>
             <Pre>{`# 1. Log in
 conduct login --server https://api.conductai.ai --api-key cond_live_xxx --workspace <id>
 
-# 2. Create a project and install all 12 agents
+# 2. Create a project and install all agents
 conduct install-all --project DevOps --repo myorg/my-repo
 
 # 3. Test them all
@@ -219,14 +223,33 @@ conduct install pr-reviewer \\
   --project DevOps \\
   --input   model=claude-sonnet-4-6`}</Pre>
 
-            <SubHeading>Test flags</SubHeading>
-            <Pre>{`# Test one agent
-conduct test "Autopilot Quick" --project DevOps
+            <SubHeading>conduct test — all options</SubHeading>
+            <Pre>{`conduct test [agent_name ...] [--all] [--project <name>] [--repo owner/repo]
 
-# Test all agents in a project against a specific repo
-conduct test --all --project DevOps --repo myorg/my-repo
+# Fire test trigger on one agent (streams live output)
+conduct test "Autopilot Quick"
 
-# Exit code is 0 if all pass, 1 if any fail — works in CI`}</Pre>
+# Test multiple agents by name
+conduct test "Autopilot Quick" "PR Reviewer" "Issue Triage"
+
+# Test all playbook-based agents in the workspace
+conduct test --all
+
+# Limit --all to one project
+conduct test --all --project DevOps
+
+# Override the repo in the test payload (e.g. use a testbed repo)
+conduct test --all --project DevOps --repo myorg/my-testbed
+
+# Combine: all agents in a project, against a specific repo
+conduct test --all --project DevOps --repo sseshachala/conductai-testbed-node
+
+# Exit code: 0 if all pass, 1 if any fail — safe to use in CI`}</Pre>
+
+            <div className="rounded-xl bg-stone-100 border border-stone-200 px-4 py-3 text-sm text-stone-700 mt-3">
+              <strong>--repo</strong> replaces the <code className="font-mono text-xs bg-white px-1 rounded">clone_url</code> and <code className="font-mono text-xs bg-white px-1 rounded">repo</code> fields in the <code className="font-mono text-xs bg-white px-1 rounded">test_trigger</code> payload.
+              Useful for pointing agents at a small testbed repo so they don't run against your production codebase.
+            </div>
           </section>
 
           {/* ── API Auth ── */}
