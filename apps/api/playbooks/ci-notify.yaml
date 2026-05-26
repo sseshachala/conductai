@@ -74,3 +74,20 @@ blocks:
       via: slack
       slack:
         channel: "#engineering"
+
+test_trigger:
+  payload:
+    action: completed
+    workflow_run:
+      id: 9999999
+      name: "[TEST] CI"
+      conclusion: failure
+      html_url: "https://github.com/sseshachala/conductai/actions/runs/9999999"
+      head_branch: main
+      head_sha: "abc1234def5678"
+      logs_url: "https://github.com/sseshachala/conductai/actions/runs/9999999/logs"
+    repository:
+      full_name: sseshachala/conductai
+      name: conductai
+      owner:
+        login: sseshachala

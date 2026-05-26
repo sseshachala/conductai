@@ -105,3 +105,16 @@ blocks:
       via: slack
       slack:
         channel: "#releases"
+
+test_trigger:
+  payload:
+    ref: "[TEST] v0.0.0-test"
+    ref_type: tag
+    repository:
+      full_name: sseshachala/conductai
+      name: conductai
+      owner:
+        login: sseshachala
+      default_branch: main
+    sender:
+      login: conductai-test-bot
