@@ -298,9 +298,8 @@ class RemoteSession:
                 )
             return f"Unknown tool: {tool_name}"
         except Exception as e:
-            # Connection may have dropped — reset and report
             log.warning("sandbox_session.remote.dispatch_error", error=str(e))
-            self._client = None
+            self._client = None  # reset so next dispatch reconnects
             return f"Error on remote host: {e}"
 
     def capture_artifacts(self) -> tuple[list[dict], str]:
