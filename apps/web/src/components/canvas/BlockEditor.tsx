@@ -626,7 +626,9 @@ export default function BlockEditor({
     ? allStaticFields.filter(f => {
         if (f.key === "config.labels" || f.key === "config.repo_allowlist")
           return triggerEventType === "github_issue_labeled"
-        if (f.key === "config.webhook_secret" || f.key === "config.test_pr_number")
+        if (f.key === "config.webhook_secret")
+          return false  // auto-generated — never shown to users
+        if (f.key === "config.test_pr_number")
           return triggerEventType === "webhook"
         if (f.key === "config.test_repo")
           return false  // redundant — repo is known from github_hook_repo
@@ -977,6 +979,43 @@ export default function BlockEditor({
                     {field.hint && <span className="text-[10px] text-stone-400">{field.hint}</span>}
                   </div>
                   {rendered}
+                  {/* GitHub issue-labeled — webhook URL card + compact register panel */}
+                  {blockType === "trigger" && field.key === "config.event_type" && triggerEventType === "github_issue_labeled" && (() => {
+                    const ws = typeof document !== "undefined"
+                      ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
+                    const webhookUrl = ws
+                      ? `${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}/webhooks/github?workspace_id=${ws}`
+                      : null
+                    return (
+                      <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2.5 text-xs text-violet-800 mt-2 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <p className="font-semibold text-[10px] uppercase tracking-wide text-violet-500">GitHub Webhook</p>
+                          {webhookUrl && (
+                            <button
+                              type="button"
+                              onClick={() => navigator.clipboard.writeText(webhookUrl)}
+                              className="text-[10px] font-medium text-violet-500 hover:text-violet-700 border border-violet-200 rounded px-1.5 py-0.5 transition-colors"
+                            >
+                              Copy
+                            </button>
+                          )}
+                        </div>
+                        {webhookUrl
+                          ? <p className="font-mono break-all text-violet-700 text-[11px]">{webhookUrl}</p>
+                          : <p className="text-violet-400 text-[11px]">Select a workspace to see your URL</p>
+                        }
+                        <GitHubWebhookStatusPanel
+                          workflowId={workflowId}
+                          hookId={githubHookId ?? null}
+                          hookRepo={githubHookRepo ?? null}
+                          getToken={getToken}
+                          onWebhookChange={onWebhookChange}
+                          compact
+                        />
+                      </div>
+                    )
+                  })()}
+
                   {/* Inbound webhook URL panel */}
                   {blockType === "trigger" && field.key === "config.event_type" && triggerEventType === "webhook" && (() => {
                     const ws = typeof document !== "undefined"
@@ -1056,19 +1095,6 @@ export default function BlockEditor({
               )
             })}
           </div>
-        </div>
-      )}
-
-      {/* GitHub issue-labeled trigger — webhook register panel (below config fields) */}
-      {blockType === "trigger" && triggerEventType === "github_issue_labeled" && (
-        <div className="px-4 pb-3">
-          <GitHubWebhookStatusPanel
-            workflowId={workflowId}
-            hookId={githubHookId ?? null}
-            hookRepo={githubHookRepo ?? null}
-            getToken={getToken}
-            onWebhookChange={onWebhookChange}
-          />
         </div>
       )}
 
