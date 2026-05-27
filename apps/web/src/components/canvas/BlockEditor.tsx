@@ -307,16 +307,37 @@ function FieldInput({
 
   if (field.readOnly) {
     const display = strVal || field.placeholder || ""
-    const masked = display.replace(/./g, "•").slice(0, 24)
+    const isRef = display.startsWith("{{") && display.endsWith("}}")
+    // Secrets (long opaque strings, no template syntax) stay masked
+    const isSecret = !isRef && display.length > 12 && !/\s/.test(display)
+    if (isRef) {
+      // Template references shown as a violet chip — not masked
+      return (
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-stone-50 border border-stone-200 rounded-lg">
+          <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-mono font-medium bg-violet-100 text-violet-700 border border-violet-200">
+            {display}
+          </span>
+        </div>
+      )
+    }
+    if (isSecret) {
+      const masked = display.replace(/./g, "•").slice(0, 24)
+      return (
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-stone-50 border border-stone-200 rounded-lg">
+          <span className="text-xs font-mono text-stone-500 truncate flex-1">{visible ? display : masked}</span>
+          <button type="button" onClick={() => setVisible(v => !v)} className="shrink-0 text-stone-400 hover:text-stone-600">
+            {visible
+              ? <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"/></svg>
+              : <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clipRule="evenodd"/><path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.064 7 9.542 7 .847 0 1.669-.105 2.454-.303z"/></svg>
+            }
+          </button>
+        </div>
+      )
+    }
+    // Plain read-only value (short, non-secret) — just show it
     return (
-      <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-stone-50 border border-stone-200 rounded-lg">
-        <span className="text-xs font-mono text-stone-500 truncate flex-1">{visible ? display : masked}</span>
-        <button type="button" onClick={() => setVisible(v => !v)} className="shrink-0 text-stone-400 hover:text-stone-600">
-          {visible
-            ? <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"/></svg>
-            : <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clipRule="evenodd"/><path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.064 7 9.542 7 .847 0 1.669-.105 2.454-.303z"/></svg>
-          }
-        </button>
+      <div className="px-2.5 py-1.5 bg-stone-50 border border-stone-200 rounded-lg text-xs text-stone-600 font-mono">
+        {display || <span className="text-stone-400 italic">—</span>}
       </div>
     )
   }
@@ -619,21 +640,14 @@ export default function BlockEditor({
         <>
           <div className={section}>
             <div className="flex items-center justify-between">
-              <span className={sectionLabel}>System prompt</span>
+              <span className={sectionLabel}>Agent instructions</span>
               <span className="text-[10px] text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded mb-2">read-only</span>
             </div>
             <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 text-xs text-stone-600 leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto">
               <SystemPromptWithChips text={description} />
             </div>
-            <p className="text-[10px] text-stone-400 mt-1 flex items-center gap-2">
-              <span className="inline-flex items-center gap-1">
-                <span className="inline-block w-2 h-2 rounded-sm bg-violet-200 border border-violet-300" />
-                template ref
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <span className="inline-block w-2 h-2 rounded-sm bg-red-100 border border-red-200" />
-                literal placeholder
-              </span>
+            <p className="text-[10px] text-stone-400 mt-1">
+              Use <code className="bg-stone-100 px-1 rounded">{"{{block_id.field}}"}</code> to reference earlier outputs.
             </p>
           </div>
 
@@ -652,7 +666,7 @@ export default function BlockEditor({
             <span className={sectionLabel}>Mode</span>
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-stone-700">
-                {blockData.isAgentic ? "Agentic" : "Single call"}
+                {blockData.isAgentic ? "Can use tools" : "Single call"}
               </span>
               <FieldInput
                 field={BLOCK_CONFIG_SCHEMAS.brain![0]}
@@ -663,11 +677,11 @@ export default function BlockEditor({
             <p className="text-[10px] leading-relaxed mt-1.5 px-2 py-1.5 rounded-lg border">
               {blockData.isAgentic ? (
                 <span className="text-violet-700 border-violet-200 bg-violet-50 rounded-lg">
-                  <strong>Agentic on</strong> — Claude loops autonomously using tools: reads files, writes code, runs shell commands. Use for implementing fixes, running tests, pushing branches.
+                  <strong>Can use tools</strong> — reads files, edits code, runs commands, and pushes branches. Use for implementing fixes, running tests, and making changes.
                 </span>
               ) : (
                 <span className="text-stone-500 border-stone-100 bg-stone-50 rounded-lg">
-                  <strong>Single call</strong> — Claude responds once with text only. No file access, no commands. Use for summarising, classifying, or generating messages.
+                  <strong>Single call</strong> — responds once with text only. No file access, no commands. Use for summarising, classifying, or generating messages.
                 </span>
               )}
             </p>
@@ -725,7 +739,7 @@ export default function BlockEditor({
                 )
               })}
               <p className="text-[10px] text-stone-400 pt-1">
-                Tip: reference previous blocks with <code className="bg-stone-100 px-1 rounded">{"{{block_id.field}}"}</code>
+                Use <code className="bg-stone-100 px-1 rounded">{"{{block_id.field}}"}</code> to reference earlier outputs.
               </p>
             </div>
           )}
@@ -782,11 +796,25 @@ export default function BlockEditor({
                       : null
                     const inboundUrl = `${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}/webhooks/inbound/${workflowId}`
                     const webhookUrl = githubHookRepo ? githubUrl : inboundUrl
+                    const displayUrl = webhookUrl ?? inboundUrl
                     return (
                       <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2.5 text-xs text-violet-800 mt-2 space-y-1.5">
-                        <p className="font-semibold text-[10px] uppercase tracking-wide text-violet-500">Webhook URL</p>
-                        <p className="font-mono break-all select-all text-violet-700 text-[11px]">
-                          {webhookUrl ?? inboundUrl}
+                        <div className="flex items-center justify-between">
+                          <p className="font-semibold text-[10px] uppercase tracking-wide text-violet-500">
+                            {githubHookRepo ? "GitHub webhook" : "Webhook URL"}
+                          </p>
+                          {displayUrl && (
+                            <button
+                              type="button"
+                              onClick={() => displayUrl && navigator.clipboard.writeText(displayUrl)}
+                              className="text-[10px] font-medium text-violet-500 hover:text-violet-700 border border-violet-200 rounded px-1.5 py-0.5 transition-colors"
+                            >
+                              Copy
+                            </button>
+                          )}
+                        </div>
+                        <p className="font-mono break-all text-violet-700 text-[11px]">
+                          {displayUrl}
                         </p>
                         {githubHookRepo && githubHookId
                           ? <p className="text-violet-500 text-[10px]">Registered on <span className="font-mono">{githubHookRepo}</span> — GitHub sends events here automatically.</p>
