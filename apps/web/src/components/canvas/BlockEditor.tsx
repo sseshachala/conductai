@@ -691,6 +691,21 @@ export default function BlockEditor({
               )}
             </p>
           </div>
+
+          <div className={section}>
+            <span className={sectionLabel}>Model routing</span>
+            <select
+              value={(blockData.routingPreference as string) || "balanced"}
+              onChange={e => onChange(blockId, { ...blockData, routingPreference: e.target.value })}
+              className={cn(inputBase)}
+            >
+              <option value="balanced">Balanced — best default</option>
+              <option value="quality">Quality — strongest model</option>
+              <option value="speed">Speed — faster response</option>
+              <option value="cost">Cost — efficient model</option>
+            </select>
+            <p className="text-[10px] text-stone-400 mt-1">Conduct picks the best model for this step based on your preference.</p>
+          </div>
         </>
       )}
 
