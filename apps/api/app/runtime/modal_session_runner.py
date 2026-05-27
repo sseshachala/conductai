@@ -122,8 +122,10 @@ def _dispatch(sandbox, tool_name: str, tool_input: dict, working_dir: str) -> st
                 return f"Refused: command matches forbidden pattern '{pattern}'"
         wd = tool_input.get("working_dir") or working_dir
         env = tool_input.get("env") or {}
-        env_prefix = " ".join(f"{k}={shlex.quote(str(v))}" for k, v in env.items())
-        full_cmd = f"cd {shlex.quote(wd)} && {(env_prefix + ' ') if env_prefix else ''}{command}"
+        # Use `export KEY=value;` so $KEY expands correctly in subsequent parts of the same bash invocation.
+        # Inline `KEY=value cmd` only sets KEY for that subprocess, not for $KEY references in the same command.
+        env_exports = "; ".join(f"export {k}={shlex.quote(str(v))}" for k, v in env.items())
+        full_cmd = f"cd {shlex.quote(wd)} && {(env_exports + '; ') if env_exports else ''}{command}"
         out = _exec(sandbox, "bash", "-c", full_cmd)
         return (out[:10_000] + "\n[... truncated]") if len(out) > 10_000 else out or "(no output)"
 
