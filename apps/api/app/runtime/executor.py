@@ -582,6 +582,16 @@ def _execute_brain(
 
     from app.runtime.sandbox_session import create_session as _create_session
     session = _create_session(remote_host, credentials)
+    _session_closed = False
+
+    def _close_session():
+        nonlocal _session_closed
+        if not _session_closed:
+            _session_closed = True
+            try:
+                session.close()
+            except Exception:
+                pass
 
     def _dispatch_with_creds(tool_name: str, tool_input: dict) -> str:
         # Swap credential placeholders for real values in subprocess env only.
@@ -767,7 +777,7 @@ def _execute_brain(
                             result.update(_extracted)
                     except Exception:
                         pass
-                session.close()
+                _close_session()
                 return result
 
             # Append assistant message
@@ -846,7 +856,7 @@ def _execute_brain(
                 "files_changed": files_changed,
                 "diff_stat": diff_stat,
             })
-        session.close()
+        _close_session()
         raise RuntimeError(
             f"Turn budget exhausted: agent did not reach end_turn after {max_turns} turns "
             f"({total_input_tokens} input / {total_output_tokens} output tokens, ${cost_usd:.4f})"
@@ -883,7 +893,7 @@ def _execute_brain(
                     result.update(_extracted)
             except Exception:
                 pass
-        session.close()
+        _close_session()
         return result
 
 
