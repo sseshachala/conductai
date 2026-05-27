@@ -34,6 +34,7 @@ interface AttentionRun {
   workflow_name: string
   status: string
   triggered_by: string | null
+  trigger_summary: string | null
   created_at: string
 }
 
@@ -302,8 +303,13 @@ function AttentionList({ runs }: { runs: AttentionRun[] }) {
               href={`/workflows/${run.workflow_id}/runs/${run.run_id}`}
               className="flex items-center justify-between px-4 py-3 hover:bg-red-100/60 transition-colors"
             >
-              <span className="text-sm font-medium text-stone-900">{group.name}</span>
-              <div className="flex items-center gap-3">
+              <div className="min-w-0">
+                <span className="text-sm font-medium text-stone-900">{group.name}</span>
+                {run.trigger_summary && (
+                  <span className="text-xs text-stone-400 ml-2 truncate">{run.trigger_summary}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
                 <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
                   {s.label}
@@ -353,8 +359,10 @@ function AttentionList({ runs }: { runs: AttentionRun[] }) {
                     href={`/workflows/${run.workflow_id}/runs/${run.run_id}`}
                     className="flex items-center justify-between pl-8 pr-4 py-2.5 hover:bg-red-100/40 transition-colors"
                   >
-                    <span className="text-xs text-stone-500">{formatTrigger(run.triggered_by)}</span>
-                    <span className="text-xs text-stone-400">{timeAgo(run.created_at)}</span>
+                    <span className="text-xs text-stone-600 truncate max-w-[60%]">
+                      {run.trigger_summary ?? formatTrigger(run.triggered_by)}
+                    </span>
+                    <span className="text-xs text-stone-400 shrink-0">{timeAgo(run.created_at)}</span>
                   </Link>
                 ))}
               </div>

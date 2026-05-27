@@ -17,6 +17,7 @@ from app.core.auth import get_workspace_id, require_workspace_role
 from app.core.database import get_db
 from app.models.run import Run
 from app.models.workflow import Workflow, WorkflowVersion
+from app.schemas.run import _extract_trigger_summary
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -87,6 +88,7 @@ class AttentionRun(BaseModel):
     workflow_name: str
     status: str
     triggered_by: str | None
+    trigger_summary: str | None
     created_at: str
 
 
@@ -172,6 +174,7 @@ def get_dashboard(
             workflow_name=wf_name,
             status=run.status,
             triggered_by=run.triggered_by,
+            trigger_summary=_extract_trigger_summary(run.state),
             created_at=run.created_at.isoformat(),
         )
         for run, wf_id, wf_name in attention_rows
