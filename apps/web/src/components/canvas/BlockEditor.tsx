@@ -71,13 +71,14 @@ function previewModel(playbookSlug: string | null | undefined, pref: string): [s
 // ── GitHub webhook status panel ───────────────────────────────────────────────
 
 function GitHubWebhookStatusPanel({
-  workflowId, hookId, hookRepo, getToken, onWebhookChange,
+  workflowId, hookId, hookRepo, getToken, onWebhookChange, compact,
 }: {
   workflowId: string
   hookId: string | null
   hookRepo: string | null
   getToken?: (() => Promise<string | null>) | null
   onWebhookChange?: (hookId: string | null, hookRepo: string | null) => void
+  compact?: boolean
 }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -122,6 +123,33 @@ function GitHubWebhookStatusPanel({
   }
 
   const registered = !!hookId
+
+  if (compact) {
+    return (
+      <div className={`rounded-md border px-2.5 py-2 text-xs mt-1.5 flex items-center justify-between gap-3 ${registered ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+        <div>
+          <p className={`font-semibold ${registered ? "text-emerald-700" : "text-amber-700"}`}>
+            {registered ? `✓ Registered on ${hookRepo}` : "Not registered — GitHub won't send events"}
+          </p>
+          {err && <p className="text-red-600 mt-0.5">{err}</p>}
+        </div>
+        <div className="flex gap-1 shrink-0">
+          {!registered && (
+            <button onClick={register} disabled={busy}
+              className="rounded bg-amber-600 text-white px-2.5 py-1 font-medium hover:bg-amber-700 disabled:opacity-50 transition-colors text-[10px]">
+              {busy ? "Registering…" : "Register"}
+            </button>
+          )}
+          {registered && (
+            <button onClick={register} disabled={busy}
+              className="rounded bg-emerald-600 text-white px-2.5 py-1 font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors text-[10px]">
+              {busy ? "Updating…" : "Update"}
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className={`rounded-lg border px-3 py-2.5 text-xs mt-2 ${registered ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
@@ -984,10 +1012,15 @@ export default function BlockEditor({
                         <p className="font-mono break-all text-violet-700 text-[11px]">
                           {displayUrl}
                         </p>
-                        {githubHookRepo && githubHookId
-                          ? <p className="text-violet-500 text-[10px]">Registered on <span className="font-mono">{githubHookRepo}</span> — GitHub sends events here automatically.</p>
-                          : githubHookRepo
-                          ? <p className="text-violet-500 text-[10px]">Target repo: <span className="font-mono">{githubHookRepo}</span> — passed to the agent as context.</p>
+                        {githubHookRepo
+                          ? <GitHubWebhookStatusPanel
+                              workflowId={workflowId}
+                              hookId={githubHookId ?? null}
+                              hookRepo={githubHookRepo}
+                              getToken={getToken}
+                              onWebhookChange={onWebhookChange}
+                              compact
+                            />
                           : <>
                               <p className="text-violet-500 text-[10px]">POST any JSON to this URL — payload available as <span className="font-mono">{"{{_trigger.*}}"}</span></p>
                               <div className="border-t border-violet-100 pt-1.5 space-y-0.5">
