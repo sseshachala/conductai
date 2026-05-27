@@ -128,6 +128,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
   const [workflowName, setWorkflowName] = useState("Untitled agent")
   const [githubHookRepo, setGithubHookRepo] = useState<string | null>(null)
   const [githubHookId, setGithubHookId] = useState<string | null>(null)
+  const [githubWebhook, setGithubWebhook] = useState<boolean>(false)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle")
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isFirstLoad = useRef(true)
@@ -286,6 +287,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
         setSelectedEnvId(data.environment_id ?? "")
         setGithubHookRepo(data.github_hook_repo ?? null)
         setGithubHookId(data.github_hook_id ?? null)
+        setGithubWebhook(data.github_webhook ?? false)
         setPlaybookSlug(data.playbook_slug ?? null)
         const graph = data.current_version?.graph
         if (graph?.nodes && graph?.edges) {
@@ -858,12 +860,6 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
           >
             ⊡ Fit
           </button>
-          {/* Webhook warning — shown when this is a GitHub-event workflow but webhook isn't registered */}
-          {!githubHookId && githubHookRepo && (
-            <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700">
-              ⚠ Webhook not registered — open trigger config to register
-            </span>
-          )}
           {!isViewer && (
             <>
               {prefs.show_test_trigger && playbookSlug && (
@@ -1032,6 +1028,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
                       getToken={getToken}
                       githubHookRepo={githubHookRepo}
                       githubHookId={githubHookId}
+                      githubWebhook={githubWebhook}
                       playbookSlug={playbookSlug}
                       onWebhookChange={(id, repo) => { setGithubHookId(id); setGithubHookRepo(repo) }}
                     />
