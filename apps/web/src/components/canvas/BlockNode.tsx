@@ -44,7 +44,7 @@ function GitHubMark({ className }: { className?: string }) {
 }
 
 function handleClass(color: string) {
-  return `!w-3 !h-3 !border-2 !border-white !shadow-sm !transition-all !opacity-0 group-hover:!opacity-100 hover:!scale-125 ${color}`
+  return `!w-3 !h-3 !border-0 !bg-transparent !shadow-none !opacity-0 !transition-none ${color}`
 }
 
 // Derive intent-oriented trigger label from config
@@ -120,7 +120,7 @@ function BlockNode({ data, selected }: NodeProps) {
         type="target"
         position={Position.Top}
         className={handleClass("!bg-stone-400")}
-        style={{ top: -5 }}
+        style={{ top: -6 }}
       />
 
       {/* Type badge row */}
@@ -176,9 +176,9 @@ function BlockNode({ data, selected }: NodeProps) {
             <span className="text-[8px] font-semibold text-red-500 uppercase tracking-wide">fail</span>
           </div>
           <Handle id="pass" type="source" position={Position.Bottom}
-            style={{ left: "28%", bottom: -5 }} className={handleClass("!bg-green-400")} />
+            style={{ left: "28%", bottom: -6 }} className={handleClass("!bg-green-400")} />
           <Handle id="fail" type="source" position={Position.Bottom}
-            style={{ left: "72%", bottom: -5 }} className={handleClass("!bg-red-400")} />
+            style={{ left: "72%", bottom: -6 }} className={handleClass("!bg-red-400")} />
         </>
       ) : isApproval ? (
         <>
@@ -187,13 +187,13 @@ function BlockNode({ data, selected }: NodeProps) {
             <span className="text-[8px] font-semibold text-red-500 uppercase tracking-wide">rejected</span>
           </div>
           <Handle id="approved" type="source" position={Position.Bottom}
-            style={{ left: "28%", bottom: -5 }} className={handleClass("!bg-green-400")} />
+            style={{ left: "28%", bottom: -6 }} className={handleClass("!bg-green-400")} />
           <Handle id="rejected" type="source" position={Position.Bottom}
-            style={{ left: "72%", bottom: -5 }} className={handleClass("!bg-red-400")} />
+            style={{ left: "72%", bottom: -6 }} className={handleClass("!bg-red-400")} />
         </>
       ) : (
         <Handle type="source" position={Position.Bottom}
-          className={handleClass("!bg-stone-400")} style={{ bottom: -5 }} />
+          className={handleClass("!bg-stone-400")} style={{ bottom: -6 }} />
       )}
     </div>
   )
