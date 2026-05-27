@@ -346,7 +346,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
             href="/marketplace"
             className="inline-flex items-center gap-2 rounded-xl bg-white text-stone-900 px-6 py-3 text-sm font-semibold hover:bg-stone-100 transition-colors"
           >
-            🤖 Install Copilot / AI PR Reviewer →
+            Install Copilot / AI PR Reviewer →
           </a>
         </div>
       </section>
