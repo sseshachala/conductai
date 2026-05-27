@@ -724,6 +724,7 @@ def _execute_brain(
 
             # First-turn sufficiency check — fail fast before any tools are used
             if turns == 1 and final_text.strip().startswith("NEEDS_CLARIFICATION:"):
+                _close_session()
                 raise ValueError(final_text.strip())
 
             if response.stop_reason == "end_turn" or not tool_calls:
