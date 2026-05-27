@@ -2,18 +2,39 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { statusStyle, formatTrigger } from "@/lib/runUtils"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
+import { statusStyle, formatTrigger } from "@/lib/runUtils"
 
-interface WeekStats {
-  issues_picked_up: number
+interface OutcomeStats {
   prs_opened: number
-  total_runs: number
-  succeeded_runs: number
-  failed_runs: number
+  issues_triaged: number
+  reviews_completed: number
+  incidents_investigated: number
+  successful_automations: number
+  failed_automations: number
+}
+
+interface AgentHealth {
+  workflow_id: string
+  name: string
+  playbook_slug: string | null
+  run_count: number
+  succeeded_count: number
+  failed_count: number
   success_rate: number
+  last_run_status: string | null
+  last_run_at: string | null
+}
+
+interface AttentionRun {
+  run_id: string
+  workflow_id: string
+  workflow_name: string
+  status: string
+  triggered_by: string | null
+  created_at: string
 }
 
 interface RecentRun {
@@ -21,24 +42,16 @@ interface RecentRun {
   workflow_id: string
   workflow_name: string
   status: string
-  issue_number: number | null
-  issue_title: string | null
-  pr_url: string | null
+  triggered_by: string | null
   started_at: string | null
   created_at: string
 }
 
-interface AgentStatus {
-  workflow_id: string
-  name: string
-  last_run_status: string | null
-  last_run_at: string | null
-}
-
 interface DashboardData {
-  week: WeekStats
-  recent_runs: RecentRun[]
-  agents: AgentStatus[]
+  outcomes: OutcomeStats
+  needs_attention: AttentionRun[]
+  agent_health: AgentHealth[]
+  recent_activity: RecentRun[]
 }
 
 function timeAgo(ts: string): string {
@@ -94,7 +107,8 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
       }
     }
     load()
-  }, [getToken])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <AppShell>
@@ -110,137 +124,158 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
         </div>
 
         {loading ? (
-          <div className="space-y-4">
-            <div className="grid grid-cols-4 gap-4">
-              {[1,2,3,4].map(i => <div key={i} className="h-20 rounded-xl bg-stone-100 animate-pulse" />)}
+          <div className="space-y-6">
+            <div className="h-24 rounded-xl bg-stone-100 animate-pulse" />
+            <div className="grid grid-cols-3 gap-3">
+              {[1,2,3,4,5,6].map(i => <div key={i} className="h-20 rounded-xl bg-stone-100 animate-pulse" />)}
             </div>
-            <div className="h-64 rounded-xl bg-stone-100 animate-pulse" />
+            <div className="h-48 rounded-xl bg-stone-100 animate-pulse" />
           </div>
         ) : !data ? (
           <p className="text-stone-400 text-sm">Could not load dashboard.</p>
         ) : (
-          <div className="space-y-8">
+          <div className="space-y-10">
 
-            {/* Section 1 — This week */}
-            <div>
-              <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-3">This week</p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <StatCard label="Issues picked up" value={data.week.issues_picked_up} />
-                <StatCard label="PRs opened" value={data.week.prs_opened} />
-                <StatCard
-                  label="Success rate"
-                  value={`${data.week.success_rate}%`}
-                  sub={`${data.week.succeeded_runs} of ${data.week.total_runs} runs`}
-                  highlight={data.week.success_rate >= 80 ? "green" : data.week.success_rate >= 50 ? "amber" : "red"}
-                />
-                <StatCard
-                  label="Failed runs"
-                  value={data.week.failed_runs}
-                  sub={data.week.failed_runs > 0 ? "View traces →" : "All clear"}
-                  highlight={data.week.failed_runs > 0 ? "red" : "green"}
-                  href={data.week.failed_runs > 0 ? "/runs" : undefined}
-                />
-              </div>
-            </div>
-
-            {/* Section 2 — Recent runs */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest">Recent runs</p>
-                <Link href="/runs" className="text-xs text-stone-400 hover:text-stone-700 transition-colors">View all →</Link>
-              </div>
-              {data.recent_runs.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-stone-300 p-10 text-center">
-                  <p className="text-stone-400 text-sm">No runs yet — <Link href="/workflows" className="underline hover:text-stone-700">open an agent</Link> and hit Run.</p>
-                </div>
-              ) : (
-                <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-stone-100 text-left">
-                        <th className="px-4 py-3 text-xs font-medium text-stone-500">Agent</th>
-                        <th className="px-4 py-3 text-xs font-medium text-stone-500">Status</th>
-                        <th className="px-4 py-3 text-xs font-medium text-stone-500">Issue</th>
-                        <th className="px-4 py-3 text-xs font-medium text-stone-500">PR</th>
-                        <th className="px-4 py-3 text-xs font-medium text-stone-500">When</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.recent_runs.map(run => {
-                        const s = statusStyle(run.status)
-                        return (
-                          <tr
-                            key={run.run_id}
-                            onClick={() => window.location.href = `/workflows/${run.workflow_id}/runs/${run.run_id}`}
-                            className="border-b border-stone-100 last:border-0 hover:bg-stone-50 cursor-pointer transition-colors"
-                          >
-                            <td className="px-4 py-3">
-                              <Link
-                                href={`/workflows/${run.workflow_id}`}
-                                onClick={e => e.stopPropagation()}
-                                className="font-medium text-stone-900 hover:text-indigo-600 transition-colors"
-                              >
-                                {run.workflow_name}
-                              </Link>
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-                                {s.label}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-stone-500 text-xs">
-                              {run.issue_number
-                                ? <span>#{run.issue_number}{run.issue_title ? ` — ${run.issue_title}` : ""}</span>
-                                : <span className="text-stone-300">—</span>}
-                            </td>
-                            <td className="px-4 py-3">
-                              {run.pr_url
-                                ? <a href={run.pr_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-xs text-indigo-600 hover:underline">View PR →</a>
-                                : <span className="text-stone-300 text-xs">—</span>}
-                            </td>
-                            <td className="px-4 py-3 text-stone-400 text-xs">
-                              {timeAgo(run.started_at ?? run.created_at)}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            {/* Section 3 — Agent statuses */}
-            <div>
-              <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-3">Agents</p>
-              {data.agents.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-stone-300 p-10 text-center">
-                  <p className="text-stone-400 text-sm"><Link href="/workflows/new" className="underline hover:text-stone-700">Create your first agent</Link> to see it here.</p>
-                </div>
-              ) : (
-                <div className="grid gap-2">
-                  {data.agents.map(agent => {
-                    const dot = agent.last_run_status ? statusStyle(agent.last_run_status).dot : "bg-stone-200"
+            {/* 1 — Needs Attention */}
+            {data.needs_attention.length > 0 && (
+              <section>
+                <SectionHeader label="Needs Attention" href="/runs?view=needs-attention" linkLabel="View all →" />
+                <div className="rounded-xl border border-red-100 bg-red-50 overflow-hidden divide-y divide-red-100">
+                  {data.needs_attention.map(run => {
+                    const s = statusStyle(run.status)
                     return (
-                      <div key={agent.workflow_id} className="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-4 py-3 hover:border-stone-300 transition-colors">
-                        <div className="flex items-center gap-3">
-                          <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
-                          <span className="text-sm font-medium text-stone-900">{agent.name}</span>
+                      <Link
+                        key={run.run_id}
+                        href={`/workflows/${run.workflow_id}/runs/${run.run_id}`}
+                        className="flex items-center justify-between px-4 py-3 hover:bg-red-100/60 transition-colors"
+                      >
+                        <div>
+                          <span className="text-sm font-medium text-stone-900">{run.workflow_name}</span>
+                          <span className="text-xs text-stone-400 ml-2">{formatTrigger(run.triggered_by)}</span>
                         </div>
-                        <div className="flex items-center gap-4 text-xs text-stone-400">
+                        <div className="flex items-center gap-3">
+                          <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+                            {s.label}
+                          </span>
+                          <span className="text-xs text-stone-400">{timeAgo(run.created_at)}</span>
+                        </div>
+                      </Link>
+                    )
+                  })}
+                </div>
+              </section>
+            )}
+
+            {/* 2 — Outcomes This Week */}
+            <section>
+              <SectionHeader label="Outcomes" sub="This week" />
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <OutcomeCard label="PRs opened"             value={data.outcomes.prs_opened}             />
+                <OutcomeCard label="Issues triaged"         value={data.outcomes.issues_triaged}         />
+                <OutcomeCard label="Reviews completed"      value={data.outcomes.reviews_completed}      />
+                <OutcomeCard label="Incidents investigated" value={data.outcomes.incidents_investigated}  />
+                <OutcomeCard
+                  label="Successful automations"
+                  value={data.outcomes.successful_automations}
+                  highlight="green"
+                />
+                <OutcomeCard
+                  label="Failed automations"
+                  value={data.outcomes.failed_automations}
+                  highlight={data.outcomes.failed_automations > 0 ? "red" : undefined}
+                  href={data.outcomes.failed_automations > 0 ? "/runs" : undefined}
+                />
+              </div>
+            </section>
+
+            {/* 3 — Agent Health */}
+            <section>
+              <SectionHeader label="Agent Health" />
+              {data.agent_health.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-stone-300 p-10 text-center">
+                  <p className="text-stone-400 text-sm">
+                    <Link href="/workflows/new" className="underline hover:text-stone-700">Create your first agent</Link> to see health here.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-stone-200 bg-white overflow-hidden divide-y divide-stone-100">
+                  {data.agent_health.map(agent => {
+                    const rateColor =
+                      agent.run_count === 0 ? "text-stone-300"
+                      : agent.success_rate >= 80 ? "text-emerald-600"
+                      : agent.success_rate >= 50 ? "text-amber-600"
+                      : "text-red-600"
+                    const dot = agent.last_run_status
+                      ? statusStyle(agent.last_run_status).dot
+                      : "bg-stone-200"
+                    return (
+                      <div key={agent.workflow_id} className="flex items-center justify-between px-4 py-3 hover:bg-stone-50 transition-colors">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
+                          <Link
+                            href={`/workflows/${agent.workflow_id}`}
+                            className="text-sm font-medium text-stone-900 hover:text-indigo-600 truncate transition-colors"
+                          >
+                            {agent.name}
+                          </Link>
+                        </div>
+                        <div className="flex items-center gap-5 ml-4 shrink-0 text-xs text-stone-400">
+                          <span className={`font-semibold text-sm ${rateColor}`}>
+                            {agent.run_count === 0 ? "—" : `${agent.success_rate}%`}
+                          </span>
+                          {agent.failed_count > 0 && (
+                            <span className="text-red-500">{agent.failed_count} failed</span>
+                          )}
+                          <span>{agent.run_count} run{agent.run_count !== 1 ? "s" : ""}</span>
                           {agent.last_run_at
-                            ? <span>last run {timeAgo(agent.last_run_at)}</span>
+                            ? <span>{timeAgo(agent.last_run_at)}</span>
                             : <span className="italic">never run</span>}
-                          <Link href={`/workflows/${agent.workflow_id}`} className="text-stone-500 hover:text-stone-900 transition-colors">Canvas →</Link>
-                          <Link href={`/workflows/${agent.workflow_id}/runs`} className="text-stone-500 hover:text-stone-900 transition-colors">History →</Link>
+                          <Link href={`/workflows/${agent.workflow_id}/runs`} className="text-stone-400 hover:text-stone-700 transition-colors">History →</Link>
                         </div>
                       </div>
                     )
                   })}
                 </div>
               )}
-            </div>
+            </section>
+
+            {/* 4 — Recent Activity */}
+            <section>
+              <SectionHeader label="Recent Activity" href="/runs" linkLabel="View all runs →" />
+              {data.recent_activity.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-stone-300 p-10 text-center">
+                  <p className="text-stone-400 text-sm">
+                    No runs yet — <Link href="/workflows" className="underline hover:text-stone-700">open an agent</Link> and hit Run.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-stone-200 bg-white overflow-hidden divide-y divide-stone-100">
+                  {data.recent_activity.map(run => {
+                    const s = statusStyle(run.status)
+                    return (
+                      <Link
+                        key={run.run_id}
+                        href={`/workflows/${run.workflow_id}/runs/${run.run_id}`}
+                        className="flex items-center justify-between px-4 py-3 hover:bg-stone-50 transition-colors"
+                      >
+                        <div>
+                          <span className="text-sm font-medium text-stone-900">{run.workflow_name}</span>
+                          <span className="text-xs text-stone-400 ml-2">{formatTrigger(run.triggered_by)}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+                            {s.label}
+                          </span>
+                          <span className="text-xs text-stone-400">{timeAgo(run.started_at ?? run.created_at)}</span>
+                        </div>
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
+            </section>
 
           </div>
         )}
@@ -249,26 +284,41 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
   )
 }
 
-function StatCard({ label, value, sub, highlight, href }: {
+function SectionHeader({ label, sub, href, linkLabel }: {
   label: string
-  value: string | number
   sub?: string
-  highlight?: "green" | "amber" | "red"
+  href?: string
+  linkLabel?: string
+}) {
+  return (
+    <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center gap-2">
+        <p className="text-xs font-semibold text-stone-500 uppercase tracking-widest">{label}</p>
+        {sub && <p className="text-xs text-stone-300">{sub}</p>}
+      </div>
+      {href && linkLabel && (
+        <Link href={href} className="text-xs text-stone-400 hover:text-stone-700 transition-colors">{linkLabel}</Link>
+      )}
+    </div>
+  )
+}
+
+function OutcomeCard({ label, value, highlight, href }: {
+  label: string
+  value: number
+  highlight?: "green" | "red"
   href?: string
 }) {
-  const colors = {
-    green: "text-emerald-700",
-    amber: "text-amber-600",
-    red:   "text-red-600",
-  }
-  const valueClass = highlight ? colors[highlight] : "text-stone-900"
+  const valueClass =
+    highlight === "green" ? "text-emerald-700"
+    : highlight === "red" ? "text-red-600"
+    : "text-stone-900"
+
   const card = (
     <div className="rounded-xl border border-stone-200 bg-white px-4 py-4 hover:border-stone-300 transition-colors">
       <p className="text-xs text-stone-400 mb-1.5">{label}</p>
       <p className={`text-2xl font-bold ${valueClass}`}>{value}</p>
-      {sub && <p className="text-xs text-stone-400 mt-0.5">{sub}</p>}
     </div>
   )
-  if (href) return <Link href={href}>{card}</Link>
-  return card
+  return href ? <Link href={href}>{card}</Link> : card
 }
