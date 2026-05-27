@@ -802,9 +802,11 @@ def main():
     # conduct projects
     sub.add_parser("projects", help="List all projects in the workspace")
 
-    # conduct create <name>
-    create_p = sub.add_parser("create", help="Create a project")
-    create_p.add_argument("name", help="Project name")
+    # conduct create project <name>
+    create_p = sub.add_parser("create", help="Create resources (project, agent)")
+    create_sub = create_p.add_subparsers(dest="create_type")
+    create_proj_p = create_sub.add_parser("project", help="Create a project")
+    create_proj_p.add_argument("name", help="Project name")
 
     # conduct playbooks [slug]
     pb_p = sub.add_parser("playbooks", help="List available playbooks or show detail for one")
@@ -819,10 +821,12 @@ def main():
     install_p.add_argument("--input", action="append", metavar="key=value",
                            help="Playbook input value (repeatable, e.g. --input github_token=xxx)")
 
-    # conduct delete <name>
-    delete_p = sub.add_parser("delete", help="Delete a project and all its agents")
-    delete_p.add_argument("name",  help="Project name")
-    delete_p.add_argument("--yes", action="store_true", help="Skip confirmation prompt")
+    # conduct delete project <name>
+    delete_p = sub.add_parser("delete", help="Delete resources (project, agent)")
+    delete_sub = delete_p.add_subparsers(dest="delete_type")
+    delete_proj_p = delete_sub.add_parser("project", help="Delete a project and all its agents")
+    delete_proj_p.add_argument("name", help="Project name")
+    delete_proj_p.add_argument("--yes", action="store_true", help="Skip confirmation prompt")
 
     # conduct reset <name>
     reset_p = sub.add_parser("reset", help="Delete all agents in a project (clean slate)")
@@ -849,13 +853,19 @@ def main():
     elif args.command == "projects":
         cmd_projects(args)
     elif args.command == "create":
-        cmd_create(args)
+        if getattr(args, "create_type", None) == "project":
+            cmd_create(args)
+        else:
+            create_p.print_help()
     elif args.command == "playbooks":
         cmd_playbooks(args)
     elif args.command == "install":
         cmd_install(args)
     elif args.command == "delete":
-        cmd_delete(args)
+        if getattr(args, "delete_type", None) == "project":
+            cmd_delete(args)
+        else:
+            delete_p.print_help()
     elif args.command == "reset":
         cmd_reset(args)
     elif args.command == "install-all":
