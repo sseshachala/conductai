@@ -101,7 +101,6 @@ class LocalSession:
         for pattern in _FORBIDDEN_SHELL_PATTERNS:
             if re.search(pattern, command):
                 return f"Refused: command matches forbidden pattern '{pattern}'"
-        # Track working directory across calls
         cwd = working_dir or self.working_dir or self._tmpdir
         if working_dir:
             self.working_dir = working_dir
@@ -132,7 +131,6 @@ class LocalSession:
             return f"Error searching: {e}"
 
     def capture_artifacts(self) -> tuple[list[dict], str]:
-        """Extract git diff evidence from the session working directory."""
         if not self.working_dir:
             return [], ""
         try:
@@ -147,7 +145,6 @@ class LocalSession:
                     capture_output=True, text=True, timeout=10, cwd=self.working_dir,
                 )
                 stat = result.stdout.strip()
-
             files: list[dict] = []
             for line in stat.splitlines():
                 m = re.match(r"^\s*(.+?)\s*\|\s*\d+", line)
@@ -172,28 +169,27 @@ class LocalSession:
 
 class ModalSession:
     """
-    Persistent Modal sandbox session.
-    Creates one sandbox at start; uses exec() for each tool call.
-    Significantly cheaper and faster than one sandbox per tool call.
+    Persistent Modal sandbox session via subprocess IPC.
+
+    Spawns modal_session_runner as a subprocess with workspace Modal credentials
+    in its env only — credentials never touch the shared API worker process.
+    The runner creates ONE Modal sandbox and handles all tool calls via exec(),
+    so the sandbox filesystem persists across calls within the block.
     """
 
     def __init__(self, token_id: str, token_secret: str) -> None:
-        self.working_dir: str | None = None
+        self.working_dir: str | None = "/tmp"
         self._token_id = token_id
         self._token_secret = token_secret
-        self._sandbox = None
+        self._proc = None
         self._started = False
 
     def _ensure_started(self) -> None:
         if self._started:
             return
-        import modal  # type: ignore[import]
         import sys
-
         proc_env = {**os.environ, "MODAL_TOKEN_ID": self._token_id, "MODAL_TOKEN_SECRET": self._token_secret}
-        # Spawn a subprocess that holds the Modal session — credentials stay isolated
-        # from the shared API worker env.
-        self._session_proc = subprocess.Popen(
+        self._proc = subprocess.Popen(
             [sys.executable, "-m", "app.runtime.modal_session_runner"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -205,14 +201,13 @@ class ModalSession:
         log.debug("sandbox_session.modal.started")
 
     def dispatch(self, tool_name: str, tool_input: dict) -> str:
-        """Route to modal_session_runner via stdin/stdout IPC."""
         import json
         try:
             self._ensure_started()
             payload = json.dumps({"tool_name": tool_name, "tool_input": tool_input}) + "\n"
-            self._session_proc.stdin.write(payload)
-            self._session_proc.stdin.flush()
-            response_line = self._session_proc.stdout.readline()
+            self._proc.stdin.write(payload)
+            self._proc.stdin.flush()
+            response_line = self._proc.stdout.readline()
             if not response_line:
                 return "Error: Modal session process terminated unexpectedly"
             data = json.loads(response_line)
@@ -221,7 +216,6 @@ class ModalSession:
             return data.get("result", "(no output)")
         except Exception as e:
             log.warning("sandbox_session.modal.dispatch_error", error=str(e))
-            # Fall back to local on Modal failure
             local = LocalSession()
             result = local.dispatch(tool_name, tool_input)
             self.working_dir = local.working_dir
@@ -229,10 +223,13 @@ class ModalSession:
             return result
 
     def capture_artifacts(self) -> tuple[list[dict], str]:
-        if not self.working_dir:
+        if not self.working_dir or not self._started:
             return [], ""
-        # Ask the session runner to run git diff
-        result = self.dispatch("run_shell", {"command": "git diff --stat HEAD || git diff --stat", "working_dir": self.working_dir})
+        result = self.dispatch(
+            "run_shell",
+            {"command": "git diff --stat HEAD 2>/dev/null || git diff --stat 2>/dev/null",
+             "working_dir": self.working_dir},
+        )
         files: list[dict] = []
         for line in result.splitlines():
             m = re.match(r"^\s*(.+?)\s*\|\s*\d+", line)
@@ -243,13 +240,13 @@ class ModalSession:
         return files, result
 
     def close(self) -> None:
-        if self._started and self._session_proc:
+        if self._started and self._proc:
             try:
-                self._session_proc.stdin.write('{"tool_name": "__exit__", "tool_input": {}}\n')
-                self._session_proc.stdin.flush()
-                self._session_proc.wait(timeout=10)
+                self._proc.stdin.write('{"tool_name": "__exit__", "tool_input": {}}\n')
+                self._proc.stdin.flush()
+                self._proc.wait(timeout=10)
             except Exception:
-                self._session_proc.kill()
+                self._proc.kill()
             log.debug("sandbox_session.modal.closed")
 
 
@@ -258,7 +255,8 @@ class ModalSession:
 class RemoteSession:
     """
     Persistent SSH session for remote host execution.
-    Reuses one SSH connection across all tool calls in the block.
+    Opens one paramiko connection at first use and reuses it across all tool
+    calls in the block — eliminates per-call SSH handshake overhead.
     """
 
     def __init__(self, host_config: dict) -> None:
@@ -266,47 +264,69 @@ class RemoteSession:
         self._host = host_config
         self._client = None
 
-    def _ensure_connected(self):
-        if self._client:
+    def _ensure_connected(self) -> None:
+        if self._client is not None:
             return
-        from app.runtime.remote_sandbox import _load_private_key
-        import paramiko  # type: ignore[import]
-
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        pkey = _load_private_key(self._host["private_key"], self._host.get("private_key_passphrase"))
-        client.connect(
-            hostname=self._host["ip"],
-            port=int(self._host.get("port", 22)),
-            username=self._host.get("username", "root"),
-            pkey=pkey,
-            timeout=30,
-        )
-        self._client = client
-        log.debug("sandbox_session.remote.connected", host=self._host["ip"])
+        from app.runtime.remote_sandbox import _open_client
+        self._client = _open_client(self._host)
+        log.debug("sandbox_session.remote.connected", host=self._host.get("ip"))
 
     def dispatch(self, tool_name: str, tool_input: dict) -> str:
-        from app.runtime.remote_sandbox import remote_dispatch
-        # Remote dispatch handles its own connection per call — reuse host config
+        from app.runtime.remote_sandbox import (
+            _remote_read_file, _remote_write_file,
+            _remote_run_shell, _remote_search_code,
+        )
+        try:
+            self._ensure_connected()
+        except Exception as e:
+            return f"Error connecting to remote host: {e}"
+
         if tool_name == "run_shell" and tool_input.get("working_dir"):
             self.working_dir = tool_input["working_dir"]
-        return remote_dispatch(tool_name, tool_input, self._host)
+
+        try:
+            if tool_name == "read_file":
+                return _remote_read_file(self._client, tool_input.get("path", ""))
+            if tool_name == "write_file":
+                return _remote_write_file(self._client, tool_input.get("path", ""), tool_input.get("content", ""))
+            if tool_name == "run_shell":
+                return _remote_run_shell(self._client, tool_input.get("command", ""), tool_input.get("working_dir"))
+            if tool_name == "search_code":
+                return _remote_search_code(
+                    self._client, tool_input.get("pattern", ""),
+                    tool_input.get("path", "."), tool_input.get("file_glob", "*"),
+                )
+            return f"Unknown tool: {tool_name}"
+        except Exception as e:
+            # Connection may have dropped — reset and report
+            log.warning("sandbox_session.remote.dispatch_error", error=str(e))
+            self._client = None
+            return f"Error on remote host: {e}"
 
     def capture_artifacts(self) -> tuple[list[dict], str]:
         if not self.working_dir:
             return [], ""
-        result = self.dispatch("run_shell", {"command": "git diff --stat HEAD || git diff --stat", "working_dir": self.working_dir})
+        from app.runtime.remote_sandbox import _remote_run_shell
+        try:
+            self._ensure_connected()
+        except Exception:
+            return [], ""
+        stat = _remote_run_shell(
+            self._client,
+            "git diff --stat HEAD 2>/dev/null || git diff --stat 2>/dev/null",
+            self.working_dir,
+        ).strip()
         files: list[dict] = []
-        for line in result.splitlines():
+        for line in stat.splitlines():
             m = re.match(r"^\s*(.+?)\s*\|\s*\d+", line)
             if m:
                 fname = m.group(1).strip()
                 if not fname.startswith("..."):
                     files.append({"path": fname, "action": "modified"})
-        return files, result
+        return files, stat
 
     def close(self) -> None:
-        if self._client:
+        if self._client is not None:
             try:
                 self._client.close()
             except Exception:
@@ -324,8 +344,8 @@ def create_session(
     Return the right session backend for this Brain block execution.
 
     Priority:
-      1. remote_host configured → RemoteSession (SSH)
-      2. Modal credentials in workspace env → ModalSession
+      1. remote_host configured → RemoteSession (persistent SSH)
+      2. Modal credentials in workspace env → ModalSession (persistent sandbox)
       3. Local fallback (dev mode) → LocalSession
     """
     if remote_host and remote_host.get("ip"):
