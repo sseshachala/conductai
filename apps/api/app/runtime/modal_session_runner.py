@@ -1,25 +1,24 @@
 """
-modal_session_runner — long-running IPC subprocess for ModalSession.
+modal_session_runner — persistent Modal sandbox IPC subprocess.
 
-ModalSession spawns one instance of this process per Brain block execution.
-Communication is JSON lines over stdin/stdout:
+ModalSession spawns one instance of this process per Brain block. Modal
+credentials are in this process's env only — never in the API worker env.
 
+Creates ONE Modal sandbox at startup, then handles tool calls via sandbox.exec()
+so the sandbox filesystem persists across tool calls within the same block.
+
+Communication: JSON lines over stdin/stdout.
   stdin:  {"tool_name": "run_shell", "tool_input": {...}}
   stdout: {"result": "...", "working_dir": "/tmp/..."}
-
-The process exits when it receives {"tool_name": "__exit__"} or stdin closes.
-
-Running inside a Modal sandbox gives the Brain block a persistent container:
-files written in one tool call are readable in the next.
+  exit:   {"tool_name": "__exit__"}
 """
 from __future__ import annotations
 
+import base64
 import json
-import os
 import re
-import subprocess
+import shlex
 import sys
-import tempfile
 
 _FORBIDDEN_SHELL_PATTERNS = [
     r"rm\s+-rf\s+/",
@@ -32,104 +31,111 @@ _FORBIDDEN_SHELL_PATTERNS = [
     r"chown.*root",
 ]
 
-_tmpdir = tempfile.mkdtemp(prefix="conduct_modal_")
-_working_dir: str = _tmpdir
 
-
-def _read_file(path: str) -> str:
-    if not path:
-        return "Error: missing required parameter 'path'"
-    try:
-        with open(path) as f:
-            content = f.read()
-        return (content[:20_000] + "\n[... truncated]") if len(content) > 20_000 else content
-    except Exception as e:
-        return f"Error reading file: {e}"
-
-
-def _write_file(path: str, content: str) -> str:
-    if not path:
-        return "Error: missing required parameter 'path'"
-    try:
-        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-        with open(path, "w") as f:
-            f.write(content)
-        return f"Written {len(content)} bytes to {path}"
-    except Exception as e:
-        return f"Error writing file: {e}"
-
-
-def _run_shell(command: str, working_dir: str | None = None, env: dict | None = None) -> str:
-    global _working_dir
-    if not command:
-        return "Error: missing required parameter 'command'"
-    for pattern in _FORBIDDEN_SHELL_PATTERNS:
-        if re.search(pattern, command):
-            return f"Refused: command matches forbidden pattern '{pattern}'"
-    cwd = working_dir or _working_dir
-    if working_dir:
-        _working_dir = working_dir
-    try:
-        merged_env = {**os.environ, **(env or {})}
-        result = subprocess.run(
-            command, shell=True, capture_output=True, text=True,
-            timeout=120, cwd=cwd, env=merged_env,
-        )
-        output = result.stdout + result.stderr
-        return (output[:10_000] + "\n[... truncated]") if len(output) > 10_000 else output or "(no output)"
-    except subprocess.TimeoutExpired:
-        return "Error: command timed out after 120s"
-    except Exception as e:
-        return f"Error running shell: {e}"
-
-
-def _search_code(pattern: str, path: str = ".", file_glob: str = "*") -> str:
-    if not pattern:
-        return "Error: missing required parameter 'pattern'"
-    try:
-        result = subprocess.run(
-            ["grep", "-r", "--include", file_glob, "-n", pattern, path],
-            capture_output=True, text=True, timeout=15,
-        )
-        output = result.stdout
-        return (output[:8_000] + "\n[... truncated]") if len(output) > 8_000 else output or "(no matches)"
-    except Exception as e:
-        return f"Error searching: {e}"
-
-
-def _dispatch(tool_name: str, tool_input: dict) -> str:
-    if tool_name == "read_file":
-        return _read_file(tool_input.get("path", ""))
-    if tool_name == "write_file":
-        return _write_file(tool_input.get("path", ""), tool_input.get("content", ""))
-    if tool_name == "run_shell":
-        return _run_shell(tool_input.get("command", ""), tool_input.get("working_dir"), tool_input.get("env"))
-    if tool_name == "search_code":
-        return _search_code(tool_input.get("pattern", ""), tool_input.get("path", "."), tool_input.get("file_glob", "*"))
-    return f"Unknown tool: {tool_name}"
+def _exec(sandbox, *args: str) -> str:
+    proc = sandbox.exec(*args)
+    out = proc.stdout.read()
+    err = proc.stderr.read()
+    proc.wait()
+    if isinstance(out, bytes):
+        out = out.decode("utf-8", errors="replace")
+    if isinstance(err, bytes):
+        err = err.decode("utf-8", errors="replace")
+    return out + err
 
 
 def main() -> None:
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            msg = json.loads(line)
-        except json.JSONDecodeError:
-            sys.stdout.write(json.dumps({"result": "Error: invalid JSON"}) + "\n")
+    import modal  # type: ignore[import]
+
+    app = modal.App.lookup("conduct-sandbox", create_if_missing=True)
+    image = (
+        modal.Image.debian_slim()
+        .apt_install("git", "curl", "wget", "unzip", "python3", "python3-pip", "nodejs", "npm")
+    )
+    sandbox = modal.Sandbox.create(app=app, image=image, timeout=3600)
+    working_dir = "/tmp"
+
+    try:
+        for raw in sys.stdin:
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                msg = json.loads(raw)
+            except json.JSONDecodeError:
+                sys.stdout.write(json.dumps({"result": "Error: invalid JSON"}) + "\n")
+                sys.stdout.flush()
+                continue
+
+            if msg.get("tool_name") == "__exit__":
+                break
+
+            tool_name = msg.get("tool_name", "")
+            tool_input = msg.get("tool_input", {})
+            result = _dispatch(sandbox, tool_name, tool_input, working_dir)
+
+            # working_dir is mutable across calls — track it here
+            if tool_name == "run_shell" and tool_input.get("working_dir"):
+                working_dir = tool_input["working_dir"]
+
+            sys.stdout.write(json.dumps({"result": result, "working_dir": working_dir}) + "\n")
             sys.stdout.flush()
-            continue
+    finally:
+        try:
+            sandbox.terminate()
+        except Exception:
+            pass
 
-        if msg.get("tool_name") == "__exit__":
-            break
 
-        tool_name = msg.get("tool_name", "")
-        tool_input = msg.get("tool_input", {})
-        result = _dispatch(tool_name, tool_input)
-        response = {"result": result, "working_dir": _working_dir}
-        sys.stdout.write(json.dumps(response) + "\n")
-        sys.stdout.flush()
+def _dispatch(sandbox, tool_name: str, tool_input: dict, working_dir: str) -> str:
+    if tool_name == "read_file":
+        path = tool_input.get("path", "")
+        if not path:
+            return "Error: missing required parameter 'path'"
+        out = _exec(sandbox, "bash", "-c", f"cat {shlex.quote(path)} 2>&1")
+        return (out[:20_000] + "\n[... truncated]") if len(out) > 20_000 else out
+
+    if tool_name == "write_file":
+        path = tool_input.get("path", "")
+        content = tool_input.get("content", "")
+        if not path:
+            return "Error: missing required parameter 'path'"
+        # Base64-encode content so arbitrary bytes survive shell quoting
+        b64 = base64.b64encode(content.encode()).decode()
+        script = (
+            f"import base64,os; p={path!r}; "
+            f"os.makedirs(os.path.dirname(os.path.abspath(p)),exist_ok=True); "
+            f"data=base64.b64decode({b64!r}); open(p,'wb').write(data); "
+            f"print(f'Written {{len(data)}} bytes to {{p}}')"
+        )
+        out = _exec(sandbox, "python3", "-c", script)
+        return out.strip() or f"Written {len(content)} bytes to {path}"
+
+    if tool_name == "run_shell":
+        command = tool_input.get("command", "")
+        if not command:
+            return "Error: missing required parameter 'command'"
+        for pattern in _FORBIDDEN_SHELL_PATTERNS:
+            if re.search(pattern, command):
+                return f"Refused: command matches forbidden pattern '{pattern}'"
+        wd = tool_input.get("working_dir") or working_dir
+        env = tool_input.get("env") or {}
+        env_prefix = " ".join(f"{k}={shlex.quote(str(v))}" for k, v in env.items())
+        full_cmd = f"cd {shlex.quote(wd)} && {(env_prefix + ' ') if env_prefix else ''}{command}"
+        out = _exec(sandbox, "bash", "-c", full_cmd)
+        return (out[:10_000] + "\n[... truncated]") if len(out) > 10_000 else out or "(no output)"
+
+    if tool_name == "search_code":
+        pattern = tool_input.get("pattern", "")
+        if not pattern:
+            return "Error: missing required parameter 'pattern'"
+        path = tool_input.get("path", ".")
+        file_glob = tool_input.get("file_glob", "*")
+        cmd = f"grep -r --include={shlex.quote(file_glob)} -n {shlex.quote(pattern)} {shlex.quote(path)}"
+        out = _exec(sandbox, "bash", "-c", cmd)
+        return (out[:8_000] + "\n[... truncated]") if len(out) > 8_000 else out or "(no matches)"
+
+    return f"Unknown tool: {tool_name}"
 
 
 if __name__ == "__main__":
