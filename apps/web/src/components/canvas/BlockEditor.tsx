@@ -83,6 +83,7 @@ function GitHubWebhookStatusPanel({
 }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [sharedWith, setSharedWith] = useState<string | null>(null)
 
   async function authHeaders() {
     const h: Record<string, string> = { "Content-Type": "application/json" }
@@ -94,13 +95,14 @@ function GitHubWebhookStatusPanel({
   }
 
   async function register() {
-    setBusy(true); setErr(null)
+    setBusy(true); setErr(null); setSharedWith(null)
     try {
       const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/webhook`, {
         method: "POST", headers: await authHeaders(),
       })
       const data = await r.json()
       if (!r.ok) { setErr(data.detail || `HTTP ${r.status}`); return }
+      if (data.shared) setSharedWith(data.shared_with_name ?? "another agent")
       onWebhookChange?.(data.github_hook_id, data.github_hook_repo)
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Network error")
@@ -132,6 +134,7 @@ function GitHubWebhookStatusPanel({
           <p className={`font-semibold ${registered ? "text-emerald-700" : "text-amber-700"}`}>
             {registered ? `✓ Registered on ${hookRepo}` : "Not registered — GitHub won't send events"}
           </p>
+          {sharedWith && <p className="text-stone-500 mt-0.5">Shared with &ldquo;{sharedWith}&rdquo;</p>}
           {err && <p className="text-red-600 mt-0.5">{err}</p>}
         </div>
         <div className="flex gap-1 shrink-0">
@@ -167,6 +170,7 @@ function GitHubWebhookStatusPanel({
               : <span>Set a repository in the trigger config first</span>
             }
           </p>
+          {sharedWith && <p className="text-stone-500 mt-1">Webhook shared with &ldquo;{sharedWith}&rdquo; — no duplicate hook created on GitHub.</p>}
           {err && <p className="text-red-600 mt-1">{err}</p>}
         </div>
         <div className="flex flex-col gap-1 shrink-0">
