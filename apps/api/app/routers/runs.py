@@ -471,6 +471,7 @@ def list_all_runs(
     workspace_id: str = Depends(get_workspace_id),
     _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
     status: str | None = None,
+    project_id: str | None = None,
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ):
@@ -486,6 +487,8 @@ def list_all_runs(
     )
     if status:
         q = q.filter(Run.status == status)
+    if project_id:
+        q = q.filter(Workflow.project_id == project_id)
     results = []
     for run, wf_id, wf_name, proj_id, proj_name in q.offset(offset).limit(limit).all():
         out = RunWithWorkflowOut(
