@@ -158,6 +158,13 @@ _GITHUB_WEBHOOK_EVENTS: dict[str, list[str]] = {
 }
 
 
+def _stamp(workflow) -> None:
+    """Set transient fields required by WorkflowDetailOut before returning."""
+    if not hasattr(workflow, "webhook_error") or workflow.webhook_error is None:  # type: ignore[attr-defined]
+        workflow.webhook_error = None  # type: ignore[attr-defined]
+    workflow.github_webhook = (workflow.playbook_slug or "") in _GITHUB_WEBHOOK_EVENTS  # type: ignore[attr-defined]
+
+
 def _register_git_webhook(
     token: str,
     repo: str,
@@ -515,7 +522,7 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
         db.commit()
 
     db.refresh(workflow)
-    workflow.webhook_error = None  # type: ignore[attr-defined]
+    _stamp(workflow)
     return workflow
 
 
@@ -527,6 +534,7 @@ def get_workflow(workflow_id: UUID, db: Session = Depends(get_db), workspace_id:
     ).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
+    _stamp(workflow)
     return workflow
 
 
@@ -569,6 +577,7 @@ def update_workflow(
 
         # Compile in background — doesn't block the save response
         background_tasks.add_task(_run_compiler, version.id, graph_dict)
+        _stamp(workflow)
         return workflow
 
     db.commit()
@@ -576,6 +585,7 @@ def update_workflow(
     audit(db, workspace_id, "workflow.created",
           resource_type="workflow", resource_id=str(workflow.id),
           metadata={"name": workflow.name, "template": body.template})
+    _stamp(workflow)
     return workflow
 
 
@@ -694,7 +704,7 @@ def register_workflow_webhook(
     audit(db, workspace_id, "workflow.webhook_registered",
           resource_type="workflow", resource_id=str(workflow_id),
           metadata={"repo": workflow.github_hook_repo})
-    workflow.webhook_error = None  # type: ignore[attr-defined]
+    _stamp(workflow)
     return workflow
 
 
@@ -1173,6 +1183,7 @@ def compile_workflow_now(
     version.compiled_artifacts = artifacts
     db.commit()
     db.refresh(workflow)
+    _stamp(workflow)
     return workflow
 
 

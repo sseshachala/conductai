@@ -24,6 +24,7 @@ interface BlockEditorProps {
   selectedEnvId?: string
   githubHookRepo?: string | null
   githubHookId?: string | null
+  githubWebhook?: boolean
   playbookSlug?: string | null
   onWebhookChange?: (hookId: string | null, hookRepo: string | null) => void
 }
@@ -597,6 +598,7 @@ export default function BlockEditor({
   selectedEnvId,
   githubHookRepo,
   githubHookId,
+  githubWebhook,
   playbookSlug,
   onWebhookChange,
 }: BlockEditorProps) {
@@ -1012,7 +1014,7 @@ export default function BlockEditor({
                         <p className="font-mono break-all text-violet-700 text-[11px]">
                           {displayUrl}
                         </p>
-                        {githubHookRepo
+                        {githubHookRepo && githubWebhook
                           ? <GitHubWebhookStatusPanel
                               workflowId={workflowId}
                               hookId={githubHookId ?? null}
