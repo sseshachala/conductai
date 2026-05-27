@@ -162,6 +162,8 @@ interface BlockRow {
   diffStat?: string
   toolCalls?: ToolCall[]
   budgetExhausted?: { turns: number; costUsd: number }
+  model?: string
+  routingReason?: string
 }
 
 const FILE_ACTION_COLOR: Record<string, string> = {
@@ -203,6 +205,12 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
           {row.type === "brain" && row.costUsd !== undefined && row.costUsd > 0 && (
             <span className="text-[9px] text-stone-400 font-mono bg-stone-50 border border-stone-200 px-1.5 py-0.5 rounded ml-1">
               {row.inputTokens?.toLocaleString()} tok · ${row.costUsd.toFixed(4)}
+            </span>
+          )}
+          {/* Model badge */}
+          {row.type === "brain" && row.model && (
+            <span title={row.routingReason} className="text-[9px] text-violet-600 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded font-medium cursor-default">
+              {row.model.replace("claude-", "").replace(/-\d{8}$/, "")}
             </span>
           )}
           {dur && <span className="text-xs text-stone-400 ml-auto">{dur}</span>}
@@ -426,6 +434,8 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
         if (typeof out.cost_usd === "number") blockMap[ev.block_id].costUsd = out.cost_usd
         if (typeof out.input_tokens === "number") blockMap[ev.block_id].inputTokens = out.input_tokens
         if (typeof out.output_tokens === "number") blockMap[ev.block_id].outputTokens = out.output_tokens
+        if (typeof out.model === "string") blockMap[ev.block_id].model = out.model
+        if (typeof out.routing_reason === "string") blockMap[ev.block_id].routingReason = out.routing_reason
         if (Array.isArray(out.files_changed)) blockMap[ev.block_id].filesChanged = out.files_changed as FileChanged[]
         if (typeof out.diff_stat === "string") blockMap[ev.block_id].diffStat = out.diff_stat
         // Brain blocks output pr_url as JSON on the last line of their text output.
