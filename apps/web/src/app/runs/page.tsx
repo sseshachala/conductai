@@ -98,27 +98,28 @@ function RunTable({ runs }: { runs: Run[] }) {
 }
 
 function ByAgentView({ runs }: { runs: Run[] }) {
-  const grouped = runs.reduce<Record<string, { wfId: string; runs: Run[] }>>((acc, r) => {
-    if (!acc[r.workflow_name]) acc[r.workflow_name] = { wfId: r.workflow_id, runs: [] }
-    acc[r.workflow_name].runs.push(r)
+  // Group by workflow_id to avoid merging agents with identical names across projects
+  const grouped = runs.reduce<Record<string, { name: string; projectName: string | null; runs: Run[] }>>((acc, r) => {
+    if (!acc[r.workflow_id]) acc[r.workflow_id] = { name: r.workflow_name, projectName: r.project_name, runs: [] }
+    acc[r.workflow_id].runs.push(r)
     return acc
   }, {})
 
   return (
     <div className="space-y-6">
-      {Object.entries(grouped).map(([name, { wfId, runs: agentRuns }]) => {
+      {Object.entries(grouped).map(([wfId, { name, projectName, runs: agentRuns }]) => {
         const latest = agentRuns[0]
         const s = statusStyle(latest.status)
         return (
-          <div key={name} className="rounded-xl border border-stone-200 bg-white overflow-hidden">
+          <div key={wfId} className="rounded-xl border border-stone-200 bg-white overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-stone-100 bg-stone-50">
               <div className="flex items-center gap-2">
                 <Link href={`/workflows/${wfId}`} onClick={e => e.stopPropagation()}
                   className="font-medium text-stone-900 hover:text-indigo-600 transition-colors text-sm">
                   {name}
                 </Link>
-                {latest.project_name && (
-                  <span className="text-[10px] text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded-full">{latest.project_name}</span>
+                {projectName && (
+                  <span className="text-[10px] text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded-full">{projectName}</span>
                 )}
               </div>
               <div className="flex items-center gap-3">
@@ -190,12 +191,12 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
     return true
   })
 
-  const running   = runs.filter(r => r.status === "running").length
-  const waiting   = runs.filter(r => r.status === "paused").length
-  const today     = new Date(); today.setHours(0, 0, 0, 0)
-  const todayRuns = runs.filter(r => new Date(r.created_at) >= today)
-  const failedToday    = todayRuns.filter(r => r.status === "failed").length
-  const succeededToday = todayRuns.filter(r => r.status === "succeeded").length
+  const running     = runs.filter(r => r.status === "running").length
+  const waiting     = runs.filter(r => r.status === "paused").length
+  const today       = new Date(); today.setHours(0, 0, 0, 0)
+  const todayRuns   = runs.filter(r => new Date(r.created_at) >= today)
+  const failedToday = todayRuns.filter(r => r.status === "failed").length
+  const needsReview = runs.filter(r => needsAttention(r.status)).length
 
   const attentionRuns = filtered.filter(r => needsAttention(r.status))
   const activeRuns    = filtered.filter(r => isActive(r.status))
@@ -228,10 +229,10 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
         {/* Top strip */}
         <div className="grid grid-cols-4 gap-3 mb-6">
           {[
-            { label: "Running",        value: running,        color: "text-blue-600",  bg: "bg-blue-50",   border: "border-blue-100" },
-            { label: "Waiting",        value: waiting,        color: "text-amber-600", bg: "bg-amber-50",  border: "border-amber-100" },
-            { label: "Failed today",   value: failedToday,    color: "text-red-600",   bg: "bg-red-50",    border: "border-red-100" },
-            { label: "Succeeded today",value: succeededToday, color: "text-green-600", bg: "bg-green-50",  border: "border-green-100" },
+            { label: "Running",      value: running,     color: "text-blue-600",  bg: "bg-blue-50",   border: "border-blue-100" },
+            { label: "Waiting",      value: waiting,     color: "text-amber-600", bg: "bg-amber-50",  border: "border-amber-100" },
+            { label: "Failed today", value: failedToday, color: "text-red-600",   bg: "bg-red-50",    border: "border-red-100" },
+            { label: "Needs review", value: needsReview, color: "text-orange-600",bg: "bg-orange-50", border: "border-orange-100" },
           ].map(({ label, value, color, bg, border }) => (
             <div key={label} className={`rounded-xl border ${border} ${bg} px-4 py-3`}>
               <div className={`text-2xl font-bold ${color}`}>{loading ? "—" : value}</div>

@@ -133,6 +133,8 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
           </div>
         ) : !data ? (
           <p className="text-stone-400 text-sm">Could not load dashboard.</p>
+        ) : data.agent_health.length === 0 ? (
+          <EmptyChecklist />
         ) : (
           <div className="space-y-10">
 
@@ -169,7 +171,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
 
             {/* 2 — Outcomes This Week */}
             <section>
-              <SectionHeader label="Outcomes" sub="This week" />
+              <SectionHeader label="Outcomes" sub="Last 7 days" />
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <OutcomeCard label="PRs opened"             value={data.outcomes.prs_opened}             />
                 <OutcomeCard label="Issues triaged"         value={data.outcomes.issues_triaged}         />
@@ -191,7 +193,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
 
             {/* 3 — Agent Health */}
             <section>
-              <SectionHeader label="Agent Health" />
+              <SectionHeader label="Agent Health" sub="All time" />
               {data.agent_health.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-stone-300 p-10 text-center">
                   <p className="text-stone-400 text-sm">
@@ -299,6 +301,34 @@ function SectionHeader({ label, sub, href, linkLabel }: {
       {href && linkLabel && (
         <Link href={href} className="text-xs text-stone-400 hover:text-stone-700 transition-colors">{linkLabel}</Link>
       )}
+    </div>
+  )
+}
+
+function EmptyChecklist() {
+  const steps = [
+    { label: "Install a starter playbook", href: "/marketplace", cta: "Browse playbooks →" },
+    { label: "Add credentials (GitHub token, Slack)", href: "/settings/integrations", cta: "Open integrations →" },
+    { label: "Run a test trigger", href: "/runs", cta: "Go to Runs →" },
+    { label: "Review the AI trace", href: "/runs", cta: "Open a run →" },
+  ]
+  return (
+    <div className="rounded-xl border border-stone-200 bg-white px-8 py-10 max-w-lg mx-auto mt-8">
+      <h2 className="text-sm font-semibold text-stone-900 mb-1">Get started with Conduct</h2>
+      <p className="text-xs text-stone-400 mb-6">No agents yet. Follow these steps to automate your first engineering task.</p>
+      <ol className="space-y-4">
+        {steps.map((s, i) => (
+          <li key={i} className="flex items-center gap-4">
+            <span className="w-6 h-6 rounded-full bg-stone-100 text-stone-400 text-xs font-bold flex items-center justify-center shrink-0">
+              {i + 1}
+            </span>
+            <div className="flex-1">
+              <p className="text-sm text-stone-700">{s.label}</p>
+            </div>
+            <Link href={s.href} className="text-xs text-stone-500 hover:text-stone-900 transition-colors shrink-0">{s.cta}</Link>
+          </li>
+        ))}
+      </ol>
     </div>
   )
 }
