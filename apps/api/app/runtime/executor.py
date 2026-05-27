@@ -580,15 +580,17 @@ def _execute_brain(
     # than running locally on the worker or in Modal.
     remote_host = _resolve_remote_host(block, state, credentials or {})
 
-    def _local_dispatch(tool_name: str, tool_input: dict) -> str:
-        # Merge credential placeholders into run_shell env, then swap placeholders
-        # for real values immediately before subprocess execution. Real values never
-        # appear in tool_input (which is logged to DB) — only in the subprocess env.
+    from app.runtime.sandbox_session import create_session as _create_session
+    session = _create_session(remote_host, credentials)
+
+    def _dispatch_with_creds(tool_name: str, tool_input: dict) -> str:
+        # Swap credential placeholders for real values in subprocess env only.
+        # Placeholders appear in tool_input (logged to DB); real values never do.
         if tool_name == "run_shell" and cred_env:
             merged_env = {**cred_env, **tool_input.get("env", {})}
             resolved_env = {k: _cred_real.get(v, v) for k, v in merged_env.items()}
             tool_input = {**tool_input, "env": resolved_env}
-        return _dispatch_tool(tool_name, tool_input, remote_host=remote_host, credentials=credentials)
+        return session.dispatch(tool_name, tool_input)
 
     context = json.dumps({k: v for k, v in state.items() if not k.startswith("__")}, default=str)[:4000]
 
@@ -636,36 +638,22 @@ def _execute_brain(
 
     environment_preamble = (
         "EXECUTION ENVIRONMENT:\n"
-        "CRITICAL: Each run_shell call gets a BRAND NEW isolated container — /tmp is EMPTY at the\n"
-        "start of every single tool call. Files from a previous run_shell call DO NOT persist.\n"
+        "You are running inside a PERSISTENT session — files and directories you create in one\n"
+        "run_shell call ARE available in subsequent calls within this task. Use multiple focused\n"
+        "tool calls rather than one giant shell script when it makes the work clearer.\n"
         "Pre-installed: git, python3, pip3, curl, wget, node, npm, unzip.\n"
         "\n"
-        "CRITICAL — DO NOT waste turns checking if tools exist:\n"
-        "- Do NOT run: which git, apt-get, find / -name git, ls /usr/bin/git\n"
-        "- Do NOT run: apt-get install anything\n"
-        "- Do NOT split clone + work across multiple run_shell calls — the clone will be GONE.\n"
+        "DO NOT waste turns checking if tools exist:\n"
+        "- Do NOT run: which git, apt-get install anything, find / -name git\n"
         "\n"
-        "STANDARD REPO SETUP — do ALL of the following in ONE single run_shell call:\n"
-        "Option A (preferred — git):\n"
-        "  Write a bash script that in one call does: clone → configure git → checkout branch\n"
-        "  → read/edit files → git add → git commit → git push → open PR via curl.\n"
-        "  Example one-liner chain:\n"
-        "    git clone https://$GIT_TOKEN@github.com/<owner>/<repo>.git /tmp/repo &&\n"
-        "    cd /tmp/repo && git config user.email 'bot@conductai.ai' && git config user.name 'Conduct AI' &&\n"
-        "    git checkout -b fix/<slug> &&\n"
-        "    <edit files with python3 or sed> &&\n"
-        "    git add -A && git commit -m 'fix: ...' &&\n"
-        "    git push https://$GIT_TOKEN@github.com/<owner>/<repo>.git fix/<slug> &&\n"
-        "    curl -s -X POST https://api.github.com/repos/<owner>/<repo>/pulls \\\n"
-        "      -H 'Authorization: token '$GIT_TOKEN -H 'Content-Type: application/json' \\\n"
-        "      -d '{\"title\":\"...\",\"head\":\"fix/<slug>\",\"base\":\"main\",\"body\":\"...\"}'\n"
+        "STANDARD REPO SETUP — recommended approach across multiple calls:\n"
+        "  Turn 1: git clone https://$GIT_TOKEN@github.com/<owner>/<repo>.git /tmp/repo\n"
+        "  Turn 2: cd /tmp/repo && git config user.email 'bot@conductai.ai' && git checkout -b fix/<slug>\n"
+        "  Turn 3+: read/edit files, git add, git commit\n"
+        "  Final: git push && open PR via curl or gh CLI\n"
         "\n"
-        "Option B (fallback — if git clone fails on first attempt, switch immediately):\n"
-        "  Use python3 urllib to: GET file contents, PATCH/PUT changes, POST branch, POST PR.\n"
-        "  Complete ALL steps in one python3 script: read files, apply changes, commit, create PR.\n"
-        "\n"
-        "Do NOT switch between options mid-task. Pick one and finish completely.\n"
-        "Do NOT split work across multiple run_shell calls — you will lose all state."
+        "Fallback (if git clone fails): use python3 urllib to GET/PATCH/PUT via GitHub API.\n"
+        "Do NOT switch between approaches mid-task."
     )
 
     # BYO key: workspace credential takes precedence over platform env var
@@ -682,7 +670,6 @@ def _execute_brain(
         max_turns = int(state.get("__max_turns", 20))
         total_input_tokens = 0
         total_output_tokens = 0
-        working_dir: str | None = None  # track if Brain cloned a repo
         full_system = f"{environment_preamble}\n\n{system_prompt}\n\n{sufficiency_instruction}"
 
         while turns < max_turns:
@@ -728,10 +715,7 @@ def _execute_brain(
                 # Git-diff evidence runs on the worker host. When the work happened
                 # on a remote droplet we have nothing to inspect locally; the Brain's
                 # final text is expected to summarise the diff in that case.
-                if remote_host:
-                    files_changed, diff_stat = [], ""
-                else:
-                    files_changed, diff_stat = _extract_git_evidence(working_dir)
+                files_changed, diff_stat = session.capture_artifacts()
                 if db and run_id:
                     from app.runtime.sandbox import _modal_available
                     if _modal_available():
@@ -765,6 +749,7 @@ def _execute_brain(
                             result.update(_extracted)
                     except Exception:
                         pass
+                session.close()
                 return result
 
             # Append assistant message
@@ -790,11 +775,8 @@ def _execute_brain(
                                  tool_input=dict(tc.input) if tc.input else None,
                                  tool_use_id=tc.id)
 
-                # Track working dir if Brain runs shell commands
-                if tc.name == "run_shell" and tc.input.get("working_dir"):
-                    working_dir = tc.input["working_dir"]
                 try:
-                    result_content = _local_dispatch(tc.name, tc.input)
+                    result_content = _dispatch_with_creds(tc.name, tc.input)
                 except RuntimeError as sandbox_err:
                     if db and run_id:
                         _emit(db, run_id, block_id, "brain_tool_call", {
@@ -822,10 +804,7 @@ def _execute_brain(
             messages.append({"role": "user", "content": tool_results})
 
         cost_usd = round((total_input_tokens * 3 + total_output_tokens * 15) / 1_000_000, 6)
-        if remote_host:
-            files_changed, diff_stat = [], ""
-        else:
-            files_changed, diff_stat = _extract_git_evidence(working_dir)
+        files_changed, diff_stat = session.capture_artifacts()
         if db and run_id:
             from app.runtime.sandbox import _modal_available
             if _modal_available():
@@ -842,6 +821,7 @@ def _execute_brain(
                 "files_changed": files_changed,
                 "diff_stat": diff_stat,
             })
+        session.close()
         raise RuntimeError(
             f"Turn budget exhausted: agent did not reach end_turn after {max_turns} turns "
             f"({total_input_tokens} input / {total_output_tokens} output tokens, ${cost_usd:.4f})"
@@ -878,6 +858,7 @@ def _execute_brain(
                     result.update(_extracted)
             except Exception:
                 pass
+        session.close()
         return result
 
 
