@@ -388,15 +388,30 @@ def cmd_delete(args):
     server, workspace_id, api_key, token = _require_auth(args)
     hdrs = api.headers(workspace_id, token, "application/json", api_key)
     proj = _resolve_project(server, workspace_id, hdrs, args.name)
+    purge = getattr(args, "purge", False)
 
-    if not args.yes:
+    if purge:
+        print(f"{RED}{BOLD}⚠ PURGE mode — this will permanently delete ALL data for '{proj['name']}':')]{RESET}")
+        print(f"{RED}  · All runs, events, and workflow versions{RESET}")
+        print(f"{RED}  · Analytics and audit logs{RESET}")
+        print(f"{RED}  · API keys and environments{RESET}")
+        print(f"{RED}  This cannot be undone.{RESET}\n")
+        confirm = input(f"{YELLOW}Type the project name to confirm: {RESET}").strip()
+        if confirm != proj["name"]:
+            print("Cancelled — name did not match.")
+            return
+    elif not args.yes:
         confirm = input(f"{YELLOW}Delete project '{proj['name']}' and all its agents? Type 'yes' to confirm: {RESET}").strip().lower()
         if confirm != "yes":
             print("Cancelled.")
             return
 
-    api.req("DELETE", f"{server}/workspaces/{workspace_id}/projects/{proj['id']}", hdrs)
-    print(f"{GREEN}✓ Project '{proj['name']}' deleted.{RESET}")
+    url = f"{server}/workspaces/{workspace_id}/projects/{proj['id']}"
+    if purge:
+        url += "?purge=true"
+    api.req("DELETE", url, hdrs)
+    suffix = " (purged)" if purge else ""
+    print(f"{GREEN}✓ Project '{proj['name']}' deleted{suffix}.{RESET}")
 
 
 # ── Playbook commands ─────────────────────────────────────────────────────────
@@ -826,7 +841,8 @@ def main():
     delete_sub = delete_p.add_subparsers(dest="delete_type")
     delete_proj_p = delete_sub.add_parser("project", help="Delete a project and all its agents")
     delete_proj_p.add_argument("name", help="Project name")
-    delete_proj_p.add_argument("--yes", action="store_true", help="Skip confirmation prompt")
+    delete_proj_p.add_argument("--yes",   action="store_true", help="Skip confirmation prompt")
+    delete_proj_p.add_argument("--purge", action="store_true", help="Also erase analytics, audit logs, API keys, and environments (irreversible)")
 
     # conduct reset <name>
     reset_p = sub.add_parser("reset", help="Delete all agents in a project (clean slate)")
