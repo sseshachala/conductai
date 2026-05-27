@@ -245,6 +245,27 @@ def delete_project(
     if not row:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    # Deregister any GitHub webhooks before cascade-deleting workflows
+    hooked = db.execute(text(
+        "SELECT github_hook_id, github_hook_repo, environment_id FROM workflows "
+        "WHERE workspace_id = :pid AND github_hook_id IS NOT NULL AND github_hook_repo IS NOT NULL"
+    ), {"pid": project_id}).fetchall()
+    if hooked:
+        try:
+            from app.routers.workflows import _deregister_git_webhook
+            from app.routers.credentials import _git_token
+            for row in hooked:
+                try:
+                    env_id = str(row.environment_id) if row.environment_id else None
+                    token, provider = _git_token(project_id, db, env_id)
+                    _deregister_git_webhook(token, row.github_hook_repo, row.github_hook_id, provider=provider)
+                except Exception as e:
+                    import logging as _logging
+                    _logging.getLogger(__name__).warning("Webhook deregister skipped for %s: %s", row.github_hook_repo, e)
+        except Exception as e:
+            import logging as _logging
+            _logging.getLogger(__name__).warning("Webhook deregistration pass failed: %s", e)
+
     db.execute(text("""
         DELETE FROM run_events WHERE run_id IN (
             SELECT r.id FROM runs r
