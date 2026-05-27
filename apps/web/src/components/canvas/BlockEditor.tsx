@@ -508,9 +508,10 @@ export default function BlockEditor({
 
     // Trigger repo allowlist — multi-select typeahead from connected GitHub account
     if (field.key === "config.repo_allowlist") {
+      const allowlistVal = (val as string) || (githubHookRepo ?? "")
       return (
         <GitHubRepoAllowlistField
-          value={(val as string) || ""}
+          value={allowlistVal}
           getToken={getToken}
           environmentId={selectedEnvId}
           onChange={v => handleFieldChange(field.key, v)}
