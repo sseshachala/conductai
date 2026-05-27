@@ -74,7 +74,13 @@ export default function DocsPage() {
 
         {/* Sidebar nav */}
         <nav className="w-52 shrink-0 hidden md:block sticky top-8 self-start">
-          <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-3">Getting started</p>
+          <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-3">How it works</p>
+          <ul className="space-y-1 text-sm text-stone-600">
+            <li><a href="#how-it-works" className="hover:text-stone-900 transition-colors block py-0.5">Architecture</a></li>
+            <li><a href="#threat-model" className="hover:text-stone-900 transition-colors block py-0.5">Security & threat model</a></li>
+          </ul>
+
+          <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mt-6 mb-3">Getting started</p>
           <ul className="space-y-1 text-sm text-stone-600">
             <li><a href="#overview" className="hover:text-stone-900 transition-colors block py-0.5">Overview</a></li>
             <li><a href="#environments" className="hover:text-stone-900 transition-colors block py-0.5">Environments</a></li>
@@ -111,6 +117,170 @@ export default function DocsPage() {
 
         {/* Content */}
         <main className="flex-1 min-w-0 space-y-16">
+
+          {/* ── How Conduct works ── */}
+          <section id="how-it-works">
+            <h1 className="text-3xl font-bold text-stone-900 mb-3">How Conduct works</h1>
+            <p className="text-stone-600 leading-relaxed text-base mb-10">
+              Conduct is a playbook layer for AI agents. You install a YAML playbook, configure it once,
+              and it runs automatically — triggered by a webhook, on a schedule, or on demand.
+              Every run is traced, every outcome is recorded.
+            </p>
+
+            <div className="space-y-0">
+              {[
+                {
+                  step: "1",
+                  title: "Playbook",
+                  body: "A YAML file that defines what an agent does — its blocks (AI reasoning, tool calls, approval gates), its triggers, and its inputs. Playbooks live in the Conduct marketplace and can be customized.",
+                  detail: "Each block is typed: brain (LLM reasoning), tool_call (GitHub, Slack, Linear), approval (human gate), or condition (branching logic). The graph is editable on the canvas.",
+                },
+                {
+                  step: "2",
+                  title: "Install",
+                  body: "Installing a playbook creates a workflow in your workspace. Conduct generates the agent graph, registers any GitHub webhooks, and stores the resolved inputs. No code to write.",
+                  detail: "Under the hood: a WorkflowVersion record is created from the playbook YAML. The YAML is interpreted at install time — the canvas shows the live graph.",
+                },
+                {
+                  step: "3",
+                  title: "Configure",
+                  body: "Assign an environment to the agent. An environment holds your credentials (GitHub PAT, Slack token, Linear key, LLM API key). One environment can be shared across many agents.",
+                  detail: "Credentials are encrypted with AES-256-GCM before storage. They are decrypted in-process at runtime, scoped to the agent's workspace, and never returned to the client.",
+                },
+                {
+                  step: "4",
+                  title: "Run",
+                  body: "A run is created by a trigger: a GitHub webhook (pull_request, issues), a schedule (cron), a manual click in the UI, or a POST to the API. Runs execute the graph block by block.",
+                  detail: "The executor advances one block at a time. If a block hits an approval gate, the run is paused and waits for a human decision before proceeding.",
+                },
+                {
+                  step: "5",
+                  title: "Trace",
+                  body: "Every run streams live events: block_started, brain_tool_call, block_completed, run_paused. The run detail page shows the full trace in real time via Server-Sent Events.",
+                  detail: "Events are written to run_events and are immutable. You can replay any run's trace after the fact — nothing is discarded.",
+                },
+                {
+                  step: "6",
+                  title: "Outcome",
+                  body: "When a run completes, Conduct writes a semantic outcome: pr_opened, review_completed, issue_triaged, incident_investigated. Outcomes power the Dashboard metrics.",
+                  detail: "The outcome is derived from the playbook slug and the run's state (e.g. a pr_url in the state means a PR was opened). Pre-outcome runs use heuristic fallback — historical counts never drop.",
+                },
+                {
+                  step: "7",
+                  title: "Audit",
+                  body: "Every tool call, decision, and output is in the run_events log. The audit trail is immutable and workspace-scoped — you can always answer 'what did the agent do and why?'",
+                  detail: "Run events include the full payload for each action: the GitHub API call, the PR number opened, the Slack message sent. Nothing is summarized away.",
+                },
+              ].map(({ step, title, body, detail }) => (
+                <div key={step} className="flex gap-6 pb-8 relative">
+                  <div className="flex flex-col items-center">
+                    <div className="w-8 h-8 rounded-full bg-stone-900 text-white text-sm font-bold flex items-center justify-center shrink-0 z-10">
+                      {step}
+                    </div>
+                    {parseInt(step) < 7 && (
+                      <div className="w-px flex-1 bg-stone-200 mt-2" />
+                    )}
+                  </div>
+                  <div className="pt-1 pb-2">
+                    <p className="font-semibold text-stone-900 mb-1">{title}</p>
+                    <p className="text-sm text-stone-600 leading-relaxed mb-2">{body}</p>
+                    <p className="text-xs text-stone-400 leading-relaxed">{detail}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* ── Security & Threat Model ── */}
+          <section id="threat-model">
+            <SectionHeading id="threat-model">Security & threat model</SectionHeading>
+            <p className="text-stone-500 text-sm mb-6">
+              What Conduct protects today, what it does not, and where we're headed.
+              We believe you deserve an honest answer to "is it safe to give this agent my GitHub token?"
+            </p>
+
+            <SubHeading>What we protect</SubHeading>
+            <div className="rounded-xl border border-stone-200 divide-y divide-stone-100 text-sm mb-6">
+              {[
+                {
+                  label: "Credentials encrypted at rest",
+                  detail: "Every secret is encrypted with AES-256-GCM before writing to the database. The encryption key is an env var — never stored alongside the ciphertext.",
+                },
+                {
+                  label: "Workspace isolation",
+                  detail: "Every query is scoped to workspace_id. A credential, agent, or run from workspace A is never accessible to workspace B — enforced at the ORM layer on every request.",
+                },
+                {
+                  label: "Human approval gates",
+                  detail: "Any block can be marked as an approval gate. The run pauses and cannot proceed until an authorized user approves or rejects. Useful for 'open the PR, but don't merge without me'.",
+                },
+                {
+                  label: "Immutable audit log",
+                  detail: "run_events are append-only. Every tool call, LLM decision, and output is recorded with a timestamp. There is no delete path for run events.",
+                },
+                {
+                  label: "HMAC-validated webhooks",
+                  detail: "GitHub webhook payloads are validated with HMAC-SHA256 before the run is created. Unauthenticated payloads are rejected with 401.",
+                },
+                {
+                  label: "Hashed API keys",
+                  detail: "API keys are bcrypt-hashed before storage. The plaintext is shown once at creation and never stored. A compromised database does not expose working keys.",
+                },
+              ].map(({ label, detail }) => (
+                <div key={label} className="px-4 py-3">
+                  <p className="font-medium text-stone-800 mb-0.5">{label}</p>
+                  <p className="text-stone-500 text-xs leading-relaxed">{detail}</p>
+                </div>
+              ))}
+            </div>
+
+            <SubHeading>What we do not protect (yet)</SubHeading>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 divide-y divide-amber-100 text-sm mb-6">
+              {[
+                {
+                  label: "Credential mediation",
+                  detail: "Credentials are decrypted and passed to the executor at runtime. The executor sees the plaintext token. A compromised executor process could exfiltrate it. Mitigation: the executor runs server-side, not client-side.",
+                },
+                {
+                  label: "Network egress allowlist",
+                  detail: "Agents can call any external URL during a run (GitHub, Slack, custom APIs). There is no per-environment allowlist today. A misconfigured or malicious playbook could make arbitrary outbound requests.",
+                },
+                {
+                  label: "Per-run sandbox isolation",
+                  detail: "All runs share the same executor process. A run that crashes or leaks memory affects other concurrent runs. Isolation is at the database/workspace layer, not the OS/process layer.",
+                },
+                {
+                  label: "Playbook static analysis",
+                  detail: "Conduct does not analyze a playbook's tool calls before you install it. You should review the YAML before installing third-party or custom playbooks — especially what tools they call and what inputs they send.",
+                },
+              ].map(({ label, detail }) => (
+                <div key={label} className="px-4 py-3">
+                  <p className="font-medium text-amber-900 mb-0.5">{label}</p>
+                  <p className="text-amber-800 text-xs leading-relaxed">{detail}</p>
+                </div>
+              ))}
+            </div>
+
+            <SubHeading>Long-term direction</SubHeading>
+            <div className="rounded-xl border border-stone-200 divide-y divide-stone-100 text-sm mb-4">
+              {[
+                ["Credential proxy", "Agents call a proxy that holds the token — the executor never sees plaintext. Revocation and rate-limiting become centralizable."],
+                ["Egress allowlist per environment", "Each environment declares which hostnames agents are allowed to call. Requests outside the allowlist are rejected before execution."],
+                ["Per-run process isolation", "Each run gets an isolated process or WASM sandbox. A crashing run cannot affect others and cannot access another run's memory."],
+                ["Playbook supply chain analysis", "Static analysis of YAML before install: what tools are called, what data is read, what external endpoints are contacted. Surfaced as a risk summary before you confirm."],
+              ].map(([label, detail]) => (
+                <div key={label} className="flex gap-4 px-4 py-3">
+                  <span className="font-medium text-stone-700 w-48 shrink-0">{label}</span>
+                  <span className="text-stone-500 text-xs leading-relaxed">{detail}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-xl bg-stone-100 border border-stone-200 px-4 py-3 text-sm text-stone-600">
+              <strong>Questions or concerns?</strong> Email <a href="mailto:security@conductai.ai" className="text-indigo-600 hover:underline">security@conductai.ai</a>.
+              For responsible disclosure, please include a description of the issue and steps to reproduce.
+            </div>
+          </section>
 
           {/* ── Overview ── */}
           <section id="overview">
