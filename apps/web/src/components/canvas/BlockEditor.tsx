@@ -948,18 +948,6 @@ export default function BlockEditor({
             </div>
           )}
 
-          {/* GitHub trigger — webhook status panel */}
-          {blockType === "trigger" && triggerEventType === "github_issue_labeled" && (
-            <GitHubWebhookStatusPanel
-              workflowId={workflowId}
-              hookId={githubHookId ?? null}
-              hookRepo={githubHookRepo ?? null}
-              getToken={getToken}
-              onWebhookChange={onWebhookChange}
-            />
-          )}
-
-
           {/* Secret warning */}
           {(() => {
             const leaked = findHardcodedSecrets(getNestedValue(blockData, "config.params"))
@@ -1068,6 +1056,19 @@ export default function BlockEditor({
               )
             })}
           </div>
+        </div>
+      )}
+
+      {/* GitHub issue-labeled trigger — webhook register panel (below config fields) */}
+      {blockType === "trigger" && triggerEventType === "github_issue_labeled" && (
+        <div className="px-4 pb-3">
+          <GitHubWebhookStatusPanel
+            workflowId={workflowId}
+            hookId={githubHookId ?? null}
+            hookRepo={githubHookRepo ?? null}
+            getToken={getToken}
+            onWebhookChange={onWebhookChange}
+          />
         </div>
       )}
 
