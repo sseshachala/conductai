@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useAuth } from "@clerk/nextjs"
+import { useSearchParams } from "next/navigation"
 import AppShell from "@/components/AppShell"
 import { statusStyle, needsAttention, isActive, formatTrigger, timeAgo, duration } from "@/lib/runUtils"
 
@@ -158,9 +159,11 @@ function RunsWithAuth() {
 }
 
 function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
+  const searchParams = useSearchParams()
   const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
-  const [view, setView] = useState<View>("all")
+  const initialView = (searchParams.get("view") as View | null) ?? "all"
+  const [view, setView] = useState<View>(initialView)
   const [filterProject, setFilterProject] = useState("")
   const [filterStatus, setFilterStatus] = useState("")
 
@@ -204,8 +207,12 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
     "needs-attention": attentionRuns,
   }
 
-  const defaultView: View = attentionRuns.length > 0 ? "needs-attention" : "all"
-  useEffect(() => { if (!loading) setView(defaultView) }, [loading])
+  useEffect(() => {
+    if (!loading && !searchParams.get("view") && attentionRuns.length > 0) {
+      setView("needs-attention")
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading])
 
   const VIEWS: { id: View; label: string; count?: number }[] = [
     { id: "all",            label: "All",            count: filtered.length },
