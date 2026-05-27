@@ -858,6 +858,12 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
           >
             ⊡ Fit
           </button>
+          {/* Webhook warning — shown when this is a GitHub-event workflow but webhook isn't registered */}
+          {!githubHookId && githubHookRepo && (
+            <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700">
+              ⚠ Webhook not registered — open trigger config to register
+            </span>
+          )}
           {!isViewer && (
             <>
               {prefs.show_test_trigger && playbookSlug && (
@@ -1027,6 +1033,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
                       githubHookRepo={githubHookRepo}
                       githubHookId={githubHookId}
                       playbookSlug={playbookSlug}
+                      onWebhookChange={(id, repo) => { setGithubHookId(id); setGithubHookRepo(repo) }}
                     />
                   </div>
                 ) : (
