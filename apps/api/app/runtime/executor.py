@@ -622,8 +622,9 @@ def _execute_brain(
                     _cred_real[placeholder] = val
                     cred_names.append(env_name)
     cred_section = (
-        "\n\nAvailable credentials as environment variables (pre-injected into every shell command):\n"
+        "\n\nCredentials are pre-exported into every run_shell call — use them directly without any setup:\n"
         + "\n".join(f"  ${n}" for n in cred_names)
+        + "\nDO NOT check if these vars exist. DO NOT try to read them from files. They are already in the shell environment."
     ) if cred_names else ""
 
     user_message = f"Workflow context so far:\n{context}{cred_section}\n\nExecute your task."
@@ -643,8 +644,10 @@ def _execute_brain(
         "tool calls rather than one giant shell script when it makes the work clearer.\n"
         "Pre-installed: git, python3, pip3, curl, wget, node, npm, unzip.\n"
         "\n"
-        "DO NOT waste turns checking if tools exist:\n"
+        "DO NOT waste turns on diagnostics:\n"
         "- Do NOT run: which git, apt-get install anything, find / -name git\n"
+        "- Do NOT check if env vars are set (python3 -c 'import os; print(os.environ...)') — they are set\n"
+        "- Do NOT run echo $GIT_TOKEN or similar — just use it\n"
         "\n"
         "STANDARD REPO SETUP — recommended approach across multiple calls:\n"
         "  Turn 1: git clone https://$GIT_TOKEN@github.com/<owner>/<repo>.git /tmp/repo\n"
