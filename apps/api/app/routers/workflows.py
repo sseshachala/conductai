@@ -1,6 +1,7 @@
 import structlog
 from uuid import UUID
 from fastapi import APIRouter, Body, Depends, HTTPException, BackgroundTasks
+from fastapi.responses import JSONResponse
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -655,17 +656,55 @@ def register_workflow_webhook(
     from app.core.crypto import encrypt as _encrypt
     from sqlalchemy.orm.attributes import flag_modified
 
-    # Deregister stale hook first if one exists
+    token, provider = _git_token(str(workspace_id), db, str(workflow.environment_id) if workflow.environment_id else None)
+
+    repo = workflow.github_hook_repo
+
+    # Check for a sibling workflow that already has an active hook on this repo.
+    # If found, reuse its hook_id instead of registering a new one on GitHub —
+    # this prevents duplicate hooks and avoids the orphan-deregister bug.
+    sibling = db.query(Workflow).filter(
+        Workflow.workspace_id == workspace_id,
+        Workflow.github_hook_repo == repo,
+        Workflow.github_hook_id.isnot(None),
+        Workflow.id != workflow_id,
+    ).first()
+
+    if sibling:
+        # Deregister any stale hook this workflow previously owned (best-effort)
+        if workflow.github_hook_id and workflow.github_hook_id != sibling.github_hook_id:
+            try:
+                _deregister_git_webhook(token, repo, workflow.github_hook_id, provider=provider)
+            except Exception as e:
+                log.warning("Stale webhook deregistration skipped: %s", e)
+
+        workflow.github_hook_id = sibling.github_hook_id
+        db.commit()
+        db.refresh(workflow)
+        audit(db, workspace_id, "workflow.webhook_shared",
+              resource_type="workflow", resource_id=str(workflow_id),
+              metadata={"repo": repo, "shared_with": str(sibling.id)})
+        _stamp(workflow)
+        wf_out = WorkflowDetailOut.model_validate(workflow)
+        wf_out.github_hook_id = workflow.github_hook_id
+        wf_out.github_hook_repo = repo
+        wf_out.github_webhook = True
+        wf_out.webhook_error = None
+        return JSONResponse(content={
+            **wf_out.model_dump(mode="json"),
+            "shared": True,
+            "shared_with_name": sibling.name,
+        })
+
+    # No sibling — deregister any stale hook first, then register fresh
     if workflow.github_hook_id:
         try:
-            token, provider = _git_token(str(workspace_id), db, str(workflow.environment_id) if workflow.environment_id else None)
-            _deregister_git_webhook(token, workflow.github_hook_repo, workflow.github_hook_id, provider=provider)
+            _deregister_git_webhook(token, repo, workflow.github_hook_id, provider=provider)
         except Exception as e:
             log.warning("Stale webhook deregistration skipped: %s", e)
         workflow.github_hook_id = None
         db.commit()
 
-    token, provider = _git_token(str(workspace_id), db, str(workflow.environment_id) if workflow.environment_id else None)
     project_slug: str | None = None
     if workflow.project_id:
         from app.models.project import Project as _Project
@@ -675,7 +714,7 @@ def register_workflow_webhook(
 
     webhook_secret = _secrets.token_hex(32)
     hook_id, error = _register_git_webhook(
-        token, workflow.github_hook_repo, str(workflow.id),
+        token, repo, str(workflow.id),
         _GITHUB_WEBHOOK_EVENTS[playbook_slug],
         provider=provider,
         project_slug=project_slug,
@@ -703,7 +742,7 @@ def register_workflow_webhook(
     db.refresh(workflow)
     audit(db, workspace_id, "workflow.webhook_registered",
           resource_type="workflow", resource_id=str(workflow_id),
-          metadata={"repo": workflow.github_hook_repo})
+          metadata={"repo": repo})
     _stamp(workflow)
     return workflow
 
@@ -725,7 +764,19 @@ def deregister_workflow_webhook(
     try:
         from app.routers.credentials import _git_token
         token, provider = _git_token(str(workspace_id), db, str(workflow.environment_id) if workflow.environment_id else None)
-        _deregister_git_webhook(token, workflow.github_hook_repo or "", workflow.github_hook_id, provider=provider)
+
+        # Only delete from GitHub if no other workflow in this workspace shares the hook
+        siblings = db.query(Workflow).filter(
+            Workflow.workspace_id == workspace_id,
+            Workflow.github_hook_repo == workflow.github_hook_repo,
+            Workflow.github_hook_id == workflow.github_hook_id,
+            Workflow.id != workflow_id,
+        ).count()
+
+        if siblings == 0:
+            _deregister_git_webhook(token, workflow.github_hook_repo or "", workflow.github_hook_id, provider=provider)
+        else:
+            log.info("webhook.deregister_skipped_shared", workflow_id=str(workflow_id), siblings=siblings)
     except Exception as e:
         log.warning("Webhook deregistration error: %s", e)
 
