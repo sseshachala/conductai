@@ -570,12 +570,14 @@ export default function BlockEditor({
 
     ;(async () => {
       try {
+        const headers: Record<string, string> = { "Content-Type": "application/json" }
+        if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
         const res = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/blocks/${blockId}/compile/stream`,
           {
             method: "POST",
             signal: abort.signal,
-            headers: { "Content-Type": "application/json" },
+            headers,
             body: JSON.stringify({ description, label, type: blockType }),
           }
         )
@@ -610,7 +612,7 @@ export default function BlockEditor({
     })()
 
     return () => abort.abort()
-  }, [promptOpen, blockId, workflowId, description])
+  }, [promptOpen, blockId, workflowId, description, getToken])
 
   useEffect(() => {
     setPromptOpen(false)
