@@ -25,6 +25,7 @@ interface BlockEditorProps {
   githubHookRepo?: string | null
   githubHookId?: string | null
   playbookSlug?: string | null
+  onWebhookChange?: (hookId: string | null, hookRepo: string | null) => void
 }
 
 // ── Client-side model router preview (mirrors model_router.py) ────────────────
@@ -65,6 +66,103 @@ function previewModel(playbookSlug: string | null | undefined, pref: string): [s
   const category = SLUG_CATEGORY[playbookSlug ?? ""] ?? ""
   const [model, reason] = (category ? POLICY[category]?.[p] : null) ?? PREF_DEFAULTS[p] ?? ["claude-sonnet-4-6", "default"]
   return [MODEL_LABELS[model] ?? model, reason]
+}
+
+// ── GitHub webhook status panel ───────────────────────────────────────────────
+
+function GitHubWebhookStatusPanel({
+  workflowId, hookId, hookRepo, getToken, onWebhookChange,
+}: {
+  workflowId: string
+  hookId: string | null
+  hookRepo: string | null
+  getToken?: (() => Promise<string | null>) | null
+  onWebhookChange?: (hookId: string | null, hookRepo: string | null) => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  async function authHeaders() {
+    const h: Record<string, string> = { "Content-Type": "application/json" }
+    if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
+    const ws = typeof document !== "undefined"
+      ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
+    if (ws) h["X-Workspace-Id"] = ws
+    return h
+  }
+
+  async function register() {
+    setBusy(true); setErr(null)
+    try {
+      const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/webhook`, {
+        method: "POST", headers: await authHeaders(),
+      })
+      const data = await r.json()
+      if (!r.ok) { setErr(data.detail || `HTTP ${r.status}`); return }
+      onWebhookChange?.(data.github_hook_id, data.github_hook_repo)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Network error")
+    } finally { setBusy(false) }
+  }
+
+  async function deregister() {
+    setBusy(true); setErr(null)
+    try {
+      const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/webhook`, {
+        method: "DELETE", headers: await authHeaders(),
+      })
+      if (!r.ok && r.status !== 204) {
+        const data = await r.json().catch(() => ({}))
+        setErr(data.detail || `HTTP ${r.status}`); return
+      }
+      onWebhookChange?.(null, hookRepo)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Network error")
+    } finally { setBusy(false) }
+  }
+
+  const registered = !!hookId
+
+  return (
+    <div className={`rounded-lg border px-3 py-2.5 text-xs mt-2 ${registered ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className={`font-semibold ${registered ? "text-emerald-800" : "text-amber-800"}`}>
+            {registered ? `✓ Webhook registered` : "Webhook not registered"}
+          </p>
+          <p className={`mt-0.5 ${registered ? "text-emerald-700" : "text-amber-700"}`}>
+            {registered
+              ? <span>on <span className="font-mono">{hookRepo}</span> — GitHub sends events here automatically</span>
+              : hookRepo
+              ? <span>Configure once you're ready — real GitHub events won't arrive until registered</span>
+              : <span>Set a repository in the trigger config first</span>
+            }
+          </p>
+          {err && <p className="text-red-600 mt-1">{err}</p>}
+        </div>
+        <div className="flex flex-col gap-1 shrink-0">
+          {!registered && hookRepo && (
+            <button onClick={register} disabled={busy}
+              className="rounded-md bg-amber-600 text-white px-3 py-1.5 font-medium hover:bg-amber-700 disabled:opacity-50 transition-colors text-xs">
+              {busy ? "Registering…" : "Register Webhook"}
+            </button>
+          )}
+          {registered && (
+            <>
+              <button onClick={register} disabled={busy}
+                className="rounded-md bg-emerald-600 text-white px-3 py-1.5 font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors text-xs">
+                {busy ? "Updating…" : "Update"}
+              </button>
+              <button onClick={deregister} disabled={busy}
+                className="rounded-md border border-stone-300 text-stone-600 px-3 py-1.5 font-medium hover:bg-stone-100 disabled:opacity-50 transition-colors text-xs">
+                Unregister
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ── Webhook registration ──────────────────────────────────────────────────────
@@ -472,6 +570,7 @@ export default function BlockEditor({
   githubHookRepo,
   githubHookId,
   playbookSlug,
+  onWebhookChange,
 }: BlockEditorProps) {
   const [promptOpen, setPromptOpen] = useState(false)
   const [streamedPrompt, setStreamedPrompt] = useState<string>("")
@@ -815,18 +914,16 @@ export default function BlockEditor({
             </div>
           )}
 
-          {/* GitHub trigger — auto-register info */}
-          {blockType === "trigger" && triggerEventType === "github_issue_labeled" && (() => {
-            const repoAllowlist = (getNestedValue(blockData, "config.repo_allowlist") as string) || ""
-            const firstRepo = repoAllowlist.split(",")[0].trim()
-            const [owner, repo] = firstRepo.includes("/") ? firstRepo.split("/") : ["", ""]
-            if (!owner || !repo) return null
-            return (
-              <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-700 mt-2">
-                Webhook on <span className="font-mono font-medium">{owner}/{repo}</span> will be registered automatically when you run.
-              </div>
-            )
-          })()}
+          {/* GitHub trigger — webhook status panel */}
+          {blockType === "trigger" && triggerEventType === "github_issue_labeled" && (
+            <GitHubWebhookStatusPanel
+              workflowId={workflowId}
+              hookId={githubHookId ?? null}
+              hookRepo={githubHookRepo ?? null}
+              getToken={getToken}
+              onWebhookChange={onWebhookChange}
+            />
+          )}
 
 
           {/* Secret warning */}
