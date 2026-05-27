@@ -18,9 +18,8 @@ from collections import defaultdict, deque
 from datetime import datetime, timezone
 from typing import Any
 
-import anthropic
-
 from app.core.config import settings
+from app.runtime.llm_client import AnthropicClient, LLMTextBlock, LLMToolUseBlock
 from app.runtime.model_router import resolve as _router_resolve
 from app.core.crypto import decrypt
 from app.core.database import SessionLocal
@@ -674,7 +673,7 @@ def _execute_brain(
         (credentials or {}).get("anthropic", {}).get("api_key")
         or settings.anthropic_api_key
     )
-    client = anthropic.Anthropic(api_key=_anthropic_key)
+    llm = AnthropicClient(api_key=_anthropic_key)
 
     if is_agentic:
         # Bounded agentic loop — max_turns from run state, default 20
@@ -685,10 +684,8 @@ def _execute_brain(
         total_output_tokens = 0
         total_cache_read_tokens = 0
         total_cache_write_tokens = 0
+        total_cost_usd = 0.0
         full_system = f"{environment_preamble}\n\n{system_prompt}\n\n{sufficiency_instruction}"
-        # Cache the system prompt across turns — identical every turn so turns 2-N
-        # read from cache at ~10% of normal input token cost.
-        cached_system = [{"type": "text", "text": full_system, "cache_control": {"type": "ephemeral"}}]
 
         while turns < max_turns:
             # Trace: user turn
@@ -698,49 +695,40 @@ def _execute_brain(
                 _write_trace(db, run_id, block_id, turns + 1, "user",
                              content=user_content[:8000] if user_content else None)
 
-            response = client.messages.create(
+            response = llm.create(
                 model=model_id,
                 max_tokens=4096,
-                system=cached_system,
+                system=full_system,
                 tools=BRAIN_TOOLS,
                 messages=messages,
-                extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
+                cache_system=True,
             )
             turns += 1
-            usage = getattr(response, "usage", None)
-            in_tok    = getattr(usage, "input_tokens", 0)
-            out_tok   = getattr(usage, "output_tokens", 0)
-            cache_read  = getattr(usage, "cache_read_input_tokens", 0)
-            cache_write = getattr(usage, "cache_creation_input_tokens", 0)
-            if in_tok or out_tok:
-                total_input_tokens  += in_tok
-                total_output_tokens += out_tok
-            total_cache_read_tokens  += cache_read
-            total_cache_write_tokens += cache_write
+            total_input_tokens       += response.usage.input_tokens
+            total_output_tokens      += response.usage.output_tokens
+            total_cache_read_tokens  += response.usage.cache_read_tokens
+            total_cache_write_tokens += response.usage.cache_write_tokens
+            total_cost_usd           += response.cost_usd
 
             # Collect tool calls from response
-            tool_calls = [b for b in response.content if b.type == "tool_use"]
-            text_blocks = [b for b in response.content if b.type == "text"]
-            final_text = " ".join(b.text for b in text_blocks)
+            tool_calls  = [b for b in response.content if isinstance(b, LLMToolUseBlock)]
+            text_blocks = [b for b in response.content if isinstance(b, LLMTextBlock)]
+            final_text  = " ".join(b.text for b in text_blocks)
 
             # Trace: assistant response
             if db and run_id and block_id:
                 _write_trace(db, run_id, block_id, turns, "assistant",
                              content=final_text[:8000] if final_text else None,
-                             input_tokens=in_tok, output_tokens=out_tok)
+                             input_tokens=response.usage.input_tokens,
+                             output_tokens=response.usage.output_tokens)
 
             # First-turn sufficiency check — fail fast before any tools are used
             if turns == 1 and final_text.strip().startswith("NEEDS_CLARIFICATION:"):
+                _close_session()
                 raise ValueError(final_text.strip())
 
             if response.stop_reason == "end_turn" or not tool_calls:
-                # Pricing: $3/1M input, $15/1M output, $0.30/1M cache-read, $3.75/1M cache-write
-                cost_usd = round((
-                    total_input_tokens  * 3
-                    + total_output_tokens * 15
-                    + total_cache_read_tokens  * 0.30
-                    + total_cache_write_tokens * 3.75
-                ) / 1_000_000, 6)
+                cost_usd = round(total_cost_usd, 6)
                 files_changed, diff_stat = session.capture_artifacts()
                 if db and run_id:
                     from app.runtime.sandbox import _modal_available
@@ -780,8 +768,8 @@ def _execute_brain(
                 _close_session()
                 return result
 
-            # Append assistant message
-            messages.append({"role": "assistant", "content": response.content})
+            # Append assistant message (provider-specific format via adapter)
+            messages.extend(llm.make_assistant_turn(response))
 
             # Emit Modal lifecycle event on first tool-dispatching turn
             if turns == 1 and db and run_id:
@@ -793,14 +781,14 @@ def _execute_brain(
                         "turn": 0,
                     })
 
-            # Execute tool calls and build tool_result message
-            tool_results = []
+            # Execute tool calls and collect results
+            raw_tool_results: list[tuple[str, str]] = []
             for tc in tool_calls:
                 # Trace: tool_use
                 if db and run_id and block_id:
                     _write_trace(db, run_id, block_id, turns, "tool_use",
                                  tool_name=tc.name,
-                                 tool_input=dict(tc.input) if tc.input else None,
+                                 tool_input=tc.input or None,
                                  tool_use_id=tc.id)
 
                 try:
@@ -813,11 +801,8 @@ def _execute_brain(
                             "turn": turns,
                         })
                     raise
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": tc.id,
-                    "content": result_content,
-                })
+                raw_tool_results.append((tc.id, result_content))
+
                 # Trace: tool_result
                 if db and run_id and block_id:
                     _write_trace(db, run_id, block_id, turns, "tool_result",
@@ -829,14 +814,11 @@ def _execute_brain(
                         "summary": _summarise_tool_call(tc.name, tc.input),
                         "turn": turns,
                     })
-            messages.append({"role": "user", "content": tool_results})
 
-        cost_usd = round((
-            total_input_tokens  * 3
-            + total_output_tokens * 15
-            + total_cache_read_tokens  * 0.30
-            + total_cache_write_tokens * 3.75
-        ) / 1_000_000, 6)
+            # Append tool results (provider-specific format via adapter)
+            messages.extend(llm.make_tool_results_turn(raw_tool_results))
+
+        cost_usd = round(total_cost_usd, 6)
         files_changed, diff_stat = session.capture_artifacts()
         if db and run_id:
             from app.runtime.sandbox import _modal_available
@@ -864,21 +846,18 @@ def _execute_brain(
 
     else:
         # Single call (no tools)
-        response = client.messages.create(
+        response = llm.create(
             model=model_id,
             max_tokens=2048,
             system=system_prompt,
             messages=[{"role": "user", "content": user_message}],
         )
-        text = next((b.text for b in response.content if hasattr(b, "text")), "")
-        input_tokens = getattr(getattr(response, "usage", None), "input_tokens", 0)
-        output_tokens = getattr(getattr(response, "usage", None), "output_tokens", 0)
-        cost_usd = round((input_tokens * 3 + output_tokens * 15) / 1_000_000, 6)
+        text = next((b.text for b in response.content if isinstance(b, LLMTextBlock)), "")
         result = {
             "output": text,
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
-            "cost_usd": cost_usd,
+            "input_tokens": response.usage.input_tokens,
+            "output_tokens": response.usage.output_tokens,
+            "cost_usd": response.cost_usd,
             "model": model_id,
             "routing_reason": routing_reason,
         }
