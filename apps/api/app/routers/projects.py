@@ -266,24 +266,22 @@ def delete_project(
             import logging as _logging
             _logging.getLogger(__name__).warning("Webhook deregistration pass failed: %s", e)
 
-    db.execute(text("""
-        DELETE FROM run_events WHERE run_id IN (
-            SELECT r.id FROM runs r
-            JOIN workflow_versions wv ON wv.id = r.workflow_version_id
-            JOIN workflows w ON w.id = wv.workflow_id
-            WHERE w.workspace_id = :pid
-        )
-    """), {"pid": project_id})
-    db.execute(text("""
-        DELETE FROM runs WHERE workflow_version_id IN (
-            SELECT wv.id FROM workflow_versions wv
-            JOIN workflows w ON w.id = wv.workflow_id
-            WHERE w.workspace_id = :pid
-        )
-    """), {"pid": project_id})
+    # Full cascade — order matters (FK dependencies top to bottom)
+    run_ids_sql = """
+        SELECT r.id FROM runs r
+        JOIN workflow_versions wv ON wv.id = r.workflow_version_id
+        JOIN workflows w ON w.id = wv.workflow_id
+        WHERE w.workspace_id = :pid
+    """
+    db.execute(text(f"DELETE FROM run_analytics_events WHERE run_id IN ({run_ids_sql})"), {"pid": project_id})
+    db.execute(text(f"DELETE FROM run_events WHERE run_id IN ({run_ids_sql})"), {"pid": project_id})
+    db.execute(text(f"DELETE FROM runs WHERE workflow_version_id IN (SELECT wv.id FROM workflow_versions wv JOIN workflows w ON w.id = wv.workflow_id WHERE w.workspace_id = :pid)"), {"pid": project_id})
     db.execute(text("DELETE FROM workflow_versions WHERE workflow_id IN (SELECT id FROM workflows WHERE workspace_id = :pid)"), {"pid": project_id})
     db.execute(text("DELETE FROM workflows WHERE workspace_id = :pid"), {"pid": project_id})
     db.execute(text("DELETE FROM integrations WHERE workspace_id = :pid"), {"pid": project_id})
+    db.execute(text("DELETE FROM environments WHERE workspace_id = :pid"), {"pid": project_id})
+    db.execute(text("DELETE FROM audit_log WHERE workspace_id = :pid"), {"pid": project_id})
+    db.execute(text("DELETE FROM conduct_api_keys WHERE workspace_id = :pid"), {"pid": project_id})
     db.execute(text("DELETE FROM workspaces WHERE id = :pid"), {"pid": project_id})
     db.commit()
 
