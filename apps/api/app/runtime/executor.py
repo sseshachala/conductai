@@ -670,7 +670,12 @@ def _execute_brain(
         max_turns = int(state.get("__max_turns", 20))
         total_input_tokens = 0
         total_output_tokens = 0
+        total_cache_read_tokens = 0
+        total_cache_write_tokens = 0
         full_system = f"{environment_preamble}\n\n{system_prompt}\n\n{sufficiency_instruction}"
+        # Cache the system prompt across turns — identical every turn so turns 2-N
+        # read from cache at ~10% of normal input token cost.
+        cached_system = [{"type": "text", "text": full_system, "cache_control": {"type": "ephemeral"}}]
 
         while turns < max_turns:
             # Trace: user turn
@@ -683,16 +688,22 @@ def _execute_brain(
             response = client.messages.create(
                 model=model_id,
                 max_tokens=4096,
-                system=full_system,
+                system=cached_system,
                 tools=BRAIN_TOOLS,
                 messages=messages,
+                extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
             )
             turns += 1
-            in_tok = getattr(getattr(response, "usage", None), "input_tokens", 0)
-            out_tok = getattr(getattr(response, "usage", None), "output_tokens", 0)
+            usage = getattr(response, "usage", None)
+            in_tok    = getattr(usage, "input_tokens", 0)
+            out_tok   = getattr(usage, "output_tokens", 0)
+            cache_read  = getattr(usage, "cache_read_input_tokens", 0)
+            cache_write = getattr(usage, "cache_creation_input_tokens", 0)
             if in_tok or out_tok:
-                total_input_tokens += in_tok
+                total_input_tokens  += in_tok
                 total_output_tokens += out_tok
+            total_cache_read_tokens  += cache_read
+            total_cache_write_tokens += cache_write
 
             # Collect tool calls from response
             tool_calls = [b for b in response.content if b.type == "tool_use"]
@@ -710,11 +721,13 @@ def _execute_brain(
                 raise ValueError(final_text.strip())
 
             if response.stop_reason == "end_turn" or not tool_calls:
-                # Sonnet 4.6 pricing: $3/1M input, $15/1M output — update if model changes
-                cost_usd = round((total_input_tokens * 3 + total_output_tokens * 15) / 1_000_000, 6)
-                # Git-diff evidence runs on the worker host. When the work happened
-                # on a remote droplet we have nothing to inspect locally; the Brain's
-                # final text is expected to summarise the diff in that case.
+                # Pricing: $3/1M input, $15/1M output, $0.30/1M cache-read, $3.75/1M cache-write
+                cost_usd = round((
+                    total_input_tokens  * 3
+                    + total_output_tokens * 15
+                    + total_cache_read_tokens  * 0.30
+                    + total_cache_write_tokens * 3.75
+                ) / 1_000_000, 6)
                 files_changed, diff_stat = session.capture_artifacts()
                 if db and run_id:
                     from app.runtime.sandbox import _modal_available
@@ -729,6 +742,8 @@ def _execute_brain(
                     "turns": turns,
                     "input_tokens": total_input_tokens,
                     "output_tokens": total_output_tokens,
+                    "cache_read_tokens": total_cache_read_tokens,
+                    "cache_write_tokens": total_cache_write_tokens,
                     "cost_usd": cost_usd,
                     "files_changed": files_changed,
                     "diff_stat": diff_stat,
@@ -803,7 +818,12 @@ def _execute_brain(
                     })
             messages.append({"role": "user", "content": tool_results})
 
-        cost_usd = round((total_input_tokens * 3 + total_output_tokens * 15) / 1_000_000, 6)
+        cost_usd = round((
+            total_input_tokens  * 3
+            + total_output_tokens * 15
+            + total_cache_read_tokens  * 0.30
+            + total_cache_write_tokens * 3.75
+        ) / 1_000_000, 6)
         files_changed, diff_stat = session.capture_artifacts()
         if db and run_id:
             from app.runtime.sandbox import _modal_available
@@ -817,6 +837,8 @@ def _execute_brain(
                 "turns": max_turns,
                 "input_tokens": total_input_tokens,
                 "output_tokens": total_output_tokens,
+                "cache_read_tokens": total_cache_read_tokens,
+                "cache_write_tokens": total_cache_write_tokens,
                 "cost_usd": cost_usd,
                 "files_changed": files_changed,
                 "diff_stat": diff_stat,
