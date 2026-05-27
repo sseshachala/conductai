@@ -152,7 +152,6 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
     async function loadTemplate(slug: string) {
       const headers = await buildHeaders()
       setAgentName(FRIENDLY_NAMES[slug] ?? slug)
-      setConflictWarning(null)
       setWebhookError(null)
 
       const pbPromise = fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/playbooks/${slug}`).then(async res => {
