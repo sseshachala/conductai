@@ -1014,6 +1014,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
                       getToken={getToken}
                       githubHookRepo={githubHookRepo}
                       githubHookId={githubHookId}
+                      playbookSlug={playbookSlug}
                     />
                   </div>
                 ) : (

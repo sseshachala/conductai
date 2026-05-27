@@ -24,6 +24,47 @@ interface BlockEditorProps {
   selectedEnvId?: string
   githubHookRepo?: string | null
   githubHookId?: string | null
+  playbookSlug?: string | null
+}
+
+// ── Client-side model router preview (mirrors model_router.py) ────────────────
+
+const MODEL_LABELS: Record<string, string> = {
+  "claude-opus-4-7":            "Claude Opus",
+  "claude-sonnet-4-6":          "Claude Sonnet",
+  "claude-haiku-4-5-20251001":  "Claude Haiku",
+}
+
+const SLUG_CATEGORY: Record<string, string> = {
+  autopilot_quick: "code_implementation", autopilot_full: "code_implementation",
+  autopilot_approved: "code_implementation", dependency_updater: "code_implementation",
+  security_patch_updater: "code_implementation",
+  pr_reviewer: "code_review", copilot_reviewer: "code_review", release_readiness: "code_review",
+  security_scanner: "security",
+  issue_triage: "triage", ci_notify: "triage", flaky_test_detective: "triage",
+  release_notes: "summarization", postmortem_drafter: "summarization", docs_drift_detector: "summarization",
+  incident_responder: "reasoning", terraform_reviewer: "reasoning",
+}
+
+const POLICY: Record<string, Record<string, [string, string]>> = {
+  code_implementation: { quality: ["claude-opus-4-7", "strongest reasoning"], balanced: ["claude-sonnet-4-6", "balanced default"], speed: ["claude-sonnet-4-6", "fast"], cost: ["claude-sonnet-4-6", "minimum viable for code"] },
+  code_review:         { quality: ["claude-opus-4-7", "strongest reasoning"], balanced: ["claude-sonnet-4-6", "balanced default"], speed: ["claude-sonnet-4-6", "fast"], cost: ["claude-haiku-4-5-20251001", "efficient for review"] },
+  security:            { quality: ["claude-opus-4-7", "security needs highest precision"], balanced: ["claude-opus-4-7", "security: quality first"], speed: ["claude-sonnet-4-6", "speed prioritized"], cost: ["claude-sonnet-4-6", "minimum viable for security"] },
+  triage:              { quality: ["claude-sonnet-4-6", "sufficient for triage"], balanced: ["claude-sonnet-4-6", "balanced default"], speed: ["claude-haiku-4-5-20251001", "fast triage"], cost: ["claude-haiku-4-5-20251001", "cost-optimal"] },
+  summarization:       { quality: ["claude-sonnet-4-6", "sufficient for summaries"], balanced: ["claude-sonnet-4-6", "balanced default"], speed: ["claude-haiku-4-5-20251001", "fast"], cost: ["claude-haiku-4-5-20251001", "cost-optimal"] },
+  reasoning:           { quality: ["claude-opus-4-7", "strongest reasoning"], balanced: ["claude-sonnet-4-6", "balanced default"], speed: ["claude-sonnet-4-6", "fast"], cost: ["claude-sonnet-4-6", "minimum viable for reasoning"] },
+}
+
+const PREF_DEFAULTS: Record<string, [string, string]> = {
+  quality: ["claude-opus-4-7", "quality preference"], balanced: ["claude-sonnet-4-6", "balanced preference"],
+  speed: ["claude-sonnet-4-6", "speed preference"], cost: ["claude-haiku-4-5-20251001", "cost preference"],
+}
+
+function previewModel(playbookSlug: string | null | undefined, pref: string): [string, string] {
+  const p = (pref || "balanced").toLowerCase()
+  const category = SLUG_CATEGORY[playbookSlug ?? ""] ?? ""
+  const [model, reason] = (category ? POLICY[category]?.[p] : null) ?? PREF_DEFAULTS[p] ?? ["claude-sonnet-4-6", "default"]
+  return [MODEL_LABELS[model] ?? model, reason]
 }
 
 // ── Webhook registration ──────────────────────────────────────────────────────
@@ -430,6 +471,7 @@ export default function BlockEditor({
   selectedEnvId,
   githubHookRepo,
   githubHookId,
+  playbookSlug,
 }: BlockEditorProps) {
   const [promptOpen, setPromptOpen] = useState(false)
   const [streamedPrompt, setStreamedPrompt] = useState<string>("")
@@ -705,7 +747,15 @@ export default function BlockEditor({
               <option value="speed">Speed — faster response</option>
               <option value="cost">Cost — efficient model</option>
             </select>
-            <p className="text-[10px] text-stone-400 mt-1">Conduct picks the best model for this step based on your preference.</p>
+            {(() => {
+              const [model, reason] = previewModel(playbookSlug, (blockData.routingPreference as string) || "balanced")
+              return (
+                <p className="text-[10px] text-stone-500 mt-1">
+                  <span className="font-medium text-violet-700">{model}</span>
+                  {" "}— {reason}
+                </p>
+              )
+            })()}
           </div>
         </>
       )}
