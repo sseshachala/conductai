@@ -572,6 +572,9 @@ export default function BlockEditor({
       try {
         const headers: Record<string, string> = { "Content-Type": "application/json" }
         if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
+        const ws = typeof document !== "undefined"
+          ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
+        if (ws) headers["X-Workspace-Id"] = ws
         const res = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/blocks/${blockId}/compile/stream`,
           {
