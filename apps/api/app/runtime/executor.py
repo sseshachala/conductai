@@ -21,6 +21,7 @@ from typing import Any
 import anthropic
 
 from app.core.config import settings
+from app.runtime.model_router import resolve as _router_resolve
 from app.core.crypto import decrypt
 from app.core.database import SessionLocal
 from app.models.environment import Environment  # noqa: F401 — used for FK relationship loading
@@ -550,6 +551,7 @@ def _execute_brain(
     db=None,
     run_id: str | None = None,
     block_id: str | None = None,
+    playbook_slug: str | None = None,
 ) -> dict:
     if state.get("__dry_run"):
         return {
@@ -566,6 +568,12 @@ def _execute_brain(
     if custom.strip():
         system_prompt = f"{system_prompt}\n\nAdditional instructions:\n{custom.strip()}"
     is_agentic = block["data"].get("isAgentic", False)
+
+    # Model selection via router
+    routing_pref = block["data"].get("routingPreference") or "balanced"
+    explicit_model = block["data"].get("model") or None
+    model_id, routing_reason = _router_resolve(playbook_slug, routing_pref, explicit_model)
+    log.debug("brain.model_selected", block_id=block["id"], model=model_id, reason=routing_reason)
 
     # Resolve remote host (if the YAML's `runs_on:` was set on this block).
     # When set, all four Brain tools dispatch over SSH to that host rather
@@ -677,7 +685,6 @@ def _execute_brain(
         working_dir: str | None = None  # track if Brain cloned a repo
         full_system = f"{environment_preamble}\n\n{system_prompt}\n\n{sufficiency_instruction}"
 
-        model_id = block["data"].get("model") or "claude-sonnet-4-6"
         while turns < max_turns:
             # Trace: user turn
             if db and run_id and block_id:
@@ -742,6 +749,8 @@ def _execute_brain(
                     "files_changed": files_changed,
                     "diff_stat": diff_stat,
                     "remote_host_ip": remote_host.get("ip") if remote_host else None,
+                    "model": model_id,
+                    "routing_reason": routing_reason,
                 }
                 # Extract structured values from the last JSON line of the output
                 # so brain blocks can surface keys like pr_url, passed, etc. as
@@ -841,7 +850,7 @@ def _execute_brain(
     else:
         # Single call (no tools)
         response = client.messages.create(
-            model="claude-sonnet-4-6",
+            model=model_id,
             max_tokens=2048,
             system=system_prompt,
             messages=[{"role": "user", "content": user_message}],
@@ -855,6 +864,8 @@ def _execute_brain(
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "cost_usd": cost_usd,
+            "model": model_id,
+            "routing_reason": routing_reason,
         }
         # Extract structured values from the last JSON line of the output
         import json as _json
@@ -1384,8 +1395,10 @@ def execute_run(run_id: str):
                         result["github_trigger"] = state["github_trigger"]
 
                 elif block_type == "brain":
+                    slug = getattr(getattr(version, "workflow", None), "playbook_slug", None)
                     result = _execute_brain(block, state, compiled, credentials=credentials,
-                                            db=db, run_id=run_id, block_id=block_id)
+                                            db=db, run_id=run_id, block_id=block_id,
+                                            playbook_slug=slug)
 
                 elif block_type == "tool":
                     result = _execute_tool(block, state, credentials, allowed_hosts=allowed_hosts)

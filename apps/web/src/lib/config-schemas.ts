@@ -221,10 +221,23 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
   brain: [
     {
       key: "isAgentic",
-      label: "Agentic mode",
+      label: "Can use tools",
       type: "toggle",
       hint: "AI loops autonomously — reads files, writes code, runs commands",
       defaultValue: false,
+    },
+    {
+      key: "routingPreference",
+      label: "Model routing",
+      type: "select",
+      defaultValue: "balanced",
+      hint: "Conduct picks the best model for this step based on your preference",
+      options: [
+        { value: "balanced", label: "Balanced — best default" },
+        { value: "quality",  label: "Quality — strongest model" },
+        { value: "speed",    label: "Speed — faster response" },
+        { value: "cost",     label: "Cost — efficient model" },
+      ],
     },
   ],
   logic: [
