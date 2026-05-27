@@ -126,7 +126,6 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   const [reposLoading, setReposLoading] = useState(false)
   const [webhookError, setWebhookError] = useState<string | null>(null)
   const [lastInstalledId, setLastInstalledId] = useState<string | null>(null)
-  const [conflictWarning, setConflictWarning] = useState<string | null>(null)
   const [agentName, setAgentName] = useState<string>("")
 
   async function authHeaders(): Promise<Record<string, string>> {
@@ -232,33 +231,10 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
     setRepos([])
     setSelectedRepo("")
     setWebhookError(null)
-    setConflictWarning(null)
   }
 
   useEffect(() => {
-    if (!pendingSlug || !selectedRepo) { setConflictWarning(null); return }
-    const triggerLabel = inputValues["trigger_label"] ?? ""
-    authHeaders().then(async headers => {
-      const workspaceId = getWorkspaceId()
-      if (workspaceId) headers["X-Workspace-Id"] = workspaceId
-      const params = new URLSearchParams({ template: pendingSlug, repo: selectedRepo })
-      if (triggerLabel) params.set("trigger_label", triggerLabel)
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workflows/conflict-check?${params}`,
-        { headers }
-      )
-      if (res.ok) {
-        const data = await res.json()
-        if (data.conflicts.length > 0) {
-          const msg = data.conflict_type === "label"
-            ? `An agent is already watching the "${triggerLabel}" label on ${selectedRepo}. Select a different trigger label above — you can have up to 3 agents on the same repo using different labels.`
-            : `This playbook is already installed on ${selectedRepo}. Installing again will run two independent agents on the same events.`
-          setConflictWarning(msg)
-        } else {
-          setConflictWarning(null)
-        }
-      }
-    })
+    if (!pendingSlug || !selectedRepo) { return }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRepo, pendingSlug, inputValues["trigger_label"]])
 
@@ -531,12 +507,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
               </div>
             )}
 
-            {conflictWarning && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-3 flex gap-2">
-                <span className="text-amber-500 text-sm">⚠️</span>
-                <p className="text-xs text-amber-700 leading-relaxed">{conflictWarning}</p>
-              </div>
-            )}
+
 
             {webhookError && (
               <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-3">
