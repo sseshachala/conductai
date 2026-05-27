@@ -1,5 +1,10 @@
 """
-GET /dashboard  — outcome-based summary for the workspace
+GET /dashboard  — outcome-based summary for the workspace.
+
+Outcome counting strategy (COALESCE, no regression):
+  1. If run.outcome is set (new runs), read outcome["type"] directly.
+  2. If run.outcome is NULL (pre-migration runs), fall back to state heuristics.
+This means historical metrics never drop to zero during rollout.
 """
 from datetime import datetime, timedelta, timezone
 
@@ -15,9 +20,44 @@ from app.models.workflow import Workflow, WorkflowVersion
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
-REVIEW_SLUGS   = {"pr_reviewer", "copilot_reviewer", "security_scanner"}
-INCIDENT_SLUGS = {"incident_responder", "postmortem_drafter"}
-TRIAGE_SLUGS   = {"issue_triage"}
+# Statuses that need human attention — mirrors runUtils.needsAttention()
+ATTENTION_STATUSES = ["failed", "paused", "cancelled"]
+
+# Playbook slugs that produce each outcome type (used for heuristic fallback)
+_REVIEW_SLUGS   = {"pr_reviewer", "copilot_reviewer", "security_scanner"}
+_INCIDENT_SLUGS = {"incident_responder", "postmortem_drafter"}
+_TRIAGE_SLUGS   = {"issue_triage"}
+_PR_SLUGS       = {"autopilot_quick", "autopilot_full", "autopilot_approved",
+                   "security_patch_updater", "dependency_updater"}
+
+
+def _outcome_type(run: Run, slug: str | None) -> str | None:
+    """
+    Return the semantic outcome type for a run.
+    Reads run.outcome["type"] if set (new runs), otherwise falls back to heuristics.
+    """
+    if run.outcome and isinstance(run.outcome, dict):
+        return run.outcome.get("type")
+
+    # Heuristic fallback for pre-migration runs (outcome column is NULL)
+    if run.status != "succeeded":
+        return None
+    state = run.state or {}
+
+    def _find(key: str) -> bool:
+        if state.get(key):
+            return True
+        return any(isinstance(v, dict) and v.get(key) for v in state.values())
+
+    if slug in _PR_SLUGS and (_find("pr_url")):
+        return "pr_opened"
+    if slug in _REVIEW_SLUGS:
+        return "review_completed"
+    if slug in _TRIAGE_SLUGS:
+        return "issue_triaged"
+    if slug in _INCIDENT_SLUGS:
+        return "incident_investigated"
+    return None
 
 
 class OutcomeStats(BaseModel):
@@ -36,7 +76,7 @@ class AgentHealth(BaseModel):
     run_count: int
     succeeded_count: int
     failed_count: int
-    success_rate: float   # 0–100
+    success_rate: float
     last_run_status: str | None
     last_run_at: str | None
 
@@ -75,7 +115,7 @@ def get_dashboard(
 ):
     week_start = datetime.now(timezone.utc) - timedelta(days=7)
 
-    # ── Week runs joined with Workflow for playbook_slug ─────────────────────
+    # ── Week runs with playbook_slug for COALESCE outcome resolution ──────────
     week_rows = (
         db.query(Run, Workflow.playbook_slug.label("slug"))
         .join(WorkflowVersion, Run.workflow_version_id == WorkflowVersion.id)
@@ -84,21 +124,23 @@ def get_dashboard(
         .all()
     )
 
-    prs_opened = sum(1 for r, _ in week_rows if (r.state or {}).get("pr_url"))
-    issues_triaged = sum(
-        1 for r, slug in week_rows
-        if slug in TRIAGE_SLUGS and r.status == "succeeded"
-    )
-    reviews_completed = sum(
-        1 for r, slug in week_rows
-        if slug in REVIEW_SLUGS and r.status == "succeeded"
-    )
-    incidents_investigated = sum(
-        1 for r, slug in week_rows
-        if slug in INCIDENT_SLUGS and r.status == "succeeded"
-    )
-    successful_automations = sum(1 for r, _ in week_rows if r.status == "succeeded")
-    failed_automations = sum(1 for r, _ in week_rows if r.status == "failed")
+    prs_opened = issues_triaged = reviews_completed = incidents_investigated = 0
+    successful_automations = failed_automations = 0
+
+    for run, slug in week_rows:
+        if run.status == "succeeded":
+            successful_automations += 1
+            ot = _outcome_type(run, slug)
+            if ot == "pr_opened":
+                prs_opened += 1
+            elif ot == "issue_triaged":
+                issues_triaged += 1
+            elif ot == "review_completed":
+                reviews_completed += 1
+            elif ot == "incident_investigated":
+                incidents_investigated += 1
+        elif run.status == "failed":
+            failed_automations += 1
 
     outcomes = OutcomeStats(
         prs_opened=prs_opened,
@@ -109,14 +151,14 @@ def get_dashboard(
         failed_automations=failed_automations,
     )
 
-    # ── Needs Attention — failed/paused runs, most recent first ──────────────
+    # ── Needs Attention — failed/paused/cancelled, aligned with runUtils ──────
     attention_rows = (
         db.query(Run, Workflow.id.label("wf_id"), Workflow.name.label("wf_name"))
         .join(WorkflowVersion, Run.workflow_version_id == WorkflowVersion.id)
         .join(Workflow, Workflow.id == WorkflowVersion.workflow_id)
         .filter(
             Workflow.workspace_id == workspace_id,
-            Run.status.in_(["failed", "paused"]),
+            Run.status.in_(ATTENTION_STATUSES),
         )
         .order_by(Run.created_at.desc())
         .limit(10)
@@ -135,7 +177,7 @@ def get_dashboard(
         for run, wf_id, wf_name in attention_rows
     ]
 
-    # ── Agent Health — all-time per-workflow aggregation ─────────────────────
+    # ── Agent Health — all-time aggregation ──────────────────────────────────
     wf_agg = (
         db.query(
             Workflow.id.label("wf_id"),
@@ -154,7 +196,6 @@ def get_dashboard(
         .all()
     )
 
-    # Last run status per workflow — one query via max(created_at) join
     wf_ids = [row.wf_id for row in wf_agg]
     last_status_map: dict[str, str] = {}
     if wf_ids:

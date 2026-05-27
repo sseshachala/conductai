@@ -20,6 +20,7 @@ class Run(Base):
     current_block_id = Column(String(255), nullable=True)
     max_turns = Column(sa.Integer, nullable=True)
     state = Column(JSONB, nullable=False, default=dict)  # accumulated block outputs
+    outcome = Column(JSONB, nullable=True)               # {type, artifact_url} written at run completion
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
     workflow_version = relationship("WorkflowVersion", back_populates="runs")
