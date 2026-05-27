@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
-import { statusStyle } from "@/lib/runUtils"
+import { statusStyle, formatTrigger, timeAgo as runsTimeAgo, duration } from "@/lib/runUtils"
 
 interface Workflow {
   id: string
@@ -23,6 +23,16 @@ interface Project {
   agent_count: number
 }
 
+interface Run {
+  id: string
+  workflow_id: string
+  workflow_name: string
+  status: string
+  triggered_by: string | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
+}
 
 function timeAgo(ts: string): string {
   const diff = Date.now() - new Date(ts).getTime()
@@ -60,6 +70,9 @@ function ProjectContent({ getToken, currentUserId }: {
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [loading, setLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(!clerkEnabled)
+  const [activeTab, setActiveTab] = useState<"Agents" | "Runs">("Agents")
+  const [runs, setRuns] = useState<Run[]>([])
+  const [runsLoading, setRunsLoading] = useState(false)
 
   async function authHeaders(): Promise<Record<string, string>> {
     const h: Record<string, string> = {}
@@ -119,6 +132,27 @@ function ProjectContent({ getToken, currentUserId }: {
     }
   }
 
+  async function loadRuns() {
+    setRunsLoading(true)
+    try {
+      const h = await authHeaders()
+      const wsId = document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1]
+      if (!wsId) return
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${wsId}/runs?project_id=${projectId}&limit=100`,
+        { headers: h }
+      )
+      if (res.ok) setRuns(await res.json())
+    } finally {
+      setRunsLoading(false)
+    }
+  }
+
+  function handleTabChange(tab: "Agents" | "Runs") {
+    setActiveTab(tab)
+    if (tab === "Runs" && runs.length === 0) loadRuns()
+  }
+
   async function renameAgent(id: string, name: string) {
     const h = await authHeaders()
     h["Content-Type"] = "application/json"
@@ -161,11 +195,12 @@ function ProjectContent({ getToken, currentUserId }: {
 
         {/* Tabs */}
         <div className="flex gap-1 border-b border-stone-200 mb-6">
-          {["Agents", "Runs"].map(tab => (
+          {(["Agents", "Runs"] as const).map(tab => (
             <button
               key={tab}
+              onClick={() => handleTabChange(tab)}
               className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
-                tab === "Agents"
+                activeTab === tab
                   ? "border-stone-900 text-stone-900"
                   : "border-transparent text-stone-400 hover:text-stone-700"
               }`}
@@ -175,8 +210,49 @@ function ProjectContent({ getToken, currentUserId }: {
           ))}
         </div>
 
+        {/* Runs tab */}
+        {activeTab === "Runs" && (
+          runsLoading ? (
+            <div className="space-y-2">
+              {[1,2,3].map(i => <div key={i} className="h-14 rounded-xl border border-stone-200 bg-white animate-pulse" />)}
+            </div>
+          ) : runs.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-stone-300 px-8 py-12 text-center">
+              <p className="text-stone-500 text-sm">No runs yet for this project.</p>
+            </div>
+          ) : (
+            <div className="grid gap-2">
+              {runs.map(run => {
+                const s = statusStyle(run.status)
+                return (
+                  <Link
+                    key={run.id}
+                    href={`/workflows/${run.workflow_id}/runs/${run.id}`}
+                    className="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-5 py-3 hover:border-stone-300 hover:shadow-sm transition-all"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-stone-900 truncate">{run.workflow_name}</p>
+                      <p className="text-xs text-stone-400 mt-0.5">{formatTrigger(run.triggered_by)}</p>
+                    </div>
+                    <div className="flex items-center gap-3 ml-3 shrink-0">
+                      <span className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${s.bg} ${s.text}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+                        {s.label}
+                      </span>
+                      <span className="text-xs text-stone-400">{runsTimeAgo(run.created_at)}</span>
+                      {(run.started_at || run.completed_at) && (
+                        <span className="text-xs text-stone-300">{duration(run.started_at, run.completed_at)}</span>
+                      )}
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          )
+        )}
+
         {/* Agents list */}
-        {loading ? (
+        {activeTab === "Agents" && (loading ? (
           <div className="space-y-2">
             {[1, 2, 3].map(i => (
               <div key={i} className="h-20 rounded-xl border border-stone-200 bg-white animate-pulse" />
@@ -213,7 +289,7 @@ function ProjectContent({ getToken, currentUserId }: {
               />
             ))}
           </div>
-        )}
+        ))}
       </div>
     </AppShell>
   )
