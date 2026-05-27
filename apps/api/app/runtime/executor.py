@@ -89,6 +89,69 @@ def _emit(db, run_id, block_id: str | None, kind: str, payload: dict):
     publish_run_event(str(run_id))
 
 
+# ── Outcome detection ────────────────────────────────────────────────────────
+# Maps playbook_slug → (outcome_type, artifact_url_keys, requires_artifact)
+# requires_artifact=True: only record outcome if the artifact URL is found in state
+# requires_artifact=False: record outcome on success regardless (the action itself is the outcome)
+_OUTCOME_MAP: dict[str, tuple[str, list[str], bool]] = {
+    "autopilot_quick":        ("pr_opened",              ["pr_url"],   True),
+    "autopilot_full":         ("pr_opened",              ["pr_url"],   True),
+    "autopilot_approved":     ("pr_opened",              ["pr_url"],   True),
+    "pr_reviewer":            ("review_completed",       [],           False),
+    "copilot_reviewer":       ("review_completed",       [],           False),
+    "security_scanner":       ("review_completed",       [],           False),
+    "issue_triage":           ("issue_triaged",          [],           False),
+    "ci_notify":              ("ci_alert_sent",          [],           False),
+    "flaky_test_detective":   ("flaky_test_filed",       ["issue_url"], True),
+    "release_readiness":      ("release_reviewed",       [],           False),
+    "release_notes":          ("release_notes_drafted",  [],           False),
+    "incident_responder":     ("incident_investigated",  [],           False),
+    "postmortem_drafter":     ("postmortem_drafted",     ["issue_url"], True),
+    "dependency_updater":     ("dependency_updated",     ["pr_url"],   True),
+    "security_patch_updater": ("security_patch_applied", ["pr_url"],   True),
+    "docs_drift_detector":    ("docs_updated",           ["issue_url"], True),
+    "terraform_reviewer":     ("terraform_reviewed",     [],           False),
+}
+
+
+def _find_artifact(state: dict, *keys: str) -> str | None:
+    """Search state shallowly (top-level + one level deep) for the first URL value matching any key."""
+    # Top-level first
+    for key in keys:
+        v = state.get(key)
+        if isinstance(v, str) and v.startswith("http"):
+            return v
+    # One level into block outputs
+    for block_val in state.values():
+        if not isinstance(block_val, dict):
+            continue
+        for key in keys:
+            v = block_val.get(key)
+            if isinstance(v, str) and v.startswith("http"):
+                return v
+    return None
+
+
+def _detect_outcome(playbook_slug: str | None, state: dict, run_status: str) -> dict | None:
+    """
+    Return a structured outcome dict for a completed run, or None if not applicable.
+    Called after run.status is set. Only fires on succeeded runs with a known slug.
+    """
+    if run_status != "succeeded" or not playbook_slug:
+        return None
+    entry = _OUTCOME_MAP.get(playbook_slug)
+    if not entry:
+        return None
+    outcome_type, artifact_keys, requires_artifact = entry
+    artifact_url = _find_artifact(state, *artifact_keys) if artifact_keys else None
+    if requires_artifact and not artifact_url:
+        return None  # action didn't produce the expected artifact — don't miscount
+    result: dict = {"type": outcome_type}
+    if artifact_url:
+        result["artifact_url"] = artifact_url
+    return result
+
+
 def _emit_run_analytics(run, version, state: dict, db, *, outcome: str, error: str = "") -> None:
     """
     Write one RunAnalyticsEvent row at the end of every run.
@@ -120,8 +183,12 @@ def _emit_run_analytics(run, version, state: dict, db, *, outcome: str, error: s
             duration_ms = int((run.completed_at - run.created_at).total_seconds() * 1000)
 
         wf = getattr(version, "workflow", None) if version else None
-        wf_name = (getattr(wf, "name", None) or "custom").lower()
-        playbook_slug = re.sub(r"[^a-z0-9]+", "_", wf_name).strip("_") or "custom"
+        # Use the actual playbook_slug column; fall back to name-derived slug for custom workflows
+        playbook_slug = (
+            getattr(wf, "playbook_slug", None)
+            or re.sub(r"[^a-z0-9]+", "_", (getattr(wf, "name", None) or "custom").lower()).strip("_")
+            or "custom"
+        )
 
         raw_trigger = str(run.triggered_by or "manual")
         if raw_trigger.startswith("webhook"):
@@ -1409,6 +1476,9 @@ def execute_run(run_id: str):
         run.completed_at = _now()
         run.current_block_id = None
         run.state = state
+        wf = getattr(version, "workflow", None) if version else None
+        real_slug = getattr(wf, "playbook_slug", None)
+        run.outcome = _detect_outcome(real_slug, state, run.status)
         db.commit()
 
         _emit(db, run_id, None, "run_completed" if not failed else "run_failed", {
