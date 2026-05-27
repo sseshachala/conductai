@@ -594,6 +594,18 @@ def update_workflow(
         db.add(version)
         db.flush()
         workflow.current_version_id = version.id
+
+        # Keep github_hook_repo in sync with config.repo_allowlist (first entry).
+        # Without this, the test trigger and conflict checks keep using the stale install-time repo.
+        nodes = graph_dict.get("nodes", [])
+        trigger_node = next((n for n in nodes if n.get("data", {}).get("type") == "trigger"), None)
+        if trigger_node:
+            cfg = trigger_node.get("data", {}).get("config", {})
+            allowlist_raw = cfg.get("repo_allowlist") or ""
+            first_repo = next((r.strip() for r in allowlist_raw.split(",") if r.strip()), None)
+            if first_repo and first_repo != workflow.github_hook_repo:
+                workflow.github_hook_repo = first_repo
+
         db.commit()
         db.refresh(workflow)
 
@@ -1351,6 +1363,30 @@ def test_trigger(
             raw = _yaml.safe_load(playbook_path.read_text()) or {}
             base_payload = raw.get("test_trigger", {}).get("payload", {})
     payload = {**base_payload, **payload}  # caller overrides win
+
+    # Override the repo fields in the payload with the CONFIGURED repo for this workflow.
+    # The YAML test_trigger.payload has a hardcoded example repo — we always replace it
+    # with the actual installed repo so the test run targets the right repo.
+    configured_repo: str | None = None
+    if workflow.current_version:
+        nodes = (workflow.current_version.graph or {}).get("nodes", [])
+        trigger_node = next((n for n in nodes if n.get("data", {}).get("type") == "trigger"), None)
+        if trigger_node:
+            cfg = trigger_node.get("data", {}).get("config", {})
+            allowlist_raw = cfg.get("repo_allowlist") or ""
+            first_repo = next(iter(r.strip() for r in allowlist_raw.split(",") if r.strip()), None)
+            configured_repo = first_repo
+    configured_repo = configured_repo or workflow.github_hook_repo
+    if configured_repo and "/" in configured_repo and not payload.get("repository", {}).get("_caller_set"):
+        owner, repo_name = configured_repo.split("/", 1)
+        payload.setdefault("repository", {})
+        payload["repository"] = {
+            **payload.get("repository", {}),
+            "full_name": configured_repo,
+            "name": repo_name,
+            "owner": {"login": owner},
+            "clone_url": f"https://github.com/{configured_repo}.git",
+        }
 
     if not payload:
         raise HTTPException(status_code=400, detail="No payload provided and no test_trigger defined for this playbook")
