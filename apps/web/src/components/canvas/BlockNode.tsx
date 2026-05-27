@@ -120,7 +120,7 @@ function BlockNode({ data, selected }: NodeProps) {
         type="target"
         position={Position.Top}
         className={handleClass("!bg-stone-400")}
-        style={{ top: -6 }}
+        style={{ top: 0 }}
       />
 
       {/* Type badge row */}
@@ -176,9 +176,9 @@ function BlockNode({ data, selected }: NodeProps) {
             <span className="text-[8px] font-semibold text-red-500 uppercase tracking-wide">fail</span>
           </div>
           <Handle id="pass" type="source" position={Position.Bottom}
-            style={{ left: "28%", bottom: -6 }} className={handleClass("!bg-green-400")} />
+            style={{ left: "28%", bottom: 0 }} className={handleClass("!bg-green-400")} />
           <Handle id="fail" type="source" position={Position.Bottom}
-            style={{ left: "72%", bottom: -6 }} className={handleClass("!bg-red-400")} />
+            style={{ left: "72%", bottom: 0 }} className={handleClass("!bg-red-400")} />
         </>
       ) : isApproval ? (
         <>
@@ -187,13 +187,13 @@ function BlockNode({ data, selected }: NodeProps) {
             <span className="text-[8px] font-semibold text-red-500 uppercase tracking-wide">rejected</span>
           </div>
           <Handle id="approved" type="source" position={Position.Bottom}
-            style={{ left: "28%", bottom: -6 }} className={handleClass("!bg-green-400")} />
+            style={{ left: "28%", bottom: 0 }} className={handleClass("!bg-green-400")} />
           <Handle id="rejected" type="source" position={Position.Bottom}
-            style={{ left: "72%", bottom: -6 }} className={handleClass("!bg-red-400")} />
+            style={{ left: "72%", bottom: 0 }} className={handleClass("!bg-red-400")} />
         </>
       ) : (
         <Handle type="source" position={Position.Bottom}
-          className={handleClass("!bg-stone-400")} style={{ bottom: -6 }} />
+          className={handleClass("!bg-stone-400")} style={{ bottom: 0 }} />
       )}
     </div>
   )
