@@ -626,9 +626,7 @@ export default function BlockEditor({
     ? allStaticFields.filter(f => {
         if (f.key === "config.labels" || f.key === "config.repo_allowlist")
           return triggerEventType === "github_issue_labeled"
-        if (f.key === "config.webhook_secret")
-          return false  // auto-generated — never shown to users
-        if (f.key === "config.test_pr_number")
+        if (f.key === "config.webhook_secret" || f.key === "config.test_pr_number")
           return triggerEventType === "webhook"
         if (f.key === "config.test_repo")
           return false  // redundant — repo is known from github_hook_repo
