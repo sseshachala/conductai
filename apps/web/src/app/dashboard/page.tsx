@@ -142,30 +142,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
             {data.needs_attention.length > 0 && (
               <section>
                 <SectionHeader label="Needs Attention" href="/runs?view=needs-attention" linkLabel="View all →" />
-                <div className="rounded-xl border border-red-100 bg-red-50 overflow-hidden divide-y divide-red-100">
-                  {data.needs_attention.map(run => {
-                    const s = statusStyle(run.status)
-                    return (
-                      <Link
-                        key={run.run_id}
-                        href={`/workflows/${run.workflow_id}/runs/${run.run_id}`}
-                        className="flex items-center justify-between px-4 py-3 hover:bg-red-100/60 transition-colors"
-                      >
-                        <div>
-                          <span className="text-sm font-medium text-stone-900">{run.workflow_name}</span>
-                          <span className="text-xs text-stone-400 ml-2">{formatTrigger(run.triggered_by)}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-                            {s.label}
-                          </span>
-                          <span className="text-xs text-stone-400">{timeAgo(run.created_at)}</span>
-                        </div>
-                      </Link>
-                    )
-                  })}
-                </div>
+                <AttentionList runs={data.needs_attention} />
               </section>
             )}
 
@@ -283,6 +260,109 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
         )}
       </div>
     </AppShell>
+  )
+}
+
+function AttentionList({ runs }: { runs: AttentionRun[] }) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
+  // Group by agent_name + status
+  const groups: { key: string; name: string; wfId: string; status: string; runs: AttentionRun[] }[] = []
+  const seen = new Map<string, number>()
+  for (const run of runs) {
+    const key = `${run.workflow_id}::${run.status}`
+    if (seen.has(key)) {
+      groups[seen.get(key)!].runs.push(run)
+    } else {
+      seen.set(key, groups.length)
+      groups.push({ key, name: run.workflow_name, wfId: run.workflow_id, status: run.status, runs: [run] })
+    }
+  }
+
+  function toggle(key: string) {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+  }
+
+  return (
+    <div className="rounded-xl border border-red-100 bg-red-50 overflow-hidden divide-y divide-red-100">
+      {groups.map(group => {
+        const s = statusStyle(group.status)
+        const isOpen = expanded.has(group.key)
+        const singular = group.runs.length === 1
+
+        if (singular) {
+          const run = group.runs[0]
+          return (
+            <Link
+              key={group.key}
+              href={`/workflows/${run.workflow_id}/runs/${run.run_id}`}
+              className="flex items-center justify-between px-4 py-3 hover:bg-red-100/60 transition-colors"
+            >
+              <span className="text-sm font-medium text-stone-900">{group.name}</span>
+              <div className="flex items-center gap-3">
+                <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+                  {s.label}
+                </span>
+                <span className="text-xs text-stone-400">{timeAgo(run.created_at)}</span>
+              </div>
+            </Link>
+          )
+        }
+
+        return (
+          <div key={group.key}>
+            {/* Group header — click to expand */}
+            <button
+              onClick={() => toggle(group.key)}
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-red-100/60 transition-colors text-left"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-stone-900">{group.name}</span>
+                <span className="text-[10px] font-semibold bg-red-200/70 text-red-700 px-1.5 py-0.5 rounded-full">
+                  {group.runs.length}
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+                  {s.label}
+                </span>
+                <span className="text-xs text-stone-400">
+                  {timeAgo(group.runs[0].created_at)} – {timeAgo(group.runs[group.runs.length - 1].created_at)}
+                </span>
+                <svg
+                  className={`w-3.5 h-3.5 text-stone-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </button>
+
+            {/* Expanded individual runs */}
+            {isOpen && (
+              <div className="divide-y divide-red-100/70 border-t border-red-100">
+                {group.runs.map(run => (
+                  <Link
+                    key={run.run_id}
+                    href={`/workflows/${run.workflow_id}/runs/${run.run_id}`}
+                    className="flex items-center justify-between pl-8 pr-4 py-2.5 hover:bg-red-100/40 transition-colors"
+                  >
+                    <span className="text-xs text-stone-500">{formatTrigger(run.triggered_by)}</span>
+                    <span className="text-xs text-stone-400">{timeAgo(run.created_at)}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
