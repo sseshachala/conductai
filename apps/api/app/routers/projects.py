@@ -238,6 +238,7 @@ def delete_project(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
     _role: str = Depends(require_workspace_role("admin")),
+    purge: bool = False,  # ?purge=true — also deletes analytics, audit log, API keys, environments
 ):
     if project_id != workspace_id:
         raise HTTPException(status_code=403, detail="Project not found")
@@ -284,6 +285,14 @@ def delete_project(
     db.execute(text("DELETE FROM workflow_versions WHERE workflow_id IN (SELECT id FROM workflows WHERE workspace_id = :pid)"), {"pid": project_id})
     db.execute(text("DELETE FROM workflows WHERE workspace_id = :pid"), {"pid": project_id})
     db.execute(text("DELETE FROM integrations WHERE workspace_id = :pid"), {"pid": project_id})
+
+    if purge:
+        # Permanently erase all remaining data — analytics, audit trail, API keys, environments
+        db.execute(text("DELETE FROM run_analytics_events WHERE workspace_id = :pid"), {"pid": project_id})
+        db.execute(text("DELETE FROM audit_log WHERE workspace_id = :pid"), {"pid": project_id})
+        db.execute(text("DELETE FROM conduct_api_keys WHERE workspace_id = :pid"), {"pid": project_id})
+        db.execute(text("DELETE FROM environments WHERE workspace_id = :pid"), {"pid": project_id})
+
     db.execute(text("DELETE FROM workspaces WHERE id = :pid"), {"pid": project_id})
     db.commit()
 
