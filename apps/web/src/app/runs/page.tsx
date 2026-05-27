@@ -208,7 +208,7 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
   useEffect(() => { if (!loading) setView(defaultView) }, [loading])
 
   const VIEWS: { id: View; label: string; count?: number }[] = [
-    { id: "all",            label: "All Runs",       count: filtered.length },
+    { id: "all",            label: "All",            count: filtered.length },
     { id: "by-agent",       label: "By Agent" },
     { id: "needs-attention",label: "Needs Attention", count: attentionRuns.length },
   ]

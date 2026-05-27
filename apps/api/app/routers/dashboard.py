@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_workspace_role
@@ -14,14 +15,39 @@ from app.models.workflow import Workflow, WorkflowVersion
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
+REVIEW_SLUGS   = {"pr_reviewer", "copilot_reviewer", "security_scanner"}
+INCIDENT_SLUGS = {"incident_responder", "postmortem_drafter"}
+TRIAGE_SLUGS   = {"issue_triage"}
 
-class WeekStats(BaseModel):
-    issues_picked_up: int
+
+class OutcomeStats(BaseModel):
     prs_opened: int
-    total_runs: int
-    succeeded_runs: int
-    failed_runs: int
-    success_rate: float  # 0–100
+    issues_triaged: int
+    reviews_completed: int
+    incidents_investigated: int
+    successful_automations: int
+    failed_automations: int
+
+
+class AgentHealth(BaseModel):
+    workflow_id: str
+    name: str
+    playbook_slug: str | None
+    run_count: int
+    succeeded_count: int
+    failed_count: int
+    success_rate: float   # 0–100
+    last_run_status: str | None
+    last_run_at: str | None
+
+
+class AttentionRun(BaseModel):
+    run_id: str
+    workflow_id: str
+    workflow_name: str
+    status: str
+    triggered_by: str | None
+    created_at: str
 
 
 class RecentRun(BaseModel):
@@ -29,24 +55,16 @@ class RecentRun(BaseModel):
     workflow_id: str
     workflow_name: str
     status: str
-    issue_number: int | None
-    issue_title: str | None
-    pr_url: str | None
+    triggered_by: str | None
     started_at: str | None
     created_at: str
 
 
-class AgentStatus(BaseModel):
-    workflow_id: str
-    name: str
-    last_run_status: str | None
-    last_run_at: str | None
-
-
 class DashboardOut(BaseModel):
-    week: WeekStats
-    recent_runs: list[RecentRun]
-    agents: list[AgentStatus]
+    outcomes: OutcomeStats
+    needs_attention: list[AttentionRun]
+    agent_health: list[AgentHealth]
+    recent_activity: list[RecentRun]
 
 
 @router.get("", response_model=DashboardOut)
@@ -55,99 +73,158 @@ def get_dashboard(
     workspace_id: str = Depends(get_workspace_id),
     _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
 ):
-    # All workflow version IDs for this workspace
-    version_ids_sq = (
-        db.query(WorkflowVersion.id)
-        .join(Workflow, Workflow.id == WorkflowVersion.workflow_id)
-        .filter(Workflow.workspace_id == workspace_id)
-        .subquery()
-    )
-
-    # ── This-week stats ──────────────────────────────────────────────────────
     week_start = datetime.now(timezone.utc) - timedelta(days=7)
-    week_runs = (
-        db.query(Run)
-        .filter(
-            Run.workflow_version_id.in_(version_ids_sq),
-            Run.created_at >= week_start,
-        )
+
+    # ── Week runs joined with Workflow for playbook_slug ─────────────────────
+    week_rows = (
+        db.query(Run, Workflow.playbook_slug.label("slug"))
+        .join(WorkflowVersion, Run.workflow_version_id == WorkflowVersion.id)
+        .join(Workflow, Workflow.id == WorkflowVersion.workflow_id)
+        .filter(Workflow.workspace_id == workspace_id, Run.created_at >= week_start)
         .all()
     )
 
-    issues_picked_up = sum(
-        1 for r in week_runs
-        if (r.state or {}).get("_trigger", {}).get("issue_number")
+    prs_opened = sum(1 for r, _ in week_rows if (r.state or {}).get("pr_url"))
+    issues_triaged = sum(
+        1 for r, slug in week_rows
+        if slug in TRIAGE_SLUGS and r.status == "succeeded"
     )
-    prs_opened = sum(
-        1 for r in week_runs
-        if (r.state or {}).get("pr_url")
+    reviews_completed = sum(
+        1 for r, slug in week_rows
+        if slug in REVIEW_SLUGS and r.status == "succeeded"
     )
-    succeeded = sum(1 for r in week_runs if r.status == "succeeded")
-    failed = sum(1 for r in week_runs if r.status == "failed")
-    total = len(week_runs)
-    success_rate = round((succeeded / total) * 100, 1) if total else 0.0
+    incidents_investigated = sum(
+        1 for r, slug in week_rows
+        if slug in INCIDENT_SLUGS and r.status == "succeeded"
+    )
+    successful_automations = sum(1 for r, _ in week_rows if r.status == "succeeded")
+    failed_automations = sum(1 for r, _ in week_rows if r.status == "failed")
 
-    week_stats = WeekStats(
-        issues_picked_up=issues_picked_up,
+    outcomes = OutcomeStats(
         prs_opened=prs_opened,
-        total_runs=total,
-        succeeded_runs=succeeded,
-        failed_runs=failed,
-        success_rate=success_rate,
+        issues_triaged=issues_triaged,
+        reviews_completed=reviews_completed,
+        incidents_investigated=incidents_investigated,
+        successful_automations=successful_automations,
+        failed_automations=failed_automations,
     )
 
-    # ── Recent runs (last 10) ────────────────────────────────────────────────
-    recent = (
+    # ── Needs Attention — failed/paused runs, most recent first ──────────────
+    attention_rows = (
         db.query(Run, Workflow.id.label("wf_id"), Workflow.name.label("wf_name"))
-        .join(WorkflowVersion, WorkflowVersion.id == Run.workflow_version_id)
+        .join(WorkflowVersion, Run.workflow_version_id == WorkflowVersion.id)
         .join(Workflow, Workflow.id == WorkflowVersion.workflow_id)
         .filter(
-            Run.workflow_version_id.in_(version_ids_sq),
             Workflow.workspace_id == workspace_id,
+            Run.status.in_(["failed", "paused"]),
         )
         .order_by(Run.created_at.desc())
         .limit(10)
         .all()
     )
 
-    recent_runs = []
-    for run, wf_id, wf_name in recent:
-        state = run.state or {}
-        trigger = state.get("_trigger") or state.get("github_issue") or {}
-        recent_runs.append(RecentRun(
+    needs_attention = [
+        AttentionRun(
             run_id=str(run.id),
             workflow_id=str(wf_id),
             workflow_name=wf_name,
             status=run.status,
-            issue_number=trigger.get("issue_number"),
-            issue_title=trigger.get("title") or trigger.get("issue_title"),
-            pr_url=state.get("pr_url"),
-            started_at=run.started_at.isoformat() if run.started_at else None,
+            triggered_by=run.triggered_by,
             created_at=run.created_at.isoformat(),
-        ))
+        )
+        for run, wf_id, wf_name in attention_rows
+    ]
 
-    # ── Agent statuses ───────────────────────────────────────────────────────
-    workflows = (
-        db.query(Workflow)
+    # ── Agent Health — all-time per-workflow aggregation ─────────────────────
+    wf_agg = (
+        db.query(
+            Workflow.id.label("wf_id"),
+            Workflow.name.label("wf_name"),
+            Workflow.playbook_slug,
+            func.count(Run.id).label("run_count"),
+            func.sum(case((Run.status == "succeeded", 1), else_=0)).label("succeeded"),
+            func.sum(case((Run.status == "failed", 1), else_=0)).label("failed"),
+            func.max(Run.created_at).label("last_run_at"),
+        )
+        .join(WorkflowVersion, WorkflowVersion.workflow_id == Workflow.id)
+        .outerjoin(Run, Run.workflow_version_id == WorkflowVersion.id)
         .filter(Workflow.workspace_id == workspace_id)
-        .order_by(Workflow.updated_at.desc())
+        .group_by(Workflow.id, Workflow.name, Workflow.playbook_slug)
+        .order_by(func.max(Run.created_at).desc().nullslast())
         .all()
     )
 
-    agents = []
-    for wf in workflows:
-        last_run = (
-            db.query(Run)
-            .join(WorkflowVersion, WorkflowVersion.id == Run.workflow_version_id)
-            .filter(WorkflowVersion.workflow_id == wf.id)
-            .order_by(Run.created_at.desc())
-            .first()
+    # Last run status per workflow — one query via max(created_at) join
+    wf_ids = [row.wf_id for row in wf_agg]
+    last_status_map: dict[str, str] = {}
+    if wf_ids:
+        max_run_sq = (
+            db.query(
+                WorkflowVersion.workflow_id.label("wf_id"),
+                func.max(Run.created_at).label("max_at"),
+            )
+            .join(Run, Run.workflow_version_id == WorkflowVersion.id)
+            .filter(WorkflowVersion.workflow_id.in_(wf_ids))
+            .group_by(WorkflowVersion.workflow_id)
+            .subquery()
         )
-        agents.append(AgentStatus(
-            workflow_id=str(wf.id),
-            name=wf.name,
-            last_run_status=last_run.status if last_run else None,
-            last_run_at=last_run.created_at.isoformat() if last_run else None,
+        last_runs = (
+            db.query(WorkflowVersion.workflow_id.label("wf_id"), Run.status)
+            .join(Run, Run.workflow_version_id == WorkflowVersion.id)
+            .join(
+                max_run_sq,
+                (WorkflowVersion.workflow_id == max_run_sq.c.wf_id)
+                & (Run.created_at == max_run_sq.c.max_at),
+            )
+            .all()
+        )
+        last_status_map = {str(row.wf_id): row.status for row in last_runs}
+
+    agent_health = []
+    for row in wf_agg:
+        rc = row.run_count or 0
+        sc = row.succeeded or 0
+        fc = row.failed or 0
+        rate = round((sc / rc) * 100, 1) if rc else 0.0
+        agent_health.append(AgentHealth(
+            workflow_id=str(row.wf_id),
+            name=row.wf_name,
+            playbook_slug=row.playbook_slug,
+            run_count=rc,
+            succeeded_count=sc,
+            failed_count=fc,
+            success_rate=rate,
+            last_run_status=last_status_map.get(str(row.wf_id)),
+            last_run_at=row.last_run_at.isoformat() if row.last_run_at else None,
         ))
 
-    return DashboardOut(week=week_stats, recent_runs=recent_runs, agents=agents)
+    # ── Recent Activity — last 5 runs ────────────────────────────────────────
+    recent_rows = (
+        db.query(Run, Workflow.id.label("wf_id"), Workflow.name.label("wf_name"))
+        .join(WorkflowVersion, WorkflowVersion.id == Run.workflow_version_id)
+        .join(Workflow, Workflow.id == WorkflowVersion.workflow_id)
+        .filter(Workflow.workspace_id == workspace_id)
+        .order_by(Run.created_at.desc())
+        .limit(5)
+        .all()
+    )
+
+    recent_activity = [
+        RecentRun(
+            run_id=str(run.id),
+            workflow_id=str(wf_id),
+            workflow_name=wf_name,
+            status=run.status,
+            triggered_by=run.triggered_by,
+            started_at=run.started_at.isoformat() if run.started_at else None,
+            created_at=run.created_at.isoformat(),
+        )
+        for run, wf_id, wf_name in recent_rows
+    ]
+
+    return DashboardOut(
+        outcomes=outcomes,
+        needs_attention=needs_attention,
+        agent_health=agent_health,
+        recent_activity=recent_activity,
+    )
