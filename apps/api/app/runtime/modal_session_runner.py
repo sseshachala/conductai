@@ -32,7 +32,11 @@ _FORBIDDEN_SHELL_PATTERNS = [
 ]
 
 
-def _exec(sandbox, *args: str) -> str:
+def _exec(sandbox, *args: str, envs: dict | None = None) -> str:
+    # Pass env vars as separate leading args to `env` so they never appear
+    # in the bash -c script string and won't be logged by Modal.
+    if envs:
+        args = ("env", *[f"{k}={v}" for k, v in envs.items()], *args)
     proc = sandbox.exec(*args)
     out = proc.stdout.read()
     err = proc.stderr.read()
@@ -122,11 +126,9 @@ def _dispatch(sandbox, tool_name: str, tool_input: dict, working_dir: str) -> st
                 return f"Refused: command matches forbidden pattern '{pattern}'"
         wd = tool_input.get("working_dir") or working_dir
         env = tool_input.get("env") or {}
-        # Use `export KEY=value;` so $KEY expands correctly in subsequent parts of the same bash invocation.
-        # Inline `KEY=value cmd` only sets KEY for that subprocess, not for $KEY references in the same command.
-        env_exports = "; ".join(f"export {k}={shlex.quote(str(v))}" for k, v in env.items())
-        full_cmd = f"cd {shlex.quote(wd)} && {(env_exports + '; ') if env_exports else ''}{command}"
-        out = _exec(sandbox, "bash", "-c", full_cmd)
+        full_cmd = f"cd {shlex.quote(wd)} && {command}"
+        # Pass env vars via `env KEY=value bash -c '...'` — keeps tokens out of the script string.
+        out = _exec(sandbox, "bash", "-c", full_cmd, envs=env or None)
         return (out[:10_000] + "\n[... truncated]") if len(out) > 10_000 else out or "(no output)"
 
     if tool_name == "search_code":
