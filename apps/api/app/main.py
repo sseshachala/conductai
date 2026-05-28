@@ -7,7 +7,7 @@ from app.core.logging import setup_logging
 from app.middleware.logging import LoggingMiddleware
 from app.routers import credentials, dashboard, email_templates, environments, projects, runs, webhooks, workflows
 from app.routers.organizations import router as organizations_router
-from app.routers.workspace_projects import router as workspace_projects_router, audit_router as audit_log_router, preferences_router as workspace_preferences_router
+from app.routers.workspace_projects import router as workspace_projects_router, audit_router as audit_log_router, preferences_router as workspace_preferences_router, project_direct_router
 from app.routers.runs import workspace_runs_router
 from app.routers.api_keys import router as api_keys_router, me_router
 
@@ -54,6 +54,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 app.include_router(organizations_router)
 app.include_router(workspace_projects_router)
+app.include_router(project_direct_router)
 app.include_router(audit_log_router)
 app.include_router(workspace_preferences_router)
 app.include_router(api_keys_router)
