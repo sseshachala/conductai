@@ -43,6 +43,7 @@ export default function RunDetailPage() {
   const [run, setRun] = useState<RunMeta | null>(null)
   const [workflowName, setWorkflowName] = useState<string | null>(null)
   const [projectName, setProjectName] = useState<string | null>(null)
+  const [projectId, setProjectId] = useState<string | null>(null)
   const [agentModel, setAgentModel] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -100,6 +101,7 @@ export default function RunDetailPage() {
         const wf = await wfRes.json()
         setWorkflowName(wf.name ?? null)
         setProjectName(wf.project_name ?? null)
+        setProjectId(wf.project_id ?? null)
         const nodes: {data?: {type?: string; model?: string}}[] = wf.graph?.nodes ?? []
         const brainNode = nodes.find(n => n.data?.type === "brain")
         if (brainNode?.data?.model) setAgentModel(brainNode.data.model)
@@ -138,13 +140,14 @@ export default function RunDetailPage() {
     <AppShell>
       <div className="mx-auto max-w-4xl px-6 py-8">
         {/* Breadcrumb */}
-        <div className="flex items-center gap-1.5 text-xs text-stone-400 mb-5">
-          <Link href="/runs" className="hover:text-stone-600">Runs</Link>
+        <nav className="flex items-center gap-1.5 text-xs text-stone-400 mb-5">
+          <Link href="/projects" className="hover:text-stone-600">Projects</Link>
+          {projectId && projectName && (<><span>/</span><Link href={`/projects/${projectId}`} className="hover:text-stone-600 max-w-[100px] truncate">{projectName}</Link></>)}
           <span>/</span>
-          <Link href={`/workflows/${workflowId}`} className="hover:text-stone-600">{workflowName ?? workflowId.slice(0,8)}</Link>
+          <Link href={`/workflows/${workflowId}`} className="hover:text-stone-600 max-w-[120px] truncate">{workflowName ?? workflowId.slice(0,8)}</Link>
           <span>/</span>
           <span className="font-mono text-stone-500">{run.id.slice(0,8)}…</span>
-        </div>
+        </nav>
 
         {/* Header */}
         <div className="mb-6 flex items-start justify-between gap-4">

@@ -171,10 +171,15 @@ function ProjectContent({ getToken, currentUserId }: {
   return (
     <AppShell>
       <div className="mx-auto max-w-3xl px-6 py-10">
+        {/* Breadcrumb */}
+        <nav className="flex items-center gap-1.5 text-xs text-stone-400 mb-4">
+          <Link href="/projects" className="hover:text-stone-600 transition-colors">Projects</Link>
+          <span>/</span>
+          <span className="text-stone-600 font-medium">{project?.name ?? "…"}</span>
+        </nav>
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <p className="text-xs text-stone-400 mb-1">Project</p>
             <h1 className="text-xl font-semibold text-stone-900">
               {project?.name ?? "Loading..."}
             </h1>

@@ -164,6 +164,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
   const [testPrNumber, setTestPrNumber] = useState("")
   const { prefs } = usePreferences()
   const [playbookSlug, setPlaybookSlug] = useState<string | null>(null)
+  const [projectSlug, setProjectSlug] = useState<string | null>(null)
+  const [projectName, setProjectName] = useState<string | null>(null)
 
   const STORAGE_KEY = `marshal:active-run:${workflowId}`
   const TEST_RUN_KEY = `marshal:test-run:${workflowId}`
@@ -289,6 +291,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
         setGithubHookId(data.github_hook_id ?? null)
         setGithubWebhook(data.github_webhook ?? false)
         setPlaybookSlug(data.playbook_slug ?? null)
+        setProjectSlug(data.project_slug ?? null)
+        setProjectName(data.project_name ?? null)
         const graph = data.current_version?.graph
         if (graph?.nodes && graph?.edges) {
           // Run auto-layout when:
@@ -783,6 +787,16 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
     <div className="flex flex-col h-full bg-stone-50">
       {/* Top bar */}
       <header className="flex items-center justify-between px-5 py-3 bg-white border-b border-stone-200 shrink-0">
+        <div className="flex flex-col gap-0.5">
+          {projectName && (
+            <nav className="flex items-center gap-1 text-[10px] text-stone-400">
+              <button onClick={() => router.push("/projects")} className="hover:text-stone-600 transition-colors">Projects</button>
+              <span>/</span>
+              <button onClick={() => router.back()} className="hover:text-stone-600 transition-colors max-w-[120px] truncate">{projectName}</button>
+              <span>/</span>
+              <span className="text-stone-500 font-medium max-w-[140px] truncate">{workflowName}</span>
+            </nav>
+          )}
         <div className="flex items-center gap-3">
           <input
             value={workflowName}
@@ -835,6 +849,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
               Runs
             </button>
           </div>
+        </div>
         </div>
         <div className="flex items-center gap-3">
           {/* Autosave status */}
@@ -1030,6 +1045,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
                       githubHookId={githubHookId}
                       githubWebhook={githubWebhook}
                       playbookSlug={playbookSlug}
+                      projectSlug={projectSlug}
                       onWebhookChange={(id, repo) => { setGithubHookId(id); setGithubHookRepo(repo) }}
                     />
                   </div>
