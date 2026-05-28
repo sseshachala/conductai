@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
-from app.core.auth import get_workspace_id, require_workspace_role, audit, _verify_clerk_token, _clerk_enabled, DEV_WORKSPACE_ID, DEV_USER_ID
+from app.core.auth import get_workspace_id, get_user_id, require_workspace_role, audit, _verify_clerk_token, _clerk_enabled, DEV_WORKSPACE_ID, DEV_USER_ID
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.run import Run, RunEvent
@@ -488,6 +488,7 @@ def approve_run(
 def list_all_runs(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    user_id: str = Depends(get_user_id),
     _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
     status: str | None = None,
     project_id: str | None = None,
@@ -495,13 +496,26 @@ def list_all_runs(
     offset: int = Query(default=0, ge=0),
 ):
     """All runs across all agents in the workspace, newest first."""
+    from sqlalchemy import text as _text
+    effective_workspace_id = workspace_id
+    if project_id and user_id != DEV_USER_ID:
+        proj = db.query(Project).filter(Project.id == project_id).first()
+        if proj and str(proj.workspace_id) != workspace_id:
+            proj_ws = str(proj.workspace_id)
+            member = db.execute(
+                _text("SELECT 1 FROM workspace_users WHERE workspace_id = :ws AND clerk_user_id = :uid"),
+                {"ws": proj_ws, "uid": user_id},
+            ).fetchone()
+            if member:
+                effective_workspace_id = proj_ws
+
     q = (
         db.query(Run, Workflow.id.label("wf_id"), Workflow.name.label("wf_name"),
                  Workflow.project_id.label("proj_id"), Project.name.label("proj_name"))
         .join(WorkflowVersion, Run.workflow_version_id == WorkflowVersion.id)
         .join(Workflow, WorkflowVersion.workflow_id == Workflow.id)
         .outerjoin(Project, Workflow.project_id == Project.id)
-        .filter(Workflow.workspace_id == workspace_id)
+        .filter(Workflow.workspace_id == effective_workspace_id)
         .order_by(Run.created_at.desc())
     )
     if status:

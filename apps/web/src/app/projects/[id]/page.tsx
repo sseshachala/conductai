@@ -94,21 +94,20 @@ function ProjectContent({ getToken, currentUserId }: {
 
   async function loadProject() {
     try {
-      const wsId = document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1]
-      if (!wsId) return
       const h = await authHeaders()
+      // Fetch project directly — workspace is derived server-side from the project ID.
+      // This works correctly regardless of which workspace the cookie currently points to.
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${wsId}/projects`,
+        `${process.env.NEXT_PUBLIC_API_URL}/projects/${projectId}`,
         { headers: h }
       )
       if (!res.ok) return
-      const projects: Project[] = await res.json()
-      const found = projects.find(p => p.id === projectId)
-      if (found) setProject(found)
+      const found: Project = await res.json()
+      setProject(found)
 
       if (clerkEnabled && currentUserId) {
         const mRes = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/projects/${wsId}/members`,
+          `${process.env.NEXT_PUBLIC_API_URL}/projects/${found.workspace_id}/members`,
           { headers: h }
         )
         if (mRes.ok) {
@@ -136,10 +135,8 @@ function ProjectContent({ getToken, currentUserId }: {
     setRunsLoading(true)
     try {
       const h = await authHeaders()
-      const wsId = document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1]
-      if (!wsId) return
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${wsId}/runs?project_id=${projectId}&limit=100`,
+        `${process.env.NEXT_PUBLIC_API_URL}/runs?project_id=${projectId}&limit=100`,
         { headers: h }
       )
       if (res.ok) setRuns(await res.json())
