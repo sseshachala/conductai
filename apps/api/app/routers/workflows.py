@@ -59,25 +59,33 @@ def list_workflows(
     if not workflows:
         return []
 
-    # Single query: latest run per workflow_version_id using DISTINCT ON
-    import uuid as _uuid
-    version_uuids = [wf.current_version_id for wf in workflows if wf.current_version_id]
-    last_run_by_version: dict[str, Run] = {}
-    if version_uuids:
-        rows = (
-            db.query(Run.id, Run.workflow_version_id, Run.status, Run.created_at)
-            .distinct(Run.workflow_version_id)
-            .filter(Run.workflow_version_id.in_(version_uuids))
-            .order_by(Run.workflow_version_id, Run.created_at.desc())
-            .all()
-        )
+    # Latest run per workflow across ALL versions (not just current) so editing
+    # a workflow doesn't make it appear as "never run".
+    from sqlalchemy import text as _text
+    workflow_ids = [str(wf.id) for wf in workflows]
+    last_run_by_workflow: dict[str, Run] = {}
+    if workflow_ids:
+        rows = db.execute(
+            _text("""
+                SELECT DISTINCT ON (v.workflow_id)
+                    v.workflow_id,
+                    r.id        AS run_id,
+                    r.status,
+                    r.created_at
+                FROM runs r
+                JOIN workflow_versions v ON v.id = r.workflow_version_id
+                WHERE v.workflow_id = ANY(:wids)
+                ORDER BY v.workflow_id, r.created_at DESC
+            """),
+            {"wids": workflow_ids},
+        ).fetchall()
         for row in rows:
-            last_run_by_version[str(row.workflow_version_id)] = row
+            last_run_by_workflow[str(row.workflow_id)] = row
 
     results = []
     for wf in workflows:
         out = WorkflowOut.model_validate(wf)
-        last_run = last_run_by_version.get(str(wf.current_version_id)) if wf.current_version_id else None
+        last_run = last_run_by_workflow.get(str(wf.id))
         if last_run:
             out.last_run_status = last_run.status
             out.last_run_at = last_run.created_at
