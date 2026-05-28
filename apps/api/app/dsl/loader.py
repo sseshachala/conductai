@@ -234,6 +234,11 @@ def _node_to_block_payload(
             if config.get(k):
                 payload[k] = config[k]
 
+    elif underlying_type == "memory":
+        for k in ("action", "scope", "key", "limit", "summary"):
+            if config.get(k) is not None:
+                payload[k] = config[k]
+
     elif underlying_type == "output":
         via = data.get("integration") or config.get("integration") or "slack"
         out_section: dict[str, Any] = {"via": via}
