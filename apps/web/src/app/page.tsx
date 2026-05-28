@@ -370,6 +370,86 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         </div>
       </section>
 
+      {/* Memory — agents that learn */}
+      <section className="px-6 py-20 bg-amber-50">
+        <div className="max-w-5xl mx-auto">
+          <p className="text-xs font-semibold text-amber-600 uppercase tracking-widest text-center mb-3">Agent Memory</p>
+          <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
+            Agents that get better<br />with every run.
+          </h2>
+          <p className="text-center text-stone-500 text-sm max-w-2xl mx-auto mb-12 leading-relaxed">
+            Most AI tools start from scratch every time. Conduct agents remember. Before each run, the agent
+            recalls what it learned last time on that repo. After the run, it records the outcome for next time.
+            The 10th PR on your codebase is noticeably smarter than the first.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-12">
+            {[
+              {
+                icon: "🧠",
+                title: "Recall before acting",
+                body: "Before the brain block runs, a Memory read block retrieves the most relevant past summaries using vector similarity search — not just recent history, but the most applicable context for this specific task.",
+              },
+              {
+                icon: "📝",
+                title: "Record every outcome",
+                body: "After the run completes, a Memory write block stores a summary of what was done: the approach taken, the files changed, what worked. That becomes context for future runs on the same repo.",
+              },
+              {
+                icon: "🔒",
+                title: "Scoped and isolated",
+                body: "Each playbook builds its own knowledge store. Autopilot Quick and Autopilot Full on the same repo never share memories — each agent specialises independently. Repo scope or workspace scope — your choice.",
+              },
+            ].map(({ icon, title, body }) => (
+              <div key={title} className="bg-white rounded-2xl border border-amber-200 p-6 flex flex-col gap-3">
+                <span className="text-2xl">{icon}</span>
+                <div>
+                  <p className="font-semibold text-stone-900 mb-1.5">{title}</p>
+                  <p className="text-xs text-stone-500 leading-relaxed">{body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="bg-white rounded-2xl border border-amber-200 overflow-hidden mb-8">
+            <div className="px-6 py-4 border-b border-amber-100">
+              <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Two memory scopes — one decision</p>
+            </div>
+            <div className="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-amber-100">
+              <div className="px-6 py-5">
+                <p className="font-semibold text-stone-900 mb-1.5 text-sm">Repo scope</p>
+                <p className="text-xs text-stone-500 leading-relaxed mb-3">
+                  Memories are isolated per repository. The agent learns the conventions, file layout,
+                  and bug patterns of <em>that specific codebase</em>. Installing the same playbook on
+                  5 repos gives you 5 independent experts.
+                </p>
+                <div className="bg-stone-50 rounded-lg px-3 py-2 text-xs font-mono text-stone-600">
+                  key: {"{{_trigger.repo_full_name}}"}
+                </div>
+              </div>
+              <div className="px-6 py-5">
+                <p className="font-semibold text-stone-900 mb-1.5 text-sm">Workspace scope</p>
+                <p className="text-xs text-stone-500 leading-relaxed mb-3">
+                  Memories are shared across all repos in the workspace for this playbook.
+                  What the agent learns fixing a bug in <code className="font-mono text-[11px] bg-stone-100 px-1 rounded">acme/api</code> informs
+                  how it approaches <code className="font-mono text-[11px] bg-stone-100 px-1 rounded">acme/frontend</code>.
+                  Team conventions, not repo conventions.
+                </p>
+                <div className="bg-stone-50 rounded-lg px-3 py-2 text-xs font-mono text-stone-600">
+                  key: &quot;workspace&quot;
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <p className="text-center text-xs text-stone-400">
+            Powered by vector similarity search (OpenAI <code className="font-mono bg-stone-100 px-1 rounded">text-embedding-3-small</code>).
+            Falls back to recency-based retrieval when no embedding key is configured — memory still works.{" "}
+            <a href="/docs#memory-block" className="text-amber-600 hover:underline">Full docs →</a>
+          </p>
+        </div>
+      </section>
+
       {/* Credential Vault Security */}
       <section className="bg-stone-50 px-6 py-20">
         <div className="max-w-5xl mx-auto">
