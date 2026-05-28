@@ -1266,6 +1266,97 @@ def _execute_approval(block: dict, state: dict, credentials: dict, run_id: str) 
 
 # ── main executor ─────────────────────────────────────────────────────────────
 
+def _execute_memory(block: dict, state: dict, db, run_id: str, workspace_id: str, playbook_slug: str) -> dict:
+    """
+    Read or write agent memory with vector similarity search.
+
+    read:  queries agent_memory for the most similar past summaries, returns them
+           as `entries` list so the brain block can use prior context.
+    write: embeds the resolved summary and inserts a new row.
+    """
+    import json as _json
+    from app.models.agent_memory import AgentMemory
+    from app.runtime.embedding_client import create_embedding_client
+
+    data = block["data"]
+    config = data.get("config", {})
+    action = config.get("action", "read")
+    scope = config.get("scope", "repo")
+    key = _resolve_refs(config.get("key", ""), state)
+    client = create_embedding_client()
+
+    if action == "read":
+        limit = int(config.get("limit", 5))
+        if not key:
+            return {"entries": [], "note": "No key resolved"}
+
+        if client:
+            query_vec = client.embed(key)
+            # Cosine similarity via pgvector — cast stored JSON text to vector
+            rows = db.execute(
+                __import__("sqlalchemy").text("""
+                    SELECT summary, created_at,
+                           (embedding::vector <=> :vec::vector) AS distance
+                    FROM agent_memory
+                    WHERE workspace_id = :ws
+                      AND playbook_slug = :slug
+                      AND scope = :scope
+                      AND key = :key
+                      AND embedding IS NOT NULL
+                    ORDER BY distance ASC
+                    LIMIT :lim
+                """),
+                {
+                    "vec": _json.dumps(query_vec),
+                    "ws": workspace_id,
+                    "slug": playbook_slug,
+                    "scope": scope,
+                    "key": key,
+                    "lim": limit,
+                },
+            ).fetchall()
+        else:
+            # No embedding provider — fall back to recency-based retrieval
+            rows = db.query(AgentMemory).filter(
+                AgentMemory.workspace_id == workspace_id,
+                AgentMemory.playbook_slug == playbook_slug,
+                AgentMemory.scope == scope,
+                AgentMemory.key == key,
+            ).order_by(AgentMemory.created_at.desc()).limit(limit).all()
+
+        entries = [{"summary": r.summary, "at": str(r.created_at)} for r in rows]
+        return {"entries": entries, "count": len(entries), "scope": scope, "key": key}
+
+    elif action == "write":
+        summary_tpl = config.get("summary", "")
+        summary = _resolve_refs(summary_tpl, state).strip()
+        if not summary:
+            return {"written": False, "note": "Empty summary — nothing written"}
+
+        embedding_json: str | None = None
+        if client:
+            try:
+                vec = client.embed(summary)
+                embedding_json = _json.dumps(vec)
+            except Exception as e:
+                log.warning("memory.embed_failed", error=str(e))
+
+        row = AgentMemory(
+            workspace_id=workspace_id,
+            playbook_slug=playbook_slug,
+            scope=scope,
+            key=key,
+            summary=summary,
+            embedding=embedding_json,
+            run_id=run_id if run_id else None,
+        )
+        db.add(row)
+        db.commit()
+        return {"written": True, "scope": scope, "key": key, "chars": len(summary)}
+
+    return {"skipped": True, "note": f"Unknown memory action: {action}"}
+
+
 def execute_run(run_id: str):
     """
     Entry point called by the worker.
@@ -1432,7 +1523,11 @@ def execute_run(run_id: str):
                     result = _execute_approval(block, state, credentials, run_id)
 
                 elif block_type == "memory":
-                    result = {"status": "memory_op_skipped", "note": "Memory — Phase 4"}
+                    result = _execute_memory(
+                        block, state, db, run_id,
+                        str(workspace_id_str),
+                        version.workflow.playbook_slug or "",
+                    )
 
                 else:
                     result = {"status": "skipped", "type": block_type}
