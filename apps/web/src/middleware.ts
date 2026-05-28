@@ -8,7 +8,9 @@ const clerkHandler = clerkMiddleware(async (auth, req) => {
 
   const { userId } = await auth()
   if (!userId) {
-    return NextResponse.redirect(new URL("/", req.url))
+    const signIn = new URL("/sign-in", req.url)
+    signIn.searchParams.set("redirect_url", req.url)
+    return NextResponse.redirect(signIn)
   }
 })
 
