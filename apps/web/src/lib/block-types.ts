@@ -34,6 +34,7 @@ export const BLOCK_LIBRARY: { type: BlockType; title: string; sub: string; descr
   { type: "brain",    title: "Agent Step", sub: "reason + act",     description: "LLM reasoning loop — reads context, calls tools, decides" },
   { type: "tool",     title: "Action",     sub: "perform an action",description: "Perform an action via GitHub, Slack, Linear, and more" },
   { type: "logic",    title: "Condition",  sub: "choose path",      description: "Route on any condition or test result" },
+  { type: "memory",   title: "Memory",     sub: "recall or record", description: "Read past context or write outcome for future runs" },
   { type: "approval", title: "Approval",   sub: "wait for human",   description: "Pause the run until a human approves or rejects" },
   { type: "output",   title: "Notify",     sub: "send output",      description: "Post to Slack, send email, or write a comment" },
   { type: "cleanup",  title: "Cleanup",    sub: "always runs",      description: "Teardown or finalize — executes even if the run fails" },
