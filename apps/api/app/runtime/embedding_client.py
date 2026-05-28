@@ -84,14 +84,23 @@ class VoyageEmbeddingClient:
         return [item["embedding"] for item in sorted(data, key=lambda x: x["index"])]
 
 
-def create_embedding_client() -> EmbeddingClient | None:
-    """Return the best available embedding client based on configured keys."""
+def create_embedding_client(
+    openai_api_key: str | None = None,
+    voyage_api_key: str | None = None,
+) -> EmbeddingClient | None:
+    """Return the best available embedding client.
+
+    Caller should pass workspace-scoped keys resolved from the environment
+    credentials store. Falls back to server-level settings when not provided.
+    """
     from app.core.config import settings
-    if settings.openai_api_key:
+    _openai = openai_api_key or settings.openai_api_key
+    _voyage = voyage_api_key or settings.voyage_api_key
+    if _openai:
         log.debug("embedding.provider", provider="openai")
-        return OpenAIEmbeddingClient(settings.openai_api_key)
-    if settings.voyage_api_key:
+        return OpenAIEmbeddingClient(_openai)
+    if _voyage:
         log.debug("embedding.provider", provider="voyage")
-        return VoyageEmbeddingClient(settings.voyage_api_key)
-    log.warning("embedding.no_provider", msg="Set OPENAI_API_KEY or VOYAGE_API_KEY to enable memory block")
+        return VoyageEmbeddingClient(_voyage)
+    log.warning("embedding.no_provider", msg="Set OPENAI_API_KEY or VOYAGE_API_KEY in workspace environment to enable memory block")
     return None
