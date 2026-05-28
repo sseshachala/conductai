@@ -746,6 +746,11 @@ const WHY_DELEGATOR = [
     body: "Organize agents into projects. Invite teammates as admin, editor, or viewer — each with enforced permissions at the API level. Environments and credentials are workspace-scoped, so staging and production never cross-contaminate.",
   },
   {
+    icon: "💾",
+    title: "Agents that learn — built-in memory",
+    body: "Every agent can recall what it did last time on your repo and record what it does this time. Powered by vector similarity search — the most relevant past context surfaces automatically, not just the most recent. Repo scope or workspace scope. Gets smarter with every run.",
+  },
+  {
     icon: "🧠",
     title: "Auto model routing — best model for the job",
     body: "Set your optimization goal — Quality, Balanced, Speed, or Cost — and Conduct routes each agent step to the right model automatically. Security scans get Opus. Issue triage gets Haiku. Code review gets Sonnet. You see exactly which model ran and why, in the run trace.",
