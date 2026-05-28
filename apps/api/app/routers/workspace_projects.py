@@ -135,6 +135,43 @@ def delete_project(
     db.commit()
 
 
+# ── Direct project lookup (no workspace cookie required) ─────────────────────
+
+project_direct_router = APIRouter(prefix="/projects", tags=["workspace-projects"])
+
+
+@project_direct_router.get("/{project_id}", response_model=ProjectOut)
+def get_project(
+    project_id: str,
+    user_id: Annotated[str, Depends(get_user_id)],
+    db: Session = Depends(get_db),
+):
+    """Return a single project by ID. Workspace is derived from the project row —
+    no X-Workspace-ID cookie required. Used by the project page to work correctly
+    regardless of which workspace the browser cookie currently points to."""
+    row = db.execute(text("""
+        SELECT p.id, p.workspace_id, p.name, p.created_at, COUNT(w.id) AS agent_count
+        FROM projects p
+        LEFT JOIN workflows w ON w.project_id = p.id
+        WHERE p.id = :pid
+        GROUP BY p.id
+    """), {"pid": project_id}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Verify the requesting user is a member of the project's workspace.
+    proj_ws = str(row.workspace_id)
+    member = db.execute(
+        text("SELECT 1 FROM workspace_users WHERE workspace_id = :ws AND clerk_user_id = :uid"),
+        {"ws": proj_ws, "uid": user_id},
+    ).fetchone()
+    if not member and user_id != "dev":
+        raise HTTPException(status_code=403, detail="Not a member of this workspace")
+
+    return ProjectOut(id=str(row.id), workspace_id=proj_ws, name=row.name,
+                      created_at=row.created_at, agent_count=row.agent_count or 0)
+
+
 # ── Audit log endpoint ────────────────────────────────────────────────────────
 
 audit_router = APIRouter(prefix="/workspaces/{workspace_id}/audit-log", tags=["audit-log"])
