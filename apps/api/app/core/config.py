@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     modal_token_id: str = ""
     modal_token_secret: str = ""
 
+    # Embeddings — set one provider key to enable the memory block
+    openai_api_key: str = ""   # text-embedding-3-small (1536d)
+    voyage_api_key: str = ""   # voyage-3-lite (512d) — future
+
     # Sentry — leave blank to disable
     sentry_dsn: str = ""
     app_version: str = "1.0.0"
