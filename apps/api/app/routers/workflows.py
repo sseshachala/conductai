@@ -330,6 +330,21 @@ def _deregister_github_webhook(token: str, repo: str, hook_id: str) -> None:
     _deregister_git_webhook(token, repo, hook_id, provider="github")
 
 
+def _github_hook_exists(token: str, repo: str, hook_id: str) -> bool:
+    """Return True if the hook still exists on GitHub, False if 404 or error."""
+    import httpx
+    try:
+        owner, repo_name = repo.split("/", 1)
+        r = httpx.get(
+            f"https://api.github.com/repos/{owner}/{repo_name}/hooks/{hook_id}",
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
+            timeout=10,
+        )
+        return r.status_code == 200
+    except Exception:
+        return False
+
+
 @router.get("/playbooks")
 def list_playbooks():
     return [
@@ -709,6 +724,14 @@ def register_workflow_webhook(
         Workflow.id != workflow_id,
         Workflow.playbook_slug.in_(same_event_slugs),
     ).first()
+
+    if sibling:
+        # Verify the sibling's hook still exists on GitHub — it may be stale from a past delete.
+        if not _github_hook_exists(token, repo, sibling.github_hook_id):
+            log.info("webhook.sibling_stale", sibling_id=str(sibling.id), hook_id=sibling.github_hook_id)
+            sibling.github_hook_id = None
+            db.commit()
+            sibling = None  # fall through to fresh registration
 
     if sibling:
         # Deregister any stale hook this workflow previously owned (best-effort)
