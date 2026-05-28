@@ -131,23 +131,22 @@ test_trigger:
     label:
       name: "[TEST] autopilot ready"
     issue:
-      number: 9999
-      title: "[TEST] Create conductai_test.py"
+      number: 16
+      title: "[TEST] fix: address critical security findings on PR #12"
       body: |
-        Create a file `conductai_test.py` in the repo root that prints:
-        print("Hello, Conduct AI!")
         This is a test run — prefix the branch and PR with [TEST].
-      html_url: "https://github.com/sseshachala/conductai/issues/9999"
+        Review the security scan findings on PR #12 and implement fixes for any critical issues found.
+      html_url: "https://github.com/sseshachala/conductai-testbed-node/issues/16"
       user:
         login: conductai-test-bot
       labels:
         - name: "[TEST] autopilot ready"
     repository:
-      full_name: sseshachala/conductai
-      name: conductai
+      full_name: sseshachala/conductai-testbed-node
+      name: conductai-testbed-node
       owner:
         login: sseshachala
       default_branch: main
-      clone_url: "https://github.com/sseshachala/conductai.git"
+      clone_url: "https://github.com/sseshachala/conductai-testbed-node.git"
     sender:
       login: conductai-test-bot
