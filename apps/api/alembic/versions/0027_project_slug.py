@@ -30,12 +30,9 @@ def upgrade():
     seen: dict[str, int] = {}
     for row in rows:
         base = _slugify(row.name) or "project"
-        if base not in seen:
-            slug = base
-        else:
-            seen[base] += 1
-            slug = f"{base}-{seen[base]}"
-        seen.setdefault(base, 0)
+        n = seen.get(base, 0)
+        slug = base if n == 0 else f"{base}-{n}"
+        seen[base] = n + 1
         conn.execute(
             sa.text("UPDATE projects SET slug = :slug WHERE id = :id"),
             {"slug": slug, "id": str(row.id)},
