@@ -1180,15 +1180,17 @@ export default function BlockEditor({
             {action === "write" && (
               <div className={section}>
                 <span className={sectionLabel}>Summary template</span>
-                <textarea
-                  value={summary}
-                  onChange={e => handleFieldChange("config.summary", e.target.value)}
-                  rows={3}
-                  placeholder={"e.g. Fixed {{fetch_issue.title}} by {{implement_fix.approach}}"}
-                  className={cn(inputBase, "resize-none")}
-                />
+                {summary ? (
+                  <pre className="text-[11px] font-mono text-stone-700 bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 whitespace-pre-wrap break-all leading-relaxed">
+                    {summary}
+                  </pre>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-stone-200 bg-stone-50 px-3 py-2.5 text-[11px] text-stone-400 leading-relaxed">
+                    No summary template set. Edit the workflow YAML to add one.
+                  </div>
+                )}
                 <p className="text-[10px] text-stone-400 mt-1">
-                  Use <code className="bg-stone-100 px-1 rounded">{"{{block_id.field}}"}</code> refs — resolved at runtime before storing.
+                  Resolved at runtime — <code className="bg-stone-100 px-1 rounded">{"{{block_id.field}}"}</code> refs pull from block outputs.
                 </p>
               </div>
             )}
