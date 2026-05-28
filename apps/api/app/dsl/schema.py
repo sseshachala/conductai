@@ -28,6 +28,7 @@ SUPPORTED_BLOCK_TYPES = {
     "brain",
     "logic",
     "approval",
+    "memory",
     "output",
     # `trigger` and `cleanup` are special: triggers live under top-level
     # ``on:`` and cleanups under top-level ``cleanup:`` — they do not appear
@@ -114,7 +115,7 @@ class OutputConfig(BaseModel):
 # don't have to context-switch between subclasses while authoring YAML.
 # ---------------------------------------------------------------------------
 class Block(BaseModel):
-    type: Literal["tool", "brain", "logic", "approval", "output"]
+    type: Literal["tool", "brain", "logic", "approval", "memory", "output"]
     label: str | None = None
     description: str | None = None
 
@@ -138,6 +139,12 @@ class Block(BaseModel):
     slack_user: str | None = None
     approval_email: str | None = None  # email address to send approve/reject link
     message: str | None = None
+
+    # — memory blocks —
+    scope: Literal["repo", "workspace"] | None = None
+    key: str | None = None
+    limit: int | None = None
+    summary: str | None = None
 
     # — output blocks —
     output: OutputConfig | None = None
@@ -178,6 +185,11 @@ class Block(BaseModel):
                 raise ValueError("approval blocks with via=email/both require `approval_email`")
             if not has_slack and not has_email:
                 raise ValueError("approval blocks require at least one of: `channel`, `slack_user`, or `approval_email`")
+        elif t == "memory":
+            if not self.action or self.action not in ("read", "write"):
+                raise ValueError("memory blocks require `action: read` or `action: write`")
+            if self.action == "write" and not self.summary:
+                raise ValueError("memory write blocks require a `summary:` template")
         elif t == "output":
             if not self.output:
                 raise ValueError("output blocks require an `output:` section")
