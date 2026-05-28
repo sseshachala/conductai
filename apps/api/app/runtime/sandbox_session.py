@@ -183,11 +183,12 @@ class ModalSession:
         self._token_secret = token_secret
         self._proc = None
         self._started = False
+        self._sandbox_id: str | None = None
 
     def _ensure_started(self) -> None:
         if self._started:
             return
-        import sys
+        import sys, json as _json
         proc_env = {**os.environ, "MODAL_TOKEN_ID": self._token_id, "MODAL_TOKEN_SECRET": self._token_secret}
         self._proc = subprocess.Popen(
             [sys.executable, "-m", "app.runtime.modal_session_runner"],
@@ -197,8 +198,16 @@ class ModalSession:
             env=proc_env,
             text=True,
         )
+        # First line from runner is {"sandbox_id": "..."} — capture it so we
+        # can terminate the sandbox directly from this process on close.
+        try:
+            first_line = self._proc.stdout.readline()
+            data = _json.loads(first_line)
+            self._sandbox_id = data.get("sandbox_id")
+        except Exception:
+            self._sandbox_id = None
         self._started = True
-        log.debug("sandbox_session.modal.started")
+        log.debug("sandbox_session.modal.started", sandbox_id=self._sandbox_id)
 
     def dispatch(self, tool_name: str, tool_input: dict) -> str:
         import json
@@ -244,9 +253,18 @@ class ModalSession:
             try:
                 self._proc.stdin.write('{"tool_name": "__exit__", "tool_input": {}}\n')
                 self._proc.stdin.flush()
-                self._proc.wait(timeout=10)
+                self._proc.wait(timeout=15)
             except Exception:
                 self._proc.kill()
+            # Terminate the Modal sandbox directly from this process — safety net
+            # in case the subprocess was force-killed before its finally block ran.
+            if self._sandbox_id:
+                try:
+                    import modal  # type: ignore[import]
+                    modal.Sandbox.from_id(self._sandbox_id).terminate()
+                    log.debug("sandbox_session.modal.sandbox_terminated", sandbox_id=self._sandbox_id)
+                except Exception as e:
+                    log.warning("sandbox_session.modal.terminate_failed", sandbox_id=self._sandbox_id, error=str(e))
             log.debug("sandbox_session.modal.closed")
 
 
