@@ -494,7 +494,11 @@ def _repo_matches(config: dict[str, Any], incoming_repo: str, strict: bool) -> b
     # default: allowlist
     allowlist = _parse_repo_allowlist(config.get("repo_allowlist") or config.get("repos"))
     if not allowlist:
-        return not strict
+        # No allowlist configured — pass through. The webhook secret + workspace_id
+        # URL scoping already constrain which events reach this handler. Requiring
+        # an allowlist when none is set would silently block all YAML-installed
+        # workflows that don't have repo_allowlist set in their trigger block.
+        return True
     return incoming_repo in allowlist
 
 
