@@ -147,6 +147,30 @@ async def slack_interactions(request: Request, db: Session = Depends(get_db)):
         db.commit()
         log.info("run.post_run_verdict", run_id=run_id_str, decision=decision, approver=approver)
 
+    # Update the Slack message to replace buttons with the decision stamp
+    msg_container = payload.get("container", {})
+    msg_channel = msg_container.get("channel_id") or payload.get("channel", {}).get("id")
+    msg_ts = msg_container.get("message_ts") or payload.get("message", {}).get("ts")
+    if msg_channel and msg_ts:
+        try:
+            from app.runtime.integrations.slack import update_approval_message
+            from app.models.integration import Integration
+            from app.models.workflow import WorkflowVersion
+            from app.core.crypto import decrypt
+            version = db.query(WorkflowVersion).filter(WorkflowVersion.id == run.workflow_version_id).first()
+            workspace_id = str(version.workflow.workspace_id) if version and version.workflow else None
+            if workspace_id:
+                slack_row = db.query(Integration).filter(
+                    Integration.workspace_id == workspace_id,
+                    Integration.handle == "slack",
+                ).first()
+                if slack_row and slack_row.encrypted_credentials:
+                    creds = decrypt(slack_row.encrypted_credentials)
+                    slack_token = creds.get("token") or creds.get("bot_token", "")
+                    update_approval_message(slack_token, msg_channel, msg_ts, decision, approver)
+        except Exception as e:
+            log.warning("slack.update_message_failed", error=str(e))
+
     return {"ok": True}
 
 
