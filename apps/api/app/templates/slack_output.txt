@@ -6,4 +6,4 @@
 
 {run_summary}
 
-_View full trace → {trace_url}_
+<{trace_url}|View full trace →>
