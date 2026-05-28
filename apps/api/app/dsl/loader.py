@@ -394,6 +394,18 @@ def _block_to_node(block_id: str, block: Block, col: int) -> dict[str, Any]:
             if block.runs_on.port:
                 config["remote_host"]["port"] = block.runs_on.port
 
+    elif block.type == "memory":
+        if block.action:
+            config["action"] = block.action
+        if block.scope:
+            config["scope"] = block.scope
+        if block.key:
+            config["key"] = block.key
+        if block.limit is not None:
+            config["limit"] = str(block.limit)
+        if block.summary:
+            config["summary"] = block.summary
+
     elif block.type == "logic":
         config["condition"] = block.condition
 
