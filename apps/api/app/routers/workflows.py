@@ -562,8 +562,7 @@ def update_workflow(
         db.flush()
         workflow.current_version_id = version.id
 
-        # Keep github_hook_repo in sync with config.repo_allowlist (first entry).
-        # Without this, the test trigger and conflict checks keep using the stale install-time repo.
+        # Keep github_hook_repo and github_hook_label in sync with trigger config.
         nodes = graph_dict.get("nodes", [])
         trigger_node = next((n for n in nodes if n.get("data", {}).get("type") == "trigger"), None)
         if trigger_node:
@@ -572,6 +571,11 @@ def update_workflow(
             first_repo = next((r.strip() for r in allowlist_raw.split(",") if r.strip()), None)
             if first_repo and first_repo != workflow.github_hook_repo:
                 workflow.github_hook_repo = first_repo
+            # labels is a list in the graph config (e.g. ["autopilot-ready"])
+            labels_raw = cfg.get("labels") or []
+            label = labels_raw[0].strip() if labels_raw else None
+            if label != workflow.github_hook_label:
+                workflow.github_hook_label = label
 
         db.commit()
         db.refresh(workflow)
@@ -659,15 +663,42 @@ def register_workflow_webhook(
     token, provider = _git_token(str(workspace_id), db, str(workflow.environment_id) if workflow.environment_id else None)
 
     repo = workflow.github_hook_repo
+    current_events = set(_GITHUB_WEBHOOK_EVENTS.get(playbook_slug, []))
+    current_label = workflow.github_hook_label  # may be None for non-label-filtered agents
 
-    # Check for a sibling workflow that already has an active hook on this repo.
-    # If found, reuse its hook_id instead of registering a new one on GitHub —
-    # this prevents duplicate hooks and avoids the orphan-deregister bug.
+    # Conflict check: another workflow on this repo watches the same event type AND the same label.
+    # Same label + same events = would fire on identical payloads — reject.
+    if current_label:
+        label_conflict = db.query(Workflow).filter(
+            Workflow.workspace_id == workspace_id,
+            Workflow.github_hook_repo == repo,
+            Workflow.github_hook_id.isnot(None),
+            Workflow.id != workflow_id,
+            Workflow.github_hook_label == current_label,
+            Workflow.playbook_slug.in_([
+                slug for slug, evts in _GITHUB_WEBHOOK_EVENTS.items()
+                if set(evts) & current_events
+            ]),
+        ).first()
+        if label_conflict:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Label '{current_label}' is already registered on {repo} by '{label_conflict.name}'. "
+                       f"Each agent must watch a unique label on this repo.",
+            )
+
+    # Sibling check: another workflow on this repo uses the same event type.
+    # Share its hook_id — GitHub only needs one inbound webhook per event type per repo.
+    same_event_slugs = [
+        slug for slug, evts in _GITHUB_WEBHOOK_EVENTS.items()
+        if set(evts) & current_events
+    ]
     sibling = db.query(Workflow).filter(
         Workflow.workspace_id == workspace_id,
         Workflow.github_hook_repo == repo,
         Workflow.github_hook_id.isnot(None),
         Workflow.id != workflow_id,
+        Workflow.playbook_slug.in_(same_event_slugs),
     ).first()
 
     if sibling:
