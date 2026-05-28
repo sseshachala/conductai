@@ -18,9 +18,9 @@ from collections import defaultdict, deque
 from datetime import datetime, timezone
 from typing import Any
 
-import anthropic
-
 from app.core.config import settings
+from app.runtime.llm_client import AnthropicClient, LLMTextBlock, LLMToolUseBlock
+from app.runtime.model_router import resolve as _router_resolve
 from app.core.crypto import decrypt
 from app.core.database import SessionLocal
 from app.models.environment import Environment  # noqa: F401 — used for FK relationship loading
@@ -550,6 +550,7 @@ def _execute_brain(
     db=None,
     run_id: str | None = None,
     block_id: str | None = None,
+    playbook_slug: str | None = None,
 ) -> dict:
     if state.get("__dry_run"):
         return {
@@ -567,20 +568,38 @@ def _execute_brain(
         system_prompt = f"{system_prompt}\n\nAdditional instructions:\n{custom.strip()}"
     is_agentic = block["data"].get("isAgentic", False)
 
+    # Model selection via router
+    routing_pref = block["data"].get("routingPreference") or "balanced"
+    explicit_model = block["data"].get("model") or None
+    model_id, routing_reason = _router_resolve(playbook_slug, routing_pref, explicit_model)
+    log.debug("brain.model_selected", block_id=block["id"], model=model_id, reason=routing_reason)
+
     # Resolve remote host (if the YAML's `runs_on:` was set on this block).
     # When set, all four Brain tools dispatch over SSH to that host rather
     # than running locally on the worker or in Modal.
     remote_host = _resolve_remote_host(block, state, credentials or {})
 
-    def _local_dispatch(tool_name: str, tool_input: dict) -> str:
-        # Merge credential placeholders into run_shell env, then swap placeholders
-        # for real values immediately before subprocess execution. Real values never
-        # appear in tool_input (which is logged to DB) — only in the subprocess env.
+    from app.runtime.sandbox_session import create_session as _create_session
+    session = _create_session(remote_host, credentials)
+    _session_closed = False
+
+    def _close_session():
+        nonlocal _session_closed
+        if not _session_closed:
+            _session_closed = True
+            try:
+                session.close()
+            except Exception:
+                pass
+
+    def _dispatch_with_creds(tool_name: str, tool_input: dict) -> str:
+        # Swap credential placeholders for real values in subprocess env only.
+        # Placeholders appear in tool_input (logged to DB); real values never do.
         if tool_name == "run_shell" and cred_env:
             merged_env = {**cred_env, **tool_input.get("env", {})}
             resolved_env = {k: _cred_real.get(v, v) for k, v in merged_env.items()}
             tool_input = {**tool_input, "env": resolved_env}
-        return _dispatch_tool(tool_name, tool_input, remote_host=remote_host, credentials=credentials)
+        return session.dispatch(tool_name, tool_input)
 
     context = json.dumps({k: v for k, v in state.items() if not k.startswith("__")}, default=str)[:4000]
 
@@ -612,8 +631,9 @@ def _execute_brain(
                     _cred_real[placeholder] = val
                     cred_names.append(env_name)
     cred_section = (
-        "\n\nAvailable credentials as environment variables (pre-injected into every shell command):\n"
+        "\n\nCredentials are pre-exported into every run_shell call — use them directly without any setup:\n"
         + "\n".join(f"  ${n}" for n in cred_names)
+        + "\nDO NOT check if these vars exist. DO NOT try to read them from files. They are already in the shell environment."
     ) if cred_names else ""
 
     user_message = f"Workflow context so far:\n{context}{cred_section}\n\nExecute your task."
@@ -628,36 +648,24 @@ def _execute_brain(
 
     environment_preamble = (
         "EXECUTION ENVIRONMENT:\n"
-        "CRITICAL: Each run_shell call gets a BRAND NEW isolated container — /tmp is EMPTY at the\n"
-        "start of every single tool call. Files from a previous run_shell call DO NOT persist.\n"
+        "You are running inside a PERSISTENT session — files and directories you create in one\n"
+        "run_shell call ARE available in subsequent calls within this task. Use multiple focused\n"
+        "tool calls rather than one giant shell script when it makes the work clearer.\n"
         "Pre-installed: git, python3, pip3, curl, wget, node, npm, unzip.\n"
         "\n"
-        "CRITICAL — DO NOT waste turns checking if tools exist:\n"
-        "- Do NOT run: which git, apt-get, find / -name git, ls /usr/bin/git\n"
-        "- Do NOT run: apt-get install anything\n"
-        "- Do NOT split clone + work across multiple run_shell calls — the clone will be GONE.\n"
+        "DO NOT waste turns on diagnostics:\n"
+        "- Do NOT run: which git, apt-get install anything, find / -name git\n"
+        "- Do NOT check if env vars are set (python3 -c 'import os; print(os.environ...)') — they are set\n"
+        "- Do NOT run echo $GIT_TOKEN or similar — just use it\n"
         "\n"
-        "STANDARD REPO SETUP — do ALL of the following in ONE single run_shell call:\n"
-        "Option A (preferred — git):\n"
-        "  Write a bash script that in one call does: clone → configure git → checkout branch\n"
-        "  → read/edit files → git add → git commit → git push → open PR via curl.\n"
-        "  Example one-liner chain:\n"
-        "    git clone https://$GIT_TOKEN@github.com/<owner>/<repo>.git /tmp/repo &&\n"
-        "    cd /tmp/repo && git config user.email 'bot@conductai.ai' && git config user.name 'Conduct AI' &&\n"
-        "    git checkout -b fix/<slug> &&\n"
-        "    <edit files with python3 or sed> &&\n"
-        "    git add -A && git commit -m 'fix: ...' &&\n"
-        "    git push https://$GIT_TOKEN@github.com/<owner>/<repo>.git fix/<slug> &&\n"
-        "    curl -s -X POST https://api.github.com/repos/<owner>/<repo>/pulls \\\n"
-        "      -H 'Authorization: token '$GIT_TOKEN -H 'Content-Type: application/json' \\\n"
-        "      -d '{\"title\":\"...\",\"head\":\"fix/<slug>\",\"base\":\"main\",\"body\":\"...\"}'\n"
+        "STANDARD REPO SETUP — recommended approach across multiple calls:\n"
+        "  Turn 1: git clone https://$GIT_TOKEN@github.com/<owner>/<repo>.git /tmp/repo\n"
+        "  Turn 2: cd /tmp/repo && git config user.email 'bot@conductai.ai' && git checkout -b fix/<slug>\n"
+        "  Turn 3+: read/edit files, git add, git commit\n"
+        "  Final: git push && open PR via curl or gh CLI\n"
         "\n"
-        "Option B (fallback — if git clone fails on first attempt, switch immediately):\n"
-        "  Use python3 urllib to: GET file contents, PATCH/PUT changes, POST branch, POST PR.\n"
-        "  Complete ALL steps in one python3 script: read files, apply changes, commit, create PR.\n"
-        "\n"
-        "Do NOT switch between options mid-task. Pick one and finish completely.\n"
-        "Do NOT split work across multiple run_shell calls — you will lose all state."
+        "Fallback (if git clone fails): use python3 urllib to GET/PATCH/PUT via GitHub API.\n"
+        "Do NOT switch between approaches mid-task."
     )
 
     # BYO key: workspace credential takes precedence over platform env var
@@ -665,7 +673,7 @@ def _execute_brain(
         (credentials or {}).get("anthropic", {}).get("api_key")
         or settings.anthropic_api_key
     )
-    client = anthropic.Anthropic(api_key=_anthropic_key)
+    llm = AnthropicClient(api_key=_anthropic_key)
 
     if is_agentic:
         # Bounded agentic loop — max_turns from run state, default 20
@@ -674,10 +682,11 @@ def _execute_brain(
         max_turns = int(state.get("__max_turns", 20))
         total_input_tokens = 0
         total_output_tokens = 0
-        working_dir: str | None = None  # track if Brain cloned a repo
+        total_cache_read_tokens = 0
+        total_cache_write_tokens = 0
+        total_cost_usd = 0.0
         full_system = f"{environment_preamble}\n\n{system_prompt}\n\n{sufficiency_instruction}"
 
-        model_id = block["data"].get("model") or "claude-sonnet-4-6"
         while turns < max_turns:
             # Trace: user turn
             if db and run_id and block_id:
@@ -686,45 +695,41 @@ def _execute_brain(
                 _write_trace(db, run_id, block_id, turns + 1, "user",
                              content=user_content[:8000] if user_content else None)
 
-            response = client.messages.create(
+            response = llm.create(
                 model=model_id,
                 max_tokens=4096,
                 system=full_system,
                 tools=BRAIN_TOOLS,
                 messages=messages,
+                cache_system=True,
             )
             turns += 1
-            in_tok = getattr(getattr(response, "usage", None), "input_tokens", 0)
-            out_tok = getattr(getattr(response, "usage", None), "output_tokens", 0)
-            if in_tok or out_tok:
-                total_input_tokens += in_tok
-                total_output_tokens += out_tok
+            total_input_tokens       += response.usage.input_tokens
+            total_output_tokens      += response.usage.output_tokens
+            total_cache_read_tokens  += response.usage.cache_read_tokens
+            total_cache_write_tokens += response.usage.cache_write_tokens
+            total_cost_usd           += response.cost_usd
 
             # Collect tool calls from response
-            tool_calls = [b for b in response.content if b.type == "tool_use"]
-            text_blocks = [b for b in response.content if b.type == "text"]
-            final_text = " ".join(b.text for b in text_blocks)
+            tool_calls  = [b for b in response.content if isinstance(b, LLMToolUseBlock)]
+            text_blocks = [b for b in response.content if isinstance(b, LLMTextBlock)]
+            final_text  = " ".join(b.text for b in text_blocks)
 
             # Trace: assistant response
             if db and run_id and block_id:
                 _write_trace(db, run_id, block_id, turns, "assistant",
                              content=final_text[:8000] if final_text else None,
-                             input_tokens=in_tok, output_tokens=out_tok)
+                             input_tokens=response.usage.input_tokens,
+                             output_tokens=response.usage.output_tokens)
 
             # First-turn sufficiency check — fail fast before any tools are used
             if turns == 1 and final_text.strip().startswith("NEEDS_CLARIFICATION:"):
+                _close_session()
                 raise ValueError(final_text.strip())
 
             if response.stop_reason == "end_turn" or not tool_calls:
-                # Sonnet 4.6 pricing: $3/1M input, $15/1M output — update if model changes
-                cost_usd = round((total_input_tokens * 3 + total_output_tokens * 15) / 1_000_000, 6)
-                # Git-diff evidence runs on the worker host. When the work happened
-                # on a remote droplet we have nothing to inspect locally; the Brain's
-                # final text is expected to summarise the diff in that case.
-                if remote_host:
-                    files_changed, diff_stat = [], ""
-                else:
-                    files_changed, diff_stat = _extract_git_evidence(working_dir)
+                cost_usd = round(total_cost_usd, 6)
+                files_changed, diff_stat = session.capture_artifacts()
                 if db and run_id:
                     from app.runtime.sandbox import _modal_available
                     if _modal_available():
@@ -738,10 +743,14 @@ def _execute_brain(
                     "turns": turns,
                     "input_tokens": total_input_tokens,
                     "output_tokens": total_output_tokens,
+                    "cache_read_tokens": total_cache_read_tokens,
+                    "cache_write_tokens": total_cache_write_tokens,
                     "cost_usd": cost_usd,
                     "files_changed": files_changed,
                     "diff_stat": diff_stat,
                     "remote_host_ip": remote_host.get("ip") if remote_host else None,
+                    "model": model_id,
+                    "routing_reason": routing_reason,
                 }
                 # Extract structured values from the last JSON line of the output
                 # so brain blocks can surface keys like pr_url, passed, etc. as
@@ -756,10 +765,11 @@ def _execute_brain(
                             result.update(_extracted)
                     except Exception:
                         pass
+                _close_session()
                 return result
 
-            # Append assistant message
-            messages.append({"role": "assistant", "content": response.content})
+            # Append assistant message (provider-specific format via adapter)
+            messages.extend(llm.make_assistant_turn(response))
 
             # Emit Modal lifecycle event on first tool-dispatching turn
             if turns == 1 and db and run_id:
@@ -771,21 +781,18 @@ def _execute_brain(
                         "turn": 0,
                     })
 
-            # Execute tool calls and build tool_result message
-            tool_results = []
+            # Execute tool calls and collect results
+            raw_tool_results: list[tuple[str, str]] = []
             for tc in tool_calls:
                 # Trace: tool_use
                 if db and run_id and block_id:
                     _write_trace(db, run_id, block_id, turns, "tool_use",
                                  tool_name=tc.name,
-                                 tool_input=dict(tc.input) if tc.input else None,
+                                 tool_input=tc.input or None,
                                  tool_use_id=tc.id)
 
-                # Track working dir if Brain runs shell commands
-                if tc.name == "run_shell" and tc.input.get("working_dir"):
-                    working_dir = tc.input["working_dir"]
                 try:
-                    result_content = _local_dispatch(tc.name, tc.input)
+                    result_content = _dispatch_with_creds(tc.name, tc.input)
                 except RuntimeError as sandbox_err:
                     if db and run_id:
                         _emit(db, run_id, block_id, "brain_tool_call", {
@@ -794,11 +801,8 @@ def _execute_brain(
                             "turn": turns,
                         })
                     raise
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": tc.id,
-                    "content": result_content,
-                })
+                raw_tool_results.append((tc.id, result_content))
+
                 # Trace: tool_result
                 if db and run_id and block_id:
                     _write_trace(db, run_id, block_id, turns, "tool_result",
@@ -810,13 +814,12 @@ def _execute_brain(
                         "summary": _summarise_tool_call(tc.name, tc.input),
                         "turn": turns,
                     })
-            messages.append({"role": "user", "content": tool_results})
 
-        cost_usd = round((total_input_tokens * 3 + total_output_tokens * 15) / 1_000_000, 6)
-        if remote_host:
-            files_changed, diff_stat = [], ""
-        else:
-            files_changed, diff_stat = _extract_git_evidence(working_dir)
+            # Append tool results (provider-specific format via adapter)
+            messages.extend(llm.make_tool_results_turn(raw_tool_results))
+
+        cost_usd = round(total_cost_usd, 6)
+        files_changed, diff_stat = session.capture_artifacts()
         if db and run_id:
             from app.runtime.sandbox import _modal_available
             if _modal_available():
@@ -829,10 +832,13 @@ def _execute_brain(
                 "turns": max_turns,
                 "input_tokens": total_input_tokens,
                 "output_tokens": total_output_tokens,
+                "cache_read_tokens": total_cache_read_tokens,
+                "cache_write_tokens": total_cache_write_tokens,
                 "cost_usd": cost_usd,
                 "files_changed": files_changed,
                 "diff_stat": diff_stat,
             })
+        _close_session()
         raise RuntimeError(
             f"Turn budget exhausted: agent did not reach end_turn after {max_turns} turns "
             f"({total_input_tokens} input / {total_output_tokens} output tokens, ${cost_usd:.4f})"
@@ -840,21 +846,20 @@ def _execute_brain(
 
     else:
         # Single call (no tools)
-        response = client.messages.create(
-            model="claude-sonnet-4-6",
+        response = llm.create(
+            model=model_id,
             max_tokens=2048,
             system=system_prompt,
             messages=[{"role": "user", "content": user_message}],
         )
-        text = next((b.text for b in response.content if hasattr(b, "text")), "")
-        input_tokens = getattr(getattr(response, "usage", None), "input_tokens", 0)
-        output_tokens = getattr(getattr(response, "usage", None), "output_tokens", 0)
-        cost_usd = round((input_tokens * 3 + output_tokens * 15) / 1_000_000, 6)
+        text = next((b.text for b in response.content if isinstance(b, LLMTextBlock)), "")
         result = {
             "output": text,
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
-            "cost_usd": cost_usd,
+            "input_tokens": response.usage.input_tokens,
+            "output_tokens": response.usage.output_tokens,
+            "cost_usd": response.cost_usd,
+            "model": model_id,
+            "routing_reason": routing_reason,
         }
         # Extract structured values from the last JSON line of the output
         import json as _json
@@ -867,6 +872,7 @@ def _execute_brain(
                     result.update(_extracted)
             except Exception:
                 pass
+        _close_session()
         return result
 
 
@@ -1260,6 +1266,101 @@ def _execute_approval(block: dict, state: dict, credentials: dict, run_id: str) 
 
 # ── main executor ─────────────────────────────────────────────────────────────
 
+def _execute_memory(block: dict, state: dict, db, run_id: str, workspace_id: str, playbook_slug: str, credentials: dict | None = None) -> dict:
+    """
+    Read or write agent memory with vector similarity search.
+
+    read:  queries agent_memory for the most similar past summaries, returns them
+           as `entries` list so the brain block can use prior context.
+    write: embeds the resolved summary and inserts a new row.
+    """
+    import json as _json
+    from app.models.agent_memory import AgentMemory
+    from app.runtime.embedding_client import create_embedding_client
+
+    data = block["data"]
+    config = data.get("config", {})
+    action = config.get("action", "read")
+    scope = config.get("scope", "repo")
+    key = _resolve_refs(config.get("key", ""), state)
+    creds = credentials or {}
+    client = create_embedding_client(
+        openai_api_key=creds.get("openai", {}).get("api_key") or creds.get("OPENAI_API_KEY"),
+        voyage_api_key=creds.get("voyage", {}).get("api_key") or creds.get("VOYAGE_API_KEY"),
+    )
+
+    if action == "read":
+        limit = int(config.get("limit", 5))
+        if not key:
+            return {"entries": [], "note": "No key resolved"}
+
+        if client:
+            query_vec = client.embed(key)
+            # Cosine similarity via pgvector — cast stored JSON text to vector
+            rows = db.execute(
+                __import__("sqlalchemy").text("""
+                    SELECT summary, created_at,
+                           (embedding::vector <=> :vec::vector) AS distance
+                    FROM agent_memory
+                    WHERE workspace_id = :ws
+                      AND playbook_slug = :slug
+                      AND scope = :scope
+                      AND key = :key
+                      AND embedding IS NOT NULL
+                    ORDER BY distance ASC
+                    LIMIT :lim
+                """),
+                {
+                    "vec": _json.dumps(query_vec),
+                    "ws": workspace_id,
+                    "slug": playbook_slug,
+                    "scope": scope,
+                    "key": key,
+                    "lim": limit,
+                },
+            ).fetchall()
+        else:
+            # No embedding provider — fall back to recency-based retrieval
+            rows = db.query(AgentMemory).filter(
+                AgentMemory.workspace_id == workspace_id,
+                AgentMemory.playbook_slug == playbook_slug,
+                AgentMemory.scope == scope,
+                AgentMemory.key == key,
+            ).order_by(AgentMemory.created_at.desc()).limit(limit).all()
+
+        entries = [{"summary": r.summary, "at": str(r.created_at)} for r in rows]
+        return {"entries": entries, "count": len(entries), "scope": scope, "key": key}
+
+    elif action == "write":
+        summary_tpl = config.get("summary", "")
+        summary = _resolve_refs(summary_tpl, state).strip()
+        if not summary:
+            return {"written": False, "note": "Empty summary — nothing written"}
+
+        embedding_json: str | None = None
+        if client:
+            try:
+                vec = client.embed(summary)
+                embedding_json = _json.dumps(vec)
+            except Exception as e:
+                log.warning("memory.embed_failed", error=str(e))
+
+        row = AgentMemory(
+            workspace_id=workspace_id,
+            playbook_slug=playbook_slug,
+            scope=scope,
+            key=key,
+            summary=summary,
+            embedding=embedding_json,
+            run_id=run_id if run_id else None,
+        )
+        db.add(row)
+        db.commit()
+        return {"written": True, "scope": scope, "key": key, "chars": len(summary)}
+
+    return {"skipped": True, "note": f"Unknown memory action: {action}"}
+
+
 def execute_run(run_id: str):
     """
     Entry point called by the worker.
@@ -1304,8 +1405,8 @@ def execute_run(run_id: str):
 
         # Load credentials and egress allowlist from the workflow's environment
         allowed_hosts: list[str] | None = None
+        from app.models.environment import Environment as _Env
         if env_id:
-            from app.models.environment import Environment as _Env
             env_row = db.query(_Env).filter(_Env.id == env_id).first()
             if env_row:
                 allowed_hosts = env_row.allowed_hosts or None
@@ -1314,7 +1415,19 @@ def execute_run(run_id: str):
                 Integration.environment_id == env_id,
             ).all()
         else:
-            cred_rows = []
+            # No environment assigned — load from Default so tool blocks have credentials
+            default_env = db.query(_Env).filter(
+                _Env.workspace_id == workspace_id_str,
+                _Env.name == "Default",
+            ).first()
+            if default_env:
+                allowed_hosts = default_env.allowed_hosts or None
+                cred_rows = db.query(Integration).filter(
+                    Integration.workspace_id == workspace_id_str,
+                    Integration.environment_id == default_env.id,
+                ).all()
+            else:
+                cred_rows = []
 
         credentials: dict[str, Any] = {
             row.handle: decrypt(row.encrypted_credentials)
@@ -1384,8 +1497,10 @@ def execute_run(run_id: str):
                         result["github_trigger"] = state["github_trigger"]
 
                 elif block_type == "brain":
+                    slug = getattr(getattr(version, "workflow", None), "playbook_slug", None)
                     result = _execute_brain(block, state, compiled, credentials=credentials,
-                                            db=db, run_id=run_id, block_id=block_id)
+                                            db=db, run_id=run_id, block_id=block_id,
+                                            playbook_slug=slug)
 
                 elif block_type == "tool":
                     result = _execute_tool(block, state, credentials, allowed_hosts=allowed_hosts)
@@ -1412,7 +1527,12 @@ def execute_run(run_id: str):
                     result = _execute_approval(block, state, credentials, run_id)
 
                 elif block_type == "memory":
-                    result = {"status": "memory_op_skipped", "note": "Memory — Phase 4"}
+                    result = _execute_memory(
+                        block, state, db, run_id,
+                        str(workspace_id_str),
+                        version.workflow.playbook_slug or "",
+                        credentials=credentials,
+                    )
 
                 else:
                     result = {"status": "skipped", "type": block_type}

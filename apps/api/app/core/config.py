@@ -56,9 +56,16 @@ class Settings(BaseSettings):
     cli_api_key: str = ""
     cli_workspace_id: str = ""  # workspace the CLI api key is scoped to
 
-    # Modal sandbox — when set, Brain tools run in isolated containers
+    # Modal sandbox — DEPRECATED: runtime now uses workspace BYO credentials (MODAL_TOKEN_ID
+    # env var set per-environment). These platform-level keys are no longer read by the
+    # executor. Kept here temporarily so existing .env files don't break on startup.
+    # Remove after confirming no workspace relies on the platform fallback.
     modal_token_id: str = ""
     modal_token_secret: str = ""
+
+    # Embeddings — set one provider key to enable the memory block
+    openai_api_key: str = ""   # text-embedding-3-small (1536d)
+    voyage_api_key: str = ""   # voyage-3-lite (512d) — future
 
     # Sentry — leave blank to disable
     sentry_dsn: str = ""

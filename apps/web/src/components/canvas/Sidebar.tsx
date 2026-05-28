@@ -1,8 +1,25 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { BLOCK_LIBRARY, BLOCK_STYLES } from "@/lib/block-types"
+import {
+  Zap, Sparkles, Plug, GitBranch, ShieldCheck, Bell, RefreshCw, Database,
+} from "lucide-react"
+import { BLOCK_LIBRARY, BLOCK_STYLES, type BlockType } from "@/lib/block-types"
 import { cn } from "@/lib/utils"
+
+function BlockIcon({ type, className }: { type: BlockType; className?: string }) {
+  const props = { size: 13, className, strokeWidth: 1.75 }
+  switch (type) {
+    case "trigger":  return <Zap {...props} />
+    case "brain":    return <Sparkles {...props} />
+    case "tool":     return <Plug {...props} />
+    case "logic":    return <GitBranch {...props} />
+    case "approval": return <ShieldCheck {...props} />
+    case "output":   return <Bell {...props} />
+    case "cleanup":  return <RefreshCw {...props} />
+    case "memory":   return <Database {...props} />
+  }
+}
 
 const INTEGRATION_LIST = [
   { handle: "github",       label: "GitHub" },
@@ -66,32 +83,31 @@ export default function Sidebar({ getToken }: { getToken?: (() => Promise<string
         </div>
       </div>
 
-      {/* Block Library — 2-column square grid */}
+      {/* Block Library — single-column list */}
       <div className="px-3 py-3">
-        <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-2">Block Library</p>
-        <div className="grid grid-cols-2 gap-1.5">
+        <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-2">Blocks</p>
+        <div className="flex flex-col gap-1">
           {BLOCK_LIBRARY.map((block) => {
             const style = BLOCK_STYLES[block.type]
-            const shortName = block.title.split(" · ")[1] ?? block.title
             return (
               <div
-                key={block.title}
+                key={block.type}
                 draggable
                 onDragStart={(e) => {
                   e.dataTransfer.setData("application/marshal-block-type", block.type)
                   e.dataTransfer.setData("application/marshal-block-title", block.title)
                   e.dataTransfer.effectAllowed = "move"
                 }}
-                style={{ aspectRatio: "1 / 1" }}
                 className={cn(
-                  "flex flex-col justify-between p-2 rounded-lg border-2 cursor-grab active:cursor-grabbing select-none transition-all hover:shadow-sm",
+                  "flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg border cursor-grab active:cursor-grabbing select-none transition-all hover:shadow-sm",
                   style.buttonClass
                 )}
               >
-                <span className={cn("text-[8px] font-bold tracking-widest uppercase", style.text)}>
-                  {style.labelText}
-                </span>
-                <span className="text-[11px] font-semibold text-stone-800 leading-tight">{shortName}</span>
+                <BlockIcon type={block.type} className="shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-[12px] font-semibold leading-none text-stone-800">{block.title}</p>
+                  <p className="text-[10px] leading-none mt-0.5 opacity-60">{block.sub}</p>
+                </div>
               </div>
             )
           })}

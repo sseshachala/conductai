@@ -17,8 +17,8 @@ export interface ConfigField {
 
 const GITHUB_ACTION_FIELDS: Record<string, ConfigField[]> = {
   fetch_issue: [
-    { key: "config.params.owner",        label: "Owner",        type: "text", readOnly: true, defaultValue: "{{_trigger.repo_owner}}" },
-    { key: "config.params.repo",         label: "Repo",         type: "text", readOnly: true, defaultValue: "{{_trigger.repo_name}}" },
+    { key: "config.params.owner",        label: "Repo owner",   type: "text", readOnly: true, defaultValue: "{{_trigger.repo_owner}}" },
+    { key: "config.params.repo",         label: "Repository",   type: "text", readOnly: true, defaultValue: "{{_trigger.repo_name}}" },
     { key: "config.params.issue_number", label: "Issue number", type: "text", readOnly: true, defaultValue: "{{_trigger.issue_number}}" },
   ],
   create_repo: [
@@ -221,10 +221,23 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
   brain: [
     {
       key: "isAgentic",
-      label: "Agentic mode",
+      label: "Can use tools",
       type: "toggle",
       hint: "AI loops autonomously — reads files, writes code, runs commands",
       defaultValue: false,
+    },
+    {
+      key: "routingPreference",
+      label: "Model routing",
+      type: "select",
+      defaultValue: "balanced",
+      hint: "Conduct picks the best model for this step based on your preference",
+      options: [
+        { value: "balanced", label: "Balanced — best default" },
+        { value: "quality",  label: "Quality — strongest model" },
+        { value: "speed",    label: "Speed — faster response" },
+        { value: "cost",     label: "Cost — efficient model" },
+      ],
     },
   ],
   logic: [
@@ -286,20 +299,12 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
     },
     {
       key: "config.webhook_secret",
-      label: "Webhook secret",
+      label: "Signing secret",
       type: "text",
       required: false,
       placeholder: "auto-generated on install",
-      hint: "If set, callers must send X-Webhook-Signature: sha256=<hmac> header",
+      hint: "Requires X-Webhook-Signature header when set",
       readOnly: true,
-    },
-    {
-      key: "config.test_pr_number",
-      label: "Test PR number",
-      type: "text",
-      required: false,
-      placeholder: "42",
-      hint: "PR number from the URL — e.g. /pull/42 — used when triggering manually",
     },
   ],
   output: [

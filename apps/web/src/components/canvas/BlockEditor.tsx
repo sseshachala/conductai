@@ -24,6 +24,178 @@ interface BlockEditorProps {
   selectedEnvId?: string
   githubHookRepo?: string | null
   githubHookId?: string | null
+  githubWebhook?: boolean
+  playbookSlug?: string | null
+  onWebhookChange?: (hookId: string | null, hookRepo: string | null) => void
+}
+
+// ── Client-side model router preview (mirrors model_router.py) ────────────────
+
+const MODEL_LABELS: Record<string, string> = {
+  "claude-opus-4-7":            "Claude Opus",
+  "claude-sonnet-4-6":          "Claude Sonnet",
+  "claude-haiku-4-5-20251001":  "Claude Haiku",
+}
+
+const SLUG_CATEGORY: Record<string, string> = {
+  autopilot_quick: "code_implementation", autopilot_full: "code_implementation",
+  autopilot_approved: "code_implementation", dependency_updater: "code_implementation",
+  security_patch_updater: "code_implementation",
+  pr_reviewer: "code_review", copilot_reviewer: "code_review", release_readiness: "code_review",
+  security_scanner: "security",
+  issue_triage: "triage", ci_notify: "triage", flaky_test_detective: "triage",
+  release_notes: "summarization", postmortem_drafter: "summarization", docs_drift_detector: "summarization",
+  incident_responder: "reasoning", terraform_reviewer: "reasoning",
+}
+
+const POLICY: Record<string, Record<string, [string, string]>> = {
+  code_implementation: { quality: ["claude-opus-4-7", "strongest reasoning"], balanced: ["claude-sonnet-4-6", "balanced default"], speed: ["claude-sonnet-4-6", "fast"], cost: ["claude-sonnet-4-6", "minimum viable for code"] },
+  code_review:         { quality: ["claude-opus-4-7", "strongest reasoning"], balanced: ["claude-sonnet-4-6", "balanced default"], speed: ["claude-sonnet-4-6", "fast"], cost: ["claude-haiku-4-5-20251001", "efficient for review"] },
+  security:            { quality: ["claude-opus-4-7", "security needs highest precision"], balanced: ["claude-opus-4-7", "security: quality first"], speed: ["claude-sonnet-4-6", "speed prioritized"], cost: ["claude-sonnet-4-6", "minimum viable for security"] },
+  triage:              { quality: ["claude-sonnet-4-6", "sufficient for triage"], balanced: ["claude-sonnet-4-6", "balanced default"], speed: ["claude-haiku-4-5-20251001", "fast triage"], cost: ["claude-haiku-4-5-20251001", "cost-optimal"] },
+  summarization:       { quality: ["claude-sonnet-4-6", "sufficient for summaries"], balanced: ["claude-sonnet-4-6", "balanced default"], speed: ["claude-haiku-4-5-20251001", "fast"], cost: ["claude-haiku-4-5-20251001", "cost-optimal"] },
+  reasoning:           { quality: ["claude-opus-4-7", "strongest reasoning"], balanced: ["claude-sonnet-4-6", "balanced default"], speed: ["claude-sonnet-4-6", "fast"], cost: ["claude-sonnet-4-6", "minimum viable for reasoning"] },
+}
+
+const PREF_DEFAULTS: Record<string, [string, string]> = {
+  quality: ["claude-opus-4-7", "quality preference"], balanced: ["claude-sonnet-4-6", "balanced preference"],
+  speed: ["claude-sonnet-4-6", "speed preference"], cost: ["claude-haiku-4-5-20251001", "cost preference"],
+}
+
+function previewModel(playbookSlug: string | null | undefined, pref: string): [string, string] {
+  const p = (pref || "balanced").toLowerCase()
+  const category = SLUG_CATEGORY[playbookSlug ?? ""] ?? ""
+  const [model, reason] = (category ? POLICY[category]?.[p] : null) ?? PREF_DEFAULTS[p] ?? ["claude-sonnet-4-6", "default"]
+  return [MODEL_LABELS[model] ?? model, reason]
+}
+
+// ── GitHub webhook status panel ───────────────────────────────────────────────
+
+function GitHubWebhookStatusPanel({
+  workflowId, hookId, hookRepo, getToken, onWebhookChange, compact,
+}: {
+  workflowId: string
+  hookId: string | null
+  hookRepo: string | null
+  getToken?: (() => Promise<string | null>) | null
+  onWebhookChange?: (hookId: string | null, hookRepo: string | null) => void
+  compact?: boolean
+}) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [sharedWith, setSharedWith] = useState<string | null>(null)
+
+  async function authHeaders() {
+    const h: Record<string, string> = { "Content-Type": "application/json" }
+    if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
+    const ws = typeof document !== "undefined"
+      ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
+    if (ws) h["X-Workspace-Id"] = ws
+    return h
+  }
+
+  async function register() {
+    setBusy(true); setErr(null); setSharedWith(null)
+    try {
+      const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/webhook`, {
+        method: "POST", headers: await authHeaders(),
+      })
+      const data = await r.json()
+      if (!r.ok) { setErr(data.detail || `HTTP ${r.status}`); return }
+      if (data.shared) setSharedWith(data.shared_with_name ?? "another agent")
+      onWebhookChange?.(data.github_hook_id, data.github_hook_repo)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Network error")
+    } finally { setBusy(false) }
+  }
+
+  async function deregister() {
+    setBusy(true); setErr(null)
+    try {
+      const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/webhook`, {
+        method: "DELETE", headers: await authHeaders(),
+      })
+      if (!r.ok && r.status !== 204) {
+        const data = await r.json().catch(() => ({}))
+        setErr(data.detail || `HTTP ${r.status}`); return
+      }
+      onWebhookChange?.(null, hookRepo)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Network error")
+    } finally { setBusy(false) }
+  }
+
+  const registered = !!hookId
+
+  if (compact) {
+    return (
+      <div className={`rounded-md border px-2.5 py-2 text-xs mt-1.5 flex items-center justify-between gap-3 ${registered ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+        <div>
+          <p className={`font-semibold ${registered ? "text-emerald-700" : "text-amber-700"}`}>
+            {registered ? `✓ Registered on ${hookRepo}` : "Not registered — GitHub won't send events"}
+          </p>
+          {sharedWith && <p className="text-stone-500 mt-0.5">Shared with &ldquo;{sharedWith}&rdquo;</p>}
+          {err && <p className="text-red-600 mt-0.5">{err}</p>}
+        </div>
+        <div className="flex gap-1 shrink-0">
+          {!registered && (
+            <button onClick={register} disabled={busy}
+              className="rounded bg-amber-600 text-white px-2.5 py-1 font-medium hover:bg-amber-700 disabled:opacity-50 transition-colors text-[10px]">
+              {busy ? "Registering…" : "Register"}
+            </button>
+          )}
+          {registered && (
+            <button onClick={register} disabled={busy}
+              className="rounded bg-emerald-600 text-white px-2.5 py-1 font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors text-[10px]">
+              {busy ? "Updating…" : "Update"}
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className={`rounded-lg border px-3 py-2.5 text-xs mt-2 ${registered ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className={`font-semibold ${registered ? "text-emerald-800" : "text-amber-800"}`}>
+            {registered ? `✓ Webhook registered` : "Webhook not registered"}
+          </p>
+          <p className={`mt-0.5 ${registered ? "text-emerald-700" : "text-amber-700"}`}>
+            {registered
+              ? <span>on <span className="font-mono">{hookRepo}</span> — GitHub sends events here automatically</span>
+              : hookRepo
+              ? <span>Configure once you're ready — real GitHub events won't arrive until registered</span>
+              : <span>Set a repository in the trigger config first</span>
+            }
+          </p>
+          {sharedWith && <p className="text-stone-500 mt-1">Webhook shared with &ldquo;{sharedWith}&rdquo; — no duplicate hook created on GitHub.</p>}
+          {err && <p className="text-red-600 mt-1">{err}</p>}
+        </div>
+        <div className="flex flex-col gap-1 shrink-0">
+          {!registered && hookRepo && (
+            <button onClick={register} disabled={busy}
+              className="rounded-md bg-amber-600 text-white px-3 py-1.5 font-medium hover:bg-amber-700 disabled:opacity-50 transition-colors text-xs">
+              {busy ? "Registering…" : "Register Webhook"}
+            </button>
+          )}
+          {registered && (
+            <>
+              <button onClick={register} disabled={busy}
+                className="rounded-md bg-emerald-600 text-white px-3 py-1.5 font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors text-xs">
+                {busy ? "Updating…" : "Update"}
+              </button>
+              <button onClick={deregister} disabled={busy}
+                className="rounded-md border border-stone-300 text-stone-600 px-3 py-1.5 font-medium hover:bg-stone-100 disabled:opacity-50 transition-colors text-xs">
+                Unregister
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ── Webhook registration ──────────────────────────────────────────────────────
@@ -307,16 +479,37 @@ function FieldInput({
 
   if (field.readOnly) {
     const display = strVal || field.placeholder || ""
-    const masked = display.replace(/./g, "•").slice(0, 24)
+    const isRef = display.startsWith("{{") && display.endsWith("}}")
+    // Secrets (long opaque strings, no template syntax) stay masked
+    const isSecret = !isRef && display.length > 12 && !/\s/.test(display)
+    if (isRef) {
+      // Template references shown as a violet chip — not masked
+      return (
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-stone-50 border border-stone-200 rounded-lg">
+          <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-mono font-medium bg-violet-100 text-violet-700 border border-violet-200">
+            {display}
+          </span>
+        </div>
+      )
+    }
+    if (isSecret) {
+      const masked = display.replace(/./g, "•").slice(0, 24)
+      return (
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-stone-50 border border-stone-200 rounded-lg">
+          <span className="text-xs font-mono text-stone-500 truncate flex-1">{visible ? display : masked}</span>
+          <button type="button" onClick={() => setVisible(v => !v)} className="shrink-0 text-stone-400 hover:text-stone-600">
+            {visible
+              ? <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"/></svg>
+              : <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clipRule="evenodd"/><path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.064 7 9.542 7 .847 0 1.669-.105 2.454-.303z"/></svg>
+            }
+          </button>
+        </div>
+      )
+    }
+    // Plain read-only value (short, non-secret) — just show it
     return (
-      <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-stone-50 border border-stone-200 rounded-lg">
-        <span className="text-xs font-mono text-stone-500 truncate flex-1">{visible ? display : masked}</span>
-        <button type="button" onClick={() => setVisible(v => !v)} className="shrink-0 text-stone-400 hover:text-stone-600">
-          {visible
-            ? <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"/></svg>
-            : <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clipRule="evenodd"/><path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.064 7 9.542 7 .847 0 1.669-.105 2.454-.303z"/></svg>
-          }
-        </button>
+      <div className="px-2.5 py-1.5 bg-stone-50 border border-stone-200 rounded-lg text-xs text-stone-600 font-mono">
+        {display || <span className="text-stone-400 italic">—</span>}
       </div>
     )
   }
@@ -409,6 +602,9 @@ export default function BlockEditor({
   selectedEnvId,
   githubHookRepo,
   githubHookId,
+  githubWebhook,
+  playbookSlug,
+  onWebhookChange,
 }: BlockEditorProps) {
   const [promptOpen, setPromptOpen] = useState(false)
   const [streamedPrompt, setStreamedPrompt] = useState<string>("")
@@ -487,9 +683,10 @@ export default function BlockEditor({
 
     // Trigger repo allowlist — multi-select typeahead from connected GitHub account
     if (field.key === "config.repo_allowlist") {
+      const allowlistVal = (val as string) || (githubHookRepo ?? "")
       return (
         <GitHubRepoAllowlistField
-          value={(val as string) || ""}
+          value={allowlistVal}
           getToken={getToken}
           environmentId={selectedEnvId}
           onChange={v => handleFieldChange(field.key, v)}
@@ -549,12 +746,17 @@ export default function BlockEditor({
 
     ;(async () => {
       try {
+        const headers: Record<string, string> = { "Content-Type": "application/json" }
+        if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
+        const ws = typeof document !== "undefined"
+          ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
+        if (ws) headers["X-Workspace-Id"] = ws
         const res = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/blocks/${blockId}/compile/stream`,
           {
             method: "POST",
             signal: abort.signal,
-            headers: { "Content-Type": "application/json" },
+            headers,
             body: JSON.stringify({ description, label, type: blockType }),
           }
         )
@@ -589,7 +791,7 @@ export default function BlockEditor({
     })()
 
     return () => abort.abort()
-  }, [promptOpen, blockId, workflowId, description])
+  }, [promptOpen, blockId, workflowId, description, getToken])
 
   useEffect(() => {
     setPromptOpen(false)
@@ -619,21 +821,14 @@ export default function BlockEditor({
         <>
           <div className={section}>
             <div className="flex items-center justify-between">
-              <span className={sectionLabel}>System prompt</span>
+              <span className={sectionLabel}>Agent instructions</span>
               <span className="text-[10px] text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded mb-2">read-only</span>
             </div>
             <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 text-xs text-stone-600 leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto">
               <SystemPromptWithChips text={description} />
             </div>
-            <p className="text-[10px] text-stone-400 mt-1 flex items-center gap-2">
-              <span className="inline-flex items-center gap-1">
-                <span className="inline-block w-2 h-2 rounded-sm bg-violet-200 border border-violet-300" />
-                template ref
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <span className="inline-block w-2 h-2 rounded-sm bg-red-100 border border-red-200" />
-                literal placeholder
-              </span>
+            <p className="text-[10px] text-stone-400 mt-1">
+              Use <code className="bg-stone-100 px-1 rounded">{"{{block_id.field}}"}</code> to reference earlier outputs.
             </p>
           </div>
 
@@ -652,7 +847,7 @@ export default function BlockEditor({
             <span className={sectionLabel}>Mode</span>
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-stone-700">
-                {blockData.isAgentic ? "Agentic" : "Single call"}
+                {blockData.isAgentic ? "Can use tools" : "Single call"}
               </span>
               <FieldInput
                 field={BLOCK_CONFIG_SCHEMAS.brain![0]}
@@ -663,14 +858,37 @@ export default function BlockEditor({
             <p className="text-[10px] leading-relaxed mt-1.5 px-2 py-1.5 rounded-lg border">
               {blockData.isAgentic ? (
                 <span className="text-violet-700 border-violet-200 bg-violet-50 rounded-lg">
-                  <strong>Agentic on</strong> — Claude loops autonomously using tools: reads files, writes code, runs shell commands. Use for implementing fixes, running tests, pushing branches.
+                  <strong>Can use tools</strong> — reads files, edits code, runs commands, and pushes branches. Use for implementing fixes, running tests, and making changes.
                 </span>
               ) : (
                 <span className="text-stone-500 border-stone-100 bg-stone-50 rounded-lg">
-                  <strong>Single call</strong> — Claude responds once with text only. No file access, no commands. Use for summarising, classifying, or generating messages.
+                  <strong>Single call</strong> — responds once with text only. No file access, no commands. Use for summarising, classifying, or generating messages.
                 </span>
               )}
             </p>
+          </div>
+
+          <div className={section}>
+            <span className={sectionLabel}>Model routing</span>
+            <select
+              value={(blockData.routingPreference as string) || "balanced"}
+              onChange={e => onChange(blockId, { ...blockData, routingPreference: e.target.value })}
+              className={cn(inputBase)}
+            >
+              <option value="balanced">Balanced — best default</option>
+              <option value="quality">Quality — strongest model</option>
+              <option value="speed">Speed — faster response</option>
+              <option value="cost">Cost — efficient model</option>
+            </select>
+            {(() => {
+              const [model, reason] = previewModel(playbookSlug, (blockData.routingPreference as string) || "balanced")
+              return (
+                <p className="text-[10px] text-stone-500 mt-1">
+                  <span className="font-medium text-violet-700">{model}</span>
+                  {" "}— {reason}
+                </p>
+              )
+            })()}
           </div>
         </>
       )}
@@ -725,24 +943,10 @@ export default function BlockEditor({
                 )
               })}
               <p className="text-[10px] text-stone-400 pt-1">
-                Tip: reference previous blocks with <code className="bg-stone-100 px-1 rounded">{"{{block_id.field}}"}</code>
+                Use <code className="bg-stone-100 px-1 rounded">{"{{block_id.field}}"}</code> to reference earlier outputs.
               </p>
             </div>
           )}
-
-          {/* GitHub trigger — auto-register info */}
-          {blockType === "trigger" && triggerEventType === "github_issue_labeled" && (() => {
-            const repoAllowlist = (getNestedValue(blockData, "config.repo_allowlist") as string) || ""
-            const firstRepo = repoAllowlist.split(",")[0].trim()
-            const [owner, repo] = firstRepo.includes("/") ? firstRepo.split("/") : ["", ""]
-            if (!owner || !repo) return null
-            return (
-              <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-700 mt-2">
-                Webhook on <span className="font-mono font-medium">{owner}/{repo}</span> will be registered automatically when you run.
-              </div>
-            )
-          })()}
-
 
           {/* Secret warning */}
           {(() => {
@@ -773,6 +977,43 @@ export default function BlockEditor({
                     {field.hint && <span className="text-[10px] text-stone-400">{field.hint}</span>}
                   </div>
                   {rendered}
+                  {/* GitHub issue-labeled — webhook URL card + compact register panel */}
+                  {blockType === "trigger" && field.key === "config.event_type" && triggerEventType === "github_issue_labeled" && (() => {
+                    const ws = typeof document !== "undefined"
+                      ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
+                    const webhookUrl = ws
+                      ? `${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}/webhooks/github?workspace_id=${ws}`
+                      : null
+                    return (
+                      <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2.5 text-xs text-violet-800 mt-2 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <p className="font-semibold text-[10px] uppercase tracking-wide text-violet-500">GitHub Webhook</p>
+                          {webhookUrl && (
+                            <button
+                              type="button"
+                              onClick={() => navigator.clipboard.writeText(webhookUrl)}
+                              className="text-[10px] font-medium text-violet-500 hover:text-violet-700 border border-violet-200 rounded px-1.5 py-0.5 transition-colors"
+                            >
+                              Copy
+                            </button>
+                          )}
+                        </div>
+                        {webhookUrl
+                          ? <p className="font-mono break-all text-violet-700 text-[11px]">{webhookUrl}</p>
+                          : <p className="text-violet-400 text-[11px]">Select a workspace to see your URL</p>
+                        }
+                        <GitHubWebhookStatusPanel
+                          workflowId={workflowId}
+                          hookId={githubHookId ?? null}
+                          hookRepo={githubHookRepo ?? null}
+                          getToken={getToken}
+                          onWebhookChange={onWebhookChange}
+                          compact
+                        />
+                      </div>
+                    )
+                  })()}
+
                   {/* Inbound webhook URL panel */}
                   {blockType === "trigger" && field.key === "config.event_type" && triggerEventType === "webhook" && (() => {
                     const ws = typeof document !== "undefined"
@@ -782,16 +1023,35 @@ export default function BlockEditor({
                       : null
                     const inboundUrl = `${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}/webhooks/inbound/${workflowId}`
                     const webhookUrl = githubHookRepo ? githubUrl : inboundUrl
+                    const displayUrl = webhookUrl ?? inboundUrl
                     return (
                       <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2.5 text-xs text-violet-800 mt-2 space-y-1.5">
-                        <p className="font-semibold text-[10px] uppercase tracking-wide text-violet-500">Webhook URL</p>
-                        <p className="font-mono break-all select-all text-violet-700 text-[11px]">
-                          {webhookUrl ?? inboundUrl}
+                        <div className="flex items-center justify-between">
+                          <p className="font-semibold text-[10px] uppercase tracking-wide text-violet-500">
+                            {githubHookRepo ? "GitHub webhook" : "Webhook URL"}
+                          </p>
+                          {displayUrl && (
+                            <button
+                              type="button"
+                              onClick={() => displayUrl && navigator.clipboard.writeText(displayUrl)}
+                              className="text-[10px] font-medium text-violet-500 hover:text-violet-700 border border-violet-200 rounded px-1.5 py-0.5 transition-colors"
+                            >
+                              Copy
+                            </button>
+                          )}
+                        </div>
+                        <p className="font-mono break-all text-violet-700 text-[11px]">
+                          {displayUrl}
                         </p>
-                        {githubHookRepo && githubHookId
-                          ? <p className="text-violet-500 text-[10px]">Registered on <span className="font-mono">{githubHookRepo}</span> — GitHub sends events here automatically.</p>
-                          : githubHookRepo
-                          ? <p className="text-violet-500 text-[10px]">Target repo: <span className="font-mono">{githubHookRepo}</span> — passed to the agent as context.</p>
+                        {githubHookRepo && githubWebhook
+                          ? <GitHubWebhookStatusPanel
+                              workflowId={workflowId}
+                              hookId={githubHookId ?? null}
+                              hookRepo={githubHookRepo}
+                              getToken={getToken}
+                              onWebhookChange={onWebhookChange}
+                              compact
+                            />
                           : <>
                               <p className="text-violet-500 text-[10px]">POST any JSON to this URL — payload available as <span className="font-mono">{"{{_trigger.*}}"}</span></p>
                               <div className="border-t border-violet-100 pt-1.5 space-y-0.5">
@@ -835,6 +1095,101 @@ export default function BlockEditor({
           </div>
         </div>
       )}
+
+      {/* ── Memory blocks ── */}
+      {blockType === "memory" && (() => {
+        const action = (getNestedValue(blockData, "config.action") as string) || "read"
+        const scope  = (getNestedValue(blockData, "config.scope")  as string) || "repo"
+        const key    = (getNestedValue(blockData, "config.key")    as string) || ""
+        const limit  = (getNestedValue(blockData, "config.limit")  as string) || "5"
+        const summary = (getNestedValue(blockData, "config.summary") as string) || ""
+        return (
+          <>
+            <div className={section}>
+              <span className={sectionLabel}>Action</span>
+              <select
+                value={action}
+                onChange={e => handleFieldChange("config.action", e.target.value)}
+                className={inputBase}
+              >
+                <option value="read">Read — recall past context</option>
+                <option value="write">Write — record outcome</option>
+              </select>
+              <p className="text-[10px] text-stone-400 mt-1">
+                {action === "read"
+                  ? "Retrieves the most similar past summaries before the brain runs."
+                  : "Stores a summary after the run so future runs can learn from it."}
+              </p>
+            </div>
+
+            <div className={section}>
+              <span className={sectionLabel}>Scope</span>
+              <select
+                value={scope}
+                onChange={e => handleFieldChange("config.scope", e.target.value)}
+                className={inputBase}
+              >
+                <option value="repo">Repo — per repository</option>
+                <option value="workspace">Workspace — shared across repos</option>
+              </select>
+            </div>
+
+            <div className={section}>
+              <span className={sectionLabel}>Key</span>
+              <input
+                type="text"
+                value={key}
+                onChange={e => handleFieldChange("config.key", e.target.value)}
+                placeholder="e.g. {{_trigger.repo_name}}"
+                className={inputBase}
+              />
+              <p className="text-[10px] text-stone-400 mt-1">
+                Groups memories together. Use a template ref to make it dynamic.
+              </p>
+            </div>
+
+            {action === "read" && (
+              <div className={section}>
+                <span className={sectionLabel}>Max entries</span>
+                <input
+                  type="number"
+                  value={limit}
+                  onChange={e => handleFieldChange("config.limit", e.target.value)}
+                  min={1}
+                  max={20}
+                  className={cn(inputBase, "w-24")}
+                />
+                <p className="text-[10px] text-stone-400 mt-1">
+                  Retrieved entries available as <code className="bg-stone-100 px-1 rounded">{"{{block_id.entries}}"}</code> in the brain prompt.
+                </p>
+              </div>
+            )}
+
+            {action === "write" && (
+              <div className={section}>
+                <span className={sectionLabel}>Summary template</span>
+                <textarea
+                  value={summary}
+                  onChange={e => handleFieldChange("config.summary", e.target.value)}
+                  rows={3}
+                  placeholder={"e.g. Fixed {{fetch_issue.title}} by {{implement_fix.approach}}"}
+                  className={cn(inputBase, "resize-none")}
+                />
+                <p className="text-[10px] text-stone-400 mt-1">
+                  Use <code className="bg-stone-100 px-1 rounded">{"{{block_id.field}}"}</code> refs — resolved at runtime before storing.
+                </p>
+              </div>
+            )}
+
+            <div className="px-4 py-3">
+              <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2.5 text-xs text-amber-800 space-y-1">
+                <p className="font-semibold text-[10px] uppercase tracking-wide text-amber-600">How memory works</p>
+                <p>Add an <strong>OPENAI_API_KEY</strong> credential to your workspace environment to enable vector similarity search. Without it, memory falls back to recency-based retrieval.</p>
+              </div>
+            </div>
+          </>
+        )
+      })()}
 
       {/* ── Brain: compiled prompt preview (collapsed by default) ── */}
       {blockType === "brain" && (

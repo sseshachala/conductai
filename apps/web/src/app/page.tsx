@@ -217,7 +217,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>Zero prompt engineering</span>
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>Human approval on every merge</span>
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>RBAC — admin, editor, viewer</span>
-          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>Model per agent — Haiku to Opus</span>
+          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>Auto model routing — Haiku to Opus</span>
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>MIT licensed</span>
         </div>
       </div>
@@ -346,7 +346,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
             href="/marketplace"
             className="inline-flex items-center gap-2 rounded-xl bg-white text-stone-900 px-6 py-3 text-sm font-semibold hover:bg-stone-100 transition-colors"
           >
-            🤖 Install Copilot / AI PR Reviewer →
+            Install Copilot / AI PR Reviewer →
           </a>
         </div>
       </section>
@@ -461,22 +461,25 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
           </p>
           <div className="grid md:grid-cols-2 gap-4">
             <div className="rounded-xl bg-stone-950 p-5 font-mono text-sm">
-              <p className="text-stone-500 text-xs mb-3"># Install</p>
+              <p className="text-stone-500 text-xs mb-3"># Install &amp; authenticate</p>
               <p className="text-emerald-400">pip install conduct-cli</p>
-              <p className="text-stone-500 text-xs mt-4 mb-3"># Run an agent</p>
-              <p className="text-white">conduct --server https://api.conductai.ai \</p>
-              <p className="text-white pl-4">--api-key YOUR_KEY \</p>
-              <p className="text-white pl-4">run autopilot.yaml</p>
+              <p className="text-white mt-2">conduct login</p>
+              <p className="text-stone-500 text-xs mt-4 mb-3"># Manage environments &amp; credentials</p>
+              <p className="text-white">conduct environments</p>
+              <p className="text-white">conduct create environment Staging</p>
+              <p className="text-white">conduct set credential \</p>
+              <p className="text-white pl-4">--environment Staging \</p>
+              <p className="text-white pl-4">--key GITHUB_TOKEN --value ghp_xxx</p>
             </div>
             <div className="rounded-xl bg-stone-950 p-5 font-mono text-sm">
-              <p className="text-stone-500 text-xs mb-3"># autopilot.yaml</p>
-              <p className="text-violet-400">name<span className="text-white">: Fix GitHub Issue</span></p>
-              <p className="text-violet-400">workflow_id<span className="text-white">: abc-123</span></p>
-              <p className="text-violet-400">trigger<span className="text-white">:</span></p>
-              <p className="text-white pl-4">event_type<span className="text-stone-400">: github_issue_labeled</span></p>
-              <p className="text-white pl-4">label<span className="text-stone-400">: ai-ready</span></p>
-              <p className="text-white pl-4">repo<span className="text-stone-400">:</span></p>
-              <p className="text-white pl-8">full_name<span className="text-stone-400">: your-org/repo</span></p>
+              <p className="text-stone-500 text-xs mb-3"># Run &amp; monitor agents</p>
+              <p className="text-white">conduct agents</p>
+              <p className="text-white mt-2">conduct test "PR Reviewer" \</p>
+              <p className="text-white pl-4">--pr 142</p>
+              <p className="text-stone-500 text-xs mt-4 mb-3"># Assign environment to agent</p>
+              <p className="text-white">conduct set environment \</p>
+              <p className="text-white pl-4">--agent "PR Reviewer" \</p>
+              <p className="text-white pl-4">--environment Production</p>
             </div>
           </div>
         </div>
@@ -664,8 +667,8 @@ const WHY_DELEGATOR = [
   },
   {
     icon: "🧠",
-    title: "Right model for the right job",
-    body: "Choose the LLM per agent at install time — Claude Haiku for fast triage, Sonnet for complex code review, Opus for deep incident analysis. Bring your own Anthropic key; the platform key is the fallback. Architecture-ready for additional providers.",
+    title: "Auto model routing — best model for the job",
+    body: "Set your optimization goal — Quality, Balanced, Speed, or Cost — and Conduct routes each agent step to the right model automatically. Security scans get Opus. Issue triage gets Haiku. Code review gets Sonnet. You see exactly which model ran and why, in the run trace.",
   },
   {
     icon: "🔐",
@@ -734,6 +737,10 @@ const FAQ = [
   {
     q: "How does Conduct work once it's connected to our stack?",
     a: "Link GitHub, Slack, and Linear in about five minutes — no migration required. From there, agents run inside your existing workflows. Every workflow includes a Slack approval checkpoint before anything ships — one-click Approve or Reject in a DM.",
+  },
+  {
+    q: "Which AI model does Conduct use?",
+    a: "Conduct automatically routes each agent step to the best model for the job. Security scans use Opus for maximum precision. Triage and summarization use Haiku to keep costs low. Code review uses Sonnet for balanced quality and speed. You set your optimization preference (Quality, Balanced, Speed, or Cost) per agent step — Conduct handles the routing. You can see exactly which model ran and the routing reason in every run trace.",
   },
   {
     q: "How is Conduct different from GitHub Copilot or other AI coding assistants?",

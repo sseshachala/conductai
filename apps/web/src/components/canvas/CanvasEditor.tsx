@@ -128,6 +128,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
   const [workflowName, setWorkflowName] = useState("Untitled agent")
   const [githubHookRepo, setGithubHookRepo] = useState<string | null>(null)
   const [githubHookId, setGithubHookId] = useState<string | null>(null)
+  const [githubWebhook, setGithubWebhook] = useState<boolean>(false)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle")
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isFirstLoad = useRef(true)
@@ -286,6 +287,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
         setSelectedEnvId(data.environment_id ?? "")
         setGithubHookRepo(data.github_hook_repo ?? null)
         setGithubHookId(data.github_hook_id ?? null)
+        setGithubWebhook(data.github_webhook ?? false)
         setPlaybookSlug(data.playbook_slug ?? null)
         const graph = data.current_version?.graph
         if (graph?.nodes && graph?.edges) {
@@ -303,8 +305,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
           const styledEdges = (es: Edge[]) => es.map(e => ({
             ...e,
             type: e.type ?? "smoothstep",
-            markerEnd: e.markerEnd ?? { type: MarkerType.ArrowClosed, width: 16, height: 16, color: "#a8a29e" },
-            style: e.style ?? { stroke: "#a8a29e", strokeWidth: 2 },
+            markerEnd: e.markerEnd ?? { type: MarkerType.ArrowClosed, width: 10, height: 10, color: "#d6d3d1" },
+            style: e.style ?? { stroke: "#d6d3d1", strokeWidth: 1 },
           }))
           if (allAtOrigin || allSameY) {
             const laid = autoLayout(graph.nodes, graph.edges)
@@ -319,8 +321,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
           if (graph?.edges) setEdges(graph.edges.map((e: Edge) => ({
             ...e,
             type: e.type ?? "smoothstep",
-            markerEnd: e.markerEnd ?? { type: MarkerType.ArrowClosed, width: 16, height: 16, color: "#a8a29e" },
-            style: e.style ?? { stroke: "#a8a29e", strokeWidth: 2 },
+            markerEnd: e.markerEnd ?? { type: MarkerType.ArrowClosed, width: 10, height: 10, color: "#d6d3d1" },
+            style: e.style ?? { stroke: "#d6d3d1", strokeWidth: 1 },
           })))
         }
         setTimeout(() => { isFirstLoad.current = false }, 100)
@@ -394,8 +396,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
     (connection: Connection) => setEdges((eds) => addEdge({
       ...connection,
       type: "smoothstep",
-      markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color: "#a8a29e" },
-      style: { stroke: "#a8a29e", strokeWidth: 2 },
+      markerEnd: { type: MarkerType.ArrowClosed, width: 10, height: 10, color: "#d6d3d1" },
+      style: { stroke: "#d6d3d1", strokeWidth: 1 },
     }, eds)),
     [setEdges]
   )
@@ -925,20 +927,32 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
                   </div>
                 </div>
               )}
-              {/* Declarative repo badge — not a DAG node, just context */}
-              {githubHookRepo && (
-                <a
-                  href={`https://github.com/${githubHookRepo}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="absolute top-3 left-3 z-10 flex items-center gap-1.5 bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 shadow-sm text-stone-600 hover:border-stone-400 hover:text-stone-900 transition-colors"
-                >
-                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 shrink-0">
-                    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
-                  </svg>
-                  <span className="font-mono text-[11px] leading-none">{githubHookRepo}</span>
-                </a>
-              )}
+              {/* Declarative repo badges — one per allowlisted repo */}
+              {(() => {
+                const triggerNode = nodes.find(n => (n.data as BlockNodeData).type === "trigger")
+                const cfg = triggerNode ? (triggerNode.data as BlockNodeData).config as Record<string, unknown> : null
+                const allowlist = (cfg?.repo_allowlist as string) || githubHookRepo || ""
+                const repos = allowlist.split(",").map(s => s.trim()).filter(Boolean)
+                if (!repos.length) return null
+                return (
+                  <div className="absolute top-3 left-3 z-10 flex flex-col gap-1">
+                    {repos.map(repo => (
+                      <a
+                        key={repo}
+                        href={`https://github.com/${repo}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 shadow-sm text-stone-600 hover:border-stone-400 hover:text-stone-900 transition-colors"
+                      >
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 shrink-0">
+                          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+                        </svg>
+                        <span className="font-mono text-[11px] leading-none">{repo}</span>
+                      </a>
+                    ))}
+                  </div>
+                )
+              })()}
               <ReactFlow
                 nodes={nodes}
                 edges={edges}
@@ -965,8 +979,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
                 snapToGrid
                 defaultEdgeOptions={{
                   type: "smoothstep",
-                  markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color: "#a8a29e" },
-                  style: { stroke: "#a8a29e", strokeWidth: 2 },
+                  markerEnd: { type: MarkerType.ArrowClosed, width: 10, height: 10, color: "#d6d3d1" },
+                  style: { stroke: "#d6d3d1", strokeWidth: 1 },
                 }}
               >
                 <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#E7E5E4" />
@@ -1014,6 +1028,9 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
                       getToken={getToken}
                       githubHookRepo={githubHookRepo}
                       githubHookId={githubHookId}
+                      githubWebhook={githubWebhook}
+                      playbookSlug={playbookSlug}
+                      onWebhookChange={(id, repo) => { setGithubHookId(id); setGithubHookRepo(repo) }}
                     />
                   </div>
                 ) : (

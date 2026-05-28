@@ -539,19 +539,34 @@ def cmd_delete(args):
         _do_delete_credential(server, workspace_id, api_key, token, env_name, key, args.yes)
 
     else:
-        # conduct delete [project] <name> [--yes] — backward compat
+        # conduct delete [project] <name> [--yes] [--purge]
         name = " ".join(parts[1:] if parts and parts[0] == "project" else parts).strip()
         if not name:
             print(f"{RED}Usage: conduct delete [environment|project|credential] <name>{RESET}")
             sys.exit(1)
         proj = _resolve_project(server, workspace_id, hdrs, name)
-        if not args.yes:
+        purge = getattr(args, "purge", False)
+        if purge:
+            print(f"{RED}{BOLD}⚠ PURGE mode — this will permanently delete ALL data for '{proj['name']}'{RESET}")
+            print(f"{RED}  · All runs, events, and workflow versions{RESET}")
+            print(f"{RED}  · Analytics and audit logs{RESET}")
+            print(f"{RED}  · API keys and environments{RESET}")
+            print(f"{RED}  This cannot be undone.{RESET}\n")
+            confirm = input(f"{YELLOW}Type the project name to confirm: {RESET}").strip()
+            if confirm != proj["name"]:
+                print("Cancelled — name did not match.")
+                return
+        elif not args.yes:
             confirm = input(f"{YELLOW}Delete project '{proj['name']}' and all its agents? Type 'yes' to confirm: {RESET}").strip().lower()
             if confirm != "yes":
                 print("Cancelled.")
                 return
-        api.req("DELETE", f"{server}/workspaces/{workspace_id}/projects/{proj['id']}", hdrs)
-        print(f"{GREEN}✓ Project '{proj['name']}' deleted.{RESET}")
+        url = f"{server}/workspaces/{workspace_id}/projects/{proj['id']}"
+        if purge:
+            url += "?purge=true"
+        api.req("DELETE", url, hdrs)
+        suffix = " (purged)" if purge else ""
+        print(f"{GREEN}✓ Project '{proj['name']}' deleted{suffix}.{RESET}")
 
 
 # ── Playbook commands ─────────────────────────────────────────────────────────
@@ -1001,7 +1016,8 @@ def main():
                           help="Type (optional) and name, e.g. 'environment Production' or 'MyProject'")
     delete_p.add_argument("--environment", metavar="name", help="Environment name (for 'delete credential')")
     delete_p.add_argument("--key",         metavar="KEY",  help="Credential key (for 'delete credential')")
-    delete_p.add_argument("--yes", action="store_true", help="Skip confirmation prompt")
+    delete_p.add_argument("--yes",   action="store_true", help="Skip confirmation prompt")
+    delete_p.add_argument("--purge", action="store_true", help="Also erase analytics, audit logs, API keys, and environments (irreversible)")
 
     # conduct reset <name>
     reset_p = sub.add_parser("reset", help="Delete all agents in a project (clean slate)")
@@ -1037,13 +1053,19 @@ def main():
     elif args.command == "projects":
         cmd_projects(args)
     elif args.command == "create":
-        cmd_create(args)
+        if getattr(args, "create_type", None) == "project":
+            cmd_create(args)
+        else:
+            create_p.print_help()
     elif args.command == "playbooks":
         cmd_playbooks(args)
     elif args.command == "install":
         cmd_install(args)
     elif args.command == "delete":
-        cmd_delete(args)
+        if getattr(args, "delete_type", None) == "project":
+            cmd_delete(args)
+        else:
+            delete_p.print_help()
     elif args.command == "reset":
         cmd_reset(args)
     elif args.command == "install-all":

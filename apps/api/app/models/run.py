@@ -23,6 +23,12 @@ class Run(Base):
     outcome = Column(JSONB, nullable=True)               # {type, artifact_url} written at run completion
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
+    # ── Run leasing / retry tracking (migration 0024) ─────────────────────────
+    attempt_count = Column(sa.Integer, nullable=False, default=0)
+    locked_at     = Column(DateTime(timezone=True), nullable=True)   # when a worker claimed this run
+    locked_by     = Column(String(255), nullable=True)               # worker hostname/pid
+    next_retry_at = Column(DateTime(timezone=True), nullable=True)   # earliest retry time after failure
+
     workflow_version = relationship("WorkflowVersion", back_populates="runs")
     events = relationship("RunEvent", back_populates="run", order_by="RunEvent.created_at")
 

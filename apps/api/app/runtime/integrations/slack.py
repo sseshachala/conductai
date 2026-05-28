@@ -90,10 +90,31 @@ def post_approval_message(token: str, channel: str, text: str, run_id: str, call
     return post_message(token=token, channel=channel, text=text, blocks=blocks)
 
 
+def update_approval_message(token: str, channel: str, ts: str, decision: str, approver: str) -> dict:
+    """Replace Approve/Reject buttons with a decision stamp after the user clicks."""
+    emoji = "✅" if decision == "approved" else "❌"
+    label = "Approved" if decision == "approved" else "Rejected"
+    blocks = [
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"{emoji} *{label}* by @{approver}"},
+        }
+    ]
+    r = httpx.post(
+        f"{BASE}/chat.update",
+        headers=_headers(token),
+        json={"channel": channel, "ts": ts, "blocks": blocks, "text": f"{label} by {approver}"},
+        timeout=15,
+    )
+    d = r.json()
+    return {"ok": d.get("ok"), "ts": ts}
+
+
 TOOL_MAP = {
     "post_message": post_message,
     "post_dm": post_dm,
     "post_approval_message": post_approval_message,
+    "update_approval_message": update_approval_message,
 }
 
 

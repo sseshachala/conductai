@@ -11,7 +11,7 @@ export interface BlockNodeData {
   description?: string
   isAgentic?: boolean
   integration?: string
-  config?: { action?: string }
+  config?: { action?: string; channel?: string; event_type?: string; label?: string; repo_allowlist?: string }
   [key: string]: unknown
 }
 
@@ -44,85 +44,128 @@ function GitHubMark({ className }: { className?: string }) {
 }
 
 function handleClass(color: string) {
-  return `!w-4 !h-4 !border-2 !border-white !shadow-md !transition-all !opacity-0 group-hover:!opacity-100 hover:!scale-125 hover:!shadow-lg ${color}`
+  return `!w-3 !h-3 !border-0 !bg-transparent !shadow-none !opacity-0 !transition-none ${color}`
+}
+
+// Derive intent-oriented trigger label from config
+function triggerLabel(config: BlockNodeData["config"]): string {
+  const et = config?.event_type
+  if (et === "webhook")             return "Webhook"
+  if (et === "schedule")            return "Schedule"
+  if (et === "github_issue_labeled") return "Issue labeled"
+  if (et === "github_issue")        return "GitHub issue"
+  if (et === "pull_request")        return "Pull request"
+  return "Trigger"
+}
+
+// Derive trigger secondary context line (e.g. "label = autopilot-ready")
+function triggerContext(config: BlockNodeData["config"]): string | null {
+  const label = config?.label
+  if (label) return `label = ${label}`
+  return null
+}
+
+// For brain blocks, hide prompt internals and show description only if intent-oriented
+function brainDescription(desc: string | undefined): string | null {
+  if (!desc) return null
+  if (desc.startsWith("You are") || desc.startsWith("you are")) return null
+  return desc
 }
 
 function BlockNode({ data, selected }: NodeProps) {
   const nodeData = data as BlockNodeData
   const style = BLOCK_STYLES[nodeData.type]
-  const isLogic = nodeData.type === "logic"
+  const isLogic    = nodeData.type === "logic"
   const isApproval = nodeData.type === "approval"
-  const missingCondition = isLogic && !(nodeData.config as Record<string, unknown>)?.condition
-  const integration = nodeData.integration as string | undefined
-  const action = nodeData.config?.action
+  const isTrigger  = nodeData.type === "trigger"
+  const isBrain    = nodeData.type === "brain"
+  const isOutput   = nodeData.type === "output"
 
-  const effectiveIntegration = integration || (nodeData.type === "output" ? "slack" : undefined)
-  const integrationLabel = effectiveIntegration ? INTEGRATION_LABELS[effectiveIntegration] ?? effectiveIntegration : null
+  const missingCondition = isLogic && !(nodeData.config as Record<string, unknown>)?.condition
+
+  const integration = nodeData.integration as string | undefined
+  const effectiveIntegration = integration || (isOutput ? "slack" : undefined)
+  const integrationLabel = effectiveIntegration ? (INTEGRATION_LABELS[effectiveIntegration] ?? effectiveIntegration) : null
   const integrationColor = effectiveIntegration ? (INTEGRATION_COLORS[effectiveIntegration] ?? "bg-stone-500 text-white") : ""
-  const actionLabel = action
-    ? action.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
-    : null
+
+  // Slack channel context: "Slack · #engineering"
+  const channel = nodeData.config?.channel
+  const integrationSuffix = isOutput && channel ? ` · ${channel}` : ""
+
+  // Primary label
+  const primaryLabel = isTrigger ? triggerLabel(nodeData.config) : nodeData.label
+
+  // Secondary line
+  const secondary: string | null = (() => {
+    if (isTrigger)   return triggerContext(nodeData.config)
+    if (isBrain)     return brainDescription(nodeData.description)
+    if (!integrationLabel && nodeData.description) return nodeData.description
+    return null
+  })()
 
   return (
     <div
-      style={{ width: 200 }}
+      style={{ width: 196 }}
       className={cn(
         "group rounded-xl border-2 px-3 py-2.5 cursor-pointer transition-all shadow-sm",
         style.bg,
         style.border,
         selected
-          ? "ring-2 ring-indigo-400 ring-offset-2 shadow-md"
-          : "hover:shadow-md hover:ring-1 hover:ring-stone-300 hover:ring-offset-1"
+          ? "ring-1 ring-indigo-400 shadow-md"
+          : "hover:shadow-md hover:ring-1 hover:ring-stone-200"
       )}
     >
-      {/* Target handle (top) */}
+      {/* Target handle */}
       <Handle
         type="target"
         position={Position.Top}
         className={handleClass("!bg-stone-400")}
-        style={{ top: -6 }}
+        style={{ top: 0 }}
       />
 
-      {/* Block type badge row */}
+      {/* Type badge row */}
       <div className="flex items-center gap-1.5 mb-1.5">
         <span className={cn("text-[8px] font-bold tracking-widest uppercase px-1.5 py-0.5 rounded", style.label)}>
           {style.labelText}
         </span>
         {nodeData.isAgentic && (
-          <span className="text-[8px] font-bold bg-purple-600 text-white px-1.5 py-0.5 rounded">AI</span>
+          <span className="text-[8px] font-bold bg-violet-600 text-white px-1.5 py-0.5 rounded">AI</span>
         )}
       </div>
 
-      {/* Block label — trigger nodes show human-readable event name */}
+      {/* Primary label */}
       <p className="text-xs font-semibold text-stone-800 leading-tight truncate">
-        {nodeData.type === "trigger"
-          ? (nodeData.config as Record<string, string> | undefined)?.event_type === "webhook"
-            ? "Webhook"
-            : "GitHub Issue"
-          : nodeData.label}
+        {primaryLabel}
       </p>
 
-      {/* Integration + action sub-label */}
-      {integrationLabel && !(nodeData.type === "trigger" && (nodeData.config as Record<string, string> | undefined)?.event_type !== "github_issue_labeled") && (
-        <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+      {/* Provider badge — only badge, no redundant action text */}
+      {integrationLabel && !isTrigger && (
+        <div className="flex items-center gap-1 mt-1.5">
           <span className={cn("flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded", integrationColor)}>
             {effectiveIntegration === "github" && <GitHubMark className="w-2.5 h-2.5" />}
-            {integrationLabel}
+            {integrationLabel}{integrationSuffix}
           </span>
-          {actionLabel && (
-            <span className="text-[9px] text-stone-400 truncate">{actionLabel}</span>
-          )}
         </div>
       )}
 
-      {/* Description (no integration set, not a trigger) */}
-      {!integrationLabel && nodeData.description && nodeData.type !== "trigger" && (
-        <p className="text-[10px] text-stone-400 mt-0.5 leading-tight truncate">{nodeData.description}</p>
+      {/* Trigger provider badge */}
+      {isTrigger && (
+        <div className="flex items-center gap-1 mt-1.5">
+          <span className={cn("flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded", INTEGRATION_COLORS.github)}>
+            <GitHubMark className="w-2.5 h-2.5" />
+            GitHub
+          </span>
+        </div>
+      )}
+
+      {/* Secondary / context line */}
+      {secondary && (
+        <p className="text-[10px] text-stone-400 mt-1 leading-tight truncate">{secondary}</p>
       )}
 
       {/* Logic condition warning */}
       {missingCondition && (
-        <p className="text-[9px] text-amber-600 bg-amber-50 rounded px-1.5 py-0.5 mt-1.5">⚠ Set a condition</p>
+        <p className="text-[9px] text-amber-600 bg-amber-50 rounded px-1.5 py-0.5 mt-1.5">Set a condition</p>
       )}
 
       {/* Logic pass/fail handles */}
@@ -132,20 +175,10 @@ function BlockNode({ data, selected }: NodeProps) {
             <span className="text-[8px] font-semibold text-green-600 uppercase tracking-wide">pass</span>
             <span className="text-[8px] font-semibold text-red-500 uppercase tracking-wide">fail</span>
           </div>
-          <Handle
-            id="pass"
-            type="source"
-            position={Position.Bottom}
-            style={{ left: "28%", bottom: -6 }}
-            className={handleClass("!bg-green-400")}
-          />
-          <Handle
-            id="fail"
-            type="source"
-            position={Position.Bottom}
-            style={{ left: "72%", bottom: -6 }}
-            className={handleClass("!bg-red-400")}
-          />
+          <Handle id="pass" type="source" position={Position.Bottom}
+            style={{ left: "28%", bottom: 0 }} className={handleClass("!bg-green-400")} />
+          <Handle id="fail" type="source" position={Position.Bottom}
+            style={{ left: "72%", bottom: 0 }} className={handleClass("!bg-red-400")} />
         </>
       ) : isApproval ? (
         <>
@@ -153,28 +186,14 @@ function BlockNode({ data, selected }: NodeProps) {
             <span className="text-[8px] font-semibold text-green-600 uppercase tracking-wide">approved</span>
             <span className="text-[8px] font-semibold text-red-500 uppercase tracking-wide">rejected</span>
           </div>
-          <Handle
-            id="approved"
-            type="source"
-            position={Position.Bottom}
-            style={{ left: "28%", bottom: -6 }}
-            className={handleClass("!bg-green-400")}
-          />
-          <Handle
-            id="rejected"
-            type="source"
-            position={Position.Bottom}
-            style={{ left: "72%", bottom: -6 }}
-            className={handleClass("!bg-red-400")}
-          />
+          <Handle id="approved" type="source" position={Position.Bottom}
+            style={{ left: "28%", bottom: 0 }} className={handleClass("!bg-green-400")} />
+          <Handle id="rejected" type="source" position={Position.Bottom}
+            style={{ left: "72%", bottom: 0 }} className={handleClass("!bg-red-400")} />
         </>
       ) : (
-        <Handle
-          type="source"
-          position={Position.Bottom}
-          className={handleClass("!bg-stone-400")}
-          style={{ bottom: -6 }}
-        />
+        <Handle type="source" position={Position.Bottom}
+          className={handleClass("!bg-stone-400")} style={{ bottom: 0 }} />
       )}
     </div>
   )

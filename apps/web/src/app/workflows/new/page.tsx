@@ -95,7 +95,6 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
   const [reposLoading, setReposLoading]   = useState(false)
   const [loading, setLoading]             = useState(false)
   const [bootstrapping, setBootstrapping] = useState(true)
-  const [conflictWarning, setConflictWarning] = useState<string | null>(null)
   const [webhookError, setWebhookError]   = useState<string | null>(null)
   const [error, setError]                 = useState<string | null>(null)
 
@@ -153,7 +152,6 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
     async function loadTemplate(slug: string) {
       const headers = await buildHeaders()
       setAgentName(FRIENDLY_NAMES[slug] ?? slug)
-      setConflictWarning(null)
       setWebhookError(null)
 
       const pbPromise = fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/playbooks/${slug}`).then(async res => {
@@ -187,25 +185,6 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [template])
 
-  // Conflict check when repo or trigger_label changes
-  useEffect(() => {
-    if (!selectedRepo) { setConflictWarning(null); return }
-    const triggerLabel = inputValues["trigger_label"] ?? ""
-    buildHeaders().then(async headers => {
-      const params = new URLSearchParams({ template, repo: selectedRepo })
-      if (triggerLabel) params.set("trigger_label", triggerLabel)
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/conflict-check?${params}`, { headers })
-      if (res.ok) {
-        const data = await res.json()
-        setConflictWarning(data.conflicts.length > 0
-          ? data.conflict_type === "label"
-            ? `An agent is already watching "${triggerLabel}" on ${selectedRepo}. Choose a different trigger label.`
-            : `This playbook is already installed on ${selectedRepo}. Installing again runs two independent agents.`
-          : null)
-      }
-    })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRepo, template, inputValues["trigger_label"]])
 
   async function handleCreate() {
     setLoading(true)
@@ -412,13 +391,6 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
                     After creating, copy the webhook URL from agent settings and paste it into your{" "}
                     {template === "incident_responder" ? "PagerDuty or OpsGenie" : "GitHub Actions"} configuration.
                   </p>
-                </div>
-              )}
-
-              {conflictWarning && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-3 flex gap-2">
-                  <span className="text-amber-500">⚠</span>
-                  <p className="text-xs text-amber-700 leading-relaxed">{conflictWarning}</p>
                 </div>
               )}
 
