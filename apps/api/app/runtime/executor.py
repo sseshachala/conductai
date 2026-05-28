@@ -1266,7 +1266,7 @@ def _execute_approval(block: dict, state: dict, credentials: dict, run_id: str) 
 
 # ── main executor ─────────────────────────────────────────────────────────────
 
-def _execute_memory(block: dict, state: dict, db, run_id: str, workspace_id: str, playbook_slug: str) -> dict:
+def _execute_memory(block: dict, state: dict, db, run_id: str, workspace_id: str, playbook_slug: str, credentials: dict | None = None) -> dict:
     """
     Read or write agent memory with vector similarity search.
 
@@ -1283,7 +1283,11 @@ def _execute_memory(block: dict, state: dict, db, run_id: str, workspace_id: str
     action = config.get("action", "read")
     scope = config.get("scope", "repo")
     key = _resolve_refs(config.get("key", ""), state)
-    client = create_embedding_client()
+    creds = credentials or {}
+    client = create_embedding_client(
+        openai_api_key=creds.get("openai", {}).get("api_key") or creds.get("OPENAI_API_KEY"),
+        voyage_api_key=creds.get("voyage", {}).get("api_key") or creds.get("VOYAGE_API_KEY"),
+    )
 
     if action == "read":
         limit = int(config.get("limit", 5))
@@ -1527,6 +1531,7 @@ def execute_run(run_id: str):
                         block, state, db, run_id,
                         str(workspace_id_str),
                         version.workflow.playbook_slug or "",
+                        credentials=credentials,
                     )
 
                 else:
