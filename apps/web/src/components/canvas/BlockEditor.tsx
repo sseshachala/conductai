@@ -1104,7 +1104,7 @@ export default function BlockEditor({
         const summary = (getNestedValue(blockData, "config.summary") as string) || ""
 
         // Auto-derive key from scope — populate on first render if not set
-        const autoKey = scope === "repo" ? "{{_trigger.repo_name}}" : "{{_trigger.workspace_id}}"
+        const autoKey = scope === "repo" ? "{{_trigger.repo_full_name}}" : "workspace"
         const currentKey = (getNestedValue(blockData, "config.key") as string) || ""
         if (!currentKey) {
           // Seed default key without blocking render
@@ -1136,7 +1136,7 @@ export default function BlockEditor({
                 value={scope}
                 onChange={e => {
                   const newScope = e.target.value
-                  const newKey = newScope === "repo" ? "{{_trigger.repo_name}}" : "{{_trigger.workspace_id}}"
+                  const newKey = newScope === "repo" ? "{{_trigger.repo_full_name}}" : "workspace"
                   let updated = setNestedValue({ ...blockData }, "config.scope", newScope)
                   updated = setNestedValue(updated, "config.key", newKey)
                   onChange(blockId, updated)
