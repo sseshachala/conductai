@@ -88,28 +88,16 @@ def create_embedding_client(
     openai_api_key: str | None = None,
     voyage_api_key: str | None = None,
 ) -> EmbeddingClient | None:
-    """Return the best available embedding client.
-
-    Resolution order (first non-empty value wins):
-      1. Workspace environment credential passed by the caller
-      2. Server-level settings (OPENAI_API_KEY / VOYAGE_API_KEY env var on the
-         Render service — no workspace configuration needed)
-    """
-    import os
-    from app.core.config import settings
-
-    _openai = openai_api_key or settings.openai_api_key or os.environ.get("OPENAI_API_KEY", "")
-    _voyage = voyage_api_key or settings.voyage_api_key or os.environ.get("VOYAGE_API_KEY", "")
-
-    if _openai:
+    """Return the best available embedding client, or None if no key provided."""
+    if openai_api_key:
         log.debug("embedding.provider", provider="openai")
-        return OpenAIEmbeddingClient(_openai)
-    if _voyage:
+        return OpenAIEmbeddingClient(openai_api_key)
+    if voyage_api_key:
         log.debug("embedding.provider", provider="voyage")
-        return VoyageEmbeddingClient(_voyage)
+        return VoyageEmbeddingClient(voyage_api_key)
 
     log.warning(
         "embedding.no_provider",
-        msg="No embedding key found. Set OPENAI_API_KEY or VOYAGE_API_KEY on the Render worker service (or in the workspace environment store).",
+        msg="Set OPENAI_API_KEY or VOYAGE_API_KEY in the workspace environment to enable the memory block.",
     )
     return None
