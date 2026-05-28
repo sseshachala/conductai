@@ -16,8 +16,13 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_workspace_id, require_workspace_role
 from app.core.database import get_db
 from app.models.run import Run
+from app.models.run_trace import RunTrace
 from app.models.workflow import Workflow, WorkflowVersion
 from app.schemas.run import _extract_trigger_summary
+
+# Sonnet pricing (per 1M tokens) used for cost estimates — approximate
+_INPUT_COST_PER_M  = 3.0
+_OUTPUT_COST_PER_M = 15.0
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -102,11 +107,29 @@ class RecentRun(BaseModel):
     created_at: str
 
 
+class AgentTokenUsage(BaseModel):
+    workflow_id: str
+    name: str
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    estimated_cost_usd: float
+
+
+class TokenUsage(BaseModel):
+    total_input_tokens: int
+    total_output_tokens: int
+    total_tokens: int
+    estimated_cost_usd: float
+    by_agent: list[AgentTokenUsage]
+
+
 class DashboardOut(BaseModel):
     outcomes: OutcomeStats
     needs_attention: list[AttentionRun]
     agent_health: list[AgentHealth]
     recent_activity: list[RecentRun]
+    token_usage: TokenUsage
 
 
 @router.get("", response_model=DashboardOut)
@@ -266,9 +289,51 @@ def get_dashboard(
         for run, wf_id, wf_name in recent_rows
     ]
 
+    # ── Token usage — all-time, aggregated from run_traces ───────────────────
+    token_rows = (
+        db.query(
+            Workflow.id.label("wf_id"),
+            Workflow.name.label("wf_name"),
+            func.coalesce(func.sum(RunTrace.input_tokens), 0).label("input_tokens"),
+            func.coalesce(func.sum(RunTrace.output_tokens), 0).label("output_tokens"),
+        )
+        .join(WorkflowVersion, WorkflowVersion.workflow_id == Workflow.id)
+        .join(Run, Run.workflow_version_id == WorkflowVersion.id)
+        .join(RunTrace, RunTrace.run_id == Run.id)
+        .filter(Workflow.workspace_id == workspace_id)
+        .group_by(Workflow.id, Workflow.name)
+        .order_by(func.sum(RunTrace.input_tokens + RunTrace.output_tokens).desc().nullslast())
+        .all()
+    )
+
+    def _cost(inp: int, out: int) -> float:
+        return round((inp * _INPUT_COST_PER_M + out * _OUTPUT_COST_PER_M) / 1_000_000, 4)
+
+    by_agent = [
+        AgentTokenUsage(
+            workflow_id=str(row.wf_id),
+            name=row.wf_name,
+            input_tokens=row.input_tokens,
+            output_tokens=row.output_tokens,
+            total_tokens=row.input_tokens + row.output_tokens,
+            estimated_cost_usd=_cost(row.input_tokens, row.output_tokens),
+        )
+        for row in token_rows
+    ]
+    total_input  = sum(a.input_tokens for a in by_agent)
+    total_output = sum(a.output_tokens for a in by_agent)
+    token_usage = TokenUsage(
+        total_input_tokens=total_input,
+        total_output_tokens=total_output,
+        total_tokens=total_input + total_output,
+        estimated_cost_usd=_cost(total_input, total_output),
+        by_agent=by_agent,
+    )
+
     return DashboardOut(
         outcomes=outcomes,
         needs_attention=needs_attention,
         agent_health=agent_health,
         recent_activity=recent_activity,
+        token_usage=token_usage,
     )
