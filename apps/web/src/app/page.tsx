@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth, SignInButton } from "@clerk/nextjs"
 import BlogSection from "@/components/BlogSection"
@@ -23,6 +24,19 @@ function LandingPageWithAuth() {
 function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isLoaded: boolean }) {
   const router = useRouter()
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+
+  // Single source of truth for the playbook count — fetched from the same
+  // endpoint the Marketplace uses, so marketing copy never drifts from the
+  // registry. Falls back to the default if the API is unreachable.
+  const [playbookCount, setPlaybookCount] = useState(18)
+  useEffect(() => {
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/playbooks`)
+      .then(r => (r.ok ? r.json() : []))
+      .then((pbs: unknown[]) => {
+        if (Array.isArray(pbs) && pbs.length > 0) setPlaybookCount(pbs.length)
+      })
+      .catch(() => {})
+  }, [])
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -213,7 +227,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
       {/* Trust strip */}
       <div className="border-y border-stone-100 bg-stone-50 py-4 px-6">
         <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-center gap-6 text-xs font-medium text-stone-500">
-          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>11 ready-made agents</span>
+          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>{playbookCount} ready-made agents</span>
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>Zero prompt engineering</span>
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>Human approval on every merge</span>
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>RBAC — admin, editor, viewer</span>
@@ -247,7 +261,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
             One click to install.<br />Running in minutes.
           </h2>
           <p className="text-center text-stone-500 text-sm max-w-xl mx-auto mb-12">
-            12 pre-built agent playbooks — browse, install, configure your credentials, and run. Already installed playbooks are tracked so you never duplicate. No blank canvas required.
+            {playbookCount} pre-built agent playbooks across 10 categories — browse, install, configure your credentials, and run. Already installed playbooks are tracked so you never duplicate. No blank canvas required.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
             {TEMPLATES.map(t => (
@@ -271,7 +285,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
               href="/marketplace"
               className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-6 py-3 text-sm font-medium text-stone-700 hover:border-stone-300 hover:shadow-sm transition-all"
             >
-              📦 Browse all 12 playbooks in the Marketplace →
+              📦 Browse all {playbookCount} playbooks in the Marketplace →
             </a>
           </div>
         </div>
@@ -285,7 +299,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             {[
               { step: "1", icon: "🔗", title: "Connect your repo", body: "Link GitHub, GitLab, or Bitbucket. Add Slack, Linear, and your API keys. No migration, no new tooling — Conduct wraps around what you already use." },
-              { step: "2", icon: "📦", title: "Install from the Marketplace", body: "Browse 12 pre-built playbooks, click Install — canvas is pre-wired. Add credentials and the agent is ready to run." },
+              { step: "2", icon: "📦", title: "Install from the Marketplace", body: `Browse ${playbookCount} pre-built playbooks, click Install — canvas is pre-wired. Add credentials and the agent is ready to run.` },
               { step: "3", icon: "✅", title: "Get output in Slack", body: "PRs, diagnoses, triage comments, changelogs — delivered to Slack. Approve or reject with one click." },
             ].map(s => (
               <div key={s.step} className="bg-white rounded-2xl border border-stone-200 p-6 text-center">
@@ -359,7 +373,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
             Not just another AI tool.<br />An AI teammate you can trust.
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            {WHY_DELEGATOR.map(f => (
+            {WHY_DELEGATOR(playbookCount).map(f => (
               <div key={f.title} className="bg-white rounded-2xl border border-stone-200 p-6">
                 <div className="text-2xl mb-3">{f.icon}</div>
                 <p className="font-semibold text-stone-900 mb-1.5">{f.title}</p>
@@ -574,7 +588,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
           <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-3">FAQ</p>
           <h2 className="text-2xl font-bold text-stone-900 mb-8">Common questions</h2>
           <div className="space-y-6">
-            {FAQ.map(({ q, a }) => (
+            {FAQ(playbookCount).map(({ q, a }) => (
               <div key={q} className="border-b border-stone-100 pb-6 last:border-0">
                 <p className="font-semibold text-stone-900 mb-2">{q}</p>
                 <p className="text-sm text-stone-500 leading-relaxed">{a}</p>
@@ -613,7 +627,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         dangerouslySetInnerHTML={{ __html: JSON.stringify({
           "@context": "https://schema.org",
           "@type": "FAQPage",
-          "mainEntity": FAQ.map(({ q, a }) => ({
+          "mainEntity": FAQ(playbookCount).map(({ q, a }) => ({
             "@type": "Question",
             "name": q,
             "acceptedAnswer": { "@type": "Answer", "text": a },
@@ -709,10 +723,45 @@ const TEMPLATES = [
     what: "Dependabot alert fires → AI confirms the vulnerable package is present → applies the patched version → runs tests → opens a PR with full CVE reference. No waiting for the weekly cron.",
     scenario: "A critical CVE lands at 2am. By the time the team wakes up, a PR with the patch is already open, tests ran, and #security has a notification with the CVE number and severity.",
   },
+  {
+    icon: "🔬",
+    name: "Flaky Test Detective",
+    trigger: "CI webhook",
+    what: "CI run has repeated failures → AI identifies which tests are flaky, traces the offending commit, and posts a fix recommendation to Slack.",
+    scenario: "A test fails 1-in-5 runs and everyone keeps hitting retry. Conduct names the flaky test, points at the commit that introduced it, and suggests the fix — no more guessing.",
+  },
+  {
+    icon: "✅",
+    name: "Release Readiness Reviewer",
+    trigger: "Release branch cut",
+    what: "Release branch created → AI checks open blockers, failed CI, pending reviews, and unresolved incidents → posts a go/no-go summary before you ship.",
+    scenario: "Release manager cuts release/2.0 on Friday. Within a minute Slack has a go/no-go: 2 open blockers, 1 failing check, 3 PRs still awaiting review — decision made in seconds.",
+  },
+  {
+    icon: "📋",
+    name: "Postmortem Drafter",
+    trigger: "Incident resolved",
+    what: "Incident closed → AI reads the timeline, alerts, and commits → drafts a structured postmortem with root cause and action items, ready for human edit.",
+    scenario: "An outage resolves at midnight. By morning a draft postmortem is waiting — timeline reconstructed, root cause hypothesized, action items listed. The team edits instead of starting from a blank page.",
+  },
+  {
+    icon: "📖",
+    name: "Docs Drift Detector",
+    trigger: "PR merged",
+    what: "PR merged → AI checks whether related docs, README, or runbooks went stale → opens a follow-up docs PR or files an issue.",
+    scenario: "An engineer renames an env var and merges. Conduct notices the README still references the old name and opens a one-line docs PR before anyone is paged about a broken setup guide.",
+  },
+  {
+    icon: "🏗️",
+    name: "Terraform Plan Reviewer",
+    trigger: "Terraform PR opened",
+    what: "Terraform plan PR opened → AI reviews for security misconfigs, cost anomalies, and drift from approved patterns → posts structured findings as a review.",
+    scenario: "A PR opens a public S3 bucket and bumps an instance to a $2k/mo type. Conduct flags both on the diff before a human reviewer even reads it.",
+  },
 ]
 
 
-const WHY_DELEGATOR = [
+const WHY_DELEGATOR = (count: number) => [
   {
     icon: "🔒",
     title: "Human approval on every merge",
@@ -736,7 +785,7 @@ const WHY_DELEGATOR = [
   {
     icon: "⚡",
     title: "Playbook Marketplace — one click to install",
-    body: "12 pre-built agents in the Marketplace: Autopilot, PR Reviewer, Security Scanner, Security Patch Updater, Issue Triage, Release Notes, CI Failure Alert, Incident Responder, Dependency Updater, and more. Install, configure credentials, run. Already-installed playbooks are tracked so you never duplicate.",
+    body: `${count} pre-built agents in the Marketplace: Autopilot, PR Reviewer, Security Scanner, Security Patch Updater, Issue Triage, Flaky Test Detective, Release Readiness, Release Notes, CI Failure Alert, Incident Responder, Postmortem Drafter, Dependency Updater, Docs Drift Detector, Terraform Reviewer, and more. Install, configure credentials, run. Already-installed playbooks are tracked so you never duplicate.`,
   },
   {
     icon: "🧩",
@@ -874,7 +923,7 @@ const INTEGRATIONS: { name: string; color: string; svg: string }[] = [
 ]
 
 
-const FAQ = [
+const FAQ = (count: number) => [
   {
     q: "What does Conduct actually do?",
     a: "Conduct turns YAML agent recipes into reusable team automations. Your team installs a playbook into a project, configures the environment and credentials, then runs agents for tasks like issue triage, PR review, incident response, release notes, and security scanning.",
@@ -897,7 +946,7 @@ const FAQ = [
   },
   {
     q: "What specific agents come included?",
-    a: "The Playbook Marketplace includes 12 agents: Autopilot, PR Reviewer, Security Scanner, Security Patch Updater, Issue Triage, Release Notes, CI Failure Alert, Incident Responder, Dependency Updater, and more. Each installs in one click — the canvas is pre-wired, just add credentials. Already-installed playbooks are tracked so you never create duplicates.",
+    a: `The Playbook Marketplace includes ${count} agents: Autopilot, PR Reviewer, Security Scanner, Security Patch Updater, Issue Triage, Flaky Test Detective, Release Readiness, Release Notes, CI Failure Alert, Incident Responder, Postmortem Drafter, Dependency Updater, Docs Drift Detector, Terraform Reviewer, and more. Each installs in one click — the canvas is pre-wired, just add credentials. Already-installed playbooks are tracked so you never create duplicates.`,
   },
   {
     q: "How long does it take to get up and running?",
