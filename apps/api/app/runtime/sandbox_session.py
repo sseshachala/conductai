@@ -370,8 +370,9 @@ def create_session(
         return RemoteSession(remote_host)
 
     modal_creds = (credentials or {}).get("modal", {})
-    token_id = modal_creds.get("token_id", "")
-    token_secret = modal_creds.get("token_secret", "")
+    _env_vars = (credentials or {}).get("env_vars") or {}
+    token_id = modal_creds.get("token_id") or _env_vars.get("modal_token_id") or _env_vars.get("MODAL_TOKEN_ID") or ""
+    token_secret = modal_creds.get("token_secret") or _env_vars.get("modal_token_secret") or _env_vars.get("MODAL_TOKEN_SECRET") or ""
     if token_id and token_secret:
         log.debug("sandbox_session.backend", type="modal")
         return ModalSession(token_id, token_secret)
