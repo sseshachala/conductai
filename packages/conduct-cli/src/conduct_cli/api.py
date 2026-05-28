@@ -63,8 +63,8 @@ def stream(url: str, hdrs=None):
     try:
         resp = urllib.request.urlopen(r)
     except urllib.error.HTTPError as e:
-        print(f"{RED}Stream {e.code}: {e.read().decode()}{RESET}")
-        sys.exit(1)
+        msg = e.read().decode()
+        raise RuntimeError(f"Stream {e.code}: {msg}")
 
     buf = b""
     while True:
