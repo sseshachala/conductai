@@ -605,12 +605,21 @@ def delete_workflow(
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
 
-    # Deregister git webhook if one was auto-registered on install
+    # Deregister git webhook only if no sibling workflow shares this hook_id.
     if workflow.github_hook_id and workflow.github_hook_repo:
         try:
             from app.routers.credentials import _git_token
             token, provider = _git_token(str(workspace_id), db)
-            _deregister_git_webhook(token, workflow.github_hook_repo, workflow.github_hook_id, provider=provider)
+            siblings = db.query(Workflow).filter(
+                Workflow.workspace_id == workflow.workspace_id,
+                Workflow.github_hook_repo == workflow.github_hook_repo,
+                Workflow.github_hook_id == workflow.github_hook_id,
+                Workflow.id != workflow.id,
+            ).count()
+            if siblings == 0:
+                _deregister_git_webhook(token, workflow.github_hook_repo, workflow.github_hook_id, provider=provider)
+            else:
+                log.info("webhook.delete_skipped_shared", workflow_id=str(workflow_id), siblings=siblings)
         except Exception as e:
             log.warning("Webhook deregistration skipped: %s", e)
 
