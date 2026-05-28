@@ -200,6 +200,7 @@ def _register_git_webhook(
     events: list[str],
     provider: str = "github",
     project_slug: str | None = None,
+    workflow_slug: str | None = None,
     secret: str | None = None,
     workspace_id: str | None = None,
 ) -> tuple[str | None, str | None]:
@@ -207,10 +208,11 @@ def _register_git_webhook(
     import httpx
     from app.core.config import settings
 
-    # GitHub issue-based triggers must use /webhooks/github so label filtering
-    # (ai-ready, etc.) is enforced. The generic /webhooks/inbound endpoint has
-    # no label awareness and fires on every issues event.
-    if provider == "github" and "issues" in events and workspace_id:
+    # Prefer slug-addressed URL when both project and workflow slugs are available.
+    # Falls back to workspace-scoped URL (legacy) or inbound URL.
+    if provider == "github" and "issues" in events and project_slug and workflow_slug:
+        webhook_url = f"{settings.api_base_url}/webhooks/github/{project_slug}/{workflow_slug}"
+    elif provider == "github" and "issues" in events and workspace_id:
         webhook_url = f"{settings.api_base_url}/webhooks/github?workspace_id={workspace_id}"
     else:
         slug_segment = f"{project_slug}/" if project_slug else ""
@@ -578,6 +580,12 @@ def get_workflow(workflow_id: UUID, db: Session = Depends(get_db), workspace_id:
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
     _stamp(workflow)
+    if workflow.project_id:
+        from app.models.project import Project as _Proj
+        proj = db.query(_Proj).filter(_Proj.id == workflow.project_id).first()
+        if proj:
+            workflow.project_slug = proj.slug  # type: ignore[attr-defined]
+            workflow.project_name = proj.name  # type: ignore[attr-defined]
     return workflow
 
 
@@ -800,12 +808,18 @@ def register_workflow_webhook(
         from app.models.project import Project as _Project
         proj = db.query(_Project).filter(_Project.id == workflow.project_id).first()
         if proj:
-            project_slug = _re.sub(r"[^a-z0-9]+", "-", proj.name.lower()).strip("-")
+            project_slug = proj.slug  # use the stored slug, not a runtime derivation
 
-    # Workspace-scoped hooks (/webhooks/github) are verified using the global
-    # GITHUB_WEBHOOK_SECRET env var. Per-workflow inbound hooks use a random secret
-    # stored encrypted in the trigger node config.
-    uses_workspace_url = (provider == "github" and "issues" in _GITHUB_WEBHOOK_EVENTS.get(playbook_slug, []))
+    # Slug-addressed webhooks use a per-workflow random secret (verified in
+    # github_webhook_by_slug). Legacy workspace-scoped URL falls back to the
+    # global GITHUB_WEBHOOK_SECRET. If we have both slugs we always prefer the
+    # slug URL so always generate a per-workflow secret.
+    uses_slug_url = bool(project_slug and workflow.playbook_slug)
+    uses_workspace_url = (
+        not uses_slug_url and
+        provider == "github" and
+        "issues" in _GITHUB_WEBHOOK_EVENTS.get(playbook_slug, [])
+    )
     if uses_workspace_url:
         from app.core.config import settings as _settings
         webhook_secret = _settings.github_webhook_secret or _secrets.token_hex(32)
@@ -817,6 +831,7 @@ def register_workflow_webhook(
         _GITHUB_WEBHOOK_EVENTS[playbook_slug],
         provider=provider,
         project_slug=project_slug,
+        workflow_slug=workflow.playbook_slug,
         secret=webhook_secret,
         workspace_id=str(workspace_id),
     )

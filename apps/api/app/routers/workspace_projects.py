@@ -2,6 +2,7 @@
 Projects — logical grouping of resources within a workspace/team.
 Routes: /workspaces/{workspace_id}/projects
 """
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Annotated
@@ -22,12 +23,35 @@ class ProjectOut(BaseModel):
     id: str
     workspace_id: str
     name: str
+    slug: str = ""
     created_at: datetime
     agent_count: int = 0
 
 
 class ProjectCreate(BaseModel):
     name: str
+
+
+def _slugify(name: str) -> str:
+    s = name.lower().strip()
+    s = re.sub(r"[^\w\s-]", "", s)
+    s = re.sub(r"[\s_]+", "-", s)
+    s = re.sub(r"-+", "-", s)
+    return s.strip("-") or "project"
+
+
+def _unique_slug(base: str, workspace_id: str, db: Session, exclude_id: str | None = None) -> str:
+    n = 0
+    while True:
+        slug = base if n == 0 else f"{base}-{n}"
+        q = "SELECT 1 FROM projects WHERE workspace_id = :ws AND slug = :slug"
+        params: dict = {"ws": workspace_id, "slug": slug}
+        if exclude_id:
+            q += " AND id != :eid"
+            params["eid"] = exclude_id
+        if not db.execute(text(q), params).fetchone():
+            return slug
+        n += 1
 
 
 def _enforce_workspace(path_id: str, active_id: str) -> None:
@@ -45,7 +69,7 @@ def list_projects(
 ):
     _enforce_workspace(workspace_id, active_workspace_id)
     rows = db.execute(text("""
-        SELECT p.id, p.workspace_id, p.name, p.created_at,
+        SELECT p.id, p.workspace_id, p.name, p.slug, p.created_at,
                COUNT(w.id) AS agent_count
         FROM projects p
         LEFT JOIN workflows w ON w.project_id = p.id
@@ -54,7 +78,7 @@ def list_projects(
         ORDER BY p.created_at ASC
     """), {"ws": workspace_id}).fetchall()
     return [ProjectOut(id=str(r.id), workspace_id=str(r.workspace_id), name=r.name,
-                       created_at=r.created_at, agent_count=r.agent_count or 0)
+                       slug=r.slug or "", created_at=r.created_at, agent_count=r.agent_count or 0)
             for r in rows]
 
 
@@ -73,13 +97,15 @@ def create_project(
 
     project_id = uuid.uuid4()
     now = datetime.now(timezone.utc)
+    name = body.name.strip()
+    slug = _unique_slug(_slugify(name), workspace_id, db)
     db.execute(text("""
-        INSERT INTO projects (id, workspace_id, name, created_at)
-        VALUES (:id, :ws, :name, :now)
-    """), {"id": str(project_id), "ws": workspace_id, "name": body.name.strip(), "now": now})
+        INSERT INTO projects (id, workspace_id, name, slug, created_at)
+        VALUES (:id, :ws, :name, :slug, :now)
+    """), {"id": str(project_id), "ws": workspace_id, "name": name, "slug": slug, "now": now})
     db.commit()
     return ProjectOut(id=str(project_id), workspace_id=workspace_id,
-                      name=body.name.strip(), created_at=now)
+                      name=name, slug=slug, created_at=now)
 
 
 @router.patch("/{project_id}", response_model=ProjectOut)
@@ -95,22 +121,23 @@ def rename_project(
     name = (body.get("name") or "").strip()
     if not name:
         raise HTTPException(status_code=422, detail="Name cannot be empty")
+    slug = _unique_slug(_slugify(name), workspace_id, db, exclude_id=project_id)
     result = db.execute(text("""
-        UPDATE projects SET name = :name
+        UPDATE projects SET name = :name, slug = :slug
         WHERE id = :id AND workspace_id = :ws
         RETURNING id
-    """), {"name": name, "id": project_id, "ws": workspace_id})
+    """), {"name": name, "slug": slug, "id": project_id, "ws": workspace_id})
     if not result.fetchone():
         raise HTTPException(status_code=404, detail="Project not found")
     db.commit()
 
     row = db.execute(text("""
-        SELECT p.id, p.workspace_id, p.name, p.created_at, COUNT(w.id) AS agent_count
+        SELECT p.id, p.workspace_id, p.name, p.slug, p.created_at, COUNT(w.id) AS agent_count
         FROM projects p LEFT JOIN workflows w ON w.project_id = p.id
         WHERE p.id = :id GROUP BY p.id
     """), {"id": project_id}).fetchone()
     return ProjectOut(id=str(row.id), workspace_id=str(row.workspace_id), name=row.name,
-                      created_at=row.created_at, agent_count=row.agent_count or 0)
+                      slug=row.slug or "", created_at=row.created_at, agent_count=row.agent_count or 0)
 
 
 @router.delete("/{project_id}", status_code=204)
@@ -150,7 +177,7 @@ def get_project(
     no X-Workspace-ID cookie required. Used by the project page to work correctly
     regardless of which workspace the browser cookie currently points to."""
     row = db.execute(text("""
-        SELECT p.id, p.workspace_id, p.name, p.created_at, COUNT(w.id) AS agent_count
+        SELECT p.id, p.workspace_id, p.name, p.slug, p.created_at, COUNT(w.id) AS agent_count
         FROM projects p
         LEFT JOIN workflows w ON w.project_id = p.id
         WHERE p.id = :pid
@@ -169,7 +196,7 @@ def get_project(
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
 
     return ProjectOut(id=str(row.id), workspace_id=proj_ws, name=row.name,
-                      created_at=row.created_at, agent_count=row.agent_count or 0)
+                      slug=row.slug or "", created_at=row.created_at, agent_count=row.agent_count or 0)
 
 
 # ── Audit log endpoint ────────────────────────────────────────────────────────
