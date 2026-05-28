@@ -107,7 +107,7 @@ def _poll_run(server: str, workflow_id: str, run_id: str, hdrs: dict) -> bool:
     for _ in range(120):  # max 10 min
         time.sleep(5)
         try:
-            run = api.req("GET", f"{server}/workflows/{workflow_id}/runs/{run_id}", hdrs)
+            run = api.req("GET", f"{server}/runs/{run_id}", hdrs)
             status = run.get("status", "")
             print(f"{GRAY}    status: {status}{RESET}", end="\r")
             if status in terminal:
