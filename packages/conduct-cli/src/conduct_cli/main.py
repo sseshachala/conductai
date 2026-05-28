@@ -102,14 +102,21 @@ def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, t
 
 
 def _poll_run(server: str, workflow_id: str, run_id: str, hdrs: dict) -> bool:
-    """Poll run status until terminal — fallback when SSE stream unavailable."""
+    """Poll run status until terminal — fallback when SSE stream unavailable.
+
+    'paused' is treated as pass: the run reached a human-approval step, which
+    is correct behaviour for approval-gated agents.
+    """
     terminal = {"succeeded", "failed", "cancelled"}
-    for _ in range(120):  # max 10 min
+    for _ in range(240):  # max 20 min — agentic coding agents can take 15+ min
         time.sleep(5)
         try:
             run = api.req("GET", f"{server}/runs/{run_id}", hdrs)
             status = run.get("status", "")
             print(f"{GRAY}    status: {status}{RESET}", end="\r")
+            if status == "paused":
+                print(f"\n{GRAY}    (paused — awaiting approval){RESET}")
+                return True
             if status in terminal:
                 print()
                 return status == "succeeded"
