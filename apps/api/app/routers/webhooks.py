@@ -396,6 +396,123 @@ def _verify_github_signature(body: bytes, signature: str) -> bool:
     return hmac.compare_digest(expected, signature)
 
 
+def _repo_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    repo = payload.get("repository") or {}
+    return {
+        "id": repo.get("id"),
+        "full_name": repo.get("full_name", ""),
+        "name": repo.get("name", ""),
+        "owner": (repo.get("owner") or {}).get("login", ""),
+        "default_branch": repo.get("default_branch", "main"),
+        "clone_url": repo.get("clone_url", ""),
+    }
+
+
+def _normalize_github_pr_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    pr = payload.get("pull_request") or {}
+    action = payload.get("action", "")
+    return {
+        "event_type": "github_pr_merged" if (action == "closed" and pr.get("merged")) else f"github_pr_{action}",
+        "action": action,
+        "repo": _repo_from_payload(payload),
+        "pr": {
+            "number": pr.get("number"),
+            "title": pr.get("title", ""),
+            "body": pr.get("body") or "",
+            "url": pr.get("html_url", ""),
+            "author": (pr.get("user") or {}).get("login", ""),
+            "head_branch": (pr.get("head") or {}).get("ref", ""),
+            "base_branch": (pr.get("base") or {}).get("ref", "main"),
+            "merged": pr.get("merged", False),
+            "draft": pr.get("draft", False),
+            "labels": [l.get("name") for l in pr.get("labels", []) if l.get("name")],
+            "requested_reviewers": [(r.get("login") or r.get("name", "")) for r in pr.get("requested_reviewers", [])],
+        },
+        "sender": {"login": (payload.get("sender") or {}).get("login", "")},
+    }
+
+
+def _normalize_github_push_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    commits = payload.get("commits") or []
+    return {
+        "event_type": "github_push",
+        "action": "push",
+        "repo": _repo_from_payload(payload),
+        "push": {
+            "ref": payload.get("ref", ""),
+            "branch": payload.get("ref", "").removeprefix("refs/heads/"),
+            "before": payload.get("before", ""),
+            "after": payload.get("after", ""),
+            "pusher": (payload.get("pusher") or {}).get("name", ""),
+            "commits": [{"id": c.get("id", ""), "message": c.get("message", ""), "author": (c.get("author") or {}).get("name", "")} for c in commits[:10]],
+            "forced": payload.get("forced", False),
+        },
+        "sender": {"login": (payload.get("sender") or {}).get("login", "")},
+    }
+
+
+def _normalize_github_issue_opened_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    issue = payload.get("issue") or {}
+    return {
+        "event_type": "github_issue_opened",
+        "action": "opened",
+        "repo": _repo_from_payload(payload),
+        "issue": {
+            "id": issue.get("id"),
+            "number": issue.get("number"),
+            "title": issue.get("title", ""),
+            "body": issue.get("body") or "",
+            "url": issue.get("html_url", ""),
+            "author": (issue.get("user") or {}).get("login", ""),
+            "labels": [l.get("name") for l in issue.get("labels", []) if l.get("name")],
+        },
+        "sender": {"login": (payload.get("sender") or {}).get("login", "")},
+    }
+
+
+def _normalize_github_issue_comment_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    issue = payload.get("issue") or {}
+    comment = payload.get("comment") or {}
+    return {
+        "event_type": "github_issue_comment",
+        "action": payload.get("action", ""),
+        "repo": _repo_from_payload(payload),
+        "issue": {
+            "number": issue.get("number"),
+            "title": issue.get("title", ""),
+            "url": issue.get("html_url", ""),
+            "author": (issue.get("user") or {}).get("login", ""),
+            "labels": [l.get("name") for l in issue.get("labels", []) if l.get("name")],
+        },
+        "comment": {
+            "id": comment.get("id"),
+            "body": comment.get("body") or "",
+            "url": comment.get("html_url", ""),
+            "author": (comment.get("user") or {}).get("login", ""),
+        },
+        "sender": {"login": (payload.get("sender") or {}).get("login", "")},
+    }
+
+
+def _normalize_github_workflow_run_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    run = payload.get("workflow_run") or {}
+    return {
+        "event_type": "github_workflow_run",
+        "action": payload.get("action", ""),
+        "repo": _repo_from_payload(payload),
+        "workflow_run": {
+            "id": run.get("id"),
+            "name": run.get("name", ""),
+            "status": run.get("status", ""),
+            "conclusion": run.get("conclusion", ""),
+            "branch": run.get("head_branch", ""),
+            "url": run.get("html_url", ""),
+            "workflow_id": run.get("workflow_id"),
+        },
+        "sender": {"login": (payload.get("sender") or {}).get("login", "")},
+    }
+
+
 def _normalize_github_issue_labeled_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """
     Normalize GitHub issue labeled webhook payload into a stable internal shape.
@@ -504,61 +621,46 @@ def _repo_matches(config: dict[str, Any], incoming_repo: str, strict: bool) -> b
 
 
 def _trigger_github_workflows(
-        db: Session, event_type: str, normalized: dict[str, Any], initial_state: dict[str, Any],
+    db: Session, event_type: str, normalized: dict[str, Any], initial_state: dict[str, Any],
     workspace_id: str | None = None,
 ) -> list[str]:
-    """
-        Find workflow versions with a trigger block matching workflow-defined contract:
-            - event_type in {"github_issue", "github_issue_labeled"}
-            - config.label must equal incoming label
-            - optional config.repo_allowlist must include incoming repo full_name
-
-    If workspace_id is provided, only triggers workflows in that workspace.
-    """
-    query = db.query(WorkflowVersion).join(
-        Workflow, Workflow.current_version_id == WorkflowVersion.id
-    )
+    """Route an incoming GitHub event to all matching workflow versions."""
+    query = db.query(WorkflowVersion).join(Workflow, Workflow.current_version_id == WorkflowVersion.id)
     if workspace_id:
         query = query.filter(Workflow.workspace_id == workspace_id)
     versions = query.all()
 
-    queued: list[str] = []
-    incoming_label = normalized["label"]
-    incoming_repo = normalized["repo"]["full_name"]
-    issue_labels = normalized["issue"]["labels"]
+    incoming_repo = (normalized.get("repo") or {}).get("full_name", "")
+    incoming_label = normalized.get("label", "")
+    issue_labels = (normalized.get("issue") or {}).get("labels", [])
 
+    queued: list[str] = []
     for version in versions:
         nodes = version.graph.get("nodes", [])
-        matched_trigger = None
-
+        matched = None
         for node in nodes:
             data = node.get("data", {})
             if data.get("type") != "trigger":
                 continue
-
             config = data.get("config", {})
-            trigger_event = config.get("event_type")
-            if trigger_event not in (event_type, "github_issue_labeled"):
+            trigger_event = config.get("event_type", "")
+            if trigger_event != event_type:
                 continue
-
-            enforcement = str(config.get("enforcement") or "strict").strip()
-            strict = enforcement != "permissive"
-
-            if not _labels_match(config, incoming_label, issue_labels, strict):
-                continue
-
+            strict = str(config.get("enforcement") or "strict").strip() != "permissive"
             if not _repo_matches(config, incoming_repo, strict):
                 continue
-
-            matched_trigger = node
+            # Label matching only applies to issue-labeled events
+            if event_type == "github_issue_labeled" and not _labels_match(config, incoming_label, issue_labels, strict):
+                continue
+            matched = node
             break
 
-        if not matched_trigger:
+        if not matched:
             continue
 
         run = Run(
             workflow_version_id=version.id,
-            triggered_by=f"github:{event_type}:{incoming_label}",
+            triggered_by=f"github:{event_type}",
             status="pending",
             state={**initial_state, "__triggered_by": f"github:{event_type}"},
         )
@@ -567,7 +669,7 @@ def _trigger_github_workflows(
         db.commit()
         _redis().rpush(QUEUE_KEY, str(run.id))
         queued.append(str(run.id))
-        log.info("github.triggered", event_type=event_type, label=incoming_label, repo=incoming_repo, run_id=str(run.id))
+        log.info("github.triggered", event_type=event_type, repo=incoming_repo, run_id=str(run.id))
 
     return queued
 
@@ -702,44 +804,78 @@ async def github_webhook(
         raise HTTPException(status_code=401, detail="Invalid GitHub signature")
 
     event = request.headers.get("X-GitHub-Event", "unknown")
+    action = ""
 
     try:
         payload = json.loads(body)
+        action = payload.get("action", "")
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON")
 
-    # Only handle issue labeled events for now
-    if event != "issues" or payload.get("action") != "labeled":
-        return {"ok": True, "queued": 0, "reason": f"event {event}/{payload.get('action')} not handled"}
+    # Route by GitHub event type → internal event_type + normalized payload
+    if event == "issues" and action == "labeled":
+        normalized = _normalize_github_issue_labeled_payload(payload)
+        event_type = "github_issue_labeled"
+        initial_state = {"github_issue": normalized["issue"], "github_trigger": normalized}
+        initial_state["github_issue"]["label_added"] = normalized["label"]
+        initial_state["github_issue"]["repo_full_name"] = normalized["repo"]["full_name"]
+        initial_state["github_issue"]["clone_url"] = normalized["repo"]["clone_url"]
+        initial_state["github_issue"]["default_branch"] = normalized["repo"]["default_branch"]
 
-    normalized = _normalize_github_issue_labeled_payload(payload)
+    elif event == "issues" and action == "opened":
+        normalized = _normalize_github_issue_opened_payload(payload)
+        event_type = "github_issue_opened"
+        initial_state = {"github_issue": normalized["issue"], "github_trigger": normalized}
+        initial_state["github_issue"]["repo_full_name"] = normalized["repo"]["full_name"]
+        initial_state["github_issue"]["clone_url"] = normalized["repo"]["clone_url"]
+        initial_state["github_issue"]["default_branch"] = normalized["repo"]["default_branch"]
 
-    initial_state = {
-        "github_issue": {
-            "issue_number": normalized["issue"]["number"],
-            "title": normalized["issue"]["title"],
-            "body": normalized["issue"]["body"],
-            "url": normalized["issue"]["url"],
-            "author": normalized["issue"]["author"],
-            "labels": normalized["issue"]["labels"],
-            "label_added": normalized["label"],
-            "repo_full_name": normalized["repo"]["full_name"],
-            "repo_name": normalized["repo"]["name"],
-            "repo_owner": normalized["repo"]["owner"],
-            "default_branch": normalized["repo"]["default_branch"],
-            "clone_url": normalized["repo"]["clone_url"],
-        },
-        "github_trigger": normalized,
-    }
+    elif event == "pull_request" and action in ("opened", "synchronize", "reopened"):
+        normalized = _normalize_github_pr_payload(payload)
+        event_type = "github_pr_opened"
+        initial_state = {"github_pr": normalized["pr"], "github_trigger": normalized}
+        initial_state["github_pr"]["repo_full_name"] = normalized["repo"]["full_name"]
+        initial_state["github_pr"]["clone_url"] = normalized["repo"]["clone_url"]
+        initial_state["github_pr"]["default_branch"] = normalized["repo"]["default_branch"]
 
-    queued = _trigger_github_workflows(db, "github_issue", normalized, initial_state, workspace_id)
-    return {
-        "ok": True,
-        "queued": len(queued),
-        "run_ids": queued,
-        "label": normalized["label"],
-        "repo": normalized["repo"]["full_name"],
-    }
+    elif event == "pull_request" and action == "closed" and payload.get("pull_request", {}).get("merged"):
+        normalized = _normalize_github_pr_payload(payload)
+        event_type = "github_pr_merged"
+        initial_state = {"github_pr": normalized["pr"], "github_trigger": normalized}
+        initial_state["github_pr"]["repo_full_name"] = normalized["repo"]["full_name"]
+        initial_state["github_pr"]["clone_url"] = normalized["repo"]["clone_url"]
+        initial_state["github_pr"]["default_branch"] = normalized["repo"]["default_branch"]
+
+    elif event == "pull_request" and action == "review_requested":
+        normalized = _normalize_github_pr_payload(payload)
+        event_type = "github_pr_review_requested"
+        initial_state = {"github_pr": normalized["pr"], "github_trigger": normalized}
+        initial_state["github_pr"]["repo_full_name"] = normalized["repo"]["full_name"]
+
+    elif event == "push" and not payload.get("ref", "").startswith("refs/tags/"):
+        normalized = _normalize_github_push_payload(payload)
+        event_type = "github_push"
+        initial_state = {"github_push": normalized["push"], "github_trigger": normalized}
+        initial_state["github_push"]["repo_full_name"] = normalized["repo"]["full_name"]
+        initial_state["github_push"]["clone_url"] = normalized["repo"]["clone_url"]
+
+    elif event == "issue_comment" and action == "created":
+        normalized = _normalize_github_issue_comment_payload(payload)
+        event_type = "github_issue_comment"
+        initial_state = {"github_comment": normalized["comment"], "github_issue": normalized["issue"], "github_trigger": normalized}
+        initial_state["github_issue"]["repo_full_name"] = normalized["repo"]["full_name"]
+
+    elif event == "workflow_run" and action == "completed":
+        normalized = _normalize_github_workflow_run_payload(payload)
+        event_type = "github_workflow_run"
+        initial_state = {"github_workflow_run": normalized["workflow_run"], "github_trigger": normalized}
+        initial_state["github_workflow_run"]["repo_full_name"] = normalized["repo"]["full_name"]
+
+    else:
+        return {"ok": True, "queued": 0, "reason": f"event {event}/{action} not handled"}
+
+    queued = _trigger_github_workflows(db, event_type, normalized, initial_state, workspace_id)
+    return {"ok": True, "queued": len(queued), "run_ids": queued, "event_type": event_type, "repo": normalized["repo"]["full_name"]}
 
 
 

@@ -185,6 +185,14 @@ _GITHUB_WEBHOOK_EVENTS: dict[str, list[str]] = {
     "terraform_reviewer":    ["pull_request"],
 }
 
+# All GitHub events Conduct ever listens to — used when registering a repo webhook
+# so GitHub sends everything and we filter in the handler.
+_ALL_GITHUB_EVENTS = [
+    "issues", "pull_request", "push", "issue_comment",
+    "create", "workflow_run", "repository_vulnerability_alert", "dependabot_alert",
+    "pull_request_review", "pull_request_review_comment",
+]
+
 
 def _stamp(workflow) -> None:
     """Set transient fields required by WorkflowDetailOut before returning."""
@@ -749,16 +757,12 @@ def register_workflow_webhook(
         if proj:
             project_slug = proj.slug  # use the stored slug, not a runtime derivation
 
-    uses_workspace_url = provider == "github" and "issues" in _GITHUB_WEBHOOK_EVENTS.get(playbook_slug, [])
-    if uses_workspace_url:
-        from app.core.config import settings as _settings
-        webhook_secret = _settings.github_webhook_secret or _secrets.token_hex(32)
-    else:
-        webhook_secret = _secrets.token_hex(32)
+    from app.core.config import settings as _settings
+    webhook_secret = _settings.github_webhook_secret or _secrets.token_hex(32)
 
     hook_id, error = _register_git_webhook(
         token, repo, str(workflow.id),
-        _GITHUB_WEBHOOK_EVENTS[playbook_slug],
+        _ALL_GITHUB_EVENTS if provider == "github" else _GITHUB_WEBHOOK_EVENTS[playbook_slug],
         provider=provider,
         project_slug=project_slug,
         secret=webhook_secret,
