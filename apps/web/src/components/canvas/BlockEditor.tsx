@@ -1096,6 +1096,101 @@ export default function BlockEditor({
         </div>
       )}
 
+      {/* ── Memory blocks ── */}
+      {blockType === "memory" && (() => {
+        const action = (getNestedValue(blockData, "config.action") as string) || "read"
+        const scope  = (getNestedValue(blockData, "config.scope")  as string) || "repo"
+        const key    = (getNestedValue(blockData, "config.key")    as string) || ""
+        const limit  = (getNestedValue(blockData, "config.limit")  as string) || "5"
+        const summary = (getNestedValue(blockData, "config.summary") as string) || ""
+        return (
+          <>
+            <div className={section}>
+              <span className={sectionLabel}>Action</span>
+              <select
+                value={action}
+                onChange={e => handleFieldChange("config.action", e.target.value)}
+                className={inputBase}
+              >
+                <option value="read">Read — recall past context</option>
+                <option value="write">Write — record outcome</option>
+              </select>
+              <p className="text-[10px] text-stone-400 mt-1">
+                {action === "read"
+                  ? "Retrieves the most similar past summaries before the brain runs."
+                  : "Stores a summary after the run so future runs can learn from it."}
+              </p>
+            </div>
+
+            <div className={section}>
+              <span className={sectionLabel}>Scope</span>
+              <select
+                value={scope}
+                onChange={e => handleFieldChange("config.scope", e.target.value)}
+                className={inputBase}
+              >
+                <option value="repo">Repo — per repository</option>
+                <option value="workspace">Workspace — shared across repos</option>
+              </select>
+            </div>
+
+            <div className={section}>
+              <span className={sectionLabel}>Key</span>
+              <input
+                type="text"
+                value={key}
+                onChange={e => handleFieldChange("config.key", e.target.value)}
+                placeholder="e.g. {{_trigger.repo_name}}"
+                className={inputBase}
+              />
+              <p className="text-[10px] text-stone-400 mt-1">
+                Groups memories together. Use a template ref to make it dynamic.
+              </p>
+            </div>
+
+            {action === "read" && (
+              <div className={section}>
+                <span className={sectionLabel}>Max entries</span>
+                <input
+                  type="number"
+                  value={limit}
+                  onChange={e => handleFieldChange("config.limit", e.target.value)}
+                  min={1}
+                  max={20}
+                  className={cn(inputBase, "w-24")}
+                />
+                <p className="text-[10px] text-stone-400 mt-1">
+                  Retrieved entries available as <code className="bg-stone-100 px-1 rounded">{"{{block_id.entries}}"}</code> in the brain prompt.
+                </p>
+              </div>
+            )}
+
+            {action === "write" && (
+              <div className={section}>
+                <span className={sectionLabel}>Summary template</span>
+                <textarea
+                  value={summary}
+                  onChange={e => handleFieldChange("config.summary", e.target.value)}
+                  rows={3}
+                  placeholder={"e.g. Fixed {{fetch_issue.title}} by {{implement_fix.approach}}"}
+                  className={cn(inputBase, "resize-none")}
+                />
+                <p className="text-[10px] text-stone-400 mt-1">
+                  Use <code className="bg-stone-100 px-1 rounded">{"{{block_id.field}}"}</code> refs — resolved at runtime before storing.
+                </p>
+              </div>
+            )}
+
+            <div className="px-4 py-3">
+              <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2.5 text-xs text-amber-800 space-y-1">
+                <p className="font-semibold text-[10px] uppercase tracking-wide text-amber-600">How memory works</p>
+                <p>Add an <strong>OPENAI_API_KEY</strong> credential to your workspace environment to enable vector similarity search. Without it, memory falls back to recency-based retrieval.</p>
+              </div>
+            </div>
+          </>
+        )
+      })()}
+
       {/* ── Brain: compiled prompt preview (collapsed by default) ── */}
       {blockType === "brain" && (
         <div className="px-4 py-3">
