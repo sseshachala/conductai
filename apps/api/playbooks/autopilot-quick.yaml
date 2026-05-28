@@ -36,9 +36,18 @@ on:
     labels:
       - "{{inputs.trigger_label}}"
     label_mode: one_of
-    next: fetch_issue
+    next: recall_context
 
 blocks:
+  recall_context:
+    type: memory
+    label: Recall prior context
+    action: read
+    scope: repo
+    key: "{{_trigger.repo_full_name}}"
+    limit: 5
+    next: fetch_issue
+
   fetch_issue:
     type: tool
     integration: github
@@ -65,6 +74,13 @@ blocks:
       Repo: {{_trigger.repo_full_name}}
       Clone URL: {{_trigger.clone_url}}
 
+      {% if recall_context.entries %}
+      Prior runs on this repo (use this to avoid re-exploring known structure):
+      {% for entry in recall_context.entries %}
+      - {{entry.summary}}
+      {% endfor %}
+      {% endif %}
+
       CRITICAL: Each run_shell call gets a FRESH container — do ALL git work in a
       SINGLE run_shell call. Use read_file for exploration, then ONE run_shell for all git ops.
 
@@ -83,7 +99,20 @@ blocks:
           | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('html_url',''))"
 
       Output ONLY the following JSON on the last line of your response:
-        {"pr_url": "<full PR URL>"}
+        {"pr_url": "<full PR URL>", "approach": "<one-line description of fix approach>", "files_changed": "<comma-separated list of files>"}
+    next: record_outcome
+
+  record_outcome:
+    type: memory
+    label: Record outcome
+    action: write
+    scope: repo
+    key: "{{_trigger.repo_full_name}}"
+    summary: |
+      Issue #{{fetch_issue.issue_number}}: {{fetch_issue.title}}
+      Fix: {{implement_fix.approach}}
+      Files: {{implement_fix.files_changed}}
+      PR: {{implement_fix.pr_url}}
     next: notify_success
 
   notify_success:
