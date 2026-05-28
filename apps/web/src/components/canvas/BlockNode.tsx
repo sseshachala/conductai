@@ -80,6 +80,8 @@ function BlockNode({ data, selected }: NodeProps) {
   const isTrigger  = nodeData.type === "trigger"
   const isBrain    = nodeData.type === "brain"
   const isOutput   = nodeData.type === "output"
+  const isMemory   = nodeData.type === "memory"
+  const memoryAction = isMemory ? ((nodeData.config as Record<string, string>)?.action || "read") : null
 
   const missingCondition = isLogic && !(nodeData.config as Record<string, unknown>)?.condition
 
@@ -137,6 +139,20 @@ function BlockNode({ data, selected }: NodeProps) {
       <p className="text-xs font-semibold text-stone-800 leading-tight truncate">
         {primaryLabel}
       </p>
+
+      {/* Memory READ/WRITE badge */}
+      {isMemory && (
+        <div className="flex items-center gap-1 mt-1.5">
+          <span className={cn(
+            "text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide",
+            memoryAction === "write"
+              ? "bg-amber-600 text-white"
+              : "bg-amber-100 text-amber-800"
+          )}>
+            {memoryAction === "write" ? "WRITE" : "READ"}
+          </span>
+        </div>
+      )}
 
       {/* Provider badge — only badge, no redundant action text */}
       {integrationLabel && !isTrigger && (
