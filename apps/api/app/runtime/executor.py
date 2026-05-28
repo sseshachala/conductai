@@ -1284,9 +1284,19 @@ def _execute_memory(block: dict, state: dict, db, run_id: str, workspace_id: str
     scope = config.get("scope", "repo")
     key = _resolve_refs(config.get("key", ""), state)
     creds = credentials or {}
+    # Flat env vars are stored under the "env_vars" handle with lowercased keys
+    env_vars = creds.get("env_vars") or {}
     client = create_embedding_client(
-        openai_api_key=creds.get("openai", {}).get("api_key") or creds.get("OPENAI_API_KEY"),
-        voyage_api_key=creds.get("voyage", {}).get("api_key") or creds.get("VOYAGE_API_KEY"),
+        openai_api_key=(
+            creds.get("openai", {}).get("api_key")
+            or env_vars.get("openai_api_key")
+            or env_vars.get("OPENAI_API_KEY")
+        ),
+        voyage_api_key=(
+            creds.get("voyage", {}).get("api_key")
+            or env_vars.get("voyage_api_key")
+            or env_vars.get("VOYAGE_API_KEY")
+        ),
     )
 
     if action == "read":
