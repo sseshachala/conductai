@@ -220,15 +220,14 @@ def cmd_test(args):
     server, workspace_id, api_key, token = _require_auth(args)
     hdrs = api.headers(workspace_id, token, "application/json", api_key)
 
-    agent_names = args.agents  # list, or empty if --all
-    run_all     = getattr(args, "all", False)
+    agent_names    = args.agents
+    run_all        = getattr(args, "all", False)
     project_filter = getattr(args, "project", None)
     repo_override  = getattr(args, "repo", None)
+    parallel       = getattr(args, "parallel", False)
 
-    # Get full workflow list
     workflows = api.req("GET", f"{server}/workflows", hdrs)
 
-    # Filter by project if specified
     if project_filter:
         proj = _resolve_project(server, workspace_id, hdrs, project_filter)
         proj_id = str(proj["id"])
@@ -256,11 +255,11 @@ def cmd_test(args):
         return
 
     proj_label = f" [{project_filter}]" if project_filter else ""
-    print(f"\n{BOLD}▶ conduct test{proj_label} — {len(targets)} agent(s){RESET}\n")
+    mode_label = f"{GRAY} --parallel{RESET}" if parallel else ""
+    print(f"\n{BOLD}▶ conduct test{proj_label} — {len(targets)} agent(s){RESET}{mode_label}\n")
 
     pr_override = getattr(args, "pr", None)
 
-    # Build test payload — empty lets server use built-in test_trigger; overrides patch it
     def _build_payload(slug):
         payload: dict = {}
         if repo_override:
@@ -297,17 +296,22 @@ def cmd_test(args):
             })
         return payload
 
+    if parallel:
+        _run_tests_parallel(server, workspace_id, api_key, token, hdrs, targets, _build_payload)
+    else:
+        _run_tests_serial(server, workspace_id, api_key, token, hdrs, targets, _build_payload)
+
+
+def _run_tests_serial(server, workspace_id, api_key, token, hdrs, targets, build_payload):
     results = []
     for wf in targets:
-        name    = wf["name"]
-        wf_id   = str(wf["id"])
-        slug    = wf.get("playbook_slug", "")
+        name  = wf["name"]
+        wf_id = str(wf["id"])
+        slug  = wf.get("playbook_slug", "")
 
         print(f"{CYAN}── {name}{RESET} {GRAY}({slug}){RESET}")
-
-        # Fire test trigger
         try:
-            run = api.req("POST", f"{server}/workflows/{wf_id}/trigger", hdrs, _build_payload(slug))
+            run = api.req("POST", f"{server}/workflows/{wf_id}/trigger", hdrs, build_payload(slug))
         except SystemExit:
             results.append((name, False, None))
             print()
@@ -316,7 +320,6 @@ def cmd_test(args):
         run_id = run.get("run_id")
         print(f"  {GRAY}run: {run_id}{RESET}")
 
-        # Stream or poll
         try:
             ok = _stream_run(server, wf_id, run_id, workspace_id, token, api_key)
         except Exception:
@@ -325,11 +328,61 @@ def cmd_test(args):
         results.append((name, ok, run_id))
         print()
 
-    # Summary table
+    _print_results(results)
+
+
+def _run_tests_parallel(server, workspace_id, api_key, token, hdrs, targets, build_payload):
+    """Fire all triggers immediately, then poll all runs concurrently."""
+    import threading
+
+    # Phase 1: fire all triggers at once
+    pending = []  # list of (name, run_id) or (name, None) on trigger failure
+    for wf in targets:
+        name  = wf["name"]
+        wf_id = str(wf["id"])
+        slug  = wf.get("playbook_slug", "")
+        print(f"  {GRAY}→ triggering {name}{RESET}")
+        try:
+            run    = api.req("POST", f"{server}/workflows/{wf_id}/trigger", hdrs, build_payload(slug))
+            run_id = run.get("run_id")
+            print(f"    {GRAY}run: {run_id}{RESET}")
+            pending.append((name, wf_id, run_id))
+        except SystemExit:
+            pending.append((name, wf_id, None))
+
+    print(f"\n  Polling {len(pending)} runs concurrently…\n")
+
+    results_lock = threading.Lock()
+    results: list = [None] * len(pending)
+
+    def _poll(idx, name, wf_id, run_id):
+        if run_id is None:
+            with results_lock:
+                results[idx] = (name, False, None)
+            return
+        ok = _poll_run(server, wf_id, run_id, hdrs)
+        with results_lock:
+            results[idx] = (name, ok, run_id)
+        icon = f"{GREEN}✓{RESET}" if ok else f"{RED}✗{RESET}"
+        print(f"  {icon}  {name}")
+
+    threads = [
+        threading.Thread(target=_poll, args=(i, name, wf_id, run_id), daemon=True)
+        for i, (name, wf_id, run_id) in enumerate(pending)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    _print_results(results)
+
+
+def _print_results(results):
     passed = sum(1 for _, ok, _ in results if ok)
     failed = len(results) - passed
 
-    print(f"{BOLD}{'─' * 60}{RESET}")
+    print(f"\n{BOLD}{'─' * 60}{RESET}")
     print(f"{BOLD}Results:{RESET}")
     for name, ok, run_id in results:
         icon = f"{GREEN}✓{RESET}" if ok else f"{RED}✗{RESET}"
@@ -766,6 +819,7 @@ _ALL_SLUGS = [
     "copilot_reviewer",
     "security_scanner",
     "security_patch_updater",
+    "smoke_test",
 ]
 
 _FRIENDLY_NAMES = {
@@ -781,6 +835,7 @@ _FRIENDLY_NAMES = {
     "copilot_reviewer":       "Copilot / AI PR Reviewer",
     "security_scanner":       "Security Scanner",
     "security_patch_updater": "Security Patch Updater",
+    "smoke_test":             "Smoke Test",
 }
 
 
@@ -964,10 +1019,11 @@ def main():
     # conduct test
     test_p = sub.add_parser("test", help="Fire test trigger on one or more agents")
     test_p.add_argument("agents", nargs="*", metavar="agent_name", help="Agent name(s) to test")
-    test_p.add_argument("--all", action="store_true", help="Test all playbook-based agents")
-    test_p.add_argument("--project", metavar="name", help="Limit to agents in this project")
-    test_p.add_argument("--repo", metavar="owner/repo", help="Override repo in test payload (e.g. sseshachala/conductai-testbed-node)")
-    test_p.add_argument("--pr", metavar="number", help="Inject a real PR number into the test payload (e.g. 246)")
+    test_p.add_argument("--all",      action="store_true", help="Test all playbook-based agents")
+    test_p.add_argument("--parallel", action="store_true", help="Fire all triggers at once, poll concurrently (faster for many agents)")
+    test_p.add_argument("--project",  metavar="name",       help="Limit to agents in this project")
+    test_p.add_argument("--repo",     metavar="owner/repo", help="Override repo in test payload (e.g. sseshachala/conductai-testbed-node)")
+    test_p.add_argument("--pr",       metavar="number",     help="Inject a real PR number into the test payload (e.g. 246)")
 
     # conduct environments
     sub.add_parser("environments", help="List all environments in the workspace")
