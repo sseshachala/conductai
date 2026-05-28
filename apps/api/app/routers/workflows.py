@@ -775,7 +775,16 @@ def register_workflow_webhook(
         if proj:
             project_slug = _re.sub(r"[^a-z0-9]+", "-", proj.name.lower()).strip("-")
 
-    webhook_secret = _secrets.token_hex(32)
+    # Workspace-scoped hooks (/webhooks/github) are verified using the global
+    # GITHUB_WEBHOOK_SECRET env var. Per-workflow inbound hooks use a random secret
+    # stored encrypted in the trigger node config.
+    uses_workspace_url = (provider == "github" and "issues" in _GITHUB_WEBHOOK_EVENTS.get(playbook_slug, []))
+    if uses_workspace_url:
+        from app.core.config import settings as _settings
+        webhook_secret = _settings.github_webhook_secret or _secrets.token_hex(32)
+    else:
+        webhook_secret = _secrets.token_hex(32)
+
     hook_id, error = _register_git_webhook(
         token, repo, str(workflow.id),
         _GITHUB_WEBHOOK_EVENTS[playbook_slug],
