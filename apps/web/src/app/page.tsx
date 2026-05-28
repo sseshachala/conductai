@@ -758,6 +758,13 @@ const TEMPLATES = [
     what: "Terraform plan PR opened → AI reviews for security misconfigs, cost anomalies, and drift from approved patterns → posts structured findings as a review.",
     scenario: "A PR opens a public S3 bucket and bumps an instance to a $2k/mo type. Conduct flags both on the diff before a human reviewer even reads it.",
   },
+  {
+    icon: "🏓",
+    name: "Smoke Test",
+    trigger: "Manual / CI",
+    what: "Minimal one-step pipeline ping → fires a Brain block and returns ok. Use it for CI gating and worker health checks — completes in under 30s.",
+    scenario: "You just deployed the worker and want to know it can actually run an agent. Trigger Smoke Test — green in under 30 seconds, no real repo or credentials required.",
+  },
 ]
 
 
