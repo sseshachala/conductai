@@ -106,6 +106,11 @@ export default function DocsPage() {
             <li><a href="#api-keys" className="hover:text-stone-900 transition-colors block py-0.5">API Keys</a></li>
           </ul>
 
+          <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mt-6 mb-3">Blocks</p>
+          <ul className="space-y-1 text-sm text-stone-600">
+            <li><a href="#memory-block" className="hover:text-stone-900 transition-colors block py-0.5">Memory block</a></li>
+          </ul>
+
           <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mt-6 mb-3">Integrations</p>
           <ul className="space-y-1 text-sm text-stone-600">
             <li><a href="#github" className="hover:text-stone-900 transition-colors block py-0.5">GitHub</a></li>
@@ -747,6 +752,147 @@ es.onmessage = (e) => {
             <Endpoint method="GET" path="/workspaces/{id}/api-keys" desc="List all API keys (prefix and metadata only — plaintext is never returned again)." />
 
             <Endpoint method="DELETE" path="/workspaces/{id}/api-keys/{key_id}" desc="Revoke an API key immediately." />
+          </section>
+
+          {/* ── Memory block ── */}
+          <section id="memory-block">
+            <SectionHeading id="memory-block">Memory block</SectionHeading>
+            <p className="text-stone-500 text-sm mb-6 leading-relaxed">
+              The Memory block gives agents a persistent knowledge store. Before a run, a <strong>read</strong> block
+              retrieves past summaries relevant to the current task. After the run, a <strong>write</strong> block records
+              what was done. On the next run, the agent has context from everything it has done before on that repo.
+            </p>
+
+            <SubHeading>How it fits in a playbook</SubHeading>
+            <p className="text-stone-500 text-sm mb-3">Place memory blocks around the brain block — recall before, record after:</p>
+            <div className="rounded-xl border border-stone-200 overflow-hidden mb-6">
+              <div className="px-4 py-3 bg-stone-50 border-b border-stone-200 text-xs font-semibold text-stone-500 uppercase tracking-wider">Recommended block order</div>
+              {[
+                { block: "Trigger", note: "Issue labeled, PR opened, cron, etc." },
+                { block: "Memory (read)", note: "Retrieves past summaries — available as {{recall.entries}} in the brain", amber: true },
+                { block: "Fetch Issue / tool block", note: "Gets fresh data from GitHub, Linear, etc." },
+                { block: "Brain (Agent Step)", note: "Receives both the current task and recalled context" },
+                { block: "Memory (write)", note: "Records what was done — used by future runs", amber: true },
+                { block: "Notify (Slack / email)", note: "Posts the outcome" },
+              ].map(({ block, note, amber }) => (
+                <div key={block} className={`flex items-start gap-4 px-4 py-2.5 border-b border-stone-100 last:border-0 ${amber ? "bg-amber-50" : ""}`}>
+                  <span className={`text-xs font-semibold w-44 shrink-0 mt-0.5 ${amber ? "text-amber-700" : "text-stone-700"}`}>{block}</span>
+                  <span className="text-xs text-stone-500">{note}</span>
+                </div>
+              ))}
+            </div>
+
+            <SubHeading>Configuration fields</SubHeading>
+            <div className="rounded-xl border border-stone-200 overflow-hidden mb-6">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-stone-50 border-b border-stone-200">
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider w-32">Field</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider w-28">Values</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Description</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100 text-sm">
+                  {[
+                    ["action", "read | write", "read retrieves past summaries before the brain runs. write stores the outcome after the run completes."],
+                    ["scope", "repo | workspace", "repo isolates memories per repository. workspace shares memories across all repos in the workspace for this playbook."],
+                    ["key", "auto-set", "Groups memories together. Auto-populated from scope: repo → {{_trigger.repo_full_name}}, workspace → \"workspace\". Read-only in the UI."],
+                    ["limit", "number (default 5)", "read only. Maximum number of past summaries to retrieve. Retrieves the most semantically similar entries first."],
+                    ["summary", "template string", "write only. What to store. Supports {{block_id.field}} refs resolved at runtime. Example: Fixed {{fetch_issue.title}} via {{brain.approach}}"],
+                  ].map(([field, values, desc]) => (
+                    <tr key={field}>
+                      <td className="px-4 py-3 font-mono text-xs text-stone-800 align-top">{field}</td>
+                      <td className="px-4 py-3 text-xs text-stone-500 align-top whitespace-nowrap">{values}</td>
+                      <td className="px-4 py-3 text-xs text-stone-500 leading-relaxed">{desc}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <SubHeading>Scope in detail</SubHeading>
+            <p className="text-stone-500 text-sm mb-4 leading-relaxed">
+              Memory is always isolated by <strong>playbook</strong>. Autopilot Quick and Autopilot Full on the same repo
+              never share memories — each agent develops independent expertise. Scope controls the second dimension:
+              how memories are grouped within a playbook.
+            </p>
+            <div className="rounded-xl border border-stone-200 overflow-hidden mb-4">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-stone-50 border-b border-stone-200">
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider w-32"></th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Repo scope</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Workspace scope</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100 text-sm">
+                  {[
+                    ["Key", "{{_trigger.repo_full_name}} → e.g. acme/api", "\"workspace\" (constant)"],
+                    ["Memory bucket per…", "Each repository separately", "All repos in the workspace combined"],
+                    ["Shared across repos?", "No", "Yes"],
+                    ["Shared across playbooks?", "No", "No"],
+                    ["Best for", "Repo-specific conventions, file layout, past bug patterns", "Team-wide standards, commit conventions, cross-repo practices"],
+                    ["Example learning", "\"This repo uses tabs, not spaces. Tests live in /spec.\"", "\"This team always squashes commits and requires a CHANGELOG entry.\""],
+                  ].map(([label, repo, ws]) => (
+                    <tr key={label}>
+                      <td className="px-4 py-3 text-xs font-semibold text-stone-500 align-top">{label}</td>
+                      <td className="px-4 py-3 text-xs text-stone-600 leading-relaxed">{repo}</td>
+                      <td className="px-4 py-3 text-xs text-stone-600 leading-relaxed">{ws}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <SubHeading>How recall works</SubHeading>
+            <p className="text-stone-500 text-sm mb-3 leading-relaxed">
+              When a read block runs, Conduct embeds the key (e.g. <Code>acme/api</Code>) as a vector and queries
+              past summaries using cosine similarity. The most relevant entries — not just the most recent — are returned.
+              This means if an agent fixed a similar bug 50 runs ago, that context surfaces before a recent unrelated one.
+            </p>
+            <p className="text-stone-500 text-sm mb-6 leading-relaxed">
+              Retrieved entries are available in the brain prompt as <Code>{"{{recall_block_id.entries}}"}</Code> — a list
+              of <Code>summary</Code> and <Code>at</Code> (timestamp) objects. The brain prompt template can include them
+              under a &ldquo;Prior context&rdquo; heading so the agent reasons over both new and past information.
+            </p>
+
+            <SubHeading>Setup</SubHeading>
+            <ol className="list-decimal list-inside space-y-2 text-sm text-stone-600 mb-4">
+              <li>Go to <strong>Settings → Environments</strong> and open your environment.</li>
+              <li>Add a credential: handle <Code>openai</Code>, key <Code>api_key</Code>, value <Code>sk-…</Code></li>
+              <li>Drag a Memory block onto your canvas. Set action=<Code>read</Code>, connect it before the brain block.</li>
+              <li>Drag a second Memory block. Set action=<Code>write</Code>, write a summary template, connect it after the brain block.</li>
+            </ol>
+            <div className="rounded-xl bg-stone-100 border border-stone-200 px-4 py-3 text-sm text-stone-700 mb-6">
+              <strong>No OpenAI key?</strong> Memory still works — Conduct falls back to recency-based retrieval
+              (the 5 most recent summaries instead of the most semantically similar). You lose similarity search
+              but not the feature.
+            </div>
+
+            <SubHeading>YAML reference</SubHeading>
+            <Pre>{`blocks:
+  recall_context:
+    type: memory
+    label: Recall prior context
+    action: read
+    scope: repo
+    key: "{{_trigger.repo_full_name}}"
+    limit: 5
+    next: fetch_issue
+
+  # ... fetch_issue, implement_fix ...
+
+  record_outcome:
+    type: memory
+    label: Record outcome
+    action: write
+    scope: repo
+    key: "{{_trigger.repo_full_name}}"
+    summary: |
+      Issue #{{fetch_issue.issue_number}}: {{fetch_issue.title}}
+      Fix: {{implement_fix.approach}}
+      Files: {{implement_fix.files_changed}}
+    next: notify`}</Pre>
           </section>
 
           {/* ── GitHub ── */}
