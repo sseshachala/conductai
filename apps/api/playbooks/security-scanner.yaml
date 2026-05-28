@@ -296,24 +296,23 @@ blocks:
 test_trigger:
   payload:
     action: opened
-    number: 9999
+    number: 12
     pull_request:
-      number: 9999
-      title: "[TEST] Security scan — sample vulnerable code"
+      number: 12
+      title: "[TEST] chore(deps): apply safe patch/minor dependency updates"
       body: |
-        [TEST] This PR contains intentionally weak code for security scanner validation.
-        Do not merge.
-      html_url: "https://github.com/sseshachala/conductai/pull/9999"
+        [TEST] Dependency update PR used for security scanner validation.
+      html_url: "https://github.com/sseshachala/conductai-testbed-node/pull/12"
       head:
-        ref: test/security-scanner-trigger
+        ref: deps/patch-updates
         sha: "abc1234def5678"
       base:
         ref: main
       user:
         login: conductai-test-bot
     repository:
-      full_name: sseshachala/conductai
-      name: conductai
+      full_name: sseshachala/conductai-testbed-node
+      name: conductai-testbed-node
       owner:
         login: sseshachala
-      clone_url: "https://github.com/sseshachala/conductai.git"
+      clone_url: "https://github.com/sseshachala/conductai-testbed-node.git"

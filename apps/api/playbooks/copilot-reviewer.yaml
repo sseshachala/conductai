@@ -249,12 +249,12 @@ blocks:
 test_trigger:
   payload:
     action: opened
-    number: 9999
+    number: 12
     pull_request:
-      number: 9999
+      number: 12
       title: "[TEST] Copilot: add conductai_test.py"
       body: "Test PR simulating a Copilot-authored PR. Opened by Conduct AI test trigger."
-      html_url: "https://github.com/sseshachala/conductai/pull/9999"
+      html_url: "https://github.com/sseshachala/conductai/pull/12"
       head:
         ref: test/copilot-test-trigger
         sha: "abc1234def5678"
@@ -262,10 +262,10 @@ test_trigger:
         ref: main
       user:
         login: github-actions[bot]
-      diff_url: "https://github.com/sseshachala/conductai/pull/9999.diff"
+      diff_url: "https://github.com/sseshachala/conductai/pull/12.diff"
     repository:
-      full_name: sseshachala/conductai
-      name: conductai
+      full_name: sseshachala/conductai-testbed-node
+      name: conductai-testbed-node
       owner:
         login: sseshachala
-      clone_url: "https://github.com/sseshachala/conductai.git"
+      clone_url: "https://github.com/sseshachala/conductai-testbed-node.git"
