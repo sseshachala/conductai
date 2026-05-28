@@ -668,9 +668,12 @@ def _execute_brain(
         "Do NOT switch between approaches mid-task."
     )
 
-    # BYO key: workspace credential takes precedence over platform env var
+    # BYO key: workspace credential (handle or flat env_var) → platform default
+    _env_vars = (credentials or {}).get("env_vars") or {}
     _anthropic_key = (
         (credentials or {}).get("anthropic", {}).get("api_key")
+        or _env_vars.get("anthropic_api_key")
+        or _env_vars.get("ANTHROPIC_API_KEY")
         or settings.anthropic_api_key
     )
     llm = AnthropicClient(api_key=_anthropic_key)
