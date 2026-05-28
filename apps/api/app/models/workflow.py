@@ -30,6 +30,7 @@ class Workflow(Base):
     # Auto-registered GitHub webhook — stored so we can deregister on delete
     github_hook_id = Column(String(255), nullable=True)
     github_hook_repo = Column(String(255), nullable=True)  # owner/repo format
+    github_hook_label = Column(String(255), nullable=True)  # label filter this workflow watches
     playbook_slug = Column(String(100), nullable=True)
 
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))

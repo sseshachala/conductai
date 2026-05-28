@@ -59,6 +59,7 @@ class WorkflowDetailOut(WorkflowOut):
     current_version: Optional[WorkflowVersionOut] = None
     github_hook_id: Optional[str] = None
     github_hook_repo: Optional[str] = None
+    github_hook_label: Optional[str] = None
     playbook_slug: Optional[str] = None
     github_webhook: bool = False  # True when playbook requires GitHub webhook registration
     webhook_error: Optional[str] = None  # set when webhook registration failed on install
