@@ -6,7 +6,7 @@ from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from app.core.auth import get_workspace_id, require_workspace_role, audit
+from app.core.auth import get_workspace_id, get_user_id, require_workspace_role, audit
 from app.core.database import get_db
 
 log = structlog.get_logger(__name__)
@@ -48,10 +48,26 @@ def _run_compiler(version_id, graph: dict):
 def list_workflows(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    user_id: str = Depends(get_user_id),
     _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
     project_id: str | None = None,
 ):
-    q = db.query(Workflow).filter(Workflow.workspace_id == workspace_id)
+    # Resolve the correct workspace from the project when the active workspace cookie
+    # doesn't match the project's workspace (e.g. user navigated across workspace contexts).
+    effective_workspace_id = workspace_id
+    if project_id:
+        from app.models.project import Project
+        proj = db.query(Project).filter(Project.id == project_id).first()
+        if proj and str(proj.workspace_id) != workspace_id:
+            proj_ws = str(proj.workspace_id)
+            member = db.execute(
+                text("SELECT 1 FROM workspace_users WHERE workspace_id = :ws AND clerk_user_id = :uid"),
+                {"ws": proj_ws, "uid": user_id},
+            ).fetchone()
+            if member:
+                effective_workspace_id = proj_ws
+
+    q = db.query(Workflow).filter(Workflow.workspace_id == effective_workspace_id)
     if project_id:
         q = q.filter(Workflow.project_id == project_id)
     workflows = q.order_by(Workflow.updated_at.desc()).all()
@@ -61,24 +77,27 @@ def list_workflows(
 
     # Latest run per workflow across ALL versions (not just current) so editing
     # a workflow doesn't make it appear as "never run".
-    from sqlalchemy import text as _text
-    workflow_ids = [str(wf.id) for wf in workflows]
+    from sqlalchemy import func
+    workflow_uuids = [wf.id for wf in workflows]
     last_run_by_workflow: dict[str, Run] = {}
-    if workflow_ids:
-        rows = db.execute(
-            _text("""
-                SELECT DISTINCT ON (v.workflow_id)
-                    v.workflow_id,
-                    r.id        AS run_id,
-                    r.status,
-                    r.created_at
-                FROM runs r
-                JOIN workflow_versions v ON v.id = r.workflow_version_id
-                WHERE v.workflow_id = ANY(:wids)
-                ORDER BY v.workflow_id, r.created_at DESC
-            """),
-            {"wids": workflow_ids},
-        ).fetchall()
+    if workflow_uuids:
+        rn_col = func.row_number().over(
+            partition_by=WorkflowVersion.workflow_id,
+            order_by=Run.created_at.desc(),
+        ).label("rn")
+        subq = (
+            db.query(
+                WorkflowVersion.workflow_id,
+                Run.id.label("run_id"),
+                Run.status,
+                Run.created_at,
+                rn_col,
+            )
+            .join(Run, Run.workflow_version_id == WorkflowVersion.id)
+            .filter(WorkflowVersion.workflow_id.in_(workflow_uuids))
+            .subquery()
+        )
+        rows = db.query(subq).filter(subq.c.rn == 1).all()
         for row in rows:
             last_run_by_workflow[str(row.workflow_id)] = row
 
