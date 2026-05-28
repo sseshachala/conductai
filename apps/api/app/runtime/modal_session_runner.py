@@ -61,6 +61,11 @@ def main() -> None:
     sandbox = modal.Sandbox.create("sleep", "infinity", app=app, image=image, timeout=3600)
     working_dir = "/tmp"
 
+    # Write sandbox ID as the first stdout line so ModalSession can terminate
+    # the sandbox directly from the API process if the subprocess is force-killed.
+    sys.stdout.write(json.dumps({"sandbox_id": sandbox.object_id}) + "\n")
+    sys.stdout.flush()
+
     try:
         for raw in sys.stdin:
             raw = raw.strip()
