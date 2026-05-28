@@ -143,9 +143,23 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
             <h1 className="text-xl font-semibold text-stone-900">Dashboard</h1>
             <p className="text-xs text-stone-400 mt-0.5">Last 7 days</p>
           </div>
-          <Link href="/workflows/new" className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700 transition-colors">
-            + New agent
-          </Link>
+          <div className="flex items-center gap-2">
+            {data && data.token_usage.total_tokens > 0 && (
+              <a
+                href="#token-usage"
+                className="flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 transition-colors"
+                title="Jump to token usage breakdown"
+              >
+                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                {fmtTokens(data.token_usage.total_tokens)} tokens · ${data.token_usage.estimated_cost_usd.toFixed(2)}
+              </a>
+            )}
+            <Link href="/workflows/new" className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700 transition-colors">
+              + New agent
+            </Link>
+          </div>
         </div>
 
         {loading ? (
@@ -246,7 +260,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
 
             {/* 4 — Token Usage */}
             {data.token_usage.total_tokens > 0 && (
-              <section>
+              <section id="token-usage">
                 <SectionHeader label="Token Usage" sub="All time" />
                 <div className="grid grid-cols-3 gap-3 mb-3">
                   <div className="rounded-xl border border-stone-200 bg-white px-4 py-4">
