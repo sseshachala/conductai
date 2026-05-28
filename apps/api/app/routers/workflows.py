@@ -564,10 +564,24 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
     workflow.current_version_id = version.id
     db.commit()
 
-    # Store the repo — webhook registration is now explicit via POST /{id}/webhook
-    if body.repo and not workflow.github_hook_repo:
+    # Sync github_hook_repo + github_hook_label from trigger node config (covers
+    # both explicit body.repo and YAML-installed workflows where repo comes from
+    # the trigger block's repo_allowlist field).
+    nodes = graph_data.get("nodes", [])
+    trigger_node = next((n for n in nodes if n.get("data", {}).get("type") == "trigger"), None)
+    if trigger_node:
+        cfg = trigger_node.get("data", {}).get("config", {})
+        allowlist_raw = cfg.get("repo_allowlist") or body.repo or ""
+        first_repo = next((r.strip() for r in str(allowlist_raw).split(",") if r.strip()), None)
+        if first_repo:
+            workflow.github_hook_repo = first_repo
+        labels_raw = cfg.get("labels") or []
+        label = labels_raw[0].strip() if labels_raw else None
+        if label:
+            workflow.github_hook_label = label
+    elif body.repo:
         workflow.github_hook_repo = body.repo
-        db.commit()
+    db.commit()
 
     db.refresh(workflow)
     _stamp(workflow)
@@ -708,7 +722,18 @@ def register_workflow_webhook(
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
     if not workflow.github_hook_repo:
-        raise HTTPException(status_code=400, detail="No repository configured — set repo_allowlist in the trigger block first")
+        # Try to recover from trigger node config (handles workflows installed before sync fix)
+        if workflow.current_version:
+            nodes = workflow.current_version.graph.get("nodes", [])
+            trigger = next((n for n in nodes if n.get("data", {}).get("type") == "trigger"), None)
+            if trigger:
+                raw = trigger.get("data", {}).get("config", {}).get("repo_allowlist") or ""
+                first = next((r.strip() for r in str(raw).split(",") if r.strip()), None)
+                if first:
+                    workflow.github_hook_repo = first
+                    db.commit()
+        if not workflow.github_hook_repo:
+            raise HTTPException(status_code=400, detail="No repository configured — set repo_allowlist in the trigger block first")
     if not workflow.current_version_id:
         raise HTTPException(status_code=400, detail="Workflow has no version — save the canvas first")
 
