@@ -343,6 +343,119 @@ def cmd_test(args):
     sys.exit(0 if failed == 0 else 1)
 
 
+# ── Environment helpers ───────────────────────────────────────────────────────
+
+def _list_environments(server: str, workspace_id: str, hdrs: dict) -> list:
+    return api.req("GET", f"{server}/environments", hdrs)
+
+
+def _resolve_environment(server: str, workspace_id: str, hdrs: dict, name: str) -> dict:
+    envs = _list_environments(server, workspace_id, hdrs)
+    match = next((e for e in envs if e["name"].lower() == name.lower()), None)
+    if not match:
+        print(f"{RED}Environment '{name}' not found. Run 'conduct environments' to list environments.{RESET}")
+        sys.exit(1)
+    return match
+
+
+# ── Environment commands ──────────────────────────────────────────────────────
+
+def cmd_environments(args):
+    server, workspace_id, api_key, token = _require_auth(args)
+    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+    envs = _list_environments(server, workspace_id, hdrs)
+
+    if not envs:
+        print("No environments found. Create one: conduct create environment <name>")
+        return
+
+    print(f"\n{BOLD}{'Environment':<30} {'ID'}{RESET}")
+    print("─" * 70)
+    for e in envs:
+        print(f"  {e['name']:<30} {GRAY}{e['id']}{RESET}")
+    print()
+
+
+def cmd_credentials(args):
+    server, workspace_id, api_key, token = _require_auth(args)
+    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+    env = _resolve_environment(server, workspace_id, hdrs, args.environment)
+
+    rows = api.req("GET", f"{server}/credentials/env-vars/{env['id']}", hdrs)
+
+    if not rows:
+        print(f"No credentials in environment '{args.environment}'.")
+        print(f"  Add one: conduct set credential --environment \"{args.environment}\" --key GITHUB_TOKEN --value <token>")
+        return
+
+    print(f"\n{BOLD}Credentials — {args.environment}{RESET}\n")
+    print(f"{BOLD}{'Key':<30} {'Value'}{RESET}")
+    print("─" * 55)
+    for row in rows:
+        key = row["key"]
+        val = row["value"]
+        masked = val[:4] + "***" if val and len(val) > 4 else "***"
+        print(f"  {key:<30} {GRAY}{masked}{RESET}")
+    print()
+
+
+def _do_set_credential(server, workspace_id, api_key, token, env_name, key, value):
+    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+    env = _resolve_environment(server, workspace_id, hdrs, env_name)
+
+    existing = api.req("GET", f"{server}/credentials/env-vars/{env['id']}", hdrs)
+    merged = [{"key": r["key"], "value": r["value"]} for r in existing if r["key"] != key]
+    merged.append({"key": key, "value": value})
+
+    api.req("PUT", f"{server}/credentials/env-vars/{env['id']}", hdrs, merged)
+    masked = value[:4] + "***" if len(value) > 4 else "***"
+    print(f"{GREEN}✓ {key}{RESET} set in environment '{env_name}'  {GRAY}({masked}){RESET}")
+
+
+def _do_delete_credential(server, workspace_id, api_key, token, env_name, key, yes):
+    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+    env = _resolve_environment(server, workspace_id, hdrs, env_name)
+
+    existing = api.req("GET", f"{server}/credentials/env-vars/{env['id']}", hdrs)
+    filtered = [r for r in existing if r["key"] != key]
+
+    if len(filtered) == len(existing):
+        print(f"{YELLOW}Key '{key}' not found in environment '{env_name}'.{RESET}")
+        sys.exit(1)
+
+    if not yes:
+        confirm = input(f"{YELLOW}Delete '{key}' from environment '{env_name}'? Type 'yes' to confirm: {RESET}").strip().lower()
+        if confirm != "yes":
+            print("Cancelled.")
+            return
+
+    api.req("PUT", f"{server}/credentials/env-vars/{env['id']}", hdrs, filtered)
+    print(f"{GREEN}✓ {key}{RESET} removed from environment '{env_name}'")
+
+
+def cmd_set(args):
+    if args.set_command == "credential":
+        server, workspace_id, api_key, token = _require_auth(args)
+        _do_set_credential(server, workspace_id, api_key, token,
+                           args.environment, args.key, args.value)
+    elif args.set_command == "environment":
+        server, workspace_id, api_key, token = _require_auth(args)
+        hdrs = api.headers(workspace_id, token, "application/json", api_key)
+
+        workflows = api.req("GET", f"{server}/workflows", hdrs)
+        wf = next((w for w in workflows if w["name"].lower() == args.agent.lower()), None)
+        if not wf:
+            print(f"{RED}Agent '{args.agent}' not found. Run 'conduct agents' to list agents.{RESET}")
+            sys.exit(1)
+
+        env = _resolve_environment(server, workspace_id, hdrs, args.environment)
+        api.req("PATCH", f"{server}/workflows/{wf['id']}/environment", hdrs, {"environment_id": env["id"]})
+        print(f"{GREEN}✓ Environment '{args.environment}' assigned to agent '{args.agent}'{RESET}")
+    else:
+        print(f"Usage: conduct set [credential|environment] ...")
+        sys.exit(1)
+
+
 # ── Project commands ──────────────────────────────────────────────────────────
 
 def _list_projects(server: str, workspace_id: str, hdrs: dict) -> list:
@@ -379,39 +492,81 @@ def cmd_projects(args):
 def cmd_create(args):
     server, workspace_id, api_key, token = _require_auth(args)
     hdrs = api.headers(workspace_id, token, "application/json", api_key)
-    name = args.name.strip()
-    result = api.req("POST", f"{server}/workspaces/{workspace_id}/projects", hdrs, {"name": name})
-    print(f"{GREEN}✓ Project created:{RESET} {result['name']}  {GRAY}({result['id']}){RESET}")
+    parts = args.create_args
+
+    if parts and parts[0] == "environment":
+        name = " ".join(parts[1:]).strip()
+        if not name:
+            print(f"{RED}Usage: conduct create environment <name>{RESET}")
+            sys.exit(1)
+        result = api.req("POST", f"{server}/environments", hdrs, {"name": name})
+        print(f"{GREEN}✓ Environment created:{RESET} {result['name']}  {GRAY}({result['id']}){RESET}")
+    else:
+        # conduct create [project] <name> — "project" keyword is optional
+        name = " ".join(parts[1:] if parts and parts[0] == "project" else parts).strip()
+        if not name:
+            print(f"{RED}Usage: conduct create [environment|project] <name>{RESET}")
+            sys.exit(1)
+        result = api.req("POST", f"{server}/workspaces/{workspace_id}/projects", hdrs, {"name": name})
+        print(f"{GREEN}✓ Project created:{RESET} {result['name']}  {GRAY}({result['id']}){RESET}")
 
 
 def cmd_delete(args):
     server, workspace_id, api_key, token = _require_auth(args)
     hdrs = api.headers(workspace_id, token, "application/json", api_key)
-    proj = _resolve_project(server, workspace_id, hdrs, args.name)
-    purge = getattr(args, "purge", False)
+    parts = args.delete_args
 
-    if purge:
-        print(f"{RED}{BOLD}⚠ PURGE mode — this will permanently delete ALL data for '{proj['name']}':')]{RESET}")
-        print(f"{RED}  · All runs, events, and workflow versions{RESET}")
-        print(f"{RED}  · Analytics and audit logs{RESET}")
-        print(f"{RED}  · API keys and environments{RESET}")
-        print(f"{RED}  This cannot be undone.{RESET}\n")
-        confirm = input(f"{YELLOW}Type the project name to confirm: {RESET}").strip()
-        if confirm != proj["name"]:
-            print("Cancelled — name did not match.")
-            return
-    elif not args.yes:
-        confirm = input(f"{YELLOW}Delete project '{proj['name']}' and all its agents? Type 'yes' to confirm: {RESET}").strip().lower()
-        if confirm != "yes":
-            print("Cancelled.")
-            return
+    if parts and parts[0] == "environment":
+        name = " ".join(parts[1:]).strip()
+        if not name:
+            print(f"{RED}Usage: conduct delete environment <name>{RESET}")
+            sys.exit(1)
+        env = _resolve_environment(server, workspace_id, hdrs, name)
+        if not args.yes:
+            confirm = input(f"{YELLOW}Delete environment '{env['name']}'? Type 'yes' to confirm: {RESET}").strip().lower()
+            if confirm != "yes":
+                print("Cancelled.")
+                return
+        api.req("DELETE", f"{server}/environments/{env['id']}", hdrs)
+        print(f"{GREEN}✓ Environment '{env['name']}' deleted.{RESET}")
 
-    url = f"{server}/workspaces/{workspace_id}/projects/{proj['id']}"
-    if purge:
-        url += "?purge=true"
-    api.req("DELETE", url, hdrs)
-    suffix = " (purged)" if purge else ""
-    print(f"{GREEN}✓ Project '{proj['name']}' deleted{suffix}.{RESET}")
+    elif parts and parts[0] == "credential":
+        env_name = getattr(args, "environment", None)
+        key      = getattr(args, "key", None)
+        if not env_name or not key:
+            print(f"{RED}Usage: conduct delete credential --environment <name> --key <KEY>{RESET}")
+            sys.exit(1)
+        _do_delete_credential(server, workspace_id, api_key, token, env_name, key, args.yes)
+
+    else:
+        # conduct delete [project] <name> [--yes] [--purge]
+        name = " ".join(parts[1:] if parts and parts[0] == "project" else parts).strip()
+        if not name:
+            print(f"{RED}Usage: conduct delete [environment|project|credential] <name>{RESET}")
+            sys.exit(1)
+        proj = _resolve_project(server, workspace_id, hdrs, name)
+        purge = getattr(args, "purge", False)
+        if purge:
+            print(f"{RED}{BOLD}⚠ PURGE mode — this will permanently delete ALL data for '{proj['name']}'{RESET}")
+            print(f"{RED}  · All runs, events, and workflow versions{RESET}")
+            print(f"{RED}  · Analytics and audit logs{RESET}")
+            print(f"{RED}  · API keys and environments{RESET}")
+            print(f"{RED}  This cannot be undone.{RESET}\n")
+            confirm = input(f"{YELLOW}Type the project name to confirm: {RESET}").strip()
+            if confirm != proj["name"]:
+                print("Cancelled — name did not match.")
+                return
+        elif not args.yes:
+            confirm = input(f"{YELLOW}Delete project '{proj['name']}' and all its agents? Type 'yes' to confirm: {RESET}").strip().lower()
+            if confirm != "yes":
+                print("Cancelled.")
+                return
+        url = f"{server}/workspaces/{workspace_id}/projects/{proj['id']}"
+        if purge:
+            url += "?purge=true"
+        api.req("DELETE", url, hdrs)
+        suffix = " (purged)" if purge else ""
+        print(f"{GREEN}✓ Project '{proj['name']}' deleted{suffix}.{RESET}")
 
 
 # ── Playbook commands ─────────────────────────────────────────────────────────
@@ -814,14 +969,33 @@ def main():
     test_p.add_argument("--repo", metavar="owner/repo", help="Override repo in test payload (e.g. sseshachala/conductai-testbed-node)")
     test_p.add_argument("--pr", metavar="number", help="Inject a real PR number into the test payload (e.g. 246)")
 
+    # conduct environments
+    sub.add_parser("environments", help="List all environments in the workspace")
+
+    # conduct credentials --environment <name>
+    creds_p = sub.add_parser("credentials", help="List credentials in an environment")
+    creds_p.add_argument("--environment", required=True, metavar="name", help="Environment name")
+
+    # conduct set credential|environment
+    set_p = sub.add_parser("set", help="Set a credential or assign an environment to an agent")
+    set_sub = set_p.add_subparsers(dest="set_command")
+
+    set_cred_p = set_sub.add_parser("credential", help="Set a credential in an environment")
+    set_cred_p.add_argument("--environment", required=True, metavar="name", help="Environment name")
+    set_cred_p.add_argument("--key",         required=True, metavar="KEY",  help="Env var name (e.g. GITHUB_TOKEN)")
+    set_cred_p.add_argument("--value",       required=True, metavar="VALUE", help="Credential value")
+
+    set_env_p = set_sub.add_parser("environment", help="Assign an environment to an agent")
+    set_env_p.add_argument("--agent",       required=True, metavar="name", help="Agent name (e.g. 'PR Reviewer')")
+    set_env_p.add_argument("--environment", required=True, metavar="name", help="Environment name")
+
     # conduct projects
     sub.add_parser("projects", help="List all projects in the workspace")
 
-    # conduct create project <name>
-    create_p = sub.add_parser("create", help="Create resources (project, agent)")
-    create_sub = create_p.add_subparsers(dest="create_type")
-    create_proj_p = create_sub.add_parser("project", help="Create a project")
-    create_proj_p.add_argument("name", help="Project name")
+    # conduct create [environment|project] <name>
+    create_p = sub.add_parser("create", help="Create a project or environment")
+    create_p.add_argument("create_args", nargs="+", metavar="[environment|project] name",
+                          help="Type (optional) and name — e.g. 'environment Production' or 'MyProject'")
 
     # conduct playbooks [slug]
     pb_p = sub.add_parser("playbooks", help="List available playbooks or show detail for one")
@@ -836,13 +1010,14 @@ def main():
     install_p.add_argument("--input", action="append", metavar="key=value",
                            help="Playbook input value (repeatable, e.g. --input github_token=xxx)")
 
-    # conduct delete project <name>
-    delete_p = sub.add_parser("delete", help="Delete resources (project, agent)")
-    delete_sub = delete_p.add_subparsers(dest="delete_type")
-    delete_proj_p = delete_sub.add_parser("project", help="Delete a project and all its agents")
-    delete_proj_p.add_argument("name", help="Project name")
-    delete_proj_p.add_argument("--yes",   action="store_true", help="Skip confirmation prompt")
-    delete_proj_p.add_argument("--purge", action="store_true", help="Also erase analytics, audit logs, API keys, and environments (irreversible)")
+    # conduct delete [environment|project|credential] <name>
+    delete_p = sub.add_parser("delete", help="Delete a project, environment, or credential")
+    delete_p.add_argument("delete_args", nargs="+", metavar="[environment|project|credential] name",
+                          help="Type (optional) and name, e.g. 'environment Production' or 'MyProject'")
+    delete_p.add_argument("--environment", metavar="name", help="Environment name (for 'delete credential')")
+    delete_p.add_argument("--key",         metavar="KEY",  help="Credential key (for 'delete credential')")
+    delete_p.add_argument("--yes",   action="store_true", help="Skip confirmation prompt")
+    delete_p.add_argument("--purge", action="store_true", help="Also erase analytics, audit logs, API keys, and environments (irreversible)")
 
     # conduct reset <name>
     reset_p = sub.add_parser("reset", help="Delete all agents in a project (clean slate)")
@@ -866,6 +1041,15 @@ def main():
         cmd_login(args)
     elif args.command == "agents":
         cmd_agents(args)
+    elif args.command == "environments":
+        cmd_environments(args)
+    elif args.command == "credentials":
+        cmd_credentials(args)
+    elif args.command == "set":
+        if not args.set_command:
+            set_p.print_help()
+            sys.exit(1)
+        cmd_set(args)
     elif args.command == "projects":
         cmd_projects(args)
     elif args.command == "create":
