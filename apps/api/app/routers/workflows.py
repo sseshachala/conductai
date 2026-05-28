@@ -834,6 +834,7 @@ def register_workflow_webhook(
             if node.get("data", {}).get("type") == "trigger":
                 node["data"].setdefault("config", {})["webhook_secret"] = encrypted_secret
                 node["data"]["config"]["git_provider"] = provider
+                node["data"]["config"]["repo_allowlist"] = repo
         version.graph = graph
         flag_modified(version, "graph")
 
