@@ -48,11 +48,35 @@ interface RecentRun {
   created_at: string
 }
 
+interface AgentTokenUsage {
+  workflow_id: string
+  name: string
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  estimated_cost_usd: number
+}
+
+interface TokenUsage {
+  total_input_tokens: number
+  total_output_tokens: number
+  total_tokens: number
+  estimated_cost_usd: number
+  by_agent: AgentTokenUsage[]
+}
+
 interface DashboardData {
   outcomes: OutcomeStats
   needs_attention: AttentionRun[]
   agent_health: AgentHealth[]
   recent_activity: RecentRun[]
+  token_usage: TokenUsage
+}
+
+function fmtTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
+  return String(n)
 }
 
 function timeAgo(ts: string): string {
@@ -220,7 +244,59 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
               )}
             </section>
 
-            {/* 4 — Recent Activity */}
+            {/* 4 — Token Usage */}
+            {data.token_usage.total_tokens > 0 && (
+              <section>
+                <SectionHeader label="Token Usage" sub="All time" />
+                <div className="grid grid-cols-3 gap-3 mb-3">
+                  <div className="rounded-xl border border-stone-200 bg-white px-4 py-4">
+                    <p className="text-xs text-stone-400 mb-1.5">Total tokens</p>
+                    <p className="text-2xl font-bold text-stone-900">{fmtTokens(data.token_usage.total_tokens)}</p>
+                    <p className="text-xs text-stone-400 mt-1">{fmtTokens(data.token_usage.total_input_tokens)} in · {fmtTokens(data.token_usage.total_output_tokens)} out</p>
+                  </div>
+                  <div className="rounded-xl border border-stone-200 bg-white px-4 py-4">
+                    <p className="text-xs text-stone-400 mb-1.5">Est. cost</p>
+                    <p className="text-2xl font-bold text-stone-900">${data.token_usage.estimated_cost_usd.toFixed(2)}</p>
+                    <p className="text-xs text-stone-400 mt-1">Sonnet pricing · approximate</p>
+                  </div>
+                  <div className="rounded-xl border border-stone-200 bg-white px-4 py-4">
+                    <p className="text-xs text-stone-400 mb-1.5">Output ratio</p>
+                    <p className="text-2xl font-bold text-stone-900">
+                      {data.token_usage.total_tokens > 0
+                        ? `${Math.round((data.token_usage.total_output_tokens / data.token_usage.total_tokens) * 100)}%`
+                        : "—"}
+                    </p>
+                    <p className="text-xs text-stone-400 mt-1">of total are output tokens</p>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-stone-100">
+                        <th className="text-left px-4 py-2.5 text-stone-400 font-medium">Agent</th>
+                        <th className="text-right px-4 py-2.5 text-stone-400 font-medium">Input</th>
+                        <th className="text-right px-4 py-2.5 text-stone-400 font-medium">Output</th>
+                        <th className="text-right px-4 py-2.5 text-stone-400 font-medium">Total</th>
+                        <th className="text-right px-4 py-2.5 text-stone-400 font-medium">Est. cost</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-100">
+                      {data.token_usage.by_agent.map(agent => (
+                        <tr key={agent.workflow_id} className="hover:bg-stone-50 transition-colors">
+                          <td className="px-4 py-2.5 font-medium text-stone-900">{agent.name}</td>
+                          <td className="px-4 py-2.5 text-right text-stone-500">{fmtTokens(agent.input_tokens)}</td>
+                          <td className="px-4 py-2.5 text-right text-stone-500">{fmtTokens(agent.output_tokens)}</td>
+                          <td className="px-4 py-2.5 text-right text-stone-700 font-medium">{fmtTokens(agent.total_tokens)}</td>
+                          <td className="px-4 py-2.5 text-right text-stone-500">${agent.estimated_cost_usd.toFixed(3)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+
+            {/* 5 — Recent Activity */}
             <section>
               <SectionHeader label="Recent Activity" href="/runs" linkLabel="View all runs →" />
               {data.recent_activity.length === 0 ? (
