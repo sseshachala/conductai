@@ -44,21 +44,67 @@ Every step is visible. Every run is logged. Nothing merges without a human in th
 
 ---
 
-## 9 ready-made playbooks
+## 18 ready-made playbooks
 
-Install any of these in one click, configure credentials, and run.
+Install any of these in one click, configure credentials, and run. Grouped by the 10 categories you'll see in the Marketplace.
 
+### Issue → PR
 | Playbook | Trigger | What it does |
 |----------|---------|-------------|
-| **Autopilot Git → Slack** | GitHub issue label | Implements fix, opens PR, posts to Slack |
-| **Dependency Updater** | Weekly cron | Bumps patch/minor deps, opens PR |
-| **Incident Responder** | PagerDuty / OpsGenie webhook | Correlates commits, posts hypothesis to Slack |
-| **Release Notes** | Git tag | Reads merged PRs, writes CHANGELOG, posts to #releases |
-| **Issue Triage** | GitHub issue opened | Labels, prioritises, posts clarifying comment |
-| **Deploy Monitor** | Vercel / Railway webhook | Monitors deployment, alerts on failure |
-| **PR Review** | GitHub PR opened | Reviews diff, posts structured feedback |
-| **Scheduled Report** | Daily cron | Aggregates Linear issues, emails summary |
-| **Custom Agent** | Any trigger | Build from scratch on the canvas |
+| **Autopilot Quick** | GitHub issue labeled | Implements fix, opens PR immediately (CI runs tests on the PR) |
+| **Autopilot Full** | GitHub issue labeled | Implements fix, runs tests with retry, opens PR |
+| **Autopilot + Approval** | GitHub issue labeled | Implements fix, runs tests, human approves in Slack, then opens PR |
+
+### Code Review
+| Playbook | Trigger | What it does |
+|----------|---------|-------------|
+| **PR Reviewer** | PR opened | Reviews the diff for bugs, security, and style; posts a review |
+| **Copilot / AI PR Reviewer** | PR opened by Copilot/Cursor/Claude Code | Extra scrutiny for hallucinated APIs and missing tests; human approves before merge |
+| **Security Scanner** | PR opened | Scans for OWASP Top 10, hardcoded secrets, auth bypasses; posts report, files fix issue for criticals |
+
+### Issue Triage
+| Playbook | Trigger | What it does |
+|----------|---------|-------------|
+| **Issue Triage** | GitHub issue opened | Classifies type and priority, adds labels, posts a clarifying comment if vague |
+
+### CI/CD
+| Playbook | Trigger | What it does |
+|----------|---------|-------------|
+| **CI Failure Alert** | CI build fails | Diagnoses the failed step, posts root cause and suggested fix to Slack |
+| **Flaky Test Detective** | Repeated CI failures | Identifies flaky tests, finds the offending commit, posts a fix recommendation |
+
+### Release Management
+| Playbook | Trigger | What it does |
+|----------|---------|-------------|
+| **Release Readiness Reviewer** | Release branch cut | Checks open blockers, failed CI, pending reviews; posts a go/no-go summary |
+| **Release Notes Drafter** | Git tag pushed | Reads merged PRs, groups by type, writes CHANGELOG, posts to Slack |
+
+### Incidents & Ops
+| Playbook | Trigger | What it does |
+|----------|---------|-------------|
+| **Incident Responder** | PagerDuty / OpsGenie webhook | Correlates recent commits and deploys, posts root cause hypothesis to Slack |
+| **Postmortem Drafter** | Incident resolved | Reads timeline, alerts, and commits; drafts a structured postmortem |
+
+### Security
+| Playbook | Trigger | What it does |
+|----------|---------|-------------|
+| **Dependency Updater** | Weekly cron | Bumps patch/minor deps, opens a single clean PR |
+| **Security Patch Updater** | Dependabot alert | Applies the security patch, runs tests, opens a PR with CVE reference |
+
+### Docs
+| Playbook | Trigger | What it does |
+|----------|---------|-------------|
+| **Docs Drift Detector** | PR merged | Checks if related docs/README/runbooks went stale; opens a docs PR or files an issue |
+
+### Platform & Infra
+| Playbook | Trigger | What it does |
+|----------|---------|-------------|
+| **Terraform Plan Reviewer** | Terraform plan PR opened | Reviews for security misconfigs, cost anomalies, and drift; posts findings |
+
+### Testing
+| Playbook | Trigger | What it does |
+|----------|---------|-------------|
+| **Smoke Test** | Manual / CI | Minimal 1-step pipeline ping for CI gating and worker health checks |
 
 ---
 
