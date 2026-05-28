@@ -21,6 +21,7 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.models.project import Project
 from app.models.run import Run, RunEvent
 from app.models.workflow import Workflow, WorkflowVersion
 
@@ -587,9 +588,6 @@ async def github_webhook_by_slug(
     Auth: HMAC-SHA256 via X-Hub-Signature-256 header (webhook secret stored
     on the workflow's trigger node). No workspace_id cookie needed.
     """
-    from app.models.project import Project
-    from app.models.workflow import Workflow, WorkflowVersion
-    import hashlib, hmac as _hmac
     from app.core.crypto import decrypt as _decrypt
 
     body = await request.body()
@@ -629,8 +627,8 @@ async def github_webhook_by_slug(
         webhook_secret = raw_secret
 
     sig_header = request.headers.get("X-Hub-Signature-256", "")
-    expected = "sha256=" + _hmac.new(webhook_secret.encode(), body, hashlib.sha256).hexdigest()  # type: ignore[attr-defined]
-    if not sig_header or not _hmac.compare_digest(expected, sig_header):
+    expected = "sha256=" + hmac.new(webhook_secret.encode(), body, hashlib.sha256).hexdigest()  # type: ignore[attr-defined]
+    if not sig_header or not hmac.compare_digest(expected, sig_header):
         raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
     event = request.headers.get("X-GitHub-Event", "unknown")

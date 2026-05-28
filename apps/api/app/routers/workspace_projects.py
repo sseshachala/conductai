@@ -41,9 +41,9 @@ def _slugify(name: str) -> str:
 
 
 def _unique_slug(base: str, workspace_id: str, db: Session, exclude_id: str | None = None) -> str:
-    slug = base
-    n = 1
+    n = 0
     while True:
+        slug = base if n == 0 else f"{base}-{n}"
         q = "SELECT 1 FROM projects WHERE workspace_id = :ws AND slug = :slug"
         params: dict = {"ws": workspace_id, "slug": slug}
         if exclude_id:
@@ -52,7 +52,6 @@ def _unique_slug(base: str, workspace_id: str, db: Session, exclude_id: str | No
         if not db.execute(text(q), params).fetchone():
             return slug
         n += 1
-        slug = f"{base}-{n}"
 
 
 def _enforce_workspace(path_id: str, active_id: str) -> None:
