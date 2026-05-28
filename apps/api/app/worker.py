@@ -5,10 +5,14 @@ Concurrency: set WORKER_CONCURRENCY=N (default 1) to run N threads
 each with their own Redis BLPOP loop.  All threads share the same
 queue key so Redis distributes runs across them automatically.
 
-Scale horizontally by running more worker processes; scale vertically
-with WORKER_CONCURRENCY.  Example (4 concurrent runs per process):
+Scale horizontally by running more worker instances in Render
+(Dashboard → worker service → Scaling → add instances), or scale
+vertically with WORKER_CONCURRENCY.  Example (4 concurrent runs):
 
     WORKER_CONCURRENCY=4 python -m app.worker
+
+On Render: set WORKER_CONCURRENCY in the worker service's Environment
+tab — no code change, just restart the service.
 """
 import os
 import threading
@@ -68,7 +72,7 @@ def main() -> None:
         dead = [t for t in threads if not t.is_alive()]
         if dead:
             log.error("worker.thread_died", threads=[t.name for t in dead])
-            break
+            break  # exit so Render restarts the service
         time.sleep(10)
 
 
