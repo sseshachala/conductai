@@ -1181,12 +1181,6 @@ export default function BlockEditor({
               </div>
             )}
 
-            <div className="px-4 py-3">
-              <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2.5 text-xs text-amber-800 space-y-1">
-                <p className="font-semibold text-[10px] uppercase tracking-wide text-amber-600">How memory works</p>
-                <p>Add an <strong>OPENAI_API_KEY</strong> credential to your workspace environment to enable vector similarity search. Without it, memory falls back to recency-based retrieval.</p>
-              </div>
-            </div>
           </>
         )
       })()}
