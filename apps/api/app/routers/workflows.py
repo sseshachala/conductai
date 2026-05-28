@@ -200,7 +200,6 @@ def _register_git_webhook(
     events: list[str],
     provider: str = "github",
     project_slug: str | None = None,
-    workflow_slug: str | None = None,
     secret: str | None = None,
     workspace_id: str | None = None,
 ) -> tuple[str | None, str | None]:
@@ -208,11 +207,7 @@ def _register_git_webhook(
     import httpx
     from app.core.config import settings
 
-    # Prefer slug-addressed URL when both project and workflow slugs are available.
-    # Falls back to workspace-scoped URL (legacy) or inbound URL.
-    if provider == "github" and "issues" in events and project_slug and workflow_slug:
-        webhook_url = f"{settings.api_base_url}/webhooks/github/{project_slug}/{workflow_slug}"
-    elif provider == "github" and "issues" in events and workspace_id:
+    if provider == "github" and "issues" in events and workspace_id:
         webhook_url = f"{settings.api_base_url}/webhooks/github?workspace_id={workspace_id}"
     else:
         slug_segment = f"{project_slug}/" if project_slug else ""
@@ -722,79 +717,23 @@ def register_workflow_webhook(
     token, provider = _git_token(str(workspace_id), db, str(workflow.environment_id) if workflow.environment_id else None)
 
     repo = workflow.github_hook_repo
-    current_events = set(_GITHUB_WEBHOOK_EVENTS.get(playbook_slug, []))
-    current_label = workflow.github_hook_label  # may be None for non-label-filtered agents
 
-    # Conflict check: another workflow on this repo watches the same event type AND the same label.
-    # Same label + same events = would fire on identical payloads — reject.
-    if current_label:
-        label_conflict = db.query(Workflow).filter(
-            Workflow.workspace_id == workspace_id,
-            Workflow.github_hook_repo == repo,
-            Workflow.github_hook_id.isnot(None),
-            Workflow.id != workflow_id,
-            Workflow.github_hook_label == current_label,
-            Workflow.playbook_slug.in_([
-                slug for slug, evts in _GITHUB_WEBHOOK_EVENTS.items()
-                if set(evts) & current_events
-            ]),
-        ).first()
-        if label_conflict:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Label '{current_label}' is already registered on {repo} by '{label_conflict.name}'. "
-                       f"Each agent must watch a unique label on this repo.",
-            )
-
-    # Sibling check: another workflow on this repo uses the same event type.
-    # Share its hook_id — GitHub only needs one inbound webhook per event type per repo.
-    same_event_slugs = [
-        slug for slug, evts in _GITHUB_WEBHOOK_EVENTS.items()
-        if set(evts) & current_events
-    ]
-    sibling = db.query(Workflow).filter(
+    # One webhook per repo: reuse an existing Conduct hook if one already exists for this repo.
+    existing = db.query(Workflow).filter(
         Workflow.workspace_id == workspace_id,
         Workflow.github_hook_repo == repo,
         Workflow.github_hook_id.isnot(None),
         Workflow.id != workflow_id,
-        Workflow.playbook_slug.in_(same_event_slugs),
     ).first()
 
-    if sibling:
-        # Verify the sibling's hook still exists on GitHub — it may be stale from a past delete.
-        if not _github_hook_exists(token, repo, sibling.github_hook_id):
-            log.info("webhook.sibling_stale", sibling_id=str(sibling.id), hook_id=sibling.github_hook_id)
-            sibling.github_hook_id = None
-            db.commit()
-            sibling = None  # fall through to fresh registration
-
-    if sibling:
-        # Deregister any stale hook this workflow previously owned (best-effort)
-        if workflow.github_hook_id and workflow.github_hook_id != sibling.github_hook_id:
-            try:
-                _deregister_git_webhook(token, repo, workflow.github_hook_id, provider=provider)
-            except Exception as e:
-                log.warning("Stale webhook deregistration skipped: %s", e)
-
-        workflow.github_hook_id = sibling.github_hook_id
+    if existing:
+        workflow.github_hook_id = existing.github_hook_id
         db.commit()
         db.refresh(workflow)
-        audit(db, workspace_id, "workflow.webhook_shared",
-              resource_type="workflow", resource_id=str(workflow_id),
-              metadata={"repo": repo, "shared_with": str(sibling.id)})
         _stamp(workflow)
-        wf_out = WorkflowDetailOut.model_validate(workflow)
-        wf_out.github_hook_id = workflow.github_hook_id
-        wf_out.github_hook_repo = repo
-        wf_out.github_webhook = True
-        wf_out.webhook_error = None
-        return JSONResponse(content={
-            **wf_out.model_dump(mode="json"),
-            "shared": True,
-            "shared_with_name": sibling.name,
-        })
+        return workflow
 
-    # No sibling — deregister any stale hook first, then register fresh
+    # No existing hook — deregister any stale one first, then register fresh.
     if workflow.github_hook_id:
         try:
             _deregister_git_webhook(token, repo, workflow.github_hook_id, provider=provider)
@@ -810,16 +749,7 @@ def register_workflow_webhook(
         if proj:
             project_slug = proj.slug  # use the stored slug, not a runtime derivation
 
-    # Slug-addressed webhooks use a per-workflow random secret (verified in
-    # github_webhook_by_slug). Legacy workspace-scoped URL falls back to the
-    # global GITHUB_WEBHOOK_SECRET. If we have both slugs we always prefer the
-    # slug URL so always generate a per-workflow secret.
-    uses_slug_url = bool(project_slug and workflow.playbook_slug)
-    uses_workspace_url = (
-        not uses_slug_url and
-        provider == "github" and
-        "issues" in _GITHUB_WEBHOOK_EVENTS.get(playbook_slug, [])
-    )
+    uses_workspace_url = provider == "github" and "issues" in _GITHUB_WEBHOOK_EVENTS.get(playbook_slug, [])
     if uses_workspace_url:
         from app.core.config import settings as _settings
         webhook_secret = _settings.github_webhook_secret or _secrets.token_hex(32)
@@ -831,7 +761,6 @@ def register_workflow_webhook(
         _GITHUB_WEBHOOK_EVENTS[playbook_slug],
         provider=provider,
         project_slug=project_slug,
-        workflow_slug=workflow.playbook_slug,
         secret=webhook_secret,
         workspace_id=str(workspace_id),
     )
