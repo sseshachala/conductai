@@ -557,6 +557,27 @@ def _normalize_github_issue_labeled_payload(payload: dict[str, Any]) -> dict[str
     }
 
 
+def _build_state(normalized: dict[str, Any], *keys: str) -> dict[str, Any]:
+    """Merge repo fields into each state key and attach the full trigger payload."""
+    state: dict[str, Any] = {"github_trigger": normalized}
+    for key in keys:
+        state[key] = {**normalized.get(key, {}), **normalized["repo"]}
+    return state
+
+
+# (github_event, action_predicate, normalizer, internal_event_type, state_keys)
+_GITHUB_DISPATCH = [
+    ("issues",        lambda a, p: a == "labeled",                                                    _normalize_github_issue_labeled_payload,  "github_issue_labeled",       ("github_issue",)),
+    ("issues",        lambda a, p: a == "opened",                                                     _normalize_github_issue_opened_payload,   "github_issue_opened",        ("github_issue",)),
+    ("pull_request",  lambda a, p: a in ("opened", "synchronize", "reopened"),                        _normalize_github_pr_payload,             "github_pr_opened",           ("github_pr",)),
+    ("pull_request",  lambda a, p: a == "closed" and (p.get("pull_request") or {}).get("merged"),     _normalize_github_pr_payload,             "github_pr_merged",           ("github_pr",)),
+    ("pull_request",  lambda a, p: a == "review_requested",                                           _normalize_github_pr_payload,             "github_pr_review_requested", ("github_pr",)),
+    ("push",          lambda a, p: not p.get("ref", "").startswith("refs/tags/"),                     _normalize_github_push_payload,           "github_push",                ("github_push",)),
+    ("issue_comment", lambda a, p: a == "created",                                                    _normalize_github_issue_comment_payload,  "github_issue_comment",       ("github_comment", "github_issue")),
+    ("workflow_run",  lambda a, p: a == "completed",                                                  _normalize_github_workflow_run_payload,   "github_workflow_run",        ("github_workflow_run",)),
+]
+
+
 def _parse_repo_allowlist(raw: Any) -> set[str]:
     """Accept either list[str] or comma-separated string from trigger config."""
     if isinstance(raw, list):
@@ -812,70 +833,14 @@ async def github_webhook(
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON")
 
-    # Route by GitHub event type → internal event_type + normalized payload
-    if event == "issues" and action == "labeled":
-        normalized = _normalize_github_issue_labeled_payload(payload)
-        event_type = "github_issue_labeled"
-        initial_state = {"github_issue": normalized["issue"], "github_trigger": normalized}
-        initial_state["github_issue"]["label_added"] = normalized["label"]
-        initial_state["github_issue"]["repo_full_name"] = normalized["repo"]["full_name"]
-        initial_state["github_issue"]["clone_url"] = normalized["repo"]["clone_url"]
-        initial_state["github_issue"]["default_branch"] = normalized["repo"]["default_branch"]
+    for (gh_event, matches, normalizer, event_type, state_keys) in _GITHUB_DISPATCH:
+        if event == gh_event and matches(action, payload):
+            normalized = normalizer(payload)
+            initial_state = _build_state(normalized, *state_keys)
+            queued = _trigger_github_workflows(db, event_type, normalized, initial_state, workspace_id)
+            return {"ok": True, "queued": len(queued), "run_ids": queued, "event_type": event_type, "repo": normalized["repo"]["full_name"]}
 
-    elif event == "issues" and action == "opened":
-        normalized = _normalize_github_issue_opened_payload(payload)
-        event_type = "github_issue_opened"
-        initial_state = {"github_issue": normalized["issue"], "github_trigger": normalized}
-        initial_state["github_issue"]["repo_full_name"] = normalized["repo"]["full_name"]
-        initial_state["github_issue"]["clone_url"] = normalized["repo"]["clone_url"]
-        initial_state["github_issue"]["default_branch"] = normalized["repo"]["default_branch"]
-
-    elif event == "pull_request" and action in ("opened", "synchronize", "reopened"):
-        normalized = _normalize_github_pr_payload(payload)
-        event_type = "github_pr_opened"
-        initial_state = {"github_pr": normalized["pr"], "github_trigger": normalized}
-        initial_state["github_pr"]["repo_full_name"] = normalized["repo"]["full_name"]
-        initial_state["github_pr"]["clone_url"] = normalized["repo"]["clone_url"]
-        initial_state["github_pr"]["default_branch"] = normalized["repo"]["default_branch"]
-
-    elif event == "pull_request" and action == "closed" and payload.get("pull_request", {}).get("merged"):
-        normalized = _normalize_github_pr_payload(payload)
-        event_type = "github_pr_merged"
-        initial_state = {"github_pr": normalized["pr"], "github_trigger": normalized}
-        initial_state["github_pr"]["repo_full_name"] = normalized["repo"]["full_name"]
-        initial_state["github_pr"]["clone_url"] = normalized["repo"]["clone_url"]
-        initial_state["github_pr"]["default_branch"] = normalized["repo"]["default_branch"]
-
-    elif event == "pull_request" and action == "review_requested":
-        normalized = _normalize_github_pr_payload(payload)
-        event_type = "github_pr_review_requested"
-        initial_state = {"github_pr": normalized["pr"], "github_trigger": normalized}
-        initial_state["github_pr"]["repo_full_name"] = normalized["repo"]["full_name"]
-
-    elif event == "push" and not payload.get("ref", "").startswith("refs/tags/"):
-        normalized = _normalize_github_push_payload(payload)
-        event_type = "github_push"
-        initial_state = {"github_push": normalized["push"], "github_trigger": normalized}
-        initial_state["github_push"]["repo_full_name"] = normalized["repo"]["full_name"]
-        initial_state["github_push"]["clone_url"] = normalized["repo"]["clone_url"]
-
-    elif event == "issue_comment" and action == "created":
-        normalized = _normalize_github_issue_comment_payload(payload)
-        event_type = "github_issue_comment"
-        initial_state = {"github_comment": normalized["comment"], "github_issue": normalized["issue"], "github_trigger": normalized}
-        initial_state["github_issue"]["repo_full_name"] = normalized["repo"]["full_name"]
-
-    elif event == "workflow_run" and action == "completed":
-        normalized = _normalize_github_workflow_run_payload(payload)
-        event_type = "github_workflow_run"
-        initial_state = {"github_workflow_run": normalized["workflow_run"], "github_trigger": normalized}
-        initial_state["github_workflow_run"]["repo_full_name"] = normalized["repo"]["full_name"]
-
-    else:
-        return {"ok": True, "queued": 0, "reason": f"event {event}/{action} not handled"}
-
-    queued = _trigger_github_workflows(db, event_type, normalized, initial_state, workspace_id)
-    return {"ok": True, "queued": len(queued), "run_ids": queued, "event_type": event_type, "repo": normalized["repo"]["full_name"]}
+    return {"ok": True, "queued": 0, "reason": f"event {event}/{action} not handled"}
 
 
 
