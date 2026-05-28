@@ -26,6 +26,7 @@ interface BlockEditorProps {
   githubHookId?: string | null
   githubWebhook?: boolean
   playbookSlug?: string | null
+  projectSlug?: string | null
   onWebhookChange?: (hookId: string | null, hookRepo: string | null) => void
 }
 
@@ -604,6 +605,7 @@ export default function BlockEditor({
   githubHookId,
   githubWebhook,
   playbookSlug,
+  projectSlug,
   onWebhookChange,
 }: BlockEditorProps) {
   const [promptOpen, setPromptOpen] = useState(false)
@@ -979,11 +981,14 @@ export default function BlockEditor({
                   {rendered}
                   {/* GitHub issue-labeled — webhook URL card + compact register panel */}
                   {blockType === "trigger" && field.key === "config.event_type" && triggerEventType === "github_issue_labeled" && (() => {
-                    const ws = typeof document !== "undefined"
-                      ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
-                    const webhookUrl = ws
-                      ? `${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}/webhooks/github?workspace_id=${ws}`
-                      : null
+                    const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
+                    const webhookUrl = projectSlug && playbookSlug
+                      ? `${base}/webhooks/github/${projectSlug}/${playbookSlug}`
+                      : (() => {
+                          const ws = typeof document !== "undefined"
+                            ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
+                          return ws ? `${base}/webhooks/github?workspace_id=${ws}` : null
+                        })()
                     return (
                       <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2.5 text-xs text-violet-800 mt-2 space-y-1.5">
                         <div className="flex items-center justify-between">
@@ -1016,11 +1021,14 @@ export default function BlockEditor({
 
                   {/* Inbound webhook URL panel */}
                   {blockType === "trigger" && field.key === "config.event_type" && triggerEventType === "webhook" && (() => {
-                    const ws = typeof document !== "undefined"
-                      ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
-                    const githubUrl = ws
-                      ? `${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}/webhooks/github?workspace_id=${ws}`
-                      : null
+                    const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
+                    const githubUrl = projectSlug && playbookSlug
+                      ? `${base}/webhooks/github/${projectSlug}/${playbookSlug}`
+                      : (() => {
+                          const ws = typeof document !== "undefined"
+                            ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
+                          return ws ? `${base}/webhooks/github?workspace_id=${ws}` : null
+                        })()
                     const inboundUrl = `${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}/webhooks/inbound/${workflowId}`
                     const webhookUrl = githubHookRepo ? githubUrl : inboundUrl
                     const displayUrl = webhookUrl ?? inboundUrl

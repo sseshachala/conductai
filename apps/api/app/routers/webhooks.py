@@ -571,6 +571,118 @@ def _trigger_github_workflows(
     return queued
 
 
+@router.post("/github/{project_slug}/{workflow_slug}")
+async def github_webhook_by_slug(
+    project_slug: str,
+    workflow_slug: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Slug-addressed GitHub webhook — one URL per agent, human-readable.
+
+    URL: /webhooks/github/{project-slug}/{workflow-slug}
+    e.g. /webhooks/github/devops/autopilot-quick
+
+    Auth: HMAC-SHA256 via X-Hub-Signature-256 header (webhook secret stored
+    on the workflow's trigger node). No workspace_id cookie needed.
+    """
+    from app.models.project import Project
+    from app.models.workflow import Workflow, WorkflowVersion
+    import hashlib, hmac as _hmac
+    from app.core.crypto import decrypt as _decrypt
+
+    body = await request.body()
+
+    # Resolve project → workflow by slugs
+    project = db.query(Project).filter(Project.slug == project_slug).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    workflow = (
+        db.query(Workflow)
+        .filter(
+            Workflow.project_id == project.id,
+            Workflow.playbook_slug == workflow_slug,
+        )
+        .first()
+    )
+    if not workflow or not workflow.current_version:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    version = workflow.current_version
+    nodes = version.graph.get("nodes", [])
+    trigger_node = next(
+        (n for n in nodes if n.get("data", {}).get("type") == "trigger"), None
+    )
+    if not trigger_node:
+        raise HTTPException(status_code=400, detail="Workflow has no trigger node")
+
+    trigger_config = trigger_node.get("data", {}).get("config", {})
+    raw_secret = trigger_config.get("webhook_secret", "")
+    if not raw_secret:
+        raise HTTPException(status_code=401, detail="Workflow has no webhook secret configured")
+
+    try:
+        webhook_secret = _decrypt(raw_secret)["secret"]
+    except Exception:
+        webhook_secret = raw_secret
+
+    sig_header = request.headers.get("X-Hub-Signature-256", "")
+    expected = "sha256=" + _hmac.new(webhook_secret.encode(), body, hashlib.sha256).hexdigest()  # type: ignore[attr-defined]
+    if not sig_header or not _hmac.compare_digest(expected, sig_header):
+        raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
+    event = request.headers.get("X-GitHub-Event", "unknown")
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    if event != "issues" or payload.get("action") != "labeled":
+        return {"ok": True, "queued": 0, "reason": f"event {event}/{payload.get('action')} not handled"}
+
+    normalized = _normalize_github_issue_labeled_payload(payload)
+    initial_state = {
+        "github_issue": {
+            "issue_number": normalized["issue"]["number"],
+            "title": normalized["issue"]["title"],
+            "body": normalized["issue"]["body"],
+            "url": normalized["issue"]["url"],
+            "author": normalized["issue"]["author"],
+            "labels": normalized["issue"]["labels"],
+            "label_added": normalized["label"],
+            "repo_full_name": normalized["repo"]["full_name"],
+            "repo_name": normalized["repo"]["name"],
+            "repo_owner": normalized["repo"]["owner"],
+            "default_branch": normalized["repo"]["default_branch"],
+            "clone_url": normalized["repo"]["clone_url"],
+        },
+        "github_trigger": normalized,
+    }
+
+    from app.routers.workflows import _estimate_turns_for_graph
+    try:
+        pf = _estimate_turns_for_graph(version.graph or {}, normalized["issue"]["title"], normalized["issue"]["body"] or "")
+        suggested_turns = pf["suggested_max_turns"]
+    except Exception:
+        suggested_turns = 20
+
+    run = Run(
+        workflow_version_id=version.id,
+        triggered_by=f"github:github_issue:{normalized['label']}",
+        status="pending",
+        state={**initial_state, "__triggered_by": "github:github_issue", "__max_turns": suggested_turns},
+        max_turns=suggested_turns,
+    )
+    db.add(run)
+    db.flush()
+    db.commit()
+    _redis().rpush(QUEUE_KEY, str(run.id))
+    log.info("github.slug_triggered", project_slug=project_slug, workflow_slug=workflow_slug, run_id=str(run.id))
+    return {"ok": True, "queued": 1, "run_ids": [str(run.id)], "label": normalized["label"], "repo": normalized["repo"]["full_name"]}
+
+
 @router.post("/github")
 async def github_webhook(
     request: Request,
