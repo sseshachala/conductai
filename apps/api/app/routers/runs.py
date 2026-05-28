@@ -251,11 +251,10 @@ def get_run(
     workflow_id: UUID,
     run_id: UUID,
     db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    request: Request = None,
 ):
-    # Verify workflow belongs to this workspace, then scope run to that workflow.
-    _get_workflow(workflow_id, workspace_id, db)
+    # Look up the run directly by ID — don't gate on the cookie workspace so
+    # trace URLs in Slack notifications work regardless of active workspace.
     run = (
         db.query(Run)
         .join(WorkflowVersion, Run.workflow_version_id == WorkflowVersion.id)
@@ -264,6 +263,26 @@ def get_run(
     )
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
+
+    # Verify caller has access to the run's actual workspace (not cookie workspace).
+    if _clerk_enabled():
+        from sqlalchemy import text
+        actual_ws = str(run.workflow_version.workflow.workspace_id)
+        token = (request.headers.get("Authorization") or "").removeprefix("Bearer ").strip()
+        user_id = DEV_USER_ID
+        if token:
+            try:
+                claims = _verify_clerk_token(token)
+                user_id = claims.get("sub", DEV_USER_ID)
+            except Exception:
+                raise HTTPException(status_code=401, detail="Invalid token")
+        row = db.execute(
+            text("SELECT role FROM workspace_users WHERE workspace_id = :ws AND clerk_user_id = :uid"),
+            {"ws": actual_ws, "uid": user_id},
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=403, detail="Not a member of this workspace")
+
     return run
 
 
