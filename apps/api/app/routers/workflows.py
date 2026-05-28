@@ -200,6 +200,7 @@ def _register_git_webhook(
     events: list[str],
     provider: str = "github",
     project_slug: str | None = None,
+    workflow_slug: str | None = None,
     secret: str | None = None,
     workspace_id: str | None = None,
 ) -> tuple[str | None, str | None]:
@@ -207,10 +208,11 @@ def _register_git_webhook(
     import httpx
     from app.core.config import settings
 
-    # GitHub issue-based triggers must use /webhooks/github so label filtering
-    # (ai-ready, etc.) is enforced. The generic /webhooks/inbound endpoint has
-    # no label awareness and fires on every issues event.
-    if provider == "github" and "issues" in events and workspace_id:
+    # Prefer slug-addressed URL when both project and workflow slugs are available.
+    # Falls back to workspace-scoped URL (legacy) or inbound URL.
+    if provider == "github" and "issues" in events and project_slug and workflow_slug:
+        webhook_url = f"{settings.api_base_url}/webhooks/github/{project_slug}/{workflow_slug}"
+    elif provider == "github" and "issues" in events and workspace_id:
         webhook_url = f"{settings.api_base_url}/webhooks/github?workspace_id={workspace_id}"
     else:
         slug_segment = f"{project_slug}/" if project_slug else ""
@@ -578,6 +580,12 @@ def get_workflow(workflow_id: UUID, db: Session = Depends(get_db), workspace_id:
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
     _stamp(workflow)
+    if workflow.project_id:
+        from app.models.project import Project as _Proj
+        proj = db.query(_Proj).filter(_Proj.id == workflow.project_id).first()
+        if proj:
+            workflow.project_slug = proj.slug  # type: ignore[attr-defined]
+            workflow.project_name = proj.name  # type: ignore[attr-defined]
     return workflow
 
 
@@ -817,6 +825,7 @@ def register_workflow_webhook(
         _GITHUB_WEBHOOK_EVENTS[playbook_slug],
         provider=provider,
         project_slug=project_slug,
+        workflow_slug=workflow.playbook_slug,
         secret=webhook_secret,
         workspace_id=str(workspace_id),
     )
