@@ -1310,8 +1310,8 @@ def execute_run(run_id: str):
 
         # Load credentials and egress allowlist from the workflow's environment
         allowed_hosts: list[str] | None = None
+        from app.models.environment import Environment as _Env
         if env_id:
-            from app.models.environment import Environment as _Env
             env_row = db.query(_Env).filter(_Env.id == env_id).first()
             if env_row:
                 allowed_hosts = env_row.allowed_hosts or None
@@ -1320,7 +1320,19 @@ def execute_run(run_id: str):
                 Integration.environment_id == env_id,
             ).all()
         else:
-            cred_rows = []
+            # No environment assigned — load from Default so tool blocks have credentials
+            default_env = db.query(_Env).filter(
+                _Env.workspace_id == workspace_id_str,
+                _Env.name == "Default",
+            ).first()
+            if default_env:
+                allowed_hosts = default_env.allowed_hosts or None
+                cred_rows = db.query(Integration).filter(
+                    Integration.workspace_id == workspace_id_str,
+                    Integration.environment_id == default_env.id,
+                ).all()
+            else:
+                cred_rows = []
 
         credentials: dict[str, Any] = {
             row.handle: decrypt(row.encrypted_credentials)
