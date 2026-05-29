@@ -136,6 +136,37 @@ def get_clerk_user_email(user_id: str) -> str | None:
         return None
 
 
+def get_clerk_user_info(user_id: str) -> dict:
+    """Return {email, name} for a Clerk user. Falls back to empty strings on failure."""
+    if not settings.clerk_secret_key or not user_id:
+        return {"email": None, "name": None}
+    try:
+        r = httpx.get(
+            f"https://api.clerk.com/v1/users/{user_id}",
+            headers={"Authorization": f"Bearer {settings.clerk_secret_key}"},
+            timeout=5,
+        )
+        if not r.is_success:
+            return {"email": None, "name": None}
+        data = r.json()
+        primary_id = data.get("primary_email_address_id")
+        email = None
+        for e in data.get("email_addresses", []):
+            if e.get("id") == primary_id:
+                email = e.get("email_address")
+                break
+        if not email:
+            emails = data.get("email_addresses", [])
+            email = emails[0].get("email_address") if emails else None
+        first = data.get("first_name") or ""
+        last = data.get("last_name") or ""
+        name = f"{first} {last}".strip() or None
+        return {"email": email, "name": name}
+    except Exception as e:
+        log.warning("Could not fetch Clerk user info for %s: %s", user_id, e)
+        return {"email": None, "name": None}
+
+
 def get_user_id(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
     x_api_key: Annotated[str | None, Header()] = None,
