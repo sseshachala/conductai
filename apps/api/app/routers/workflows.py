@@ -1604,11 +1604,38 @@ def test_trigger(
     except Exception:
         suggested_turns = 20
 
+    # Normalize GitHub issue payloads to match the real webhook path so that
+    # {{_trigger.issue_number}}, {{_trigger.repo_full_name}}, etc. resolve in
+    # the same way whether this is a real webhook or a test trigger.
+    _issue = payload.get("issue") or {}
+    _repo = payload.get("repository") or {}
+    _label = (payload.get("label") or {}).get("name", "")
+    _initial_state: dict = {"__triggered_by": "manual:test_trigger", "__max_turns": suggested_turns}
+    if _issue:
+        _initial_state["github_issue"] = {
+            "issue_number": _issue.get("number"),
+            "title": _issue.get("title"),
+            "body": _issue.get("body") or "",
+            "url": _issue.get("html_url", ""),
+            "author": (_issue.get("user") or {}).get("login", ""),
+            "labels": [l.get("name", "") for l in (_issue.get("labels") or [])],
+            "label_added": _label,
+            "repo_full_name": _repo.get("full_name", ""),
+            "repo_name": _repo.get("name", ""),
+            "repo_owner": (_repo.get("owner") or {}).get("login", ""),
+            "default_branch": _repo.get("default_branch", "main"),
+            "clone_url": _repo.get("clone_url", ""),
+        }
+        _initial_state["github_trigger"] = payload
+    else:
+        # Non-GitHub trigger — keep raw payload as _trigger
+        _initial_state["_trigger"] = payload
+
     run = Run(
         workflow_version_id=version.id,
         triggered_by="manual:test_trigger",
         status="pending",
-        state={"_trigger": payload, "__triggered_by": "manual:test_trigger", "__max_turns": suggested_turns},
+        state=_initial_state,
         max_turns=suggested_turns,
     )
     db.add(run)
