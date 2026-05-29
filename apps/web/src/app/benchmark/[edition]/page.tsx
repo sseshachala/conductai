@@ -17,10 +17,11 @@ interface GradeCounts { A: number; B: number; C: number; D: number; F: number }
 
 interface EvalSummary {
   total_playbooks: number
-  passing: number
-  failing: number
+  passing?: number
+  failing?: number
   average_pct: number
-  grade_counts: GradeCounts
+  /** Not present in baseline manifests — only in live eval responses. */
+  grade_counts?: GradeCounts
   generated_at?: string
 }
 
@@ -111,8 +112,10 @@ function ScoreBar({ pct, grade }: { pct: number; grade: string }) {
 
 // ─── Grade distribution card ──────────────────────────────────────────────────
 
+const EMPTY_COUNTS: GradeCounts = { A: 0, B: 0, C: 0, D: 0, F: 0 }
+
 function DistributionCard({ summary }: { summary: EvalSummary }) {
-  const counts = summary.grade_counts
+  const counts = summary.grade_counts ?? EMPTY_COUNTS
   const total = GRADE_ORDER.reduce((s, g) => s + counts[g], 0)
   return (
     <div className="rounded-xl border border-stone-200 bg-white px-6 py-5">
@@ -561,10 +564,46 @@ function BenchmarkContent({
         ) : (
           <div className="space-y-10">
 
-            {/* Grade distribution */}
-            {summary && (
+            {/* Grade distribution — only rendered when grade_counts is present.
+                Baseline manifests omit grade_counts; live eval responses include it. */}
+            {summary && summary.grade_counts && (
               <section>
                 <DistributionCard summary={summary} />
+              </section>
+            )}
+
+            {/* Fallback stats strip when grade_counts is absent (baseline mode) */}
+            {summary && !summary.grade_counts && (
+              <section>
+                <div className="rounded-xl border border-stone-200 bg-white px-6 py-5 flex items-center gap-8">
+                  <div className="text-center">
+                    <p className="text-2xl font-black text-stone-900">{summary.total_playbooks}</p>
+                    <p className="text-[10px] text-stone-400">playbooks</p>
+                  </div>
+                  <div className="w-px h-8 bg-stone-100" />
+                  <div className="text-center">
+                    <p className="text-2xl font-black text-stone-900">{summary.average_pct.toFixed(0)}%</p>
+                    <p className="text-[10px] text-stone-400">average score</p>
+                  </div>
+                  {summary.passing != null && (
+                    <>
+                      <div className="w-px h-8 bg-stone-100" />
+                      <div className="text-center">
+                        <p className="text-2xl font-black text-emerald-700">{summary.passing}</p>
+                        <p className="text-[10px] text-stone-400">passing</p>
+                      </div>
+                    </>
+                  )}
+                  {summary.failing != null && summary.failing > 0 && (
+                    <>
+                      <div className="w-px h-8 bg-stone-100" />
+                      <div className="text-center">
+                        <p className="text-2xl font-black text-red-600">{summary.failing}</p>
+                        <p className="text-[10px] text-stone-400">failing</p>
+                      </div>
+                    </>
+                  )}
+                </div>
               </section>
             )}
 
