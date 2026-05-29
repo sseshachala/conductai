@@ -7,6 +7,15 @@ description: >
   Use this with `conduct test --all --project <name> --parallel` as a
   fast pre-deploy smoke suite instead of running heavy playbooks.
 
+inputs:
+  model:
+    label: AI Model
+    default: claude-haiku-4-5-20251001
+    type: select
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+
 on:
   manual:
     next: ping
@@ -14,15 +23,22 @@ on:
 blocks:
   ping:
     type: brain
-    prompt: |
+    mode: single
+    model: "{{inputs.model}}"
+    label: Ping
+    description: |
       You are a smoke test agent. Reply with exactly this JSON and nothing else:
       {"ok": true, "message": "pipeline ok", "repo": "{{_trigger.repo_full_name}}"}
     next: done
 
   done:
     type: output
+    label: Done
+    description: "Smoke test passed: {{ping.message}}"
     output:
-      via: none
+      via: slack
+      slack:
+        channel: "#ops"
 
 test_trigger:
   payload:
