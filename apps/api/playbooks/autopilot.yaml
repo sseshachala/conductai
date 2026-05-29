@@ -39,6 +39,16 @@ inputs:
       - "1"
       - "0"
     hint: "1 = fast (recommended), 0 = full history"
+  min_turns:
+    label: Minimum turn budget
+    default: "35"
+    type: select
+    options:
+      - "20"
+      - "35"
+      - "50"
+      - "75"
+    hint: "Floor for the AI turn budget — complex repos may need more"
 
 on:
   github.issue_labeled:
