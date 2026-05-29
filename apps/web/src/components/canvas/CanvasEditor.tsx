@@ -177,6 +177,9 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
 
   const STORAGE_KEY = `marshal:active-run:${workflowId}`
   const TEST_RUN_KEY = `marshal:test-run:${workflowId}`
+  const isMountedRef = useRef(true)
+  const savingInFlightRef = useRef(false)
+  useEffect(() => () => { isMountedRef.current = false }, [])
 
   // On mount, check if there's an in-progress run we navigated away from.
   useEffect(() => {
@@ -188,20 +191,26 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
       localStorage.removeItem(STORAGE_KEY)
       return
     }
-    authHeaders(getToken).then(headers =>
-      fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}`, { headers })
-        .then(r => r.ok ? r.json() : null)
-        .then(run => {
-          if (!run) { localStorage.removeItem(STORAGE_KEY); return }
-          if (run.status === "running" || run.status === "pending") {
-            setActiveRunId(runId)
-            setDrawerVisible(true)
-          } else {
-            localStorage.removeItem(STORAGE_KEY)
-          }
-        })
-        .catch(() => localStorage.removeItem(STORAGE_KEY))
-    )
+    const abort = new AbortController()
+    ;(async () => {
+      try {
+        const headers = await authHeaders(getToken)
+        if (abort.signal.aborted) return
+        const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}`, { headers, signal: abort.signal })
+        if (!r.ok) { localStorage.removeItem(STORAGE_KEY); return }
+        const run = await r.json()
+        if (abort.signal.aborted) return
+        if (run.status === "running" || run.status === "pending") {
+          setActiveRunId(runId)
+          setDrawerVisible(true)
+        } else {
+          localStorage.removeItem(STORAGE_KEY)
+        }
+      } catch {
+        localStorage.removeItem(STORAGE_KEY)
+      }
+    })()
+    return () => abort.abort()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId])
 
@@ -238,23 +247,31 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
 
   // Load available environments for the environment picker
   useEffect(() => {
-    authHeaders(getToken).then(headers =>
-      fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments`, { headers })
-        .then(r => r.ok ? r.json() : [])
-        .then(data => setEnvironments(data))
-        .catch(() => {})
-    )
+    const abort = new AbortController()
+    ;(async () => {
+      try {
+        const headers = await authHeaders(getToken)
+        if (abort.signal.aborted) return
+        const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments`, { headers, signal: abort.signal })
+        if (!abort.signal.aborted) setEnvironments(r.ok ? await r.json() : [])
+      } catch {}
+    })()
+    return () => abort.abort()
   }, [getToken])
 
   // Load credentials for the selected environment
   useEffect(() => {
     if (!selectedEnvId) { setEnvCredentials([]); return }
-    authHeaders(getToken).then(headers =>
-      fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/by-environment/${selectedEnvId}`, { headers })
-        .then(r => r.ok ? r.json() : [])
-        .then(data => setEnvCredentials(data))
-        .catch(() => {})
-    )
+    const abort = new AbortController()
+    ;(async () => {
+      try {
+        const headers = await authHeaders(getToken)
+        if (abort.signal.aborted) return
+        const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/by-environment/${selectedEnvId}`, { headers, signal: abort.signal })
+        if (!abort.signal.aborted) setEnvCredentials(r.ok ? await r.json() : [])
+      } catch {}
+    })()
+    return () => abort.abort()
   }, [getToken, selectedEnvId])
 
   const fetchRuns = () => {
@@ -265,7 +282,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
         .then(r => r.ok ? r.json() : [])
         .then(data => { setRuns(data); setRunsLoading(false) })
         .catch(() => setRunsLoading(false))
-    )
+    ).catch(() => setRunsLoading(false))
   }
 
   useEffect(() => {
@@ -289,8 +306,9 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
   // as a stack of overlapping nodes.
   useEffect(() => {
     if (!workflowId || workflowId === "undefined") return
+    const abort = new AbortController()
     authHeaders(getToken).then(headers =>
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, { headers })
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, { headers, signal: abort.signal })
       .then(async (r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
       .then((data) => {
         setWorkflowName(data.name)
@@ -341,8 +359,9 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
         setCanvasLoading(false)
         setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 50)
       })
-      .catch(() => { isFirstLoad.current = false; setCanvasLoading(false) })
-    )
+      .catch(() => { if (!abort.signal.aborted) { isFirstLoad.current = false; setCanvasLoading(false) } })
+    ).catch(() => { isFirstLoad.current = false; setCanvasLoading(false) })
+    return () => abort.abort()
   }, [workflowId, getToken, setNodes, setEdges])
 
   const handleYamlLoaded = useCallback(
@@ -373,6 +392,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
 
   const save = useCallback(async (currentNodes: Node[], currentEdges: Edge[], name: string) => {
     if (!workflowId || workflowId === "undefined") return
+    if (savingInFlightRef.current) return
+    savingInFlightRef.current = true
     setSaveStatus("saving")
     try {
       const headers = await authHeaders(getToken)
@@ -391,6 +412,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
     } catch {
       setSaveStatus("error")
       setTimeout(() => setSaveStatus("idle"), 3000)
+    } finally {
+      savingInFlightRef.current = false
     }
   }, [workflowId, getToken])
 
@@ -746,12 +769,13 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
       )
       if (!res.ok) throw new Error("Failed to start run")
       const run = await res.json()
+      if (!isMountedRef.current) return
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ runId: run.id, startedAt: Date.now() }))
       setActiveRunId(run.id)
       setDrawerVisible(true)
       setRunning("idle")
     } catch {
-      setRunning("idle")
+      if (isMountedRef.current) setRunning("idle")
     }
   }, [workflowId, getToken, STORAGE_KEY])
 

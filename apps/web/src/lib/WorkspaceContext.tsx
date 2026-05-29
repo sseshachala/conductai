@@ -16,6 +16,7 @@ interface WorkspaceContextValue {
   activeWorkspace: Workspace | null
   setActiveWorkspace: (ws: Workspace) => void
   loading: boolean
+  error: string | null
   refresh: () => Promise<void>
 }
 
@@ -24,6 +25,7 @@ const WorkspaceContext = createContext<WorkspaceContextValue>({
   activeWorkspace: null,
   setActiveWorkspace: () => {},
   loading: true,
+  error: null,
   refresh: async () => {},
 })
 
@@ -65,8 +67,10 @@ function WorkspaceProviderInner({
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [activeWorkspace, setActiveWorkspaceState] = useState<Workspace | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
+    setError(null)
     try {
       const headers: Record<string, string> = {}
       if (getToken) {
@@ -74,9 +78,12 @@ function WorkspaceProviderInner({
         if (token) headers["Authorization"] = `Bearer ${token}`
       }
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, { headers })
-      if (!res.ok) return
+      if (!res.ok) {
+        setError(`Failed to load workspaces (${res.status})`)
+        return
+      }
       const data: Workspace[] = await res.json()
-      if (!Array.isArray(data)) return
+      if (!Array.isArray(data)) { setError("Unexpected response from workspace API"); return }
       setWorkspaces(data)
 
       // Restore previously active workspace from cookie, or default to first
@@ -88,6 +95,8 @@ function WorkspaceProviderInner({
         setCookie("delegator_project_id", resolved.id)
         setCookie("delegator_project_name", encodeURIComponent(resolved.name))
       }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Network error loading workspaces")
     } finally {
       setLoading(false)
     }
@@ -102,7 +111,7 @@ function WorkspaceProviderInner({
   }
 
   return (
-    <WorkspaceContext.Provider value={{ workspaces, activeWorkspace, setActiveWorkspace, loading, refresh }}>
+    <WorkspaceContext.Provider value={{ workspaces, activeWorkspace, setActiveWorkspace, loading, error, refresh }}>
       {children}
     </WorkspaceContext.Provider>
   )

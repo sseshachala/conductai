@@ -8,6 +8,7 @@ import AuthButton from "@/components/AuthButton"
 import { WorkspaceProvider, useWorkspace } from "@/lib/WorkspaceContext"
 import { PreferencesProvider } from "@/lib/PreferencesContext"
 import Toast, { type ToastData } from "@/components/ui/Toast"
+import ErrorBoundary from "@/components/ui/ErrorBoundary"
 
 interface Project { id: string; name: string; agent_count: number }
 interface Org { id: string; name: string; slug: string }
@@ -524,7 +525,9 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
         </div>
       </aside>
 
-      <main className={`flex-1 min-h-0 ${noPadding ? "overflow-hidden flex flex-col" : "overflow-auto"}`}>{children}</main>
+      <main className={`flex-1 min-h-0 ${noPadding ? "overflow-hidden flex flex-col" : "overflow-auto"}`}>
+        <ErrorBoundary>{children}</ErrorBoundary>
+      </main>
     </div>
     {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
     </PreferencesProvider>
