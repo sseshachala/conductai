@@ -237,7 +237,18 @@ def create_run(
     db.commit()
     db.refresh(run)
 
-    _redis().rpush(QUEUE_KEY, str(run.id))
+    try:
+        _redis().rpush(QUEUE_KEY, str(run.id))
+    except Exception as _enqueue_err:
+        import logging as _logging
+        _logging.getLogger(__name__).error(
+            "create_run.redis_enqueue_failed run_id=%s err=%s — run is pending but not queued",
+            run.id, _enqueue_err,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Run created but queue is unavailable. Retry in a moment.",
+        )
 
     audit(db, workspace_id, "run.triggered",
           resource_type="run", resource_id=str(run.id),
@@ -311,12 +322,14 @@ def stream_run_events(
     run = _get_run(run_id, workflow_id, db)
 
     def event_generator():
+        import time as _time
         from app.core.database import SessionLocal
 
         seen_ids: set = set()
         stream_db = SessionLocal()
         pubsub = _redis().pubsub()
         pubsub.subscribe(f"{_RUN_CHANNEL_PREFIX}{str(run_id)}")
+        deadline = _time.monotonic() + _SSE_TIMEOUT_SECONDS
 
         def flush_new_events():
             events = (
@@ -346,18 +359,34 @@ def stream_run_events(
                 yield "data: [DONE]\n\n"
                 return
 
-            # Wait for notifications; timeout closes the stream so the client reconnects
-            for message in pubsub.listen():
-                if message["type"] != "message":
-                    continue
-                yield from flush_new_events()
-                terminal = is_terminal()
-                if terminal:
-                    if terminal == "paused":
-                        r = stream_db.query(Run).filter(Run.id == run_id).first()
-                        yield f"data: {json.dumps({'kind': 'run_paused', 'block_id': r.current_block_id if r else None, 'payload': {}})}\n\n"
-                    yield "data: [DONE]\n\n"
-                    break
+            # Poll using get_message with a short timeout so the deadline is enforced.
+            # pubsub.listen() has no timeout; get_message(timeout=N) yields control
+            # every N seconds so we can check both the deadline and run status.
+            while _time.monotonic() < deadline:
+                message = pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                if message and message["type"] == "message":
+                    yield from flush_new_events()
+                    terminal = is_terminal()
+                    if terminal:
+                        if terminal == "paused":
+                            r = stream_db.query(Run).filter(Run.id == run_id).first()
+                            yield f"data: {json.dumps({'kind': 'run_paused', 'block_id': r.current_block_id if r else None, 'payload': {}})}\n\n"
+                        yield "data: [DONE]\n\n"
+                        return
+                elif message is None:
+                    # No pub/sub message — poll DB periodically (every ~5 s) to catch
+                    # runs that completed without publishing (e.g. Redis pub/sub miss).
+                    terminal = is_terminal()
+                    if terminal:
+                        yield from flush_new_events()
+                        if terminal == "paused":
+                            r = stream_db.query(Run).filter(Run.id == run_id).first()
+                            yield f"data: {json.dumps({'kind': 'run_paused', 'block_id': r.current_block_id if r else None, 'payload': {}})}\n\n"
+                        yield "data: [DONE]\n\n"
+                        return
+
+            # Deadline reached — close the stream; client will reconnect.
+            yield "data: {\"kind\": \"stream_timeout\"}\n\n"
         finally:
             pubsub.unsubscribe()
             pubsub.close()
@@ -428,7 +457,7 @@ def cancel_run(
     if run.status not in ("running", "pending"):
         raise HTTPException(status_code=400, detail=f"Run cannot be cancelled (status: {run.status})")
     run.status = "cancelled"
-    run.finished_at = _now()
+    run.completed_at = _now()
     db.add(RunEvent(run_id=run_id, block_id=None, kind="run_cancelled", payload={"reason": "user_cancelled"}))
     db.commit()
     return {"run_id": str(run_id), "status": "cancelled"}
@@ -452,21 +481,41 @@ def approve_run(
 
     _get_workflow(workflow_id, workspace_id, db)
     run = _get_run(run_id, workflow_id, db)
-    if run.status != "paused":
-        raise HTTPException(status_code=400, detail=f"Run is not paused (status: {run.status})")
 
     block_id = run.current_block_id
     if not block_id:
         raise HTTPException(status_code=400, detail="No approval block recorded on paused run")
 
+    # Atomic CAS: only one concurrent approval request wins.
+    # UPDATE ... WHERE status='paused' returns the updated row; if it returns
+    # nothing the run was already resumed (or is in a terminal state).
+    from sqlalchemy import text as _text
+    cas_result = db.execute(
+        _text(
+            "UPDATE runs SET status='pending', paused_at=NULL "
+            "WHERE id=:id AND status='paused' "
+            "RETURNING id"
+        ),
+        {"id": str(run_id)},
+    ).fetchone()
+    if not cas_result:
+        current_status = db.query(Run).filter(Run.id == run_id).first()
+        status_str = current_status.status if current_status else "unknown"
+        raise HTTPException(
+            status_code=409,
+            detail=f"Run is not paused — already resumed or in status '{status_str}'. "
+                   "Duplicate approval ignored.",
+        )
+
+    # Persist the decision into run state and write the event.
     state = dict(run.state or {})
     state[f"__approval_{block_id}"] = body.decision
     if body.approver:
         state[f"__approver_{block_id}"] = body.approver
-    run.state = state
-    run.status = "pending"
-    run.paused_at = None
-    db.commit()
+    db.execute(
+        _text("UPDATE runs SET state=:state::jsonb WHERE id=:id"),
+        {"state": json.dumps(state), "id": str(run_id)},
+    )
 
     event = RunEvent(
         run_id=run_id,
@@ -477,7 +526,15 @@ def approve_run(
     db.add(event)
     db.commit()
 
-    _redis().rpush(QUEUE_KEY, str(run_id))
+    try:
+        _redis().rpush(QUEUE_KEY, str(run_id))
+    except Exception:
+        import logging as _logging
+        _logging.getLogger(__name__).error(
+            "approve_run.redis_enqueue_failed run_id=%s — run is pending in DB but not queued",
+            run_id,
+        )
+        raise HTTPException(status_code=503, detail="Approval recorded but queue unavailable — retry shortly")
 
     return {"run_id": str(run_id), "decision": body.decision, "status": "queued"}
 

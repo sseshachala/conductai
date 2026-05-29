@@ -13,7 +13,7 @@ import { useWorkspace } from "@/lib/WorkspaceContext"
 type Tab = "credentials" | "members" | "audit-log" | "preferences" | "api-keys"
 
 const TAB_LABELS: Record<Tab, string> = {
-  credentials: "Credentials",
+  credentials: "Environments",
   preferences: "Preferences",
   members: "Members",
   "audit-log": "Audit Log",
@@ -56,7 +56,21 @@ function SettingsPageWithAuth() {
 function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolean; workspaceId: string; getToken: (() => Promise<string | null>) | null }) {
   const tabs = (["credentials", "preferences", ...(isAdmin ? ["members", "audit-log", "api-keys"] : [])] as Tab[])
   const [activeTab, setActiveTab] = useState<Tab>("credentials")
-  const [showTip, setShowTip] = useState(true)
+  const [showTip, setShowTip] = useState(false)
+
+  // Only show tip if user hasn't dismissed it before
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setShowTip(localStorage.getItem("conduct_settings_tip_dismissed") !== "1")
+    }
+  }, [])
+
+  function dismissTip() {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("conduct_settings_tip_dismissed", "1")
+    }
+    setShowTip(false)
+  }
 
   return (
     <AppShell>
@@ -68,7 +82,7 @@ function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolea
             Go to Credentials, add your GitHub token, Slack token, and any other API keys. Agents pick them up automatically — no extra config needed.
           </p>
           <button
-            onClick={() => setShowTip(false)}
+            onClick={dismissTip}
             className="shrink-0 text-amber-400 hover:text-amber-700 transition-colors ml-1 text-base leading-none"
             aria-label="Dismiss"
           >

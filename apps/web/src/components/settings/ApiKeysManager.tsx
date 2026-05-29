@@ -27,6 +27,8 @@ export default function ApiKeysManager() {
   const [newKey, setNewKey] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [revoking, setRevoking] = useState<string | null>(null)
+  const [revokeConfirm, setRevokeConfirm] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const headers = useCallback(async (): Promise<Record<string, string>> => {
     const h: Record<string, string> = { "Content-Type": "application/json" }
@@ -50,6 +52,7 @@ export default function ApiKeysManager() {
   async function create() {
     if (!newName.trim()) return
     setCreating(true)
+    setError(null)
     try {
       const h = await headers()
       const r = await fetch(`${apiUrl}/workspaces/${workspaceId}/api-keys`, {
@@ -62,18 +65,27 @@ export default function ApiKeysManager() {
         setNewKey(data.key)
         setNewName("")
         await load()
+      } else {
+        const body = await r.json().catch(() => ({}))
+        setError(body.detail ?? "Could not generate key — please try again.")
       }
-    } catch {}
+    } catch { setError("Could not generate key — check your connection.") }
     setCreating(false)
   }
 
   async function revoke(id: string) {
+    setRevokeConfirm(null)
     setRevoking(id)
+    setError(null)
     try {
       const h = await headers()
-      await fetch(`${apiUrl}/workspaces/${workspaceId}/api-keys/${id}`, { method: "DELETE", headers: h })
-      setKeys(k => k.filter(x => x.id !== id))
-    } catch {}
+      const r = await fetch(`${apiUrl}/workspaces/${workspaceId}/api-keys/${id}`, { method: "DELETE", headers: h })
+      if (r.ok) setKeys(k => k.filter(x => x.id !== id))
+      else {
+        const body = await r.json().catch(() => ({}))
+        setError(body.detail ?? "Could not revoke key — please try again.")
+      }
+    } catch { setError("Could not revoke key — check your connection.") }
     setRevoking(null)
   }
 
@@ -91,6 +103,14 @@ export default function ApiKeysManager() {
 
   return (
     <div className="space-y-6">
+      {/* Error banner */}
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 flex items-center justify-between gap-3">
+          <p className="text-xs text-red-700">{error}</p>
+          <button onClick={() => setError(null)} aria-label="Dismiss" className="text-xs text-red-400 hover:text-red-700">✕</button>
+        </div>
+      )}
+
       {/* New key — shown once after creation */}
       {newKey && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
@@ -167,13 +187,32 @@ export default function ApiKeysManager() {
                   <td className="px-4 py-3 text-stone-500">{fmt(k.created_at)}</td>
                   <td className="px-4 py-3 text-stone-500">{fmt(k.last_used_at)}</td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => revoke(k.id)}
-                      disabled={revoking === k.id}
-                      className="text-xs text-red-500 hover:text-red-700 disabled:opacity-40 transition-colors"
-                    >
-                      {revoking === k.id ? "Revoking…" : "Revoke"}
-                    </button>
+                    {revokeConfirm === k.id ? (
+                      <span className="inline-flex items-center gap-2">
+                        <span className="text-xs text-stone-500">Revoke?</span>
+                        <button
+                          onClick={() => revoke(k.id)}
+                          disabled={revoking === k.id}
+                          className="text-xs font-medium text-red-600 hover:text-red-800 disabled:opacity-40 transition-colors"
+                        >
+                          {revoking === k.id ? "Revoking…" : "Yes, revoke"}
+                        </button>
+                        <button
+                          onClick={() => setRevokeConfirm(null)}
+                          className="text-xs text-stone-400 hover:text-stone-600 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => setRevokeConfirm(k.id)}
+                        disabled={revoking === k.id}
+                        className="text-xs text-stone-400 hover:text-red-500 disabled:opacity-40 transition-colors"
+                      >
+                        Revoke
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

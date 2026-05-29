@@ -7,6 +7,7 @@ import { useAuth } from "@clerk/nextjs"
 import AuthButton from "@/components/AuthButton"
 import { WorkspaceProvider, useWorkspace } from "@/lib/WorkspaceContext"
 import { PreferencesProvider } from "@/lib/PreferencesContext"
+import Toast, { type ToastData } from "@/components/ui/Toast"
 
 interface Project { id: string; name: string; agent_count: number }
 interface Org { id: string; name: string; slug: string }
@@ -25,6 +26,9 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
   const router = useRouter()
   const { getToken } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
+  const [toast, setToast] = useState<ToastData | null>(null)
+  function showError(message: string) { setToast({ message, type: "error" }) }
+  function showSuccess(message: string) { setToast({ message, type: "success" }) }
 
   // Org state (lives at bottom)
   const [orgs, setOrgs] = useState<Org[]>([])
@@ -120,83 +124,105 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
   async function saveOrgRename() {
     setOrgRenaming(false)
     if (!orgNameValue.trim() || !activeOrg || orgNameValue === activeOrg.name) return
-    const h = await headers()
-    h["Content-Type"] = "application/json"
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/organizations/${activeOrg.id}`, {
-      method: "PATCH", headers: h, body: JSON.stringify({ name: orgNameValue.trim() })
-    })
-    if (res.ok) { const updated = await res.json(); setActiveOrg(updated); fetchOrgs() }
+    try {
+      const h = await headers()
+      h["Content-Type"] = "application/json"
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/organizations/${activeOrg.id}`, {
+        method: "PATCH", headers: h, body: JSON.stringify({ name: orgNameValue.trim() })
+      })
+      if (res.ok) { const updated = await res.json(); setActiveOrg(updated); fetchOrgs() }
+      else showError("Could not rename organisation — please try again.")
+    } catch { showError("Could not rename organisation — check your connection.") }
   }
 
   async function submitCreateOrg() {
     const name = newOrgValue.trim()
     setCreatingOrg(false); setNewOrgValue("")
     if (!name) return
-    const h = await headers()
-    h["Content-Type"] = "application/json"
-    const slug = name.toLowerCase().replace(/\s+/g, "-") + "-" + Math.random().toString(36).slice(2, 6)
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/organizations`, {
-      method: "POST", headers: h, body: JSON.stringify({ name, slug })
-    })
-    if (res.ok) { const org = await res.json(); setActiveOrg(org); fetchOrgs() }
+    try {
+      const h = await headers()
+      h["Content-Type"] = "application/json"
+      const slug = name.toLowerCase().replace(/\s+/g, "-") + "-" + Math.random().toString(36).slice(2, 6)
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/organizations`, {
+        method: "POST", headers: h, body: JSON.stringify({ name, slug })
+      })
+      if (res.ok) { const org = await res.json(); setActiveOrg(org); fetchOrgs() }
+      else showError("Could not create organisation — please try again.")
+    } catch { showError("Could not create organisation — check your connection.") }
     setOrgOpen(false)
   }
 
   async function saveTeamRename() {
     setTeamRenaming(false)
     if (!teamNameValue.trim() || !activeWorkspace || teamNameValue === activeWorkspace.name) return
-    const h = await headers()
-    h["Content-Type"] = "application/json"
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace.id}`, {
-      method: "PATCH", headers: h, body: JSON.stringify({ name: teamNameValue.trim() })
-    })
-    refreshWorkspaces()
+    try {
+      const h = await headers()
+      h["Content-Type"] = "application/json"
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace.id}`, {
+        method: "PATCH", headers: h, body: JSON.stringify({ name: teamNameValue.trim() })
+      })
+      if (res.ok) refreshWorkspaces()
+      else showError("Could not rename team — please try again.")
+    } catch { showError("Could not rename team — check your connection.") }
   }
 
   async function submitCreateTeam() {
     const name = newTeamValue.trim()
     setCreatingTeam(false); setNewTeamValue("")
     if (!name) return
-    const h = await headers()
-    h["Content-Type"] = "application/json"
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, {
-      method: "POST", headers: h, body: JSON.stringify({ name })
-    })
-    setTeamOpen(false); refreshWorkspaces()
+    try {
+      const h = await headers()
+      h["Content-Type"] = "application/json"
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, {
+        method: "POST", headers: h, body: JSON.stringify({ name })
+      })
+      if (res.ok) { setTeamOpen(false); refreshWorkspaces() }
+      else showError("Could not create team — please try again.")
+    } catch { showError("Could not create team — check your connection.") }
   }
 
   async function confirmDeleteTeam(ws: { id: string; name: string }) {
     if (deleteConfirmValue !== ws.name) return
     setDeletingTeamId(null); setDeleteConfirmValue("")
-    const h = await headers()
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${ws.id}`, { method: "DELETE", headers: h })
-    const next = workspaces.find(w => w.id !== ws.id)
-    if (activeWorkspace?.id === ws.id && next) setActiveWorkspace(next)
-    refreshWorkspaces()
+    try {
+      const h = await headers()
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${ws.id}`, { method: "DELETE", headers: h })
+      if (res.ok) {
+        const next = workspaces.find(w => w.id !== ws.id)
+        if (activeWorkspace?.id === ws.id && next) setActiveWorkspace(next)
+        refreshWorkspaces()
+      } else showError("Could not delete team — please try again.")
+    } catch { showError("Could not delete team — check your connection.") }
   }
 
   async function submitCreateProject() {
     const name = newProjectValue.trim()
     setCreatingProject(false); setNewProjectValue("")
     if (!name || !activeWorkspace) return
-    const h = await headers()
-    h["Content-Type"] = "application/json"
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${activeWorkspace.id}/projects`, {
-      method: "POST", headers: h, body: JSON.stringify({ name })
-    })
-    fetchProjects()
+    try {
+      const h = await headers()
+      h["Content-Type"] = "application/json"
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${activeWorkspace.id}/projects`, {
+        method: "POST", headers: h, body: JSON.stringify({ name })
+      })
+      if (res.ok) fetchProjects()
+      else showError("Could not create project — please try again.")
+    } catch { showError("Could not create project — check your connection.") }
   }
 
   async function submitProjectRename(projectId: string) {
     const name = renameValue.trim()
     setRenamingProjectId(null)
     if (!name || !activeWorkspace) return
-    const h = await headers()
-    h["Content-Type"] = "application/json"
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${activeWorkspace.id}/projects/${projectId}`, {
-      method: "PATCH", headers: h, body: JSON.stringify({ name })
-    })
-    fetchProjects()
+    try {
+      const h = await headers()
+      h["Content-Type"] = "application/json"
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${activeWorkspace.id}/projects/${projectId}`, {
+        method: "PATCH", headers: h, body: JSON.stringify({ name })
+      })
+      if (res.ok) fetchProjects()
+      else showError("Could not rename project — please try again.")
+    } catch { showError("Could not rename project — check your connection.") }
   }
 
   const activeProjectId = pathname.match(/\/projects\/([^/]+)/)?.[1]
@@ -236,7 +262,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
                   onClick={() => setTeamOpen(v => !v)}
                   className="flex-1 flex items-center gap-1 text-sm font-medium text-stone-700 hover:text-stone-500 text-left"
                 >
-                  <span className="truncate">{activeWorkspace?.name ?? "Team"}</span>
+                  <span className="truncate" title={activeWorkspace?.name}>{activeWorkspace?.name ?? "Team"}</span>
                   <span className="text-stone-400 text-[10px] shrink-0">{teamOpen ? "▴" : "▾"}</span>
                 </button>
               )
@@ -290,14 +316,15 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
                         <span className="w-5 h-5 rounded-md bg-indigo-100 text-indigo-700 text-[10px] font-bold flex items-center justify-center shrink-0">
                           {ws.name[0].toUpperCase()}
                         </span>
-                        <span className="flex-1 truncate">{ws.name}</span>
+                        <span className="flex-1 truncate" title={ws.name}>{ws.name}</span>
                         {ws.id === activeWorkspace?.id && <span className="text-indigo-500">✓</span>}
                       </button>
                       <button
                         onClick={() => { setDeletingTeamId(ws.id); setDeleteConfirmValue("") }}
                         className="opacity-0 group-hover:opacity-100 text-stone-300 hover:text-red-500 transition-all text-xs px-1"
                         title="Delete team"
-                      >🗑</button>
+                        aria-label="Delete team"
+                      ><span aria-hidden="true">🗑</span></button>
                     </div>
                   )}
                 </div>
@@ -356,7 +383,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
                         />
                       ) : (
                         <>
-                          <Link href={`/projects/${project.id}`} className={`flex-1 text-sm truncate ${isActive ? "font-semibold text-stone-900" : "text-stone-600"}`}>
+                          <Link href={`/projects/${project.id}`} title={project.name} className={`flex-1 text-sm truncate ${isActive ? "font-semibold text-stone-900" : "text-stone-600"}`}>
                             {project.name}
                           </Link>
                           {!collapsed && (
@@ -426,7 +453,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
                     onClick={() => setOrgOpen(v => !v)}
                     className="flex-1 flex items-center gap-1 text-sm font-medium text-stone-700 hover:text-stone-500 text-left truncate"
                   >
-                    <span className="truncate">{activeOrg?.name ?? "Organization"}</span>
+                    <span className="truncate" title={activeOrg?.name}>{activeOrg?.name ?? "Organisation"}</span>
                     <span className="text-stone-400 text-[10px] shrink-0">{orgOpen ? "▴" : "▾"}</span>
                   </button>
                 )
@@ -451,7 +478,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
                     <span className="w-5 h-5 rounded-md bg-violet-100 text-violet-700 text-[10px] font-bold flex items-center justify-center shrink-0">
                       {org.name[0].toUpperCase()}
                     </span>
-                    <span className="flex-1 truncate">{org.name}</span>
+                    <span className="flex-1 truncate" title={org.name}>{org.name}</span>
                     {org.id === activeOrg?.id && <span className="text-violet-500">✓</span>}
                   </button>
                 ))}
@@ -486,17 +513,19 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
         <div className="border-t border-stone-100 px-2 py-2 space-y-0.5">
           <a href="https://github.com/sseshachala/conductai/discussions/new?category=ideas" target="_blank" rel="noopener noreferrer"
             className={`flex items-center gap-1.5 text-xs text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-lg px-2 py-1.5 w-full ${collapsed ? "justify-center" : ""}`}>
-            <span>💡</span>{!collapsed && <span>Request an idea</span>}
+            <span aria-hidden="true">💡</span>{!collapsed && <span>Request an idea</span>}
           </a>
           <button onClick={() => setCollapsed(v => !v)}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             className={`flex items-center gap-1.5 text-xs text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-lg px-2 py-1.5 w-full ${collapsed ? "justify-center" : ""}`}>
-            <span>{collapsed ? "›" : "‹"}</span>{!collapsed && <span>Collapse</span>}
+            <span aria-hidden="true">{collapsed ? "›" : "‹"}</span>{!collapsed && <span aria-hidden="true">Collapse</span>}
           </button>
         </div>
       </aside>
 
       <main className={`flex-1 min-h-0 ${noPadding ? "overflow-hidden flex flex-col" : "overflow-auto"}`}>{children}</main>
     </div>
+    {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
     </PreferencesProvider>
   )
 }
@@ -504,9 +533,13 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
 function NavItem({ href, icon, label, collapsed, pathname }: { href: string; icon: string; label: string; collapsed: boolean; pathname: string }) {
   const active = pathname.startsWith(href)
   return (
-    <Link href={href} title={collapsed ? label : undefined}
-      className={`flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors ${collapsed ? "justify-center" : ""} ${active ? "bg-stone-100 text-stone-900" : "text-stone-500 hover:text-stone-800 hover:bg-stone-50"}`}>
-      <span className="text-base leading-none shrink-0">{icon}</span>
+    <Link
+      href={href}
+      aria-label={collapsed ? label : undefined}
+      title={collapsed ? label : undefined}
+      className={`flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors ${collapsed ? "justify-center" : ""} ${active ? "bg-stone-100 text-stone-900" : "text-stone-500 hover:text-stone-800 hover:bg-stone-50"}`}
+    >
+      <span aria-hidden="true" className="text-base leading-none shrink-0">{icon}</span>
       {!collapsed && label}
     </Link>
   )
