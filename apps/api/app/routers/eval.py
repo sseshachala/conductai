@@ -9,19 +9,23 @@ GET  /eval/fixtures            — list all fixtures (slug, source, payload prev
 GET  /eval/fixtures/{slug}     — full fixture: payload, initial_state, expected outcome
 POST /eval/run/{slug}          — re-run structural eval for one playbook (bypasses cache)
 POST /eval/run                 — re-run structural eval for all playbooks (busts cache)
+POST /eval/live/{slug}         — queue a live (real LLM) eval run, returns job_id immediately
+GET  /eval/jobs/{job_id}       — poll live job status: queued | running | done | failed
 
 All endpoints require at least viewer role.  /eval/report requires admin.
 Structural scoring is fast (~10ms per playbook) so on-demand runs are cheap.
-Live-mode scoring (real LLM calls) is CLI-only:
-  python -m eval.runner --live --json --out reports/eval_live.json
+Live eval runs real LLM calls via the background job system — poll /eval/jobs/{job_id}.
+Requires ANTHROPIC_API_KEY to be set in the API environment.
 """
 from __future__ import annotations
 
+import threading
 import time
-from typing import Any
+import uuid
+from typing import Any, Literal
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_workspace_role
@@ -55,6 +59,25 @@ def _cached_report() -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Eval computation failed: {e}")
 
 
+def _enrich_summary(report: dict[str, Any]) -> dict[str, Any]:
+    """Add grade_counts and top_playbooks to report summary in-place and return it."""
+    grade_counts: dict[str, int] = {"A": 0, "B": 0, "C": 0, "D": 0, "F": 0}
+    for p in report.get("playbooks", []):
+        g = p.get("grade", "F")
+        grade_counts[g] = grade_counts.get(g, 0) + 1
+
+    top = sorted(report.get("playbooks", []), key=lambda x: -x["pct"])[:5]
+    report["summary"] = {
+        **report.get("summary", {}),
+        "grade_counts": grade_counts,
+        "top_playbooks": [
+            {"slug": p["slug"], "grade": p["grade"], "pct": p["pct"]}
+            for p in top
+        ],
+    }
+    return report
+
+
 def _run_one_fresh(slug: str) -> dict[str, Any]:
     """
     Run structural eval for a single playbook, bypass cache, patch result back
@@ -76,6 +99,8 @@ def _run_one_fresh(slug: str) -> dict[str, Any]:
                     break
             else:
                 playbooks.append(score_dict)
+            # Recompute summary so grade_counts/top_playbooks reflect the fresh score
+            _enrich_summary(_cache["report"])
 
         log.info("eval.run_one", slug=slug, grade=score_dict["grade"], pct=score_dict["pct"])
         return score_dict
@@ -315,4 +340,214 @@ def run_all_evals(
     anonymous callers hammer it).
     """
     _cache.clear()
-    return _cached_report()
+    report = _cached_report()
+    return _enrich_summary(report)
+
+
+# ── live eval job store ───────────────────────────────────────────────────────
+#
+# Jobs are kept in-process.  A dict keyed by job_id with a lock for safe
+# concurrent writes from background threads.  We cap the store at 100 entries
+# (oldest removed first) so it never grows unbounded.
+
+_JOB_STATUS = Literal["queued", "running", "done", "failed"]
+_jobs: dict[str, dict[str, Any]] = {}
+_jobs_lock = threading.Lock()
+_JOBS_MAX = 100
+
+
+def _job_create(slug: str) -> str:
+    job_id = str(uuid.uuid4())
+    with _jobs_lock:
+        if len(_jobs) >= _JOBS_MAX:
+            # Evict the oldest entry
+            oldest = next(iter(_jobs))
+            del _jobs[oldest]
+        _jobs[job_id] = {
+            "job_id": job_id,
+            "slug": slug,
+            "status": "queued",
+            "result": None,
+            "error": None,
+            "queued_at": time.time(),
+            "started_at": None,
+            "finished_at": None,
+        }
+    return job_id
+
+
+def _job_update(job_id: str, **kwargs: Any) -> None:
+    with _jobs_lock:
+        if job_id in _jobs:
+            _jobs[job_id].update(kwargs)
+
+
+def _job_get(job_id: str) -> dict[str, Any] | None:
+    with _jobs_lock:
+        return dict(_jobs[job_id]) if job_id in _jobs else None
+
+
+def _resolve_anthropic_key(workspace_id: str, db: Session) -> str | None:
+    """
+    Resolve the Anthropic API key for a workspace using the same priority
+    order as the executor:
+      1. anthropic integration credential (handle="anthropic", field "api_key")
+      2. env_vars credential (flat key ANTHROPIC_API_KEY or anthropic_api_key)
+      3. platform-level ANTHROPIC_API_KEY env var (fallback for dev/self-hosted)
+    """
+    import os
+    try:
+        from app.models.integration import Integration
+        from app.models.environment import Environment as _Env
+        from app.core.crypto import decrypt
+
+        default_env = db.query(_Env).filter(
+            _Env.workspace_id == workspace_id,
+            _Env.name == "Default",
+        ).first()
+
+        cred_rows = db.query(Integration).filter(
+            Integration.workspace_id == workspace_id,
+            Integration.environment_id == default_env.id,
+        ).all() if default_env else []
+
+        for row in cred_rows:
+            if not row.encrypted_credentials:
+                continue
+            creds = decrypt(row.encrypted_credentials)
+            if row.handle == "anthropic":
+                key = creds.get("api_key")
+                if key:
+                    return key
+            if row.handle == "env_vars":
+                key = creds.get("ANTHROPIC_API_KEY") or creds.get("anthropic_api_key")
+                if key:
+                    return key
+    except Exception as exc:
+        log.warning("eval.live_key_lookup_failed", error=str(exc))
+
+    # Platform-level fallback (dev / self-hosted without vault)
+    return os.environ.get("ANTHROPIC_API_KEY") or None
+
+
+def _run_live_background(job_id: str, slug: str, anthropic_api_key: str) -> None:
+    """
+    Background thread: execute live eval and write result into the job store.
+
+    The api_key is passed directly into run_one() which scopes it to the
+    AnthropicClient mock patch for this call only.  No process-level
+    os.environ mutation — concurrent jobs from different workspaces are safe.
+    """
+    _job_update(job_id, status="running", started_at=time.time())
+    log.info("eval.live_started", job_id=job_id, slug=slug)
+    try:
+        from eval.runner import run_one
+        from eval.fixtures import load_fixture
+
+        report = run_one(slug, live=True, api_key=anthropic_api_key)
+        if not report.scores:
+            raise ValueError(f"No scores returned for '{slug}'")
+
+        score_dict = report._to_dict()["playbooks"][0]
+
+        # Attach fixture inline — same shape as GET /eval/playbooks/{slug}
+        fixture = load_fixture(slug)
+        fixture_data = _serialise_fixture(fixture) if fixture else None
+        result = {**score_dict, "fixture": fixture_data}
+
+        _job_update(
+            job_id,
+            status="done",
+            result=result,
+            finished_at=time.time(),
+        )
+        log.info("eval.live_done", job_id=job_id, slug=slug, grade=score_dict["grade"])
+
+    except Exception as exc:
+        _job_update(
+            job_id,
+            status="failed",
+            error=str(exc),
+            finished_at=time.time(),
+        )
+        log.error("eval.live_failed", job_id=job_id, slug=slug, error=str(exc))
+
+
+# ── live eval endpoints ───────────────────────────────────────────────────────
+
+@router.post("/live/{slug}")
+def start_live_eval(
+    slug: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+):
+    """
+    Queue a live (real LLM) eval run for a single playbook.
+
+    Returns immediately with a job_id.  Poll GET /eval/jobs/{job_id} to
+    track progress.  Live eval calls the real executor with mocked external
+    integrations (GitHub/Slack) but a real Anthropic LLM call.
+
+    Requires ANTHROPIC_API_KEY to be set in the API environment.
+    The run typically takes 15-60 seconds depending on playbook complexity.
+    """
+    # Verify the slug exists before queuing
+    try:
+        from eval.fixtures import load_fixture
+        fixture = load_fixture(slug)
+    except Exception:
+        fixture = None
+
+    if fixture is None:
+        raise HTTPException(status_code=404, detail=f"No playbook found with slug '{slug}'")
+
+    # Resolve the Anthropic key from the workspace credential vault.
+    # Falls back to the platform-level env var for dev / self-hosted setups.
+    anthropic_key = _resolve_anthropic_key(workspace_id, db)
+    if not anthropic_key:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "No Anthropic API key found for this workspace. "
+                "Add it in Settings → Credentials as an 'anthropic' integration "
+                "or set ANTHROPIC_API_KEY in your Default environment."
+            ),
+        )
+
+    job_id = _job_create(slug)
+    background_tasks.add_task(_run_live_background, job_id, slug, anthropic_key)
+
+    log.info("eval.live_queued", job_id=job_id, slug=slug)
+    return {
+        "job_id": job_id,
+        "slug": slug,
+        "status": "queued",
+        "poll_url": f"/eval/jobs/{job_id}",
+    }
+
+
+@router.get("/jobs/{job_id}")
+def get_live_job(
+    job_id: str,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+):
+    """
+    Poll the status of a live eval job.
+
+    Response shape:
+      {
+        job_id, slug, status,          # queued | running | done | failed
+        queued_at, started_at,         # Unix timestamps (float), null if not yet
+        finished_at,
+        result,                        # full score + fixture when status == "done"
+        error,                         # error string when status == "failed"
+      }
+    """
+    job = _job_get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    return job
