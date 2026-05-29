@@ -68,9 +68,9 @@ blocks:
 
       Steps (all in ONE run_shell call):
       1. Clone the repo:
-         rm -rf /tmp/dep_update_repo
-         git clone --depth {{inputs.clone_depth}} https://$GIT_TOKEN@github.com/{{_trigger.repo}} /tmp/dep_update_repo
-         cd /tmp/dep_update_repo && git config user.email "bot@conductai.ai" && git config user.name "Conduct AI"
+         rm -rf dep_update_repo
+         git clone --depth {{inputs.clone_depth}} https://$GIT_TOKEN@github.com/{{_trigger.repo}} dep_update_repo
+         cd dep_update_repo && git config user.email "bot@conductai.ai" && git config user.name "Conduct AI"
 
       2. Detect package manager:
          - package.json present → Node.js/npm
