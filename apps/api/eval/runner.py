@@ -69,21 +69,31 @@ def run_all(live: bool = False, playbooks_dir: Path | None = None) -> EvalReport
     return EvalReport(scores=scores, live_mode=live)
 
 
-def run_one(slug: str, live: bool = False) -> EvalReport:
-    """Evaluate a single playbook by slug."""
+def run_one(slug: str, live: bool = False, api_key: str | None = None) -> EvalReport:
+    """
+    Evaluate a single playbook by slug.
+
+    Parameters
+    ----------
+    api_key:
+        Anthropic API key to use for live eval.  When provided it is injected
+        directly into the LLM client via a mock patch scoped to this call —
+        no process-level environment mutation occurs.  If omitted the executor
+        falls back to settings.anthropic_api_key / os.environ.
+    """
     fixture = load_fixture(slug)
     if fixture is None:
         raise ValueError(
             f"No playbook found with slug '{slug}'. "
             f"Available slugs: {_list_slugs()}"
         )
-    score = _eval_one(fixture, live=live)
+    score = _eval_one(fixture, live=live, api_key=api_key)
     return EvalReport(scores=[score], live_mode=live)
 
 
 # ── internal eval for one playbook ───────────────────────────────────────────
 
-def _eval_one(fixture: PlaybookFixture, live: bool) -> PlaybookScore:
+def _eval_one(fixture: PlaybookFixture, live: bool, api_key: str | None = None) -> PlaybookScore:
     """Run all checks for one playbook and return a PlaybookScore."""
     start = time.perf_counter()
 
@@ -91,7 +101,7 @@ def _eval_one(fixture: PlaybookFixture, live: bool) -> PlaybookScore:
     score = score_structural(playbook_yaml, fixture.slug)
 
     if live:
-        score = _run_live(fixture, score, playbook_yaml)
+        score = _run_live(fixture, score, playbook_yaml, api_key=api_key)
 
     elapsed = time.perf_counter() - start
     log.info(
@@ -117,13 +127,14 @@ def _run_live(
     fixture: PlaybookFixture,
     score: PlaybookScore,
     playbook_yaml: str,
+    api_key: str | None = None,
 ) -> PlaybookScore:
     """
     Execute the playbook end-to-end through the real executor using a
     mock database and stubbed integrations.  Appends quality criteria to score.
     """
     try:
-        result = _execute_with_mocks(fixture, playbook_yaml)
+        result = _execute_with_mocks(fixture, playbook_yaml, api_key=api_key)
         run_status   = result["status"]
         outcome      = result["outcome"]
         state        = result["state"]
@@ -144,9 +155,20 @@ def _run_live(
         return score
 
 
-def _execute_with_mocks(fixture: PlaybookFixture, playbook_yaml: str) -> dict[str, Any]:
+def _execute_with_mocks(
+    fixture: PlaybookFixture,
+    playbook_yaml: str,
+    api_key: str | None = None,
+) -> dict[str, Any]:
     """
     Build a mock run context and call the executor directly.
+
+    Parameters
+    ----------
+    api_key:
+        When provided, the AnthropicClient is patched to use this key for the
+        duration of the call.  The patch is scoped to the ``with`` block so
+        concurrent callers with different keys never interfere.
 
     Returns a dict with keys: status, outcome, state.
     """
@@ -156,7 +178,7 @@ def _execute_with_mocks(fixture: PlaybookFixture, playbook_yaml: str) -> dict[st
     # Build a fake run object
     run_id = uuid.uuid4()
     mock_run = _make_mock_run(run_id, fixture)
-    mock_version = _make_mock_version(run_id, playbook_yaml)
+    mock_version = _make_mock_version(run_id, playbook_yaml, fixture.slug)
 
     # Patch the DB session so no real DB is needed
     mock_db = _make_mock_db()
@@ -170,6 +192,22 @@ def _execute_with_mocks(fixture: PlaybookFixture, playbook_yaml: str) -> dict[st
     # Stub external integrations: GitHub, Slack, email, etc.
     # Each stub returns a plausible no-op response so the playbook flows through.
     integration_patches = _build_integration_patches()
+
+    # If an explicit api_key was supplied, inject it into the AnthropicClient
+    # constructor for this call only — scoped to the with block, thread-safe.
+    if api_key:
+        _orig_init = None
+        try:
+            from app.runtime.llm_client import AnthropicClient
+            _orig_init = AnthropicClient.__init__
+
+            def _patched_init(self: Any, **kwargs: Any) -> None:
+                kwargs["api_key"] = api_key
+                _orig_init(self, **kwargs)  # type: ignore[misc]
+
+            integration_patches["app.runtime.llm_client.AnthropicClient.__init__"] = _patched_init
+        except ImportError:
+            pass  # llm_client not available — executor will fall back to env/settings
 
     with _apply_patches(integration_patches):
         from app.runtime.executor import _execute_dag
@@ -208,7 +246,7 @@ def _make_mock_run(run_id: Any, fixture: PlaybookFixture) -> Any:
     return run
 
 
-def _make_mock_version(run_id: Any, playbook_yaml: str) -> Any:
+def _make_mock_version(run_id: Any, playbook_yaml: str, slug: str | None = None) -> Any:
     from unittest.mock import MagicMock
     import json
 
@@ -228,7 +266,7 @@ def _make_mock_version(run_id: Any, playbook_yaml: str) -> Any:
     # Mock the workflow relationship
     wf_mock = MagicMock()
     wf_mock.name = "eval-test"
-    wf_mock.playbook_slug = None
+    wf_mock.playbook_slug = slug
     wf_mock.workspace_id = "eval-workspace"
     version.workflow = wf_mock
 
