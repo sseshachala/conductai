@@ -2,6 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useAuth } from "@clerk/nextjs"
+import {
+  SERVICE_DETECTION,
+  affectedServices,
+  type ServiceFieldDef,
+  type ServiceDetection,
+} from "@/lib/service-key-map"
 
 interface Environment {
   id: string
@@ -33,62 +39,6 @@ interface ServiceDef {
   color: string
   abbr: string
   fields: FieldDef[]
-}
-
-// ── Test-connection service catalogue ────────────────────────────────────────
-// Lists every common env-var naming convention for each service field.
-// The first matching key found in the environment's vars is used automatically;
-// if none match the user can pick any var from a dropdown.
-
-interface ServiceFieldDef {
-  fieldKey: string      // what POST /credentials/test expects
-  label: string         // shown in the card
-  envKeys: string[]     // common env-var names, in priority order
-  required: boolean     // card is testable only when all required fields have a value
-}
-
-interface ServiceDetection {
-  label: string
-  abbr: string
-  color: string         // Tailwind badge class
-  fields: ServiceFieldDef[]
-}
-
-const SERVICE_DETECTION: Record<string, ServiceDetection> = {
-  github: {
-    label: "GitHub", abbr: "GH", color: "bg-stone-900 text-white",
-    fields: [{ fieldKey: "token", label: "Personal access token", required: true,
-      envKeys: ["GITHUB_TOKEN", "GITHUB_PAT", "GH_TOKEN", "GITHUB_ACCESS_TOKEN", "GH_PAT"] }],
-  },
-  slack: {
-    label: "Slack", abbr: "SL", color: "bg-purple-600 text-white",
-    fields: [{ fieldKey: "token", label: "Bot token", required: true,
-      envKeys: ["SLACK_BOT_TOKEN", "SLACK_TOKEN", "SLACK_ACCESS_TOKEN", "SLACK_API_TOKEN"] }],
-  },
-  anthropic: {
-    label: "Anthropic", abbr: "AI", color: "bg-amber-600 text-white",
-    fields: [{ fieldKey: "api_key", label: "API key", required: true,
-      envKeys: ["ANTHROPIC_API_KEY", "ANTHROPIC_KEY", "CLAUDE_API_KEY", "ANTHROPIC_TOKEN"] }],
-  },
-  linear: {
-    label: "Linear", abbr: "LN", color: "bg-indigo-600 text-white",
-    fields: [{ fieldKey: "api_key", label: "API key", required: true,
-      envKeys: ["LINEAR_API_KEY", "LINEAR_KEY", "LINEAR_TOKEN", "LINEAR_API_TOKEN"] }],
-  },
-  digitalocean: {
-    label: "DigitalOcean", abbr: "DO", color: "bg-blue-500 text-white",
-    fields: [{ fieldKey: "token", label: "Personal access token", required: true,
-      envKeys: ["DIGITALOCEAN_TOKEN", "DO_TOKEN", "DIGITALOCEAN_API_TOKEN", "DO_API_TOKEN"] }],
-  },
-  email: {
-    label: "Email", abbr: "EM", color: "bg-emerald-600 text-white",
-    fields: [
-      { fieldKey: "resend_api_key",   label: "Resend API key",    required: false,
-        envKeys: ["RESEND_API_KEY", "RESEND_KEY"] },
-      { fieldKey: "sendgrid_api_key", label: "SendGrid API key",  required: false,
-        envKeys: ["SENDGRID_API_KEY", "SENDGRID_KEY"] },
-    ],
-  },
 }
 
 const SERVICES: ServiceDef[] = [
@@ -378,15 +328,37 @@ function resultDetail(body: Record<string, unknown>): string {
 function TestConnectionsPanel({
   vars,
   buildHeaders,
+  autoRun,
 }: {
   vars: EnvVar[]
   buildHeaders: (contentType?: boolean) => Promise<Record<string, string>>
+  /** When this value changes, automatically run tests for the listed services. */
+  autoRun?: { services: string[]; at: number } | null
 }) {
   // manualSel: service → fieldKey → envKey chosen by user (overrides auto-detect)
   const [manualSel, setManualSel] = useState<Record<string, Record<string, string>>>({})
   const [results,   setResults]   = useState<Record<string, TestResult>>({})
 
   const varKeys = vars.filter(v => v.value).map(v => v.key)
+
+  // Auto-run tests whenever the parent signals a save that touched known service keys.
+  // `autoRun.at` is a timestamp that changes each time, so the effect fires exactly once per save.
+  useEffect(() => {
+    if (!autoRun?.services.length) return
+    // Small delay so the new var values have propagated into `vars` state
+    const t = setTimeout(() => {
+      autoRun.services.forEach(service => {
+        // Only auto-test if the service actually has a configured key now
+        const svc = SERVICE_DETECTION[service]
+        if (!svc) return
+        const hasAnyKey = svc.fields.some(f => f.envKeys.some(k => vars.some(v => v.key === k && v.value)))
+        if (hasAnyKey) runTest(service)
+      })
+    }, 200)
+    return () => clearTimeout(t)
+  // runTest changes reference on every render — suppress exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRun?.at])
 
   /** First matching key from the env vars for a field, or "" */
   function autoKey(field: ServiceFieldDef): string {
@@ -587,6 +559,13 @@ function EnvironmentDetail({
   const [showNew, setShowNew] = useState(false)
   const [showPaste, setShowPaste] = useState(false)
   const [pasteText, setPasteText] = useState("")
+  // Signals TestConnectionsPanel to auto-run tests for affected services after a save
+  const [testTrigger, setTestTrigger] = useState<{ services: string[]; at: number } | null>(null)
+
+  function triggerTestsForKeys(keys: string[]) {
+    const services = affectedServices(keys)
+    if (services.length) setTestTrigger({ services, at: Date.now() })
+  }
 
   // Egress allowlist chip state
   const [hosts, setHosts] = useState<string[]>(environment.allowed_hosts ?? [])
@@ -630,7 +609,7 @@ function EnvironmentDetail({
 
   useEffect(() => { load() }, [load])
 
-  async function saveAll(updated: EnvVar[]) {
+  async function saveAll(updated: EnvVar[], changedKeys?: string[]) {
     setSaving(true); setError(""); setSaved(false)
     try {
       const headers = await buildHeaders(true)
@@ -641,6 +620,8 @@ function EnvironmentDetail({
       if (!res.ok) throw new Error("Save failed")
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
+      // Auto-test any service whose key was explicitly changed
+      if (changedKeys?.length) triggerTestsForKeys(changedKeys)
     } catch { setError("Save failed") } finally { setSaving(false) }
   }
 
@@ -656,10 +637,12 @@ function EnvironmentDetail({
 
   function addVar() {
     if (!newKey.trim()) return
-    const updated = [...vars, { key: newKey.trim(), value: newValue }]
+    const key = newKey.trim()
+    const updated = [...vars, { key, value: newValue }]
     setVars(updated)
     setNewKey(""); setNewValue(""); setShowNew(false)
     saveAll(updated)
+    triggerTestsForKeys([key])
   }
 
   function parseEnvText(text: string): EnvVar[] {
@@ -687,6 +670,7 @@ function EnvironmentDetail({
     }
     setVars(merged)
     saveAll(merged)
+    triggerTestsForKeys(parsed.map(p => p.key))
     setPasteText("")
     setShowPaste(false)
   }
@@ -770,7 +754,7 @@ function EnvironmentDetail({
               <input
                 value={v.key}
                 onChange={e => updateVar(i, "key", e.target.value)}
-                onBlur={() => saveAll(vars)}
+                onBlur={() => saveAll(vars, [v.key])}
                 className="font-mono text-xs text-stone-800 bg-transparent border-none outline-none w-full pr-4"
               />
               <div className="relative flex items-center">
@@ -778,7 +762,7 @@ function EnvironmentDetail({
                   type={showValues[i] ? "text" : "password"}
                   value={v.value}
                   onChange={e => updateVar(i, "value", e.target.value)}
-                  onBlur={() => saveAll(vars)}
+                  onBlur={() => saveAll(vars, [v.key])}
                   className="font-mono text-xs text-stone-600 bg-transparent border-none outline-none w-full pr-7"
                 />
                 <button
@@ -836,7 +820,7 @@ function EnvironmentDetail({
       </div>
 
       {/* Test connections */}
-      {!loading && <TestConnectionsPanel vars={vars} buildHeaders={buildHeaders} />}
+      {!loading && <TestConnectionsPanel vars={vars} buildHeaders={buildHeaders} autoRun={testTrigger} />}
 
       {/* Egress allowlist */}
       <div className="mt-6">
