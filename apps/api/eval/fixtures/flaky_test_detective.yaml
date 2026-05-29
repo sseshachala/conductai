@@ -1,0 +1,607 @@
+slug: flaky_test_detective
+description: >
+  Flaky Test Detective scenarios. Covers repeated CI failures on the same test,
+  intermittent failures on different runs, timeout patterns, and infrastructure
+  flakiness (positive) as well as stable failures, cancelled runs, feature branches,
+  and skipped tests (negative).
+scenarios:
+  - id: same_test_fails_three_times
+    label: Same test failed 3 times this week — clear flaky pattern
+    tags: [positive]
+    expected_outcome_type: flaky_test_filed
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 11001
+        name: "CI / Test Suite"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "flaky001abc"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/11001"
+        repository:
+          full_name: eval-org/eval-repo
+      failed_tests:
+        - name: "test_webhook_delivery_concurrent"
+          file: "tests/test_webhooks.py"
+          failure_count_last_7_days: 3
+          failure_messages:
+            - "AssertionError: expected 3 deliveries, got 2"
+            - "AssertionError: expected 3 deliveries, got 2"
+            - "AssertionError: expected 3 deliveries, got 1"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: timing_dependent_test
+    label: Test passes locally, fails in CI due to timing — sleep antipattern
+    tags: [positive]
+    expected_outcome_type: flaky_test_filed
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 11002
+        name: "CI / Integration Tests"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "flaky002abc"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/11002"
+        repository:
+          full_name: eval-org/eval-repo
+      failed_tests:
+        - name: "test_async_job_completion"
+          file: "tests/test_jobs.py"
+          failure_count_last_7_days: 4
+          failure_messages:
+            - "TimeoutError: job did not complete in 100ms"
+            - "AssertionError: job status is 'running', expected 'completed'"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: database_state_pollution
+    label: Test fails when run in parallel — shared database state
+    tags: [positive]
+    expected_outcome_type: flaky_test_filed
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 11003
+        name: "CI / Test Suite"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "flaky003abc"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/11003"
+        repository:
+          full_name: eval-org/eval-repo
+      failed_tests:
+        - name: "test_workspace_member_count"
+          file: "tests/test_workspaces.py"
+          failure_count_last_7_days: 5
+          failure_messages:
+            - "AssertionError: expected 1 member, got 3"
+            - "AssertionError: expected 1 member, got 7"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: network_dependent_test
+    label: Test hits real external API — flaky on network latency
+    tags: [positive]
+    expected_outcome_type: flaky_test_filed
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 11004
+        name: "CI / Integration Tests"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "flaky004abc"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/11004"
+        repository:
+          full_name: eval-org/eval-repo
+      failed_tests:
+        - name: "test_github_api_rate_limit_handling"
+          file: "tests/test_github_integration.py"
+          failure_count_last_7_days: 6
+          failure_messages:
+            - "requests.exceptions.ConnectionError: HTTPSConnectionPool"
+            - "AssertionError: expected status 200, got 503"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: random_data_dependent
+    label: Test uses random data without seed — passes 80% of the time
+    tags: [positive]
+    expected_outcome_type: flaky_test_filed
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 11005
+        name: "CI / Test Suite"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "flaky005abc"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/11005"
+        repository:
+          full_name: eval-org/eval-repo
+      failed_tests:
+        - name: "test_sort_order_consistency"
+          file: "tests/test_api.py"
+          failure_count_last_7_days: 4
+          failure_messages:
+            - "AssertionError: list is not sorted: ['z', 'a', 'm']"
+            - "AssertionError: list is not sorted: ['q', 'b', 't']"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: port_conflict_test
+    label: Test binds to fixed port — fails when port is in use
+    tags: [positive]
+    expected_outcome_type: flaky_test_filed
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 11006
+        name: "CI / Integration Tests"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "flaky006abc"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/11006"
+        repository:
+          full_name: eval-org/eval-repo
+      failed_tests:
+        - name: "test_mock_server_startup"
+          file: "tests/test_mock_server.py"
+          failure_count_last_7_days: 3
+          failure_messages:
+            - "OSError: [Errno 98] Address already in use: ('0.0.0.0', 8888)"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: redis_connection_flaky
+    label: Redis connection times out intermittently in CI
+    tags: [positive]
+    expected_outcome_type: flaky_test_filed
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 11007
+        name: "CI / Test Suite"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "flaky007abc"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/11007"
+        repository:
+          full_name: eval-org/eval-repo
+      failed_tests:
+        - name: "test_cache_invalidation"
+          file: "tests/test_cache.py"
+          failure_count_last_7_days: 5
+          failure_messages:
+            - "redis.exceptions.ConnectionError: Error connecting to localhost:6379"
+            - "redis.exceptions.TimeoutError: Timeout reading from socket"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: file_system_ordering
+    label: Test assumes alphabetical file system ordering — fails on ext4
+    tags: [positive]
+    expected_outcome_type: flaky_test_filed
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 11008
+        name: "CI / Test Suite"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "flaky008abc"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/11008"
+        repository:
+          full_name: eval-org/eval-repo
+      failed_tests:
+        - name: "test_config_file_loading_order"
+          file: "tests/test_config.py"
+          failure_count_last_7_days: 3
+          failure_messages:
+            - "AssertionError: expected 'base.yaml' to load before 'override.yaml'"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: memory_pressure_test
+    label: Test fails under CI memory pressure — passes with more RAM
+    tags: [positive]
+    expected_outcome_type: flaky_test_filed
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 11009
+        name: "CI / Test Suite"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "flaky009abc"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/11009"
+        repository:
+          full_name: eval-org/eval-repo
+      failed_tests:
+        - name: "test_large_report_generation"
+          file: "tests/test_reports.py"
+          failure_count_last_7_days: 4
+          failure_messages:
+            - "MemoryError: Unable to allocate 2.1 GiB for array"
+            - "subprocess.TimeoutExpired: Command exceeded 60s timeout"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: test_order_dependent
+    label: Test passes alone but fails when run after specific other test
+    tags: [positive]
+    expected_outcome_type: flaky_test_filed
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 11010
+        name: "CI / Test Suite"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "flaky010abc"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/11010"
+        repository:
+          full_name: eval-org/eval-repo
+      failed_tests:
+        - name: "test_user_preferences_reset"
+          file: "tests/test_users.py"
+          failure_count_last_7_days: 3
+          failure_messages:
+            - "AssertionError: expected default theme, got 'dark' (set by previous test)"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: token_expiry_test
+    label: Test uses fixed expiry time — fails near midnight UTC
+    tags: [positive]
+    expected_outcome_type: flaky_test_filed
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 11011
+        name: "CI / Test Suite"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "flaky011abc"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/11011"
+        repository:
+          full_name: eval-org/eval-repo
+      failed_tests:
+        - name: "test_token_expiry_today"
+          file: "tests/test_auth.py"
+          failure_count_last_7_days: 7
+          failure_messages:
+            - "AssertionError: token expired before expected: 23:59:59 < 00:00:01"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: e2e_screenshot_diff
+    label: E2E screenshot diff test fails with minor rendering differences
+    tags: [positive]
+    expected_outcome_type: flaky_test_filed
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 11012
+        name: "CI / E2E Tests"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "flaky012abc"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/11012"
+        repository:
+          full_name: eval-org/eval-repo
+      failed_tests:
+        - name: "dashboard_visual_regression"
+          file: "e2e/dashboard.spec.ts"
+          failure_count_last_7_days: 5
+          failure_messages:
+            - "Screenshot diff exceeded 0.1% threshold: 0.23% pixels differ"
+            - "Screenshot diff exceeded 0.1% threshold: 0.31% pixels differ"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: concurrent_write_test
+    label: Test fails under concurrent writes — race condition in test setup
+    tags: [positive]
+    expected_outcome_type: flaky_test_filed
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 11013
+        name: "CI / Integration Tests"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "flaky013abc"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/11013"
+        repository:
+          full_name: eval-org/eval-repo
+      failed_tests:
+        - name: "test_concurrent_run_creation"
+          file: "tests/test_runs.py"
+          failure_count_last_7_days: 4
+          failure_messages:
+            - "psycopg2.errors.UniqueViolation: duplicate key value violates unique constraint"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: dns_resolution_failure
+    label: Test requires DNS resolution that fails intermittently in CI
+    tags: [positive]
+    expected_outcome_type: flaky_test_filed
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 11014
+        name: "CI / Integration Tests"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "flaky014abc"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/11014"
+        repository:
+          full_name: eval-org/eval-repo
+      failed_tests:
+        - name: "test_external_api_connectivity"
+          file: "tests/test_integrations.py"
+          failure_count_last_7_days: 3
+          failure_messages:
+            - "socket.gaierror: [Errno -2] Name or service not known"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: multiple_flaky_tests_batch
+    label: 4 different tests each failed 2+ times — batch filing
+    tags: [positive]
+    expected_outcome_type: flaky_test_filed
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 11015
+        name: "CI / Test Suite"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "flaky015abc"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/11015"
+        repository:
+          full_name: eval-org/eval-repo
+      failed_tests:
+        - name: "test_webhook_retry"
+          file: "tests/test_webhooks.py"
+          failure_count_last_7_days: 2
+        - name: "test_rate_limiter_concurrent"
+          file: "tests/test_middleware.py"
+          failure_count_last_7_days: 3
+        - name: "test_session_expiry"
+          file: "tests/test_auth.py"
+          failure_count_last_7_days: 2
+        - name: "test_email_queue_drain"
+          file: "tests/test_email.py"
+          failure_count_last_7_days: 4
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  # ── Negative scenarios ────────────────────────────────────────────────────────
+
+  - id: consistent_failure_not_flaky
+    label: "(negative) Test always fails — a real bug, not flaky"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 11100
+        name: "CI / Test Suite"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "stable001abc"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/11100"
+        repository:
+          full_name: eval-org/eval-repo
+      failed_tests:
+        - name: "test_new_feature_not_implemented"
+          file: "tests/test_feature.py"
+          failure_count_last_7_days: 7
+          always_fails: true
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+
+  - id: ci_cancelled
+    label: "(negative) CI run cancelled — no analysis"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 11101
+        name: "CI / Test Suite"
+        conclusion: cancelled
+        status: completed
+        head_branch: main
+        head_sha: "cancel001abc"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/11101"
+        repository:
+          full_name: eval-org/eval-repo
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+
+  - id: feature_branch_failure
+    label: "(negative) Feature branch test failure — only monitor main"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 11102
+        name: "CI / Test Suite"
+        conclusion: failure
+        status: completed
+        head_branch: feat/experimental
+        head_sha: "feat001abc"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/11102"
+        repository:
+          full_name: eval-org/eval-repo
+      failed_tests:
+        - name: "test_new_experimental_feature"
+          failure_count_last_7_days: 3
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+
+  - id: issue_already_filed
+    label: "(negative) Flaky test issue already filed — no duplicate"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 11103
+        name: "CI / Test Suite"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "dup001abc"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/11103"
+        repository:
+          full_name: eval-org/eval-repo
+      failed_tests:
+        - name: "test_webhook_delivery_concurrent"
+          file: "tests/test_webhooks.py"
+          failure_count_last_7_days: 3
+      existing_issues:
+        - title: "Flaky test: test_webhook_delivery_concurrent"
+          state: open
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+
+  - id: skipped_tests_only
+    label: "(negative) Only skipped tests in run — not a failure"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 11104
+        name: "CI / Test Suite"
+        conclusion: success
+        status: completed
+        head_branch: main
+        head_sha: "skip001abc"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/11104"
+        repository:
+          full_name: eval-org/eval-repo
+      skipped_tests:
+        - name: "test_long_running_benchmark"
+          reason: "marked skip in CI"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+
+  - id: first_time_failure
+    label: "(negative) Test failed only once — not enough signal for flaky"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 11105
+        name: "CI / Test Suite"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "once001abc"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/11105"
+        repository:
+          full_name: eval-org/eval-repo
+      failed_tests:
+        - name: "test_rate_limit_headers"
+          file: "tests/test_api.py"
+          failure_count_last_7_days: 1
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main

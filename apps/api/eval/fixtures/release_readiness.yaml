@@ -1,0 +1,700 @@
+slug: release_readiness
+description: >
+  Release Readiness Reviewer scenarios. Covers PRs and release branches ready for
+  shipping that need a readiness gate check (positive) as well as failing tests,
+  missing migrations, incomplete changelogs, and wrong event types (negative).
+scenarios:
+  - id: clean_pr_ready_to_merge
+    label: Clean PR with passing CI — ready to merge
+    tags: [positive]
+    expected_outcome_type: release_reviewed
+    trigger_payload:
+      action: review_requested
+      number: 701
+      pull_request:
+        number: 701
+        title: "feat: add rate limiting to API endpoints"
+        body: |
+          Implements per-IP and per-user rate limiting.
+
+          ## Checklist
+          - [x] Tests added and passing
+          - [x] Migration included
+          - [x] CHANGELOG updated
+          - [x] Reviewed by 1 engineer
+        html_url: "https://github.com/eval-org/eval-repo/pull/701"
+        head:
+          ref: feat/rate-limiting
+          sha: "ready001abc"
+        base:
+          ref: main
+        user:
+          login: dev
+        draft: false
+        state: open
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_approve: true
+
+  - id: release_branch_ready
+    label: Release branch v2.5.0 — all checks green, ready to tag
+    tags: [positive]
+    expected_outcome_type: release_reviewed
+    trigger_payload:
+      action: opened
+      number: 702
+      pull_request:
+        number: 702
+        title: "Release: v2.5.0"
+        body: |
+          Release v2.5.0 — includes:
+          - Rate limiting
+          - Redis caching
+          - GDPR deletion endpoint
+
+          All checks passing. Staging deployed and tested.
+        html_url: "https://github.com/eval-org/eval-repo/pull/702"
+        head:
+          ref: release/2.5.0
+          sha: "relbranch001"
+        base:
+          ref: main
+        user:
+          login: release-manager
+        draft: false
+        state: open
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_approve: true
+
+  - id: hotfix_pr_ready
+    label: Hotfix PR with critical security fix — expedited readiness check
+    tags: [positive, security]
+    expected_outcome_type: release_reviewed
+    trigger_payload:
+      action: review_requested
+      number: 703
+      pull_request:
+        number: 703
+        title: "hotfix: patch SQL injection in search endpoint"
+        body: |
+          CRITICAL: Fixes SQL injection vulnerability in /api/search.
+
+          - Parameterized all raw SQL queries
+          - Added regression test
+          - Verified fix on staging
+        html_url: "https://github.com/eval-org/eval-repo/pull/703"
+        head:
+          ref: hotfix/sql-injection-patch
+          sha: "hotfix001abc"
+        base:
+          ref: main
+        user:
+          login: security-engineer
+        draft: false
+        state: open
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_approve: true
+
+  - id: migration_included_tested
+    label: PR with database migration — migration tested on staging
+    tags: [positive]
+    expected_outcome_type: release_reviewed
+    trigger_payload:
+      action: review_requested
+      number: 704
+      pull_request:
+        number: 704
+        title: "feat: add audit_log table"
+        body: |
+          Adds audit logging for SOC 2 compliance.
+
+          Migration: 0042_add_audit_log.py
+          - Tested on staging with prod data snapshot
+          - Rollback tested
+          - No downtime required (non-blocking migration)
+        html_url: "https://github.com/eval-org/eval-repo/pull/704"
+        head:
+          ref: feat/audit-log
+          sha: "migration001"
+        base:
+          ref: main
+        user:
+          login: backend-dev
+        draft: false
+        state: open
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_approve: true
+
+  - id: breaking_change_documented
+    label: Breaking change PR — migration guide included in release notes
+    tags: [positive]
+    expected_outcome_type: release_reviewed
+    trigger_payload:
+      action: review_requested
+      number: 705
+      pull_request:
+        number: 705
+        title: "feat!: switch pagination to cursor-based (breaking)"
+        body: |
+          Switches from offset/limit to cursor-based pagination.
+
+          ## Breaking Change
+          - Old: `?page=1&per_page=20`
+          - New: `?cursor=<opaque_string>&limit=20`
+
+          ## Migration
+          See MIGRATION.md for upgrade steps.
+          Old format supported with deprecation warning until 2027-01-01.
+        html_url: "https://github.com/eval-org/eval-repo/pull/705"
+        head:
+          ref: feat/cursor-pagination
+          sha: "breaking001"
+        base:
+          ref: main
+        user:
+          login: api-architect
+        draft: false
+        state: open
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_approve: true
+
+  - id: test_coverage_meets_threshold
+    label: PR brings test coverage from 45% to 82% — green
+    tags: [positive]
+    expected_outcome_type: release_reviewed
+    trigger_payload:
+      action: review_requested
+      number: 706
+      pull_request:
+        number: 706
+        title: "test: increase auth module coverage to 82%"
+        body: |
+          Adds 47 new tests for the auth module.
+
+          Coverage before: 45%
+          Coverage after: 82%
+
+          All tests passing in CI.
+        html_url: "https://github.com/eval-org/eval-repo/pull/706"
+        head:
+          ref: test/auth-coverage
+          sha: "coverage001"
+        base:
+          ref: main
+        user:
+          login: qa-lead
+        draft: false
+        state: open
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_approve: true
+
+  - id: dependency_security_patch
+    label: Dependency bump PR for critical CVE — all tests pass
+    tags: [positive, security]
+    expected_outcome_type: release_reviewed
+    trigger_payload:
+      action: review_requested
+      number: 707
+      pull_request:
+        number: 707
+        title: "fix: bump cryptography to 41.0.7 (CVE-2023-49083)"
+        body: |
+          Fixes GHSA-jm77-qphf-c4w8: NULL pointer dereference in pkcs12.
+
+          - cryptography: 41.0.3 → 41.0.7
+          - All tests pass
+          - No API changes
+        html_url: "https://github.com/eval-org/eval-repo/pull/707"
+        head:
+          ref: fix/cve-2023-49083
+          sha: "secpatch001"
+        base:
+          ref: main
+        user:
+          login: "dependabot[bot]"
+        draft: false
+        state: open
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_approve: true
+
+  - id: refactor_no_behavior_change
+    label: Large refactor PR — zero behavior change, all tests pass
+    tags: [positive]
+    expected_outcome_type: release_reviewed
+    trigger_payload:
+      action: review_requested
+      number: 708
+      pull_request:
+        number: 708
+        title: "refactor: extract email logic into EmailService"
+        body: |
+          Pure refactor — moves email logic to a dedicated service.
+
+          - No public API changes
+          - Same behavior, cleaner code
+          - All 312 existing tests pass
+          - Added 8 new unit tests for EmailService
+        html_url: "https://github.com/eval-org/eval-repo/pull/708"
+        head:
+          ref: refactor/email-service
+          sha: "refactor001"
+        base:
+          ref: main
+        user:
+          login: senior-dev
+        draft: false
+        state: open
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_approve: true
+
+  - id: changelog_and_docs_updated
+    label: Feature PR with CHANGELOG and docs both updated
+    tags: [positive]
+    expected_outcome_type: release_reviewed
+    trigger_payload:
+      action: review_requested
+      number: 709
+      pull_request:
+        number: 709
+        title: "feat: add CSV export for run history"
+        body: |
+          Adds CSV export endpoint and UI button.
+
+          - CHANGELOG.md updated
+          - docs/api-reference.md updated
+          - All tests passing
+          - Feature tested on staging
+        html_url: "https://github.com/eval-org/eval-repo/pull/709"
+        head:
+          ref: feat/csv-export
+          sha: "export001abc"
+        base:
+          ref: main
+        user:
+          login: full-stack-dev
+        draft: false
+        state: open
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_approve: true
+
+  - id: performance_improvement_benchmarked
+    label: Performance PR with before/after benchmarks — 3x speedup
+    tags: [positive, performance]
+    expected_outcome_type: release_reviewed
+    trigger_payload:
+      action: review_requested
+      number: 710
+      pull_request:
+        number: 710
+        title: "perf: add GIN index on runs.workspace_id (3x query speedup)"
+        body: |
+          Adds GIN index to fix the slow workspace runs query.
+
+          Benchmark results:
+          - Before: P95 = 4200ms
+          - After: P95 = 380ms
+
+          Migration is non-blocking (CONCURRENTLY).
+        html_url: "https://github.com/eval-org/eval-repo/pull/710"
+        head:
+          ref: perf/workspace-runs-index
+          sha: "perf001abc"
+        base:
+          ref: main
+        user:
+          login: dba
+        draft: false
+        state: open
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_approve: true
+
+  - id: e2e_tested_on_staging
+    label: Feature PR verified with Playwright E2E on staging environment
+    tags: [positive]
+    expected_outcome_type: release_reviewed
+    trigger_payload:
+      action: review_requested
+      number: 711
+      pull_request:
+        number: 711
+        title: "feat: workspace onboarding wizard"
+        body: |
+          New 3-step onboarding wizard for first-time workspace creation.
+
+          Testing:
+          - E2E tests added (6 new Playwright specs)
+          - Tested on staging with real users
+          - Mobile responsive tested
+          - All existing E2E pass
+        html_url: "https://github.com/eval-org/eval-repo/pull/711"
+        head:
+          ref: feat/onboarding-wizard
+          sha: "wizard001abc"
+        base:
+          ref: main
+        user:
+          login: frontend-dev
+        draft: false
+        state: open
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_approve: true
+
+  - id: multi_reviewer_approved
+    label: PR approved by 3 reviewers including security and architect
+    tags: [positive]
+    expected_outcome_type: release_reviewed
+    trigger_payload:
+      action: review_requested
+      number: 712
+      pull_request:
+        number: 712
+        title: "feat: SAML SSO integration"
+        body: "Implements SAML SSO with Okta and Azure AD support."
+        html_url: "https://github.com/eval-org/eval-repo/pull/712"
+        head:
+          ref: feat/saml-sso
+          sha: "saml001abc"
+        base:
+          ref: main
+        user:
+          login: backend-dev
+        draft: false
+        state: open
+      reviews:
+        - user: {login: security-lead}
+          state: APPROVED
+        - user: {login: architect}
+          state: APPROVED
+        - user: {login: senior-dev}
+          state: APPROVED
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_approve: true
+
+  - id: rollback_plan_documented
+    label: Risky migration with rollback plan documented — ready
+    tags: [positive]
+    expected_outcome_type: release_reviewed
+    trigger_payload:
+      action: review_requested
+      number: 713
+      pull_request:
+        number: 713
+        title: "feat: normalize runs table (schema overhaul)"
+        body: |
+          Major schema change: split runs into runs + run_steps + run_artifacts.
+
+          ## Rollback Plan
+          1. Feature flag: SCHEMA_V2_ENABLED=false to use old tables
+          2. Old tables preserved for 30 days post-migration
+          3. Emergency rollback script: scripts/rollback_schema_v2.sh
+
+          ## Testing
+          - Migrated staging with full prod data snapshot
+          - 0 errors in 30-minute soak test
+        html_url: "https://github.com/eval-org/eval-repo/pull/713"
+        head:
+          ref: feat/runs-schema-v2
+          sha: "schema001abc"
+        base:
+          ref: main
+        user:
+          login: db-architect
+        draft: false
+        state: open
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_approve: true
+
+  - id: feature_flag_protected
+    label: Feature behind flag — safe to merge even if incomplete
+    tags: [positive]
+    expected_outcome_type: release_reviewed
+    trigger_payload:
+      action: review_requested
+      number: 714
+      pull_request:
+        number: 714
+        title: "feat: GraphQL API (behind GRAPHQL_ENABLED flag)"
+        body: |
+          First iteration of GraphQL API, gated behind feature flag.
+
+          GRAPHQL_ENABLED=false by default on prod.
+          All existing REST tests still pass.
+          GraphQL integration tests: 24/24 passing.
+        html_url: "https://github.com/eval-org/eval-repo/pull/714"
+        head:
+          ref: feat/graphql-api
+          sha: "graphql001"
+        base:
+          ref: main
+        user:
+          login: api-dev
+        draft: false
+        state: open
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_approve: true
+
+  - id: small_bug_fix_well_tested
+    label: Small focused bug fix with regression test — fast track approval
+    tags: [positive]
+    expected_outcome_type: release_reviewed
+    trigger_payload:
+      action: review_requested
+      number: 715
+      pull_request:
+        number: 715
+        title: "fix: correct token expiry calculation off-by-one"
+        body: |
+          Fixes off-by-one in JWT expiry: tokens expired 1 second early.
+
+          - Root cause: `<=` should be `<` in expiry check
+          - Regression test added
+          - 1 line change, surgical fix
+        html_url: "https://github.com/eval-org/eval-repo/pull/715"
+        head:
+          ref: fix/token-expiry
+          sha: "bugfix001abc"
+        base:
+          ref: main
+        user:
+          login: dev
+        draft: false
+        state: open
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_approve: true
+
+  # ── Negative scenarios ────────────────────────────────────────────────────────
+
+  - id: ci_failing
+    label: "(negative) CI checks failing — not ready for release"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: review_requested
+      number: 800
+      pull_request:
+        number: 800
+        title: "feat: new feature with broken tests"
+        body: "Work in progress."
+        html_url: "https://github.com/eval-org/eval-repo/pull/800"
+        head:
+          ref: feat/broken
+          sha: "broken001abc"
+        base:
+          ref: main
+        user:
+          login: dev
+        draft: false
+        state: open
+      ci_status: failing
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: draft_pr
+    label: "(negative) Draft PR — not ready for release review"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: review_requested
+      number: 801
+      pull_request:
+        number: 801
+        title: "WIP: refactor database layer"
+        body: "Work in progress. Do not review."
+        html_url: "https://github.com/eval-org/eval-repo/pull/801"
+        head:
+          ref: wip/db-refactor
+          sha: "wip001abc"
+        base:
+          ref: main
+        user:
+          login: dev
+        draft: true
+        state: open
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: missing_migration
+    label: "(negative) Schema change PR missing migration file"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: review_requested
+      number: 802
+      pull_request:
+        number: 802
+        title: "feat: add user.last_seen column"
+        body: "Adds last_seen timestamp to users table."
+        html_url: "https://github.com/eval-org/eval-repo/pull/802"
+        head:
+          ref: feat/last-seen
+          sha: "nomigration001"
+        base:
+          ref: main
+        user:
+          login: dev
+        draft: false
+        state: open
+      ci_status: passing
+      missing_checklist_items: ["migration file"]
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: pr_closed_event
+    label: "(negative) PR closed event — no readiness review needed"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: closed
+      number: 803
+      pull_request:
+        number: 803
+        title: "feat: merged feature"
+        body: "Merged."
+        html_url: "https://github.com/eval-org/eval-repo/pull/803"
+        head:
+          ref: feat/merged
+          sha: "merged001abc"
+        base:
+          ref: main
+        user:
+          login: dev
+        draft: false
+        state: closed
+        merged: true
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: pr_labeled_event
+    label: "(negative) PR labeled event — not a review request"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: labeled
+      number: 804
+      pull_request:
+        number: 804
+        title: "feat: some feature"
+        state: open
+        draft: false
+      label:
+        name: ready-for-review
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: incomplete_changelog
+    label: "(negative) Breaking change PR with no CHANGELOG entry"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: review_requested
+      number: 805
+      pull_request:
+        number: 805
+        title: "feat!: remove legacy v1 endpoints"
+        body: "Removes all deprecated /v1 endpoints."
+        html_url: "https://github.com/eval-org/eval-repo/pull/805"
+        head:
+          ref: feat/remove-v1
+          sha: "breaking001abc"
+        base:
+          ref: main
+        user:
+          login: api-team
+        draft: false
+        state: open
+      ci_status: passing
+      missing_checklist_items: ["CHANGELOG entry", "migration guide"]
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"

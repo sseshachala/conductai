@@ -1,10 +1,9 @@
-# Multi-scenario fixture set for Incident Responder
-# 6 scenarios: 4 positive (real alerts to investigate), 2 negative (test pings / resolved)
 slug: incident_responder
 description: >
-  Covers a high error-rate alert, a memory spike, a latency degradation, a
-  deployment rollout failure, a test ping (negative — playbook should no-op),
-  and a low-severity noise alert (negative).
+  Incident Responder scenarios. Covers high error-rate alerts, memory spikes,
+  latency degradation, deployment failures, security breaches, and infrastructure
+  alerts (positive) as well as test pings, resolved alerts, and low-severity
+  informational events (negative).
 scenarios:
   - id: high_error_rate
     label: High error rate on API endpoint — hypothesis + Slack message expected
@@ -101,6 +100,272 @@ scenarios:
       expect_hypothesis: true
       expect_slack_message: true
 
+  - id: database_connection_exhausted
+    label: Database connection pool exhausted — all queries timing out
+    tags: [positive, availability]
+    expected_outcome_type: incident_investigated
+    trigger_payload:
+      alert:
+        id: "alert-5006"
+        title: "Postgres connection pool at 100% — queries timing out"
+        severity: critical
+        description: >
+          All 100 database connections in the pool are in use.
+          New queries are timing out after 30 seconds.
+          Connection wait queue is growing at ~10 connections/second.
+        started_at: "2026-05-29T11:00:00Z"
+        service: conductai-api
+      repository:
+        full_name: eval-org/eval-service
+        name: eval-service
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_hypothesis: true
+      expect_slack_message: true
+
+  - id: redis_connection_failure
+    label: Redis connection refused — job queue and cache unavailable
+    tags: [positive, availability]
+    expected_outcome_type: incident_investigated
+    trigger_payload:
+      alert:
+        id: "alert-5007"
+        title: "Redis connection refused on port 6379"
+        severity: critical
+        description: >
+          The Redis instance is refusing all connections.
+          Job queue is blocked — 450 jobs pending.
+          Cache miss rate is 100%.
+        started_at: "2026-05-29T13:00:00Z"
+        service: conductai-worker
+      repository:
+        full_name: eval-org/eval-service
+        name: eval-service
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_hypothesis: true
+      expect_slack_message: true
+
+  - id: security_breach_brute_force
+    label: Brute force attack on login endpoint — 50k requests in 5 minutes
+    tags: [positive, security]
+    expected_outcome_type: incident_investigated
+    trigger_payload:
+      alert:
+        id: "alert-5008"
+        title: "Brute force detected on /api/auth/login"
+        severity: critical
+        description: >
+          50,000 login attempts from IP 192.0.2.1 in the last 5 minutes.
+          Attack is targeting accounts with 'admin' prefix.
+          Login endpoint is responding with 429 but IP has not been blocked yet.
+        started_at: "2026-05-29T03:15:00Z"
+        service: conductai-api
+      repository:
+        full_name: eval-org/eval-service
+        name: eval-service
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_hypothesis: true
+      expect_slack_message: true
+
+  - id: disk_full_critical
+    label: Disk usage at 99% — write operations failing
+    tags: [positive]
+    expected_outcome_type: incident_investigated
+    trigger_payload:
+      alert:
+        id: "alert-5009"
+        title: "Disk at 99% — database writes failing"
+        severity: critical
+        description: >
+          Primary database server disk is at 99% capacity.
+          New PostgreSQL WAL files cannot be written.
+          Standby replication lag growing at 10MB/s.
+        started_at: "2026-05-29T07:30:00Z"
+        service: conductai-db
+      repository:
+        full_name: eval-org/eval-service
+        name: eval-service
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_hypothesis: true
+      expect_slack_message: true
+
+  - id: ssl_cert_expiry
+    label: SSL certificate expires in 24 hours — renewal failed
+    tags: [positive]
+    expected_outcome_type: incident_investigated
+    trigger_payload:
+      alert:
+        id: "alert-5010"
+        title: "SSL certificate for api.conductai.ai expires in 24 hours"
+        severity: high
+        description: >
+          Auto-renewal via Let's Encrypt failed 3 times.
+          Certificate expires at 2026-05-30T10:00:00Z.
+          If not renewed, all HTTPS requests will fail.
+        started_at: "2026-05-29T10:00:00Z"
+        service: conductai-api
+      repository:
+        full_name: eval-org/eval-service
+        name: eval-service
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_hypothesis: true
+      expect_slack_message: true
+
+  - id: downstream_webhook_failures
+    label: 90% of outgoing webhooks failing — target endpoints returning 500
+    tags: [positive]
+    expected_outcome_type: incident_investigated
+    trigger_payload:
+      alert:
+        id: "alert-5011"
+        title: "Webhook delivery failure rate at 90%"
+        severity: high
+        description: >
+          90% of webhook deliveries in the last 10 minutes failed.
+          Error: 500 Internal Server Error from target endpoints.
+          This affects 78 customer integrations.
+        started_at: "2026-05-29T15:00:00Z"
+        service: conductai-webhooks
+      repository:
+        full_name: eval-org/eval-service
+        name: eval-service
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_hypothesis: true
+      expect_slack_message: true
+
+  - id: queue_depth_explosion
+    label: Job queue depth at 10,000 — worker processing stalled
+    tags: [positive, performance]
+    expected_outcome_type: incident_investigated
+    trigger_payload:
+      alert:
+        id: "alert-5012"
+        title: "Job queue depth at 10,000 — processing stalled"
+        severity: high
+        description: >
+          Queue depth jumped from ~50 (normal) to 10,000 over the last 30 minutes.
+          Worker throughput dropped from 200 jobs/min to 12 jobs/min.
+          At current rate, the backlog will take 13 hours to clear.
+        started_at: "2026-05-29T12:00:00Z"
+        service: conductai-worker
+      repository:
+        full_name: eval-org/eval-service
+        name: eval-service
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_hypothesis: true
+      expect_slack_message: true
+
+  - id: data_inconsistency_detected
+    label: Data integrity check found 200 orphaned records
+    tags: [positive]
+    expected_outcome_type: incident_investigated
+    trigger_payload:
+      alert:
+        id: "alert-5013"
+        title: "Data integrity: 200 run records with no parent workspace"
+        severity: high
+        description: >
+          Hourly data integrity check found 200 run records referencing
+          workspace IDs that no longer exist. These records are orphaned
+          and may represent data loss or a cascade delete bug.
+        started_at: "2026-05-29T08:00:00Z"
+        service: conductai-db
+      repository:
+        full_name: eval-org/eval-service
+        name: eval-service
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_hypothesis: true
+      expect_slack_message: true
+
+  - id: rate_limit_bypass_detected
+    label: Anomalous request volume — rate limit bypass suspected
+    tags: [positive, security]
+    expected_outcome_type: incident_investigated
+    trigger_payload:
+      alert:
+        id: "alert-5014"
+        title: "Single user making 50,000 requests/hour — rate limit bypass"
+        severity: high
+        description: >
+          User ID usr_abc123 has made 50,000 API requests in the last hour.
+          Rate limit should cap at 1,000/hour. Requests are succeeding.
+          IP address is rotating across 200 different addresses.
+        started_at: "2026-05-29T14:00:00Z"
+        service: conductai-api
+      repository:
+        full_name: eval-org/eval-service
+        name: eval-service
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_hypothesis: true
+      expect_slack_message: true
+
+  - id: third_party_service_down
+    label: GitHub API returning 503 — all triggered workflows failing
+    tags: [positive]
+    expected_outcome_type: incident_investigated
+    trigger_payload:
+      alert:
+        id: "alert-5015"
+        title: "GitHub API returning 503 — triggered runs failing"
+        severity: high
+        description: >
+          GitHub's API has been returning 503 for the last 20 minutes.
+          All workflows triggered by GitHub events are failing at the
+          first GitHub API call. 340 failed runs in the last 20 minutes.
+        started_at: "2026-05-29T18:00:00Z"
+        service: conductai-api
+      repository:
+        full_name: eval-org/eval-service
+        name: eval-service
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_hypothesis: true
+      expect_slack_message: true
+
+  - id: payment_processing_failing
+    label: Stripe webhook processing failing — billing events dropped
+    tags: [positive]
+    expected_outcome_type: incident_investigated
+    trigger_payload:
+      alert:
+        id: "alert-5016"
+        title: "Stripe webhook handler returning 500 — billing events dropped"
+        severity: critical
+        description: >
+          The /webhooks/stripe endpoint has been returning 500 for 2 hours.
+          Stripe has retried 45 billing events that were not processed.
+          Subscription renewals may have been missed.
+        started_at: "2026-05-29T06:00:00Z"
+        service: conductai-api
+      repository:
+        full_name: eval-org/eval-service
+        name: eval-service
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_hypothesis: true
+      expect_slack_message: true
+
+  # ── Negative scenarios ────────────────────────────────────────────────────────
+
   - id: test_ping
     label: "(negative) Test ping alert — playbook should output null hypothesis and stop"
     tags: [negative]
@@ -125,6 +390,7 @@ scenarios:
   - id: low_severity_noise
     label: "(negative) Low-severity informational alert — may be acknowledged only"
     tags: [negative]
+    expected_outcome_type: null
     trigger_payload:
       alert:
         id: "alert-5005"
@@ -143,3 +409,83 @@ scenarios:
           login: eval-org
     extra_assertions:
       expect_minimal_response: true
+
+  - id: alert_already_resolved
+    label: "(negative) Alert already marked resolved — no investigation needed"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      alert:
+        id: "alert-5017"
+        title: "High error rate on /api/workflows"
+        severity: high
+        status: resolved
+        resolved_at: "2026-05-29T14:35:00Z"
+        description: "Error rate spike — resolved by rollback."
+        started_at: "2026-05-29T14:31:00Z"
+        service: conductai-api
+      repository:
+        full_name: eval-org/eval-service
+        name: eval-service
+        owner:
+          login: eval-org
+
+  - id: scheduled_maintenance_window
+    label: "(negative) Alert during scheduled maintenance — expected, no action"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      alert:
+        id: "alert-5018"
+        title: "Database connection spike during maintenance"
+        severity: high
+        in_maintenance_window: true
+        description: "Expected during scheduled database upgrade window 02:00-04:00 UTC."
+        started_at: "2026-05-29T02:30:00Z"
+        service: conductai-db
+      repository:
+        full_name: eval-org/eval-service
+        name: eval-service
+        owner:
+          login: eval-org
+
+  - id: duplicate_alert
+    label: "(negative) Duplicate alert already being investigated"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      alert:
+        id: "alert-5019"
+        title: "High error rate on /api/workflows (duplicate)"
+        severity: high
+        is_duplicate: true
+        duplicate_of: "alert-5001"
+        description: "Duplicate of alert-5001 — already being investigated."
+        started_at: "2026-05-29T14:33:00Z"
+        service: conductai-api
+      repository:
+        full_name: eval-org/eval-service
+        name: eval-service
+        owner:
+          login: eval-org
+
+  - id: warning_low_priority
+    label: "(negative) Warning-level alert below action threshold"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      alert:
+        id: "alert-5020"
+        title: "Cache hit rate dropped to 78% (warning)"
+        severity: warning
+        description: >
+          Cache hit rate dropped from 95% to 78%.
+          This is a warning threshold; action threshold is 50%.
+          No customer impact observed.
+        started_at: "2026-05-29T09:00:00Z"
+        service: conductai-api
+      repository:
+        full_name: eval-org/eval-service
+        name: eval-service
+        owner:
+          login: eval-org

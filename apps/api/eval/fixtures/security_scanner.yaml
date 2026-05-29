@@ -1,15 +1,14 @@
-# Multi-scenario fixture set for Security Scanner
-# 6 scenarios: 4 positive (security issues to detect), 2 negative (clean PRs / skip cases)
 slug: security_scanner
 description: >
-  Covers PRs with hardcoded secrets, SQL injection, insecure dependencies,
-  authentication bypass patterns, clean PRs (no findings expected), and closed
-  events (should be skipped).
+  Security Scanner scenarios. Covers PRs with hardcoded secrets, SQL injection,
+  insecure dependencies, authentication bypass patterns, command injection, XSS,
+  and IDOR vulnerabilities (positive) as well as clean PRs, closed events, docs-only
+  changes, and draft PRs (negative).
 scenarios:
   - id: hardcoded_api_key
     label: PR with hardcoded Stripe API key in source
     tags: [positive, secrets]
-    expected_should_scan: true
+    expected_outcome_type: security_findings_reported
     trigger_payload:
       action: opened
       number: 101
@@ -40,7 +39,7 @@ scenarios:
   - id: sql_injection
     label: PR with raw string formatting in SQL query
     tags: [positive, injection]
-    expected_should_scan: true
+    expected_outcome_type: security_findings_reported
     trigger_payload:
       action: opened
       number: 102
@@ -71,7 +70,7 @@ scenarios:
   - id: insecure_dependency
     label: PR introducing a known-vulnerable npm package
     tags: [positive, dependencies]
-    expected_should_scan: true
+    expected_outcome_type: security_findings_reported
     trigger_payload:
       action: opened
       number: 103
@@ -101,7 +100,7 @@ scenarios:
   - id: auth_bypass
     label: PR with JWT verification disabled in tests left in prod code
     tags: [positive, auth]
-    expected_should_scan: true
+    expected_outcome_type: security_findings_reported
     trigger_payload:
       action: opened
       number: 104
@@ -129,10 +128,344 @@ scenarios:
       expect_critical_count_gte: 1
       expect_auth_finding: true
 
+  - id: command_injection
+    label: PR passes user input to subprocess — command injection risk
+    tags: [positive, injection]
+    expected_outcome_type: security_findings_reported
+    trigger_payload:
+      action: opened
+      number: 107
+      pull_request:
+        number: 107
+        title: "feat: allow custom git commands in playbook execution"
+        body: "Executes user-provided git commands via subprocess.run()."
+        html_url: "https://github.com/eval-org/eval-repo/pull/107"
+        head:
+          ref: feat/custom-git-commands
+          sha: "ee5ff6aa7bb9"
+        base:
+          ref: main
+        user:
+          login: platform-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/107.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      expect_critical_count_gte: 1
+
+  - id: xss_vulnerability
+    label: PR renders user-provided HTML without sanitization — XSS
+    tags: [positive, xss]
+    expected_outcome_type: security_findings_reported
+    trigger_payload:
+      action: opened
+      number: 108
+      pull_request:
+        number: 108
+        title: "feat: render markdown descriptions in playbook cards"
+        body: "Uses dangerouslySetInnerHTML to render user-authored playbook descriptions."
+        html_url: "https://github.com/eval-org/eval-repo/pull/108"
+        head:
+          ref: feat/markdown-descriptions
+          sha: "ff6aa7bb8cc0"
+        base:
+          ref: main
+        user:
+          login: frontend-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/108.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      expect_critical_count_gte: 1
+
+  - id: idor_vulnerability
+    label: PR does not check workspace ownership before returning resource
+    tags: [positive, authorization]
+    expected_outcome_type: security_findings_reported
+    trigger_payload:
+      action: opened
+      number: 109
+      pull_request:
+        number: 109
+        title: "feat: add GET /api/runs/{run_id} public endpoint"
+        body: "Returns run details by ID — uses run_id directly without workspace check."
+        html_url: "https://github.com/eval-org/eval-repo/pull/109"
+        head:
+          ref: feat/public-run-endpoint
+          sha: "aa7bb8cc9dd1"
+        base:
+          ref: main
+        user:
+          login: api-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/109.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      expect_critical_count_gte: 1
+      expect_auth_finding: true
+
+  - id: ssrf_vulnerability
+    label: PR fetches URLs from user input — SSRF vulnerability
+    tags: [positive, ssrf]
+    expected_outcome_type: security_findings_reported
+    trigger_payload:
+      action: opened
+      number: 110
+      pull_request:
+        number: 110
+        title: "feat: webhook URL preview — fetch metadata from target URL"
+        body: "Fetches the title and favicon from user-provided webhook URLs for display."
+        html_url: "https://github.com/eval-org/eval-repo/pull/110"
+        head:
+          ref: feat/webhook-url-preview
+          sha: "bb8cc9dd0ee2"
+        base:
+          ref: main
+        user:
+          login: fullstack-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/110.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      expect_critical_count_gte: 1
+
+  - id: path_traversal
+    label: PR uses user-provided file path without sanitization
+    tags: [positive]
+    expected_outcome_type: security_findings_reported
+    trigger_payload:
+      action: opened
+      number: 111
+      pull_request:
+        number: 111
+        title: "feat: serve user-uploaded files by path"
+        body: "Serves files from the uploads directory using the filename from the request."
+        html_url: "https://github.com/eval-org/eval-repo/pull/111"
+        head:
+          ref: feat/file-serving
+          sha: "cc9dd0ee1ff3"
+        base:
+          ref: main
+        user:
+          login: backend-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/111.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      expect_critical_count_gte: 1
+
+  - id: insecure_random
+    label: PR uses random.random() for token generation — not cryptographically secure
+    tags: [positive]
+    expected_outcome_type: security_findings_reported
+    trigger_payload:
+      action: opened
+      number: 112
+      pull_request:
+        number: 112
+        title: "feat: generate invite tokens for workspace invitations"
+        body: "Generates invite tokens using random.random() and time.time()."
+        html_url: "https://github.com/eval-org/eval-repo/pull/112"
+        head:
+          ref: feat/invite-tokens
+          sha: "dd0ee1ff2aa4"
+        base:
+          ref: main
+        user:
+          login: backend-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/112.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      expect_high_count_gte: 1
+
+  - id: cors_wildcard
+    label: PR sets CORS to allow all origins — overly permissive
+    tags: [positive]
+    expected_outcome_type: security_findings_reported
+    trigger_payload:
+      action: opened
+      number: 113
+      pull_request:
+        number: 113
+        title: "fix: resolve CORS errors in development"
+        body: "Sets Access-Control-Allow-Origin: * to fix CORS errors."
+        html_url: "https://github.com/eval-org/eval-repo/pull/113"
+        head:
+          ref: fix/cors-wildcard
+          sha: "ee1ff2aa3bb5"
+        base:
+          ref: main
+        user:
+          login: junior-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/113.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      expect_high_count_gte: 1
+
+  - id: unprotected_admin_endpoint
+    label: PR adds admin endpoint with no authentication check
+    tags: [positive, auth]
+    expected_outcome_type: security_findings_reported
+    trigger_payload:
+      action: opened
+      number: 114
+      pull_request:
+        number: 114
+        title: "feat: add /admin/impersonate endpoint for support team"
+        body: "Allows support team to impersonate any user for debugging purposes."
+        html_url: "https://github.com/eval-org/eval-repo/pull/114"
+        head:
+          ref: feat/admin-impersonate
+          sha: "ff2aa3bb4cc6"
+        base:
+          ref: main
+        user:
+          login: support-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/114.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      expect_critical_count_gte: 1
+      expect_auth_finding: true
+
+  - id: sensitive_data_logged
+    label: PR logs full request body including passwords
+    tags: [positive]
+    expected_outcome_type: security_findings_reported
+    trigger_payload:
+      action: opened
+      number: 115
+      pull_request:
+        number: 115
+        title: "feat: add request/response logging middleware"
+        body: "Logs full request and response bodies for debugging."
+        html_url: "https://github.com/eval-org/eval-repo/pull/115"
+        head:
+          ref: feat/request-logging
+          sha: "aa3bb4cc5dd7"
+        base:
+          ref: main
+        user:
+          login: backend-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/115.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      expect_high_count_gte: 1
+
+  - id: weak_password_policy
+    label: PR allows 4-character passwords — weak password policy
+    tags: [positive, auth]
+    expected_outcome_type: security_findings_reported
+    trigger_payload:
+      action: opened
+      number: 116
+      pull_request:
+        number: 116
+        title: "feat: relax password requirements for easier onboarding"
+        body: "Reduces minimum password length to 4 characters to reduce signup friction."
+        html_url: "https://github.com/eval-org/eval-repo/pull/116"
+        head:
+          ref: feat/relaxed-passwords
+          sha: "bb4cc5dd6ee8"
+        base:
+          ref: main
+        user:
+          login: growth-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/116.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      expect_high_count_gte: 1
+
+  - id: mass_assignment_vulnerability
+    label: PR passes request body directly to ORM without allowlist
+    tags: [positive]
+    expected_outcome_type: security_findings_reported
+    trigger_payload:
+      action: opened
+      number: 117
+      pull_request:
+        number: 117
+        title: "feat: allow users to update their profile"
+        body: "Passes request body directly to User.update(**request.json()) for simplicity."
+        html_url: "https://github.com/eval-org/eval-repo/pull/117"
+        head:
+          ref: feat/user-profile-update
+          sha: "cc5dd6ee7ff9"
+        base:
+          ref: main
+        user:
+          login: backend-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/117.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      expect_critical_count_gte: 1
+
+  # ── Negative scenarios ────────────────────────────────────────────────────────
+
   - id: clean_docs_pr
     label: "(negative) Documentation-only PR — no security issues expected"
     tags: [negative]
-    expected_should_scan: true
+    expected_outcome_type: null
     trigger_payload:
       action: opened
       number: 105
@@ -162,7 +495,7 @@ scenarios:
   - id: pr_closed_event
     label: "(negative) PR closed event — scanner should not trigger"
     tags: [negative]
-    expected_should_scan: false
+    expected_outcome_type: null
     trigger_payload:
       action: closed
       number: 106
@@ -189,3 +522,113 @@ scenarios:
         clone_url: "https://github.com/eval-org/eval-repo.git"
     extra_assertions:
       should_skip_or_acknowledge: true
+
+  - id: draft_pr_skip
+    label: "(negative) Draft PR — security scan may be deferred"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      number: 118
+      pull_request:
+        number: 118
+        title: "WIP: new feature"
+        body: "Work in progress."
+        html_url: "https://github.com/eval-org/eval-repo/pull/118"
+        head:
+          ref: wip/new-feature
+          sha: "dd6ee7ff8aa0"
+        base:
+          ref: main
+        user:
+          login: dev-user
+        diff_url: "https://github.com/eval-org/eval-repo/pull/118.diff"
+        draft: true
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: clean_refactor_no_findings
+    label: "(negative) Clean refactor PR — no security findings expected"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      number: 119
+      pull_request:
+        number: 119
+        title: "refactor: extract constants to config file"
+        body: "Moves magic strings and numbers to a centralized config module."
+        html_url: "https://github.com/eval-org/eval-repo/pull/119"
+        head:
+          ref: refactor/extract-constants
+          sha: "ee7ff8aa9bb1"
+        base:
+          ref: main
+        user:
+          login: senior-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/119.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      expect_zero_critical: true
+
+  - id: pr_assigned_event
+    label: "(negative) PR assigned event — not an opened trigger"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: assigned
+      number: 120
+      pull_request:
+        number: 120
+        title: "feat: something"
+        state: open
+        draft: false
+      assignee:
+        login: security-reviewer
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: scan_already_posted
+    label: "(negative) Security scan results already posted — no duplicate"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: synchronize
+      number: 121
+      pull_request:
+        number: 121
+        title: "feat: minor update to billing"
+        body: "Small change."
+        html_url: "https://github.com/eval-org/eval-repo/pull/121"
+        head:
+          ref: feat/billing-minor
+          sha: "ff8aa9bb0cc2"
+        base:
+          ref: main
+        user:
+          login: dev-user
+        draft: false
+      existing_reviews:
+        - user: {login: "conduct-security-bot"}
+          state: COMMENTED
+          submitted_at: "2026-05-29T09:00:00Z"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
