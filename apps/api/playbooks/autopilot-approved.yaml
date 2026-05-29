@@ -85,6 +85,17 @@ blocks:
       SINGLE run_shell call. Do NOT split across multiple calls — /tmp is gone after each call.
       You MUST push the branch to the remote before this block finishes.
 
+      BEFORE ANYTHING ELSE — verify token write access in one shell call:
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X GET \
+          -H "Authorization: token $GIT_TOKEN" \
+          https://api.github.com/repos/{{_trigger.repo_full_name}})
+        if [ "$STATUS" != "200" ]; then
+          echo '{"pr_url": null, "approach": null, "files_changed": null, "error": "GIT_TOKEN cannot access repo — HTTP '$STATUS'"}'
+          exit 0
+        fi
+      If the above check fails OR if any subsequent git push / API call returns 403,
+      output the failure JSON immediately and stop — do NOT retry with alternate auth formats.
+
       Do ALL of the following in ONE run_shell call:
       - rm -rf /tmp/repo
       - git clone --depth {{inputs.clone_depth}} https://$GIT_TOKEN@github.com/{{_trigger.repo_full_name}}.git /tmp/repo
