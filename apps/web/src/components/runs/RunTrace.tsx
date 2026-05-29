@@ -316,6 +316,45 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
   )
 }
 
+// ── Run terminal row ─────────────────────────────────────────────────────────
+
+function RunTerminalRow({ runFailed, runCompleted }: {
+  runFailed: RunEvent | undefined
+  runCompleted: RunEvent | undefined
+}) {
+  const isReaped = runFailed?.payload?.reaped === true
+  const dotColor = runFailed
+    ? (isReaped ? "bg-amber-400" : "bg-red-500")
+    : "bg-green-500"
+
+  return (
+    <div className="relative pt-1">
+      <span className={`absolute left-[-17px] top-2.5 w-2.5 h-2.5 rounded-full border-2 border-white ${dotColor}`} />
+
+      {isReaped ? (
+        <div>
+          <p className="text-sm font-semibold text-amber-700 flex items-center gap-1.5">
+            <span aria-hidden="true">⏱</span>
+            Timed out
+            <span className="text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+              reaped
+            </span>
+          </p>
+          {typeof runFailed?.payload?.error === "string" && (
+            <p className="mt-0.5 text-xs text-stone-400">{runFailed.payload.error}</p>
+          )}
+        </div>
+      ) : runFailed ? (
+        <p className="text-sm font-semibold text-red-700">
+          {`Run failed — ${runFailed.payload?.error ?? ""}`}
+        </p>
+      ) : runCompleted ? (
+        <p className="text-sm font-semibold text-green-700">Run completed successfully</p>
+      ) : null}
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 function getCookie(name: string): string | null {
@@ -608,12 +647,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
 
         {/* Run-level terminal event */}
         {(runCompleted || runFailed) && (
-          <div className="relative pt-1">
-            <span className={`absolute left-[-17px] top-2.5 w-2.5 h-2.5 rounded-full border-2 border-white ${runFailed ? "bg-red-500" : "bg-green-500"}`} />
-            <p className={`text-sm font-semibold ${runFailed ? "text-red-700" : "text-green-700"}`}>
-              {runFailed ? `Run failed — ${runFailed.payload?.error ?? ""}` : "Run completed successfully"}
-            </p>
-          </div>
+          <RunTerminalRow runFailed={runFailed} runCompleted={runCompleted} />
         )}
 
         <div ref={bottomRef} />
