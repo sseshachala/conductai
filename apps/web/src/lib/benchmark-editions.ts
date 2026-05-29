@@ -41,12 +41,12 @@ export const EDITIONS: BenchmarkEdition[] = [
       {
         headline: "Quality criteria are the primary differentiator between B and C",
         detail:
-          "Raw structural scores are tightly clustered across the 18 playbooks. The gap between a B and a C grade is almost always in the quality layer: description completeness, output block clarity, and parameter documentation. These are low-effort, high-leverage improvements for any playbook sitting in the C range.",
+          "Raw structural scores are tightly clustered across the 19 playbooks. The gap between a B and a C grade is almost always in the quality layer: description completeness, output block clarity, and parameter documentation. These are low-effort, high-leverage improvements for any playbook sitting in the C range.",
       },
       {
         headline: "Failing criteria concentrate in two areas",
         detail:
-          "Across all 18 playbooks, missing required parameters and incomplete output block definitions account for the majority of failing criteria. Teams maintaining community playbooks should audit these two areas first when trying to improve a grade.",
+          "Across all 19 playbooks, missing required parameters and incomplete output block definitions account for the majority of failing criteria. Teams maintaining community playbooks should audit these two areas first when trying to improve a grade.",
       },
     ],
   },
@@ -61,22 +61,26 @@ export function getEdition(slug: string): BenchmarkEdition | undefined {
 // Canonical display names — keep in sync with marketplace FRIENDLY_NAMES.
 // Slugs not found here fall back to title-casing the slug.
 export const PLAYBOOK_NAMES: Record<string, string> = {
-  autopilot_quick:      "Autopilot Quick",
-  autopilot_full:       "Autopilot Full",
-  autopilot_approved:   "Autopilot + Approval",
-  pr_reviewer:          "PR Reviewer",
-  issue_triage:         "Issue Triage",
-  release_notes:        "Release Notes",
-  ci_notify:            "CI Failure Alert",
-  incident_responder:   "Incident Responder",
-  dependency_updater:   "Dependency Updater",
-  copilot_reviewer:     "Copilot / AI PR Reviewer",
-  security_scanner:     "Security Scanner",
-  flaky_test_detective: "Flaky Test Detective",
-  release_readiness:    "Release Readiness Reviewer",
-  postmortem_drafter:   "Postmortem Drafter",
-  docs_drift_detector:  "Docs Drift Detector",
-  terraform_reviewer:   "Terraform Plan Reviewer",
+  ai_ready:                 "AI Ready",
+  autopilot:                "Autopilot",
+  autopilot_quick:          "Autopilot Quick",
+  autopilot_full:           "Autopilot Full",
+  autopilot_approved:       "Autopilot + Approval",
+  pr_reviewer:              "PR Reviewer",
+  issue_triage:             "Issue Triage",
+  release_notes:            "Release Notes",
+  ci_notify:                "CI Failure Alert",
+  incident_responder:       "Incident Responder",
+  dependency_updater:       "Dependency Updater",
+  copilot_reviewer:         "Copilot / AI PR Reviewer",
+  security_scanner:         "Security Scanner",
+  security_patch_updater:   "Security Patch Updater",
+  flaky_test_detective:     "Flaky Test Detective",
+  release_readiness:        "Release Readiness Reviewer",
+  postmortem_drafter:       "Postmortem Drafter",
+  docs_drift_detector:      "Docs Drift Detector",
+  terraform_reviewer:       "Terraform Plan Reviewer",
+  smoke_test:               "Smoke Test",
 }
 
 export function playbookDisplayName(slug: string): string {
