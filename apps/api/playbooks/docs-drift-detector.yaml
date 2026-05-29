@@ -26,9 +26,18 @@ inputs:
 
 on:
   webhook:
-    next: check_merged
+    next: recall_context
 
 blocks:
+  recall_context:
+    type: memory
+    label: Recall prior context
+    action: read
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    limit: 5
+    next: check_merged
+
   check_merged:
     type: logic
     label: Was PR actually merged?
@@ -77,6 +86,13 @@ blocks:
 
       4. If docs need updating, draft the specific changes needed.
 
+      {% if recall_context.entries %}
+      Prior doc drift detected on this repo:
+      {% for entry in recall_context.entries %}
+      - {{entry.summary}}
+      {% endfor %}
+      {% endif %}
+
       Output ONLY the following JSON on the last line:
         {
           "needs_update": true/false,
@@ -119,6 +135,18 @@ blocks:
 
       Output ONLY the following JSON on the last line:
         {"issue_url": "<url>", "issue_number": <number>}
+    next: record_outcome
+
+  record_outcome:
+    type: memory
+    label: Record outcome
+    action: write
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    summary: |
+      Repo: {{_trigger.repository.full_name}} PR #{{_trigger.number}}
+      Stale docs: {{analyze_drift.stale_docs}}
+      Issue: {{create_docs_issue.issue_url}}
     next: notify_drift
 
   notify_drift:
@@ -138,7 +166,9 @@ blocks:
     label: No docs update needed
     description: "PR #{{_trigger.number}} merged — docs are up to date."
     output:
-      via: log
+      via: slack
+      slack:
+        channel: "{{inputs.slack_channel}}"
 
 test_trigger:
   payload:

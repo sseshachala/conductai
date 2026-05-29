@@ -22,9 +22,18 @@ inputs:
 
 on:
   webhook:
-    next: investigate_failures
+    next: recall_context
 
 blocks:
+  recall_context:
+    type: memory
+    label: Recall prior context
+    action: read
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    limit: 5
+    next: investigate_failures
+
   investigate_failures:
     type: brain
     mode: agentic
@@ -65,6 +74,13 @@ blocks:
       5. Search for the offending commit:
          GET https://api.github.com/repos/{{_trigger.repository.full_name}}/commits?sha={{_trigger.workflow_run.head_branch}}&per_page=5
          Headers: Authorization: token $GIT_TOKEN
+
+      {% if recall_context.entries %}
+      Prior flaky test reports on this repo:
+      {% for entry in recall_context.entries %}
+      - {{entry.summary}}
+      {% endfor %}
+      {% endif %}
 
       Output ONLY the following JSON on the last line:
         {
@@ -112,6 +128,19 @@ blocks:
 
       Output ONLY the following JSON on the last line:
         {"issue_url": "<url>", "issue_number": <number>}
+    next: record_outcome
+
+  record_outcome:
+    type: memory
+    label: Record outcome
+    action: write
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    summary: |
+      Repo: {{_trigger.repository.full_name}}
+      Flaky tests: {{investigate_failures.failing_tests}}
+      Failure rate: {{investigate_failures.failure_rate}}
+      Issue: {{create_flaky_issue.issue_url}}
     next: notify_flaky
 
   notify_flaky:
