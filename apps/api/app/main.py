@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.core.logging import setup_logging
 from app.middleware.logging import LoggingMiddleware
 from app.routers import credentials, dashboard, email_templates, environments, playbooks, projects, runs, webhooks, workflows
+from app.routers.eval import router as eval_router
 from app.routers.organizations import router as organizations_router
 from app.routers.workspace_projects import router as workspace_projects_router, audit_router as audit_log_router, preferences_router as workspace_preferences_router, project_direct_router
 from app.routers.runs import workspace_runs_router
@@ -69,6 +70,7 @@ app.include_router(credentials.router)
 app.include_router(environments.router)
 app.include_router(email_templates.router)
 app.include_router(webhooks.router)
+app.include_router(eval_router)
 
 
 @app.get("/health")
