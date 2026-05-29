@@ -169,6 +169,69 @@ def publish_edition(
     return dest
 
 
+def build_edition_manifest(
+    edition: str,
+    reports: dict[str, Any],
+    playbook_filter: str | None = None,
+) -> dict[str, Any]:
+    """
+    Build a multi-model edition manifest from a dict of ``{model: EvalReport}``.
+
+    The manifest extends the single-model format with a ``models`` list so the
+    benchmark UI can render per-model breakdowns without a schema change.
+
+    Parameters
+    ----------
+    edition:
+        Edition slug (e.g. ``"002"``).  The file will be named ``edition-002.json``.
+    reports:
+        ``{model_id: EvalReport}`` — one entry per model evaluated.
+    playbook_filter:
+        When set, only include the specified slug in the manifest.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Collect per-model results
+    models_data: list[dict[str, Any]] = []
+    all_playbook_slugs: set[str] = set()
+
+    for model_id, report in reports.items():
+        report_dict = report._to_dict()
+        playbooks = report_dict.get("playbooks", [])
+        if playbook_filter:
+            playbooks = [p for p in playbooks if p.get("slug") == playbook_filter]
+        for p in playbooks:
+            all_playbook_slugs.add(p["slug"])
+        models_data.append({
+            "model": model_id,
+            "summary": report_dict.get("summary", {}),
+            "playbooks": [
+                {
+                    "slug": p["slug"],
+                    "grade": p["grade"],
+                    "pct": p["pct"],
+                    "structural_score": p.get("structural_score", 0),
+                    "quality_score": p.get("quality_score", 0),
+                    "total_score": p.get("total_score", 0),
+                    "total_max": p.get("total_max", 0),
+                }
+                for p in playbooks
+            ],
+        })
+
+    # Primary model is the first (usually haiku); aggregate uses its scores
+    primary = models_data[0] if models_data else {}
+
+    return {
+        "edition": f"edition-{edition}",
+        "published_at": now,
+        "model": primary.get("model", "multi-model"),
+        "models": models_data,
+        "summary": primary.get("summary", {}),
+        "playbooks": primary.get("playbooks", []),
+    }
+
+
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def _summarise_edition(data: dict[str, Any], stem: str) -> dict[str, Any]:
