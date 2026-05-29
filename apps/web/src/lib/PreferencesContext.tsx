@@ -58,7 +58,8 @@ export function PreferencesProvider({
   }, [workspaceId, apiUrl])
 
   const update = useCallback(async (patch: Partial<Preferences>) => {
-    const optimistic = { ...prefs, ...patch }
+    const previous = prefs // capture snapshot before any async gap
+    const optimistic = { ...previous, ...patch }
     setPrefs(optimistic)
     try {
       const h = await headers()
@@ -68,7 +69,7 @@ export function PreferencesProvider({
         body: JSON.stringify(patch),
       })
     } catch {
-      setPrefs(prefs) // rollback on error
+      setPrefs(previous) // rollback to captured snapshot, not stale closure
     }
   }, [prefs, headers, apiUrl, workspaceId])
 

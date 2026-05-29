@@ -9,26 +9,26 @@ GET  /eval/fixtures            — list all fixtures (slug, source, payload prev
 GET  /eval/fixtures/{slug}     — full fixture: payload, initial_state, expected outcome
 POST /eval/run/{slug}          — re-run structural eval for one playbook (bypasses cache)
 POST /eval/run                 — re-run structural eval for all playbooks (busts cache)
-POST /eval/live/{slug}         — queue a live (real LLM) eval run, returns job_id immediately
-GET  /eval/jobs/{job_id}       — poll live job status: queued | running | done | failed
+POST /eval/live/{slug}         — super-admin only: queue a live eval run, returns job_id
+GET  /eval/jobs/{job_id}       — super-admin only: poll live job status
 
 All endpoints require at least viewer role.  /eval/report requires admin.
 Structural scoring is fast (~10ms per playbook) so on-demand runs are cheap.
-Live eval runs real LLM calls via the background job system — poll /eval/jobs/{job_id}.
-Requires ANTHROPIC_API_KEY to be set in the API environment.
+Live eval runs real LLM calls and is gated by X-Admin-Secret / ADMIN_SECRET.
 """
 from __future__ import annotations
 
 import threading
 import time
 import uuid
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_workspace_role
+from app.core.config import settings
 from app.core.database import get_db
 
 log = structlog.get_logger(__name__)
@@ -122,6 +122,14 @@ def _serialise_fixture(f: Any) -> dict[str, Any]:
         "expected_artifact_keys": f.expected_artifact_keys,
         "extra_assertions": f.extra_assertions,
     }
+
+
+def _require_super_admin(
+    x_admin_secret: Annotated[str | None, Header()] = None,
+) -> None:
+    """Gate platform-only eval actions with the server ADMIN_SECRET."""
+    if not settings.admin_secret or x_admin_secret != settings.admin_secret:
+        raise HTTPException(status_code=403, detail="Requires super admin")
 
 
 # ── score endpoints ───────────────────────────────────────────────────────────
@@ -481,7 +489,8 @@ def start_live_eval(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    _role: str = Depends(require_workspace_role("admin")),
+    _super_admin: None = Depends(_require_super_admin),
 ):
     """
     Queue a live (real LLM) eval run for a single playbook.
@@ -490,7 +499,7 @@ def start_live_eval(
     track progress.  Live eval calls the real executor with mocked external
     integrations (GitHub/Slack) but a real Anthropic LLM call.
 
-    Requires ANTHROPIC_API_KEY to be set in the API environment.
+    Requires super-admin access plus a workspace Anthropic API key.
     The run typically takes 15-60 seconds depending on playbook complexity.
     """
     # Verify the slug exists before queuing
@@ -533,7 +542,8 @@ def get_live_job(
     job_id: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    _role: str = Depends(require_workspace_role("admin")),
+    _super_admin: None = Depends(_require_super_admin),
 ):
     """
     Poll the status of a live eval job.
