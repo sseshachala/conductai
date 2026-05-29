@@ -48,7 +48,7 @@ export default function RunDetailPage() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [stopping, setStopping] = useState(false)
-  const [activeTab, setActiveTab] = useState<Tab>("summary")
+  const [activeTab, setActiveTab] = useState<Tab>("trace")
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   async function buildHeaders() {

@@ -115,11 +115,19 @@ function summariseOutput(output: Record<string, unknown>, blockType?: string): s
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  pending:   "bg-stone-100 text-stone-500",
-  running:   "bg-blue-100 text-blue-700",
-  succeeded: "bg-green-100 text-green-700",
-  failed:    "bg-red-100 text-red-700",
-  paused:    "bg-orange-100 text-orange-700",
+  pending:    "bg-stone-100 text-stone-500",
+  running:    "bg-blue-100 text-blue-700",
+  succeeded:  "bg-green-100 text-green-700",
+  failed:     "bg-red-100 text-red-700",
+  paused:     "bg-orange-100 text-orange-700",
+  timed_out:  "bg-amber-100 text-amber-700",
+}
+
+/** Returns true when an error string indicates a timeout rather than a logic failure */
+function isTimeoutError(error: string | undefined): boolean {
+  if (!error) return false
+  const s = error.toLowerCase()
+  return s.includes("timed out") || s.includes("timeouterror") || s.includes("did not become")
 }
 
 const TYPE_BADGE: Record<string, string> = {
@@ -164,6 +172,7 @@ interface BlockRow {
   budgetExhausted?: { turns: number; costUsd: number }
   model?: string
   routingReason?: string
+  timedOut?: boolean
 }
 
 const FILE_ACTION_COLOR: Record<string, string> = {
@@ -173,6 +182,7 @@ const FILE_ACTION_COLOR: Record<string, string> = {
 }
 
 function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
+  const isTimedOut = row.timedOut === true
   const [expanded, setExpanded] = useState(row.status === "failed")
   const [diffExpanded, setDiffExpanded] = useState(false)
   const dur = duration(row.startedAt, row.completedAt)
@@ -182,20 +192,32 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
 
   const dot =
     row.status === "completed" && !isSkipped ? "bg-green-400" :
-    row.status === "failed"    ? "bg-red-400" :
-    row.status === "running"   ? "bg-blue-400 animate-pulse" :
-    isSkipped                  ? "bg-stone-200" :
+    row.status === "failed" && isTimedOut     ? "bg-amber-400" :
+    row.status === "failed"                   ? "bg-red-400" :
+    row.status === "running"                  ? "bg-blue-400 animate-pulse" :
+    isSkipped                                 ? "bg-stone-200" :
     "bg-stone-300"
+
+  const failedBg = isTimedOut
+    ? "rounded-lg bg-amber-50 border border-amber-100 px-3 py-2.5 -ml-1 mb-1"
+    : "rounded-lg bg-red-50 border border-red-100 px-3 py-2.5 -ml-1 mb-1"
+
+  const labelColor =
+    row.status === "failed" && isTimedOut ? "text-amber-800" :
+    row.status === "failed"               ? "text-red-800" :
+    isSkipped                             ? "text-stone-400" :
+    "text-stone-800"
 
   return (
     <div className="relative">
       {!isLast && <span className="absolute left-[-13px] top-4 w-px h-full bg-stone-100" />}
       <span className={`absolute left-[-17px] top-1.5 w-2.5 h-2.5 rounded-full border-2 border-white ${dot}`} />
 
-      <div className={`pb-3 ${row.status === "failed" ? "rounded-lg bg-red-50 border border-red-100 px-3 py-2.5 -ml-1 mb-1" : ""}`}>
+      <div className={`pb-3 ${row.status === "failed" ? failedBg : ""}`}>
         {/* Header row */}
         <div className="flex items-center gap-2 flex-wrap">
-          <span className={`text-sm font-semibold ${row.status === "failed" ? "text-red-800" : isSkipped ? "text-stone-400" : "text-stone-800"}`}>
+          <span className={`text-sm font-semibold ${labelColor}`}>
+            {isTimedOut && <span aria-hidden="true" className="mr-1">⏱</span>}
             {row.label}
           </span>
           <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${TYPE_BADGE[row.type] ?? "bg-stone-100 text-stone-500"}`}>
@@ -451,9 +473,11 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
         }
       }
     } else if (ev.kind === "block_failed" && blockMap[ev.block_id]) {
+      const errStr = ev.payload.error as string
       blockMap[ev.block_id].status = "failed"
       blockMap[ev.block_id].completedAt = ev.created_at
-      blockMap[ev.block_id].error = ev.payload.error as string
+      blockMap[ev.block_id].error = errStr
+      blockMap[ev.block_id].timedOut = isTimeoutError(errStr)
     } else if (ev.kind === "block_skipped") {
       const row: BlockRow = {
         blockId: ev.block_id,

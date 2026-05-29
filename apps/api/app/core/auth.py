@@ -12,6 +12,7 @@ Usage in routes:
     _: str = Depends(require_workspace_role("admin"))
 """
 import structlog
+import threading
 from functools import lru_cache
 from typing import Annotated
 
@@ -31,6 +32,7 @@ DEV_USER_ID = "dev"
 _bearer = HTTPBearer(auto_error=False)
 
 _jwks_cache: dict | None = None
+_jwks_lock = threading.Lock()
 
 
 def _fetch_jwks() -> dict:
@@ -48,10 +50,11 @@ def _fetch_jwks() -> dict:
 
 def _get_jwks(force_refresh: bool = False) -> dict:
     global _jwks_cache
-    if _jwks_cache and not force_refresh:
+    with _jwks_lock:
+        if _jwks_cache and not force_refresh:
+            return _jwks_cache
+        _jwks_cache = _fetch_jwks()
         return _jwks_cache
-    _jwks_cache = _fetch_jwks()
-    return _jwks_cache
 
 
 def _verify_clerk_token(token: str) -> dict | None:
@@ -279,14 +282,25 @@ def get_user_workspace_role(
             return "admin"
 
         # Self-heal: if workspace_users is completely empty for this workspace
-        # (e.g. after a DB truncate), grant the first authenticated user admin access
-        # and insert them so subsequent requests are fast.
+        # (e.g. after a DB truncate in local dev), grant the first authenticated user
+        # admin access and insert them so subsequent requests are fast.
+        # Disabled in production — an empty workspace there means misconfiguration,
+        # not a recovery scenario. Granting access silently would be a privilege escalation.
+        if settings.environment == "production":
+            raise HTTPException(status_code=403, detail="Not a member of this workspace")
+
         member_count = db.execute(
             text("SELECT COUNT(*) FROM workspace_users WHERE workspace_id = :ws"),
             {"ws": workspace_id},
         ).scalar()
         if member_count == 0:
             from datetime import datetime, timezone
+            log.warning(
+                "auth.self_heal_admin",
+                workspace_id=workspace_id,
+                user_id=user_id,
+                note="workspace_users empty — granting first user admin (dev only)",
+            )
             db.execute(
                 text("""
                     INSERT INTO workspace_users (workspace_id, clerk_user_id, role, joined_at)

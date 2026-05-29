@@ -833,6 +833,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
             </button>
             <button
               onClick={() => setActiveView("yaml")}
+              title="View-only — use Import / Export to make changes"
               className={`px-2.5 py-1 rounded ${
                 activeView === "yaml"
                   ? "bg-white text-stone-900 shadow-sm font-medium"
