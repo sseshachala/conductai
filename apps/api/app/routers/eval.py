@@ -274,6 +274,8 @@ def list_fixtures(
             "expected_artifact_keys": f.expected_artifact_keys,
             "has_payload": bool(f.trigger_payload),
             "has_initial_state": bool(f.initial_state),
+            "scenario_count": getattr(f, "scenario_count", 1),
+            "scenario_tags": getattr(f, "scenario_tags", []),
         }
         for f in fixtures
     ]
@@ -535,6 +537,133 @@ def start_live_eval(
         "slug": slug,
         "status": "queued",
         "poll_url": f"/eval/jobs/{job_id}",
+    }
+
+
+# ── benchmark / baseline endpoints ───────────────────────────────────────────
+#
+# Editions are frozen score snapshots committed to reports/baselines/.
+# These endpoints are public-readable (viewer role) — the data is already
+# committed to git so there is no sensitive information to guard.
+
+@router.get("/benchmark/editions")
+def list_benchmark_editions(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+):
+    """
+    Return all committed benchmark editions (newest first).
+
+    Each edition is a frozen snapshot of eval scores published via
+    ``python -m eval.runner --publish``.  The data lives in
+    ``reports/baselines/edition-*.json``.
+
+    Response: [{slug, published_at, model, summary, playbook_count, top_playbooks}, ...]
+    """
+    try:
+        from eval.benchmark import list_editions
+        return list_editions()
+    except Exception as e:
+        log.error("eval.benchmark_list_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to load benchmark editions: {e}")
+
+
+@router.get("/benchmark/editions/{edition_slug}")
+def get_benchmark_edition(
+    edition_slug: str,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+):
+    """
+    Return the full manifest for a single benchmark edition.
+
+    Response: { edition, published_at, model, summary, playbooks: [...] }
+    """
+    try:
+        from eval.benchmark import get_edition
+        edition = get_edition(edition_slug)
+    except Exception as e:
+        log.error("eval.benchmark_edition_failed", slug=edition_slug, error=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to load edition '{edition_slug}': {e}")
+
+    if edition is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Edition '{edition_slug}' not found. Use GET /eval/benchmark/editions to list available editions.",
+        )
+    return edition
+
+
+@router.get("/benchmark/baselines")
+def list_playbook_baselines(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+):
+    """
+    Return all single-playbook baseline files.
+
+    These are written by ``python -m eval.runner --playbook pr_reviewer --publish``.
+    Response: [{file, slug, model, grade, pct, baseline_published_at}, ...]
+    """
+    try:
+        from eval.benchmark import list_playbook_baselines as _list
+        return _list()
+    except Exception as e:
+        log.error("eval.baselines_list_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to load baselines: {e}")
+
+
+@router.get("/scenarios/{slug}")
+def get_scenario_set(
+    slug: str,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+):
+    """
+    Return all scenarios for a playbook that has a multi-scenario fixture file.
+
+    Response: { slug, description, scenario_count, positive_count, negative_count, scenarios: [...] }
+    """
+    try:
+        from eval.fixtures import load_scenario_set
+        scenario_set = load_scenario_set(slug)
+    except Exception as e:
+        log.error("eval.scenarios_load_failed", slug=slug, error=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to load scenarios for '{slug}': {e}")
+
+    if scenario_set is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No multi-scenario fixture file found for '{slug}'. "
+                   f"Only the following playbooks have multi-scenario fixtures: "
+                   f"pr_reviewer, security_scanner, issue_triage, incident_responder.",
+        )
+
+    return {
+        "slug": scenario_set.slug,
+        "description": scenario_set.description,
+        "scenario_count": len(scenario_set.scenarios),
+        "positive_count": len(scenario_set.positive_scenarios),
+        "negative_count": len(scenario_set.negative_scenarios),
+        "scenarios": [
+            {
+                "id": s.id,
+                "label": s.label,
+                "tags": s.tags,
+                "trigger_payload": s.trigger_payload,
+                "initial_state": s.initial_state,
+                "expected_outcome_type": s.expected_outcome_type,
+                "expected_artifact_keys": s.expected_artifact_keys,
+                "extra_assertions": s.extra_assertions,
+                "expected_should_review": s.expected_should_review,
+                "expected_should_scan": s.expected_should_scan,
+            }
+            for s in scenario_set.scenarios
+        ],
     }
 
 
