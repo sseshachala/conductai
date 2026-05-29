@@ -461,11 +461,7 @@ function EvalContent({ getToken }: { getToken: (() => Promise<string | null>) | 
 // ─── Auth wrapper ─────────────────────────────────────────────────────────────
 
 function EvalWithAuth() {
-  const router = useRouter()
-  const { getToken, isLoaded, isSignedIn } = useAuth()
-  useEffect(() => {
-    if (isLoaded && !isSignedIn) router.replace("/")
-  }, [isLoaded, isSignedIn, router])
+  const { getToken, isLoaded } = useAuth()
   if (!isLoaded) return null
   return <EvalContent getToken={getToken} />
 }

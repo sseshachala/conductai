@@ -456,11 +456,7 @@ function EvalDetailContent({
 // ─── Auth wrapper ─────────────────────────────────────────────────────────────
 
 function EvalDetailWithAuth({ slug }: { slug: string }) {
-  const router = useRouter()
-  const { getToken, isLoaded, isSignedIn } = useAuth()
-  useEffect(() => {
-    if (isLoaded && !isSignedIn) router.replace("/")
-  }, [isLoaded, isSignedIn, router])
+  const { getToken, isLoaded } = useAuth()
   if (!isLoaded) return null
   return <EvalDetailContent slug={slug} getToken={getToken} />
 }
