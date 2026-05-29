@@ -495,10 +495,18 @@ def score_quality(
     outcome: dict | None,
     state: dict,
     total_tokens: int,
+    judge_result: Any | None = None,
 ) -> PlaybookScore:
     """
     Add quality criteria to an existing PlaybookScore after a live run.
     Modifies score in place and returns it.
+
+    Parameters
+    ----------
+    judge_result:
+        Optional :class:`eval.judge.JudgeResult`.  When provided, its
+        per-dimension scores (correctness/completeness/actionability, 10 pts
+        each) are appended and quality_max is raised from 40 to 70.
     """
     quality_criteria: list[CriterionResult] = []
     quality_max = 40
@@ -552,6 +560,18 @@ def score_quality(
         points_earned=5 if under_budget else 0, points_possible=5,
         detail=f"total_tokens={total_tokens:,} (budget: 50,000)",
     ))
+
+    # 5. LLM-as-judge (30 pts, optional) — correctness + completeness + actionability
+    if judge_result is not None and not judge_result.failed:
+        for criterion in judge_result.to_criteria():
+            quality_criteria.append(CriterionResult(
+                name=criterion["name"],
+                passed=criterion["passed"],
+                points_earned=criterion["points_earned"],
+                points_possible=criterion["points_possible"],
+                detail=criterion["detail"],
+            ))
+        quality_max = 70  # 40 mechanical + 30 judge
 
     score.criteria.extend(quality_criteria)
     score.quality_score = sum(c.points_earned for c in quality_criteria)

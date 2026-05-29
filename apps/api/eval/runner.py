@@ -222,9 +222,9 @@ def _eval_scenario(
     live: bool,
     model: str | None = None,
     api_key: str | None = None,
+    judge: bool = False,
 ) -> PlaybookScore:
     """Run all checks for a single FixtureScenario and return a PlaybookScore."""
-    # Build a transient PlaybookFixture from the scenario for reuse of existing code
     fixture = PlaybookFixture(
         slug=scenario.playbook_slug,
         playbook_path=scenario.playbook_path,
@@ -235,7 +235,7 @@ def _eval_scenario(
         extra_assertions=scenario.extra_assertions,
         source="file",
     )
-    return _eval_one(fixture, live=live, model=model, api_key=api_key)
+    return _eval_one(fixture, live=live, model=model, api_key=api_key, judge=judge)
 
 
 def _eval_one(
@@ -243,6 +243,7 @@ def _eval_one(
     live: bool,
     model: str | None = None,
     api_key: str | None = None,
+    judge: bool = False,
 ) -> PlaybookScore:
     """Run all checks for one playbook and return a PlaybookScore."""
     start = time.perf_counter()
@@ -251,7 +252,7 @@ def _eval_one(
     score = score_structural(playbook_yaml, fixture.slug)
 
     if live:
-        score = _run_live(fixture, score, playbook_yaml, model=model, api_key=api_key)
+        score = _run_live(fixture, score, playbook_yaml, model=model, api_key=api_key, judge=judge)
 
     elapsed = time.perf_counter() - start
     log.info(
@@ -279,10 +280,20 @@ def _run_live(
     playbook_yaml: str,
     model: str | None = None,
     api_key: str | None = None,
+    judge: bool = False,
+    judge_model: str = "claude-haiku-4-5-20251001",
 ) -> PlaybookScore:
     """
     Execute the playbook end-to-end through the real executor using a
     mock database and stubbed integrations.  Appends quality criteria to score.
+
+    Parameters
+    ----------
+    judge:
+        When True, run the LLM-as-judge rubric on the brain output and add
+        its 30-pt score to the PlaybookScore (raises quality_max to 70).
+    judge_model:
+        Model to use for judging.  Defaults to Haiku for cost efficiency.
     """
     try:
         result = _execute_with_mocks(fixture, playbook_yaml, model=model, api_key=api_key)
@@ -290,12 +301,33 @@ def _run_live(
         outcome      = result["outcome"]
         state        = result["state"]
         total_tokens = _sum_tokens(state)
-        return score_quality(score, run_status, outcome, state, total_tokens)
+
+        judge_result = None
+        if judge:
+            try:
+                from eval.judge import judge_output, extract_brain_output
+                brain_text = extract_brain_output(state)
+                judge_result = judge_output(
+                    slug=fixture.slug,
+                    trigger_payload=fixture.trigger_payload,
+                    brain_output=brain_text,
+                    model=judge_model,
+                    api_key=api_key,
+                )
+                log.info(
+                    "judge_complete",
+                    slug=fixture.slug,
+                    judge_score=judge_result.total_score,
+                    elapsed_ms=judge_result.elapsed_ms,
+                )
+            except Exception as jexc:
+                log.warning("judge_failed", slug=fixture.slug, error=str(jexc))
+
+        return score_quality(score, run_status, outcome, state, total_tokens, judge_result=judge_result)
 
     except Exception as exc:
         tb = traceback.format_exc()
         log.warning("live_eval_failed", slug=fixture.slug, error=str(exc))
-        # Add a single failed quality criterion with the error
         from eval.scorer import CriterionResult
         score.criteria.append(CriterionResult(
             name="live_execution", passed=False,
@@ -534,9 +566,47 @@ def _cli():
         "--promote", action="store_true", default=False,
         help="Write PlaybookSubmission rows to DB after scoring (requires DB connection)",
     )
+    parser.add_argument(
+        "--judge", action="store_true", default=False,
+        help="Run LLM-as-judge rubric on brain output (adds 30 pts, requires --live)",
+    )
+    parser.add_argument(
+        "--judge-model", metavar="MODEL", default="claude-haiku-4-5-20251001",
+        help="Model to use as judge (default: claude-haiku-4-5-20251001)",
+    )
+    parser.add_argument(
+        "--all-models", action="store_true", default=False,
+        help="Run eval across all canonical models (haiku/sonnet/opus) and publish baselines",
+    )
+    parser.add_argument(
+        "--edition", metavar="SLUG",
+        help="Publish a full edition manifest to reports/baselines/edition-<SLUG>.json",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.WARNING)
+
+    # --all-models: run the full eval suite against haiku, sonnet, opus
+    if args.all_models:
+        from eval.prompt_adapters import all_eval_models
+        models = all_eval_models()
+        all_reports: dict[str, EvalReport] = {}
+        for m in models:
+            print(f"\n{'─'*60}")
+            print(f"  Model: {m}")
+            print(f"{'─'*60}")
+            if args.playbook:
+                r = run_one(args.playbook, live=args.live, api_key=None)
+            else:
+                r = run_all(live=args.live)
+            all_reports[m] = r
+            print(r.summary())
+            if args.publish:
+                slug = args.playbook or "all"
+                _publish_baseline(r._to_dict(), slug, model=m)
+        if args.edition:
+            _publish_edition(all_reports, args.edition, playbook=args.playbook)
+        sys.exit(0)
 
     if args.scenarios and args.playbook:
         # Multi-scenario run
@@ -585,6 +655,34 @@ def _cli():
     # Exit with non-zero if any playbook is failing (grade F)
     if any(s.grade == "F" for s in report.scores):
         sys.exit(1)
+
+
+def _publish_edition(
+    reports: dict[str, EvalReport],
+    edition_slug: str,
+    playbook: str | None = None,
+) -> None:
+    """
+    Write a multi-model edition manifest to reports/baselines/edition-<slug>.json.
+
+    Format mirrors the existing edition-001.json schema so the benchmark UI
+    can render it without changes.
+    """
+    import json
+    from datetime import datetime, timezone
+    from eval.benchmark import build_edition_manifest
+
+    root = Path(__file__).resolve().parent.parent
+    dest = root / "reports" / "baselines" / f"edition-{edition_slug}.json"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
+    manifest = build_edition_manifest(
+        edition=edition_slug,
+        reports=reports,
+        playbook_filter=playbook,
+    )
+    dest.write_text(json.dumps(manifest, indent=2))
+    print(f"\nEdition manifest written to {dest.relative_to(root)}")
 
 
 def _publish_baseline(data: dict, slug: str, model: str | None = None) -> None:
