@@ -12,6 +12,7 @@ Execution model:
 import json
 import os
 import re
+import socket
 import subprocess
 import structlog
 from collections import defaultdict, deque
@@ -1589,6 +1590,8 @@ def _execute_dag(
     run.status = "failed" if failed else "succeeded"
     run.completed_at = _now()
     run.current_block_id = None
+    run.locked_at = None   # release the worker lock on normal completion
+    run.locked_by = None
     run.state = state
     wf = getattr(version, "workflow", None) if version else None
     real_slug = getattr(wf, "playbook_slug", None)
@@ -1631,6 +1634,9 @@ def execute_run(run_id: str):
 
         run.status = "running"
         run.started_at = run.started_at or _now()
+        run.locked_at = _now()
+        run.locked_by = f"{socket.gethostname()}:{os.getpid()}"
+        run.attempt_count = (run.attempt_count or 0) + 1
         db.commit()
         _emit(db, run_id, None, "run_started", {"node_count": len((version.graph or {}).get("nodes", []))})
 
@@ -1711,6 +1717,8 @@ def execute_run(run_id: str):
             if run:
                 run.status = "failed"
                 run.completed_at = _now()
+                run.locked_at = None
+                run.locked_by = None
                 db.commit()
                 _emit_run_analytics(run, None, {}, db, outcome="failed", error=str(e))
         except Exception:
