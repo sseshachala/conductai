@@ -38,7 +38,11 @@ from eval.fixtures import PlaybookFixture, load_fixtures, load_fixture
 from eval.scorer import PlaybookScore, score_structural, score_quality
 from eval.report import EvalReport
 
-log = logging.getLogger(__name__)
+try:
+    import structlog
+    log = structlog.get_logger(__name__)
+except ImportError:
+    log = logging.getLogger(__name__)
 
 
 # ── main entry points ─────────────────────────────────────────────────────────
