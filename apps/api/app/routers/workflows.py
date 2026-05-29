@@ -619,7 +619,13 @@ def update_workflow(
     workspace_id: str = Depends(get_workspace_id),
     _role: str = Depends(require_workspace_role("admin", "editor")),
 ):
-    workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
+    # SELECT FOR UPDATE — serialise concurrent saves on the same workflow so two
+    # editors can't both read, both create a WorkflowVersion, and silently
+    # discard each other's changes.  The second writer blocks until the first
+    # commits, then reads the refreshed row and applies its edit on top.
+    workflow = db.query(Workflow).filter(
+        Workflow.id == workflow_id, Workflow.workspace_id == workspace_id
+    ).with_for_update().first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
 
@@ -1349,7 +1355,10 @@ def update_workflow_yaml(
     Returns the workflow with its new current_version_id. The compiled
     artifacts are produced in the background — the caller doesn't wait.
     """
-    workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
+    # SELECT FOR UPDATE — same serialisation as the graph PUT endpoint.
+    workflow = db.query(Workflow).filter(
+        Workflow.id == workflow_id, Workflow.workspace_id == workspace_id
+    ).with_for_update().first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
 
