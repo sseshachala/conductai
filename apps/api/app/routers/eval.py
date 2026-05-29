@@ -239,6 +239,7 @@ def list_playbook_evals(
             "structural_score": p["structural_score"],
             "quality_score": p["quality_score"],
             "failing_criteria": sum(1 for c in p["criteria"] if not c["passed"]),
+            "total_criteria": len(p["criteria"]),
         }
         for p in report["playbooks"]
     ]
