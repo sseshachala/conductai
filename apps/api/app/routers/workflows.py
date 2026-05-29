@@ -1689,11 +1689,17 @@ def test_trigger(
         max_turns=suggested_turns,
     )
     db.add(run)
-    db.flush()
     db.commit()
 
-    r = _redis_mod.from_url(_settings.redis_url, decode_responses=True)
-    r.rpush("marshal:runs:queue", str(run.id))
+    try:
+        r = _redis_mod.from_url(_settings.redis_url, decode_responses=True)
+        r.rpush("marshal:runs:queue", str(run.id))
+    except Exception as _enqueue_err:
+        import logging as _logging
+        _logging.getLogger(__name__).error(
+            "workflow.test_triggered.enqueue_failed run_id=%s err=%s", run.id, _enqueue_err
+        )
+        raise HTTPException(status_code=503, detail="Run created but queue is unavailable")
 
     log.info("workflow.test_triggered", workflow_id=str(workflow_id), run_id=str(run.id), playbook_slug=workflow.playbook_slug)
     return {"ok": True, "run_id": str(run.id), "max_turns": suggested_turns}

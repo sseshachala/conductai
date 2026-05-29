@@ -259,10 +259,37 @@ async def inbound_webhook(
         raise HTTPException(status_code=401, detail="Workflow has no webhook secret configured")
 
     from app.core.crypto import decrypt as _decrypt
+    import base64 as _base64
     try:
         webhook_secret = _decrypt(raw_secret)["secret"]
     except Exception:
-        webhook_secret = raw_secret  # fallback: treat as plaintext (old installs)
+        # Fallback for old installs that stored a plaintext secret before encryption
+        # was introduced.  A real ciphertext blob is base64-encoded and will be
+        # significantly longer than a typical webhook secret (>40 chars after
+        # base64-decode attempts).  If the raw value looks like a short human-readable
+        # secret (<=128 chars, no null bytes) treat it as plaintext.  Otherwise
+        # fail closed — using a garbled ciphertext as the expected HMAC key would
+        # accept any attacker-crafted signature computed against that same ciphertext.
+        is_likely_ciphertext = False
+        try:
+            decoded = _base64.b64decode(raw_secret, validate=True)
+            # A 12-byte nonce + AES-GCM ciphertext will always be >40 bytes
+            is_likely_ciphertext = len(decoded) > 40
+        except Exception:
+            pass
+        if is_likely_ciphertext:
+            log.error(
+                "webhook.inbound_secret_decrypt_failed",
+                workflow_id=workflow_id,
+                note="Stored secret looks like a corrupted ciphertext. "
+                     "Re-save the webhook secret in the workflow trigger config.",
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Webhook secret is corrupted — re-save it in the workflow trigger settings.",
+            )
+        # Short plaintext secret from an old install — accept as-is.
+        webhook_secret = raw_secret
 
     if git_provider == "gitlab":
         # GitLab sends the secret as a static token header

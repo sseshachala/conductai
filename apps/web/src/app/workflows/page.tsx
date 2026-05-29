@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
+import { statusStyle } from "@/lib/runUtils"
 
 interface Workflow {
   id: string
@@ -14,12 +15,6 @@ interface Workflow {
   last_run_at: string | null
 }
 
-const RUN_STATUS: Record<string, { label: string; dot: string; text: string; bg: string }> = {
-  succeeded: { label: "Last run succeeded", dot: "bg-green-400",  text: "text-green-700",  bg: "bg-green-50"  },
-  failed:    { label: "Last run failed",    dot: "bg-red-400",    text: "text-red-600",    bg: "bg-red-50"    },
-  running:   { label: "Running now",        dot: "bg-blue-400 animate-pulse", text: "text-blue-700", bg: "bg-blue-50" },
-  pending:   { label: "Queued",             dot: "bg-stone-300",  text: "text-stone-500",  bg: "bg-stone-100" },
-}
 
 function timeAgo(ts: string): string {
   const diff = Date.now() - new Date(ts).getTime()
@@ -219,7 +214,7 @@ function AgentCard({
     setRenaming(false)
   }
 
-  const status = workflow.last_run_status ? RUN_STATUS[workflow.last_run_status] : null
+  const status = workflow.last_run_status ? statusStyle(workflow.last_run_status) : null
 
   if (confirmValue !== null) {
     return (
