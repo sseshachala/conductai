@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
@@ -162,14 +163,15 @@ function TopPlaybooksStrip({ playbooks }: { playbooks: TopPlaybook[] }) {
         {playbooks.map(p => {
           const s = gradeStyle(p.grade)
           return (
-            <div
+            <Link
               key={p.slug}
-              className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 ${s.bg} border-transparent`}
+              href={`/eval/${encodeURIComponent(p.slug)}`}
+              className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 ${s.bg} border-transparent hover:opacity-80 transition-opacity`}
             >
               <span className={`text-xs font-bold ${s.text}`}>{p.grade}</span>
               <span className="text-xs font-mono text-stone-700">{p.slug}</span>
               <span className="text-[11px] text-stone-400">{p.pct.toFixed(0)}%</span>
-            </div>
+            </Link>
           )
         })}
       </div>
@@ -207,30 +209,38 @@ function QualityTable({ playbooks }: { playbooks: PlaybookEval[] }) {
         </thead>
         <tbody>
           {sorted.map(p => (
-            <tr key={p.slug} className="border-b border-stone-100 last:border-0 hover:bg-stone-50 transition-colors">
+            <tr key={p.slug} className="border-b border-stone-100 last:border-0 hover:bg-stone-50 transition-colors cursor-pointer">
               <td className="px-4 py-3">
-                <span className="font-mono text-xs text-stone-700 bg-stone-100 px-2 py-0.5 rounded">
-                  {p.slug}
-                </span>
+                <Link href={`/eval/${encodeURIComponent(p.slug)}`} className="block">
+                  <span className="font-mono text-xs text-stone-700 bg-stone-100 px-2 py-0.5 rounded hover:bg-stone-200 transition-colors">
+                    {p.slug}
+                  </span>
+                </Link>
               </td>
               <td className="px-4 py-3">
-                <GradeBadge grade={p.grade} />
+                <Link href={`/eval/${encodeURIComponent(p.slug)}`} className="block">
+                  <GradeBadge grade={p.grade} />
+                </Link>
               </td>
               <td className="px-4 py-3">
-                <PassBar pct={p.pct} />
+                <Link href={`/eval/${encodeURIComponent(p.slug)}`} className="block">
+                  <PassBar pct={p.pct} />
+                </Link>
               </td>
               <td className="px-4 py-3 text-right">
-                {p.failing_criteria > 0 ? (
-                  <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
-                    {p.failing_criteria}
-                    {p.total_max > 0 && (
-                      <span className="text-stone-400 font-normal"> / {p.total_max}</span>
-                    )}
-                  </span>
-                ) : (
-                  <span className="text-xs text-emerald-600 font-medium">All passing</span>
-                )}
+                <Link href={`/eval/${encodeURIComponent(p.slug)}`} className="block">
+                  {p.failing_criteria > 0 ? (
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
+                      {p.failing_criteria}
+                      {p.total_max > 0 && (
+                        <span className="text-stone-400 font-normal"> / {p.total_max}</span>
+                      )}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-emerald-600 font-medium">All passing</span>
+                  )}
+                </Link>
               </td>
             </tr>
           ))}
