@@ -393,7 +393,7 @@ function EvalContent({ getToken }: { getToken: (() => Promise<string | null>) | 
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-xl font-semibold text-stone-900">Evals</h1>
+            <h1 className="text-xl font-semibold text-stone-900">Quality</h1>
             <p className="text-xs text-stone-400 mt-0.5">Playbook quality grades and failing criteria</p>
           </div>
 
