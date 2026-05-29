@@ -132,6 +132,13 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle")
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isFirstLoad = useRef(true)
+  // Undo / redo history
+  const historyRef    = useRef<Array<{ nodes: Node[]; edges: Edge[] }>>([])
+  const historyIdxRef = useRef(-1)
+  const skipHistoryRef = useRef(false)
+  const historyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [canUndo, setCanUndo] = useState(false)
+  const [canRedo, setCanRedo] = useState(false)
   const { screenToFlowPosition, setCenter, fitView } = useReactFlow()
   const router = useRouter()
   const [canvasLoading, setCanvasLoading] = useState(true)
@@ -396,6 +403,70 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
     }, 1500)
     return () => { if (autosaveTimer.current) clearTimeout(autosaveTimer.current) }
   }, [nodes, edges, workflowName, save, isViewer])
+
+  // History snapshot — debounced 400ms; only on structural/config changes, not bare position moves
+  useEffect(() => {
+    if (isFirstLoad.current || skipHistoryRef.current || isViewer) return
+    if (historyTimerRef.current) clearTimeout(historyTimerRef.current)
+    historyTimerRef.current = setTimeout(() => {
+      // Build a key that captures structure + config but not x/y positions
+      const nodeKey = nodes.map(n => `${n.id}:${JSON.stringify(n.data)}`).join("|")
+      const edgeKey = edges.map(e => `${e.id}:${e.source}:${e.target}`).join("|")
+      const key = nodeKey + "||" + edgeKey
+      const prev = historyRef.current[historyIdxRef.current]
+      const prevNodeKey = prev ? prev.nodes.map(n => `${n.id}:${JSON.stringify(n.data)}`).join("|") : ""
+      const prevEdgeKey = prev ? prev.edges.map(e => `${e.id}:${e.source}:${e.target}`).join("|") : ""
+      if (key === prevNodeKey + "||" + prevEdgeKey) return // nothing meaningful changed
+      // Truncate redo branch
+      const trimmed = historyRef.current.slice(0, historyIdxRef.current + 1)
+      trimmed.push({ nodes: [...nodes], edges: [...edges] })
+      if (trimmed.length > 50) trimmed.shift()
+      historyRef.current = trimmed
+      historyIdxRef.current = trimmed.length - 1
+      setCanUndo(historyIdxRef.current > 0)
+      setCanRedo(false)
+    }, 400)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, edges])
+
+  const undo = useCallback(() => {
+    if (historyIdxRef.current <= 0) return
+    skipHistoryRef.current = true
+    historyIdxRef.current--
+    const snap = historyRef.current[historyIdxRef.current]
+    setNodes([...snap.nodes])
+    setEdges([...snap.edges])
+    setCanUndo(historyIdxRef.current > 0)
+    setCanRedo(true)
+    requestAnimationFrame(() => { skipHistoryRef.current = false })
+  }, [setNodes, setEdges])
+
+  const redo = useCallback(() => {
+    if (historyIdxRef.current >= historyRef.current.length - 1) return
+    skipHistoryRef.current = true
+    historyIdxRef.current++
+    const snap = historyRef.current[historyIdxRef.current]
+    setNodes([...snap.nodes])
+    setEdges([...snap.edges])
+    setCanUndo(true)
+    setCanRedo(historyIdxRef.current < historyRef.current.length - 1)
+    requestAnimationFrame(() => { skipHistoryRef.current = false })
+  }, [setNodes, setEdges])
+
+  // Keyboard shortcuts for undo/redo
+  useEffect(() => {
+    if (isViewer) return
+    function onKeyDown(e: KeyboardEvent) {
+      const meta = e.metaKey || e.ctrlKey
+      if (!meta) return
+      const tag = (e.target as HTMLElement).tagName
+      if (tag === "INPUT" || tag === "TEXTAREA") return
+      if (e.key === "z" && !e.shiftKey) { e.preventDefault(); undo() }
+      if ((e.key === "z" && e.shiftKey) || e.key === "y") { e.preventDefault(); redo() }
+    }
+    document.addEventListener("keydown", onKeyDown)
+    return () => document.removeEventListener("keydown", onKeyDown)
+  }, [undo, redo, isViewer])
 
   const onConnect = useCallback(
     (connection: Connection) => setEdges((eds) => addEdge({
@@ -872,6 +943,22 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
           >
             History
           </a>
+          {!isViewer && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={undo}
+                disabled={!canUndo}
+                title="Undo (⌘Z)"
+                className="rounded-lg border border-stone-200 px-2 py-1.5 text-sm text-stone-500 hover:bg-stone-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >↩</button>
+              <button
+                onClick={redo}
+                disabled={!canRedo}
+                title="Redo (⌘⇧Z)"
+                className="rounded-lg border border-stone-200 px-2 py-1.5 text-sm text-stone-500 hover:bg-stone-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >↪</button>
+            </div>
+          )}
           <button
             onClick={() => fitView({ padding: 0.2, duration: 300 })}
             title="Fit all blocks into view"

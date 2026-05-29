@@ -159,29 +159,58 @@ function RunsWithAuth() {
   return <RunsContent getToken={getToken} />
 }
 
+const PAGE_SIZE = 50
+
 function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
   const searchParams = useSearchParams()
   const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
+  const [offset, setOffset] = useState(0)
   const initialView = (searchParams.get("view") as View | null) ?? "all"
   const [view, setView] = useState<View>(initialView)
   const [filterProject, setFilterProject] = useState("")
   const [filterStatus, setFilterStatus] = useState("")
 
+  async function buildHeaders() {
+    const headers: Record<string, string> = {}
+    if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
+    const wsId = getCookie("delegator_project_id")
+    if (wsId) headers["X-Workspace-Id"] = wsId
+    return headers
+  }
+
   useEffect(() => {
     async function load() {
-      const headers: Record<string, string> = {}
-      if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
-      const wsId = getCookie("delegator_project_id")
-      if (wsId) headers["X-Workspace-Id"] = wsId
+      const headers = await buildHeaders()
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/runs?limit=200`, { headers })
-        if (res.ok) setRuns(await res.json())
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/runs?limit=${PAGE_SIZE}&offset=0`, { headers })
+        if (res.ok) {
+          const data: Run[] = await res.json()
+          setRuns(data)
+          setHasMore(data.length === PAGE_SIZE)
+          setOffset(PAGE_SIZE)
+        }
       } finally { setLoading(false) }
     }
     load()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  async function loadMore() {
+    setLoadingMore(true)
+    try {
+      const headers = await buildHeaders()
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/runs?limit=${PAGE_SIZE}&offset=${offset}`, { headers })
+      if (res.ok) {
+        const data: Run[] = await res.json()
+        setRuns(prev => [...prev, ...data])
+        setHasMore(data.length === PAGE_SIZE)
+        setOffset(o => o + PAGE_SIZE)
+      }
+    } finally { setLoadingMore(false) }
+  }
 
   const projects = Array.from(new Set(runs.map(r => r.project_name).filter(Boolean))) as string[]
 
@@ -330,6 +359,19 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
                 <p className="text-stone-400 text-sm">Runs are executions of installed agents. Open an agent and trigger a test run.</p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {!loading && hasMore && (
+          <div className="mt-4 text-center">
+            <button
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="text-sm text-stone-500 hover:text-stone-800 border border-stone-200 rounded-lg px-5 py-2 transition-colors hover:bg-stone-50 disabled:opacity-50"
+            >
+              {loadingMore ? "Loading…" : `Load more`}
+            </button>
           </div>
         )}
       </div>
