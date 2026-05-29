@@ -1281,6 +1281,21 @@ def _execute_memory(block: dict, state: dict, db, run_id: str, workspace_id: str
            as `entries` list so the brain block can use prior context.
     write: embeds the resolved summary and inserts a new row.
     """
+    try:
+        return _execute_memory_inner(block, state, db, run_id, workspace_id, playbook_slug, credentials)
+    except Exception as e:
+        log.warning("memory.block_failed", error=str(e), run_id=run_id)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        action = (block.get("data", {}).get("config", {}) or {}).get("action", "read")
+        if action == "write":
+            return {"written": False, "note": f"memory error: {e}"}
+        return {"entries": [], "note": f"memory error: {e}"}
+
+
+def _execute_memory_inner(block: dict, state: dict, db, run_id: str, workspace_id: str, playbook_slug: str, credentials: dict | None = None) -> dict:
     import json as _json
     from app.models.agent_memory import AgentMemory
     from app.runtime.embedding_client import create_embedding_client
