@@ -162,6 +162,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
   const [testRunId, setTestRunId] = useState<string | null>(null)
   const [testRunStatus, setTestRunStatus] = useState<string | null>(null)
   const [testPrNumber, setTestPrNumber] = useState("")
+  const [testMaxTurns, setTestMaxTurns] = useState("")
   const { prefs } = usePreferences()
   const [playbookSlug, setPlaybookSlug] = useState<string | null>(null)
   const [projectSlug, setProjectSlug] = useState<string | null>(null)
@@ -735,6 +736,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
           head: { ref: "" },
         }
       }
+      const turns = parseInt(testMaxTurns.trim(), 10)
+      if (!isNaN(turns) && turns > 0) payload.__max_turns_override = turns
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/trigger`,
         { method: "POST", headers, body: JSON.stringify(payload) }
@@ -1287,6 +1290,25 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
                 onChange={e => setTestPrNumber(e.target.value)}
                 className="w-full border border-stone-200 rounded-lg px-3 py-2 text-xs text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-violet-400"
               />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-stone-700">
+                Turn budget <span className="text-stone-400 font-normal">(optional — overrides default)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="1"
+                  max="200"
+                  placeholder={`default${preflight ? ` · est. ${preflight.suggestedTurns}` : ""}`}
+                  value={testMaxTurns}
+                  onChange={e => setTestMaxTurns(e.target.value)}
+                  className="w-full border border-stone-200 rounded-lg px-3 py-2 text-xs text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-violet-400"
+                />
+              </div>
+              {preflight && (
+                <p className="text-xs text-stone-400">Estimated {preflight.suggestedTurns} turns based on payload complexity.</p>
+              )}
             </div>
             <div className="flex gap-2 justify-end">
               <button

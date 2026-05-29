@@ -10,6 +10,7 @@ interface WorkflowDetail {
   name: string
   default_mode: string
   environment_id: string | null
+  default_max_turns: number | null
 }
 
 interface Environment {
@@ -23,6 +24,9 @@ export default function AgentSettingsPage() {
   const [workflow, setWorkflow] = useState<WorkflowDetail | null>(null)
   const [environments, setEnvironments] = useState<Environment[]>([])
   const [loading, setLoading] = useState(true)
+  const [turnsInput, setTurnsInput] = useState("")
+  const [turnsSaving, setTurnsSaving] = useState(false)
+  const [turnsSaved, setTurnsSaved] = useState(false)
 
   async function headers(): Promise<Record<string, string>> {
     const h: Record<string, string> = {}
@@ -40,7 +44,11 @@ export default function AgentSettingsPage() {
           fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, { headers: h }),
           fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments`, { headers: h }),
         ])
-        if (wfRes.ok) setWorkflow(await wfRes.json())
+        if (wfRes.ok) {
+          const wf = await wfRes.json()
+          setWorkflow(wf)
+          setTurnsInput(wf.default_max_turns ? String(wf.default_max_turns) : "")
+        }
         if (envRes.ok) setEnvironments(await envRes.json())
       } finally {
         setLoading(false)
@@ -56,6 +64,24 @@ export default function AgentSettingsPage() {
       method: "POST", headers: h, body: JSON.stringify({ environment_id: envId })
     })
     setWorkflow(prev => prev ? { ...prev, environment_id: envId } : prev)
+  }
+
+  async function saveTurnBudget() {
+    const val = turnsInput.trim() === "" ? null : parseInt(turnsInput.trim(), 10)
+    if (val !== null && (isNaN(val) || val < 1)) return
+    setTurnsSaving(true)
+    try {
+      const h = await headers()
+      h["Content-Type"] = "application/json"
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/turn-settings`, {
+        method: "PATCH", headers: h, body: JSON.stringify({ default_max_turns: val })
+      })
+      setWorkflow(prev => prev ? { ...prev, default_max_turns: val } : prev)
+      setTurnsSaved(true)
+      setTimeout(() => setTurnsSaved(false), 2000)
+    } finally {
+      setTurnsSaving(false)
+    }
   }
 
   return (
@@ -105,6 +131,42 @@ export default function AgentSettingsPage() {
                     ))}
                   </div>
                 )}
+              </div>
+
+              {/* Turn budget */}
+              <div className="rounded-xl border border-stone-200 bg-white px-5 py-4">
+                <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-1">Default turn budget</p>
+                <p className="text-xs text-stone-400 mb-3">
+                  Minimum AI turns for every run of this agent — webhook, scheduled, and manual.
+                  Leave empty to use the per-run estimate (recommended for most agents).
+                  Autopilot agents typically need 35–50.
+                </p>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number"
+                    min="1"
+                    max="200"
+                    placeholder="e.g. 35"
+                    value={turnsInput}
+                    onChange={e => setTurnsInput(e.target.value)}
+                    className="w-28 border border-stone-200 rounded-lg px-3 py-2 text-sm text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-violet-400"
+                  />
+                  <button
+                    onClick={saveTurnBudget}
+                    disabled={turnsSaving}
+                    className="px-4 py-2 text-xs font-medium bg-stone-900 text-white rounded-lg hover:bg-stone-700 transition-colors disabled:opacity-50"
+                  >
+                    {turnsSaved ? "Saved ✓" : turnsSaving ? "Saving…" : "Save"}
+                  </button>
+                  {turnsInput.trim() !== "" && (
+                    <button
+                      onClick={() => { setTurnsInput(""); }}
+                      className="text-xs text-stone-400 hover:text-stone-600 transition-colors"
+                    >
+                      Clear (use estimate)
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Danger zone */}
