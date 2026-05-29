@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_user_id, get_workspace_id, require_workspace_role, get_user_workspace_role, get_clerk_user_email
+from app.core.auth import get_user_id, get_workspace_id, require_workspace_role, get_user_workspace_role, get_clerk_user_email, get_clerk_user_info
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.email import send_template_email, _ROLE_DESCRIPTIONS, APP_URL
@@ -54,6 +54,8 @@ class MemberOut(BaseModel):
     role: str
     invited_by: str | None
     joined_at: datetime
+    email: str | None = None
+    name: str | None = None
 
 
 class MemberAdd(BaseModel):
@@ -317,8 +319,15 @@ def list_members(
         WHERE workspace_id = :ws
         ORDER BY joined_at
     """), {"ws": workspace_id}).fetchall()
-    return [MemberOut(clerk_user_id=r.clerk_user_id, role=r.role,
-                      invited_by=r.invited_by, joined_at=r.joined_at) for r in rows]
+    out = []
+    for r in rows:
+        info = get_clerk_user_info(r.clerk_user_id)
+        out.append(MemberOut(
+            clerk_user_id=r.clerk_user_id, role=r.role,
+            invited_by=r.invited_by, joined_at=r.joined_at,
+            email=info["email"], name=info["name"],
+        ))
+    return out
 
 
 @router.post("/{project_id}/members", status_code=201)
