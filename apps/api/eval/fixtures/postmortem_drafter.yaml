@@ -20,11 +20,11 @@ scenarios:
         affected_services: ["api", "worker"]
         impact: "100% of API requests failed with 503. All customer workflows paused."
         timeline:
-          - time: "14:31" event: "Alert fired: DB connection timeout rate > 50%"
-          - time: "14:35" event: "On-call engineer paged"
-          - time: "14:45" event: "Root cause identified: connection leak in new deploy"
-          - time: "15:00" event: "Rollback initiated"
-          - time: "15:16" event: "Service restored"
+          - "14:31 — Alert fired: DB connection timeout rate > 50%"
+          - "14:35 — On-call engineer paged"
+          - "14:45 — Root cause identified: connection leak in new deploy"
+          - "15:00 — Rollback initiated"
+          - "15:16 — Service restored"
         root_cause: "Connection leak in v2.4.1 — missing connection.close() in error path"
       repository:
         full_name: eval-org/eval-repo

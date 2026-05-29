@@ -290,7 +290,11 @@ scenarios:
       schedule: "0 9 * * 1"
       scan_findings:
         poorly_named_tests:
-          - "test_1", "test_2", "test_fn", "test_x", "test_case_a"
+          - "test_1"
+          - "test_2"
+          - "test_fn"
+          - "test_x"
+          - "test_case_a"
         recommendation: "Use descriptive test names following Given-When-Then convention"
     extra_assertions:
       should_open_pr: true
