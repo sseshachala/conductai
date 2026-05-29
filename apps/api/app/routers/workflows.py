@@ -909,7 +909,7 @@ class PreflightRequest(BaseModel):
     issue_body: str = ""
 
 
-def _estimate_turns_for_graph(graph: dict, issue_title: str = "", issue_body: str = "") -> dict:
+def _estimate_turns_for_graph(graph: dict, issue_title: str = "", issue_body: str = "", min_turns: int = 0) -> dict:
     """
     Core turn-budget estimation logic — shared between the preflight HTTP endpoint
     and server-side webhook queueing.
@@ -976,7 +976,7 @@ def _estimate_turns_for_graph(graph: dict, issue_title: str = "", issue_body: st
         all_files.extend(files)
 
     total = sum(b["estimated_turns"] for b in block_estimates)
-    suggested = max(total + 5, 20)
+    suggested = max(total + 5, 20, min_turns)
 
     return {
         "suggested_max_turns": suggested,
@@ -1006,7 +1006,19 @@ def preflight_workflow(
         raise HTTPException(status_code=404, detail="Workflow not found")
 
     graph = workflow.current_version.graph or {}
-    return _estimate_turns_for_graph(graph, body.issue_title, body.issue_body)
+    # min_turns: max of YAML-declared min_turns input default and workflow-level DB override
+    yaml_min = 0
+    import yaml as _yaml
+    if workflow.current_version.yaml_source:
+        try:
+            raw = _yaml.safe_load(workflow.current_version.yaml_source) or {}
+            yaml_min = int((raw.get("inputs", {}).get("min_turns", {}) or {}).get("default", 0))
+        except Exception:
+            pass
+    min_turns = max(yaml_min, workflow.default_max_turns or 0)
+    result = _estimate_turns_for_graph(graph, body.issue_title, body.issue_body, min_turns)
+    result["min_turns"] = min_turns
+    return result
 
 
 @router.post("/{workflow_id}/validate")
@@ -1505,6 +1517,30 @@ def set_workflow_environment(
     return {"id": str(workflow.id), "environment_id": str(workflow.environment_id) if workflow.environment_id else None}
 
 
+class WorkflowTurnSettingsRequest(BaseModel):
+    default_max_turns: Optional[int] = None
+
+
+@router.patch("/{workflow_id}/turn-settings")
+def update_turn_settings(
+    workflow_id: UUID,
+    body: WorkflowTurnSettingsRequest,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor")),
+):
+    """Persist a default turn budget override for this workflow."""
+    workflow = db.query(Workflow).filter(
+        Workflow.id == workflow_id,
+        Workflow.workspace_id == workspace_id,
+    ).first()
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    workflow.default_max_turns = body.default_max_turns
+    db.commit()
+    return {"id": str(workflow.id), "default_max_turns": workflow.default_max_turns}
+
+
 class WorkflowSourceRequest(BaseModel):
     """Bind a workflow to a YAML file in a customer's GitHub repo."""
     source_repo: str | None = None   # "owner/repo" — pass null to unset
@@ -1599,10 +1635,23 @@ def test_trigger(
     version = workflow.current_version
     try:
         graph = version.graph or {}
-        pf = _estimate_turns_for_graph(graph, payload.get("title", ""), payload.get("body", ""))
+        # min_turns: honour YAML-declared floor and workflow DB override
+        yaml_min = 0
+        if version.yaml_source:
+            try:
+                raw_yaml = _yaml.safe_load(version.yaml_source) or {}
+                yaml_min = int((raw_yaml.get("inputs", {}).get("min_turns", {}) or {}).get("default", 0))
+            except Exception:
+                pass
+        min_turns = max(yaml_min, workflow.default_max_turns or 0)
+        pf = _estimate_turns_for_graph(graph, payload.get("title", ""), payload.get("body", ""), min_turns)
         suggested_turns = pf["suggested_max_turns"]
     except Exception:
-        suggested_turns = 20
+        suggested_turns = max(20, workflow.default_max_turns or 0)
+
+    # Caller-supplied max_turns override (from Test Run dialog) takes final precedence
+    if caller_max_turns := payload.get("__max_turns_override"):
+        suggested_turns = max(suggested_turns, int(caller_max_turns))
 
     # Normalize GitHub issue payloads to match the real webhook path so that
     # {{_trigger.issue_number}}, {{_trigger.repo_full_name}}, etc. resolve in
