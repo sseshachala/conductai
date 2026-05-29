@@ -26,9 +26,18 @@ inputs:
 
 on:
   webhook:
-    next: check_author
+    next: recall_context
 
 blocks:
+  recall_context:
+    type: memory
+    label: Recall prior context
+    action: read
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    limit: 5
+    next: check_author
+
   check_author:
     type: logic
     label: Is AI-authored PR?
@@ -99,8 +108,27 @@ blocks:
 
       If there are no critical issues, say so clearly.
 
+      {% if recall_context.entries %}
+      Prior reviews on this repo (recurring patterns to watch for):
+      {% for entry in recall_context.entries %}
+      - {{entry.summary}}
+      {% endfor %}
+      {% endif %}
+
       Output ONLY the following JSON on the last line:
         {"review_url": "<PR URL>", "critical": <count>, "warnings": <count>, "findings": <total count>}
+    next: record_outcome
+
+  record_outcome:
+    type: memory
+    label: Record outcome
+    action: write
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    summary: |
+      Repo: {{_trigger.repository.full_name}} PR #{{_trigger.number}}
+      AI review: {{review_pr.critical}} critical, {{review_pr.warnings}} warnings
+      URL: {{review_pr.review_url}}
     next: gate_merge
 
   has_critical:
