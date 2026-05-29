@@ -282,6 +282,24 @@ def _emit_run_analytics(run, version, state: dict, db, *, outcome: str, error: s
         log.exception("run_analytics.failed")
 
 
+_ONLINE_EVAL_QUEUE = "marshal:eval:online:queue"
+_ONLINE_EVAL_QUEUE_MAX = 10_000  # cap to prevent unbounded growth when worker is down
+
+
+def _enqueue_online_eval(run_id: str) -> None:
+    """Push run_id to the online eval queue. Fire-and-forget — never raises."""
+    try:
+        import redis as _redis
+        r = _redis.from_url(settings.redis_url, decode_responses=True)
+        qlen = r.llen(_ONLINE_EVAL_QUEUE)
+        if qlen >= _ONLINE_EVAL_QUEUE_MAX:
+            log.warning("online_eval.queue_full", queue_len=qlen, run_id=run_id)
+            return
+        r.rpush(_ONLINE_EVAL_QUEUE, run_id)
+    except Exception:
+        log.debug("online_eval.enqueue_failed", run_id=run_id)
+
+
 def _resolve_refs(value: Any, state: dict) -> Any:
     """Replace {{block_id.field}} references with values from run state."""
     if isinstance(value, str):
@@ -1838,6 +1856,7 @@ def execute_run(run_id: str):
             workspace_id_str=str(workspace_id_str),
         )
         _emit_run_analytics(run, version, final_state, db, outcome=run.status, error="")
+        _enqueue_online_eval(str(run.id))
 
     except Exception as e:
         log.exception("run.executor_crash", run_id=run_id)
@@ -1855,6 +1874,7 @@ def execute_run(run_id: str):
                 run.locked_by = None
                 db.commit()
                 _emit_run_analytics(run, None, {}, db, outcome="failed", error=str(e))
+                _enqueue_online_eval(str(run.id))
         except Exception:
             pass
     finally:
