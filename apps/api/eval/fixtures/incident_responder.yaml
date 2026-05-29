@@ -1,0 +1,145 @@
+# Multi-scenario fixture set for Incident Responder
+# 6 scenarios: 4 positive (real alerts to investigate), 2 negative (test pings / resolved)
+slug: incident_responder
+description: >
+  Covers a high error-rate alert, a memory spike, a latency degradation, a
+  deployment rollout failure, a test ping (negative — playbook should no-op),
+  and a low-severity noise alert (negative).
+scenarios:
+  - id: high_error_rate
+    label: High error rate on API endpoint — hypothesis + Slack message expected
+    tags: [positive, availability]
+    expected_outcome_type: incident_investigated
+    trigger_payload:
+      alert:
+        id: "alert-5001"
+        title: "High error rate on /api/workflows"
+        severity: high
+        description: >
+          Error rate spiked to 18% on the /api/workflows endpoint.
+          Previous baseline: <0.5%. Spike started at 14:31 UTC.
+        started_at: "2026-05-29T14:31:00Z"
+        service: conductai-api
+      repository:
+        full_name: eval-org/eval-service
+        name: eval-service
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_hypothesis: true
+      expect_slack_message: true
+
+  - id: memory_leak_alert
+    label: Memory usage spike — OOM risk on worker pod
+    tags: [positive, performance]
+    expected_outcome_type: incident_investigated
+    trigger_payload:
+      alert:
+        id: "alert-5002"
+        title: "Worker pod memory at 92% — OOM imminent"
+        severity: critical
+        description: >
+          The Redis worker pod is consuming 92% of its 2GB memory limit.
+          Memory has grown steadily over the last 4 hours with no plateau.
+          The pod will be OOM-killed within ~30 minutes at the current rate.
+        started_at: "2026-05-29T10:15:00Z"
+        service: conductai-worker
+      repository:
+        full_name: eval-org/eval-service
+        name: eval-service
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_hypothesis: true
+      expect_slack_message: true
+
+  - id: latency_degradation
+    label: P95 latency 10x above baseline — database slowdown suspected
+    tags: [positive, performance]
+    expected_outcome_type: incident_investigated
+    trigger_payload:
+      alert:
+        id: "alert-5003"
+        title: "P95 API latency degraded: 4200ms vs 400ms baseline"
+        severity: high
+        description: >
+          P95 response time increased from ~400ms to ~4200ms over the last 15 minutes.
+          The spike correlates with a new deployment at 16:00 UTC.
+          Database query times appear normal; the bottleneck may be in the application layer.
+        started_at: "2026-05-29T16:15:00Z"
+        service: conductai-api
+      repository:
+        full_name: eval-org/eval-service
+        name: eval-service
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_hypothesis: true
+      expect_slack_message: true
+
+  - id: deploy_rollout_failure
+    label: Deployment rollout failing — pods crash-looping after new release
+    tags: [positive, deployment]
+    expected_outcome_type: incident_investigated
+    trigger_payload:
+      alert:
+        id: "alert-5004"
+        title: "Deployment rollout failing: 3 pods in CrashLoopBackOff"
+        severity: critical
+        description: >
+          New deployment v2.4.1 triggered at 09:00 UTC. 3 of 5 new pods are in
+          CrashLoopBackOff. Logs show: ImportError: cannot import name 'Settings'
+          from 'app.core.config'. Rolling back automatically.
+        started_at: "2026-05-29T09:05:00Z"
+        service: conductai-api
+      repository:
+        full_name: eval-org/eval-service
+        name: eval-service
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_hypothesis: true
+      expect_slack_message: true
+
+  - id: test_ping
+    label: "(negative) Test ping alert — playbook should output null hypothesis and stop"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      alert:
+        id: "test-alert-9999"
+        title: "[TEST] High error rate on /api/workflows"
+        severity: high
+        description: "Error rate spiked to 15% on the workflows endpoint. This is a test alert."
+        started_at: "2026-05-29T20:00:00Z"
+        service: conductai-api
+      repository:
+        full_name: eval-org/eval-service
+        name: eval-service
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_no_slack_message: true
+      expect_null_hypothesis: true
+
+  - id: low_severity_noise
+    label: "(negative) Low-severity informational alert — may be acknowledged only"
+    tags: [negative]
+    trigger_payload:
+      alert:
+        id: "alert-5005"
+        title: "Disk usage at 65% — informational"
+        severity: info
+        description: >
+          Disk usage on the primary database server reached 65%.
+          This is an informational alert; no immediate action required.
+          Capacity review scheduled for next sprint.
+        started_at: "2026-05-29T08:00:00Z"
+        service: conductai-db
+      repository:
+        full_name: eval-org/eval-service
+        name: eval-service
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_minimal_response: true

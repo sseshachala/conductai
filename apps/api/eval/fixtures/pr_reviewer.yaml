@@ -1,0 +1,251 @@
+# Multi-scenario fixture set for PR Reviewer
+# 8 scenarios: 6 positive (should produce a review), 2 negative (should skip / no-op)
+slug: pr_reviewer
+description: >
+  Covers clean PRs, PRs with security vulnerabilities, large refactors,
+  bot-authored updates, draft PRs (negative), and closed-action events (negative).
+scenarios:
+  - id: clean_pr
+    label: Clean PR — minor style suggestions expected
+    tags: [positive]
+    expected_should_review: true
+    trigger_payload:
+      action: opened
+      number: 42
+      pull_request:
+        number: 42
+        title: "feat: add user authentication"
+        body: "Adds JWT-based user authentication with bcrypt password hashing."
+        html_url: "https://github.com/eval-org/eval-repo/pull/42"
+        head:
+          ref: feat/user-auth
+          sha: "a1b2c3d4e5f6"
+        base:
+          ref: main
+        user:
+          login: dev-user
+        diff_url: "https://github.com/eval-org/eval-repo/pull/42.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: hardcoded_secret_pr
+    label: PR with hardcoded API key — expect critical finding
+    tags: [positive, security]
+    expected_should_review: true
+    trigger_payload:
+      action: opened
+      number: 43
+      pull_request:
+        number: 43
+        title: "feat: integrate payment service"
+        body: "Adds Stripe payment integration. Note: API key embedded for testing."
+        html_url: "https://github.com/eval-org/eval-repo/pull/43"
+        head:
+          ref: feat/payments
+          sha: "b2c3d4e5f6a1"
+        base:
+          ref: main
+        user:
+          login: dev-user
+        diff_url: "https://github.com/eval-org/eval-repo/pull/43.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+      expect_critical_findings: true
+
+  - id: sql_injection_pr
+    label: PR introducing raw SQL query — expect critical finding
+    tags: [positive, security]
+    expected_should_review: true
+    trigger_payload:
+      action: opened
+      number: 44
+      pull_request:
+        number: 44
+        title: "fix: update search query for performance"
+        body: "Rewrites the search endpoint using raw SQL for a 10x speed boost."
+        html_url: "https://github.com/eval-org/eval-repo/pull/44"
+        head:
+          ref: fix/search-perf
+          sha: "c3d4e5f6a1b2"
+        base:
+          ref: main
+        user:
+          login: backend-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/44.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+      expect_critical_findings: true
+
+  - id: dependabot_pr
+    label: Dependabot dependency update — should receive lightweight review
+    tags: [positive, deps]
+    expected_should_review: true
+    trigger_payload:
+      action: opened
+      number: 46
+      pull_request:
+        number: 46
+        title: "chore(deps): bump lodash from 4.17.19 to 4.17.21"
+        body: "Bumps [lodash](https://github.com/lodash/lodash) from 4.17.19 to 4.17.21."
+        html_url: "https://github.com/eval-org/eval-repo/pull/46"
+        head:
+          ref: dependabot/npm_and_yarn/lodash-4.17.21
+          sha: "e5f6a1b2c3d4"
+        base:
+          ref: main
+        user:
+          login: "dependabot[bot]"
+        diff_url: "https://github.com/eval-org/eval-repo/pull/46.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: large_refactor_pr
+    label: Large refactor PR — >50 files, should still be reviewed
+    tags: [positive, scale]
+    expected_should_review: true
+    trigger_payload:
+      action: opened
+      number: 47
+      pull_request:
+        number: 47
+        title: "refactor: migrate all models to new data layer"
+        body: >
+          Large-scale refactor touching 50+ files to migrate from the legacy
+          ORM to the new typed data layer. Breaking changes marked with TODO.
+        html_url: "https://github.com/eval-org/eval-repo/pull/47"
+        head:
+          ref: refactor/new-data-layer
+          sha: "f6a1b2c3d4e5"
+        base:
+          ref: main
+        user:
+          login: senior-engineer
+        diff_url: "https://github.com/eval-org/eval-repo/pull/47.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: test_only_pr
+    label: Test-only PR — only test files changed
+    tags: [positive]
+    expected_should_review: true
+    trigger_payload:
+      action: opened
+      number: 48
+      pull_request:
+        number: 48
+        title: "test: add coverage for auth module"
+        body: "Adds unit and integration tests for the authentication module. No production code changed."
+        html_url: "https://github.com/eval-org/eval-repo/pull/48"
+        head:
+          ref: test/auth-coverage
+          sha: "a1b2c3d4e5f7"
+        base:
+          ref: main
+        user:
+          login: qa-engineer
+        diff_url: "https://github.com/eval-org/eval-repo/pull/48.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: draft_pr
+    label: "(negative) Draft PR — playbook may skip or acknowledge only"
+    tags: [negative]
+    expected_should_review: false
+    trigger_payload:
+      action: opened
+      number: 45
+      pull_request:
+        number: 45
+        title: "WIP: refactor database layer"
+        body: "Work in progress. Do not review or merge yet."
+        html_url: "https://github.com/eval-org/eval-repo/pull/45"
+        head:
+          ref: wip/db-refactor
+          sha: "d4e5f6a1b2c3"
+        base:
+          ref: main
+        user:
+          login: dev-user
+        diff_url: "https://github.com/eval-org/eval-repo/pull/45.diff"
+        draft: true
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_skip_or_acknowledge: true
+
+  - id: pr_closed_action
+    label: "(negative) PR closed event — not an opened trigger, should be ignored"
+    tags: [negative]
+    expected_should_review: false
+    trigger_payload:
+      action: closed
+      number: 49
+      pull_request:
+        number: 49
+        title: "feat: completed feature"
+        body: "This PR has been merged."
+        html_url: "https://github.com/eval-org/eval-repo/pull/49"
+        head:
+          ref: feat/completed
+          sha: "b2c3d4e5f6a2"
+        base:
+          ref: main
+        user:
+          login: dev-user
+        diff_url: "https://github.com/eval-org/eval-repo/pull/49.diff"
+        draft: false
+        merged: true
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_skip_or_acknowledge: true

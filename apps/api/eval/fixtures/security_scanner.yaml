@@ -1,0 +1,191 @@
+# Multi-scenario fixture set for Security Scanner
+# 6 scenarios: 4 positive (security issues to detect), 2 negative (clean PRs / skip cases)
+slug: security_scanner
+description: >
+  Covers PRs with hardcoded secrets, SQL injection, insecure dependencies,
+  authentication bypass patterns, clean PRs (no findings expected), and closed
+  events (should be skipped).
+scenarios:
+  - id: hardcoded_api_key
+    label: PR with hardcoded Stripe API key in source
+    tags: [positive, secrets]
+    expected_should_scan: true
+    trigger_payload:
+      action: opened
+      number: 101
+      pull_request:
+        number: 101
+        title: "feat: add Stripe billing"
+        body: "Integrates Stripe for subscription billing."
+        html_url: "https://github.com/eval-org/eval-repo/pull/101"
+        head:
+          ref: feat/stripe-billing
+          sha: "aa1bb2cc3dd4"
+        base:
+          ref: main
+        user:
+          login: fullstack-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/101.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      expect_critical_count_gte: 1
+      expect_secret_finding: true
+
+  - id: sql_injection
+    label: PR with raw string formatting in SQL query
+    tags: [positive, injection]
+    expected_should_scan: true
+    trigger_payload:
+      action: opened
+      number: 102
+      pull_request:
+        number: 102
+        title: "perf: optimise search with raw SQL"
+        body: "Replaces ORM query with raw SQL for a 10x speedup on the search endpoint."
+        html_url: "https://github.com/eval-org/eval-repo/pull/102"
+        head:
+          ref: perf/raw-sql-search
+          sha: "bb2cc3dd4ee5"
+        base:
+          ref: main
+        user:
+          login: backend-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/102.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      expect_critical_count_gte: 1
+      expect_injection_finding: true
+
+  - id: insecure_dependency
+    label: PR introducing a known-vulnerable npm package
+    tags: [positive, dependencies]
+    expected_should_scan: true
+    trigger_payload:
+      action: opened
+      number: 103
+      pull_request:
+        number: 103
+        title: "feat: add XML parsing support"
+        body: "Adds xml2js 0.4.19 for parsing XML API responses."
+        html_url: "https://github.com/eval-org/eval-repo/pull/103"
+        head:
+          ref: feat/xml-parsing
+          sha: "cc3dd4ee5ff6"
+        base:
+          ref: main
+        user:
+          login: backend-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/103.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      expect_high_count_gte: 1
+
+  - id: auth_bypass
+    label: PR with JWT verification disabled in tests left in prod code
+    tags: [positive, auth]
+    expected_should_scan: true
+    trigger_payload:
+      action: opened
+      number: 104
+      pull_request:
+        number: 104
+        title: "fix: resolve JWT test issues"
+        body: "Adds a bypass flag to skip JWT verification in certain conditions."
+        html_url: "https://github.com/eval-org/eval-repo/pull/104"
+        head:
+          ref: fix/jwt-bypass
+          sha: "dd4ee5ff6aa7"
+        base:
+          ref: main
+        user:
+          login: backend-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/104.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      expect_critical_count_gte: 1
+      expect_auth_finding: true
+
+  - id: clean_docs_pr
+    label: "(negative) Documentation-only PR — no security issues expected"
+    tags: [negative]
+    expected_should_scan: true
+    trigger_payload:
+      action: opened
+      number: 105
+      pull_request:
+        number: 105
+        title: "docs: update API reference"
+        body: "Updates the API reference docs with new endpoint descriptions."
+        html_url: "https://github.com/eval-org/eval-repo/pull/105"
+        head:
+          ref: docs/api-reference-update
+          sha: "ee5ff6aa7bb8"
+        base:
+          ref: main
+        user:
+          login: tech-writer
+        diff_url: "https://github.com/eval-org/eval-repo/pull/105.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      expect_zero_critical: true
+
+  - id: pr_closed_event
+    label: "(negative) PR closed event — scanner should not trigger"
+    tags: [negative]
+    expected_should_scan: false
+    trigger_payload:
+      action: closed
+      number: 106
+      pull_request:
+        number: 106
+        title: "feat: merged feature"
+        body: "This PR was merged."
+        html_url: "https://github.com/eval-org/eval-repo/pull/106"
+        head:
+          ref: feat/merged
+          sha: "ff6aa7bb8cc9"
+        base:
+          ref: main
+        user:
+          login: dev-user
+        diff_url: "https://github.com/eval-org/eval-repo/pull/106.diff"
+        draft: false
+        merged: true
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_skip_or_acknowledge: true
