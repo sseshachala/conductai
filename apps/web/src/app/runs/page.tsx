@@ -16,6 +16,7 @@ interface Run {
   status: string
   triggered_by: string | null
   trigger_summary: string | null
+  repo: string | null
   started_at: string | null
   completed_at: string | null
   paused_at: string | null
@@ -57,9 +58,16 @@ function RunRow({ run }: { run: Run }) {
       </td>
       <td className="px-4 py-3"><StatusBadge status={run.status} /></td>
       <td className="px-4 py-3">
-        <div className="text-xs text-stone-600">{formatTrigger(run.triggered_by)}</div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-xs text-stone-600">{formatTrigger(run.triggered_by)}</span>
+          {run.repo && (
+            <span className="text-[10px] font-medium text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded">
+              {run.repo}
+            </span>
+          )}
+        </div>
         {run.trigger_summary && (
-          <div className="text-[11px] text-stone-400 mt-0.5 truncate max-w-[180px]">{run.trigger_summary}</div>
+          <div className="text-[11px] text-stone-400 mt-0.5 truncate max-w-[200px]">{run.trigger_summary}</div>
         )}
       </td>
       <td className="px-4 py-3 text-xs text-stone-500 whitespace-nowrap">{timeAgo(ts)}</td>

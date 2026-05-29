@@ -20,6 +20,13 @@ from app.models.run_trace import RunTrace
 from app.models.workflow import Workflow, WorkflowVersion
 from app.schemas.run import _extract_trigger_summary
 
+
+def _extract_repo(state: dict | None) -> str | None:
+    if not state:
+        return None
+    trigger = state.get("_trigger") or {}
+    return (trigger.get("repository") or {}).get("full_name") or None
+
 # Sonnet pricing (per 1M tokens) used for cost estimates — approximate
 _INPUT_COST_PER_M  = 3.0
 _OUTPUT_COST_PER_M = 15.0
@@ -95,6 +102,7 @@ class AttentionRun(BaseModel):
     triggered_by: str | None
     trigger_summary: str | None
     created_at: str
+    repo: str | None = None
 
 
 class RecentRun(BaseModel):
@@ -105,6 +113,7 @@ class RecentRun(BaseModel):
     triggered_by: str | None
     started_at: str | None
     created_at: str
+    repo: str | None = None
 
 
 class AgentTokenUsage(BaseModel):
@@ -199,6 +208,7 @@ def get_dashboard(
             triggered_by=run.triggered_by,
             trigger_summary=_extract_trigger_summary(run.state),
             created_at=run.created_at.isoformat(),
+            repo=_extract_repo(run.state),
         )
         for run, wf_id, wf_name in attention_rows
     ]
@@ -285,6 +295,7 @@ def get_dashboard(
             triggered_by=run.triggered_by,
             started_at=run.started_at.isoformat() if run.started_at else None,
             created_at=run.created_at.isoformat(),
+            repo=_extract_repo(run.state),
         )
         for run, wf_id, wf_name in recent_rows
     ]
