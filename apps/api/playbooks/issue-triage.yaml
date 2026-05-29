@@ -22,9 +22,18 @@ inputs:
 
 on:
   webhook:
-    next: triage_issue
+    next: recall_context
 
 blocks:
+  recall_context:
+    type: memory
+    label: Recall prior context
+    action: read
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    limit: 5
+    next: triage_issue
+
   triage_issue:
     type: brain
     mode: agentic
@@ -100,8 +109,27 @@ blocks:
         If the issue is clear and well-described, post a brief acknowledgment:
         "Thanks @<author> — triaged as <type>, <priority>. We'll review shortly."
 
+      {% if recall_context.entries %}
+      Prior context for this repo (use to recognize recurring issue patterns):
+      {% for entry in recall_context.entries %}
+      - {{entry.summary}}
+      {% endfor %}
+      {% endif %}
+
       Step 7 — Output ONLY the following JSON on the last line:
         {"issue_number": <number>, "type": "<classification>", "priority": "<P1-P4>", "clarification_requested": <true|false>, "skipped": false}
+    next: record_outcome
+
+  record_outcome:
+    type: memory
+    label: Record outcome
+    action: write
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    summary: |
+      Repo: {{_trigger.repository.full_name}} Issue #{{triage_issue.issue_number}}
+      Type: {{triage_issue.type}} / {{triage_issue.priority}}
+      Clarification requested: {{triage_issue.clarification_requested}}
     next: notify_triage
 
   notify_triage:

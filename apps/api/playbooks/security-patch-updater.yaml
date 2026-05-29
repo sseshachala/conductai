@@ -35,9 +35,18 @@ inputs:
 
 on:
   webhook:
-    next: assess_and_patch
+    next: recall_context
 
 blocks:
+  recall_context:
+    type: memory
+    label: Recall prior context
+    action: read
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    limit: 5
+    next: assess_and_patch
+
   assess_and_patch:
     type: brain
     mode: agentic
@@ -109,11 +118,30 @@ blocks:
            "body": "## Security Patch\n\n**Package:** <package>\n**CVE:** <cve>\n**Severity:** <severity>\n**Patched to:** <patched_version>\n\n### Vulnerability summary\n<summary>\n\n---\n*Automated security patch by Conduct AI. Review the diff and merge when CI is green.*"
          }
 
+      {% if recall_context.entries %}
+      Prior context for this repo:
+      {% for entry in recall_context.entries %}
+      - {{entry.summary}}
+      {% endfor %}
+      {% endif %}
+
       Output ONLY the following JSON on the last line:
         {"pr_url": "<full PR URL>", "patched": true, "severity": "<severity>", "cve": "<cve>", "tests_passed": true|false, "message": null}
 
       On any failure:
         {"pr_url": null, "patched": false, "severity": "<severity>", "cve": "<cve>", "tests_passed": false, "message": "<error>"}
+    next: record_outcome
+
+  record_outcome:
+    type: memory
+    label: Record outcome
+    action: write
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    summary: |
+      Repo: {{_trigger.repository.full_name}}
+      Patched {{assess_and_patch.cve}} ({{assess_and_patch.severity}})
+      PR: {{assess_and_patch.pr_url}}
     next: notify_security_patch
 
   notify_security_patch:

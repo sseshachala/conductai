@@ -22,9 +22,18 @@ inputs:
 
 on:
   webhook:
-    next: draft_release_notes
+    next: recall_context
 
 blocks:
+  recall_context:
+    type: memory
+    label: Recall prior context
+    action: read
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    limit: 5
+    next: draft_release_notes
+
   draft_release_notes:
     type: brain
     mode: agentic
@@ -93,8 +102,26 @@ blocks:
 
         Full changelog: https://github.com/{{_trigger.repository.full_name}}/releases/tag/<tag>
 
+      {% if recall_context.entries %}
+      Prior releases on this repo:
+      {% for entry in recall_context.entries %}
+      - {{entry.summary}}
+      {% endfor %}
+      {% endif %}
+
       Output ONLY the following JSON on the last line:
         {"tag": "<tag name>", "pr_count": <number>, "changelog": "<markdown entry>", "slack_message": "<slack message>", "skipped": false}
+    next: record_outcome
+
+  record_outcome:
+    type: memory
+    label: Record outcome
+    action: write
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    summary: |
+      Repo: {{_trigger.repository.full_name}}
+      Tag: {{draft_release_notes.tag}} · {{draft_release_notes.pr_count}} PRs shipped
     next: notify_release
 
   notify_release:

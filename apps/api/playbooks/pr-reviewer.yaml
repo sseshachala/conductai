@@ -21,9 +21,18 @@ inputs:
 
 on:
   webhook:
-    next: review_pr
+    next: recall_context
 
 blocks:
+  recall_context:
+    type: memory
+    label: Recall prior context
+    action: read
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    limit: 5
+    next: review_pr
+
   review_pr:
     type: brain
     mode: agentic
@@ -63,6 +72,13 @@ blocks:
       Be concise. Group findings by severity (critical / warning / suggestion).
       If the PR looks clean, say so clearly.
 
+      {% if recall_context.entries %}
+      Prior reviews on this repo (use to spot recurring issues):
+      {% for entry in recall_context.entries %}
+      - {{entry.summary}}
+      {% endfor %}
+      {% endif %}
+
       Output ONLY the following JSON on the last line:
         {"review_url": "<PR URL>", "findings": <number of issues found>, "critical": <number of critical issues>}
     next: has_critical
@@ -73,7 +89,7 @@ blocks:
     condition: "{{review_pr.critical}} > 0"
     next:
       pass: check_existing_issue
-      fail: notify_review
+      fail: record_outcome
 
   check_existing_issue:
     type: brain
@@ -137,7 +153,7 @@ blocks:
 
       Output ONLY the following JSON on the last line:
         {"issue_url": "{{check_existing_issue.issue_url}}", "issue_number": {{check_existing_issue.issue_number}}}
-    next: notify_review
+    next: record_outcome
 
   create_fix_issue:
     type: brain
@@ -173,6 +189,18 @@ blocks:
 
       Output ONLY the following JSON on the last line:
         {"issue_url": "<created issue URL>", "issue_number": <number>}
+    next: record_outcome
+
+  record_outcome:
+    type: memory
+    label: Record outcome
+    action: write
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    summary: |
+      Repo: {{_trigger.repository.full_name}} PR #{{_trigger.number}}
+      Findings: {{review_pr.findings}} ({{review_pr.critical}} critical)
+      URL: {{review_pr.review_url}}
     next: notify_review
 
   notify_review:
