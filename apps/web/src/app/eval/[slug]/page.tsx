@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
@@ -38,17 +38,6 @@ interface PlaybookEvalDetail {
   quality_max: number
   criteria: CriterionResult[]
   fixture: EvalFixture | null
-}
-
-interface LiveJobResponse {
-  job_id: string
-  slug: string
-  status: "queued" | "running" | "done" | "failed"
-  queued_at: number | null
-  started_at: number | null
-  finished_at: number | null
-  result: PlaybookEvalDetail | null
-  error: string | null
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -292,12 +281,6 @@ function EvalDetailContent({
   const [running, setRunning] = useState(false)
   const [runError, setRunError] = useState<string | null>(null)
 
-  // Live eval state
-  const [liveRunning, setLiveRunning] = useState(false)
-  const [liveStatus, setLiveStatus] = useState<"queued" | "running" | "done" | "failed" | null>(null)
-  const [liveError, setLiveError] = useState<string | null>(null)
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
   useEffect(() => {
     let cancelled = false
 
@@ -378,109 +361,6 @@ function EvalDetailContent({
     }
   }
 
-  // Clean up polling interval on unmount
-  useEffect(() => {
-    return () => {
-      if (pollIntervalRef.current !== null) {
-        clearInterval(pollIntervalRef.current)
-      }
-    }
-  }, [])
-
-  async function handleLiveEval() {
-    setLiveRunning(true)
-    setLiveStatus(null)
-    setLiveError(null)
-
-    // Clear any existing poll
-    if (pollIntervalRef.current !== null) {
-      clearInterval(pollIntervalRef.current)
-      pollIntervalRef.current = null
-    }
-
-    try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" }
-      if (getToken) {
-        const token = await getToken()
-        if (token) headers["Authorization"] = `Bearer ${token}`
-      }
-      const workspaceId = getCookie("delegator_project_id")
-      if (workspaceId) headers["X-Workspace-Id"] = workspaceId
-
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/eval/live/${encodeURIComponent(slug)}`,
-        { method: "POST", headers }
-      )
-
-      if (res.status === 422) {
-        setLiveError("Live eval requires ANTHROPIC_API_KEY to be configured.")
-        setLiveRunning(false)
-        return
-      }
-
-      if (!res.ok) {
-        const hint =
-          res.status === 401 ? "Not authorised — check your session." :
-          res.status === 403 ? "Forbidden — workspace role may be insufficient." :
-          res.status === 404 ? `Playbook "${slug}" not found.` :
-          `Live eval failed with status ${res.status}.`
-        setLiveError(hint)
-        setLiveRunning(false)
-        return
-      }
-
-      const queued = await res.json() as { job_id: string; poll_url: string }
-      setLiveStatus("queued")
-
-      const jobId = queued.job_id
-
-      async function pollJob() {
-        try {
-          const pollHeaders: Record<string, string> = {}
-          if (getToken) {
-            const token = await getToken()
-            if (token) pollHeaders["Authorization"] = `Bearer ${token}`
-          }
-          const wid = getCookie("delegator_project_id")
-          if (wid) pollHeaders["X-Workspace-Id"] = wid
-
-          const pollRes = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL}/eval/jobs/${encodeURIComponent(jobId)}`,
-            { headers: pollHeaders }
-          )
-
-          if (!pollRes.ok) return
-
-          const job: LiveJobResponse = await pollRes.json()
-          setLiveStatus(job.status)
-
-          if (job.status === "done") {
-            if (pollIntervalRef.current !== null) {
-              clearInterval(pollIntervalRef.current)
-              pollIntervalRef.current = null
-            }
-            if (job.result) setDetail(job.result)
-            setLiveRunning(false)
-          } else if (job.status === "failed") {
-            if (pollIntervalRef.current !== null) {
-              clearInterval(pollIntervalRef.current)
-              pollIntervalRef.current = null
-            }
-            setLiveError(job.error ?? "Live eval failed.")
-            setLiveRunning(false)
-          }
-        } catch {
-          // Swallow transient network errors during polling
-        }
-      }
-
-      pollIntervalRef.current = setInterval(pollJob, 3000)
-    } catch {
-      setLiveError("Network error — could not reach the API.")
-      setLiveRunning(false)
-    }
-  }
-
   const passing = detail?.criteria.filter(c => c.passed).length ?? 0
   const failing = detail?.criteria.filter(c => !c.passed).length ?? 0
 
@@ -499,29 +379,9 @@ function EvalDetailContent({
 
           {!loading && !error && detail && (
             <div className="flex items-center gap-2">
-              {/* Live eval button + status label */}
               <button
                 type="button"
-                disabled={running || liveRunning}
-                onClick={handleLiveEval}
-                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-violet-700 text-white hover:bg-violet-600 transition-colors disabled:opacity-50"
-              >
-                {liveRunning && <Spinner />}
-                Live eval
-              </button>
-              {liveStatus && !liveError && (
-                <span className="text-xs text-stone-400">
-                  {liveStatus === "queued" && "Queued…"}
-                  {liveStatus === "running" && "Running…"}
-                  {liveStatus === "done" && "Done"}
-                  {liveStatus === "failed" && "Failed"}
-                </span>
-              )}
-
-              {/* Run eval button */}
-              <button
-                type="button"
-                disabled={running || liveRunning}
+                disabled={running}
                 onClick={handleRunEval}
                 className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-stone-900 text-white hover:bg-stone-700 transition-colors disabled:opacity-50"
               >
@@ -536,13 +396,6 @@ function EvalDetailContent({
         {runError && (
           <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3">
             <p className="text-xs text-red-600">{runError}</p>
-          </div>
-        )}
-
-        {/* Inline live eval error */}
-        {liveError && (
-          <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3">
-            <p className="text-xs text-red-600">{liveError}</p>
           </div>
         )}
 

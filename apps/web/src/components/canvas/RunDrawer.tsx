@@ -106,6 +106,7 @@ export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, 
       )
 
       es.onmessage = (e) => {
+        if (cancelled) return
         if (e.data === "[DONE]") { setDone(true); es?.close(); return }
 
         let event: { kind: string; block_id?: string; payload: Record<string, unknown> }

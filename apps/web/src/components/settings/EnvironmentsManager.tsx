@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useAuth } from "@clerk/nextjs"
 import {
   SERVICE_DETECTION,
@@ -116,12 +116,14 @@ function EnvironmentsManagerWithAuth({ isAdmin }: { isAdmin: boolean }) {
 
 function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Promise<string | null>) | null; isAdmin: boolean }) {
   const [environments, setEnvironments] = useState<Environment[]>([])
+  const [listLoading, setListLoading] = useState(true)
   const [selected, setSelected] = useState<Environment | null>(null)
   const [newName, setNewName] = useState("")
   const [creating, setCreating] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [listError, setListError] = useState("")
+  const loadingRef = useRef(false)
 
   const buildHeaders = useCallback(async (contentType = false): Promise<Record<string, string>> => {
     const headers: Record<string, string> = {}
@@ -136,6 +138,8 @@ function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Prom
   }, [getToken])
 
   const loadEnvironments = useCallback(async () => {
+    if (loadingRef.current) return // prevent concurrent loads
+    loadingRef.current = true
     try {
       const headers = await buildHeaders()
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments`, { headers })
@@ -154,6 +158,10 @@ function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Prom
       }))
       setEnvironments(enriched.map((env, i) => ({ ...env, allowed_hosts: envs[i]?.allowed_hosts ?? null })))
     } catch { /* silent */ }
+    finally {
+      loadingRef.current = false
+      setListLoading(false)
+    }
   }, [buildHeaders])
 
   useEffect(() => { loadEnvironments() }, [loadEnvironments])
@@ -219,6 +227,16 @@ function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Prom
         onBack={() => setSelected(null)}
         isAdmin={isAdmin}
       />
+    )
+  }
+
+  if (listLoading) {
+    return (
+      <div className="space-y-3">
+        {[1, 2].map(i => (
+          <div key={i} className="h-16 rounded-xl bg-stone-100 animate-pulse" />
+        ))}
+      </div>
     )
   }
 
