@@ -363,11 +363,15 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
 
 function AttentionList({ runs }: { runs: AttentionRun[] }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [cancelledOpen, setCancelledOpen] = useState(false)
 
-  // Group by agent_name + status
+  const activeRuns = runs.filter(r => r.status !== "cancelled")
+  const cancelledRuns = runs.filter(r => r.status === "cancelled")
+
+  // Group active runs by agent_name + status
   const groups: { key: string; name: string; wfId: string; status: string; runs: AttentionRun[] }[] = []
   const seen = new Map<string, number>()
-  for (const run of runs) {
+  for (const run of activeRuns) {
     const key = `${run.workflow_id}::${run.status}`
     if (seen.has(key)) {
       groups[seen.get(key)!].runs.push(run)
@@ -385,7 +389,11 @@ function AttentionList({ runs }: { runs: AttentionRun[] }) {
     })
   }
 
+  if (activeRuns.length === 0 && cancelledRuns.length === 0) return null
+
   return (
+    <div className="space-y-2">
+    {activeRuns.length > 0 && (
     <div className="rounded-xl border border-red-100 bg-red-50 overflow-hidden divide-y divide-red-100">
       {groups.map(group => {
         const s = statusStyle(group.status)
@@ -472,6 +480,49 @@ function AttentionList({ runs }: { runs: AttentionRun[] }) {
           </div>
         )
       })}
+    </div>
+    )}
+
+    {/* Cancelled runs — collapsed by default */}
+    {cancelledRuns.length > 0 && (
+      <div className="rounded-xl border border-stone-200 overflow-hidden">
+        <button
+          onClick={() => setCancelledOpen(o => !o)}
+          className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-stone-50 transition-colors text-left"
+        >
+          <span className="text-xs text-stone-400">
+            {cancelledRuns.length} cancelled run{cancelledRuns.length !== 1 ? "s" : ""}
+          </span>
+          <svg
+            className={`w-3 h-3 text-stone-300 transition-transform ${cancelledOpen ? "rotate-180" : ""}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        {cancelledOpen && (
+          <div className="divide-y divide-stone-100 border-t border-stone-100">
+            {cancelledRuns.map(run => (
+              <Link
+                key={run.run_id}
+                href={`/workflows/${run.workflow_id}/runs/${run.run_id}`}
+                className="flex items-center justify-between px-4 py-2 hover:bg-stone-50 transition-colors"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-xs text-stone-500 shrink-0">{run.workflow_name}</span>
+                  {run.repo && (
+                    <span className="text-[10px] text-stone-300 bg-stone-100 px-1.5 py-0.5 rounded truncate max-w-[120px]">
+                      {run.repo}
+                    </span>
+                  )}
+                </div>
+                <span className="text-xs text-stone-300 shrink-0">{timeAgo(run.created_at)}</span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    )}
     </div>
   )
 }
