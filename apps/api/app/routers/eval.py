@@ -153,11 +153,7 @@ def get_eval_report(
 
 
 @router.get("/summary")
-def get_eval_summary(
-    db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
-):
+def get_eval_summary():
     """
     Return aggregate stats only — suitable for a dashboard card.
 
@@ -188,12 +184,7 @@ def get_eval_summary(
 
 
 @router.get("/playbooks/{slug}")
-def get_playbook_eval(
-    slug: str,
-    db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
-):
+def get_playbook_eval(slug: str):
     """
     Return the full score breakdown for a single playbook, including the
     test fixture (trigger_payload, expected outcome, artifact keys).
@@ -219,11 +210,7 @@ def get_playbook_eval(
 
 
 @router.get("/playbooks")
-def list_playbook_evals(
-    db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
-):
+def list_playbook_evals():
     """
     Return a lightweight list of all playbooks with slug, grade, pct.
     Suitable for a table or grid — criteria detail omitted for payload size.
@@ -546,11 +533,7 @@ def start_live_eval(
 # committed to git so there is no sensitive information to guard.
 
 @router.get("/benchmark/editions")
-def list_benchmark_editions(
-    db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
-):
+def list_benchmark_editions():
     """
     Return all committed benchmark editions (newest first).
 
@@ -569,12 +552,7 @@ def list_benchmark_editions(
 
 
 @router.get("/benchmark/editions/{edition_slug}")
-def get_benchmark_edition(
-    edition_slug: str,
-    db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
-):
+def get_benchmark_edition(edition_slug: str):
     """
     Return the full manifest for a single benchmark edition.
 
