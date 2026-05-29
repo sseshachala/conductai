@@ -21,7 +21,7 @@ interface EvalSummary {
   failing: number
   average_pct: number
   grade_counts: GradeCounts
-  generated_at: string
+  generated_at?: string
 }
 
 interface PlaybookRow {
@@ -32,7 +32,25 @@ interface PlaybookRow {
   total_max: number
   structural_score: number
   quality_score: number
-  failing_criteria: number
+  /** Not stored in baseline snapshots — present only from live eval. */
+  failing_criteria?: number
+}
+
+/** Shape returned by GET /eval/benchmark/editions/{slug} */
+interface EditionManifest {
+  edition: string
+  published_at: string
+  model: string
+  summary: EvalSummary
+  playbooks: Array<{
+    slug: string
+    grade: string
+    pct: number
+    structural_score: number
+    quality_score: number
+    total_score: number
+    total_max: number
+  }>
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -139,7 +157,7 @@ function DistributionCard({ summary }: { summary: EvalSummary }) {
 
 // ─── Leaderboard ──────────────────────────────────────────────────────────────
 
-function Leaderboard({ playbooks, edition }: { playbooks: PlaybookRow[]; edition: BenchmarkEdition }) {
+function Leaderboard({ playbooks, edition, editionSlug }: { playbooks: PlaybookRow[]; edition: BenchmarkEdition; editionSlug: string }) {
   const sorted = [...playbooks].sort((a, b) => {
     const go = { A: 0, B: 1, C: 2, D: 3, F: 4 } as Record<string, number>
     const gd = (go[a.grade] ?? 5) - (go[b.grade] ?? 5)
@@ -181,8 +199,10 @@ function Leaderboard({ playbooks, edition }: { playbooks: PlaybookRow[]; edition
         <tbody>
           {sorted.map((p, i) => {
             const s = gs(p.grade)
-            const structPct = p.total_max > 0 ? (p.structural_score / p.total_max) * 100 : 0
-            const qualPct   = p.total_max > 0 ? (p.quality_score   / p.total_max) * 100 : 0
+            // Show each sub-score as a proportion of total_max so the bar
+            // widths reflect how structural and quality points contribute.
+            const structPct = p.total_max > 0 ? Math.min((p.structural_score / p.total_max) * 100, 100) : 0
+            const qualPct   = p.total_max > 0 ? Math.min((p.quality_score   / p.total_max) * 100, 100) : 0
             return (
               <tr key={p.slug} className="border-b border-stone-100 last:border-0 hover:bg-stone-50 transition-colors group">
                 <td className="px-4 py-3 text-xs text-stone-300 tabular-nums">{i + 1}</td>
@@ -222,7 +242,7 @@ function Leaderboard({ playbooks, edition }: { playbooks: PlaybookRow[]; edition
                   )}
                 </td>
                 <td className="px-4 py-3 text-right">
-                  {p.failing_criteria > 0 ? (
+                  {(p.failing_criteria ?? 0) > 0 ? (
                     <span className={`inline-flex items-center gap-1 text-xs font-medium ${s.text}`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
                       {p.failing_criteria}
@@ -233,9 +253,9 @@ function Leaderboard({ playbooks, edition }: { playbooks: PlaybookRow[]; edition
                 </td>
                 <td className="px-2 py-3">
                   <Link
-                    href={`/eval/${p.slug}`}
+                    href={`/benchmark/${editionSlug}/${p.slug}`}
                     className="text-stone-300 hover:text-indigo-500 transition-colors opacity-0 group-hover:opacity-100 text-sm"
-                    title="View full criteria breakdown"
+                    title="View playbook deep-dive"
                   >
                     →
                   </Link>
@@ -401,12 +421,16 @@ function BenchmarkContent({
 
   useEffect(() => {
     if (!edition) return
+    // Capture a non-nullable snapshot so the async function can reference it
+    // without TypeScript losing the narrowing across await boundaries.
+    const ed = edition
     let cancelled = false
 
     async function load() {
       setLoading(true)
       setError(null)
 
+      const base = process.env.NEXT_PUBLIC_API_URL
       const headers: Record<string, string> = {}
       try {
         if (getToken) {
@@ -416,9 +440,43 @@ function BenchmarkContent({
         const workspaceId = getCookie("delegator_project_id")
         if (workspaceId) headers["X-Workspace-Id"] = workspaceId
 
+        // ── Try frozen baseline first ──────────────────────────────────────
+        // Editions with a committed baseline use the dedicated endpoint so
+        // scores are immutable per edition, not re-evaluated on every view.
+        if (ed.apiEditionSlug) {
+          const manifestRes = await fetch(
+            `${base}/eval/benchmark/editions/${ed.apiEditionSlug}`,
+            { headers }
+          )
+          if (cancelled) return
+
+          if (manifestRes.ok) {
+            const manifest: EditionManifest = await manifestRes.json()
+            setSummary(manifest.summary)
+            setPlaybooks(
+              manifest.playbooks.map(p => ({ ...p, failing_criteria: undefined }))
+            )
+            return
+          }
+
+          // 404 = edition not yet committed, fall through to live eval.
+          // Any other non-OK status (401/403/500) is a real error.
+          if (manifestRes.status !== 404) {
+            const status = manifestRes.status
+            setError(
+              status === 401 ? "Not authorised — check your session." :
+              status === 403 ? "Forbidden — workspace role insufficient." :
+              `Benchmark endpoint returned ${status}.`
+            )
+            return
+          }
+        }
+
+        // ── Fall back to live eval endpoints ───────────────────────────────
+        // Used when no committed baseline exists for this edition yet.
         const [summaryRes, playbooksRes] = await Promise.all([
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/eval/summary`, { headers }),
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/eval/playbooks`, { headers }),
+          fetch(`${base}/eval/summary`, { headers }),
+          fetch(`${base}/eval/playbooks`, { headers }),
         ])
 
         if (cancelled) return
@@ -515,9 +573,9 @@ function BenchmarkContent({
               <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-widest mb-3">
                 Leaderboard
               </p>
-              <Leaderboard playbooks={playbooks} edition={edition} />
+              <Leaderboard playbooks={playbooks} edition={edition} editionSlug={editionSlug} />
               <p className="text-[10px] text-stone-300 mt-2 text-right">
-                Click the arrow on any row to view the full criteria breakdown.
+                Click the arrow on any row to view the playbook deep-dive.
               </p>
             </section>
 
