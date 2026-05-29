@@ -570,7 +570,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
               </button>
               <button
                 onClick={confirmInstall}
-                disabled={installing || projectsLoading || (GITHUB_WEBHOOK_SLUGS.has(pendingSlug ?? "") && !selectedRepo)}
+                disabled={installing || projectsLoading || environments.length === 0 || (GITHUB_WEBHOOK_SLUGS.has(pendingSlug ?? "") && !selectedRepo)}
                 className="px-4 py-2 text-xs font-medium bg-stone-900 text-white rounded-lg hover:bg-stone-700 disabled:opacity-40 transition-colors"
               >
                 {installing ? "Installing…" : "Install"}

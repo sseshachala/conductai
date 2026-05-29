@@ -50,14 +50,36 @@ def _verify_slack_signature(request_body: bytes, timestamp: str, signature: str,
     return hmac.compare_digest(expected, signature)
 
 
+def _get_run_workspace_id(run: "Run", db: Session) -> str | None:
+    """Resolve workspace_id for a run via its workflow_version → workflow chain."""
+    from sqlalchemy import text as _text
+    row = db.execute(
+        _text("""
+            SELECT w.workspace_id
+            FROM runs r
+            JOIN workflow_versions wv ON r.workflow_version_id = wv.id
+            JOIN workflows w ON wv.workflow_id = w.id
+            WHERE r.id = :run_id
+            LIMIT 1
+        """),
+        {"run_id": str(run.id)},
+    ).fetchone()
+    return str(row[0]) if row else None
+
+
 def _get_slack_signing_secret(run: "Run", db: Session) -> str:
     """Look up the Slack signing secret from the run's workspace credential."""
     from app.models.integration import Integration
     from app.core.crypto import decrypt
+
+    workspace_id = _get_run_workspace_id(run, db)
+    if not workspace_id:
+        return settings.slack_signing_secret or ""
+
     row = (
         db.query(Integration)
         .filter(
-            Integration.workspace_id == run.workspace_id,
+            Integration.workspace_id == workspace_id,
             Integration.handle == "slack",
         )
         .first()
@@ -123,28 +145,48 @@ async def slack_interactions(request: Request, db: Session = Depends(get_db)):
     block_id = run.current_block_id or ""
     approver = payload.get("user", {}).get("name", "slack-user")
 
-    # Always record the verdict as an event regardless of run status
-    event = RunEvent(
-        run_id=run_id_str,
-        block_id=block_id,
-        kind="approval_received",
-        payload={"decision": decision, "approver": approver, "source": "slack"},
-    )
-    db.add(event)
-
     if run.status == "paused":
-        # Approval gate — resume the run
+        # Atomic CAS: only the first concurrent Slack click wins.
+        # Merge the decision into state and flip status to 'pending' in one statement.
+        from sqlalchemy import text as _text
         state = dict(run.state or {})
         state[f"__approval_{block_id}"] = decision
         state[f"__approver_{block_id}"] = approver
-        run.state = state
-        run.status = "pending"
-        run.paused_at = None
-        db.commit()
-        _redis().rpush(QUEUE_KEY, run_id_str)
-        log.info("run.approval_gate", run_id=run_id_str, decision=decision, approver=approver)
+        cas_result = db.execute(
+            _text(
+                "UPDATE runs SET status='pending', paused_at=NULL, state=:state::jsonb "
+                "WHERE id=:id AND status='paused' "
+                "RETURNING id"
+            ),
+            {"state": json.dumps(state), "id": run_id_str},
+        ).fetchone()
+
+        if cas_result:
+            # Write the event and enqueue only if we won the CAS.
+            db.add(RunEvent(
+                run_id=run_id_str,
+                block_id=block_id,
+                kind="approval_received",
+                payload={"decision": decision, "approver": approver, "source": "slack"},
+            ))
+            db.commit()
+            try:
+                _redis().rpush(QUEUE_KEY, run_id_str)
+            except Exception:
+                log.error("slack.redis_enqueue_failed", run_id=run_id_str)
+            log.info("run.approval_gate", run_id=run_id_str, decision=decision, approver=approver)
+        else:
+            # Duplicate click — run already resumed, just ack to Slack.
+            db.commit()
+            log.info("run.duplicate_approval_ignored", run_id=run_id_str, decision=decision)
     else:
-        # Post-run feedback — just log the human verdict, don't re-queue
+        # Post-run feedback — record verdict, do not re-queue.
+        db.add(RunEvent(
+            run_id=run_id_str,
+            block_id=block_id,
+            kind="approval_received",
+            payload={"decision": decision, "approver": approver, "source": "slack"},
+        ))
         db.commit()
         log.info("run.post_run_verdict", run_id=run_id_str, decision=decision, approver=approver)
 
@@ -156,10 +198,8 @@ async def slack_interactions(request: Request, db: Session = Depends(get_db)):
         try:
             from app.runtime.integrations.slack import update_approval_message
             from app.models.integration import Integration
-            from app.models.workflow import WorkflowVersion
             from app.core.crypto import decrypt
-            version = db.query(WorkflowVersion).filter(WorkflowVersion.id == run.workflow_version_id).first()
-            workspace_id = str(version.workflow.workspace_id) if version and version.workflow else None
+            workspace_id = _get_run_workspace_id(run, db)
             if workspace_id:
                 slack_row = db.query(Integration).filter(
                     Integration.workspace_id == workspace_id,
@@ -269,9 +309,12 @@ async def inbound_webhook(
         max_turns=suggested_turns,
     )
     db.add(run)
-    db.flush()
     db.commit()
-    _redis().rpush(QUEUE_KEY, str(run.id))
+    try:
+        _redis().rpush(QUEUE_KEY, str(run.id))
+    except Exception as _enqueue_err:
+        log.error("webhook.inbound_enqueue_failed", run_id=str(run.id), error=str(_enqueue_err))
+        raise HTTPException(status_code=503, detail="Webhook received but queue is unavailable")
     log.info("webhook.inbound_triggered", run_id=str(run.id), workflow_id=workflow_id, max_turns=suggested_turns)
     return {"ok": True}
 
@@ -301,7 +344,11 @@ def _trigger_webhook_workflows(
         q = q.filter(Workflow.workspace_id == workspace_id)
     versions = q.all()
 
-    queued: list[str] = []
+    # Build all matching Run objects first, flush to assign IDs, then commit once.
+    # This keeps the DB write atomic across all triggered workflows, and separates
+    # the Redis enqueue step from the commit step so a Redis failure doesn't leave
+    # partial DB state (all runs committed) or orphan any run (all enqueued after commit).
+    matching_runs: list[Run] = []
     for version in versions:
         nodes = version.graph.get("nodes", [])
         has_webhook_trigger = any(
@@ -319,11 +366,26 @@ def _trigger_webhook_workflows(
             state={**initial_state, "__triggered_by": f"webhook:{event_type}"},
         )
         db.add(run)
-        db.flush()
-        db.commit()
-        _redis().rpush(QUEUE_KEY, str(run.id))
-        queued.append(str(run.id))
-        log.info("webhook.triggered", event_type=event_type, run_id=str(run.id), version_id=str(version.id))
+        matching_runs.append(run)
+
+    if not matching_runs:
+        return []
+
+    # Single flush + commit for all runs — all-or-nothing.
+    db.flush()
+    db.commit()
+
+    queued: list[str] = []
+    r = _redis()
+    for run in matching_runs:
+        try:
+            r.rpush(QUEUE_KEY, str(run.id))
+            queued.append(str(run.id))
+            log.info("webhook.triggered", event_type=event_type, run_id=str(run.id),
+                     version_id=str(run.workflow_version_id))
+        except Exception as _enqueue_err:
+            log.error("webhook.enqueue_failed", run_id=str(run.id), error=str(_enqueue_err))
+            # Run is committed as 'pending' — log prominently so ops can recover.
 
     return queued
 
@@ -656,6 +718,7 @@ def _trigger_github_workflows(
     issue_labels = (normalized.get("issue") or {}).get("labels", [])
 
     queued: list[str] = []
+    queued_runs: list[Run] = []
     for version in versions:
         nodes = version.graph.get("nodes", [])
         matched = None
@@ -686,11 +749,23 @@ def _trigger_github_workflows(
             state={**initial_state, "__triggered_by": f"github:{event_type}"},
         )
         db.add(run)
-        db.flush()
-        db.commit()
-        _redis().rpush(QUEUE_KEY, str(run.id))
-        queued.append(str(run.id))
-        log.info("github.triggered", event_type=event_type, repo=incoming_repo, run_id=str(run.id))
+        queued_runs.append(run)
+
+    if not queued_runs:
+        return []
+
+    # Single commit for all matching runs.
+    db.flush()
+    db.commit()
+
+    r = _redis()
+    for run in queued_runs:
+        try:
+            r.rpush(QUEUE_KEY, str(run.id))
+            queued.append(str(run.id))
+            log.info("github.triggered", event_type=event_type, repo=incoming_repo, run_id=str(run.id))
+        except Exception as _enqueue_err:
+            log.error("github.enqueue_failed", run_id=str(run.id), error=str(_enqueue_err))
 
     return queued
 
@@ -797,9 +872,12 @@ async def github_webhook_by_slug(
         max_turns=suggested_turns,
     )
     db.add(run)
-    db.flush()
     db.commit()
-    _redis().rpush(QUEUE_KEY, str(run.id))
+    try:
+        _redis().rpush(QUEUE_KEY, str(run.id))
+    except Exception as _enqueue_err:
+        log.error("github.slug_enqueue_failed", run_id=str(run.id), error=str(_enqueue_err))
+        raise HTTPException(status_code=503, detail="Webhook received but queue is unavailable")
     log.info("github.slug_triggered", project_slug=project_slug, workflow_slug=workflow_slug, run_id=str(run.id))
     return {"ok": True, "queued": 1, "run_ids": [str(run.id)], "label": normalized["label"], "repo": normalized["repo"]["full_name"]}
 
