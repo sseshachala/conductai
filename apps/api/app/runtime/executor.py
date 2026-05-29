@@ -94,9 +94,12 @@ def _emit(db, run_id, block_id: str | None, kind: str, payload: dict):
 # requires_artifact=True: only record outcome if the artifact URL is found in state
 # requires_artifact=False: record outcome on success regardless (the action itself is the outcome)
 _OUTCOME_MAP: dict[str, tuple[str, list[str], bool]] = {
+    "autopilot":              ("pr_opened",              ["pr_url"],   True),
     "autopilot_quick":        ("pr_opened",              ["pr_url"],   True),
     "autopilot_full":         ("pr_opened",              ["pr_url"],   True),
     "autopilot_approved":     ("pr_opened",              ["pr_url"],   True),
+    "ai_ready":               ("pr_opened",              ["pr_url"],   True),
+    "smoke_test":             ("pipeline_verified",      [],           False),
     "pr_reviewer":            ("review_completed",       [],           False),
     "copilot_reviewer":       ("review_completed",       [],           False),
     "security_scanner":       ("review_completed",       [],           False),
@@ -1374,6 +1377,236 @@ def _execute_memory(block: dict, state: dict, db, run_id: str, workspace_id: str
     return {"skipped": True, "note": f"Unknown memory action: {action}"}
 
 
+def _execute_dag(
+    *,
+    run: Any,
+    version: Any,
+    initial_state: dict,
+    db: Any,
+    credentials: dict | None = None,
+    allowed_hosts: list[str] | None = None,
+    workspace_id_str: str = "",
+) -> dict:
+    """
+    Execute the compiled DAG for a run, block by block.
+
+    This is the inner execution loop extracted from ``execute_run`` so that
+    the eval harness can call it directly with a pre-loaded run/version and a
+    mock DB session — without touching real database loading, credential
+    resolution, or analytics emission.
+
+    Parameters
+    ----------
+    run:
+        Run ORM object (already loaded and marked running).
+    version:
+        WorkflowVersion ORM object (already loaded, graph + compiled_artifacts set).
+    initial_state:
+        Starting state dict (may include prior block outputs for resume runs).
+    db:
+        SQLAlchemy session used for run/event writes within the loop.
+    credentials:
+        Decrypted credentials dict keyed by integration handle.
+    allowed_hosts:
+        Egress allowlist for tool blocks.  None means unrestricted.
+    workspace_id_str:
+        Workspace ID string forwarded to memory blocks.
+
+    Returns
+    -------
+    dict
+        Final accumulated state after all blocks have been executed (or
+        execution has stopped due to failure/approval pause).
+    """
+    if credentials is None:
+        credentials = {}
+
+    run_id = run.id
+    graph = version.graph
+    nodes = graph.get("nodes", [])
+    edges = graph.get("edges", [])
+
+    ordered = _topological_sort(nodes, edges)
+    cleanup_blocks = [n for n in ordered if n["data"].get("type") == "cleanup"]
+    exec_blocks = [n for n in ordered if n["data"].get("type") != "cleanup"]
+
+    state: dict[str, Any] = dict(initial_state)
+
+    failed = False
+    fail_error = ""
+    logic_routes: dict[str, str] = {}  # block_id → 'pass'|'fail'
+
+    for block in exec_blocks:
+        # Check if user cancelled the run between blocks
+        try:
+            db.refresh(run)
+        except Exception:
+            pass
+        if run.status == "cancelled":
+            log.info("run.cancelled", run_id=run_id)
+            return state
+
+        block_id = block["id"]
+        block_type = block["data"].get("type", "tool")
+
+        # Skip blocks already completed in a previous run segment (resume support)
+        if block_id in state:
+            log.debug("block.skipped_resume", block_id=block_id)
+            if block_type == "logic":
+                logic_routes[block_id] = state[block_id].get("route", "pass")
+            continue
+
+        # Skip blocks on a non-taken logic branch
+        skipped = _find_skipped_blocks(nodes, edges, logic_routes)
+        if block_id in skipped:
+            _emit(db, run_id, block_id, "block_skipped", {"reason": "branch_not_taken"})
+            continue
+
+        run.current_block_id = block_id
+        try:
+            db.commit()
+        except Exception:
+            pass
+
+        _emit(db, run_id, block_id, "block_started", {
+            "type": block_type,
+            "label": block["data"].get("label", ""),
+        })
+
+        compiled = version.compiled_artifacts or {}
+
+        try:
+            if block_type == "trigger":
+                # Flatten github_issue fields so {{_trigger.repo_owner}} refs resolve
+                result = {"triggered": True}
+                if "github_issue" in state:
+                    result.update(state["github_issue"])
+                    result["github_issue"] = state["github_issue"]
+                if "github_trigger" in state:
+                    result["github_trigger"] = state["github_trigger"]
+
+            elif block_type == "brain":
+                slug = getattr(getattr(version, "workflow", None), "playbook_slug", None)
+                result = _execute_brain(block, state, compiled, credentials=credentials,
+                                        db=db, run_id=run_id, block_id=block_id,
+                                        playbook_slug=slug)
+
+            elif block_type == "tool":
+                result = _execute_tool(block, state, credentials, allowed_hosts=allowed_hosts)
+
+            elif block_type == "output":
+                wf_name = version.workflow.name if version.workflow else "Agent"
+                trace_url = (
+                    f"{settings.app_url.rstrip('/')}/workflows/{version.workflow.id}/runs/{run_id}"
+                    if version.workflow else ""
+                )
+                try:
+                    result = _execute_output(block, state, credentials, workflow_name=wf_name, trace_url=trace_url, run_id=run_id)
+                except Exception as out_err:
+                    log.warning("block.output_failed", block_id=block_id, error=str(out_err))
+                    result = {"sent": False, "error": str(out_err)}
+                    _emit(db, run_id, block_id, "block_completed", {"output": result, "warning": str(out_err)})
+                    state[block_id] = result
+                    state["__last_output"] = json.dumps(result, default=str)
+                    continue
+
+            elif block_type == "logic":
+                result = _execute_logic(block, state)
+                logic_routes[block_id] = result.get("route", "pass")
+
+            elif block_type == "approval":
+                result = _execute_approval(block, state, credentials, run_id)
+
+            elif block_type == "memory":
+                result = _execute_memory(
+                    block, state, db, run_id,
+                    str(workspace_id_str),
+                    version.workflow.playbook_slug or "",
+                    credentials=credentials,
+                )
+
+            else:
+                result = {"status": "skipped", "type": block_type}
+
+            state[block_id] = result
+            state["__last_output"] = json.dumps(result, default=str)
+
+            _emit(db, run_id, block_id, "block_completed", {"output": result})
+
+        except ApprovalRequired as ap:
+            run.status = "paused"
+            run.paused_at = _now()
+            run.current_block_id = ap.block_id
+            run.state = state
+            try:
+                db.commit()
+            except Exception:
+                pass
+            _emit(db, run_id, ap.block_id, "approval_requested", {
+                "block_id": ap.block_id,
+                "message": ap.message,
+            })
+            log.info("run.paused", run_id=run_id, block_id=ap.block_id)
+            return state  # Exit without marking failed
+
+        except PermissionError as e:
+            blocked_host = str(e).split("'")[1] if "'" in str(e) else "unknown"
+            log.warning("block.egress_blocked", block_id=block_id, host=blocked_host, run_id=run_id)
+            if settings.sentry_dsn:
+                import sentry_sdk
+                with sentry_sdk.push_scope() as scope:
+                    scope.set_tag("run_id", str(run_id))
+                    scope.set_tag("blocked_host", blocked_host)
+                    sentry_sdk.capture_exception(e)
+            failed = True
+            fail_error = str(e)
+            _emit(db, run_id, block_id, "block_failed", {"error": str(e)})
+            break
+
+        except Exception as e:
+            log.exception("block.failed", block_id=block_id)
+            if settings.sentry_dsn:
+                import sentry_sdk
+                with sentry_sdk.push_scope() as scope:
+                    scope.set_tag("run_id", str(run_id))
+                    scope.set_tag("block_id", block_id)
+                    scope.set_tag("workspace_id", str(workspace_id_str))
+                    sentry_sdk.capture_exception(e)
+            failed = True
+            fail_error = str(e)
+            _emit(db, run_id, block_id, "block_failed", {"error": str(e)})
+            break
+
+    # Always run cleanup blocks
+    for block in cleanup_blocks:
+        try:
+            _emit(db, run_id, block["id"], "block_started", {"type": "cleanup"})
+            result = _execute_tool(block, state, credentials, allowed_hosts=allowed_hosts)
+            _emit(db, run_id, block["id"], "block_completed", {"output": result})
+        except Exception as e:
+            _emit(db, run_id, block["id"], "block_failed", {"error": str(e)})
+
+    run.status = "failed" if failed else "succeeded"
+    run.completed_at = _now()
+    run.current_block_id = None
+    run.state = state
+    wf = getattr(version, "workflow", None) if version else None
+    real_slug = getattr(wf, "playbook_slug", None)
+    run.outcome = _detect_outcome(real_slug, state, run.status)
+    try:
+        db.commit()
+    except Exception:
+        pass
+
+    _emit(db, run_id, None, "run_completed" if not failed else "run_failed", {
+        "status": run.status,
+        "error": fail_error,
+    })
+    log.info("run.finished", run_id=run_id, status=run.status)
+
+    return state
+
+
 def execute_run(run_id: str):
     """
     Entry point called by the worker.
@@ -1396,19 +1629,10 @@ def execute_run(run_id: str):
             WorkflowVersion.id == run.workflow_version_id
         ).first()
 
-        graph = version.graph
-        nodes = graph.get("nodes", [])
-        edges = graph.get("edges", [])
-        compiled = version.compiled_artifacts or {}
-
         run.status = "running"
         run.started_at = run.started_at or _now()
         db.commit()
-        _emit(db, run_id, None, "run_started", {"node_count": len(nodes)})
-
-        ordered = _topological_sort(nodes, edges)
-        cleanup_blocks = [n for n in ordered if n["data"].get("type") == "cleanup"]
-        exec_blocks = [n for n in ordered if n["data"].get("type") != "cleanup"]
+        _emit(db, run_id, None, "run_started", {"node_count": len((version.graph or {}).get("nodes", []))})
 
         # Accumulated state — includes previous run segment outputs on resume
         state: dict[str, Any] = dict(run.state or {})
@@ -1464,162 +1688,16 @@ def execute_run(run_id: str):
                     if row.handle not in credentials and row.encrypted_credentials:
                         credentials[row.handle] = decrypt(row.encrypted_credentials)
 
-        failed = False
-        fail_error = ""
-        logic_routes: dict[str, str] = {}  # block_id → 'pass'|'fail'
-
-        for block in exec_blocks:
-            # Check if user cancelled the run between blocks
-            db.refresh(run)
-            if run.status == "cancelled":
-                log.info("run.cancelled", run_id=run_id)
-                return
-
-            block_id = block["id"]
-            block_type = block["data"].get("type", "tool")
-
-            # Skip blocks already completed in a previous run segment (resume support)
-            if block_id in state:
-                log.debug("block.skipped_resume", block_id=block_id)
-                if block_type == "logic":
-                    logic_routes[block_id] = state[block_id].get("route", "pass")
-                continue
-
-            # Skip blocks on a non-taken logic branch
-            skipped = _find_skipped_blocks(nodes, edges, logic_routes)
-            if block_id in skipped:
-                _emit(db, run_id, block_id, "block_skipped", {"reason": "branch_not_taken"})
-                continue
-
-            run.current_block_id = block_id
-            db.commit()
-
-            _emit(db, run_id, block_id, "block_started", {
-                "type": block_type,
-                "label": block["data"].get("label", ""),
-            })
-
-            try:
-                if block_type == "trigger":
-                    # Flatten github_issue fields so {{_trigger.repo_owner}} refs resolve
-                    result = {"triggered": True}
-                    if "github_issue" in state:
-                        result.update(state["github_issue"])
-                        result["github_issue"] = state["github_issue"]
-                    if "github_trigger" in state:
-                        result["github_trigger"] = state["github_trigger"]
-
-                elif block_type == "brain":
-                    slug = getattr(getattr(version, "workflow", None), "playbook_slug", None)
-                    result = _execute_brain(block, state, compiled, credentials=credentials,
-                                            db=db, run_id=run_id, block_id=block_id,
-                                            playbook_slug=slug)
-
-                elif block_type == "tool":
-                    result = _execute_tool(block, state, credentials, allowed_hosts=allowed_hosts)
-
-                elif block_type == "output":
-                    wf_name = version.workflow.name if version.workflow else "Agent"
-                    trace_url = f"{settings.app_url.rstrip('/')}/workflows/{version.workflow.id}/runs/{run_id}" if version.workflow else ""
-                    try:
-                        result = _execute_output(block, state, credentials, workflow_name=wf_name, trace_url=trace_url, run_id=run_id)
-                    except Exception as out_err:
-                        # Notification failures are non-fatal — the real work already succeeded.
-                        log.warning("block.output_failed", block_id=block_id, error=str(out_err))
-                        result = {"sent": False, "error": str(out_err)}
-                        _emit(db, run_id, block_id, "block_completed", {"output": result, "warning": str(out_err)})
-                        state[block_id] = result
-                        state["__last_output"] = json.dumps(result, default=str)
-                        continue
-
-                elif block_type == "logic":
-                    result = _execute_logic(block, state)
-                    logic_routes[block_id] = result.get("route", "pass")
-
-                elif block_type == "approval":
-                    result = _execute_approval(block, state, credentials, run_id)
-
-                elif block_type == "memory":
-                    result = _execute_memory(
-                        block, state, db, run_id,
-                        str(workspace_id_str),
-                        version.workflow.playbook_slug or "",
-                        credentials=credentials,
-                    )
-
-                else:
-                    result = {"status": "skipped", "type": block_type}
-
-                state[block_id] = result
-                state["__last_output"] = json.dumps(result, default=str)
-
-                _emit(db, run_id, block_id, "block_completed", {"output": result})
-
-            except ApprovalRequired as ap:
-                run.status = "paused"
-                run.paused_at = _now()
-                run.current_block_id = ap.block_id
-                run.state = state
-                db.commit()
-                _emit(db, run_id, ap.block_id, "approval_requested", {
-                    "block_id": ap.block_id,
-                    "message": ap.message,
-                })
-                log.info("run.paused", run_id=run_id, block_id=ap.block_id)
-                return  # Exit without marking failed
-
-            except PermissionError as e:
-                blocked_host = str(e).split("'")[1] if "'" in str(e) else "unknown"
-                log.warning("block.egress_blocked", block_id=block_id, host=blocked_host, run_id=run_id)
-                if settings.sentry_dsn:
-                    import sentry_sdk
-                    with sentry_sdk.push_scope() as scope:
-                        scope.set_tag("run_id", str(run_id))
-                        scope.set_tag("blocked_host", blocked_host)
-                        sentry_sdk.capture_exception(e)
-                failed = True
-                fail_error = str(e)
-                _emit(db, run_id, block_id, "block_failed", {"error": str(e)})
-                break
-
-            except Exception as e:
-                log.exception("block.failed", block_id=block_id)
-                if settings.sentry_dsn:
-                    import sentry_sdk
-                    with sentry_sdk.push_scope() as scope:
-                        scope.set_tag("run_id", str(run_id))
-                        scope.set_tag("block_id", block_id)
-                        scope.set_tag("workspace_id", str(run.workspace_id) if hasattr(run, "workspace_id") else "")
-                        sentry_sdk.capture_exception(e)
-                failed = True
-                fail_error = str(e)
-                _emit(db, run_id, block_id, "block_failed", {"error": str(e)})
-                break
-
-        # Always run cleanup blocks
-        for block in cleanup_blocks:
-            try:
-                _emit(db, run_id, block["id"], "block_started", {"type": "cleanup"})
-                result = _execute_tool(block, state, credentials, allowed_hosts=allowed_hosts)
-                _emit(db, run_id, block["id"], "block_completed", {"output": result})
-            except Exception as e:
-                _emit(db, run_id, block["id"], "block_failed", {"error": str(e)})
-
-        run.status = "failed" if failed else "succeeded"
-        run.completed_at = _now()
-        run.current_block_id = None
-        run.state = state
-        wf = getattr(version, "workflow", None) if version else None
-        real_slug = getattr(wf, "playbook_slug", None)
-        run.outcome = _detect_outcome(real_slug, state, run.status)
-        db.commit()
-
-        _emit(db, run_id, None, "run_completed" if not failed else "run_failed", {
-            "status": run.status,
-            "error": fail_error,
-        })
-        log.info("run.finished", run_id=run_id, status=run.status)
-        _emit_run_analytics(run, version, state, db, outcome=run.status, error=fail_error)
+        final_state = _execute_dag(
+            run=run,
+            version=version,
+            initial_state=state,
+            db=db,
+            credentials=credentials,
+            allowed_hosts=allowed_hosts,
+            workspace_id_str=str(workspace_id_str),
+        )
+        _emit_run_analytics(run, version, final_state, db, outcome=run.status, error="")
 
     except Exception as e:
         log.exception("run.executor_crash", run_id=run_id)

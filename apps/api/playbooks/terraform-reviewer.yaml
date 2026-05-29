@@ -169,18 +169,22 @@ blocks:
     type: output
     label: Notify clean review
     description: |
-      ✅ *Terraform review complete* — PR #{{_trigger.pull_request.number}} in `{{_trigger.repository.full_name}}`
+      Terraform review complete for PR #{{_trigger.pull_request.number}} in {{_trigger.repository.full_name}}.
       {{review_plan.findings_summary}}
-      Warnings: {{review_plan.warning_count}} · Info: {{review_plan.info_count}}
+      Warnings: {{review_plan.warning_count}} / Info: {{review_plan.info_count}}
     output:
-      via: log
+      via: slack
+      slack:
+        channel: "{{inputs.slack_channel}}"
 
   skip:
     type: output
     label: No Terraform changes
-    description: "PR #{{_trigger.pull_request.number}} — no .tf changes, skipping review."
+    description: "PR #{{_trigger.pull_request.number}} has no .tf changes, skipping review."
     output:
-      via: log
+      via: slack
+      slack:
+        channel: "{{inputs.slack_channel}}"
 
 test_trigger:
   payload:
