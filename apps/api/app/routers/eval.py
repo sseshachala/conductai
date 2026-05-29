@@ -493,7 +493,6 @@ def start_live_eval(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
     _role: str = Depends(require_workspace_role("admin")),
-    _super_admin: None = Depends(_require_super_admin),
 ):
     """
     Queue a live (real LLM) eval run for a single playbook.
@@ -502,8 +501,8 @@ def start_live_eval(
     track progress.  Live eval calls the real executor with mocked external
     integrations (GitHub/Slack) but a real Anthropic LLM call.
 
-    Requires super-admin access plus a workspace Anthropic API key.
-    The run typically takes 15-60 seconds depending on playbook complexity.
+    Requires workspace admin role. The run typically takes 15-60 seconds
+    depending on playbook complexity.
     """
     # Verify the slug exists before queuing
     try:
@@ -673,7 +672,6 @@ def get_live_job(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
     _role: str = Depends(require_workspace_role("admin")),
-    _super_admin: None = Depends(_require_super_admin),
 ):
     """
     Poll the status of a live eval job.
