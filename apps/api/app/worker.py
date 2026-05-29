@@ -13,10 +13,17 @@ vertically with WORKER_CONCURRENCY.  Example (4 concurrent runs):
 
 On Render: set WORKER_CONCURRENCY in the worker service's Environment
 tab — no code change, just restart the service.
+
+Stale-run reaper: a background daemon thread runs every
+STALE_RUN_REAPER_INTERVAL seconds (default 120) and marks any run
+that has been in 'running' state with a lock older than
+STALE_RUN_THRESHOLD_MINUTES (default 20) as 'failed'.  This recovers
+runs whose worker crashed mid-execution.
 """
 import os
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 
 import redis
 import structlog
@@ -31,6 +38,96 @@ log = structlog.get_logger(__name__)
 QUEUE_KEY   = "marshal:runs:queue"
 CONCURRENCY = int(os.environ.get("WORKER_CONCURRENCY", "1"))
 
+# Reaper configuration — tunable via environment variables.
+STALE_RUN_THRESHOLD_MINUTES = int(os.environ.get("STALE_RUN_THRESHOLD_MINUTES", "20"))
+STALE_RUN_REAPER_INTERVAL   = int(os.environ.get("STALE_RUN_REAPER_INTERVAL", "120"))  # seconds
+
+
+# ── stale-run reaper ──────────────────────────────────────────────────────────
+
+def _reap_stale_runs() -> int:
+    """
+    Query for runs stuck in 'running' state whose worker lock is older than
+    STALE_RUN_THRESHOLD_MINUTES and mark them as failed.
+
+    Returns the number of runs reaped.
+    """
+    from app.core.database import SessionLocal
+    from app.models.run import Run, RunEvent
+
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(minutes=STALE_RUN_THRESHOLD_MINUTES)
+
+    db = SessionLocal()
+    try:
+        stale = (
+            db.query(Run)
+            .filter(
+                Run.status == "running",
+                Run.locked_at.isnot(None),
+                Run.locked_at < cutoff,
+            )
+            .all()
+        )
+        if not stale:
+            return 0
+
+        for run in stale:
+            error_msg = (
+                "Run timed out — worker did not complete within the allowed window "
+                f"({STALE_RUN_THRESHOLD_MINUTES} minutes)"
+            )
+            run.status = "failed"
+            run.completed_at = now
+            run.locked_at = None
+            run.locked_by = None
+
+            # Write a run_event so the UI event log shows the timeout reason.
+            db.add(RunEvent(
+                run_id=run.id,
+                block_id=None,
+                kind="run_failed",
+                payload={"status": "failed", "error": error_msg, "reaped": True},
+            ))
+
+        db.commit()
+        return len(stale)
+
+    except Exception:
+        log.exception("reaper.error")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return 0
+    finally:
+        db.close()
+
+
+def _reaper_loop() -> None:
+    """Daemon thread: sleep, then reap, repeat."""
+    log.info(
+        "reaper.started",
+        threshold_minutes=STALE_RUN_THRESHOLD_MINUTES,
+        interval_seconds=STALE_RUN_REAPER_INTERVAL,
+    )
+    while True:
+        time.sleep(STALE_RUN_REAPER_INTERVAL)
+        try:
+            reaped = _reap_stale_runs()
+            if reaped > 0:
+                log.warning(
+                    "reaper.reaped",
+                    count=reaped,
+                    threshold_minutes=STALE_RUN_THRESHOLD_MINUTES,
+                )
+            else:
+                log.debug("reaper.cycle", reaped=0)
+        except Exception:
+            log.exception("reaper.loop_error")
+
+
+# ── queue worker ──────────────────────────────────────────────────────────────
 
 def _loop(thread_id: int) -> None:
     r = redis.from_url(settings.redis_url, decode_responses=True)
@@ -54,6 +151,10 @@ def _loop(thread_id: int) -> None:
 
 def main() -> None:
     log.info("worker.starting", concurrency=CONCURRENCY, queue=QUEUE_KEY)
+
+    # The reaper runs regardless of worker concurrency mode.
+    reaper = threading.Thread(target=_reaper_loop, daemon=True, name="reaper")
+    reaper.start()
 
     if CONCURRENCY == 1:
         _loop(0)
