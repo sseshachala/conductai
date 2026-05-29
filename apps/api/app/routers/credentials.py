@@ -106,30 +106,32 @@ def upsert_credential(body: CredentialUpsert, db: Session = Depends(get_db), wor
             )
         env_id = str(default_env.id)
 
-    # Upsert keyed on (workspace, handle, environment) — same handle can exist
-    # in multiple environments since the constraint changed in migration 0015.
-    existing = db.query(Integration).filter(
-        Integration.workspace_id == workspace_id,
-        Integration.handle == body.handle,
-        Integration.environment_id == env_id,
-    ).first()
-
-    if existing:
-        existing.service = body.service
-        existing.auth_method = auth_method
-        existing.encrypted_credentials = encrypt(body.credentials)
-        existing.environment_id = env_id
-    else:
-        row = Integration(
+    # Single atomic upsert keyed on the unique constraint
+    # uq_integrations_workspace_handle_env — avoids the TOCTOU race where two
+    # concurrent saves both see no existing row and both try to INSERT, causing
+    # one to fail with a UniqueConstraintViolation 500.
+    from sqlalchemy.dialects.postgresql import insert as _pg_insert
+    encrypted = encrypt(body.credentials)
+    stmt = (
+        _pg_insert(Integration)
+        .values(
             workspace_id=workspace_id,
             service=body.service,
             handle=body.handle,
             auth_method=auth_method,
-            encrypted_credentials=encrypt(body.credentials),
+            encrypted_credentials=encrypted,
             environment_id=env_id,
         )
-        db.add(row)
-
+        .on_conflict_do_update(
+            constraint="uq_integrations_workspace_handle_env",
+            set_=dict(
+                service=body.service,
+                auth_method=auth_method,
+                encrypted_credentials=encrypted,
+            ),
+        )
+    )
+    db.execute(stmt)
     db.commit()
     audit(db, workspace_id, "credential.upserted",
           resource_type="credential", resource_id=body.handle,
@@ -289,23 +291,25 @@ def save_env_vars(
         handle, field = _ENV_VAR_MAP.get(item.key, ("env_vars", item.key.lower()))
         grouped.setdefault(handle, {})[field] = item.value
 
+    from sqlalchemy.dialects.postgresql import insert as _pg_insert
     for handle, creds in grouped.items():
-        existing = db.query(Integration).filter(
-            Integration.workspace_id == workspace_id,
-            Integration.handle == handle,
-            Integration.environment_id == env_id,
-        ).first()
-        if existing:
-            existing.encrypted_credentials = encrypt(creds)
-        else:
-            db.add(Integration(
+        encrypted = encrypt(creds)
+        stmt = (
+            _pg_insert(Integration)
+            .values(
                 workspace_id=workspace_id,
                 service=handle,
                 handle=handle,
                 auth_method="api_key",
-                encrypted_credentials=encrypt(creds),
+                encrypted_credentials=encrypted,
                 environment_id=env_id,
-            ))
+            )
+            .on_conflict_do_update(
+                constraint="uq_integrations_workspace_handle_env",
+                set_=dict(encrypted_credentials=encrypted),
+            )
+        )
+        db.execute(stmt)
 
     # Remove handles that were deleted (not present in new list)
     new_handles = set(grouped.keys())
