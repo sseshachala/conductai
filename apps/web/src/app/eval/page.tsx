@@ -31,8 +31,10 @@ interface PlaybookEval {
   grade: string
   pct: number
   failing_criteria: number
-  total_criteria: number
-  run_count?: number
+  total_max: number
+  total_score: number
+  structural_score?: number
+  quality_score?: number
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -222,8 +224,8 @@ function QualityTable({ playbooks }: { playbooks: PlaybookEval[] }) {
                   <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600">
                     <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
                     {p.failing_criteria}
-                    {p.total_criteria > 0 && (
-                      <span className="text-stone-400 font-normal"> / {p.total_criteria}</span>
+                    {p.total_max > 0 && (
+                      <span className="text-stone-400 font-normal"> / {p.total_max}</span>
                     )}
                   </span>
                 ) : (
@@ -281,7 +283,14 @@ function EvalContent({ getToken }: { getToken: (() => Promise<string | null>) | 
         if (cancelled) return
 
         if (!summaryRes.ok && !playbooksRes.ok) {
-          setError("Could not load eval data.")
+          const status = summaryRes.status
+          const hint =
+            status === 401 ? "Not authorised — check your session." :
+            status === 403 ? "Forbidden — workspace role may be insufficient." :
+            status === 500 ? "The eval runner returned an error (500). Check the API logs." :
+            `Both eval endpoints returned ${status}.`
+          setError(hint)
+          console.error("[eval] summary:", summaryRes.status, "playbooks:", playbooksRes.status)
           return
         }
 
