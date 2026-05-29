@@ -193,8 +193,8 @@ function Leaderboard({ playbooks, edition, editionSlug }: { playbooks: PlaybookR
             <th className="px-4 py-2.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide">Playbook</th>
             <th className="px-4 py-2.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide">Grade</th>
             <th className="px-4 py-2.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide">Score</th>
-            <th className="px-4 py-2.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide hidden sm:table-cell">Structural</th>
-            <th className="px-4 py-2.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide hidden sm:table-cell">Quality</th>
+            <th className="px-4 py-2.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide">Structural</th>
+            <th className="px-4 py-2.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide">Quality</th>
             <th className="px-4 py-2.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide text-right">Issues</th>
             <th className="px-2 py-2.5 w-6" />
           </tr>
@@ -219,7 +219,7 @@ function Leaderboard({ playbooks, edition, editionSlug }: { playbooks: PlaybookR
                 <td className="px-4 py-3">
                   <ScoreBar pct={p.pct} grade={p.grade} />
                 </td>
-                <td className="px-4 py-3 hidden sm:table-cell">
+                <td className="px-4 py-3">
                   <span className="text-xs tabular-nums text-stone-500">
                     {p.structural_score}
                     <span className="text-stone-300"> / </span>
@@ -229,19 +229,15 @@ function Leaderboard({ playbooks, edition, editionSlug }: { playbooks: PlaybookR
                     <div className="h-full bg-blue-300 rounded-full" style={{ width: `${structPct}%` }} />
                   </div>
                 </td>
-                <td className="px-4 py-3 hidden sm:table-cell">
-                  {p.quality_score > 0 ? (
-                    <>
-                      <span className="text-xs tabular-nums text-stone-500">
-                        {p.quality_score}
-                        <span className="text-stone-300"> pts</span>
-                      </span>
-                      <div className="w-16 h-1 rounded-full bg-stone-100 overflow-hidden mt-1">
-                        <div className="h-full bg-violet-300 rounded-full" style={{ width: `${qualPct}%` }} />
-                      </div>
-                    </>
-                  ) : (
-                    <span className="text-xs text-stone-300">—</span>
+                <td className="px-4 py-3">
+                  <span className="text-xs tabular-nums text-stone-500">
+                    {p.quality_score}
+                    <span className="text-stone-300"> pts</span>
+                  </span>
+                  {p.quality_score > 0 && (
+                    <div className="w-16 h-1 rounded-full bg-stone-100 overflow-hidden mt-1">
+                      <div className="h-full bg-violet-300 rounded-full" style={{ width: `${qualPct}%` }} />
+                    </div>
                   )}
                 </td>
                 <td className="px-4 py-3 text-right">
