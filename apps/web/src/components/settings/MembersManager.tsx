@@ -9,6 +9,8 @@ interface Member {
   role: "admin" | "editor" | "viewer"
   invited_by: string | null
   joined_at: string
+  email: string | null
+  name: string | null
 }
 
 interface Invite {
@@ -279,7 +281,12 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
             {members.map(m => (
               <div key={m.clerk_user_id} className="flex items-center justify-between px-4 py-3">
                 <div className="min-w-0">
-                  <p className="text-sm font-mono text-stone-700 truncate">{m.clerk_user_id}</p>
+                  <p className="text-sm font-medium text-stone-700 truncate">
+                    {m.name || m.email || m.clerk_user_id}
+                  </p>
+                  {m.email && m.name && (
+                    <p className="text-xs text-stone-400 truncate">{m.email}</p>
+                  )}
                   <p className="text-xs text-stone-400">Joined {new Date(m.joined_at).toLocaleDateString()}</p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0 ml-4">
