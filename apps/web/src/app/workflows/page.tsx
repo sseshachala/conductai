@@ -267,7 +267,7 @@ function AgentCard({
             className="text-sm font-semibold text-stone-900 bg-transparent border-b border-indigo-400 outline-none w-full"
           />
         ) : (
-          <p className="font-semibold text-stone-900 group-hover:text-stone-700 transition-colors truncate">{workflow.name}</p>
+          <p className="font-semibold text-stone-900 group-hover:text-stone-700 transition-colors truncate" title={workflow.name}>{workflow.name}</p>
         )}
         <p className="text-xs text-stone-400 mt-0.5">edited {timeAgo(workflow.updated_at)}</p>
       </Link>
