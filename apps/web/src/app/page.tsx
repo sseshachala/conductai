@@ -634,7 +634,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
                 ))}
               </div>
               <div className="mt-auto pt-4 border-t border-stone-100 flex items-center justify-between">
-                <span className="text-[10px] text-stone-400">conductai.dev/eval</span>
+                <span className="text-[10px] text-stone-400">conductai.ai/eval</span>
                 <a
                   href="/eval"
                   className="inline-flex items-center gap-1.5 text-xs font-medium text-violet-700 hover:text-violet-900 transition-colors"
@@ -670,7 +670,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
                 ))}
               </div>
               <div className="mt-auto pt-4 border-t border-indigo-100 flex items-center justify-between">
-                <span className="text-[10px] text-stone-400">conductai.dev/benchmark</span>
+                <span className="text-[10px] text-stone-400">conductai.ai/benchmark</span>
                 <a
                   href="/benchmark"
                   className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-700 hover:text-indigo-900 transition-colors"
