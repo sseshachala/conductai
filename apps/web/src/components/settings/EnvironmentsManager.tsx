@@ -35,20 +35,60 @@ interface ServiceDef {
   fields: FieldDef[]
 }
 
-// Maps known env var names → { service, credentials field name }
-// Used to auto-detect which services are configured and build test payloads.
-const SERVICE_VAR_MAP: Record<string, Array<{ envKey: string; fieldKey: string }>> = {
-  github:       [{ envKey: "GITHUB_TOKEN", fieldKey: "token" }, { envKey: "GITHUB_PAT", fieldKey: "token" }],
-  slack:        [{ envKey: "SLACK_BOT_TOKEN", fieldKey: "token" }, { envKey: "SLACK_TOKEN", fieldKey: "token" }],
-  anthropic:    [{ envKey: "ANTHROPIC_API_KEY", fieldKey: "api_key" }],
-  linear:       [{ envKey: "LINEAR_API_KEY", fieldKey: "api_key" }],
-  digitalocean: [{ envKey: "DIGITALOCEAN_TOKEN", fieldKey: "token" }, { envKey: "DO_TOKEN", fieldKey: "token" }],
-  email:        [{ envKey: "RESEND_API_KEY", fieldKey: "resend_api_key" }, { envKey: "SENDGRID_API_KEY", fieldKey: "sendgrid_api_key" }],
+// ── Test-connection service catalogue ────────────────────────────────────────
+// Lists every common env-var naming convention for each service field.
+// The first matching key found in the environment's vars is used automatically;
+// if none match the user can pick any var from a dropdown.
+
+interface ServiceFieldDef {
+  fieldKey: string      // what POST /credentials/test expects
+  label: string         // shown in the card
+  envKeys: string[]     // common env-var names, in priority order
+  required: boolean     // card is testable only when all required fields have a value
 }
 
-const SERVICE_LABELS: Record<string, string> = {
-  github: "GitHub", slack: "Slack", anthropic: "Anthropic",
-  linear: "Linear", digitalocean: "DigitalOcean", email: "Email",
+interface ServiceDetection {
+  label: string
+  abbr: string
+  color: string         // Tailwind badge class
+  fields: ServiceFieldDef[]
+}
+
+const SERVICE_DETECTION: Record<string, ServiceDetection> = {
+  github: {
+    label: "GitHub", abbr: "GH", color: "bg-stone-900 text-white",
+    fields: [{ fieldKey: "token", label: "Personal access token", required: true,
+      envKeys: ["GITHUB_TOKEN", "GITHUB_PAT", "GH_TOKEN", "GITHUB_ACCESS_TOKEN", "GH_PAT"] }],
+  },
+  slack: {
+    label: "Slack", abbr: "SL", color: "bg-purple-600 text-white",
+    fields: [{ fieldKey: "token", label: "Bot token", required: true,
+      envKeys: ["SLACK_BOT_TOKEN", "SLACK_TOKEN", "SLACK_ACCESS_TOKEN", "SLACK_API_TOKEN"] }],
+  },
+  anthropic: {
+    label: "Anthropic", abbr: "AI", color: "bg-amber-600 text-white",
+    fields: [{ fieldKey: "api_key", label: "API key", required: true,
+      envKeys: ["ANTHROPIC_API_KEY", "ANTHROPIC_KEY", "CLAUDE_API_KEY", "ANTHROPIC_TOKEN"] }],
+  },
+  linear: {
+    label: "Linear", abbr: "LN", color: "bg-indigo-600 text-white",
+    fields: [{ fieldKey: "api_key", label: "API key", required: true,
+      envKeys: ["LINEAR_API_KEY", "LINEAR_KEY", "LINEAR_TOKEN", "LINEAR_API_TOKEN"] }],
+  },
+  digitalocean: {
+    label: "DigitalOcean", abbr: "DO", color: "bg-blue-500 text-white",
+    fields: [{ fieldKey: "token", label: "Personal access token", required: true,
+      envKeys: ["DIGITALOCEAN_TOKEN", "DO_TOKEN", "DIGITALOCEAN_API_TOKEN", "DO_API_TOKEN"] }],
+  },
+  email: {
+    label: "Email", abbr: "EM", color: "bg-emerald-600 text-white",
+    fields: [
+      { fieldKey: "resend_api_key",   label: "Resend API key",    required: false,
+        envKeys: ["RESEND_API_KEY", "RESEND_KEY"] },
+      { fieldKey: "sendgrid_api_key", label: "SendGrid API key",  required: false,
+        envKeys: ["SENDGRID_API_KEY", "SENDGRID_KEY"] },
+    ],
+  },
 }
 
 const SERVICES: ServiceDef[] = [
@@ -323,6 +363,203 @@ function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Prom
 }
 
 // ---------------------------------------------------------------------------
+// Test connections panel
+// ---------------------------------------------------------------------------
+
+type TestResult = { ok: boolean; detail: string } | "testing" | "idle"
+
+function resultDetail(body: Record<string, unknown>): string {
+  if (body.user  && body.team)  return `${body.team} · ${body.user}`
+  if (body.user)                return `Connected as ${body.user}`
+  if (body.email)               return `Connected: ${body.email}`
+  return "Connected"
+}
+
+function TestConnectionsPanel({
+  vars,
+  buildHeaders,
+}: {
+  vars: EnvVar[]
+  buildHeaders: (contentType?: boolean) => Promise<Record<string, string>>
+}) {
+  // manualSel: service → fieldKey → envKey chosen by user (overrides auto-detect)
+  const [manualSel, setManualSel] = useState<Record<string, Record<string, string>>>({})
+  const [results,   setResults]   = useState<Record<string, TestResult>>({})
+
+  const varKeys = vars.filter(v => v.value).map(v => v.key)
+
+  /** First matching key from the env vars for a field, or "" */
+  function autoKey(field: ServiceFieldDef): string {
+    return field.envKeys.find(k => vars.some(v => v.key === k && v.value)) ?? ""
+  }
+
+  /** Currently selected key for a field (manual override or auto) */
+  function selectedKey(service: string, field: ServiceFieldDef): string {
+    return manualSel[service]?.[field.fieldKey] ?? autoKey(field)
+  }
+
+  /** Value for a key, or "" */
+  function varValue(key: string): string {
+    return vars.find(v => v.key === key)?.value ?? ""
+  }
+
+  /** Build credentials dict — only populated fields included */
+  function buildCreds(service: string): Record<string, string> {
+    const svc = SERVICE_DETECTION[service]
+    const creds: Record<string, string> = {}
+    for (const field of svc.fields) {
+      const key = selectedKey(service, field)
+      const val = varValue(key)
+      if (val) creds[field.fieldKey] = val
+    }
+    return creds
+  }
+
+  /** A service is testable when every required field has a value */
+  function isTestable(service: string): boolean {
+    const svc = SERVICE_DETECTION[service]
+    // email is special: at least one of resend/sendgrid must be present
+    if (service === "email") {
+      const creds = buildCreds(service)
+      return !!(creds.resend_api_key || creds.sendgrid_api_key)
+    }
+    return svc.fields.filter(f => f.required).every(f => !!varValue(selectedKey(service, f)))
+  }
+
+  async function runTest(service: string) {
+    setResults(prev => ({ ...prev, [service]: "testing" }))
+    try {
+      const headers = await buildHeaders(true)
+      const res  = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/test`, {
+        method: "POST", headers,
+        body: JSON.stringify({ service, credentials: buildCreds(service) }),
+      })
+      const body = await res.json() as Record<string, unknown>
+      if (body.ok) {
+        setResults(prev => ({ ...prev, [service]: { ok: true, detail: resultDetail(body) } }))
+      } else {
+        setResults(prev => ({ ...prev, [service]: { ok: false, detail: (body.error as string) ?? "Connection failed" } }))
+      }
+    } catch {
+      setResults(prev => ({ ...prev, [service]: { ok: false, detail: "Request failed" } }))
+    }
+  }
+
+  return (
+    <div className="mt-6">
+      <div className="mb-3">
+        <p className="text-sm font-medium text-stone-900">Test connections</p>
+        <p className="text-xs text-stone-400">
+          Verify each credential is valid. Values are sent directly to the provider — nothing is stored or re-encrypted.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {Object.entries(SERVICE_DETECTION).map(([service, svc]) => {
+          const result  = results[service] ?? "idle"
+          const testing = result === "testing"
+          const ok      = result !== "idle" && result !== "testing" && result.ok
+          const err     = result !== "idle" && result !== "testing" && !result.ok
+          const testable = isTestable(service)
+
+          return (
+            <div
+              key={service}
+              className={`rounded-xl border px-4 py-3 flex flex-col gap-2.5 transition-colors ${
+                ok  ? "border-emerald-200 bg-emerald-50" :
+                err ? "border-red-200 bg-red-50" :
+                "border-stone-200 bg-white"
+              }`}
+            >
+              {/* Header */}
+              <div className="flex items-center gap-2">
+                <span className={`w-7 h-7 rounded-md text-[10px] font-bold flex items-center justify-center shrink-0 ${svc.color}`}>
+                  {svc.abbr}
+                </span>
+                <span className="text-sm font-medium text-stone-800">{svc.label}</span>
+                {ok && (
+                  <span className="ml-auto text-[10px] font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">✓ OK</span>
+                )}
+                {err && (
+                  <span className="ml-auto text-[10px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full">✗ Failed</span>
+                )}
+              </div>
+
+              {/* Field selectors */}
+              <div className="space-y-1.5">
+                {svc.fields.map(field => {
+                  const auto    = autoKey(field)
+                  const current = selectedKey(service, field)
+                  const hasVal  = !!varValue(current)
+
+                  return (
+                    <div key={field.fieldKey}>
+                      <p className="text-[10px] text-stone-400 mb-0.5">{field.label}</p>
+                      {/* Auto-detected — show key name as a chip */}
+                      {auto && manualSel[service]?.[field.fieldKey] === undefined ? (
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] font-mono bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded truncate max-w-[140px]">
+                            {auto}
+                          </span>
+                          <button
+                            onClick={() => setManualSel(prev => ({
+                              ...prev,
+                              [service]: { ...prev[service], [field.fieldKey]: "" },
+                            }))}
+                            className="text-[10px] text-stone-300 hover:text-stone-500 transition-colors"
+                            title="Change"
+                          >
+                            ✎
+                          </button>
+                        </div>
+                      ) : (
+                        /* Manual picker */
+                        <select
+                          value={current}
+                          onChange={e => setManualSel(prev => ({
+                            ...prev,
+                            [service]: { ...prev[service], [field.fieldKey]: e.target.value },
+                          }))}
+                          className={`w-full text-[10px] font-mono border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-stone-300 ${
+                            hasVal ? "border-stone-200 text-stone-700 bg-white" : "border-dashed border-stone-200 text-stone-400 bg-stone-50"
+                          }`}
+                        >
+                          <option value="">— pick a var —</option>
+                          {varKeys.map(k => (
+                            <option key={k} value={k}>{k}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Result detail */}
+              {ok  && <p className="text-[11px] text-emerald-700 font-medium">{(result as {ok:boolean;detail:string}).detail}</p>}
+              {err && <p className="text-[11px] text-red-600">{(result as {ok:boolean;detail:string}).detail}</p>}
+
+              {/* Test button */}
+              <button
+                onClick={() => runTest(service)}
+                disabled={!testable || testing}
+                className={`mt-auto rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                  testable && !testing
+                    ? "bg-stone-900 text-white hover:bg-stone-700"
+                    : "bg-stone-100 text-stone-400 cursor-not-allowed"
+                }`}
+              >
+                {testing ? "Testing…" : testable ? "Test connection" : "Add key to test"}
+              </button>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Environment detail — simple key-value env var editor
 // ---------------------------------------------------------------------------
 
@@ -350,47 +587,6 @@ function EnvironmentDetail({
   const [showNew, setShowNew] = useState(false)
   const [showPaste, setShowPaste] = useState(false)
   const [pasteText, setPasteText] = useState("")
-
-  // Test connections state
-  const [testResults, setTestResults] = useState<Record<string, { ok: boolean; detail: string } | "testing">>({})
-
-  async function testConnection(service: string, credentials: Record<string, string>) {
-    setTestResults(prev => ({ ...prev, [service]: "testing" }))
-    try {
-      const headers = await buildHeaders(true)
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/test`, {
-        method: "POST", headers,
-        body: JSON.stringify({ service, credentials }),
-      })
-      const body = await res.json()
-      if (body.ok) {
-        // Build a short detail string from service-specific fields
-        let detail = "Connected"
-        if (body.user)  detail = `Connected as ${body.user}`
-        if (body.team)  detail = `${body.team} · ${body.user ?? ""}`
-        if (body.email) detail = `Connected: ${body.email}`
-        setTestResults(prev => ({ ...prev, [service]: { ok: true, detail } }))
-      } else {
-        setTestResults(prev => ({ ...prev, [service]: { ok: false, detail: body.error ?? "Connection failed" } }))
-      }
-    } catch {
-      setTestResults(prev => ({ ...prev, [service]: { ok: false, detail: "Request failed" } }))
-    }
-  }
-
-  // Detect which services are configured from the current vars
-  function detectedServices(): Array<{ service: string; credentials: Record<string, string> }> {
-    const result: Array<{ service: string; credentials: Record<string, string> }> = []
-    for (const [service, mappings] of Object.entries(SERVICE_VAR_MAP)) {
-      const creds: Record<string, string> = {}
-      for (const { envKey, fieldKey } of mappings) {
-        const v = vars.find(x => x.key === envKey)
-        if (v?.value) creds[fieldKey] = v.value
-      }
-      if (Object.keys(creds).length > 0) result.push({ service, credentials: creds })
-    }
-    return result
-  }
 
   // Egress allowlist chip state
   const [hosts, setHosts] = useState<string[]>(environment.allowed_hosts ?? [])
@@ -640,35 +836,7 @@ function EnvironmentDetail({
       </div>
 
       {/* Test connections */}
-      {!loading && detectedServices().length > 0 && (
-        <div className="mt-6">
-          <div className="mb-2">
-            <p className="text-sm font-medium text-stone-900">Test connections</p>
-            <p className="text-xs text-stone-400">Verify your credentials are valid without saving anything new.</p>
-          </div>
-          <div className="rounded-xl border border-stone-200 bg-white px-4 py-3 flex flex-wrap gap-3">
-            {detectedServices().map(({ service, credentials }) => {
-              const result = testResults[service]
-              const isTesting = result === "testing"
-              const isOk  = result && result !== "testing" && result.ok
-              const isErr = result && result !== "testing" && !result.ok
-              return (
-                <div key={service} className="flex items-center gap-2">
-                  <button
-                    onClick={() => testConnection(service, credentials)}
-                    disabled={isTesting}
-                    className="text-xs font-medium border border-stone-200 rounded-lg px-3 py-1.5 text-stone-600 hover:bg-stone-50 transition-colors disabled:opacity-50"
-                  >
-                    {isTesting ? "Testing…" : `Test ${SERVICE_LABELS[service] ?? service}`}
-                  </button>
-                  {isOk  && <span className="text-xs text-emerald-600 font-medium">{(result as {ok:boolean;detail:string}).detail}</span>}
-                  {isErr && <span className="text-xs text-red-500">{(result as {ok:boolean;detail:string}).detail}</span>}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
+      {!loading && <TestConnectionsPanel vars={vars} buildHeaders={buildHeaders} />}
 
       {/* Egress allowlist */}
       <div className="mt-6">
