@@ -108,7 +108,7 @@ def _poll_run(server: str, workflow_id: str, run_id: str, hdrs: dict) -> bool:
     is correct behaviour for approval-gated agents.
     """
     terminal = {"succeeded", "failed", "cancelled"}
-    for _ in range(240):  # max 20 min — agentic coding agents can take 15+ min
+    for _ in range(360):  # max 30 min — dependency installs can take 20-25 min
         time.sleep(5)
         try:
             run = api.req("GET", f"{server}/runs/{run_id}", hdrs)
