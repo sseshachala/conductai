@@ -35,6 +35,22 @@ interface ServiceDef {
   fields: FieldDef[]
 }
 
+// Maps known env var names → { service, credentials field name }
+// Used to auto-detect which services are configured and build test payloads.
+const SERVICE_VAR_MAP: Record<string, Array<{ envKey: string; fieldKey: string }>> = {
+  github:       [{ envKey: "GITHUB_TOKEN", fieldKey: "token" }, { envKey: "GITHUB_PAT", fieldKey: "token" }],
+  slack:        [{ envKey: "SLACK_BOT_TOKEN", fieldKey: "token" }, { envKey: "SLACK_TOKEN", fieldKey: "token" }],
+  anthropic:    [{ envKey: "ANTHROPIC_API_KEY", fieldKey: "api_key" }],
+  linear:       [{ envKey: "LINEAR_API_KEY", fieldKey: "api_key" }],
+  digitalocean: [{ envKey: "DIGITALOCEAN_TOKEN", fieldKey: "token" }, { envKey: "DO_TOKEN", fieldKey: "token" }],
+  email:        [{ envKey: "RESEND_API_KEY", fieldKey: "resend_api_key" }, { envKey: "SENDGRID_API_KEY", fieldKey: "sendgrid_api_key" }],
+}
+
+const SERVICE_LABELS: Record<string, string> = {
+  github: "GitHub", slack: "Slack", anthropic: "Anthropic",
+  linear: "Linear", digitalocean: "DigitalOcean", email: "Email",
+}
+
 const SERVICES: ServiceDef[] = [
   {
     value: "github", label: "GitHub", abbr: "GH",
@@ -335,6 +351,47 @@ function EnvironmentDetail({
   const [showPaste, setShowPaste] = useState(false)
   const [pasteText, setPasteText] = useState("")
 
+  // Test connections state
+  const [testResults, setTestResults] = useState<Record<string, { ok: boolean; detail: string } | "testing">>({})
+
+  async function testConnection(service: string, credentials: Record<string, string>) {
+    setTestResults(prev => ({ ...prev, [service]: "testing" }))
+    try {
+      const headers = await buildHeaders(true)
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/test`, {
+        method: "POST", headers,
+        body: JSON.stringify({ service, credentials }),
+      })
+      const body = await res.json()
+      if (body.ok) {
+        // Build a short detail string from service-specific fields
+        let detail = "Connected"
+        if (body.user)  detail = `Connected as ${body.user}`
+        if (body.team)  detail = `${body.team} · ${body.user ?? ""}`
+        if (body.email) detail = `Connected: ${body.email}`
+        setTestResults(prev => ({ ...prev, [service]: { ok: true, detail } }))
+      } else {
+        setTestResults(prev => ({ ...prev, [service]: { ok: false, detail: body.error ?? "Connection failed" } }))
+      }
+    } catch {
+      setTestResults(prev => ({ ...prev, [service]: { ok: false, detail: "Request failed" } }))
+    }
+  }
+
+  // Detect which services are configured from the current vars
+  function detectedServices(): Array<{ service: string; credentials: Record<string, string> }> {
+    const result: Array<{ service: string; credentials: Record<string, string> }> = []
+    for (const [service, mappings] of Object.entries(SERVICE_VAR_MAP)) {
+      const creds: Record<string, string> = {}
+      for (const { envKey, fieldKey } of mappings) {
+        const v = vars.find(x => x.key === envKey)
+        if (v?.value) creds[fieldKey] = v.value
+      }
+      if (Object.keys(creds).length > 0) result.push({ service, credentials: creds })
+    }
+    return result
+  }
+
   // Egress allowlist chip state
   const [hosts, setHosts] = useState<string[]>(environment.allowed_hosts ?? [])
   const [hostInput, setHostInput] = useState("")
@@ -581,6 +638,37 @@ function EnvironmentDetail({
           </div>
         ))}
       </div>
+
+      {/* Test connections */}
+      {!loading && detectedServices().length > 0 && (
+        <div className="mt-6">
+          <div className="mb-2">
+            <p className="text-sm font-medium text-stone-900">Test connections</p>
+            <p className="text-xs text-stone-400">Verify your credentials are valid without saving anything new.</p>
+          </div>
+          <div className="rounded-xl border border-stone-200 bg-white px-4 py-3 flex flex-wrap gap-3">
+            {detectedServices().map(({ service, credentials }) => {
+              const result = testResults[service]
+              const isTesting = result === "testing"
+              const isOk  = result && result !== "testing" && result.ok
+              const isErr = result && result !== "testing" && !result.ok
+              return (
+                <div key={service} className="flex items-center gap-2">
+                  <button
+                    onClick={() => testConnection(service, credentials)}
+                    disabled={isTesting}
+                    className="text-xs font-medium border border-stone-200 rounded-lg px-3 py-1.5 text-stone-600 hover:bg-stone-50 transition-colors disabled:opacity-50"
+                  >
+                    {isTesting ? "Testing…" : `Test ${SERVICE_LABELS[service] ?? service}`}
+                  </button>
+                  {isOk  && <span className="text-xs text-emerald-600 font-medium">{(result as {ok:boolean;detail:string}).detail}</span>}
+                  {isErr && <span className="text-xs text-red-500">{(result as {ok:boolean;detail:string}).detail}</span>}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Egress allowlist */}
       <div className="mt-6">
