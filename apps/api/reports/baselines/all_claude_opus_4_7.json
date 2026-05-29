@@ -1,0 +1,2635 @@
+{
+  "version": "1",
+  "generated_at": "2026-05-29T19:18:14.968073+00:00",
+  "live_mode": true,
+  "summary": {
+    "total_playbooks": 19,
+    "passing": 19,
+    "failing": 0,
+    "average_pct": 92.9
+  },
+  "playbooks": [
+    {
+      "slug": "copilot_reviewer",
+      "structural_score": 110,
+      "structural_max": 110,
+      "quality_score": 40,
+      "quality_max": 40,
+      "total_score": 150,
+      "total_max": 150,
+      "pct": 100.0,
+      "grade": "A",
+      "criteria": [
+        {
+          "name": "dsl_valid",
+          "passed": true,
+          "points_earned": 20,
+          "points_possible": 20,
+          "detail": "YAML parses and schema validates cleanly"
+        },
+        {
+          "name": "trigger_wired",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "Trigger routes to 'recall_context'"
+        },
+        {
+          "name": "no_orphan_blocks",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All blocks reachable from trigger"
+        },
+        {
+          "name": "brain_descriptions",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 4 brain block(s) have descriptions"
+        },
+        {
+          "name": "output_contract_json",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All brain blocks declare a JSON output contract"
+        },
+        {
+          "name": "output_block_present",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Output blocks: ['skip_human_pr', 'notify_approved', 'notify_rejected']"
+        },
+        {
+          "name": "logic_branches_complete",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 3 logic block(s) have both pass and fail branches"
+        },
+        {
+          "name": "test_fixture_present",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "test_trigger section with payload found"
+        },
+        {
+          "name": "outcome_map_entry",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "Slug 'copilot_reviewer' in _OUTCOME_MAP"
+        },
+        {
+          "name": "model_input_declared",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Model input declared"
+        },
+        {
+          "name": "block_labels_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All blocks have human-readable labels"
+        },
+        {
+          "name": "memory_write_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "Memory write blocks: ['record_outcome']"
+        },
+        {
+          "name": "no_dead_end_blocks",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All non-terminal blocks have next: routing"
+        },
+        {
+          "name": "reviewer_outputs_critical_count",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Brain block outputs JSON with \"critical\" key"
+        },
+        {
+          "name": "reviewer_has_critical_logic",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Logic block condition references critical"
+        },
+        {
+          "name": "run_succeeded",
+          "passed": true,
+          "points_earned": 15,
+          "points_possible": 15,
+          "detail": "run.status=succeeded"
+        },
+        {
+          "name": "outcome_detected",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "outcome={'type': 'review_completed'}"
+        },
+        {
+          "name": "artifact_produced",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "No artifact required for this playbook"
+        },
+        {
+          "name": "token_budget",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "total_tokens=0 (budget: 50,000)"
+        }
+      ]
+    },
+    {
+      "slug": "incident_responder",
+      "structural_score": 100,
+      "structural_max": 100,
+      "quality_score": 40,
+      "quality_max": 40,
+      "total_score": 140,
+      "total_max": 140,
+      "pct": 100.0,
+      "grade": "A",
+      "criteria": [
+        {
+          "name": "dsl_valid",
+          "passed": true,
+          "points_earned": 20,
+          "points_possible": 20,
+          "detail": "YAML parses and schema validates cleanly"
+        },
+        {
+          "name": "trigger_wired",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "Trigger routes to 'recall_context'"
+        },
+        {
+          "name": "no_orphan_blocks",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All blocks reachable from trigger"
+        },
+        {
+          "name": "brain_descriptions",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 1 brain block(s) have descriptions"
+        },
+        {
+          "name": "output_contract_json",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All brain blocks declare a JSON output contract"
+        },
+        {
+          "name": "output_block_present",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Output blocks: ['notify_incident']"
+        },
+        {
+          "name": "logic_branches_complete",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 0 logic block(s) have both pass and fail branches"
+        },
+        {
+          "name": "test_fixture_present",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "test_trigger section with payload found"
+        },
+        {
+          "name": "outcome_map_entry",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "Slug 'incident_responder' in _OUTCOME_MAP"
+        },
+        {
+          "name": "model_input_declared",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Model input declared"
+        },
+        {
+          "name": "block_labels_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All blocks have human-readable labels"
+        },
+        {
+          "name": "memory_write_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "Memory write blocks: ['record_outcome']"
+        },
+        {
+          "name": "no_dead_end_blocks",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All non-terminal blocks have next: routing"
+        },
+        {
+          "name": "run_succeeded",
+          "passed": true,
+          "points_earned": 15,
+          "points_possible": 15,
+          "detail": "run.status=succeeded"
+        },
+        {
+          "name": "outcome_detected",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "outcome={'type': 'incident_investigated'}"
+        },
+        {
+          "name": "artifact_produced",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "No artifact required for this playbook"
+        },
+        {
+          "name": "token_budget",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "total_tokens=3,439 (budget: 50,000)"
+        }
+      ]
+    },
+    {
+      "slug": "issue_triage",
+      "structural_score": 105,
+      "structural_max": 105,
+      "quality_score": 40,
+      "quality_max": 40,
+      "total_score": 145,
+      "total_max": 145,
+      "pct": 100.0,
+      "grade": "A",
+      "criteria": [
+        {
+          "name": "dsl_valid",
+          "passed": true,
+          "points_earned": 20,
+          "points_possible": 20,
+          "detail": "YAML parses and schema validates cleanly"
+        },
+        {
+          "name": "trigger_wired",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "Trigger routes to 'recall_context'"
+        },
+        {
+          "name": "no_orphan_blocks",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All blocks reachable from trigger"
+        },
+        {
+          "name": "brain_descriptions",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 1 brain block(s) have descriptions"
+        },
+        {
+          "name": "output_contract_json",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All brain blocks declare a JSON output contract"
+        },
+        {
+          "name": "output_block_present",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Output blocks: ['notify_triage']"
+        },
+        {
+          "name": "logic_branches_complete",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 0 logic block(s) have both pass and fail branches"
+        },
+        {
+          "name": "test_fixture_present",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "test_trigger section with payload found"
+        },
+        {
+          "name": "outcome_map_entry",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "Slug 'issue_triage' in _OUTCOME_MAP"
+        },
+        {
+          "name": "model_input_declared",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Model input declared"
+        },
+        {
+          "name": "block_labels_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All blocks have human-readable labels"
+        },
+        {
+          "name": "memory_write_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "Memory write blocks: ['record_outcome']"
+        },
+        {
+          "name": "no_dead_end_blocks",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All non-terminal blocks have next: routing"
+        },
+        {
+          "name": "triage_outputs_type_priority",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Brain block outputs JSON with \"type\" and \"priority\" keys"
+        },
+        {
+          "name": "run_succeeded",
+          "passed": true,
+          "points_earned": 15,
+          "points_possible": 15,
+          "detail": "run.status=succeeded"
+        },
+        {
+          "name": "outcome_detected",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "outcome={'type': 'issue_triaged'}"
+        },
+        {
+          "name": "artifact_produced",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "No artifact required for this playbook"
+        },
+        {
+          "name": "token_budget",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "total_tokens=3,303 (budget: 50,000)"
+        }
+      ]
+    },
+    {
+      "slug": "pr_reviewer",
+      "structural_score": 110,
+      "structural_max": 110,
+      "quality_score": 40,
+      "quality_max": 40,
+      "total_score": 150,
+      "total_max": 150,
+      "pct": 100.0,
+      "grade": "A",
+      "criteria": [
+        {
+          "name": "dsl_valid",
+          "passed": true,
+          "points_earned": 20,
+          "points_possible": 20,
+          "detail": "YAML parses and schema validates cleanly"
+        },
+        {
+          "name": "trigger_wired",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "Trigger routes to 'recall_context'"
+        },
+        {
+          "name": "no_orphan_blocks",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All blocks reachable from trigger"
+        },
+        {
+          "name": "brain_descriptions",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 4 brain block(s) have descriptions"
+        },
+        {
+          "name": "output_contract_json",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All brain blocks declare a JSON output contract"
+        },
+        {
+          "name": "output_block_present",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Output blocks: ['notify_review']"
+        },
+        {
+          "name": "logic_branches_complete",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 2 logic block(s) have both pass and fail branches"
+        },
+        {
+          "name": "test_fixture_present",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "test_trigger section with payload found"
+        },
+        {
+          "name": "outcome_map_entry",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "Slug 'pr_reviewer' in _OUTCOME_MAP"
+        },
+        {
+          "name": "model_input_declared",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Model input declared"
+        },
+        {
+          "name": "block_labels_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All blocks have human-readable labels"
+        },
+        {
+          "name": "memory_write_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "Memory write blocks: ['record_outcome']"
+        },
+        {
+          "name": "no_dead_end_blocks",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All non-terminal blocks have next: routing"
+        },
+        {
+          "name": "reviewer_outputs_critical_count",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Brain block outputs JSON with \"critical\" key"
+        },
+        {
+          "name": "reviewer_has_critical_logic",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Logic block condition references critical"
+        },
+        {
+          "name": "run_succeeded",
+          "passed": true,
+          "points_earned": 15,
+          "points_possible": 15,
+          "detail": "run.status=succeeded"
+        },
+        {
+          "name": "outcome_detected",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "outcome={'type': 'review_completed'}"
+        },
+        {
+          "name": "artifact_produced",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "No artifact required for this playbook"
+        },
+        {
+          "name": "token_budget",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "total_tokens=15,954 (budget: 50,000)"
+        }
+      ]
+    },
+    {
+      "slug": "release_notes",
+      "structural_score": 100,
+      "structural_max": 100,
+      "quality_score": 40,
+      "quality_max": 40,
+      "total_score": 140,
+      "total_max": 140,
+      "pct": 100.0,
+      "grade": "A",
+      "criteria": [
+        {
+          "name": "dsl_valid",
+          "passed": true,
+          "points_earned": 20,
+          "points_possible": 20,
+          "detail": "YAML parses and schema validates cleanly"
+        },
+        {
+          "name": "trigger_wired",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "Trigger routes to 'recall_context'"
+        },
+        {
+          "name": "no_orphan_blocks",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All blocks reachable from trigger"
+        },
+        {
+          "name": "brain_descriptions",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 1 brain block(s) have descriptions"
+        },
+        {
+          "name": "output_contract_json",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All brain blocks declare a JSON output contract"
+        },
+        {
+          "name": "output_block_present",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Output blocks: ['notify_release']"
+        },
+        {
+          "name": "logic_branches_complete",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 0 logic block(s) have both pass and fail branches"
+        },
+        {
+          "name": "test_fixture_present",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "test_trigger section with payload found"
+        },
+        {
+          "name": "outcome_map_entry",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "Slug 'release_notes' in _OUTCOME_MAP"
+        },
+        {
+          "name": "model_input_declared",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Model input declared"
+        },
+        {
+          "name": "block_labels_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All blocks have human-readable labels"
+        },
+        {
+          "name": "memory_write_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "Memory write blocks: ['record_outcome']"
+        },
+        {
+          "name": "no_dead_end_blocks",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All non-terminal blocks have next: routing"
+        },
+        {
+          "name": "run_succeeded",
+          "passed": true,
+          "points_earned": 15,
+          "points_possible": 15,
+          "detail": "run.status=succeeded"
+        },
+        {
+          "name": "outcome_detected",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "outcome={'type': 'release_notes_drafted'}"
+        },
+        {
+          "name": "artifact_produced",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "No artifact required for this playbook"
+        },
+        {
+          "name": "token_budget",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "total_tokens=2,814 (budget: 50,000)"
+        }
+      ]
+    },
+    {
+      "slug": "security_scanner",
+      "structural_score": 105,
+      "structural_max": 105,
+      "quality_score": 40,
+      "quality_max": 40,
+      "total_score": 145,
+      "total_max": 145,
+      "pct": 100.0,
+      "grade": "A",
+      "criteria": [
+        {
+          "name": "dsl_valid",
+          "passed": true,
+          "points_earned": 20,
+          "points_possible": 20,
+          "detail": "YAML parses and schema validates cleanly"
+        },
+        {
+          "name": "trigger_wired",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "Trigger routes to 'recall_context'"
+        },
+        {
+          "name": "no_orphan_blocks",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All blocks reachable from trigger"
+        },
+        {
+          "name": "brain_descriptions",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 5 brain block(s) have descriptions"
+        },
+        {
+          "name": "output_contract_json",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All brain blocks declare a JSON output contract"
+        },
+        {
+          "name": "output_block_present",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Output blocks: ['notify_scan']"
+        },
+        {
+          "name": "logic_branches_complete",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 2 logic block(s) have both pass and fail branches"
+        },
+        {
+          "name": "test_fixture_present",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "test_trigger section with payload found"
+        },
+        {
+          "name": "outcome_map_entry",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "Slug 'security_scanner' in _OUTCOME_MAP"
+        },
+        {
+          "name": "model_input_declared",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Model input declared"
+        },
+        {
+          "name": "block_labels_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All blocks have human-readable labels"
+        },
+        {
+          "name": "memory_write_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "Memory write blocks: ['record_outcome']"
+        },
+        {
+          "name": "no_dead_end_blocks",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All non-terminal blocks have next: routing"
+        },
+        {
+          "name": "scanner_outputs_severity_counts",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Brain block outputs JSON with \"critical\", \"high\", \"medium\" keys"
+        },
+        {
+          "name": "run_succeeded",
+          "passed": true,
+          "points_earned": 15,
+          "points_possible": 15,
+          "detail": "run.status=succeeded"
+        },
+        {
+          "name": "outcome_detected",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "outcome={'type': 'review_completed'}"
+        },
+        {
+          "name": "artifact_produced",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "No artifact required for this playbook"
+        },
+        {
+          "name": "token_budget",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "total_tokens=24,339 (budget: 50,000)"
+        }
+      ]
+    },
+    {
+      "slug": "ci_notify",
+      "structural_score": 96,
+      "structural_max": 100,
+      "quality_score": 40,
+      "quality_max": 40,
+      "total_score": 136,
+      "total_max": 140,
+      "pct": 97.1,
+      "grade": "A",
+      "criteria": [
+        {
+          "name": "dsl_valid",
+          "passed": true,
+          "points_earned": 20,
+          "points_possible": 20,
+          "detail": "YAML parses and schema validates cleanly"
+        },
+        {
+          "name": "trigger_wired",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "Trigger routes to 'diagnose_failure'"
+        },
+        {
+          "name": "no_orphan_blocks",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All blocks reachable from trigger"
+        },
+        {
+          "name": "brain_descriptions",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 1 brain block(s) have descriptions"
+        },
+        {
+          "name": "output_contract_json",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All brain blocks declare a JSON output contract"
+        },
+        {
+          "name": "output_block_present",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Output blocks: ['notify_failure']"
+        },
+        {
+          "name": "logic_branches_complete",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 0 logic block(s) have both pass and fail branches"
+        },
+        {
+          "name": "test_fixture_present",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "test_trigger section with payload found"
+        },
+        {
+          "name": "outcome_map_entry",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "Slug 'ci_notify' in _OUTCOME_MAP"
+        },
+        {
+          "name": "model_input_declared",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Model input declared"
+        },
+        {
+          "name": "block_labels_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All blocks have human-readable labels"
+        },
+        {
+          "name": "memory_write_present",
+          "passed": false,
+          "points_earned": 0,
+          "points_possible": 4,
+          "detail": "Brain blocks present but no memory write block \u2014 results not persisted"
+        },
+        {
+          "name": "no_dead_end_blocks",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All non-terminal blocks have next: routing"
+        },
+        {
+          "name": "run_succeeded",
+          "passed": true,
+          "points_earned": 15,
+          "points_possible": 15,
+          "detail": "run.status=succeeded"
+        },
+        {
+          "name": "outcome_detected",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "outcome={'type': 'ci_alert_sent'}"
+        },
+        {
+          "name": "artifact_produced",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "No artifact required for this playbook"
+        },
+        {
+          "name": "token_budget",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "total_tokens=1,140 (budget: 50,000)"
+        }
+      ]
+    },
+    {
+      "slug": "release_readiness",
+      "structural_score": 96,
+      "structural_max": 100,
+      "quality_score": 40,
+      "quality_max": 40,
+      "total_score": 136,
+      "total_max": 140,
+      "pct": 97.1,
+      "grade": "A",
+      "criteria": [
+        {
+          "name": "dsl_valid",
+          "passed": true,
+          "points_earned": 20,
+          "points_possible": 20,
+          "detail": "YAML parses and schema validates cleanly"
+        },
+        {
+          "name": "trigger_wired",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "Trigger routes to 'check_readiness'"
+        },
+        {
+          "name": "no_orphan_blocks",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All blocks reachable from trigger"
+        },
+        {
+          "name": "brain_descriptions",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 1 brain block(s) have descriptions"
+        },
+        {
+          "name": "output_contract_json",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All brain blocks declare a JSON output contract"
+        },
+        {
+          "name": "output_block_present",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Output blocks: ['notify_blocked', 'notify_ready']"
+        },
+        {
+          "name": "logic_branches_complete",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 1 logic block(s) have both pass and fail branches"
+        },
+        {
+          "name": "test_fixture_present",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "test_trigger section with payload found"
+        },
+        {
+          "name": "outcome_map_entry",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "Slug 'release_readiness' in _OUTCOME_MAP"
+        },
+        {
+          "name": "model_input_declared",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Model input declared"
+        },
+        {
+          "name": "block_labels_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All blocks have human-readable labels"
+        },
+        {
+          "name": "memory_write_present",
+          "passed": false,
+          "points_earned": 0,
+          "points_possible": 4,
+          "detail": "Brain blocks present but no memory write block \u2014 results not persisted"
+        },
+        {
+          "name": "no_dead_end_blocks",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All non-terminal blocks have next: routing"
+        },
+        {
+          "name": "run_succeeded",
+          "passed": true,
+          "points_earned": 15,
+          "points_possible": 15,
+          "detail": "run.status=succeeded"
+        },
+        {
+          "name": "outcome_detected",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "outcome={'type': 'release_reviewed'}"
+        },
+        {
+          "name": "artifact_produced",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "No artifact required for this playbook"
+        },
+        {
+          "name": "token_budget",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "total_tokens=3,238 (budget: 50,000)"
+        }
+      ]
+    },
+    {
+      "slug": "smoke_test",
+      "structural_score": 96,
+      "structural_max": 100,
+      "quality_score": 40,
+      "quality_max": 40,
+      "total_score": 136,
+      "total_max": 140,
+      "pct": 97.1,
+      "grade": "A",
+      "criteria": [
+        {
+          "name": "dsl_valid",
+          "passed": true,
+          "points_earned": 20,
+          "points_possible": 20,
+          "detail": "YAML parses and schema validates cleanly"
+        },
+        {
+          "name": "trigger_wired",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "Trigger routes to 'ping'"
+        },
+        {
+          "name": "no_orphan_blocks",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All blocks reachable from trigger"
+        },
+        {
+          "name": "brain_descriptions",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 1 brain block(s) have descriptions"
+        },
+        {
+          "name": "output_contract_json",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All brain blocks declare a JSON output contract"
+        },
+        {
+          "name": "output_block_present",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Output blocks: ['done']"
+        },
+        {
+          "name": "logic_branches_complete",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 0 logic block(s) have both pass and fail branches"
+        },
+        {
+          "name": "test_fixture_present",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "test_trigger section with payload found"
+        },
+        {
+          "name": "outcome_map_entry",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "Slug 'smoke_test' in _OUTCOME_MAP"
+        },
+        {
+          "name": "model_input_declared",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Model input declared"
+        },
+        {
+          "name": "block_labels_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All blocks have human-readable labels"
+        },
+        {
+          "name": "memory_write_present",
+          "passed": false,
+          "points_earned": 0,
+          "points_possible": 4,
+          "detail": "Brain blocks present but no memory write block \u2014 results not persisted"
+        },
+        {
+          "name": "no_dead_end_blocks",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All non-terminal blocks have next: routing"
+        },
+        {
+          "name": "run_succeeded",
+          "passed": true,
+          "points_earned": 15,
+          "points_possible": 15,
+          "detail": "run.status=succeeded"
+        },
+        {
+          "name": "outcome_detected",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "outcome={'type': 'pipeline_verified'}"
+        },
+        {
+          "name": "artifact_produced",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "No artifact required for this playbook"
+        },
+        {
+          "name": "token_budget",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "total_tokens=256 (budget: 50,000)"
+        }
+      ]
+    },
+    {
+      "slug": "terraform_reviewer",
+      "structural_score": 96,
+      "structural_max": 100,
+      "quality_score": 40,
+      "quality_max": 40,
+      "total_score": 136,
+      "total_max": 140,
+      "pct": 97.1,
+      "grade": "A",
+      "criteria": [
+        {
+          "name": "dsl_valid",
+          "passed": true,
+          "points_earned": 20,
+          "points_possible": 20,
+          "detail": "YAML parses and schema validates cleanly"
+        },
+        {
+          "name": "trigger_wired",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "Trigger routes to 'check_tf_changes'"
+        },
+        {
+          "name": "no_orphan_blocks",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All blocks reachable from trigger"
+        },
+        {
+          "name": "brain_descriptions",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 2 brain block(s) have descriptions"
+        },
+        {
+          "name": "output_contract_json",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All brain blocks declare a JSON output contract"
+        },
+        {
+          "name": "output_block_present",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Output blocks: ['notify_critical', 'notify_clean', 'skip']"
+        },
+        {
+          "name": "logic_branches_complete",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 2 logic block(s) have both pass and fail branches"
+        },
+        {
+          "name": "test_fixture_present",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "test_trigger section with payload found"
+        },
+        {
+          "name": "outcome_map_entry",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "Slug 'terraform_reviewer' in _OUTCOME_MAP"
+        },
+        {
+          "name": "model_input_declared",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Model input declared"
+        },
+        {
+          "name": "block_labels_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All blocks have human-readable labels"
+        },
+        {
+          "name": "memory_write_present",
+          "passed": false,
+          "points_earned": 0,
+          "points_possible": 4,
+          "detail": "Brain blocks present but no memory write block \u2014 results not persisted"
+        },
+        {
+          "name": "no_dead_end_blocks",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All non-terminal blocks have next: routing"
+        },
+        {
+          "name": "run_succeeded",
+          "passed": true,
+          "points_earned": 15,
+          "points_possible": 15,
+          "detail": "run.status=succeeded"
+        },
+        {
+          "name": "outcome_detected",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "outcome={'type': 'terraform_reviewed'}"
+        },
+        {
+          "name": "artifact_produced",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "No artifact required for this playbook"
+        },
+        {
+          "name": "token_budget",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "total_tokens=2,048 (budget: 50,000)"
+        }
+      ]
+    },
+    {
+      "slug": "autopilot_approved",
+      "structural_score": 110,
+      "structural_max": 110,
+      "quality_score": 20,
+      "quality_max": 40,
+      "total_score": 130,
+      "total_max": 150,
+      "pct": 86.7,
+      "grade": "B",
+      "criteria": [
+        {
+          "name": "dsl_valid",
+          "passed": true,
+          "points_earned": 20,
+          "points_possible": 20,
+          "detail": "YAML parses and schema validates cleanly"
+        },
+        {
+          "name": "trigger_wired",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "Trigger routes to 'recall_context'"
+        },
+        {
+          "name": "no_orphan_blocks",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All blocks reachable from trigger"
+        },
+        {
+          "name": "brain_descriptions",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 3 brain block(s) have descriptions"
+        },
+        {
+          "name": "output_contract_json",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All brain blocks declare a JSON output contract"
+        },
+        {
+          "name": "output_block_present",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Output blocks: ['notify_success', 'notify_failure']"
+        },
+        {
+          "name": "logic_branches_complete",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 1 logic block(s) have both pass and fail branches"
+        },
+        {
+          "name": "test_fixture_present",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "test_trigger section with payload found"
+        },
+        {
+          "name": "outcome_map_entry",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "Slug 'autopilot_approved' in _OUTCOME_MAP"
+        },
+        {
+          "name": "model_input_declared",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Model input declared"
+        },
+        {
+          "name": "block_labels_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All blocks have human-readable labels"
+        },
+        {
+          "name": "memory_write_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "Memory write blocks: ['record_outcome']"
+        },
+        {
+          "name": "no_dead_end_blocks",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All non-terminal blocks have next: routing"
+        },
+        {
+          "name": "autopilot_outputs_pr_url",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Brain block description mentions pr_url in its JSON contract"
+        },
+        {
+          "name": "autopilot_has_test_logic",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Logic block condition references tests_pass or passed"
+        },
+        {
+          "name": "run_succeeded",
+          "passed": true,
+          "points_earned": 15,
+          "points_possible": 15,
+          "detail": "run.status=succeeded"
+        },
+        {
+          "name": "outcome_detected",
+          "passed": false,
+          "points_earned": 0,
+          "points_possible": 10,
+          "detail": "outcome=None"
+        },
+        {
+          "name": "artifact_produced",
+          "passed": false,
+          "points_earned": 0,
+          "points_possible": 10,
+          "detail": "artifact_url=None"
+        },
+        {
+          "name": "token_budget",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "total_tokens=0 (budget: 50,000)"
+        }
+      ]
+    },
+    {
+      "slug": "autopilot",
+      "structural_score": 110,
+      "structural_max": 110,
+      "quality_score": 20,
+      "quality_max": 40,
+      "total_score": 130,
+      "total_max": 150,
+      "pct": 86.7,
+      "grade": "B",
+      "criteria": [
+        {
+          "name": "dsl_valid",
+          "passed": true,
+          "points_earned": 20,
+          "points_possible": 20,
+          "detail": "YAML parses and schema validates cleanly"
+        },
+        {
+          "name": "trigger_wired",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "Trigger routes to 'recall_context'"
+        },
+        {
+          "name": "no_orphan_blocks",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All blocks reachable from trigger"
+        },
+        {
+          "name": "brain_descriptions",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 3 brain block(s) have descriptions"
+        },
+        {
+          "name": "output_contract_json",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All brain blocks declare a JSON output contract"
+        },
+        {
+          "name": "output_block_present",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Output blocks: ['notify_success', 'notify_failure']"
+        },
+        {
+          "name": "logic_branches_complete",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 1 logic block(s) have both pass and fail branches"
+        },
+        {
+          "name": "test_fixture_present",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "test_trigger section with payload found"
+        },
+        {
+          "name": "outcome_map_entry",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "Slug 'autopilot' in _OUTCOME_MAP"
+        },
+        {
+          "name": "model_input_declared",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Model input declared"
+        },
+        {
+          "name": "block_labels_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All blocks have human-readable labels"
+        },
+        {
+          "name": "memory_write_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "Memory write blocks: ['record_outcome']"
+        },
+        {
+          "name": "no_dead_end_blocks",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All non-terminal blocks have next: routing"
+        },
+        {
+          "name": "autopilot_outputs_pr_url",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Brain block description mentions pr_url in its JSON contract"
+        },
+        {
+          "name": "autopilot_has_test_logic",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Logic block condition references tests_pass or passed"
+        },
+        {
+          "name": "run_succeeded",
+          "passed": true,
+          "points_earned": 15,
+          "points_possible": 15,
+          "detail": "run.status=succeeded"
+        },
+        {
+          "name": "outcome_detected",
+          "passed": false,
+          "points_earned": 0,
+          "points_possible": 10,
+          "detail": "outcome=None"
+        },
+        {
+          "name": "artifact_produced",
+          "passed": false,
+          "points_earned": 0,
+          "points_possible": 10,
+          "detail": "artifact_url=None"
+        },
+        {
+          "name": "token_budget",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "total_tokens=0 (budget: 50,000)"
+        }
+      ]
+    },
+    {
+      "slug": "ai_ready",
+      "structural_score": 105,
+      "structural_max": 105,
+      "quality_score": 20,
+      "quality_max": 40,
+      "total_score": 125,
+      "total_max": 145,
+      "pct": 86.2,
+      "grade": "B",
+      "criteria": [
+        {
+          "name": "dsl_valid",
+          "passed": true,
+          "points_earned": 20,
+          "points_possible": 20,
+          "detail": "YAML parses and schema validates cleanly"
+        },
+        {
+          "name": "trigger_wired",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "Trigger routes to 'recall_context'"
+        },
+        {
+          "name": "no_orphan_blocks",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All blocks reachable from trigger"
+        },
+        {
+          "name": "brain_descriptions",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 1 brain block(s) have descriptions"
+        },
+        {
+          "name": "output_contract_json",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All brain blocks declare a JSON output contract"
+        },
+        {
+          "name": "output_block_present",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Output blocks: ['notify']"
+        },
+        {
+          "name": "logic_branches_complete",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 0 logic block(s) have both pass and fail branches"
+        },
+        {
+          "name": "test_fixture_present",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "test_trigger section with payload found"
+        },
+        {
+          "name": "outcome_map_entry",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "Slug 'ai_ready' in _OUTCOME_MAP"
+        },
+        {
+          "name": "model_input_declared",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Model input declared"
+        },
+        {
+          "name": "block_labels_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All blocks have human-readable labels"
+        },
+        {
+          "name": "memory_write_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "Memory write blocks: ['record_outcome']"
+        },
+        {
+          "name": "no_dead_end_blocks",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All non-terminal blocks have next: routing"
+        },
+        {
+          "name": "autopilot_outputs_pr_url",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Brain block description mentions pr_url in its JSON contract"
+        },
+        {
+          "name": "run_succeeded",
+          "passed": true,
+          "points_earned": 15,
+          "points_possible": 15,
+          "detail": "run.status=succeeded"
+        },
+        {
+          "name": "outcome_detected",
+          "passed": false,
+          "points_earned": 0,
+          "points_possible": 10,
+          "detail": "outcome=None"
+        },
+        {
+          "name": "artifact_produced",
+          "passed": false,
+          "points_earned": 0,
+          "points_possible": 10,
+          "detail": "artifact_url=None"
+        },
+        {
+          "name": "token_budget",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "total_tokens=0 (budget: 50,000)"
+        }
+      ]
+    },
+    {
+      "slug": "autopilot_quick",
+      "structural_score": 105,
+      "structural_max": 105,
+      "quality_score": 20,
+      "quality_max": 40,
+      "total_score": 125,
+      "total_max": 145,
+      "pct": 86.2,
+      "grade": "B",
+      "criteria": [
+        {
+          "name": "dsl_valid",
+          "passed": true,
+          "points_earned": 20,
+          "points_possible": 20,
+          "detail": "YAML parses and schema validates cleanly"
+        },
+        {
+          "name": "trigger_wired",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "Trigger routes to 'recall_context'"
+        },
+        {
+          "name": "no_orphan_blocks",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All blocks reachable from trigger"
+        },
+        {
+          "name": "brain_descriptions",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 1 brain block(s) have descriptions"
+        },
+        {
+          "name": "output_contract_json",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All brain blocks declare a JSON output contract"
+        },
+        {
+          "name": "output_block_present",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Output blocks: ['notify_success']"
+        },
+        {
+          "name": "logic_branches_complete",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 0 logic block(s) have both pass and fail branches"
+        },
+        {
+          "name": "test_fixture_present",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "test_trigger section with payload found"
+        },
+        {
+          "name": "outcome_map_entry",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "Slug 'autopilot_quick' in _OUTCOME_MAP"
+        },
+        {
+          "name": "model_input_declared",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Model input declared"
+        },
+        {
+          "name": "block_labels_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All blocks have human-readable labels"
+        },
+        {
+          "name": "memory_write_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "Memory write blocks: ['record_outcome']"
+        },
+        {
+          "name": "no_dead_end_blocks",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All non-terminal blocks have next: routing"
+        },
+        {
+          "name": "autopilot_outputs_pr_url",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Brain block description mentions pr_url in its JSON contract"
+        },
+        {
+          "name": "run_succeeded",
+          "passed": true,
+          "points_earned": 15,
+          "points_possible": 15,
+          "detail": "run.status=succeeded"
+        },
+        {
+          "name": "outcome_detected",
+          "passed": false,
+          "points_earned": 0,
+          "points_possible": 10,
+          "detail": "outcome=None"
+        },
+        {
+          "name": "artifact_produced",
+          "passed": false,
+          "points_earned": 0,
+          "points_possible": 10,
+          "detail": "artifact_url=None"
+        },
+        {
+          "name": "token_budget",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "total_tokens=2,337 (budget: 50,000)"
+        }
+      ]
+    },
+    {
+      "slug": "dependency_updater",
+      "structural_score": 105,
+      "structural_max": 105,
+      "quality_score": 20,
+      "quality_max": 40,
+      "total_score": 125,
+      "total_max": 145,
+      "pct": 86.2,
+      "grade": "B",
+      "criteria": [
+        {
+          "name": "dsl_valid",
+          "passed": true,
+          "points_earned": 20,
+          "points_possible": 20,
+          "detail": "YAML parses and schema validates cleanly"
+        },
+        {
+          "name": "trigger_wired",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "Trigger routes to 'recall_context'"
+        },
+        {
+          "name": "no_orphan_blocks",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All blocks reachable from trigger"
+        },
+        {
+          "name": "brain_descriptions",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 1 brain block(s) have descriptions"
+        },
+        {
+          "name": "output_contract_json",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All brain blocks declare a JSON output contract"
+        },
+        {
+          "name": "output_block_present",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Output blocks: ['notify_update']"
+        },
+        {
+          "name": "logic_branches_complete",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 0 logic block(s) have both pass and fail branches"
+        },
+        {
+          "name": "test_fixture_present",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "test_trigger section with payload found"
+        },
+        {
+          "name": "outcome_map_entry",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "Slug 'dependency_updater' in _OUTCOME_MAP"
+        },
+        {
+          "name": "model_input_declared",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Model input declared"
+        },
+        {
+          "name": "block_labels_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All blocks have human-readable labels"
+        },
+        {
+          "name": "memory_write_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "Memory write blocks: ['record_outcome']"
+        },
+        {
+          "name": "no_dead_end_blocks",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All non-terminal blocks have next: routing"
+        },
+        {
+          "name": "outputs_pr_url",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Brain block description mentions pr_url"
+        },
+        {
+          "name": "run_succeeded",
+          "passed": true,
+          "points_earned": 15,
+          "points_possible": 15,
+          "detail": "run.status=succeeded"
+        },
+        {
+          "name": "outcome_detected",
+          "passed": false,
+          "points_earned": 0,
+          "points_possible": 10,
+          "detail": "outcome=None"
+        },
+        {
+          "name": "artifact_produced",
+          "passed": false,
+          "points_earned": 0,
+          "points_possible": 10,
+          "detail": "artifact_url=None"
+        },
+        {
+          "name": "token_budget",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "total_tokens=0 (budget: 50,000)"
+        }
+      ]
+    },
+    {
+      "slug": "flaky_test_detective",
+      "structural_score": 105,
+      "structural_max": 105,
+      "quality_score": 20,
+      "quality_max": 40,
+      "total_score": 125,
+      "total_max": 145,
+      "pct": 86.2,
+      "grade": "B",
+      "criteria": [
+        {
+          "name": "dsl_valid",
+          "passed": true,
+          "points_earned": 20,
+          "points_possible": 20,
+          "detail": "YAML parses and schema validates cleanly"
+        },
+        {
+          "name": "trigger_wired",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "Trigger routes to 'recall_context'"
+        },
+        {
+          "name": "no_orphan_blocks",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All blocks reachable from trigger"
+        },
+        {
+          "name": "brain_descriptions",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 2 brain block(s) have descriptions"
+        },
+        {
+          "name": "output_contract_json",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All brain blocks declare a JSON output contract"
+        },
+        {
+          "name": "output_block_present",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Output blocks: ['notify_flaky', 'notify_real_failure']"
+        },
+        {
+          "name": "logic_branches_complete",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 1 logic block(s) have both pass and fail branches"
+        },
+        {
+          "name": "test_fixture_present",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "test_trigger section with payload found"
+        },
+        {
+          "name": "outcome_map_entry",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "Slug 'flaky_test_detective' in _OUTCOME_MAP"
+        },
+        {
+          "name": "model_input_declared",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Model input declared"
+        },
+        {
+          "name": "block_labels_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All blocks have human-readable labels"
+        },
+        {
+          "name": "memory_write_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "Memory write blocks: ['record_outcome']"
+        },
+        {
+          "name": "no_dead_end_blocks",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All non-terminal blocks have next: routing"
+        },
+        {
+          "name": "outputs_issue_url",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Brain block description mentions issue_url"
+        },
+        {
+          "name": "run_succeeded",
+          "passed": true,
+          "points_earned": 15,
+          "points_possible": 15,
+          "detail": "run.status=succeeded"
+        },
+        {
+          "name": "outcome_detected",
+          "passed": false,
+          "points_earned": 0,
+          "points_possible": 10,
+          "detail": "outcome=None"
+        },
+        {
+          "name": "artifact_produced",
+          "passed": false,
+          "points_earned": 0,
+          "points_possible": 10,
+          "detail": "artifact_url=None"
+        },
+        {
+          "name": "token_budget",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "total_tokens=3,311 (budget: 50,000)"
+        }
+      ]
+    },
+    {
+      "slug": "postmortem_drafter",
+      "structural_score": 105,
+      "structural_max": 105,
+      "quality_score": 20,
+      "quality_max": 40,
+      "total_score": 125,
+      "total_max": 145,
+      "pct": 86.2,
+      "grade": "B",
+      "criteria": [
+        {
+          "name": "dsl_valid",
+          "passed": true,
+          "points_earned": 20,
+          "points_possible": 20,
+          "detail": "YAML parses and schema validates cleanly"
+        },
+        {
+          "name": "trigger_wired",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "Trigger routes to 'recall_context'"
+        },
+        {
+          "name": "no_orphan_blocks",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All blocks reachable from trigger"
+        },
+        {
+          "name": "brain_descriptions",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 2 brain block(s) have descriptions"
+        },
+        {
+          "name": "output_contract_json",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All brain blocks declare a JSON output contract"
+        },
+        {
+          "name": "output_block_present",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Output blocks: ['notify_published', 'discard']"
+        },
+        {
+          "name": "logic_branches_complete",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 0 logic block(s) have both pass and fail branches"
+        },
+        {
+          "name": "test_fixture_present",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "test_trigger section with payload found"
+        },
+        {
+          "name": "outcome_map_entry",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "Slug 'postmortem_drafter' in _OUTCOME_MAP"
+        },
+        {
+          "name": "model_input_declared",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Model input declared"
+        },
+        {
+          "name": "block_labels_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All blocks have human-readable labels"
+        },
+        {
+          "name": "memory_write_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "Memory write blocks: ['record_outcome']"
+        },
+        {
+          "name": "no_dead_end_blocks",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All non-terminal blocks have next: routing"
+        },
+        {
+          "name": "outputs_issue_url",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Brain block description mentions issue_url"
+        },
+        {
+          "name": "run_succeeded",
+          "passed": true,
+          "points_earned": 15,
+          "points_possible": 15,
+          "detail": "run.status=succeeded"
+        },
+        {
+          "name": "outcome_detected",
+          "passed": false,
+          "points_earned": 0,
+          "points_possible": 10,
+          "detail": "outcome=None"
+        },
+        {
+          "name": "artifact_produced",
+          "passed": false,
+          "points_earned": 0,
+          "points_possible": 10,
+          "detail": "artifact_url=None"
+        },
+        {
+          "name": "token_budget",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "total_tokens=4,010 (budget: 50,000)"
+        }
+      ]
+    },
+    {
+      "slug": "security_patch_updater",
+      "structural_score": 105,
+      "structural_max": 105,
+      "quality_score": 20,
+      "quality_max": 40,
+      "total_score": 125,
+      "total_max": 145,
+      "pct": 86.2,
+      "grade": "B",
+      "criteria": [
+        {
+          "name": "dsl_valid",
+          "passed": true,
+          "points_earned": 20,
+          "points_possible": 20,
+          "detail": "YAML parses and schema validates cleanly"
+        },
+        {
+          "name": "trigger_wired",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "Trigger routes to 'recall_context'"
+        },
+        {
+          "name": "no_orphan_blocks",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All blocks reachable from trigger"
+        },
+        {
+          "name": "brain_descriptions",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 1 brain block(s) have descriptions"
+        },
+        {
+          "name": "output_contract_json",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All brain blocks declare a JSON output contract"
+        },
+        {
+          "name": "output_block_present",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Output blocks: ['notify_security_patch']"
+        },
+        {
+          "name": "logic_branches_complete",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 0 logic block(s) have both pass and fail branches"
+        },
+        {
+          "name": "test_fixture_present",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "test_trigger section with payload found"
+        },
+        {
+          "name": "outcome_map_entry",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "Slug 'security_patch_updater' in _OUTCOME_MAP"
+        },
+        {
+          "name": "model_input_declared",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Model input declared"
+        },
+        {
+          "name": "block_labels_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All blocks have human-readable labels"
+        },
+        {
+          "name": "memory_write_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "Memory write blocks: ['record_outcome']"
+        },
+        {
+          "name": "no_dead_end_blocks",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All non-terminal blocks have next: routing"
+        },
+        {
+          "name": "outputs_pr_url",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Brain block description mentions pr_url"
+        },
+        {
+          "name": "run_succeeded",
+          "passed": true,
+          "points_earned": 15,
+          "points_possible": 15,
+          "detail": "run.status=succeeded"
+        },
+        {
+          "name": "outcome_detected",
+          "passed": false,
+          "points_earned": 0,
+          "points_possible": 10,
+          "detail": "outcome=None"
+        },
+        {
+          "name": "artifact_produced",
+          "passed": false,
+          "points_earned": 0,
+          "points_possible": 10,
+          "detail": "artifact_url=None"
+        },
+        {
+          "name": "token_budget",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "total_tokens=0 (budget: 50,000)"
+        }
+      ]
+    },
+    {
+      "slug": "docs_drift_detector",
+      "structural_score": 100,
+      "structural_max": 100,
+      "quality_score": 20,
+      "quality_max": 40,
+      "total_score": 120,
+      "total_max": 140,
+      "pct": 85.7,
+      "grade": "B",
+      "criteria": [
+        {
+          "name": "dsl_valid",
+          "passed": true,
+          "points_earned": 20,
+          "points_possible": 20,
+          "detail": "YAML parses and schema validates cleanly"
+        },
+        {
+          "name": "trigger_wired",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "Trigger routes to 'recall_context'"
+        },
+        {
+          "name": "no_orphan_blocks",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All blocks reachable from trigger"
+        },
+        {
+          "name": "brain_descriptions",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 2 brain block(s) have descriptions"
+        },
+        {
+          "name": "output_contract_json",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "All brain blocks declare a JSON output contract"
+        },
+        {
+          "name": "output_block_present",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Output blocks: ['notify_drift', 'skip']"
+        },
+        {
+          "name": "logic_branches_complete",
+          "passed": true,
+          "points_earned": 7,
+          "points_possible": 7,
+          "detail": "All 2 logic block(s) have both pass and fail branches"
+        },
+        {
+          "name": "test_fixture_present",
+          "passed": true,
+          "points_earned": 10,
+          "points_possible": 10,
+          "detail": "test_trigger section with payload found"
+        },
+        {
+          "name": "outcome_map_entry",
+          "passed": true,
+          "points_earned": 8,
+          "points_possible": 8,
+          "detail": "Slug 'docs_drift_detector' in _OUTCOME_MAP"
+        },
+        {
+          "name": "model_input_declared",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "Model input declared"
+        },
+        {
+          "name": "block_labels_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All blocks have human-readable labels"
+        },
+        {
+          "name": "memory_write_present",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "Memory write blocks: ['record_outcome']"
+        },
+        {
+          "name": "no_dead_end_blocks",
+          "passed": true,
+          "points_earned": 4,
+          "points_possible": 4,
+          "detail": "All non-terminal blocks have next: routing"
+        },
+        {
+          "name": "run_succeeded",
+          "passed": true,
+          "points_earned": 15,
+          "points_possible": 15,
+          "detail": "run.status=succeeded"
+        },
+        {
+          "name": "outcome_detected",
+          "passed": false,
+          "points_earned": 0,
+          "points_possible": 10,
+          "detail": "outcome=None"
+        },
+        {
+          "name": "artifact_produced",
+          "passed": false,
+          "points_earned": 0,
+          "points_possible": 10,
+          "detail": "artifact_url=None"
+        },
+        {
+          "name": "token_budget",
+          "passed": true,
+          "points_earned": 5,
+          "points_possible": 5,
+          "detail": "total_tokens=0 (budget: 50,000)"
+        }
+      ]
+    }
+  ],
+  "baseline_published_at": "2026-05-29T19:18:14.969583+00:00",
+  "model": "claude-opus-4-7"
+}
