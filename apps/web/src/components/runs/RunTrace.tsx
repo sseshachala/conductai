@@ -261,7 +261,7 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
 
         {/* Error */}
         {row.status === "failed" && row.error && (
-          <p className="mt-1 text-sm text-red-600 font-medium">{row.error}</p>
+          <p className={`mt-1 text-sm font-medium ${isTimedOut ? "text-amber-700" : "text-red-600"}`}>{row.error}</p>
         )}
 
         {/* Summary line */}
@@ -329,11 +329,64 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
           </pre>
         )}
         {expanded && row.error && row.status === "failed" && (
-          <pre className="mt-1.5 text-[10px] text-red-400 bg-red-50 border border-red-100 rounded-lg p-2.5 overflow-x-auto whitespace-pre-wrap max-h-48">
+          <pre className={`mt-1.5 text-[10px] rounded-lg p-2.5 overflow-x-auto whitespace-pre-wrap max-h-48 ${
+            isTimedOut
+              ? "text-amber-600 bg-amber-50 border border-amber-100"
+              : "text-red-400 bg-red-50 border border-red-100"
+          }`}>
             {row.error}
           </pre>
         )}
       </div>
+    </div>
+  )
+}
+
+// ── Run terminal row ──────────────────────────────────────────────────────────
+
+function RunTerminalRow({ runFailed, runCompleted }: {
+  runFailed?: RunEvent
+  runCompleted?: RunEvent
+}) {
+  if (!runFailed && !runCompleted) return null
+
+  const isReaped = runFailed?.payload?.reaped === true
+  const errMsg   = typeof runFailed?.payload?.error === "string" ? runFailed.payload.error : ""
+
+  if (runFailed) {
+    if (isReaped) {
+      return (
+        <div className="relative pt-1">
+          <span className="absolute left-[-17px] top-2.5 w-2.5 h-2.5 rounded-full border-2 border-white bg-amber-400" />
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-sm font-semibold text-amber-800">
+              <span aria-hidden="true" className="mr-1">⏱</span>
+              Timed out
+            </p>
+            <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+              reaped
+            </span>
+          </div>
+          {errMsg && (
+            <p className="mt-0.5 text-xs text-amber-600">{errMsg}</p>
+          )}
+        </div>
+      )
+    }
+    return (
+      <div className="relative pt-1">
+        <span className="absolute left-[-17px] top-2.5 w-2.5 h-2.5 rounded-full border-2 border-white bg-red-500" />
+        <p className="text-sm font-semibold text-red-700">
+          Run failed{errMsg ? ` — ${errMsg}` : ""}
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="relative pt-1">
+      <span className="absolute left-[-17px] top-2.5 w-2.5 h-2.5 rounded-full border-2 border-white bg-green-500" />
+      <p className="text-sm font-semibold text-green-700">Run completed successfully</p>
     </div>
   )
 }
@@ -631,14 +684,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
         ))}
 
         {/* Run-level terminal event */}
-        {(runCompleted || runFailed) && (
-          <div className="relative pt-1">
-            <span className={`absolute left-[-17px] top-2.5 w-2.5 h-2.5 rounded-full border-2 border-white ${runFailed ? "bg-red-500" : "bg-green-500"}`} />
-            <p className={`text-sm font-semibold ${runFailed ? "text-red-700" : "text-green-700"}`}>
-              {runFailed ? `Run failed — ${runFailed.payload?.error ?? ""}` : "Run completed successfully"}
-            </p>
-          </div>
-        )}
+        <RunTerminalRow runFailed={runFailed} runCompleted={runCompleted} />
 
         <div ref={bottomRef} />
       </div>
