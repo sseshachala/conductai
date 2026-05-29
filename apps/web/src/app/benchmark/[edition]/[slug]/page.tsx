@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
@@ -339,6 +339,30 @@ function LoadingSkeleton() {
   )
 }
 
+// ─── Share button ─────────────────────────────────────────────────────────────
+
+function ShareButton() {
+  const [copied, setCopied] = useState(false)
+  const copy = useCallback(() => {
+    navigator.clipboard.writeText(window.location.href).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }, [])
+  return (
+    <button
+      onClick={copy}
+      className="inline-flex items-center gap-1.5 text-[10px] font-medium text-stone-500 hover:text-stone-800 border border-stone-200 hover:border-stone-300 rounded-full px-3 py-1 transition-colors bg-white"
+    >
+      {copied ? (
+        <><span className="text-emerald-500">✓</span> Copied</>
+      ) : (
+        <><span>↗</span> Share</>
+      )}
+    </button>
+  )
+}
+
 // ─── Page content ─────────────────────────────────────────────────────────────
 
 function DeepDiveContent({
@@ -526,12 +550,15 @@ function DeepDiveContent({
               >
                 ← Back to {edition.label} leaderboard
               </Link>
-              <Link
-                href={`/eval/${encodeURIComponent(playbookSlug)}`}
-                className="text-xs text-indigo-600 hover:text-indigo-800 transition-colors font-medium"
-              >
-                Run live eval →
-              </Link>
+              <div className="flex items-center gap-4">
+                <ShareButton />
+                <Link
+                  href={`/eval/${encodeURIComponent(playbookSlug)}`}
+                  className="text-xs text-indigo-600 hover:text-indigo-800 transition-colors font-medium"
+                >
+                  Run live eval →
+                </Link>
+              </div>
             </div>
 
           </div>
@@ -542,7 +569,7 @@ function DeepDiveContent({
   )
 }
 
-// ─── Auth wrapper ─────────────────────────────────────────────────────────────
+// ─── Auth wrapper (optional — benchmark is public) ────────────────────────────
 
 function DeepDiveWithAuth({
   editionSlug,
@@ -551,11 +578,7 @@ function DeepDiveWithAuth({
   editionSlug: string
   playbookSlug: string
 }) {
-  const router = useRouter()
-  const { getToken, isLoaded, isSignedIn } = useAuth()
-  useEffect(() => {
-    if (isLoaded && !isSignedIn) router.replace("/")
-  }, [isLoaded, isSignedIn, router])
+  const { getToken, isLoaded } = useAuth()
   if (!isLoaded) return null
   return <DeepDiveContent editionSlug={editionSlug} playbookSlug={playbookSlug} getToken={getToken} />
 }
