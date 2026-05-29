@@ -1,0 +1,484 @@
+slug: copilot_reviewer
+description: >
+  Copilot AI PR Reviewer scenarios. Covers code correctness issues, performance
+  anti-patterns, missing error handling, and security flaws (positive) as well
+  as draft PRs, closed events, docs-only changes, and bot PRs (negative).
+scenarios:
+  - id: missing_error_handling
+    label: PR missing error handling in async function
+    tags: [positive]
+    expected_outcome_type: review_completed
+    trigger_payload:
+      action: opened
+      number: 301
+      pull_request:
+        number: 301
+        title: "feat: add async file upload handler"
+        body: "Adds a new async file upload handler. Uses aiofiles for non-blocking I/O."
+        html_url: "https://github.com/eval-org/eval-repo/pull/301"
+        head: {ref: feat/async-upload, sha: "aaa111bbb222"}
+        base: {ref: main}
+        user: {login: junior-dev}
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: n_plus_one_query
+    label: PR introduces N+1 database query in loop
+    tags: [positive, performance]
+    expected_outcome_type: review_completed
+    trigger_payload:
+      action: opened
+      number: 302
+      pull_request:
+        number: 302
+        title: "feat: list orders with customer names"
+        body: "Fetches all orders and includes the customer name for each. Uses a simple loop to look up customer per order."
+        html_url: "https://github.com/eval-org/eval-repo/pull/302"
+        head: {ref: feat/order-customer-names, sha: "bbb222ccc333"}
+        base: {ref: main}
+        user: {login: backend-dev}
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: race_condition
+    label: PR with potential race condition in concurrent update
+    tags: [positive]
+    expected_outcome_type: review_completed
+    trigger_payload:
+      action: opened
+      number: 303
+      pull_request:
+        number: 303
+        title: "feat: increment view counter"
+        body: "Adds a view counter that increments on each page load. Uses read-then-write pattern."
+        html_url: "https://github.com/eval-org/eval-repo/pull/303"
+        head: {ref: feat/view-counter, sha: "ccc333ddd444"}
+        base: {ref: main}
+        user: {login: dev-user}
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: insecure_deserialization
+    label: PR uses pickle for user-supplied data
+    tags: [positive, security]
+    expected_outcome_type: review_completed
+    trigger_payload:
+      action: opened
+      number: 304
+      pull_request:
+        number: 304
+        title: "feat: cache user session with pickle"
+        body: "Serializes user session to Redis using pickle for speed."
+        html_url: "https://github.com/eval-org/eval-repo/pull/304"
+        head: {ref: feat/session-cache, sha: "ddd444eee555"}
+        base: {ref: main}
+        user: {login: dev-user}
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+      expect_critical_findings: true
+
+  - id: missing_index
+    label: PR adds query on non-indexed column
+    tags: [positive, performance]
+    expected_outcome_type: review_completed
+    trigger_payload:
+      action: opened
+      number: 305
+      pull_request:
+        number: 305
+        title: "feat: filter orders by status and date"
+        body: "Adds filtering by status and created_at. No migration included."
+        html_url: "https://github.com/eval-org/eval-repo/pull/305"
+        head: {ref: feat/order-filters, sha: "eee555fff666"}
+        base: {ref: main}
+        user: {login: backend-dev}
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: hardcoded_credentials
+    label: PR with credentials hardcoded in config file
+    tags: [positive, security]
+    expected_outcome_type: review_completed
+    trigger_payload:
+      action: opened
+      number: 306
+      pull_request:
+        number: 306
+        title: "fix: add staging database config"
+        body: "Adds staging DB connection string to config.py for easier local dev."
+        html_url: "https://github.com/eval-org/eval-repo/pull/306"
+        head: {ref: fix/staging-config, sha: "fff666aaa777"}
+        base: {ref: main}
+        user: {login: junior-dev}
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+      expect_critical_findings: true
+
+  - id: missing_tests
+    label: PR adds new business logic without tests
+    tags: [positive]
+    expected_outcome_type: review_completed
+    trigger_payload:
+      action: opened
+      number: 307
+      pull_request:
+        number: 307
+        title: "feat: add subscription tier calculation"
+        body: "Adds complex pricing logic for subscription tiers. No tests yet — will add in follow-up."
+        html_url: "https://github.com/eval-org/eval-repo/pull/307"
+        head: {ref: feat/subscription-tiers, sha: "aaa777bbb888"}
+        base: {ref: main}
+        user: {login: backend-dev}
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: improper_exception_handling
+    label: PR catches all exceptions with bare except
+    tags: [positive]
+    expected_outcome_type: review_completed
+    trigger_payload:
+      action: opened
+      number: 308
+      pull_request:
+        number: 308
+        title: "fix: handle errors in payment processor"
+        body: "Wraps payment calls in try/except to prevent crashes."
+        html_url: "https://github.com/eval-org/eval-repo/pull/308"
+        head: {ref: fix/payment-errors, sha: "bbb888ccc999"}
+        base: {ref: main}
+        user: {login: junior-dev}
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: mutable_default_arg
+    label: PR uses mutable default argument in Python function
+    tags: [positive]
+    expected_outcome_type: review_completed
+    trigger_payload:
+      action: opened
+      number: 309
+      pull_request:
+        number: 309
+        title: "feat: add batch processing helper"
+        body: "Adds a helper for batch operations with configurable options."
+        html_url: "https://github.com/eval-org/eval-repo/pull/309"
+        head: {ref: feat/batch-helper, sha: "ccc999ddd000"}
+        base: {ref: main}
+        user: {login: dev-user}
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: missing_pagination
+    label: PR returns unbounded list without pagination
+    tags: [positive, performance]
+    expected_outcome_type: review_completed
+    trigger_payload:
+      action: opened
+      number: 310
+      pull_request:
+        number: 310
+        title: "feat: add GET /admin/users endpoint"
+        body: "Returns all users for admin dashboard. No pagination — admin sees all."
+        html_url: "https://github.com/eval-org/eval-repo/pull/310"
+        head: {ref: feat/admin-users, sha: "ddd000eee111"}
+        base: {ref: main}
+        user: {login: backend-dev}
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: broken_api_contract
+    label: PR changes response schema without versioning
+    tags: [positive]
+    expected_outcome_type: review_completed
+    trigger_payload:
+      action: opened
+      number: 311
+      pull_request:
+        number: 311
+        title: "refactor: rename 'user_id' to 'id' in user response"
+        body: "Cleaner API — renames user_id to id in all user responses."
+        html_url: "https://github.com/eval-org/eval-repo/pull/311"
+        head: {ref: refactor/user-id-rename, sha: "eee111fff222"}
+        base: {ref: main}
+        user: {login: api-designer}
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: synchronize_event
+    label: PR updated with new commits — re-review
+    tags: [positive]
+    expected_outcome_type: review_completed
+    trigger_payload:
+      action: synchronize
+      number: 312
+      pull_request:
+        number: 312
+        title: "feat: add webhook handler"
+        body: "Updated after initial review feedback."
+        html_url: "https://github.com/eval-org/eval-repo/pull/312"
+        head: {ref: feat/webhook-handler, sha: "fff222aaa333"}
+        base: {ref: main}
+        user: {login: dev-user}
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: unhandled_promise
+    label: PR adds async JS code without await/catch
+    tags: [positive]
+    expected_outcome_type: review_completed
+    trigger_payload:
+      action: opened
+      number: 313
+      pull_request:
+        number: 313
+        title: "feat: fire-and-forget analytics event"
+        body: "Sends analytics without blocking the main flow."
+        html_url: "https://github.com/eval-org/eval-repo/pull/313"
+        head: {ref: feat/analytics-fire-forget, sha: "aaa333bbb444"}
+        base: {ref: main}
+        user: {login: frontend-dev}
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: reopened_pr
+    label: Reopened PR after fixes — should re-review
+    tags: [positive]
+    expected_outcome_type: review_completed
+    trigger_payload:
+      action: reopened
+      number: 314
+      pull_request:
+        number: 314
+        title: "fix: resolve XSS in comment rendering"
+        body: "Reopened after addressing review comments about sanitization."
+        html_url: "https://github.com/eval-org/eval-repo/pull/314"
+        head: {ref: fix/xss-comment, sha: "bbb444ccc555"}
+        base: {ref: main}
+        user: {login: security-dev}
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: missing_auth_check
+    label: PR adds admin endpoint without authorization check
+    tags: [positive, security]
+    expected_outcome_type: review_completed
+    trigger_payload:
+      action: opened
+      number: 315
+      pull_request:
+        number: 315
+        title: "feat: add DELETE /admin/users/{id}"
+        body: "Adds admin endpoint to delete users. Uses existing auth middleware."
+        html_url: "https://github.com/eval-org/eval-repo/pull/315"
+        head: {ref: feat/admin-delete-user, sha: "ccc555ddd666"}
+        base: {ref: main}
+        user: {login: backend-dev}
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+      expect_critical_findings: true
+
+  # ── Negative scenarios ────────────────────────────────────────────────────────
+
+  - id: draft_pr
+    label: "(negative) Draft PR — not ready for review"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      number: 400
+      pull_request:
+        number: 400
+        title: "WIP: refactor payment service"
+        body: "Work in progress. Not ready for review."
+        html_url: "https://github.com/eval-org/eval-repo/pull/400"
+        head: {ref: wip/payment-refactor, sha: "wiphash00001"}
+        base: {ref: main}
+        user: {login: dev-user}
+        draft: true
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: pr_closed_merged
+    label: "(negative) PR was merged — no review needed"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: closed
+      number: 401
+      pull_request:
+        number: 401
+        title: "feat: add user profile"
+        body: "Adds user profile page."
+        html_url: "https://github.com/eval-org/eval-repo/pull/401"
+        head: {ref: feat/user-profile, sha: "mergedhash001"}
+        base: {ref: main}
+        user: {login: dev-user}
+        draft: false
+        merged: true
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: docs_only_pr
+    label: "(negative) Docs-only PR — no code to review"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      number: 402
+      pull_request:
+        number: 402
+        title: "docs: update README with setup instructions"
+        body: "Updates README.md and CONTRIBUTING.md. No code changes."
+        html_url: "https://github.com/eval-org/eval-repo/pull/402"
+        head: {ref: docs/readme-update, sha: "docshash00001"}
+        base: {ref: main}
+        user: {login: tech-writer}
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: bot_pr_already_reviewed
+    label: "(negative) Bot-authored PR already has review — skip"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      number: 403
+      pull_request:
+        number: 403
+        title: "chore(deps): bump requests from 2.28.0 to 2.31.0"
+        body: "Automated dependency update."
+        html_url: "https://github.com/eval-org/eval-repo/pull/403"
+        head: {ref: dependabot/pip/requests-2.31.0, sha: "bothash000001"}
+        base: {ref: main}
+        user: {login: "dependabot[bot]"}
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: pr_assigned_event
+    label: "(negative) PR assigned event — not a review trigger"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: assigned
+      number: 404
+      pull_request:
+        number: 404
+        title: "feat: add webhooks"
+        body: "Adds webhook support."
+        html_url: "https://github.com/eval-org/eval-repo/pull/404"
+        head: {ref: feat/webhooks, sha: "assignhash001"}
+        base: {ref: main}
+        user: {login: dev-user}
+        draft: false
+        assignee: {login: senior-dev}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: label_added_event
+    label: "(negative) Label added to PR — not a code review trigger"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: labeled
+      number: 405
+      pull_request:
+        number: 405
+        title: "feat: add notification service"
+        body: "Adds push notifications."
+        html_url: "https://github.com/eval-org/eval-repo/pull/405"
+        head: {ref: feat/notifications, sha: "labelhash0001"}
+        base: {ref: main}
+        user: {login: dev-user}
+        draft: false
+        label: {name: "needs-design-review"}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        clone_url: "https://github.com/eval-org/eval-repo.git"

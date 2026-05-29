@@ -1,0 +1,643 @@
+slug: autopilot_approved
+description: >
+  Autopilot + Approval scenarios. Issues trigger implementation but require a Slack
+  approval before a PR is opened (positive) as well as rejected approvals, timed-out
+  approvals, closed/wontfix issues, and wrong event types (negative).
+scenarios:
+  - id: add_sso_saml
+    label: SSO/SAML integration — high-stakes, approval required before PR
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 501
+        title: "Add SAML SSO integration for enterprise customers"
+        body: |
+          Enterprise customers need SAML SSO for their identity providers (Okta, Azure AD).
+
+          Requirements:
+          - python3-saml library integration
+          - SP-initiated SSO flow
+          - IdP metadata upload endpoint
+          - Just-in-time user provisioning on first SSO login
+          - Workspace-level SAML configuration storage
+        html_url: "https://github.com/eval-org/eval-repo/issues/501"
+        state: open
+        user:
+          login: enterprise-sales
+        labels:
+          - name: enterprise
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+      requires_approval: true
+
+  - id: database_schema_overhaul
+    label: Major schema overhaul — approval gate before implementation
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 502
+        title: "Normalize the runs table — split into runs + run_steps + run_artifacts"
+        body: |
+          The runs table has grown unwieldy with 40+ columns.
+
+          Proposal:
+          - runs: core metadata (id, workspace_id, playbook_slug, status, created_at)
+          - run_steps: one row per brain block execution
+          - run_artifacts: PR URLs, issue URLs, file paths from outputs
+          - Migrate all existing data
+          - Update all queries and API responses
+        html_url: "https://github.com/eval-org/eval-repo/issues/502"
+        state: open
+        user:
+          login: db-architect
+        labels:
+          - name: breaking-change
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+      requires_approval: true
+
+  - id: payment_integration
+    label: Stripe billing integration — approval required for financial code
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 503
+        title: "Integrate Stripe for subscription billing"
+        body: |
+          We need to start charging customers.
+
+          - Stripe subscription plans: Free, Pro ($49/mo), Enterprise (custom)
+          - Webhook handler for subscription lifecycle events
+          - Billing portal redirect for self-serve upgrades/downgrades
+          - Usage metering via Stripe Meter for run counts
+          - Grace period handling for failed payments
+        html_url: "https://github.com/eval-org/eval-repo/issues/503"
+        state: open
+        user:
+          login: cto
+        labels:
+          - name: billing
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+      requires_approval: true
+
+  - id: gdpr_data_deletion
+    label: GDPR right-to-erasure — data deletion pipeline
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 504
+        title: "Implement GDPR data deletion (right to erasure)"
+        body: |
+          Legal requirement: users must be able to request deletion of all their data.
+
+          - DELETE /api/account endpoint (soft-delete user)
+          - Background job to hard-delete after 30-day grace period
+          - Cascade delete: runs, artifacts, webhook logs, API keys
+          - Email confirmation to user
+          - Audit log entry that deletion was completed
+          - DPA-compliant deletion certificate generation
+        html_url: "https://github.com/eval-org/eval-repo/issues/504"
+        state: open
+        user:
+          login: legal-counsel
+        labels:
+          - name: compliance
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+      requires_approval: true
+
+  - id: infrastructure_as_code
+    label: Migrate infra config from manual to Terraform
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 505
+        title: "Write Terraform for all production infrastructure"
+        body: |
+          Production infra is manually configured. We need to codify it.
+
+          Scope:
+          - Render services (API, worker, cron)
+          - Supabase database configuration
+          - Redis instance
+          - Cloudflare DNS and proxy rules
+          - GitHub Actions secrets and environments
+        html_url: "https://github.com/eval-org/eval-repo/issues/505"
+        state: open
+        user:
+          login: devops-lead
+        labels:
+          - name: infrastructure
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+      requires_approval: true
+
+  - id: add_admin_dashboard
+    label: Build internal admin dashboard for support team
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 506
+        title: "Internal admin panel for user and workspace management"
+        body: |
+          Support team needs visibility into customer accounts.
+
+          Features:
+          - List all workspaces with usage stats
+          - Impersonate any user for debugging
+          - Force-reset passwords
+          - View and download run logs
+          - Manually trigger or cancel runs
+          - Apply billing overrides
+        html_url: "https://github.com/eval-org/eval-repo/issues/506"
+        state: open
+        user:
+          login: head-of-support
+        labels:
+          - name: internal
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+      requires_approval: true
+
+  - id: api_versioning
+    label: Introduce /v2 API versioning without breaking /v1
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 507
+        title: "Add /v2 API with breaking changes while keeping /v1 stable"
+        body: |
+          We have breaking API changes for v2 but can't break existing integrations.
+
+          - Mount /v2 router alongside /v1
+          - V2 changes: unified error format, cursor pagination, snake_case only
+          - Add version negotiation via Accept header
+          - Deprecation warnings in /v1 responses
+          - Sunset date: 2027-01-01
+        html_url: "https://github.com/eval-org/eval-repo/issues/507"
+        state: open
+        user:
+          login: api-architect
+        labels:
+          - name: breaking-change
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+      requires_approval: true
+
+  - id: ml_anomaly_detection
+    label: Add ML-based anomaly detection to run failure patterns
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 508
+        title: "ML anomaly detection for unusual run failure spikes"
+        body: |
+          We want to automatically detect when run failure rates are anomalous.
+
+          - Collect baseline failure rate per playbook per workspace
+          - Train simple isolation forest or z-score model
+          - Flag anomalous patterns and create Slack alerts
+          - Store model artifacts in object storage
+          - Retrain weekly via cron
+        html_url: "https://github.com/eval-org/eval-repo/issues/508"
+        state: open
+        user:
+          login: data-scientist
+        labels:
+          - name: ml
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+      requires_approval: true
+
+  - id: soc2_audit_logging
+    label: SOC 2 compliance — comprehensive audit logging
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 509
+        title: "SOC 2 Type II — implement comprehensive audit log"
+        body: |
+          We're pursuing SOC 2 Type II. Auditors require comprehensive logging.
+
+          - Log all authentication events (login, logout, MFA)
+          - Log all admin actions (user creation, role changes)
+          - Log all data access events for PII fields
+          - Immutable audit_log table (append-only, no UPDATE/DELETE)
+          - Export endpoint for auditors: GET /audit-log?start=...&end=...
+        html_url: "https://github.com/eval-org/eval-repo/issues/509"
+        state: open
+        user:
+          login: ciso
+        labels:
+          - name: compliance
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+      requires_approval: true
+
+  - id: white_label_support
+    label: White-label customization for enterprise customers
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 510
+        title: "White-label: custom logo, colors, and domain per workspace"
+        body: |
+          Enterprise customers want their own branding.
+
+          - Logo upload and storage per workspace
+          - Primary/accent color customization
+          - Custom domain support with SSL provisioning
+          - Remove "Powered by Conduct" branding for enterprise tier
+          - Custom email sender domain (SendGrid domain authentication)
+        html_url: "https://github.com/eval-org/eval-repo/issues/510"
+        state: open
+        user:
+          login: enterprise-success
+        labels:
+          - name: enterprise
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+      requires_approval: true
+
+  - id: real_time_collaboration
+    label: Real-time playbook editing with conflict resolution
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 511
+        title: "Real-time collaborative playbook editor (multi-user)"
+        body: |
+          Multiple team members editing the same playbook causes overwrites.
+
+          - WebSocket-based presence indicators
+          - Operational transform or CRDT for conflict-free edits
+          - Cursor position sharing
+          - Change attribution (who changed what)
+          - Auto-save with 30-second debounce
+        html_url: "https://github.com/eval-org/eval-repo/issues/511"
+        state: open
+        user:
+          login: product-lead
+        labels:
+          - name: enhancement
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+      requires_approval: true
+
+  - id: custom_brain_blocks
+    label: Allow workspaces to define custom brain block types
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 512
+        title: "Custom brain blocks — let users define their own block types"
+        body: |
+          Power users want custom brain block types for their specific integrations.
+
+          - Custom block type registry per workspace
+          - Block definition: name, description, inputs schema, output schema, Python handler
+          - Block sandboxed execution via Modal
+          - Block sharing between workspaces (marketplace preview)
+          - Version control for custom blocks
+        html_url: "https://github.com/eval-org/eval-repo/issues/512"
+        state: open
+        user:
+          login: platform-architect
+        labels:
+          - name: platform
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+      requires_approval: true
+
+  - id: migrate_to_kubernetes
+    label: Migrate from Render to Kubernetes on GKE
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 513
+        title: "Migrate production deployment from Render to GKE"
+        body: |
+          We've outgrown Render. Need Kubernetes for better autoscaling and control.
+
+          - Helm charts for all services
+          - HPA (Horizontal Pod Autoscaler) configs
+          - PodDisruptionBudget for zero-downtime deploys
+          - Network policies for service isolation
+          - Migrate secrets to Google Secret Manager
+          - Zero-downtime cutover plan
+        html_url: "https://github.com/eval-org/eval-repo/issues/513"
+        state: open
+        user:
+          login: devops-lead
+        labels:
+          - name: infrastructure
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+      requires_approval: true
+
+  - id: graphql_api
+    label: Add GraphQL API alongside REST
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 514
+        title: "Add GraphQL endpoint for flexible querying"
+        body: |
+          Frontend team is doing too many API round-trips. GraphQL would help.
+
+          - Strawberry GraphQL integration with FastAPI
+          - Types: Workspace, Run, Playbook, Member
+          - Queries: runs(filter, pagination), playbooks, workspace
+          - Mutations: createRun, cancelRun, updatePlaybook
+          - DataLoader for N+1 prevention
+          - Persisted queries for security
+        html_url: "https://github.com/eval-org/eval-repo/issues/514"
+        state: open
+        user:
+          login: frontend-lead
+        labels:
+          - name: api
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+      requires_approval: true
+
+  - id: mobile_app
+    label: Native mobile app for iOS and Android (React Native)
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 515
+        title: "Build React Native mobile app"
+        body: |
+          Customers want mobile access for run monitoring and approvals.
+
+          - React Native with Expo
+          - Push notifications for run failures and approval requests
+          - Run history with drill-down to trace
+          - Approve/reject Slack-style approvals from mobile
+          - Biometric authentication
+        html_url: "https://github.com/eval-org/eval-repo/issues/515"
+        state: open
+        user:
+          login: mobile-product-manager
+        labels:
+          - name: mobile
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+      requires_approval: true
+
+  # ── Negative scenarios ────────────────────────────────────────────────────────
+
+  - id: approval_rejected
+    label: "(negative) Slack approval was rejected — no PR should be opened"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      issue:
+        number: 600
+        title: "Rewrite everything in Rust"
+        body: "For performance we should rewrite the entire stack in Rust."
+        state: open
+        user:
+          login: enthusiast-dev
+        labels:
+          - name: enhancement
+      approval_decision: rejected
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: approval_timeout
+    label: "(negative) Approval request timed out — no PR"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      issue:
+        number: 601
+        title: "Add WebRTC video conferencing"
+        body: "We should have video calls built into the platform."
+        state: open
+        user:
+          login: product-manager
+        labels: []
+      approval_decision: timeout
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: closed_issue
+    label: "(negative) Issue already closed before approval given"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      issue:
+        number: 602
+        title: "Add dark mode"
+        body: "Already shipped in #287."
+        state: closed
+        user:
+          login: reporter
+        labels:
+          - name: duplicate
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: wontfix_label
+    label: "(negative) Labelled wontfix — skip entirely"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      issue:
+        number: 603
+        title: "Support PHP SDK"
+        body: "We need a PHP client library."
+        state: open
+        user:
+          login: php-dev
+        labels:
+          - name: wontfix
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: pr_review_event
+    label: "(negative) PR review event — not an issue trigger"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: submitted
+      review:
+        id: 99999
+        state: approved
+        body: "LGTM"
+        user:
+          login: reviewer
+      pull_request:
+        number: 500
+        title: "feat: add something"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: question_label
+    label: "(negative) Issue is a question — no implementation needed"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      issue:
+        number: 604
+        title: "How does the approval flow work?"
+        body: "Can someone explain the approval process?"
+        state: open
+        user:
+          login: curious-user
+        labels:
+          - name: question
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: duplicate_label
+    label: "(negative) Issue labelled duplicate — skip"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      issue:
+        number: 605
+        title: "Add SAML SSO (duplicate)"
+        body: "Same as #501 opened last week."
+        state: open
+        user:
+          login: dev
+        labels:
+          - name: duplicate
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"

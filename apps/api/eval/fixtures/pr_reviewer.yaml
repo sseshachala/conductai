@@ -1,14 +1,13 @@
-# Multi-scenario fixture set for PR Reviewer
-# 8 scenarios: 6 positive (should produce a review), 2 negative (should skip / no-op)
 slug: pr_reviewer
 description: >
-  Covers clean PRs, PRs with security vulnerabilities, large refactors,
-  bot-authored updates, draft PRs (negative), and closed-action events (negative).
+  PR Reviewer scenarios. Covers code quality issues, security vulnerabilities,
+  performance problems, missing tests, and well-written PRs (positive) as well
+  as draft PRs, closed PRs, bot PRs, and non-PR events (negative).
 scenarios:
   - id: clean_pr
     label: Clean PR — minor style suggestions expected
     tags: [positive]
-    expected_should_review: true
+    expected_outcome_type: review_completed
     trigger_payload:
       action: opened
       number: 42
@@ -38,7 +37,7 @@ scenarios:
   - id: hardcoded_secret_pr
     label: PR with hardcoded API key — expect critical finding
     tags: [positive, security]
-    expected_should_review: true
+    expected_outcome_type: review_completed
     trigger_payload:
       action: opened
       number: 43
@@ -69,7 +68,7 @@ scenarios:
   - id: sql_injection_pr
     label: PR introducing raw SQL query — expect critical finding
     tags: [positive, security]
-    expected_should_review: true
+    expected_outcome_type: review_completed
     trigger_payload:
       action: opened
       number: 44
@@ -100,7 +99,7 @@ scenarios:
   - id: dependabot_pr
     label: Dependabot dependency update — should receive lightweight review
     tags: [positive, deps]
-    expected_should_review: true
+    expected_outcome_type: review_completed
     trigger_payload:
       action: opened
       number: 46
@@ -130,7 +129,7 @@ scenarios:
   - id: large_refactor_pr
     label: Large refactor PR — >50 files, should still be reviewed
     tags: [positive, scale]
-    expected_should_review: true
+    expected_outcome_type: review_completed
     trigger_payload:
       action: opened
       number: 47
@@ -162,7 +161,7 @@ scenarios:
   - id: test_only_pr
     label: Test-only PR — only test files changed
     tags: [positive]
-    expected_should_review: true
+    expected_outcome_type: review_completed
     trigger_payload:
       action: opened
       number: 48
@@ -189,10 +188,283 @@ scenarios:
     extra_assertions:
       should_post_review: true
 
+  - id: missing_error_handling
+    label: PR adds network calls without error handling — reviewer should flag
+    tags: [positive]
+    expected_outcome_type: review_completed
+    trigger_payload:
+      action: opened
+      number: 50
+      pull_request:
+        number: 50
+        title: "feat: call external analytics API on each request"
+        body: "Sends request metadata to our analytics provider on each API call."
+        html_url: "https://github.com/eval-org/eval-repo/pull/50"
+        head:
+          ref: feat/analytics-tracking
+          sha: "b2c3d4e5f6a3"
+        base:
+          ref: main
+        user:
+          login: product-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/50.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: n_plus_one_query
+    label: PR introduces N+1 query pattern in list endpoint
+    tags: [positive, performance]
+    expected_outcome_type: review_completed
+    trigger_payload:
+      action: opened
+      number: 51
+      pull_request:
+        number: 51
+        title: "feat: add member details to runs list response"
+        body: "Enriches the runs list with creator name and avatar."
+        html_url: "https://github.com/eval-org/eval-repo/pull/51"
+        head:
+          ref: feat/runs-with-user-details
+          sha: "c3d4e5f6a1b3"
+        base:
+          ref: main
+        user:
+          login: backend-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/51.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: race_condition
+    label: PR has race condition in concurrent update handler
+    tags: [positive, concurrency]
+    expected_outcome_type: review_completed
+    trigger_payload:
+      action: opened
+      number: 52
+      pull_request:
+        number: 52
+        title: "feat: optimistic locking for playbook updates"
+        body: "Adds version field to prevent concurrent update conflicts."
+        html_url: "https://github.com/eval-org/eval-repo/pull/52"
+        head:
+          ref: feat/optimistic-locking
+          sha: "d4e5f6a1b2c4"
+        base:
+          ref: main
+        user:
+          login: backend-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/52.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: missing_tests
+    label: PR adds new feature with zero tests
+    tags: [positive]
+    expected_outcome_type: review_completed
+    trigger_payload:
+      action: opened
+      number: 53
+      pull_request:
+        number: 53
+        title: "feat: add webhook retry logic"
+        body: "Implements exponential backoff retry for failed webhook deliveries."
+        html_url: "https://github.com/eval-org/eval-repo/pull/53"
+        head:
+          ref: feat/webhook-retry
+          sha: "e5f6a1b2c3d5"
+        base:
+          ref: main
+        user:
+          login: backend-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/53.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: insecure_deserialization
+    label: PR uses pickle for caching — insecure deserialization risk
+    tags: [positive, security]
+    expected_outcome_type: review_completed
+    trigger_payload:
+      action: opened
+      number: 54
+      pull_request:
+        number: 54
+        title: "perf: cache API responses with pickle for speed"
+        body: "Uses pickle to serialize and cache complex Python objects in Redis."
+        html_url: "https://github.com/eval-org/eval-repo/pull/54"
+        head:
+          ref: perf/pickle-cache
+          sha: "f6a1b2c3d4e6"
+        base:
+          ref: main
+        user:
+          login: backend-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/54.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+      expect_critical_findings: true
+
+  - id: missing_input_validation
+    label: PR accepts user input without validation — injection risk
+    tags: [positive, security]
+    expected_outcome_type: review_completed
+    trigger_payload:
+      action: opened
+      number: 55
+      pull_request:
+        number: 55
+        title: "feat: allow custom filter expressions in run history"
+        body: "Adds user-defined filter expressions that are passed to the query builder."
+        html_url: "https://github.com/eval-org/eval-repo/pull/55"
+        head:
+          ref: feat/custom-filters
+          sha: "a1b2c3d4e5f8"
+        base:
+          ref: main
+        user:
+          login: backend-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/55.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: breaking_api_change
+    label: PR removes API field without deprecation period
+    tags: [positive]
+    expected_outcome_type: review_completed
+    trigger_payload:
+      action: opened
+      number: 56
+      pull_request:
+        number: 56
+        title: "refactor: clean up legacy fields from runs API response"
+        body: "Removes deprecated fields: run_id_v1, created_timestamp (old format)."
+        html_url: "https://github.com/eval-org/eval-repo/pull/56"
+        head:
+          ref: refactor/clean-api-fields
+          sha: "b2c3d4e5f6a4"
+        base:
+          ref: main
+        user:
+          login: api-team
+        diff_url: "https://github.com/eval-org/eval-repo/pull/56.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: unbounded_query
+    label: PR queries DB without pagination — could return millions of rows
+    tags: [positive, performance]
+    expected_outcome_type: review_completed
+    trigger_payload:
+      action: opened
+      number: 57
+      pull_request:
+        number: 57
+        title: "feat: add export all runs endpoint"
+        body: "Adds GET /api/runs/export that returns all runs for a workspace."
+        html_url: "https://github.com/eval-org/eval-repo/pull/57"
+        head:
+          ref: feat/export-all
+          sha: "c3d4e5f6a1b4"
+        base:
+          ref: main
+        user:
+          login: backend-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/57.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: sync_io_in_async_handler
+    label: PR calls blocking I/O inside async endpoint — event loop blocked
+    tags: [positive, performance]
+    expected_outcome_type: review_completed
+    trigger_payload:
+      action: opened
+      number: 58
+      pull_request:
+        number: 58
+        title: "feat: send report via email on run completion"
+        body: "Uses smtplib to send email synchronously in the run completion handler."
+        html_url: "https://github.com/eval-org/eval-repo/pull/58"
+        head:
+          ref: feat/email-on-completion
+          sha: "d4e5f6a1b2c5"
+        base:
+          ref: main
+        user:
+          login: fullstack-dev
+        diff_url: "https://github.com/eval-org/eval-repo/pull/58.diff"
+        draft: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_post_review: true
+
+  # ── Negative scenarios ────────────────────────────────────────────────────────
+
   - id: draft_pr
     label: "(negative) Draft PR — playbook may skip or acknowledge only"
     tags: [negative]
-    expected_should_review: false
+    expected_outcome_type: null
     trigger_payload:
       action: opened
       number: 45
@@ -222,7 +494,7 @@ scenarios:
   - id: pr_closed_action
     label: "(negative) PR closed event — not an opened trigger, should be ignored"
     tags: [negative]
-    expected_should_review: false
+    expected_outcome_type: null
     trigger_payload:
       action: closed
       number: 49
@@ -249,3 +521,97 @@ scenarios:
         clone_url: "https://github.com/eval-org/eval-repo.git"
     extra_assertions:
       should_skip_or_acknowledge: true
+
+  - id: pr_labeled_event
+    label: "(negative) PR labeled event — not a review trigger"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: labeled
+      number: 60
+      pull_request:
+        number: 60
+        title: "feat: some feature"
+        state: open
+        draft: false
+      label:
+        name: needs-review
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: pr_already_reviewed
+    label: "(negative) Review already posted by this bot — no duplicate"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: synchronize
+      number: 61
+      pull_request:
+        number: 61
+        title: "feat: minor tweak"
+        body: "Small update."
+        html_url: "https://github.com/eval-org/eval-repo/pull/61"
+        head:
+          ref: feat/minor-tweak
+          sha: "e5f6a1b2c3d6"
+        base:
+          ref: main
+        user:
+          login: dev-user
+        draft: false
+      existing_reviews:
+        - user: {login: "conduct-bot"}
+          state: COMMENTED
+          submitted_at: "2026-05-29T10:00:00Z"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: issue_comment_event
+    label: "(negative) Issue comment event — not a PR event"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: created
+      comment:
+        id: 88888
+        body: "LGTM"
+        user:
+          login: reviewer
+      issue:
+        number: 42
+        pull_request:
+          url: "https://github.com/eval-org/eval-repo/pull/42"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+
+  - id: pr_assigned_event
+    label: "(negative) PR assigned event — not a review trigger"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: assigned
+      number: 62
+      pull_request:
+        number: 62
+        title: "feat: assigned for review"
+        state: open
+        draft: false
+      assignee:
+        login: senior-dev
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+        clone_url: "https://github.com/eval-org/eval-repo.git"

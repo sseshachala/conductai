@@ -1,10 +1,8 @@
-# Multi-scenario fixture set for Issue Triage
-# 6 scenarios: 4 positive (issues needing triage), 2 negative (edge cases / skip)
 slug: issue_triage
 description: >
-  Covers a bug report, a feature request, a vague issue needing clarification,
-  a P1 production outage report, a spam/invalid issue (negative), and a closed
-  issue event (negative).
+  Issue Triage scenarios. Covers bug reports, feature requests, P1 outages,
+  vague issues, security reports, and performance complaints (positive) as well
+  as spam, duplicate, wontfix, closed, non-issue events (negative).
 scenarios:
   - id: mobile_bug_report
     label: Bug report — mobile submit button unresponsive
@@ -128,6 +126,360 @@ scenarios:
       expect_priority_in: [P1]
       expect_type: bug
 
+  - id: security_vulnerability_report
+    label: Security vulnerability report — XSS in user settings
+    tags: [positive, security]
+    expected_outcome_type: triaged
+    trigger_payload:
+      action: opened
+      issue:
+        number: 207
+        title: "[SECURITY] Stored XSS in workspace name field"
+        body: |
+          I found a stored XSS vulnerability in the workspace name field.
+
+          Steps to reproduce:
+          1. Go to workspace settings
+          2. Set workspace name to: <script>alert(document.cookie)</script>
+          3. Visit any page that renders the workspace name
+          4. Script executes
+
+          This could allow session hijacking of other workspace members.
+          I have a working proof of concept but won't share publicly.
+
+          Please triage as security issue.
+        html_url: "https://github.com/eval-org/eval-repo/issues/207"
+        user:
+          login: security-researcher
+        labels: []
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_priority_in: [P1, P2]
+      expect_type: security
+
+  - id: performance_regression
+    label: Performance regression — page load 10x slower after update
+    tags: [positive, performance]
+    expected_outcome_type: triaged
+    trigger_payload:
+      action: opened
+      issue:
+        number: 208
+        title: "Dashboard loads in 15 seconds after v2.4 update (was 1.5s)"
+        body: |
+          After the v2.4 update yesterday, the dashboard takes 15 seconds to load.
+          Before the update it was consistently under 2 seconds.
+
+          Network tab shows:
+          - GET /api/runs?workspace_id=... taking 12 seconds
+          - Response is 8MB of JSON
+
+          This is in production. Our team of 20 people is affected.
+
+          Browser: Chrome 120, macOS Sonoma
+        html_url: "https://github.com/eval-org/eval-repo/issues/208"
+        user:
+          login: enterprise-customer
+        labels: []
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_priority_in: [P1, P2]
+      expect_type: bug
+
+  - id: data_loss_report
+    label: Customer reports data loss — runs disappeared after migration
+    tags: [positive, critical]
+    expected_outcome_type: triaged
+    trigger_payload:
+      action: opened
+      issue:
+        number: 209
+        title: "All our run history disappeared after the v2.5 update"
+        body: |
+          After your v2.5 update this morning, all our run history is gone.
+          We had over 500 runs spanning 6 months of work.
+
+          - Workspace ID: ws_prod_abc123
+          - Last seen data: yesterday at 5pm UTC
+          - Current state: dashboard shows "No runs yet"
+
+          We need this data recovered urgently — it's referenced in our quarterly reports.
+        html_url: "https://github.com/eval-org/eval-repo/issues/209"
+        user:
+          login: enterprise-cto
+        labels: []
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_priority_in: [P1]
+      expect_type: bug
+
+  - id: integration_broken
+    label: GitHub webhook integration stopped working after token rotation
+    tags: [positive, bug]
+    expected_outcome_type: triaged
+    trigger_payload:
+      action: opened
+      issue:
+        number: 210
+        title: "GitHub webhook integration not triggering after rotating PAT"
+        body: |
+          We rotated our GitHub personal access token two days ago and now
+          our webhook-triggered playbooks are not running.
+
+          Steps:
+          1. Rotated GitHub PAT in our org settings
+          2. Updated token in Conduct workspace settings
+          3. Pushed a commit — no playbook ran
+
+          The webhook is configured in GitHub and shows as delivered (200 OK),
+          but Conduct shows no run was started.
+        html_url: "https://github.com/eval-org/eval-repo/issues/210"
+        user:
+          login: devops-user
+        labels: []
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_priority_in: [P2, P3]
+      expect_type: bug
+
+  - id: billing_issue
+    label: Customer incorrectly charged — double billing on renewal
+    tags: [positive]
+    expected_outcome_type: triaged
+    trigger_payload:
+      action: opened
+      issue:
+        number: 211
+        title: "Charged twice for June subscription"
+        body: |
+          We were charged twice for our Pro subscription in June.
+          Both charges of $49 appeared on June 1st.
+
+          Subscription ID: sub_1234567890
+          Email: finance@customer.com
+
+          Please refund one charge immediately.
+        html_url: "https://github.com/eval-org/eval-repo/issues/211"
+        user:
+          login: customer-billing
+        labels: []
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_priority_in: [P2]
+
+  - id: accessibility_report
+    label: Accessibility issue — screen reader incompatible with modal
+    tags: [positive]
+    expected_outcome_type: triaged
+    trigger_payload:
+      action: opened
+      issue:
+        number: 212
+        title: "Run details modal not accessible via screen reader (WCAG 2.1 violation)"
+        body: |
+          The run details modal dialog is not accessible to screen reader users.
+
+          Issues found:
+          - No aria-modal attribute on dialog
+          - Focus not trapped inside modal when open
+          - Close button has no aria-label
+          - Pressing Escape does not close the modal
+
+          Using VoiceOver on macOS Sonoma with Chrome 120.
+          This affects our team member who relies on a screen reader.
+        html_url: "https://github.com/eval-org/eval-repo/issues/212"
+        user:
+          login: a11y-advocate
+        labels: []
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_priority_in: [P2, P3]
+
+  - id: rate_limit_complaint
+    label: Customer hitting rate limits on legitimate usage pattern
+    tags: [positive]
+    expected_outcome_type: triaged
+    trigger_payload:
+      action: opened
+      issue:
+        number: 213
+        title: "Rate limits too aggressive for our CI/CD pipeline"
+        body: |
+          Our CI pipeline triggers 200 API calls/minute during peak hours.
+          The 100/min limit is blocking legitimate usage.
+
+          We're on the Pro plan. Can you either raise limits or whitelist
+          our API key?
+
+          Our use case: automated workflow triggers from GitHub Actions across
+          a monorepo with 150 microservices.
+        html_url: "https://github.com/eval-org/eval-repo/issues/213"
+        user:
+          login: platform-engineer
+        labels: []
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_priority_in: [P3, P4]
+      expect_type: feature
+
+  - id: documentation_unclear
+    label: Documentation confusing — user can't understand webhook setup
+    tags: [positive]
+    expected_outcome_type: triaged
+    trigger_payload:
+      action: opened
+      issue:
+        number: 214
+        title: "Webhook setup documentation is confusing and incomplete"
+        body: |
+          I've spent 3 hours trying to set up the GitHub webhook integration.
+          The documentation at docs.conductai.ai/webhooks is unclear.
+
+          Problems:
+          - Step 3 references a UI that no longer exists
+          - The secret format is described wrong (says hex, should be base64)
+          - No troubleshooting section for 400 errors
+
+          Suggests: rewrite the webhook setup guide with screenshots.
+        html_url: "https://github.com/eval-org/eval-repo/issues/214"
+        user:
+          login: new-user
+        labels: []
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_type_in: [docs, enhancement]
+
+  - id: feature_request_api_key
+    label: Feature request — API key scopes and rotation
+    tags: [positive, feature]
+    expected_outcome_type: triaged
+    trigger_payload:
+      action: opened
+      issue:
+        number: 215
+        title: "API keys should support scopes and per-key rate limits"
+        body: |
+          Currently API keys are all-or-nothing. We need:
+
+          - Scopes: read-only, write, admin
+          - Per-key rate limits (so a CI pipeline key doesn't affect human users)
+          - Key rotation with 24-hour overlap period
+          - Last-used timestamp and request counts per key
+          - Key expiry dates
+
+          This is a security and operational requirement for our enterprise deployment.
+        html_url: "https://github.com/eval-org/eval-repo/issues/215"
+        user:
+          login: security-architect
+        labels: []
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_priority_in: [P2, P3]
+      expect_type: feature
+
+  - id: crash_on_upload
+    label: App crashes when uploading YAML file larger than 1MB
+    tags: [positive, bug]
+    expected_outcome_type: triaged
+    trigger_payload:
+      action: opened
+      issue:
+        number: 216
+        title: "App crashes (500 error) when uploading YAML playbook > 1MB"
+        body: |
+          Uploading a large YAML playbook causes a 500 Internal Server Error.
+
+          Steps:
+          1. Create a YAML playbook file > 1MB (ours is 1.4MB with large fixtures)
+          2. Upload via Settings > Playbooks > Import
+          3. Page shows "Something went wrong" and the server logs show OOM
+
+          Smaller playbooks (< 500KB) work fine.
+          Regression: worked in v2.3, broken since v2.4.
+        html_url: "https://github.com/eval-org/eval-repo/issues/216"
+        user:
+          login: power-user
+        labels: []
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_priority_in: [P2, P3]
+      expect_type: bug
+
+  - id: missing_audit_log_export
+    label: Enterprise feature request — audit log export for compliance
+    tags: [positive, feature]
+    expected_outcome_type: triaged
+    trigger_payload:
+      action: opened
+      issue:
+        number: 217
+        title: "Need audit log export for SOC 2 compliance audit"
+        body: |
+          We're undergoing a SOC 2 Type II audit and need to export our activity logs.
+
+          Requirements:
+          - Export all admin actions (user add/remove, role changes)
+          - Export all API key usage
+          - Date range filtering
+          - CSV or JSON format
+          - At least 90 days of history
+
+          Our audit is scheduled for 2026-07-01. This is blocking our compliance.
+        html_url: "https://github.com/eval-org/eval-repo/issues/217"
+        user:
+          login: compliance-manager
+        labels: []
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_priority_in: [P2]
+      expect_type: feature
+
+  # ── Negative scenarios ────────────────────────────────────────────────────────
+
   - id: spam_issue
     label: "(negative) Spam / off-topic issue — should be labelled invalid or skipped"
     tags: [negative]
@@ -174,3 +526,109 @@ scenarios:
           login: eval-org
     extra_assertions:
       should_skip_or_acknowledge: true
+
+  - id: duplicate_issue
+    label: "(negative) Duplicate issue — already tracked in #201"
+    tags: [negative]
+    expected_outcome_type: triaged
+    trigger_payload:
+      action: opened
+      issue:
+        number: 218
+        title: "Mobile button still broken (same as #201)"
+        body: |
+          Same issue as #201 — the submit button doesn't work on iOS Safari.
+          Still happening as of today.
+        html_url: "https://github.com/eval-org/eval-repo/issues/218"
+        user:
+          login: another-mobile-user
+        labels: []
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_type_in: [duplicate]
+
+  - id: pr_event_wrong_type
+    label: "(negative) PR review event — not an issue, should not triage"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: submitted
+      review:
+        id: 9999
+        state: changes_requested
+        body: "Please fix the failing tests."
+      pull_request:
+        number: 50
+        title: "feat: add rate limiting"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+
+  - id: bot_opened_issue
+    label: "(negative) Bot-opened issue (Dependabot) — skip triage"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      issue:
+        number: 219
+        title: "Bump lodash from 4.17.19 to 4.17.21"
+        body: "Bumps lodash to fix CVE-2021-23337."
+        html_url: "https://github.com/eval-org/eval-repo/issues/219"
+        user:
+          login: "dependabot[bot]"
+        labels:
+          - name: dependencies
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+
+  - id: issue_labeled_event
+    label: "(negative) Issue labeled event — not an open trigger"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: labeled
+      issue:
+        number: 207
+        title: "Security vulnerability"
+        state: open
+        labels:
+          - name: security
+      label:
+        name: security
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+
+  - id: already_triaged_issue
+    label: "(negative) Issue already has priority and type labels — no re-triage"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      issue:
+        number: 220
+        title: "Add export feature"
+        body: "Already triaged by team lead."
+        html_url: "https://github.com/eval-org/eval-repo/issues/220"
+        user:
+          login: team-lead
+        labels:
+          - name: "P3"
+          - name: "feature"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org

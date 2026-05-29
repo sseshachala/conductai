@@ -1,0 +1,471 @@
+slug: postmortem_drafter
+description: >
+  Postmortem Drafter scenarios. Covers resolved production incidents across
+  availability, data loss, performance, and security categories (positive) as well
+  as test alerts, low-severity resolved events, and wrong trigger types (negative).
+scenarios:
+  - id: database_connection_outage
+    label: 45-minute database connection outage — full postmortem needed
+    tags: [positive]
+    expected_outcome_type: postmortem_drafted
+    trigger_payload:
+      action: resolved
+      incident:
+        id: "INC-2001"
+        title: "Production database connection pool exhausted"
+        severity: P1
+        started_at: "2026-05-29T14:31:00Z"
+        resolved_at: "2026-05-29T15:16:00Z"
+        duration_minutes: 45
+        affected_services: ["api", "worker"]
+        impact: "100% of API requests failed with 503. All customer workflows paused."
+        timeline:
+          - time: "14:31" event: "Alert fired: DB connection timeout rate > 50%"
+          - time: "14:35" event: "On-call engineer paged"
+          - time: "14:45" event: "Root cause identified: connection leak in new deploy"
+          - time: "15:00" event: "Rollback initiated"
+          - time: "15:16" event: "Service restored"
+        root_cause: "Connection leak in v2.4.1 — missing connection.close() in error path"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: api_latency_spike
+    label: 2-hour latency spike — P95 10x above baseline
+    tags: [positive, performance]
+    expected_outcome_type: postmortem_drafted
+    trigger_payload:
+      action: resolved
+      incident:
+        id: "INC-2002"
+        title: "P95 API latency degraded from 400ms to 4200ms"
+        severity: P2
+        started_at: "2026-05-28T16:00:00Z"
+        resolved_at: "2026-05-28T18:12:00Z"
+        duration_minutes: 132
+        affected_services: ["api"]
+        impact: "API slow but available. 40% of requests timed out on client side."
+        root_cause: "Missing index on runs.workspace_id after schema migration"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: data_loss_incident
+    label: Data loss incident — 200 run records deleted by migration bug
+    tags: [positive, data]
+    expected_outcome_type: postmortem_drafted
+    trigger_payload:
+      action: resolved
+      incident:
+        id: "INC-2003"
+        title: "Migration bug deleted 200 production run records"
+        severity: P1
+        started_at: "2026-05-27T09:00:00Z"
+        resolved_at: "2026-05-27T11:30:00Z"
+        duration_minutes: 150
+        affected_services: ["api", "database"]
+        impact: "200 run records permanently deleted for 12 customer workspaces."
+        root_cause: "Alembic migration 0041 had incorrect WHERE clause — deleted active runs"
+        recovery_action: "Restored from hourly backup; 23 minutes of data lost"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: security_breach_attempt
+    label: Security incident — brute force attack on admin login
+    tags: [positive, security]
+    expected_outcome_type: postmortem_drafted
+    trigger_payload:
+      action: resolved
+      incident:
+        id: "INC-2004"
+        title: "Brute force attack on /admin/login — 50k requests in 10 minutes"
+        severity: P1
+        started_at: "2026-05-26T03:15:00Z"
+        resolved_at: "2026-05-26T03:45:00Z"
+        duration_minutes: 30
+        affected_services: ["api"]
+        impact: "Admin login unavailable for 12 minutes. No successful breach detected."
+        root_cause: "Admin login endpoint lacked rate limiting"
+        recovery_action: "IP blocked at CDN level; rate limiting deployed"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: worker_crash_loop
+    label: Worker pod crash loop — all background jobs paused for 3 hours
+    tags: [positive]
+    expected_outcome_type: postmortem_drafted
+    trigger_payload:
+      action: resolved
+      incident:
+        id: "INC-2005"
+        title: "Worker pod crash loop — ImportError in new deploy"
+        severity: P2
+        started_at: "2026-05-25T07:00:00Z"
+        resolved_at: "2026-05-25T10:05:00Z"
+        duration_minutes: 185
+        affected_services: ["worker"]
+        impact: "All background jobs paused for 3 hours. ~450 jobs queued."
+        root_cause: "Missing dependency in requirements.txt for new feature module"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: ssl_certificate_expiry
+    label: SSL certificate expired — 8 hours of mixed-content browser warnings
+    tags: [positive]
+    expected_outcome_type: postmortem_drafted
+    trigger_payload:
+      action: resolved
+      incident:
+        id: "INC-2006"
+        title: "SSL certificate expired for api.conductai.ai"
+        severity: P2
+        started_at: "2026-05-24T00:00:00Z"
+        resolved_at: "2026-05-24T08:23:00Z"
+        duration_minutes: 503
+        affected_services: ["api", "web"]
+        impact: "Browser security warnings shown to all users. API requests from strict clients failed."
+        root_cause: "Auto-renewal failed silently 30 days prior; no monitoring on cert expiry"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: redis_memory_exhausted
+    label: Redis OOM — cache and job queue unavailable for 90 minutes
+    tags: [positive, performance]
+    expected_outcome_type: postmortem_drafted
+    trigger_payload:
+      action: resolved
+      incident:
+        id: "INC-2007"
+        title: "Redis memory exhausted — maxmemory reached, eviction disabled"
+        severity: P1
+        started_at: "2026-05-23T13:00:00Z"
+        resolved_at: "2026-05-23T14:31:00Z"
+        duration_minutes: 91
+        affected_services: ["api", "worker", "cache"]
+        impact: "Cache miss on 100% of requests. Job queue blocked. API degraded."
+        root_cause: "Large webhook payloads cached without TTL — accumulated over 2 weeks"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: dns_propagation_failure
+    label: DNS change caused 4-hour split-horizon resolution failure
+    tags: [positive]
+    expected_outcome_type: postmortem_drafted
+    trigger_payload:
+      action: resolved
+      incident:
+        id: "INC-2008"
+        title: "DNS misconfiguration during domain migration"
+        severity: P1
+        started_at: "2026-05-22T10:00:00Z"
+        resolved_at: "2026-05-22T14:12:00Z"
+        duration_minutes: 252
+        affected_services: ["api", "web", "webhooks"]
+        impact: "~30% of users unable to resolve app.conductai.ai for 4 hours."
+        root_cause: "TTL not reduced before migration; old records cached for 4 hours"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: third_party_api_outage
+    label: GitHub API outage caused all triggered runs to fail
+    tags: [positive]
+    expected_outcome_type: postmortem_drafted
+    trigger_payload:
+      action: resolved
+      incident:
+        id: "INC-2009"
+        title: "GitHub API outage — all GitHub-triggered playbooks failed"
+        severity: P2
+        started_at: "2026-05-21T18:00:00Z"
+        resolved_at: "2026-05-21T21:45:00Z"
+        duration_minutes: 225
+        affected_services: ["api", "worker"]
+        impact: "All GitHub-triggered runs failed. 1200+ failed runs across 89 workspaces."
+        root_cause: "No circuit breaker for GitHub API; no retry or queuing for GitHub events"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: memory_leak_oom_kill
+    label: Memory leak caused OOM kill of API pods — rolling restart
+    tags: [positive, performance]
+    expected_outcome_type: postmortem_drafted
+    trigger_payload:
+      action: resolved
+      incident:
+        id: "INC-2010"
+        title: "API pods OOM-killed repeatedly over 6-hour period"
+        severity: P2
+        started_at: "2026-05-20T08:00:00Z"
+        resolved_at: "2026-05-20T14:30:00Z"
+        duration_minutes: 390
+        affected_services: ["api"]
+        impact: "Intermittent 503s during pod restart cycles. ~5% request failure rate."
+        root_cause: "Memory leak in streaming response handler — file handles not closed"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: race_condition_double_charge
+    label: Race condition caused duplicate billing charges for 47 customers
+    tags: [positive, data]
+    expected_outcome_type: postmortem_drafted
+    trigger_payload:
+      action: resolved
+      incident:
+        id: "INC-2011"
+        title: "Race condition in billing — 47 customers double-charged"
+        severity: P1
+        started_at: "2026-05-19T00:00:00Z"
+        resolved_at: "2026-05-19T02:15:00Z"
+        duration_minutes: 135
+        affected_services: ["billing", "api"]
+        impact: "47 customers charged twice for their monthly subscription. $3,400 in refunds issued."
+        root_cause: "Webhook idempotency check bypassed under concurrent requests"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: config_drift_production
+    label: Config drift caused silent data routing to wrong tenant
+    tags: [positive, security]
+    expected_outcome_type: postmortem_drafted
+    trigger_payload:
+      action: resolved
+      incident:
+        id: "INC-2012"
+        title: "Config drift — workspace data routed to wrong tenant for 2 hours"
+        severity: P1
+        started_at: "2026-05-18T09:00:00Z"
+        resolved_at: "2026-05-18T11:05:00Z"
+        duration_minutes: 125
+        affected_services: ["api", "database"]
+        impact: "2 workspaces received each other's run data for 2 hours. GDPR notification required."
+        root_cause: "Manual config change on prod bypassed terraform — workspace_id mapping incorrect"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: deployment_rollback_needed
+    label: Bad deploy required emergency rollback — 20 minutes downtime
+    tags: [positive]
+    expected_outcome_type: postmortem_drafted
+    trigger_payload:
+      action: resolved
+      incident:
+        id: "INC-2013"
+        title: "v2.5.0 deploy caused 500 errors — emergency rollback"
+        severity: P1
+        started_at: "2026-05-17T14:00:00Z"
+        resolved_at: "2026-05-17T14:20:00Z"
+        duration_minutes: 20
+        affected_services: ["api"]
+        impact: "All API endpoints returned 500 for 20 minutes after v2.5.0 deploy."
+        root_cause: "Pydantic v2 migration broke schema validation — not caught in staging"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: scheduled_job_drift
+    label: Cron job silently stopped running — undetected for 72 hours
+    tags: [positive]
+    expected_outcome_type: postmortem_drafted
+    trigger_payload:
+      action: resolved
+      incident:
+        id: "INC-2014"
+        title: "Scheduled dependency scan cron stopped running — 72-hour gap"
+        severity: P2
+        started_at: "2026-05-14T09:00:00Z"
+        resolved_at: "2026-05-17T09:00:00Z"
+        duration_minutes: 4320
+        affected_services: ["worker", "cron"]
+        impact: "72 hours of scheduled scans skipped for all workspaces. 3 critical CVEs missed."
+        root_cause: "Cron service crashed; no alerting on missed job executions"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  - id: storage_quota_exceeded
+    label: Object storage quota exceeded — artifact uploads failed silently
+    tags: [positive]
+    expected_outcome_type: postmortem_drafted
+    trigger_payload:
+      action: resolved
+      incident:
+        id: "INC-2015"
+        title: "S3 bucket quota exceeded — run artifacts not saved for 6 hours"
+        severity: P2
+        started_at: "2026-05-16T06:00:00Z"
+        resolved_at: "2026-05-16T12:30:00Z"
+        duration_minutes: 390
+        affected_services: ["api", "worker"]
+        impact: "Run artifacts (logs, diffs) not persisted for 6 hours. Data permanently lost."
+        root_cause: "No storage quota monitoring; 90-day log retention not enforced"
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_file_issue: true
+
+  # ── Negative scenarios ────────────────────────────────────────────────────────
+
+  - id: test_alert_resolved
+    label: "(negative) Test/synthetic alert resolved — no postmortem needed"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: resolved
+      incident:
+        id: "INC-TEST-9999"
+        title: "[TEST] Synthetic alert — do not postmortem"
+        severity: P3
+        started_at: "2026-05-29T20:00:00Z"
+        resolved_at: "2026-05-29T20:01:00Z"
+        duration_minutes: 1
+        is_test: true
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+
+  - id: low_severity_resolved
+    label: "(negative) Low severity P4 resolved — no postmortem required"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: resolved
+      incident:
+        id: "INC-2099"
+        title: "Disk usage at 70% — no customer impact"
+        severity: P4
+        started_at: "2026-05-29T08:00:00Z"
+        resolved_at: "2026-05-29T09:00:00Z"
+        duration_minutes: 60
+        affected_services: []
+        impact: "No customer impact. Internal monitoring only."
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+
+  - id: incident_opened_not_resolved
+    label: "(negative) Incident created event — postmortem is for resolved incidents"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: created
+      incident:
+        id: "INC-2100"
+        title: "High error rate on API"
+        severity: P1
+        started_at: "2026-05-29T14:31:00Z"
+        resolved_at: null
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+
+  - id: postmortem_already_exists
+    label: "(negative) Postmortem issue already filed — no duplicate"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: resolved
+      incident:
+        id: "INC-2001"
+        title: "Production database connection pool exhausted"
+        severity: P1
+        started_at: "2026-05-29T14:31:00Z"
+        resolved_at: "2026-05-29T15:16:00Z"
+        duration_minutes: 45
+      existing_issues:
+        - title: "Postmortem: INC-2001 — database connection pool exhausted"
+          state: open
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+
+  - id: scheduled_maintenance
+    label: "(negative) Scheduled maintenance window resolved — not an incident"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: resolved
+      incident:
+        id: "MAINT-001"
+        title: "Scheduled maintenance: database upgrade"
+        severity: P3
+        is_maintenance: true
+        started_at: "2026-05-29T02:00:00Z"
+        resolved_at: "2026-05-29T03:30:00Z"
+        duration_minutes: 90
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+
+  - id: pr_event_wrong_trigger
+    label: "(negative) PR merged event — not an incident resolution trigger"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: closed
+      pull_request:
+        number: 299
+        title: "fix: resolve the latency issue"
+        merged: true
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
