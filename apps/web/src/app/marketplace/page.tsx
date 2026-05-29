@@ -15,6 +15,23 @@ interface Playbook {
   featured: boolean
 }
 
+interface PlaybookScore {
+  slug: string
+  structural_score: number
+  quality_score: number
+  grade: string
+  status: string
+  eval_run_at: string | null
+}
+
+const GRADE_STYLES: Record<string, string> = {
+  A: "bg-emerald-100 text-emerald-700",
+  B: "bg-blue-100  text-blue-700",
+  C: "bg-amber-100  text-amber-700",
+  D: "bg-orange-100 text-orange-700",
+  F: "bg-red-100    text-red-700",
+}
+
 interface Project {
   id: string
   name: string
@@ -111,6 +128,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   const [activeCategory, setActiveCategory] = useState("All")
   const [installing, setInstalling] = useState(false)
   const [installedCount, setInstalledCount] = useState<Map<string, number>>(new Map())
+  const [scores, setScores] = useState<Map<string, PlaybookScore>>(new Map())
 
   // Install modal state
   const [pendingSlug, setPendingSlug] = useState<string | null>(null)
@@ -148,7 +166,11 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, { headers }),
       ])
 
-      if (pbRes.ok) setPlaybooks(await pbRes.json())
+      let loadedPlaybooks: Playbook[] = []
+      if (pbRes.ok) {
+        loadedPlaybooks = await pbRes.json()
+        setPlaybooks(loadedPlaybooks)
+      }
 
       if (wfRes.ok) {
         const workflows: { id: string; name: string; playbook_slug?: string }[] = await wfRes.json()
@@ -159,6 +181,24 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
           }
         }
         setInstalledCount(counts)
+      }
+
+      // Fetch quality scores — graceful if endpoint not yet available
+      if (loadedPlaybooks.length > 0) {
+        const scoreResults = await Promise.allSettled(
+          loadedPlaybooks.map(p =>
+            fetch(`${process.env.NEXT_PUBLIC_API_URL}/playbooks/${p.slug}/score`)
+              .then(r => (r.ok ? r.json() as Promise<PlaybookScore> : null))
+              .catch(() => null)
+          )
+        )
+        const scoreMap = new Map<string, PlaybookScore>()
+        scoreResults.forEach((result, idx) => {
+          if (result.status === "fulfilled" && result.value) {
+            scoreMap.set(loadedPlaybooks[idx].slug, result.value)
+          }
+        })
+        setScores(scoreMap)
       }
 
       setLoading(false)
@@ -347,6 +387,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                       playbook={p}
                       installing={false}
                       installCount={installedCount.get(p.slug) ?? 0}
+                      grade={scores.get(p.slug)?.grade}
                       onInstall={openInstallModal}
                     />
                   ))}
@@ -363,6 +404,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                 playbook={p}
                 installing={false}
                 installCount={installedCount.get(p.slug) ?? 0}
+                grade={scores.get(p.slug)?.grade}
                 onInstall={openInstallModal}
               />
             ))}
@@ -541,21 +583,32 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   )
 }
 
-function PlaybookCard({ playbook, installing, installCount, onInstall }: {
+function PlaybookCard({ playbook, installing, installCount, grade, onInstall }: {
   playbook: Playbook
   installing: boolean
   installCount: number
+  grade?: string
   onInstall: (slug: string) => void
 }) {
   return (
     <div className="rounded-xl border border-stone-200 bg-white p-5 flex flex-col gap-3 hover:border-stone-300 transition-colors">
       <div className="flex items-start justify-between gap-2">
         <span className="text-2xl leading-none">{playbook.icon}</span>
-        {installCount > 0 && (
-          <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-medium">
-            {installCount} installed
-          </span>
-        )}
+        <div className="flex items-center gap-1.5">
+          {grade && (
+            <span
+              className={`text-[10px] px-1.5 py-0.5 rounded font-semibold tabular-nums ${GRADE_STYLES[grade] ?? "bg-stone-100 text-stone-500"}`}
+              title={`Quality grade: ${grade}`}
+            >
+              {grade}
+            </span>
+          )}
+          {installCount > 0 && (
+            <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-medium">
+              {installCount} installed
+            </span>
+          )}
+        </div>
       </div>
       <div>
         <p className="text-sm font-semibold text-stone-900 mb-1">
