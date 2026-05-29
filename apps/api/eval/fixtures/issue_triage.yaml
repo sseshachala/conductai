@@ -1,0 +1,176 @@
+# Multi-scenario fixture set for Issue Triage
+# 6 scenarios: 4 positive (issues needing triage), 2 negative (edge cases / skip)
+slug: issue_triage
+description: >
+  Covers a bug report, a feature request, a vague issue needing clarification,
+  a P1 production outage report, a spam/invalid issue (negative), and a closed
+  issue event (negative).
+scenarios:
+  - id: mobile_bug_report
+    label: Bug report — mobile submit button unresponsive
+    tags: [positive, bug]
+    expected_outcome_type: triaged
+    trigger_payload:
+      action: opened
+      issue:
+        number: 201
+        title: "Button does not respond on mobile Safari"
+        body: |
+          When tapping the submit button on iOS Safari 17, nothing happens.
+
+          Steps to reproduce:
+          1. Open the app on iPhone 14
+          2. Navigate to the checkout form
+          3. Tap the Submit button
+
+          Expected: form submits
+          Actual: nothing happens, no error shown
+
+          Device: iPhone 14 Pro, iOS 17.2
+          Browser: Safari 17
+        html_url: "https://github.com/eval-org/eval-repo/issues/201"
+        user:
+          login: customer-user
+        labels: []
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_priority_in: [P1, P2, P3]
+      expect_type: bug
+
+  - id: feature_request
+    label: Feature request — dark mode support
+    tags: [positive, feature]
+    expected_outcome_type: triaged
+    trigger_payload:
+      action: opened
+      issue:
+        number: 202
+        title: "Feature Request: dark mode support"
+        body: |
+          It would be great to have a dark mode option for the dashboard.
+          Many users work late at night and the bright white theme is hard on the eyes.
+
+          Suggested implementation:
+          - Add a toggle in settings
+          - Persist preference to user profile
+          - Respect OS-level dark mode preference
+        html_url: "https://github.com/eval-org/eval-repo/issues/202"
+        user:
+          login: power-user
+        labels: []
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_priority_in: [P3, P4]
+      expect_type: feature
+
+  - id: vague_issue
+    label: Vague issue — missing reproduction steps, clarification needed
+    tags: [positive, clarification]
+    expected_outcome_type: triaged
+    trigger_payload:
+      action: opened
+      issue:
+        number: 203
+        title: "it broken"
+        body: "the app doesnt work anymore please fix"
+        html_url: "https://github.com/eval-org/eval-repo/issues/203"
+        user:
+          login: frustrated-user
+        labels: []
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_clarification_requested: true
+
+  - id: p1_production_outage
+    label: P1 production outage — critical priority expected
+    tags: [positive, critical]
+    expected_outcome_type: triaged
+    trigger_payload:
+      action: opened
+      issue:
+        number: 204
+        title: "[PRODUCTION DOWN] API returning 500 for all requests"
+        body: |
+          CRITICAL: The production API has been returning HTTP 500 for all requests
+          since approximately 14:32 UTC. This is affecting all customers.
+
+          Error observed in logs:
+            SQLAlchemyError: can't connect to database server
+            Connection refused on port 5432
+
+          Impact: 100% of users unable to use the platform
+          Duration: ~20 minutes and growing
+          Revenue impact: ~$5,000/minute
+
+          @on-call-team please respond immediately
+        html_url: "https://github.com/eval-org/eval-repo/issues/204"
+        user:
+          login: on-call-engineer
+        labels: []
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_priority_in: [P1]
+      expect_type: bug
+
+  - id: spam_issue
+    label: "(negative) Spam / off-topic issue — should be labelled invalid or skipped"
+    tags: [negative]
+    expected_outcome_type: triaged
+    trigger_payload:
+      action: opened
+      issue:
+        number: 205
+        title: "Buy cheap crypto now!! 1000x gains guaranteed"
+        body: |
+          Hi, I am from Nigeria and I have a great investment opportunity for you.
+          Visit my website at http://scam.example.com for amazing crypto returns.
+        html_url: "https://github.com/eval-org/eval-repo/issues/205"
+        user:
+          login: spam-bot
+        labels: []
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+    extra_assertions:
+      expect_type_in: [invalid, spam, question]
+
+  - id: issue_closed_event
+    label: "(negative) Issue closed event — triage should not run"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: closed
+      issue:
+        number: 206
+        title: "Fixed: login redirect loop"
+        body: "Fixed in PR #190."
+        html_url: "https://github.com/eval-org/eval-repo/issues/206"
+        user:
+          login: maintainer
+        labels:
+          - name: bug
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        owner:
+          login: eval-org
+    extra_assertions:
+      should_skip_or_acknowledge: true

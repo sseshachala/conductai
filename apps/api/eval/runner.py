@@ -31,10 +31,14 @@ import logging
 import sys
 import time
 import traceback
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from eval.fixtures import PlaybookFixture, load_fixtures, load_fixture
+from eval.fixtures import (
+    PlaybookFixture, FixtureScenario, ScenarioSet,
+    load_fixtures, load_fixture, load_scenario_set,
+)
 from eval.scorer import PlaybookScore, score_structural, score_quality
 from eval.report import EvalReport
 
@@ -46,6 +50,126 @@ except ImportError:
 
 
 # ── main entry points ─────────────────────────────────────────────────────────
+
+def run_scenarios(
+    slug: str,
+    live: bool = False,
+    model: str | None = None,
+    api_key: str | None = None,
+) -> "ScenarioReport":
+    """
+    Run a multi-scenario eval for a single playbook.
+
+    Returns a :class:`ScenarioReport` containing per-scenario results plus
+    aggregate pass/fail counts.  Falls back to single-scenario behaviour if
+    the playbook has no multi-scenario fixture file.
+
+    Parameters
+    ----------
+    model:
+        Override the LLM model used during live execution (e.g. ``claude-sonnet-4-6``).
+        Only applies when live=True.
+    api_key:
+        Anthropic API key.  Scoped to this call only — no os.environ mutation.
+    """
+    scenario_set = load_scenario_set(slug)
+    if scenario_set is None:
+        # Fall back to single-scenario
+        report = run_one(slug, live=live, api_key=api_key)
+        return ScenarioReport(
+            slug=slug,
+            scenarios=[],
+            eval_report=report,
+            model=model,
+        )
+
+    scenario_results: list[dict] = []
+    scores: list[PlaybookScore] = []
+
+    for scenario in scenario_set.scenarios:
+        start = time.perf_counter()
+        try:
+            result = _eval_scenario(scenario, live=live, model=model, api_key=api_key)
+            elapsed = round((time.perf_counter() - start) * 1000)
+            scenario_results.append({
+                "id": scenario.id,
+                "label": scenario.label,
+                "tags": scenario.tags,
+                "status": "ok",
+                "grade": result.grade,
+                "pct": round(result.pct, 1),
+                "structural_score": result.structural_score,
+                "quality_score": result.quality_score,
+                "elapsed_ms": elapsed,
+                "error": None,
+            })
+            scores.append(result)
+        except Exception as exc:
+            elapsed = round((time.perf_counter() - start) * 1000)
+            log.warning("scenario_eval_failed", slug=slug, scenario=scenario.id, error=str(exc))
+            scenario_results.append({
+                "id": scenario.id,
+                "label": scenario.label,
+                "tags": scenario.tags,
+                "status": "error",
+                "grade": "F",
+                "pct": 0.0,
+                "structural_score": 0,
+                "quality_score": 0,
+                "elapsed_ms": elapsed,
+                "error": str(exc),
+            })
+
+    # Roll up a combined EvalReport using the best (primary) scenario score
+    best_score = max(scores, key=lambda s: s.pct) if scores else None
+    wrapped_report = EvalReport(
+        scores=[best_score] if best_score else [],
+        live_mode=live,
+    )
+
+    return ScenarioReport(
+        slug=slug,
+        scenarios=scenario_results,
+        eval_report=wrapped_report,
+        model=model,
+        scenario_count=len(scenario_set.scenarios),
+        positive_count=len(scenario_set.positive_scenarios),
+        negative_count=len(scenario_set.negative_scenarios),
+    )
+
+
+@dataclass
+class ScenarioReport:
+    """Result of a multi-scenario eval run."""
+    slug: str
+    scenarios: list[dict]
+    eval_report: EvalReport
+    model: str | None = None
+    scenario_count: int = 0
+    positive_count: int = 0
+    negative_count: int = 0
+
+    @property
+    def passing_scenarios(self) -> list[dict]:
+        return [s for s in self.scenarios if s.get("grade") not in ("D", "F")]
+
+    @property
+    def failing_scenarios(self) -> list[dict]:
+        return [s for s in self.scenarios if s.get("grade") in ("D", "F")]
+
+    def to_dict(self) -> dict:
+        return {
+            "slug": self.slug,
+            "model": self.model,
+            "scenario_count": self.scenario_count,
+            "positive_count": self.positive_count,
+            "negative_count": self.negative_count,
+            "passing_scenarios": len(self.passing_scenarios),
+            "failing_scenarios": len(self.failing_scenarios),
+            "scenarios": self.scenarios,
+            "aggregate": self.eval_report._to_dict() if self.eval_report.scores else {},
+        }
+
 
 def run_all(live: bool = False, playbooks_dir: Path | None = None) -> EvalReport:
     """
@@ -93,7 +217,33 @@ def run_one(slug: str, live: bool = False, api_key: str | None = None) -> EvalRe
 
 # ── internal eval for one playbook ───────────────────────────────────────────
 
-def _eval_one(fixture: PlaybookFixture, live: bool, api_key: str | None = None) -> PlaybookScore:
+def _eval_scenario(
+    scenario: FixtureScenario,
+    live: bool,
+    model: str | None = None,
+    api_key: str | None = None,
+) -> PlaybookScore:
+    """Run all checks for a single FixtureScenario and return a PlaybookScore."""
+    # Build a transient PlaybookFixture from the scenario for reuse of existing code
+    fixture = PlaybookFixture(
+        slug=scenario.playbook_slug,
+        playbook_path=scenario.playbook_path,
+        trigger_payload=scenario.trigger_payload,
+        initial_state=scenario.initial_state,
+        expected_outcome_type=scenario.expected_outcome_type,
+        expected_artifact_keys=scenario.expected_artifact_keys,
+        extra_assertions=scenario.extra_assertions,
+        source="file",
+    )
+    return _eval_one(fixture, live=live, model=model, api_key=api_key)
+
+
+def _eval_one(
+    fixture: PlaybookFixture,
+    live: bool,
+    model: str | None = None,
+    api_key: str | None = None,
+) -> PlaybookScore:
     """Run all checks for one playbook and return a PlaybookScore."""
     start = time.perf_counter()
 
@@ -101,7 +251,7 @@ def _eval_one(fixture: PlaybookFixture, live: bool, api_key: str | None = None) 
     score = score_structural(playbook_yaml, fixture.slug)
 
     if live:
-        score = _run_live(fixture, score, playbook_yaml, api_key=api_key)
+        score = _run_live(fixture, score, playbook_yaml, model=model, api_key=api_key)
 
     elapsed = time.perf_counter() - start
     log.info(
@@ -127,6 +277,7 @@ def _run_live(
     fixture: PlaybookFixture,
     score: PlaybookScore,
     playbook_yaml: str,
+    model: str | None = None,
     api_key: str | None = None,
 ) -> PlaybookScore:
     """
@@ -134,7 +285,7 @@ def _run_live(
     mock database and stubbed integrations.  Appends quality criteria to score.
     """
     try:
-        result = _execute_with_mocks(fixture, playbook_yaml, api_key=api_key)
+        result = _execute_with_mocks(fixture, playbook_yaml, model=model, api_key=api_key)
         run_status   = result["status"]
         outcome      = result["outcome"]
         state        = result["state"]
@@ -158,6 +309,7 @@ def _run_live(
 def _execute_with_mocks(
     fixture: PlaybookFixture,
     playbook_yaml: str,
+    model: str | None = None,
     api_key: str | None = None,
 ) -> dict[str, Any]:
     """
@@ -185,7 +337,7 @@ def _execute_with_mocks(
 
     state: dict[str, Any] = dict(fixture.initial_state)
     state["_trigger"] = fixture.trigger_payload
-    state["__model"] = "claude-haiku-4-5-20251001"
+    state["__model"] = model or "claude-haiku-4-5-20251001"
     state["__dry_run"] = False
     state["__max_turns"] = 5   # limit turns to keep live eval cheap
 
@@ -359,12 +511,24 @@ def _cli():
         help="Execute playbooks with real LLM calls (requires ANTHROPIC_API_KEY)",
     )
     parser.add_argument(
+        "--model", metavar="MODEL", default=None,
+        help="Override the LLM model for live evals (e.g. claude-sonnet-4-6)",
+    )
+    parser.add_argument(
+        "--scenarios", action="store_true", default=False,
+        help="Run all scenarios for a playbook (requires --playbook)",
+    )
+    parser.add_argument(
         "--json", dest="json_out", action="store_true", default=False,
         help="Print full JSON report instead of human-readable summary",
     )
     parser.add_argument(
         "--out", metavar="FILE",
         help="Write report to file (JSON)",
+    )
+    parser.add_argument(
+        "--publish", action="store_true", default=False,
+        help="Write score as a committed baseline to reports/baselines/<slug>.json",
     )
     parser.add_argument(
         "--promote", action="store_true", default=False,
@@ -374,8 +538,29 @@ def _cli():
 
     logging.basicConfig(level=logging.WARNING)
 
+    if args.scenarios and args.playbook:
+        # Multi-scenario run
+        scenario_report = run_scenarios(
+            args.playbook,
+            live=args.live,
+            model=args.model,
+        )
+        if args.json_out:
+            import json
+            print(json.dumps(scenario_report.to_dict(), indent=2))
+        else:
+            d = scenario_report.to_dict()
+            print(f"\nScenario eval: {args.playbook} ({d['scenario_count']} scenarios)")
+            print(f"  Passing: {d['passing_scenarios']}  Failing: {d['failing_scenarios']}")
+            for s in d["scenarios"]:
+                tag = "[neg]" if "negative" in s["tags"] else "     "
+                print(f"  {tag} {s['id']:<30} {s['grade']}  {s['pct']:.0f}%  {s.get('error') or ''}")
+        if args.publish and args.playbook:
+            _publish_baseline(scenario_report.to_dict(), args.playbook, model=args.model)
+        sys.exit(0)
+
     if args.playbook:
-        report = run_one(args.playbook, live=args.live)
+        report = run_one(args.playbook, live=args.live, api_key=None)
     else:
         report = run_all(live=args.live)
 
@@ -388,6 +573,10 @@ def _cli():
         Path(args.out).write_text(report.to_json())
         print(f"\nReport written to {args.out}")
 
+    if args.publish:
+        slug = args.playbook or "all"
+        _publish_baseline(report._to_dict(), slug, model=args.model)
+
     if args.promote:
         from eval.promotion import promote
         submissions = promote(report)
@@ -396,6 +585,32 @@ def _cli():
     # Exit with non-zero if any playbook is failing (grade F)
     if any(s.grade == "F" for s in report.scores):
         sys.exit(1)
+
+
+def _publish_baseline(data: dict, slug: str, model: str | None = None) -> None:
+    """
+    Write a committed baseline JSON to reports/baselines/<slug>.json.
+
+    The baselines directory is under the repo root (apps/api/reports/baselines/).
+    Baseline files are committed to git so regression checks can compare against them.
+    """
+    import json
+    from datetime import datetime, timezone
+
+    root = Path(__file__).resolve().parent.parent
+    baselines_dir = root / "reports" / "baselines"
+    baselines_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = f"{slug}.json" if not model else f"{slug}_{model.replace('-', '_')}.json"
+    dest = baselines_dir / filename
+
+    payload = {
+        **data,
+        "baseline_published_at": datetime.now(timezone.utc).isoformat(),
+        "model": model or "claude-haiku-4-5-20251001",
+    }
+    dest.write_text(json.dumps(payload, indent=2))
+    print(f"\nBaseline written to {dest.relative_to(root)}")
 
 
 if __name__ == "__main__":

@@ -17,6 +17,10 @@ export interface BenchmarkEdition {
   findings: EditionFinding[]
   prevEditionSlug?: string
   nextEditionSlug?: string
+  /** Slug used by the API baseline endpoint, e.g. "edition-001".
+   *  When present the benchmark page fetches frozen scores from
+   *  GET /eval/benchmark/editions/{apiEditionSlug} instead of live eval. */
+  apiEditionSlug?: string
 }
 
 export const EDITIONS: BenchmarkEdition[] = [
@@ -25,8 +29,9 @@ export const EDITIONS: BenchmarkEdition[] = [
     label: "Edition 001",
     period: "Q2 2026",
     publishedAt: "2026-06-01",
-    totalPlaybooks: 18,
+    totalPlaybooks: 19,
     modelLabel: "Claude · structural scoring",
+    apiEditionSlug: "edition-001",
     findings: [
       {
         headline: "Security and incident playbooks lead the leaderboard",
