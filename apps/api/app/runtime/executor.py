@@ -38,11 +38,66 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+class CredentialStore:
+    """
+    A dict-like wrapper around decrypted workspace credentials.
+
+    Purpose: prevent secrets from leaking into logs, exception tracebacks,
+    or Sentry breadcrumbs via accidental repr()/str() calls on the credentials
+    object (e.g. log.error("ctx=%r", credentials)).
+
+    Access via store["handle"] or store.get("handle") — values are returned
+    normally.  repr() and str() return a placeholder with handle names only.
+    """
+
+    def __init__(self, data: dict[str, Any]) -> None:
+        self._data = data
+
+    # Dict-like interface used by block executors
+    def __getitem__(self, key: str) -> Any:
+        return self._data[key]
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._data
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self._data.get(key, default)
+
+    def keys(self):
+        return self._data.keys()
+
+    def items(self):
+        return self._data.items()
+
+    def values(self):
+        return self._data.values()
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    # Safety: never expose values in repr/str
+    def __repr__(self) -> str:
+        return f"CredentialStore(handles={list(self._data.keys())})"
+
+    def __str__(self) -> str:
+        return self.__repr__()
+
+
 _REDACT_PATTERNS = [
+    # GitHub tokens
     (re.compile(r'ghp_[A-Za-z0-9]{36,}'), '[REDACTED-GITHUB-TOKEN]'),
     (re.compile(r'github_pat_[A-Za-z0-9_]{82,}'), '[REDACTED-GITHUB-TOKEN]'),
     (re.compile(r'ghs_[A-Za-z0-9]{36,}'), '[REDACTED-GITHUB-TOKEN]'),
+    # Anthropic keys (sk-ant-api03-... contain dashes — must precede the generic sk- rule)
+    (re.compile(r'sk-ant-[A-Za-z0-9_\-]{20,}'), '[REDACTED-ANTHROPIC-KEY]'),
+    # OpenAI / generic sk- keys
     (re.compile(r'sk-[A-Za-z0-9]{32,}'), '[REDACTED-API-KEY]'),
+    # Slack bot / user / app tokens
+    (re.compile(r'xox[bpra]-[A-Za-z0-9\-]{10,}'), '[REDACTED-SLACK-TOKEN]'),
+    # Bearer tokens in headers / strings
     (re.compile(r'Bearer\s+[A-Za-z0-9\-_\.]{20,}'), 'Bearer [REDACTED]'),
 ]
 
@@ -374,17 +429,63 @@ BRAIN_TOOLS = [
     },
 ]
 
-# Commands that are never allowed in run_shell
+# Commands that are never allowed in run_shell.
+# These are last-resort guards — the Brain block runs in Modal sandbox for
+# production workloads.  Local execution should still be hardened.
 _FORBIDDEN_SHELL_PATTERNS = [
-    r"rm\s+-rf\s+/",
-    r"rm\s+-fr\s+/",
+    # Filesystem destruction
+    r"rm\s+-[rRfF]*r[rRfF]*\s+/",  # rm -rf / and variants
     r"mkfs",
     r"dd\s+if=",
-    r":\(\)\{.*\}",       # fork bomb
     r">\s*/dev/sd",
     r"chmod\s+777\s+/",
     r"chown.*root",
+    # Fork bomb
+    r":\(\)\{.*\}",
+    # Pipe-to-shell (download + execute)
+    r"(curl|wget)\s+.*\|\s*(bash|sh|python|perl|ruby|node)",
+    # Reverse shell patterns
+    r"/dev/tcp/",           # bash -i >& /dev/tcp/HOST/PORT
+    r"nc\s+.*-[el]",        # netcat listener/execute mode
+    r"socat\s+.*exec",
+    # Python/Perl/Ruby one-liners executing arbitrary code
+    r"python[23]?\s+-c\s+['\"]?import\s+os",
+    r"perl\s+-e\s+.*exec",
+    r"ruby\s+-e\s+.*exec",
 ]
+
+# Environment variables stripped from the subprocess environment so that
+# secrets injected into the worker process cannot be read via `env`, `printenv`,
+# or /proc/self/environ by LLM-generated commands.
+_SECRET_ENV_VARS = {
+    "ANTHROPIC_API_KEY",
+    "ENCRYPTION_KEY",
+    "DATABASE_URL",
+    "REDIS_URL",
+    "CLERK_SECRET_KEY",
+    "CLERK_FRONTEND_API",
+    "GITHUB_WEBHOOK_SECRET",
+    "VERCEL_WEBHOOK_SECRET",
+    "SLACK_SIGNING_SECRET",
+    "CLI_API_KEY",
+    "RESEND_API_KEY",
+    "ADMIN_SECRET",
+    "MODAL_TOKEN_ID",
+    "MODAL_TOKEN_SECRET",
+    "OPENAI_API_KEY",
+    "VOYAGE_API_KEY",
+    "SENTRY_DSN",
+    "RAILWAY_API_TOKEN",
+}
+
+
+def _safe_subprocess_env() -> dict:
+    """Return os.environ with all known secret variables stripped out.
+
+    This prevents LLM-generated shell commands from reading process secrets
+    via `env`, `printenv`, or `/proc/self/environ`.
+    """
+    return {k: v for k, v in os.environ.items() if k not in _SECRET_ENV_VARS}
 
 
 def _tool_read_file(path: str) -> str:
@@ -410,7 +511,7 @@ def _tool_write_file(path: str, content: str) -> str:
 
 def _tool_run_shell(command: str, working_dir: str | None = None) -> str:
     for pattern in _FORBIDDEN_SHELL_PATTERNS:
-        if re.search(pattern, command):
+        if re.search(pattern, command, re.IGNORECASE):
             return f"Refused: command matches forbidden pattern '{pattern}'"
     try:
         result = subprocess.run(
@@ -420,6 +521,7 @@ def _tool_run_shell(command: str, working_dir: str | None = None) -> str:
             text=True,
             timeout=60,
             cwd=working_dir,
+            env=_safe_subprocess_env(),  # strip secrets from subprocess environment
         )
         output = result.stdout + result.stderr
         if len(output) > 10_000:
@@ -1452,6 +1554,13 @@ def _execute_dag(
     fail_error = ""
     logic_routes: dict[str, str] = {}  # block_id → 'pass'|'fail'
 
+    # Cache the skip set and only recompute when a new logic route is resolved.
+    # Previously _find_skipped_blocks was called O(n) times (once per block),
+    # each call itself O(n²), giving O(n³) total.  Now it is called at most
+    # once per logic block output — O(n) calls total.
+    _cached_skipped: set[str] = set()
+    _logic_routes_version: int = 0
+
     for block in exec_blocks:
         # Check if user cancelled the run between blocks
         try:
@@ -1470,11 +1579,15 @@ def _execute_dag(
             log.debug("block.skipped_resume", block_id=block_id)
             if block_type == "logic":
                 logic_routes[block_id] = state[block_id].get("route", "pass")
+                _logic_routes_version += 1
             continue
 
-        # Skip blocks on a non-taken logic branch
-        skipped = _find_skipped_blocks(nodes, edges, logic_routes)
-        if block_id in skipped:
+        # Recompute skip set only when logic_routes has been updated since last check
+        if len(logic_routes) != _logic_routes_version or not _cached_skipped and logic_routes:
+            _cached_skipped = _find_skipped_blocks(nodes, edges, logic_routes)
+            _logic_routes_version = len(logic_routes)
+
+        if block_id in _cached_skipped:
             _emit(db, run_id, block_id, "block_skipped", {"reason": "branch_not_taken"})
             continue
 
@@ -1529,6 +1642,7 @@ def _execute_dag(
             elif block_type == "logic":
                 result = _execute_logic(block, state)
                 logic_routes[block_id] = result.get("route", "pass")
+                _logic_routes_version += 1  # invalidate cached skip set
 
             elif block_type == "approval":
                 result = _execute_approval(block, state, credentials, run_id)
@@ -1687,7 +1801,7 @@ def execute_run(run_id: str):
             else:
                 cred_rows = []
 
-        credentials: dict[str, Any] = {
+        _raw_creds: dict[str, Any] = {
             row.handle: decrypt(row.encrypted_credentials)
             for row in cred_rows
             if row.encrypted_credentials
@@ -1706,8 +1820,13 @@ def execute_run(run_id: str):
                     Integration.environment_id == default_env.id,
                 ).all()
                 for row in fallback_rows:
-                    if row.handle not in credentials and row.encrypted_credentials:
-                        credentials[row.handle] = decrypt(row.encrypted_credentials)
+                    if row.handle not in _raw_creds and row.encrypted_credentials:
+                        _raw_creds[row.handle] = decrypt(row.encrypted_credentials)
+
+        # Wrap in CredentialStore so accidental repr()/str() calls (e.g. in log lines
+        # or Sentry breadcrumbs) never expose plaintext secret values.
+        credentials = CredentialStore(_raw_creds)
+        del _raw_creds  # drop the plain dict reference immediately
 
         final_state = _execute_dag(
             run=run,

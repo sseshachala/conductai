@@ -208,17 +208,10 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
     "needs-attention": attentionRuns,
   }
 
-  useEffect(() => {
-    if (!loading && !searchParams.get("view") && attentionRuns.length > 0) {
-      setView("needs-attention")
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading])
-
-  const VIEWS: { id: View; label: string; count?: number }[] = [
-    { id: "all",            label: "All",            count: filtered.length },
-    { id: "by-agent",       label: "By Agent" },
-    { id: "needs-attention",label: "Needs Attention", count: attentionRuns.length },
+  const VIEWS: { id: View; label: string; count?: number; urgent?: boolean }[] = [
+    { id: "all",             label: "All",             count: filtered.length },
+    { id: "by-agent",        label: "By Agent" },
+    { id: "needs-attention", label: "Needs Attention", count: attentionRuns.length, urgent: attentionRuns.length > 0 },
   ]
 
   return (
@@ -249,12 +242,16 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
                 className={`px-4 py-2 text-sm font-medium transition-colors rounded-t-lg flex items-center gap-1.5 ${
                   view === v.id
                     ? "bg-white border border-b-white border-stone-200 text-stone-900 -mb-px"
-                    : "text-stone-400 hover:text-stone-700"
+                    : v.urgent
+                      ? "text-amber-600 hover:text-amber-800"
+                      : "text-stone-400 hover:text-stone-700"
                 }`}>
                 {v.label}
-                {v.count !== undefined && (
+                {v.count !== undefined && v.count > 0 && (
                   <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                    view === v.id ? "bg-stone-100 text-stone-600" : "bg-stone-100 text-stone-400"
+                    view === v.id
+                      ? (v.urgent ? "bg-amber-100 text-amber-700" : "bg-stone-100 text-stone-600")
+                      : (v.urgent ? "bg-amber-100 text-amber-700" : "bg-stone-100 text-stone-400")
                   }`}>{v.count}</span>
                 )}
               </button>

@@ -17,6 +17,23 @@ from app.core.database import get_db
 from app.models.integration import Integration
 from app.models.workflow import Workflow
 
+
+def _credential_field_names(blob: str) -> list[str]:
+    """Decrypt a credential blob, return only the field names, and immediately
+    discard the plaintext values.
+
+    Used by list endpoints that need to show which fields are present without
+    exposing their values.  Decryption is still required (the format doesn't
+    have a plaintext envelope), but values are dropped as early as possible.
+    """
+    creds = decrypt(blob)
+    keys = list(creds.keys())
+    # Explicitly drop references to plaintext values before returning.
+    for k in keys:
+        creds[k] = None
+    del creds
+    return keys
+
 GITHUB_API = "https://api.github.com"
 VERCEL_API = "https://api.vercel.com"
 
@@ -59,7 +76,7 @@ def list_credentials(db: Session = Depends(get_db), workspace_id: str = Depends(
             handle=r.handle,
             service=r.service,
             auth_method=r.auth_method,
-            fields=list(decrypt(r.encrypted_credentials).keys()) if r.encrypted_credentials else [],
+            fields=_credential_field_names(r.encrypted_credentials) if r.encrypted_credentials else [],
         )
         for r in rows
     ]
@@ -173,7 +190,7 @@ def list_credentials_by_environment(
             handle=r.handle,
             service=r.service,
             auth_method=r.auth_method,
-            fields=list(decrypt(r.encrypted_credentials).keys()) if r.encrypted_credentials else [],
+            fields=_credential_field_names(r.encrypted_credentials) if r.encrypted_credentials else [],
         )
         for r in rows
     ]
@@ -315,7 +332,7 @@ def reveal_credential(
     workspace_id: str = Depends(get_workspace_id),
     _role: str = Depends(require_workspace_role("admin")),
 ):
-    """Return decrypted credential fields — admin only."""
+    """Return decrypted credential fields — admin only. Every access is audit-logged."""
     q = db.query(Integration).filter(
         Integration.workspace_id == workspace_id,
         Integration.handle == handle,
@@ -325,6 +342,9 @@ def reveal_credential(
     row = q.first()
     if not row or not row.encrypted_credentials:
         raise HTTPException(status_code=404, detail="Credential not found")
+    audit(db, workspace_id, "credential.revealed",
+          resource_type="credential", resource_id=handle,
+          metadata={"service": row.service, "handle": handle, "environment_id": environment_id})
     return decrypt(row.encrypted_credentials)
 
 
@@ -649,3 +669,138 @@ def register_vercel_webhook(
 
     hook = r.json()
     return {"registered": True, "hook_id": hook.get("id"), "url": webhook_url, "existing": False}
+
+
+# ---------------------------------------------------------------------------
+# Credential connection test — lightweight liveness check per service
+# ---------------------------------------------------------------------------
+
+class CredentialTestRequest(BaseModel):
+    service: str        # github | slack | anthropic | linear | digitalocean | email
+    credentials: dict   # raw field values to test — never persisted
+
+
+@router.post("/test")
+def test_credential(
+    body: CredentialTestRequest,
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "editor")),
+):
+    """
+    Test whether the supplied credentials can reach the named service.
+    Credentials are used for this request only and are never stored.
+    Returns {"ok": true} or {"ok": false, "error": "<reason>"}.
+    """
+    svc = body.service.lower().strip()
+    creds = body.credentials
+
+    try:
+        if svc in ("github", "git"):
+            token = creds.get("token") or creds.get("api_key", "")
+            if not token:
+                return {"ok": False, "error": "Missing 'token' field"}
+            r = httpx.get(
+                "https://api.github.com/user",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+                timeout=10,
+            )
+            if r.status_code == 200:
+                return {"ok": True, "user": r.json().get("login", "")}
+            return {"ok": False, "error": f"GitHub returned {r.status_code}: {r.text[:200]}"}
+
+        elif svc == "slack":
+            token = creds.get("token") or creds.get("bot_token", "")
+            if not token:
+                return {"ok": False, "error": "Missing 'token' field"}
+            r = httpx.post(
+                "https://slack.com/api/auth.test",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=10,
+            )
+            data = r.json()
+            if data.get("ok"):
+                return {"ok": True, "team": data.get("team"), "user": data.get("user")}
+            return {"ok": False, "error": data.get("error", "auth.test failed")}
+
+        elif svc == "anthropic":
+            api_key = creds.get("api_key", "")
+            if not api_key:
+                return {"ok": False, "error": "Missing 'api_key' field"}
+            r = httpx.get(
+                "https://api.anthropic.com/v1/models",
+                headers={
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                },
+                timeout=10,
+            )
+            if r.status_code == 200:
+                return {"ok": True}
+            return {"ok": False, "error": f"Anthropic returned {r.status_code}: {r.text[:200]}"}
+
+        elif svc == "linear":
+            api_key = creds.get("api_key", "")
+            if not api_key:
+                return {"ok": False, "error": "Missing 'api_key' field"}
+            r = httpx.post(
+                "https://api.linear.app/graphql",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={"query": "{ viewer { id name } }"},
+                timeout=10,
+            )
+            data = r.json()
+            if "errors" not in data and data.get("data", {}).get("viewer"):
+                return {"ok": True, "user": data["data"]["viewer"].get("name", "")}
+            err = (
+                data.get("errors", [{}])[0].get("message", "GraphQL error")
+                if "errors" in data
+                else f"HTTP {r.status_code}"
+            )
+            return {"ok": False, "error": err}
+
+        elif svc in ("digitalocean", "do"):
+            token = creds.get("token") or creds.get("api_key", "")
+            if not token:
+                return {"ok": False, "error": "Missing 'token' field"}
+            r = httpx.get(
+                "https://api.digitalocean.com/v2/account",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=10,
+            )
+            if r.status_code == 200:
+                return {"ok": True, "email": r.json().get("account", {}).get("email", "")}
+            return {"ok": False, "error": f"DigitalOcean returned {r.status_code}: {r.text[:200]}"}
+
+        elif svc in ("email", "resend"):
+            resend_key = creds.get("resend_api_key") or creds.get("api_key", "")
+            if not resend_key:
+                return {"ok": False, "error": "Missing 'resend_api_key' field"}
+            r = httpx.get(
+                "https://api.resend.com/domains",
+                headers={"Authorization": f"Bearer {resend_key}"},
+                timeout=10,
+            )
+            if r.status_code == 200:
+                return {"ok": True}
+            return {"ok": False, "error": f"Resend returned {r.status_code}: {r.text[:200]}"}
+
+        else:
+            return {
+                "ok": False,
+                "error": (
+                    f"Unknown service '{svc}'. "
+                    "Supported: github, slack, anthropic, linear, digitalocean, email"
+                ),
+            }
+
+    except httpx.TimeoutException:
+        return {"ok": False, "error": f"Connection to {svc} timed out"}
+    except httpx.RequestError as exc:
+        return {"ok": False, "error": f"Could not reach {svc}: {exc}"}
