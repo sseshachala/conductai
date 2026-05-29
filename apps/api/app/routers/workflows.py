@@ -1,4 +1,5 @@
 import structlog
+from typing import Optional
 from uuid import UUID
 from fastapi import APIRouter, Body, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
