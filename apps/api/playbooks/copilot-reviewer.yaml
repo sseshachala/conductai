@@ -117,7 +117,15 @@ blocks:
 
       Output ONLY the following JSON on the last line:
         {"review_url": "<PR URL>", "critical": <count>, "warnings": <count>, "findings": <total count>}
-    next: record_outcome
+    next: has_critical
+
+  has_critical:
+    type: logic
+    label: Critical issues found?
+    condition: "{{review_pr.critical}} > 0"
+    next:
+      pass: check_existing_issue
+      fail: record_outcome
 
   record_outcome:
     type: memory
@@ -130,14 +138,6 @@ blocks:
       AI review: {{review_pr.critical}} critical, {{review_pr.warnings}} warnings
       URL: {{review_pr.review_url}}
     next: gate_merge
-
-  has_critical:
-    type: logic
-    label: Critical issues found?
-    condition: "{{review_pr.critical}} > 0"
-    next:
-      pass: check_existing_issue
-      fail: gate_merge
 
   check_existing_issue:
     type: brain
@@ -201,7 +201,7 @@ blocks:
 
       Output ONLY the following JSON on the last line:
         {"issue_url": "{{check_existing_issue.issue_url}}", "issue_number": {{check_existing_issue.issue_number}}}
-    next: gate_merge
+    next: record_outcome
 
   create_fix_issue:
     type: brain
@@ -237,7 +237,7 @@ blocks:
 
       Output ONLY the following JSON on the last line:
         {"issue_url": "<created issue URL>", "issue_number": <number>}
-    next: gate_merge
+    next: record_outcome
 
   gate_merge:
     type: approval

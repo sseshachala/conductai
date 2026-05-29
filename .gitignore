@@ -55,3 +55,4 @@ htmlcov/
 *.key
 *.p12
 .vercel
+.rundock/

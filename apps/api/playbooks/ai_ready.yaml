@@ -84,6 +84,7 @@ blocks:
 
   fetch_issue:
     type: tool
+    label: Fetch issue
     integration: github
     action: fetch_issue
     params:
@@ -94,6 +95,7 @@ blocks:
 
   create_droplet:
     type: tool
+    label: Create Droplet
     integration: digitalocean
     action: create_droplet
     params:
@@ -108,6 +110,7 @@ blocks:
 
   wait_droplet:
     type: tool
+    label: Wait for Droplet
     integration: digitalocean
     action: wait_for_droplet
     params:
@@ -117,6 +120,7 @@ blocks:
 
   implement:
     type: brain
+    label: Implement fix
     mode: agentic
     model: "{{inputs.model}}"
     runs_on:
@@ -215,6 +219,7 @@ blocks:
 
   notify:
     type: output
+    label: Notify completion
     output:
       via: both
       slack:
