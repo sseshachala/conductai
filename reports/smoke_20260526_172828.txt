@@ -1,0 +1,168 @@
+================================================================
+  Conduct Smoke Test
+  Project : DevOps
+  Repo    : sseshachala/conductai
+  PR      : none
+  Started : Tue May 26 17:28:28 CDT 2026
+================================================================
+
+
+── Step 1: Reset project 'DevOps' ──
+[33mProject 'DevOps' has no agents — nothing to reset.[0m
+
+── Step 2: Install all agents ──
+
+[1m▶ conduct install-all — 12 playbooks → project 'DevOps'[0m
+  repo: sseshachala/conductai
+
+
+[1mInstalling ⚡ Autopilot Quick…[0m
+  project:  DevOps
+  agent:    Autopilot Quick
+
+[32m✓ Agent installed:[0m Autopilot Quick  [90m(51ee62ea-ff3b-40a6-88b6-a80266b680c5)[0m
+[32m✓ GitHub webhook registered[0m on sseshachala/conductai
+
+  Run a test: [36mconduct test "Autopilot Quick"[0m
+
+
+[1mInstalling 🤖 Autopilot Full…[0m
+  project:  DevOps
+  agent:    Autopilot Full
+
+[32m✓ Agent installed:[0m Autopilot Full  [90m(3c47fa48-db74-40d4-ba1b-b01a5641bb19)[0m
+[32m✓ GitHub webhook registered[0m on sseshachala/conductai
+
+  Run a test: [36mconduct test "Autopilot Full"[0m
+
+
+[1mInstalling ✋ Autopilot Approved…[0m
+  project:  DevOps
+  agent:    Autopilot + Approval
+
+[32m✓ Agent installed:[0m Autopilot + Approval  [90m(d2462d46-d1a9-4d3e-80e4-d46e94db2662)[0m
+[32m✓ GitHub webhook registered[0m on sseshachala/conductai
+
+  Run a test: [36mconduct test "Autopilot + Approval"[0m
+
+
+[1mInstalling 🔍 Pr Reviewer…[0m
+  project:  DevOps
+  agent:    PR Reviewer
+
+[32m✓ Agent installed:[0m PR Reviewer  [90m(5b251f20-324a-495a-ae90-150d488f28a0)[0m
+[32m✓ GitHub webhook registered[0m on sseshachala/conductai
+
+  Run a test: [36mconduct test "PR Reviewer"[0m
+
+
+[1mInstalling 🚨 Ci Notify…[0m
+  project:  DevOps
+  agent:    CI Failure Alert
+
+[32m✓ Agent installed:[0m CI Failure Alert  [90m(1c3e0b87-2883-43d2-a9db-365109446aad)[0m
+[32m✓ GitHub webhook registered[0m on sseshachala/conductai
+
+  Run a test: [36mconduct test "CI Failure Alert"[0m
+
+
+[1mInstalling 🔥 Incident Responder…[0m
+  project:  DevOps
+  agent:    Incident Responder
+
+[32m✓ Agent installed:[0m Incident Responder  [90m(4ad0a84c-efdb-47b4-b8bd-9bf901d9fc35)[0m
+[32m✓ Target repo stored:[0m sseshachala/conductai
+
+  Run a test: [36mconduct test "Incident Responder"[0m
+
+
+[1mInstalling 📦 Dependency Updater…[0m
+  project:  DevOps
+  agent:    Dependency Updater
+
+[32m✓ Agent installed:[0m Dependency Updater  [90m(5af95c54-9449-4192-9d5f-b3174a34cba8)[0m
+[32m✓ Target repo stored:[0m sseshachala/conductai
+
+  Run a test: [36mconduct test "Dependency Updater"[0m
+
+
+[1mInstalling 📝 Release Notes…[0m
+  project:  DevOps
+  agent:    Release Notes
+
+[32m✓ Agent installed:[0m Release Notes  [90m(3307d5be-bdd8-4ba8-84d5-5180ac0dc82c)[0m
+[32m✓ GitHub webhook registered[0m on sseshachala/conductai
+
+  Run a test: [36mconduct test "Release Notes"[0m
+
+
+[1mInstalling 🏷 Issue Triage…[0m
+  project:  DevOps
+  agent:    Issue Triage
+
+[32m✓ Agent installed:[0m Issue Triage  [90m(112c136d-8bca-495c-8a00-1426cf280387)[0m
+[32m✓ GitHub webhook registered[0m on sseshachala/conductai
+
+  Run a test: [36mconduct test "Issue Triage"[0m
+
+
+[1mInstalling 🤖 Copilot Reviewer…[0m
+  project:  DevOps
+  agent:    Copilot / AI PR Reviewer
+
+[32m✓ Agent installed:[0m Copilot / AI PR Reviewer  [90m(18c30264-48cc-46fa-86c2-39506027789f)[0m
+[32m✓ GitHub webhook registered[0m on sseshachala/conductai
+
+  Run a test: [36mconduct test "Copilot / AI PR Reviewer"[0m
+
+
+[1mInstalling 🔒 Security Scanner…[0m
+  project:  DevOps
+  agent:    Security Scanner
+
+[32m✓ Agent installed:[0m Security Scanner  [90m(abcd983d-2420-4279-8f7b-aa32f08b0d38)[0m
+[32m✓ GitHub webhook registered[0m on sseshachala/conductai
+
+  Run a test: [36mconduct test "Security Scanner"[0m
+
+
+[1mInstalling 🛡️ Security Patch Updater…[0m
+  project:  DevOps
+  agent:    Security Patch Updater
+
+[32m✓ Agent installed:[0m Security Patch Updater  [90m(fed4cbd8-3417-49b3-ac5e-e0829687ccf8)[0m
+[32m✓ GitHub webhook registered[0m on sseshachala/conductai
+
+  Run a test: [36mconduct test "Security Patch Updater"[0m
+
+
+[1m──────────────────────────────────────────────────[0m
+[1m[32m12/12 installed[0m
+
+  [32m✓[0m  autopilot_quick
+  [32m✓[0m  autopilot_full
+  [32m✓[0m  autopilot_approved
+  [32m✓[0m  pr_reviewer
+  [32m✓[0m  ci_notify
+  [32m✓[0m  incident_responder
+  [32m✓[0m  dependency_updater
+  [32m✓[0m  release_notes
+  [32m✓[0m  issue_triage
+  [32m✓[0m  copilot_reviewer
+  [32m✓[0m  security_scanner
+  [32m✓[0m  security_patch_updater
+
+
+── Step 3: Run all tests ──
+
+[1m▶ conduct test [DevOps] — 12 agent(s)[0m
+
+[36m── Security Patch Updater[0m [90m(security_patch_updater)[0m
+  [90mrun: eb414db4-4c87-4c72-876d-42e49441d2f7[0m
+[31mStream 401: {"detail":"Authorization required"}[0m
+
+================================================================
+  Finished : Tue May 26 17:29:40 CDT 2026
+  Report   : ./scripts/../reports/smoke_20260526_172828.txt
+  Result   : SOME FAILED (exit 1)
+================================================================

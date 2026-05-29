@@ -10,9 +10,11 @@ from app.models.run_analytics_event import RunAnalyticsEvent
 from app.models.run_trace import RunTrace
 from app.models.audit_log import AuditLog
 from app.models.email_template import EmailTemplate
+from app.models.playbook_submission import PlaybookSubmission
 
 __all__ = [
     "Organization", "Workspace", "User", "WorkspaceUser", "Project",
     "Workflow", "WorkflowVersion", "Integration", "Run", "RunEvent",
     "RunAnalyticsEvent", "RunTrace", "AuditLog", "EmailTemplate",
+    "PlaybookSubmission",
 ]

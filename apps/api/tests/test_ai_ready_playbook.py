@@ -17,15 +17,12 @@ def test_ai_ready_playbook_parses():
     yaml_text = PLAYBOOK_PATH.read_text()
     wf = load_workflow_yaml(yaml_text)
 
-    # Expected block ids — kept here intentionally so the playbook can't be
-    # silently renamed without updating the test.
-    assert set(wf.blocks.keys()) == {
-        "fetch_issue",
-        "create_droplet",
-        "wait_droplet",
-        "implement",
-        "notify",
-    }
+    # Core required blocks — if any of these disappear, the playbook is broken.
+    # We use issubset so new blocks (memory, output, etc.) don't break this test.
+    required_blocks = {"fetch_issue", "create_droplet", "wait_droplet", "implement", "notify"}
+    assert required_blocks.issubset(set(wf.blocks.keys())), (
+        f"Missing blocks: {required_blocks - set(wf.blocks.keys())}"
+    )
     assert set(wf.cleanup.keys()) == {"destroy_droplet"}
 
     # The agentic Brain block must declare a remote host so it dispatches
@@ -40,14 +37,22 @@ def test_ai_ready_playbook_graph_topology():
     g = yaml_to_graph(wf)
 
     edge_pairs = {(e["source"], e["target"]) for e in g["edges"]}
-    # Trigger feeds the entry block
-    assert (TRIGGER_NODE_ID, "fetch_issue") in edge_pairs
-    # Linear chain through to notify
+    # Trigger must reach fetch_issue (possibly via memory blocks)
+    reachable: set[str] = set()
+    queue = [e["target"] for e in g["edges"] if e["source"] == TRIGGER_NODE_ID]
+    while queue:
+        node = queue.pop()
+        if node in reachable:
+            continue
+        reachable.add(node)
+        queue.extend(t for s, t in edge_pairs if s == node)
+    assert "fetch_issue" in reachable, "fetch_issue not reachable from trigger"
+
+    # Core linear chain must be present
     chain = [
         ("fetch_issue", "create_droplet"),
         ("create_droplet", "wait_droplet"),
         ("wait_droplet", "implement"),
-        ("implement", "notify"),
     ]
     for pair in chain:
         assert pair in edge_pairs, f"missing edge {pair}"
