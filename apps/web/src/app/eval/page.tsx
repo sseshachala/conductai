@@ -38,6 +38,14 @@ interface PlaybookEval {
   quality_score?: number
 }
 
+// Shape returned by POST /eval/run (full report)
+interface RunAllReport {
+  summary?: EvalSummary
+  playbooks?: PlaybookEval[]
+  grade_counts?: GradeCounts
+  top_playbooks?: TopPlaybook[]
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function getCookie(name: string): string | null {
@@ -58,6 +66,17 @@ const GRADE_STYLE: Record<string, { bg: string; text: string; bar: string; dot: 
 
 function gradeStyle(grade: string) {
   return GRADE_STYLE[grade] ?? { bg: "bg-stone-100", text: "text-stone-500", bar: "bg-stone-300", dot: "bg-stone-300" }
+}
+
+// ─── Spinner ─────────────────────────────────────────────────────────────────
+
+function Spinner() {
+  return (
+    <span
+      className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin"
+      aria-hidden="true"
+    />
+  )
 }
 
 function GradeBadge({ grade }: { grade: string }) {
@@ -268,6 +287,8 @@ function EvalContent({ getToken }: { getToken: (() => Promise<string | null>) | 
   const [playbooks, setPlaybooks] = useState<PlaybookEval[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [runningAll, setRunningAll] = useState(false)
+  const [runAllError, setRunAllError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -318,6 +339,53 @@ function EvalContent({ getToken }: { getToken: (() => Promise<string | null>) | 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  async function handleRunAll() {
+    setRunningAll(true)
+    setRunAllError(null)
+
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" }
+      if (getToken) {
+        const token = await getToken()
+        if (token) headers["Authorization"] = `Bearer ${token}`
+      }
+      const workspaceId = getCookie("delegator_project_id")
+      if (workspaceId) headers["X-Workspace-Id"] = workspaceId
+
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/eval/run`, {
+        method: "POST",
+        headers,
+      })
+
+      if (!res.ok) {
+        const hint =
+          res.status === 401 ? "Not authorised — check your session." :
+          res.status === 403 ? "Forbidden — admin or editor role required." :
+          `Run all failed with status ${res.status}.`
+        setRunAllError(hint)
+        return
+      }
+
+      const report: RunAllReport = await res.json()
+
+      // The POST /eval/run response is the full report.
+      // Extract summary and playbooks, normalising both possible shapes.
+      if (report.summary) {
+        setSummary(report.summary)
+      } else if (report.grade_counts && report.top_playbooks) {
+        setSummary({ grade_counts: report.grade_counts, top_playbooks: report.top_playbooks })
+      }
+
+      if (report.playbooks) {
+        setPlaybooks(report.playbooks)
+      }
+    } catch {
+      setRunAllError("Network error — could not reach the API.")
+    } finally {
+      setRunningAll(false)
+    }
+  }
+
   return (
     <AppShell>
       <div className="mx-auto max-w-4xl px-6 py-10">
@@ -328,7 +396,26 @@ function EvalContent({ getToken }: { getToken: (() => Promise<string | null>) | 
             <h1 className="text-xl font-semibold text-stone-900">Evals</h1>
             <p className="text-xs text-stone-400 mt-0.5">Playbook quality grades and failing criteria</p>
           </div>
+
+          {!loading && (
+            <button
+              type="button"
+              disabled={runningAll}
+              onClick={handleRunAll}
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-stone-900 text-white hover:bg-stone-700 transition-colors disabled:opacity-50"
+            >
+              {runningAll && <Spinner />}
+              {runningAll ? "Running…" : "Run all"}
+            </button>
+          )}
         </div>
+
+        {/* Inline run-all error */}
+        {runAllError && (
+          <div className="mb-6 rounded-xl border border-red-100 bg-red-50 px-4 py-3">
+            <p className="text-xs text-red-600">{runAllError}</p>
+          </div>
+        )}
 
         {loading ? (
           <LoadingSkeleton />
