@@ -354,7 +354,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
         <nav className="flex-1 px-2 py-3 overflow-y-auto space-y-0.5">
           <NavItem href="/dashboard" icon="◎" label="Dashboard" collapsed={collapsed} pathname={pathname} />
           <NavItem href="/marketplace" icon="📦" label="Playbooks" collapsed={collapsed} pathname={pathname} />
-          <NavItem href="/eval" icon="◈" label="Evals" collapsed={collapsed} pathname={pathname} />
+          <NavItem href="/eval" icon="◈" label="Quality" collapsed={collapsed} pathname={pathname} />
 
           <div className="pt-3">
             {!collapsed && (
