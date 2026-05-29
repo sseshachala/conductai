@@ -1,0 +1,401 @@
+slug: ai_ready
+description: >
+  AI Ready Autopilot scenarios. Covers codebases that need structured outputs,
+  improved documentation for AI consumption, context files, and metadata (positive)
+  as well as already AI-ready repos, non-push triggers, and archived repos (negative).
+scenarios:
+  - id: missing_llms_txt
+    label: Repo has no llms.txt — AI agent context file needed
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+      schedule: "0 9 * * 1"
+      scan_findings:
+        missing: ["llms.txt", "AGENTS.md"]
+        present: []
+    extra_assertions:
+      should_open_pr: true
+
+  - id: unstructured_api_responses
+    label: API returns unstructured text blobs — needs JSON schema
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+      schedule: "0 9 * * 1"
+      scan_findings:
+        unstructured_endpoints:
+          - "GET /api/runs/{id}/logs — returns plain text"
+          - "GET /api/summary — returns freeform string"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: missing_openapi_spec
+    label: No OpenAPI spec — LLM tools cannot discover endpoints
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/node-app
+        name: node-app
+        default_branch: main
+        clone_url: "https://github.com/eval-org/node-app.git"
+      schedule: "0 9 * * 1"
+      scan_findings:
+        missing: ["openapi.json", "/docs endpoint"]
+    extra_assertions:
+      should_open_pr: true
+
+  - id: poor_function_docstrings
+    label: Functions lack docstrings — poor AI context for code understanding
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+      schedule: "0 9 * * 1"
+      scan_findings:
+        docstring_coverage_pct: 12
+        threshold_pct: 70
+        top_missing_modules: ["app/routers/runs.py", "app/services/worker.py"]
+    extra_assertions:
+      should_open_pr: true
+
+  - id: missing_agents_md
+    label: No AGENTS.md file — AI agents lack project instructions
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/go-service
+        name: go-service
+        default_branch: main
+        clone_url: "https://github.com/eval-org/go-service.git"
+      schedule: "0 9 * * 1"
+      scan_findings:
+        missing: ["AGENTS.md", "CLAUDE.md"]
+    extra_assertions:
+      should_open_pr: true
+
+  - id: missing_type_hints
+    label: Python codebase lacks type hints — LLM tool calls will be error-prone
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+      schedule: "0 9 * * 1"
+      scan_findings:
+        type_hint_coverage_pct: 8
+        threshold_pct: 60
+    extra_assertions:
+      should_open_pr: true
+
+  - id: no_readme
+    label: Repository has no README — no context for AI agents
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/new-service
+        name: new-service
+        default_branch: main
+        clone_url: "https://github.com/eval-org/new-service.git"
+      schedule: "0 9 * * 1"
+      scan_findings:
+        missing: ["README.md", "llms.txt", "AGENTS.md"]
+    extra_assertions:
+      should_open_pr: true
+
+  - id: hardcoded_magic_numbers
+    label: Codebase full of magic numbers — no named constants for AI to reason about
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+      schedule: "0 9 * * 1"
+      scan_findings:
+        magic_number_count: 47
+        examples: ["86400", "3600", "0.85", "1024"]
+    extra_assertions:
+      should_open_pr: true
+
+  - id: no_error_types
+    label: API uses generic exceptions — AI cannot understand error taxonomy
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+      schedule: "0 9 * * 1"
+      scan_findings:
+        generic_exception_count: 34
+        custom_exception_types: 0
+        recommendation: "Define typed exception hierarchy"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: push_trigger_no_llms_txt
+    label: Push to main — no llms.txt detected, create it
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      ref: "refs/heads/main"
+      after: "push001abc123"
+      commits:
+        - id: "push001"
+          message: "feat: add new module"
+          modified: ["apps/api/app/services/new_module.py"]
+          author: {name: "Dev", email: "dev@example.com"}
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+      scan_findings:
+        missing: ["llms.txt"]
+    extra_assertions:
+      should_open_pr: true
+
+  - id: inconsistent_naming
+    label: Mixed naming conventions — AI tools confused by snake_case/camelCase mix
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/node-app
+        name: node-app
+        default_branch: main
+        clone_url: "https://github.com/eval-org/node-app.git"
+      schedule: "0 9 * * 1"
+      scan_findings:
+        naming_issues:
+          - "API returns camelCase but internal code uses snake_case"
+          - "Database columns use snake_case, API responses use camelCase — no transformer"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: missing_schema_validation
+    label: No input validation — LLM-generated inputs could be malformed
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/node-app
+        name: node-app
+        default_branch: main
+        clone_url: "https://github.com/eval-org/node-app.git"
+      schedule: "0 9 * * 1"
+      scan_findings:
+        unvalidated_endpoints: 8
+        recommendation: "Add Zod/Pydantic schema validation to all endpoints"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: no_changelog
+    label: No CHANGELOG.md — AI tools cannot track changes over time
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/go-service
+        name: go-service
+        default_branch: main
+        clone_url: "https://github.com/eval-org/go-service.git"
+      schedule: "0 9 * * 1"
+      scan_findings:
+        missing: ["CHANGELOG.md", "CHANGELOG"]
+    extra_assertions:
+      should_open_pr: true
+
+  - id: ai_unfriendly_architecture
+    label: God class with 2000 lines — needs decomposition for AI context window
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+      schedule: "0 9 * * 1"
+      scan_findings:
+        large_files:
+          - path: "apps/api/app/services/main_service.py"
+            line_count: 2847
+            class_count: 1
+    extra_assertions:
+      should_open_pr: true
+
+  - id: missing_test_descriptions
+    label: Tests lack descriptive names — AI cannot understand test intent
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+      schedule: "0 9 * * 1"
+      scan_findings:
+        poorly_named_tests:
+          - "test_1", "test_2", "test_fn", "test_x", "test_case_a"
+        recommendation: "Use descriptive test names following Given-When-Then convention"
+    extra_assertions:
+      should_open_pr: true
+
+  # ── Negative scenarios ────────────────────────────────────────────────────────
+
+  - id: already_ai_ready
+    label: "(negative) Repo already has llms.txt, AGENTS.md, OpenAPI spec — no PR"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/well-documented-app
+        name: well-documented-app
+        default_branch: main
+        clone_url: "https://github.com/eval-org/well-documented-app.git"
+      schedule: "0 9 * * 1"
+      scan_findings:
+        all_checks_passed: true
+        present: ["llms.txt", "AGENTS.md", "openapi.json", "README.md", "CHANGELOG.md"]
+
+  - id: archived_repo
+    label: "(negative) Archived repository — skip AI-ready audit"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/archived-old-project
+        name: archived-old-project
+        archived: true
+        default_branch: main
+        clone_url: "https://github.com/eval-org/archived-old-project.git"
+      schedule: "0 9 * * 1"
+
+  - id: pr_already_open
+    label: "(negative) AI-ready PR already open — no duplicate"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+      schedule: "0 9 * * 1"
+      existing_prs:
+        - title: "chore: add llms.txt and AGENTS.md for AI readiness"
+          state: open
+
+  - id: issue_event_wrong_trigger
+    label: "(negative) Issue opened event — not a scan trigger"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      issue:
+        number: 999
+        title: "Make our code AI-friendly"
+        body: "We should add better documentation for AI tools."
+        state: open
+        labels: []
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+
+  - id: feature_branch_push
+    label: "(negative) Push to feature branch — only scan on main"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      ref: "refs/heads/feat/new-module"
+      after: "featpush001abc"
+      commits:
+        - id: "featpush001"
+          message: "feat: add new module"
+          modified: ["apps/api/app/services/new_module.py"]
+          author: {name: "Dev", email: "dev@example.com"}
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+
+  - id: score_above_threshold
+    label: "(negative) AI-readiness score already 90/100 — no action needed"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/high-quality-api
+        name: high-quality-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/high-quality-api.git"
+      schedule: "0 9 * * 1"
+      scan_findings:
+        ai_readiness_score: 90
+        threshold: 80
+        all_critical_checks_passed: true

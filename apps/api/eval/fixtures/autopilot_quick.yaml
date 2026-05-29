@@ -1,0 +1,477 @@
+slug: autopilot_quick
+description: >
+  GitHub issue triggers for Autopilot Quick. Covers well-specified feature requests,
+  bug reports, and implementation tasks (positive) as well as closed issues,
+  wontfix-labeled, spam, non-opened events, and already-in-progress issues (negative).
+scenarios:
+  - id: simple_feature_request
+    label: Simple feature request — add new API endpoint
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 101
+        title: "Add GET /health endpoint"
+        body: "We need a /health endpoint that returns {status: ok, version: x.y.z} for load balancer checks."
+        html_url: "https://github.com/eval-org/eval-repo/issues/101"
+        state: open
+        labels: []
+        user: {login: product-manager}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: bug_fix_with_repro
+    label: Bug report with reproduction steps
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 102
+        title: "Fix: login returns 500 when email contains uppercase letters"
+        body: "Steps to reproduce:\n1. Register with Email@Example.com\n2. Try to log in\n3. See 500 error\n\nExpected: successful login\nActual: 500 Internal Server Error in auth.py:214"
+        html_url: "https://github.com/eval-org/eval-repo/issues/102"
+        state: open
+        labels: [{name: bug}]
+        user: {login: qa-engineer}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: add_unit_tests
+    label: Add missing unit tests for auth module
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: labeled
+      issue:
+        number: 103
+        title: "Add unit tests for auth/jwt.py"
+        body: "The jwt.py module has 0% test coverage. We need tests for encode_token(), decode_token(), and refresh_token()."
+        html_url: "https://github.com/eval-org/eval-repo/issues/103"
+        state: open
+        labels: [{name: autopilot-ready}]
+        user: {login: tech-lead}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: add_input_validation
+    label: Add input validation to user registration
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 104
+        title: "Add email and password validation to POST /users/register"
+        body: "Currently any string is accepted. Need: email format validation, password min 8 chars with 1 uppercase + 1 number, return 422 with field-level errors on failure."
+        html_url: "https://github.com/eval-org/eval-repo/issues/104"
+        state: open
+        labels: [{name: enhancement}]
+        user: {login: backend-dev}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: fix_off_by_one
+    label: Fix off-by-one error in pagination
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 105
+        title: "Pagination returns one extra item on last page"
+        body: "When fetching page 5 of 5 (20 items total, page_size=5), the API returns items 21-25 (empty/error) instead of items 16-20. Bug is in list_items() at api/resources.py:88."
+        html_url: "https://github.com/eval-org/eval-repo/issues/105"
+        state: open
+        labels: [{name: bug}]
+        user: {login: dev-user}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: add_rate_limiting
+    label: Add rate limiting to public API endpoints
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 106
+        title: "Add rate limiting: 100 req/min per IP on /api/v1/*"
+        body: "We need rate limiting on all public endpoints. Use Redis + sliding window. Return 429 with Retry-After header. Max 100 requests/minute per IP."
+        html_url: "https://github.com/eval-org/eval-repo/issues/106"
+        state: open
+        labels: [{name: security}, {name: autopilot-ready}]
+        user: {login: security-team}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: fix_null_pointer
+    label: Fix NullPointerException in order processing
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 107
+        title: "NullPointerException when order has no shipping address"
+        body: "Traceback:\n  File 'orders/processor.py', line 156, in process_order\n    shipping_cost = calculate_shipping(order.address.zip_code)\nAttributeError: 'NoneType' object has no attribute 'zip_code'\n\nRepro: create order without shipping address."
+        html_url: "https://github.com/eval-org/eval-repo/issues/107"
+        state: open
+        labels: [{name: bug}, {name: p1}]
+        user: {login: support-team}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: add_logging
+    label: Add structured logging to payment service
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 108
+        title: "Add structlog logging to payments/service.py"
+        body: "We need structured JSON logs for all payment events: charge_attempted, charge_succeeded, charge_failed, refund_issued. Include: amount, currency, user_id, transaction_id."
+        html_url: "https://github.com/eval-org/eval-repo/issues/108"
+        state: open
+        labels: [{name: observability}]
+        user: {login: platform-team}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: add_caching
+    label: Add Redis caching to product catalog endpoint
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 109
+        title: "Cache GET /products response in Redis for 5 minutes"
+        body: "Product catalog is queried 10k times/minute but changes rarely. Cache the full response in Redis with a 5-minute TTL. Invalidate on product create/update/delete."
+        html_url: "https://github.com/eval-org/eval-repo/issues/109"
+        state: open
+        labels: [{name: performance}]
+        user: {login: tech-lead}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: add_migration
+    label: Add database migration for new column
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 110
+        title: "Add 'deleted_at' column to users table for soft deletes"
+        body: "Add a nullable timestamp column 'deleted_at' to the users table. Update the User model. Add migration. Filter deleted users from all queries by default."
+        html_url: "https://github.com/eval-org/eval-repo/issues/110"
+        state: open
+        labels: [{name: database}]
+        user: {login: backend-dev}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: fix_timezone_bug
+    label: Fix timezone handling in date comparisons
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 111
+        title: "Subscription expiry check ignores timezone — fails for non-UTC users"
+        body: "is_expired() in subscriptions/models.py:45 compares datetime.now() (naive) with expires_at (UTC-aware). Fix: use datetime.now(timezone.utc) for comparison."
+        html_url: "https://github.com/eval-org/eval-repo/issues/111"
+        state: open
+        labels: [{name: bug}]
+        user: {login: dev-user}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: extract_helper_function
+    label: Extract repeated validation logic into shared helper
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: labeled
+      issue:
+        number: 112
+        title: "Refactor: extract email validation into utils/validators.py"
+        body: "Email validation is copy-pasted in 6 files. Extract into utils/validators.py::validate_email(). Update all call sites. Add tests."
+        html_url: "https://github.com/eval-org/eval-repo/issues/112"
+        state: open
+        labels: [{name: refactor}, {name: autopilot-ready}]
+        user: {login: tech-lead}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: add_cors_headers
+    label: Add CORS headers to API responses
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 113
+        title: "Add CORS support for frontend at app.example.com"
+        body: "Frontend at https://app.example.com is blocked by CORS. Add CORS middleware: allow origin https://app.example.com, methods GET/POST/PUT/DELETE, headers Content-Type/Authorization."
+        html_url: "https://github.com/eval-org/eval-repo/issues/113"
+        state: open
+        labels: [{name: enhancement}]
+        user: {login: frontend-dev}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: fix_memory_leak
+    label: Fix memory leak in background worker
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 114
+        title: "Memory leak in workers/email_sender.py — connection not closed"
+        body: "The email worker opens a new SMTP connection per message but never closes it. After ~1000 emails, the process OOMs. Fix: use contextmanager or connection pool. See workers/email_sender.py:send_email()."
+        html_url: "https://github.com/eval-org/eval-repo/issues/114"
+        state: open
+        labels: [{name: bug}, {name: performance}]
+        user: {login: ops-team}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: add_api_versioning
+    label: Add API versioning prefix to all routes
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 115
+        title: "Prefix all routes with /api/v1/"
+        body: "Current routes are /users, /products, etc. Need to add /api/v1/ prefix for versioning. Existing routes should redirect 301 to new paths for backward compatibility."
+        html_url: "https://github.com/eval-org/eval-repo/issues/115"
+        state: open
+        labels: [{name: enhancement}, {name: breaking-change}]
+        user: {login: tech-lead}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  # ── Negative scenarios ────────────────────────────────────────────────────────
+
+  - id: issue_already_closed
+    label: "(negative) Issue is already closed — no action needed"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: closed
+      issue:
+        number: 200
+        title: "Fix login bug"
+        body: "Already fixed in PR #88."
+        html_url: "https://github.com/eval-org/eval-repo/issues/200"
+        state: closed
+        labels: []
+        user: {login: dev-user}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: wontfix_issue
+    label: "(negative) Issue labeled wontfix — should be skipped"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: labeled
+      issue:
+        number: 201
+        title: "Support IE6"
+        body: "Please add IE6 support."
+        html_url: "https://github.com/eval-org/eval-repo/issues/201"
+        state: open
+        labels: [{name: wontfix}]
+        user: {login: user123}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: duplicate_issue
+    label: "(negative) Duplicate issue — should be skipped"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: labeled
+      issue:
+        number: 202
+        title: "Login broken"
+        body: "Login is not working."
+        html_url: "https://github.com/eval-org/eval-repo/issues/202"
+        state: open
+        labels: [{name: duplicate}]
+        user: {login: user456}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: vague_no_context
+    label: "(negative) Vague issue with no actionable content"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      issue:
+        number: 203
+        title: "fix it"
+        body: ""
+        html_url: "https://github.com/eval-org/eval-repo/issues/203"
+        state: open
+        labels: []
+        user: {login: anonymous-user}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: pr_event_not_issue
+    label: "(negative) PR event received instead of issue event"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      number: 204
+      pull_request:
+        number: 204
+        title: "feat: add something"
+        body: "Adds something new."
+        draft: false
+        user: {login: dev-user}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: issue_locked
+    label: "(negative) Locked issue — conversation locked, no action"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: locked
+      issue:
+        number: 205
+        title: "Performance improvements"
+        body: "This issue has been locked by a moderator."
+        html_url: "https://github.com/eval-org/eval-repo/issues/205"
+        state: open
+        locked: true
+        labels: []
+        user: {login: dev-user}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: question_label
+    label: "(negative) Issue labeled 'question' — not an actionable task"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      issue:
+        number: 206
+        title: "How do I configure the timeout?"
+        body: "Where is the timeout setting for API calls? I can't find it in the docs."
+        html_url: "https://github.com/eval-org/eval-repo/issues/206"
+        state: open
+        labels: [{name: question}]
+        user: {login: new-user}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"

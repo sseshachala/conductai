@@ -1,0 +1,478 @@
+slug: ci_notify
+description: >
+  CI Failure Alert scenarios. Covers test failures, build errors, lint failures,
+  deploy failures, and timeout events (positive) as well as successful runs,
+  cancelled jobs, draft PRs, and non-main branch failures (negative).
+scenarios:
+  - id: test_suite_failure
+    label: Unit test suite failure on main
+    tags: [positive]
+    expected_outcome_type: ci_alert_sent
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 9001
+        name: "CI / Test Suite"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "abc123def456"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/9001"
+        repository:
+          full_name: eval-org/eval-repo
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_send_alert: true
+
+  - id: build_failure
+    label: Build failure — compilation error
+    tags: [positive]
+    expected_outcome_type: ci_alert_sent
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 9002
+        name: "CI / Build"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "def456abc789"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/9002"
+        repository:
+          full_name: eval-org/eval-repo
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_send_alert: true
+
+  - id: lint_failure
+    label: Lint check failure — code style violations
+    tags: [positive]
+    expected_outcome_type: ci_alert_sent
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 9003
+        name: "CI / Lint"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "789abc123def"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/9003"
+        repository:
+          full_name: eval-org/eval-repo
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_send_alert: true
+
+  - id: deploy_failure
+    label: Deployment failure on production
+    tags: [positive]
+    expected_outcome_type: ci_alert_sent
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 9004
+        name: "Deploy / Production"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "111aaa222bbb"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/9004"
+        repository:
+          full_name: eval-org/eval-repo
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_send_alert: true
+
+  - id: integration_test_failure
+    label: Integration test failure against staging DB
+    tags: [positive]
+    expected_outcome_type: ci_alert_sent
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 9005
+        name: "CI / Integration Tests"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "222bbb333ccc"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/9005"
+        repository:
+          full_name: eval-org/eval-repo
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_send_alert: true
+
+  - id: security_scan_failure
+    label: Security vulnerability scan failure
+    tags: [positive, security]
+    expected_outcome_type: ci_alert_sent
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 9006
+        name: "CI / Security Scan"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "333ccc444ddd"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/9006"
+        repository:
+          full_name: eval-org/eval-repo
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_send_alert: true
+
+  - id: timeout_failure
+    label: CI job timed out after 60 minutes
+    tags: [positive]
+    expected_outcome_type: ci_alert_sent
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 9007
+        name: "CI / E2E Tests"
+        conclusion: timed_out
+        status: completed
+        head_branch: main
+        head_sha: "444ddd555eee"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/9007"
+        repository:
+          full_name: eval-org/eval-repo
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_send_alert: true
+
+  - id: type_check_failure
+    label: TypeScript type check failure
+    tags: [positive]
+    expected_outcome_type: ci_alert_sent
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 9008
+        name: "CI / Type Check"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "555eee666fff"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/9008"
+        repository:
+          full_name: eval-org/eval-repo
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_send_alert: true
+
+  - id: docker_build_failure
+    label: Docker image build failure
+    tags: [positive]
+    expected_outcome_type: ci_alert_sent
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 9009
+        name: "CI / Docker Build"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "666fff777aaa"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/9009"
+        repository:
+          full_name: eval-org/eval-repo
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_send_alert: true
+
+  - id: database_migration_failure
+    label: Database migration step failed in CI
+    tags: [positive]
+    expected_outcome_type: ci_alert_sent
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 9010
+        name: "CI / Migration Check"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "777aaa888bbb"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/9010"
+        repository:
+          full_name: eval-org/eval-repo
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_send_alert: true
+
+  - id: coverage_threshold_failure
+    label: Code coverage fell below 80% threshold
+    tags: [positive]
+    expected_outcome_type: ci_alert_sent
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 9011
+        name: "CI / Coverage Check"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "888bbb999ccc"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/9011"
+        repository:
+          full_name: eval-org/eval-repo
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_send_alert: true
+
+  - id: release_pipeline_failure
+    label: Release pipeline failed during publish step
+    tags: [positive]
+    expected_outcome_type: ci_alert_sent
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 9012
+        name: "Release / Publish"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "999ccc000ddd"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/9012"
+        repository:
+          full_name: eval-org/eval-repo
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_send_alert: true
+
+  - id: flaky_test_repeated_failure
+    label: Flaky test suite failed 3rd time this week on main
+    tags: [positive]
+    expected_outcome_type: ci_alert_sent
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 9013
+        name: "CI / Test Suite"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "aaabbbcccddd"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/9013"
+        repository:
+          full_name: eval-org/eval-repo
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_send_alert: true
+
+  - id: perf_benchmark_regression
+    label: Performance benchmark regressed by 40%
+    tags: [positive, performance]
+    expected_outcome_type: ci_alert_sent
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 9014
+        name: "CI / Performance Benchmark"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "bbbcccdddaaa"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/9014"
+        repository:
+          full_name: eval-org/eval-repo
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_send_alert: true
+
+  - id: dependency_audit_failure
+    label: npm audit found high-severity vulnerabilities
+    tags: [positive, security]
+    expected_outcome_type: ci_alert_sent
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 9015
+        name: "CI / Dependency Audit"
+        conclusion: failure
+        status: completed
+        head_branch: main
+        head_sha: "cccdddeeefff"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/9015"
+        repository:
+          full_name: eval-org/eval-repo
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+    extra_assertions:
+      should_send_alert: true
+
+  # ── Negative scenarios ────────────────────────────────────────────────────────
+
+  - id: ci_success
+    label: "(negative) CI passed successfully — no alert needed"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 9100
+        name: "CI / Test Suite"
+        conclusion: success
+        status: completed
+        head_branch: main
+        head_sha: "successhash01"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/9100"
+        repository:
+          full_name: eval-org/eval-repo
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+
+  - id: ci_cancelled
+    label: "(negative) CI run was cancelled manually — no alert"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 9101
+        name: "CI / Test Suite"
+        conclusion: cancelled
+        status: completed
+        head_branch: main
+        head_sha: "cancelledhash"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/9101"
+        repository:
+          full_name: eval-org/eval-repo
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+
+  - id: feature_branch_failure
+    label: "(negative) Feature branch CI failure — only alert on main"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 9102
+        name: "CI / Test Suite"
+        conclusion: failure
+        status: completed
+        head_branch: feat/experimental-feature
+        head_sha: "featurehash01"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/9102"
+        repository:
+          full_name: eval-org/eval-repo
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+
+  - id: workflow_still_running
+    label: "(negative) Workflow is still in_progress — no alert yet"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: requested
+      workflow_run:
+        id: 9103
+        name: "CI / Test Suite"
+        conclusion: null
+        status: in_progress
+        head_branch: main
+        head_sha: "runninghash01"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/9103"
+        repository:
+          full_name: eval-org/eval-repo
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+
+  - id: skipped_workflow
+    label: "(negative) Workflow was skipped — not a failure"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 9104
+        name: "CI / Deploy Staging"
+        conclusion: skipped
+        status: completed
+        head_branch: main
+        head_sha: "skippedhash01"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/9104"
+        repository:
+          full_name: eval-org/eval-repo
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+
+  - id: neutral_conclusion
+    label: "(negative) Neutral conclusion — not actionable"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 9105
+        name: "CI / Scheduled Scan"
+        conclusion: neutral
+        status: completed
+        head_branch: main
+        head_sha: "neutralhash01"
+        html_url: "https://github.com/eval-org/eval-repo/actions/runs/9105"
+        repository:
+          full_name: eval-org/eval-repo
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main

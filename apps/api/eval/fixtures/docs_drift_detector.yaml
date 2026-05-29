@@ -1,0 +1,477 @@
+slug: docs_drift_detector
+description: >
+  Docs Drift Detector scenarios. Covers pushes that change implementation without
+  updating corresponding docs (positive) as well as doc-only changes, non-main pushes,
+  and already-filed issues (negative).
+scenarios:
+  - id: api_endpoint_added_no_docs
+    label: New API endpoint added — no docs update in push
+    tags: [positive]
+    expected_outcome_type: docs_updated
+    trigger_payload:
+      ref: "refs/heads/main"
+      after: "api001abc123"
+      commits:
+        - id: "api001"
+          message: "feat: add GET /api/reports/summary endpoint"
+          modified: ["apps/api/app/routers/reports.py", "apps/api/app/schemas/reports.py"]
+          added: []
+          author: {name: "Alice", email: "alice@example.com"}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_file_issue: true
+
+  - id: config_option_added_no_readme
+    label: New env var added to config — README not updated
+    tags: [positive]
+    expected_outcome_type: docs_updated
+    trigger_payload:
+      ref: "refs/heads/main"
+      after: "cfg001abc123"
+      commits:
+        - id: "cfg001"
+          message: "feat: add RATE_LIMIT_RPM config option"
+          modified: ["apps/api/app/core/config.py", "apps/api/app/middleware/ratelimit.py"]
+          added: []
+          author: {name: "Bob", email: "bob@example.com"}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_file_issue: true
+
+  - id: cli_command_added_no_docs
+    label: New CLI command added — CLI reference docs not updated
+    tags: [positive]
+    expected_outcome_type: docs_updated
+    trigger_payload:
+      ref: "refs/heads/main"
+      after: "cli001abc123"
+      commits:
+        - id: "cli001"
+          message: "feat: add conduct run --dry-run flag"
+          modified: ["packages/conduct-cli/src/conduct_cli/main.py"]
+          added: ["packages/conduct-cli/src/conduct_cli/dry_run.py"]
+          author: {name: "Carol", email: "carol@example.com"}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_file_issue: true
+
+  - id: authentication_changed_no_docs
+    label: Auth flow changed — no update to authentication guide
+    tags: [positive]
+    expected_outcome_type: docs_updated
+    trigger_payload:
+      ref: "refs/heads/main"
+      after: "auth001abc123"
+      commits:
+        - id: "auth001"
+          message: "feat: switch from session tokens to JWT"
+          modified: [
+            "apps/api/app/core/auth.py",
+            "apps/api/app/routers/auth.py",
+            "apps/api/app/middleware/auth.py"
+          ]
+          added: []
+          author: {name: "Dave", email: "dave@example.com"}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_file_issue: true
+
+  - id: webhook_payload_changed
+    label: Webhook payload fields changed — integration docs stale
+    tags: [positive]
+    expected_outcome_type: docs_updated
+    trigger_payload:
+      ref: "refs/heads/main"
+      after: "wh001abc123"
+      commits:
+        - id: "wh001"
+          message: "feat: add workspace_id field to all webhook payloads"
+          modified: ["apps/api/app/services/webhook.py", "apps/api/app/schemas/webhook.py"]
+          added: []
+          author: {name: "Eve", email: "eve@example.com"}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_file_issue: true
+
+  - id: database_schema_changed
+    label: New table added — data model documentation not updated
+    tags: [positive]
+    expected_outcome_type: docs_updated
+    trigger_payload:
+      ref: "refs/heads/main"
+      after: "db001abc123"
+      commits:
+        - id: "db001"
+          message: "feat: add audit_log table for SOC 2 compliance"
+          added: ["apps/api/alembic/versions/0042_add_audit_log.py"]
+          modified: ["apps/api/app/models/audit.py"]
+          author: {name: "Frank", email: "frank@example.com"}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_file_issue: true
+
+  - id: playbook_dsl_changed
+    label: YAML DSL new block type added — playbook authoring guide stale
+    tags: [positive]
+    expected_outcome_type: docs_updated
+    trigger_payload:
+      ref: "refs/heads/main"
+      after: "dsl001abc123"
+      commits:
+        - id: "dsl001"
+          message: "feat: add conditional block type to playbook DSL"
+          modified: [
+            "apps/api/app/engine/blocks/conditional.py",
+            "apps/api/app/engine/parser.py"
+          ]
+          added: ["apps/api/app/engine/blocks/conditional.py"]
+          author: {name: "Grace", email: "grace@example.com"}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_file_issue: true
+
+  - id: error_codes_changed
+    label: New error codes added — error code reference not updated
+    tags: [positive]
+    expected_outcome_type: docs_updated
+    trigger_payload:
+      ref: "refs/heads/main"
+      after: "err001abc123"
+      commits:
+        - id: "err001"
+          message: "feat: add structured error codes ERR_4001 through ERR_4010"
+          modified: ["apps/api/app/core/errors.py", "apps/api/app/routers/error_handler.py"]
+          added: []
+          author: {name: "Henry", email: "henry@example.com"}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_file_issue: true
+
+  - id: sdk_method_added
+    label: New SDK method added — SDK docs not updated
+    tags: [positive]
+    expected_outcome_type: docs_updated
+    trigger_payload:
+      ref: "refs/heads/main"
+      after: "sdk001abc123"
+      commits:
+        - id: "sdk001"
+          message: "feat: add ConductClient.cancel_run() method"
+          modified: ["packages/conduct-sdk/src/client.py"]
+          added: ["packages/conduct-sdk/src/models/cancel.py"]
+          author: {name: "Iris", email: "iris@example.com"}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_file_issue: true
+
+  - id: rate_limits_changed
+    label: Rate limit values changed — API limits docs stale
+    tags: [positive]
+    expected_outcome_type: docs_updated
+    trigger_payload:
+      ref: "refs/heads/main"
+      after: "rl001abc123"
+      commits:
+        - id: "rl001"
+          message: "feat: increase authenticated rate limit from 100 to 1000 req/min"
+          modified: ["apps/api/app/middleware/ratelimit.py", "apps/api/app/core/config.py"]
+          added: []
+          author: {name: "Jack", email: "jack@example.com"}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_file_issue: true
+
+  - id: pagination_changed
+    label: Pagination format changed from offset to cursor — docs stale
+    tags: [positive]
+    expected_outcome_type: docs_updated
+    trigger_payload:
+      ref: "refs/heads/main"
+      after: "pg001abc123"
+      commits:
+        - id: "pg001"
+          message: "feat: switch pagination from offset/limit to cursor-based"
+          modified: [
+            "apps/api/app/routers/runs.py",
+            "apps/api/app/schemas/pagination.py"
+          ]
+          added: ["apps/api/app/utils/cursor.py"]
+          author: {name: "Kate", email: "kate@example.com"}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_file_issue: true
+
+  - id: multi_file_feature_no_docs
+    label: Large feature (8 files) — zero docs updates
+    tags: [positive]
+    expected_outcome_type: docs_updated
+    trigger_payload:
+      ref: "refs/heads/main"
+      after: "large001abc"
+      commits:
+        - id: "large001"
+          message: "feat: add workspace-level SAML SSO"
+          modified: [
+            "apps/api/app/routers/sso.py",
+            "apps/api/app/services/saml.py",
+            "apps/api/app/models/sso_config.py",
+            "apps/api/app/schemas/sso.py",
+            "apps/api/app/core/auth.py",
+            "apps/web/src/app/settings/sso/page.tsx"
+          ]
+          added: [
+            "apps/api/alembic/versions/0043_add_sso_config.py",
+            "apps/api/app/services/saml.py"
+          ]
+          author: {name: "Leo", email: "leo@example.com"}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_file_issue: true
+
+  - id: breaking_change_no_migration_guide
+    label: Breaking change in API response shape — no migration guide
+    tags: [positive]
+    expected_outcome_type: docs_updated
+    trigger_payload:
+      ref: "refs/heads/main"
+      after: "brk001abc123"
+      commits:
+        - id: "brk001"
+          message: "feat!: rename 'status' field to 'run_status' in all responses"
+          modified: [
+            "apps/api/app/schemas/runs.py",
+            "apps/api/app/routers/runs.py"
+          ]
+          added: []
+          author: {name: "Mia", email: "mia@example.com"}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_file_issue: true
+
+  - id: deployment_steps_changed
+    label: Deployment process changed — deploy guide not updated
+    tags: [positive]
+    expected_outcome_type: docs_updated
+    trigger_payload:
+      ref: "refs/heads/main"
+      after: "dep001abc123"
+      commits:
+        - id: "dep001"
+          message: "feat: add pgvector migration step to deploy checklist"
+          modified: [
+            "scripts/deploy.sh",
+            "apps/api/alembic/env.py"
+          ]
+          added: []
+          author: {name: "Nora", email: "nora@example.com"}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_file_issue: true
+
+  - id: new_integration_no_guide
+    label: New third-party integration added — no integration guide written
+    tags: [positive]
+    expected_outcome_type: docs_updated
+    trigger_payload:
+      ref: "refs/heads/main"
+      after: "int001abc123"
+      commits:
+        - id: "int001"
+          message: "feat: add Linear integration for issue syncing"
+          modified: []
+          added: [
+            "apps/api/app/integrations/linear.py",
+            "apps/api/app/routers/integrations/linear.py",
+            "apps/api/app/schemas/integrations/linear.py"
+          ]
+          author: {name: "Oscar", email: "oscar@example.com"}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_file_issue: true
+
+  # ── Negative scenarios ────────────────────────────────────────────────────────
+
+  - id: docs_only_change
+    label: "(negative) Only docs files changed — no drift to detect"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      ref: "refs/heads/main"
+      after: "docs001abc"
+      commits:
+        - id: "docs001"
+          message: "docs: update API reference with new endpoint descriptions"
+          modified: ["docs/api-reference.md", "docs/getting-started.md"]
+          added: []
+          author: {name: "Writer", email: "writer@example.com"}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: code_with_docs_updated
+    label: "(negative) Code changed but docs also updated — no drift"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      ref: "refs/heads/main"
+      after: "both001abc"
+      commits:
+        - id: "both001"
+          message: "feat: add /api/export endpoint with docs"
+          modified: [
+            "apps/api/app/routers/export.py",
+            "docs/api-reference.md",
+            "README.md"
+          ]
+          added: []
+          author: {name: "Diligent Dev", email: "dev@example.com"}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: feature_branch_push
+    label: "(negative) Push to feature branch — only check main"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      ref: "refs/heads/feat/new-integration"
+      after: "feat001abc"
+      commits:
+        - id: "feat001"
+          message: "feat: WIP integration work"
+          modified: ["apps/api/app/integrations/linear.py"]
+          added: []
+          author: {name: "Dev", email: "dev@example.com"}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: test_only_change
+    label: "(negative) Only test files changed — no docs required"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      ref: "refs/heads/main"
+      after: "test001abc"
+      commits:
+        - id: "test001"
+          message: "test: add coverage for auth module"
+          modified: ["tests/test_auth.py", "tests/conftest.py"]
+          added: ["tests/test_refresh_token.py"]
+          author: {name: "QA", email: "qa@example.com"}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: issue_already_open
+    label: "(negative) Docs drift issue already open — no duplicate"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      ref: "refs/heads/main"
+      after: "dup001abc"
+      commits:
+        - id: "dup001"
+          message: "feat: extend SAML SSO with Azure AD support"
+          modified: ["apps/api/app/services/saml.py"]
+          added: []
+          author: {name: "Dev", email: "dev@example.com"}
+      existing_issues:
+        - title: "Docs drift: SAML SSO integration guide not updated"
+          state: open
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: chore_only_change
+    label: "(negative) Chore commit only — no user-facing change to document"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      ref: "refs/heads/main"
+      after: "chore001abc"
+      commits:
+        - id: "chore001"
+          message: "chore: upgrade pydantic from v1 to v2 (internal refactor)"
+          modified: [
+            "apps/api/app/schemas/runs.py",
+            "apps/api/app/schemas/users.py",
+            "apps/api/requirements.txt"
+          ]
+          added: []
+          author: {name: "Refactorer", email: "rf@example.com"}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"

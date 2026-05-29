@@ -1,0 +1,464 @@
+slug: release_notes
+description: >
+  Release Notes Drafter scenarios. Covers release creation, tag pushes, and
+  merge-to-main events (positive) as well as draft releases, empty commits,
+  non-release branches, and delete events (negative).
+scenarios:
+  - id: release_created
+    label: GitHub release created — draft release notes
+    tags: [positive]
+    expected_outcome_type: release_notes_drafted
+    trigger_payload:
+      action: created
+      release:
+        id: 5001
+        tag_name: "v2.1.0"
+        name: "v2.1.0"
+        body: ""
+        draft: false
+        prerelease: false
+        html_url: "https://github.com/eval-org/eval-repo/releases/tag/v2.1.0"
+        target_commitish: main
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_draft_notes: true
+
+  - id: tag_push_semver
+    label: Semver tag pushed — generate release notes from commits
+    tags: [positive]
+    expected_outcome_type: release_notes_drafted
+    trigger_payload:
+      ref: "refs/tags/v1.5.2"
+      before: "0000000000000000000000000000000000000000"
+      after: "abc123def456789"
+      commits:
+        - id: "abc123"
+          message: "feat: add OAuth2 login"
+          author: {name: "Alice", email: "alice@example.com"}
+        - id: "def456"
+          message: "fix: correct token expiry calculation"
+          author: {name: "Bob", email: "bob@example.com"}
+        - id: "ghi789"
+          message: "docs: update API reference"
+          author: {name: "Carol", email: "carol@example.com"}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_draft_notes: true
+
+  - id: major_release
+    label: Major version release — v3.0.0 with breaking changes
+    tags: [positive]
+    expected_outcome_type: release_notes_drafted
+    trigger_payload:
+      action: created
+      release:
+        id: 5002
+        tag_name: "v3.0.0"
+        name: "v3.0.0 — Breaking Changes"
+        body: ""
+        draft: false
+        prerelease: false
+        html_url: "https://github.com/eval-org/eval-repo/releases/tag/v3.0.0"
+        target_commitish: main
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_draft_notes: true
+
+  - id: patch_release
+    label: Patch release — v2.0.1 with bugfixes only
+    tags: [positive]
+    expected_outcome_type: release_notes_drafted
+    trigger_payload:
+      action: created
+      release:
+        id: 5003
+        tag_name: "v2.0.1"
+        name: "v2.0.1"
+        body: ""
+        draft: false
+        prerelease: false
+        html_url: "https://github.com/eval-org/eval-repo/releases/tag/v2.0.1"
+        target_commitish: main
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_draft_notes: true
+
+  - id: prerelease_beta
+    label: Beta pre-release tag — v2.2.0-beta.1
+    tags: [positive]
+    expected_outcome_type: release_notes_drafted
+    trigger_payload:
+      action: created
+      release:
+        id: 5004
+        tag_name: "v2.2.0-beta.1"
+        name: "v2.2.0 Beta 1"
+        body: ""
+        draft: false
+        prerelease: true
+        html_url: "https://github.com/eval-org/eval-repo/releases/tag/v2.2.0-beta.1"
+        target_commitish: main
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_draft_notes: true
+
+  - id: merge_to_main_many_commits
+    label: 15-commit merge to main — generate weekly release notes
+    tags: [positive]
+    expected_outcome_type: release_notes_drafted
+    trigger_payload:
+      ref: "refs/heads/main"
+      before: "aaa000bbb111"
+      after: "ccc222ddd333"
+      commits:
+        - {id: "c001", message: "feat: add search API", author: {name: "Alice"}}
+        - {id: "c002", message: "feat: add export to CSV", author: {name: "Bob"}}
+        - {id: "c003", message: "fix: fix date parsing bug", author: {name: "Carol"}}
+        - {id: "c004", message: "fix: resolve memory leak in worker", author: {name: "Dave"}}
+        - {id: "c005", message: "perf: add Redis caching for search", author: {name: "Alice"}}
+        - {id: "c006", message: "docs: update API docs", author: {name: "Eve"}}
+        - {id: "c007", message: "chore: upgrade dependencies", author: {name: "Bot"}}
+        - {id: "c008", message: "test: add coverage for auth", author: {name: "Frank"}}
+        - {id: "c009", message: "feat: add two-factor authentication", author: {name: "Grace"}}
+        - {id: "c010", message: "fix: correct CORS headers", author: {name: "Henry"}}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_draft_notes: true
+
+  - id: hotfix_release
+    label: Hotfix release off release branch
+    tags: [positive]
+    expected_outcome_type: release_notes_drafted
+    trigger_payload:
+      action: created
+      release:
+        id: 5005
+        tag_name: "v2.0.2-hotfix"
+        name: "v2.0.2 Hotfix — Critical Security Fix"
+        body: ""
+        draft: false
+        prerelease: false
+        html_url: "https://github.com/eval-org/eval-repo/releases/tag/v2.0.2-hotfix"
+        target_commitish: release/2.0
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_draft_notes: true
+
+  - id: release_published
+    label: Release published event — update with final notes
+    tags: [positive]
+    expected_outcome_type: release_notes_drafted
+    trigger_payload:
+      action: published
+      release:
+        id: 5006
+        tag_name: "v1.9.0"
+        name: "v1.9.0"
+        body: "Initial draft notes here."
+        draft: false
+        prerelease: false
+        html_url: "https://github.com/eval-org/eval-repo/releases/tag/v1.9.0"
+        target_commitish: main
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_draft_notes: true
+
+  - id: minor_release_features
+    label: Minor release with 5 new features
+    tags: [positive]
+    expected_outcome_type: release_notes_drafted
+    trigger_payload:
+      action: created
+      release:
+        id: 5007
+        tag_name: "v2.3.0"
+        name: "v2.3.0"
+        body: ""
+        draft: false
+        prerelease: false
+        html_url: "https://github.com/eval-org/eval-repo/releases/tag/v2.3.0"
+        target_commitish: main
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_draft_notes: true
+
+  - id: first_release
+    label: First v1.0.0 release of the project
+    tags: [positive]
+    expected_outcome_type: release_notes_drafted
+    trigger_payload:
+      action: created
+      release:
+        id: 5008
+        tag_name: "v1.0.0"
+        name: "v1.0.0 — Initial Release"
+        body: ""
+        draft: false
+        prerelease: false
+        html_url: "https://github.com/eval-org/eval-repo/releases/tag/v1.0.0"
+        target_commitish: main
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_draft_notes: true
+
+  - id: rc_release
+    label: Release candidate — v2.4.0-rc.2
+    tags: [positive]
+    expected_outcome_type: release_notes_drafted
+    trigger_payload:
+      action: created
+      release:
+        id: 5009
+        tag_name: "v2.4.0-rc.2"
+        name: "v2.4.0 Release Candidate 2"
+        body: ""
+        draft: false
+        prerelease: true
+        html_url: "https://github.com/eval-org/eval-repo/releases/tag/v2.4.0-rc.2"
+        target_commitish: release/2.4
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_draft_notes: true
+
+  - id: security_release
+    label: Security-focused patch release
+    tags: [positive, security]
+    expected_outcome_type: release_notes_drafted
+    trigger_payload:
+      action: created
+      release:
+        id: 5010
+        tag_name: "v2.1.3"
+        name: "v2.1.3 — Security Update"
+        body: ""
+        draft: false
+        prerelease: false
+        html_url: "https://github.com/eval-org/eval-repo/releases/tag/v2.1.3"
+        target_commitish: main
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_draft_notes: true
+
+  - id: cli_tool_release
+    label: CLI tool release with new commands
+    tags: [positive]
+    expected_outcome_type: release_notes_drafted
+    trigger_payload:
+      action: created
+      release:
+        id: 5011
+        tag_name: "v0.9.0"
+        name: "v0.9.0 — New Commands"
+        body: ""
+        draft: false
+        prerelease: false
+        html_url: "https://github.com/eval-org/eval-repo/releases/tag/v0.9.0"
+        target_commitish: main
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_draft_notes: true
+
+  - id: api_release
+    label: API-only release with new endpoints
+    tags: [positive]
+    expected_outcome_type: release_notes_drafted
+    trigger_payload:
+      action: created
+      release:
+        id: 5012
+        tag_name: "api-v3.2.0"
+        name: "API v3.2.0"
+        body: ""
+        draft: false
+        prerelease: false
+        html_url: "https://github.com/eval-org/eval-repo/releases/tag/api-v3.2.0"
+        target_commitish: main
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_draft_notes: true
+
+  - id: release_with_existing_notes
+    label: Release with partial notes already written
+    tags: [positive]
+    expected_outcome_type: release_notes_drafted
+    trigger_payload:
+      action: edited
+      release:
+        id: 5013
+        tag_name: "v2.5.0"
+        name: "v2.5.0"
+        body: "## What's New\n- TBD"
+        draft: false
+        prerelease: false
+        html_url: "https://github.com/eval-org/eval-repo/releases/tag/v2.5.0"
+        target_commitish: main
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_draft_notes: true
+
+  # ── Negative scenarios ────────────────────────────────────────────────────────
+
+  - id: draft_release
+    label: "(negative) Draft release — not published yet, skip"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: created
+      release:
+        id: 6000
+        tag_name: "v2.6.0"
+        name: "v2.6.0 (Draft)"
+        body: ""
+        draft: true
+        prerelease: false
+        html_url: "https://github.com/eval-org/eval-repo/releases/tag/v2.6.0"
+        target_commitish: main
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: release_deleted
+    label: "(negative) Release deleted event — no action"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: deleted
+      release:
+        id: 6001
+        tag_name: "v2.0.0-bad"
+        name: "v2.0.0-bad"
+        body: "Accidentally published."
+        draft: false
+        prerelease: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: push_to_feature_branch
+    label: "(negative) Push to feature branch — not a release trigger"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      ref: "refs/heads/feat/new-feature"
+      before: "aaa000"
+      after: "bbb111"
+      commits:
+        - {id: "x001", message: "feat: work in progress", author: {name: "Alice"}}
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: empty_push_no_commits
+    label: "(negative) Push with no new commits — nothing to summarize"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      ref: "refs/heads/main"
+      before: "aaa000bbb111"
+      after: "aaa000bbb111"
+      commits: []
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: release_unpublished
+    label: "(negative) Release unpublished/converted to draft — no action"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: unpublished
+      release:
+        id: 6002
+        tag_name: "v2.7.0"
+        name: "v2.7.0"
+        body: "These notes are being retracted."
+        draft: false
+        prerelease: false
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: non_semver_tag
+    label: "(negative) Non-semver tag pushed — not a release"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      ref: "refs/tags/deploy-2026-05-29"
+      before: "0000000000000000000000000000000000000000"
+      after: "abc123"
+      commits: []
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"

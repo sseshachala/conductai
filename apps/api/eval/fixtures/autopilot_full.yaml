@@ -1,0 +1,615 @@
+slug: autopilot_full
+description: >
+  Autopilot Full scenarios. Covers complex multi-file implementations triggered by GitHub
+  issues — refactors, new services, migrations, test coverage (positive) as well as closed
+  issues, wontfix labels, vague titles, wrong event types, and locked issues (negative).
+scenarios:
+  - id: add_rate_limiting
+    label: Issue requesting rate limiting on API endpoints
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 301
+        title: "Add rate limiting to all API endpoints"
+        body: |
+          We're getting hammered by bots. Need to add rate limiting to the API.
+
+          Requirements:
+          - 100 req/min per IP for unauthenticated users
+          - 1000 req/min per authenticated user
+          - Return 429 with Retry-After header when exceeded
+          - Configurable via environment variable RATE_LIMIT_RPM
+        html_url: "https://github.com/eval-org/eval-repo/issues/301"
+        state: open
+        user:
+          login: backend-lead
+        labels:
+          - name: enhancement
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: database_migration_add_column
+    label: Issue to add audit_log columns to users table
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 302
+        title: "Add created_by and updated_by audit columns to users table"
+        body: |
+          For compliance we need to track who created/updated each record.
+
+          Schema changes needed:
+          - users table: add created_by UUID FK, updated_by UUID FK
+          - Add migration file
+          - Update all INSERT/UPDATE queries to populate these fields
+          - Update User model/schema
+        html_url: "https://github.com/eval-org/eval-repo/issues/302"
+        state: open
+        user:
+          login: compliance-lead
+        labels:
+          - name: enhancement
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: extract_email_service
+    label: Refactor — extract email sending into a dedicated service
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 303
+        title: "Refactor: extract email logic into EmailService class"
+        body: |
+          Email sending is scattered across 8 different modules. We need a single
+          EmailService that handles:
+          - SMTP and SendGrid backends
+          - Retry with exponential backoff
+          - Template rendering via Jinja2
+          - Unsubscribe link injection
+
+          All existing callers should be updated to use EmailService.
+        html_url: "https://github.com/eval-org/eval-repo/issues/303"
+        state: open
+        user:
+          login: senior-dev
+        labels:
+          - name: refactor
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: add_openapi_docs
+    label: Add OpenAPI spec generation to FastAPI app
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 304
+        title: "Generate OpenAPI spec for all API endpoints"
+        body: |
+          We need machine-readable API docs.
+
+          - Add Pydantic response models to all route handlers
+          - Ensure all request/response schemas are fully documented
+          - Add summary and description to each endpoint
+          - Export openapi.json via /openapi.json route
+          - Generate docs at /docs and /redoc
+        html_url: "https://github.com/eval-org/eval-repo/issues/304"
+        state: open
+        user:
+          login: api-team-lead
+        labels:
+          - name: documentation
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: add_redis_caching
+    label: Add Redis caching layer to slow API endpoints
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 305
+        title: "Add Redis caching to /api/reports and /api/analytics endpoints"
+        body: |
+          These endpoints are doing expensive DB aggregations on every request.
+
+          - Cache results in Redis with 5 minute TTL
+          - Use cache key: {endpoint}:{workspace_id}:{params_hash}
+          - Invalidate cache on relevant data mutations
+          - Add CACHE_TTL_SECONDS environment variable
+          - Add cache hit/miss logging
+        html_url: "https://github.com/eval-org/eval-repo/issues/305"
+        state: open
+        user:
+          login: platform-engineer
+        labels:
+          - name: performance
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: implement_webhook_retry
+    label: Implement exponential backoff retry for outgoing webhooks
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 306
+        title: "Webhook deliveries should retry with exponential backoff"
+        body: |
+          Currently if a webhook endpoint returns non-2xx, we drop the event.
+
+          Requirements:
+          - Retry up to 5 times
+          - Backoff: 1s, 2s, 4s, 8s, 16s
+          - Add webhook_delivery_logs table to track attempts
+          - Dead-letter queue after all retries exhausted
+          - Alerting when dead-letter queue exceeds threshold
+        html_url: "https://github.com/eval-org/eval-repo/issues/306"
+        state: open
+        user:
+          login: integrations-lead
+        labels:
+          - name: reliability
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: add_test_coverage
+    label: Add comprehensive test suite for auth module
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 307
+        title: "Auth module has 12% test coverage — bring to 80%+"
+        body: |
+          The auth module is critical but barely tested. Need to add:
+          - Unit tests for JWT encode/decode
+          - Unit tests for password hashing and verification
+          - Integration tests for login, logout, refresh token flows
+          - Tests for token expiry and invalid token handling
+          - Tests for rate limiting on /auth endpoints
+        html_url: "https://github.com/eval-org/eval-repo/issues/307"
+        state: open
+        user:
+          login: qa-lead
+        labels:
+          - name: testing
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: migrate_to_postgres_jsonb
+    label: Migrate JSON storage columns to JSONB for better indexing
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 308
+        title: "Migrate settings and metadata columns from JSON to JSONB"
+        body: |
+          We're doing a lot of JSON field queries that could benefit from GIN indexing.
+
+          - Migrate users.settings, workspaces.config, runs.metadata to JSONB
+          - Add GIN indexes on frequently queried JSON fields
+          - Write Alembic migration
+          - Test migration on staging with production data snapshot
+        html_url: "https://github.com/eval-org/eval-repo/issues/308"
+        state: open
+        user:
+          login: data-engineer
+        labels:
+          - name: performance
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: add_multi_tenancy
+    label: Add workspace-level data isolation for multi-tenancy
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 309
+        title: "Implement row-level security for workspace isolation"
+        body: |
+          We need to ensure workspace data isolation.
+
+          - Add workspace_id to all resource tables
+          - Implement PostgreSQL RLS policies
+          - Add middleware to set current workspace context on each request
+          - Audit all queries to ensure they include workspace_id filter
+          - Add integration tests to verify cross-workspace data leakage is impossible
+        html_url: "https://github.com/eval-org/eval-repo/issues/309"
+        state: open
+        user:
+          login: security-lead
+        labels:
+          - name: security
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: add_observability
+    label: Add OpenTelemetry tracing across all services
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 310
+        title: "Add OpenTelemetry distributed tracing"
+        body: |
+          We're flying blind on production performance issues.
+
+          - Instrument FastAPI app with opentelemetry-sdk
+          - Add trace context propagation for async background tasks
+          - Instrument database queries with sqlalchemy instrumentation
+          - Export traces to Grafana Tempo via OTLP
+          - Add span attributes for workspace_id, run_id on every trace
+        html_url: "https://github.com/eval-org/eval-repo/issues/310"
+        state: open
+        user:
+          login: sre-team
+        labels:
+          - name: observability
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: implement_csv_export
+    label: Add CSV export for run history and analytics
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 311
+        title: "Export run history to CSV"
+        body: |
+          Customer request: ability to export their run history as CSV.
+
+          - Add GET /api/runs/export endpoint
+          - Include: run_id, playbook, status, started_at, duration, outcome
+          - Support date range filtering
+          - Stream response for large exports (>10k rows)
+          - Add to dashboard UI with Export button
+        html_url: "https://github.com/eval-org/eval-repo/issues/311"
+        state: open
+        user:
+          login: product-manager
+        labels:
+          - name: enhancement
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: refactor_error_handling
+    label: Standardise error handling across all API endpoints
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 312
+        title: "Standardize error response format across all endpoints"
+        body: |
+          Currently each endpoint returns errors in different formats. Need to standardize:
+
+          - Create ErrorResponse Pydantic model: {code, message, details}
+          - Add global exception handler in FastAPI
+          - Map all exception types to appropriate HTTP status codes
+          - Add request_id to all error responses for tracing
+          - Update API docs to document error schemas
+        html_url: "https://github.com/eval-org/eval-repo/issues/312"
+        state: open
+        user:
+          login: api-architect
+        labels:
+          - name: refactor
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: add_two_factor_auth
+    label: Implement TOTP-based two-factor authentication
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 313
+        title: "Add two-factor authentication (TOTP) support"
+        body: |
+          Enterprise customers are requiring 2FA for compliance.
+
+          - Add TOTP secret generation per user (pyotp)
+          - QR code endpoint for authenticator app setup
+          - Verify TOTP on login when 2FA is enabled
+          - Backup recovery codes (10 one-time codes)
+          - Admin API to enforce 2FA for all workspace members
+        html_url: "https://github.com/eval-org/eval-repo/issues/313"
+        state: open
+        user:
+          login: security-engineer
+        labels:
+          - name: security
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: add_background_job_queue
+    label: Replace sync task execution with async job queue
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 314
+        title: "Move long-running tasks to async job queue (Celery/ARQ)"
+        body: |
+          Several API endpoints timeout because they do synchronous heavy work.
+
+          - Add ARQ job queue backed by Redis
+          - Move: report generation, CSV export, dependency scans to background jobs
+          - Add /api/jobs/{job_id} status polling endpoint
+          - Return 202 Accepted with job_id for async endpoints
+          - Add job progress and result storage with 24h TTL
+        html_url: "https://github.com/eval-org/eval-repo/issues/314"
+        state: open
+        user:
+          login: backend-architect
+        labels:
+          - name: performance
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: implement_search
+    label: Add full-text search across run history and playbooks
+    tags: [positive]
+    expected_outcome_type: pr_opened
+    trigger_payload:
+      action: opened
+      issue:
+        number: 315
+        title: "Add full-text search to run history and playbook browser"
+        body: |
+          Users can't find old runs. Need search.
+
+          - PostgreSQL tsvector full-text search on run logs and playbook descriptions
+          - Search endpoint: GET /api/search?q=...&type=runs|playbooks
+          - Ranked results by relevance
+          - Snippet highlighting in results
+          - Index with GIN for performance
+        html_url: "https://github.com/eval-org/eval-repo/issues/315"
+        state: open
+        user:
+          login: product-manager
+        labels:
+          - name: enhancement
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+    extra_assertions:
+      should_open_pr: true
+
+  # ── Negative scenarios ────────────────────────────────────────────────────────
+
+  - id: issue_closed
+    label: "(negative) Issue is closed — no PR should be opened"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      issue:
+        number: 400
+        title: "Add caching (already done)"
+        body: "This was resolved in #289."
+        state: closed
+        user:
+          login: dev
+        labels:
+          - name: wontfix
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: wontfix_label
+    label: "(negative) Issue labelled wontfix — skip"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      issue:
+        number: 401
+        title: "Support Internet Explorer 11"
+        body: "Please add IE11 support."
+        state: open
+        user:
+          login: enterprise-user
+        labels:
+          - name: wontfix
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: vague_issue_no_body
+    label: "(negative) Vague issue with no body — insufficient context to implement"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      issue:
+        number: 402
+        title: "make it faster"
+        body: ""
+        state: open
+        user:
+          login: random-user
+        labels: []
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: issue_comment_event
+    label: "(negative) Issue comment added — not an issue opened event"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: created
+      comment:
+        id: 9999
+        body: "Can you also add dark mode?"
+      issue:
+        number: 301
+        title: "Add rate limiting"
+        state: open
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: issue_labeled_event
+    label: "(negative) Issue labeled event — not a trigger"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: labeled
+      issue:
+        number: 302
+        title: "Add audit columns"
+        state: open
+        labels:
+          - name: enhancement
+      label:
+        name: enhancement
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: locked_issue
+    label: "(negative) Locked issue — should not attempt implementation"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      issue:
+        number: 403
+        title: "Remove all rate limits"
+        body: "Rate limits are annoying."
+        state: open
+        locked: true
+        user:
+          login: troll-user
+        labels: []
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"
+
+  - id: question_issue
+    label: "(negative) Issue is a question not a task — no implementation"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      issue:
+        number: 404
+        title: "How do I configure rate limiting?"
+        body: "I want to know how the rate limiting works."
+        state: open
+        user:
+          login: new-user
+        labels:
+          - name: question
+      repository:
+        full_name: eval-org/eval-repo
+        name: eval-repo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/eval-repo.git"

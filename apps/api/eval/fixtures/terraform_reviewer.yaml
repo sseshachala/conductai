@@ -1,0 +1,483 @@
+slug: terraform_reviewer
+description: >
+  Terraform Plan Reviewer scenarios. Covers PRs with .tf file changes including
+  destructive changes, security group misconfigurations, and cost-impacting
+  resources (positive) as well as non-terraform PRs, no-op plans, and
+  closed events (negative).
+scenarios:
+  - id: ec2_instance_added
+    label: PR adds new EC2 instance with Terraform
+    tags: [positive]
+    expected_outcome_type: terraform_reviewed
+    trigger_payload:
+      action: opened
+      number: 501
+      pull_request:
+        number: 501
+        title: "infra: add production EC2 instance"
+        body: "Adds a t3.large EC2 instance for the production API server."
+        html_url: "https://github.com/eval-org/infra/pull/501"
+        head: {ref: infra/prod-ec2, sha: "terraform001"}
+        base: {ref: main}
+        user: {login: devops-eng}
+        draft: false
+      repository:
+        full_name: eval-org/infra
+        name: infra
+        clone_url: "https://github.com/eval-org/infra.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: security_group_open_to_world
+    label: Security group opens port 22 to 0.0.0.0/0
+    tags: [positive, security]
+    expected_outcome_type: terraform_reviewed
+    trigger_payload:
+      action: opened
+      number: 502
+      pull_request:
+        number: 502
+        title: "infra: add SSH access to bastion"
+        body: "Opens SSH access for debugging. cidr_blocks = [\"0.0.0.0/0\"]"
+        html_url: "https://github.com/eval-org/infra/pull/502"
+        head: {ref: infra/bastion-ssh, sha: "terraform002"}
+        base: {ref: main}
+        user: {login: junior-devops}
+        draft: false
+      repository:
+        full_name: eval-org/infra
+        name: infra
+        clone_url: "https://github.com/eval-org/infra.git"
+    extra_assertions:
+      should_post_review: true
+      expect_critical_findings: true
+
+  - id: rds_deletion_protection_disabled
+    label: PR disables RDS deletion protection
+    tags: [positive, security]
+    expected_outcome_type: terraform_reviewed
+    trigger_payload:
+      action: opened
+      number: 503
+      pull_request:
+        number: 503
+        title: "infra: update RDS config for staging"
+        body: "Sets deletion_protection = false on staging RDS for easier teardown."
+        html_url: "https://github.com/eval-org/infra/pull/503"
+        head: {ref: infra/rds-staging-update, sha: "terraform003"}
+        base: {ref: main}
+        user: {login: devops-eng}
+        draft: false
+      repository:
+        full_name: eval-org/infra
+        name: infra
+        clone_url: "https://github.com/eval-org/infra.git"
+    extra_assertions:
+      should_post_review: true
+      expect_critical_findings: true
+
+  - id: s3_bucket_public_acl
+    label: S3 bucket configured with public-read ACL
+    tags: [positive, security]
+    expected_outcome_type: terraform_reviewed
+    trigger_payload:
+      action: opened
+      number: 504
+      pull_request:
+        number: 504
+        title: "infra: add public assets S3 bucket"
+        body: "Creates S3 bucket with acl = \"public-read\" for static assets."
+        html_url: "https://github.com/eval-org/infra/pull/504"
+        head: {ref: infra/public-assets-bucket, sha: "terraform004"}
+        base: {ref: main}
+        user: {login: devops-eng}
+        draft: false
+      repository:
+        full_name: eval-org/infra
+        name: infra
+        clone_url: "https://github.com/eval-org/infra.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: database_resource_destroyed
+    label: Plan destroys production RDS instance
+    tags: [positive]
+    expected_outcome_type: terraform_reviewed
+    trigger_payload:
+      action: opened
+      number: 505
+      pull_request:
+        number: 505
+        title: "infra: migrate to Aurora"
+        body: "Replaces RDS MySQL with Aurora. Plan includes destroying existing DB."
+        html_url: "https://github.com/eval-org/infra/pull/505"
+        head: {ref: infra/aurora-migration, sha: "terraform005"}
+        base: {ref: main}
+        user: {login: senior-devops}
+        draft: false
+      repository:
+        full_name: eval-org/infra
+        name: infra
+        clone_url: "https://github.com/eval-org/infra.git"
+    extra_assertions:
+      should_post_review: true
+      expect_critical_findings: true
+
+  - id: iam_wildcard_permissions
+    label: IAM role with wildcard Action and Resource
+    tags: [positive, security]
+    expected_outcome_type: terraform_reviewed
+    trigger_payload:
+      action: opened
+      number: 506
+      pull_request:
+        number: 506
+        title: "infra: add IAM role for lambda"
+        body: "Creates Lambda execution role. actions = [\"*\"], resources = [\"*\"] for now."
+        html_url: "https://github.com/eval-org/infra/pull/506"
+        head: {ref: infra/lambda-iam, sha: "terraform006"}
+        base: {ref: main}
+        user: {login: devops-eng}
+        draft: false
+      repository:
+        full_name: eval-org/infra
+        name: infra
+        clone_url: "https://github.com/eval-org/infra.git"
+    extra_assertions:
+      should_post_review: true
+      expect_critical_findings: true
+
+  - id: large_cost_increase
+    label: Plan adds resources estimated at +$5000/month
+    tags: [positive]
+    expected_outcome_type: terraform_reviewed
+    trigger_payload:
+      action: opened
+      number: 507
+      pull_request:
+        number: 507
+        title: "infra: scale up to 10-node EKS cluster"
+        body: "Scales EKS from 2 to 10 nodes (m5.2xlarge). Significant cost increase."
+        html_url: "https://github.com/eval-org/infra/pull/507"
+        head: {ref: infra/eks-scale-up, sha: "terraform007"}
+        base: {ref: main}
+        user: {login: senior-devops}
+        draft: false
+      repository:
+        full_name: eval-org/infra
+        name: infra
+        clone_url: "https://github.com/eval-org/infra.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: encryption_disabled
+    label: EBS volume created without encryption
+    tags: [positive, security]
+    expected_outcome_type: terraform_reviewed
+    trigger_payload:
+      action: opened
+      number: 508
+      pull_request:
+        number: 508
+        title: "infra: add data volume for media storage"
+        body: "Adds 500GB EBS volume. encrypted = false for performance."
+        html_url: "https://github.com/eval-org/infra/pull/508"
+        head: {ref: infra/data-volume, sha: "terraform008"}
+        base: {ref: main}
+        user: {login: devops-eng}
+        draft: false
+      repository:
+        full_name: eval-org/infra
+        name: infra
+        clone_url: "https://github.com/eval-org/infra.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: vpc_peering_added
+    label: New VPC peering connection added
+    tags: [positive]
+    expected_outcome_type: terraform_reviewed
+    trigger_payload:
+      action: opened
+      number: 509
+      pull_request:
+        number: 509
+        title: "infra: add VPC peering between prod and data VPCs"
+        body: "Enables direct routing between production and data warehouse VPCs."
+        html_url: "https://github.com/eval-org/infra/pull/509"
+        head: {ref: infra/vpc-peering, sha: "terraform009"}
+        base: {ref: main}
+        user: {login: senior-devops}
+        draft: false
+      repository:
+        full_name: eval-org/infra
+        name: infra
+        clone_url: "https://github.com/eval-org/infra.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: cloudfront_distribution
+    label: New CloudFront distribution with custom cache policies
+    tags: [positive]
+    expected_outcome_type: terraform_reviewed
+    trigger_payload:
+      action: opened
+      number: 510
+      pull_request:
+        number: 510
+        title: "infra: add CloudFront CDN for static assets"
+        body: "Adds CloudFront distribution with custom origin and cache behaviors."
+        html_url: "https://github.com/eval-org/infra/pull/510"
+        head: {ref: infra/cloudfront-cdn, sha: "terraform010"}
+        base: {ref: main}
+        user: {login: devops-eng}
+        draft: false
+      repository:
+        full_name: eval-org/infra
+        name: infra
+        clone_url: "https://github.com/eval-org/infra.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: terraform_variable_hardcoded
+    label: PR hardcodes secrets as Terraform variables
+    tags: [positive, security]
+    expected_outcome_type: terraform_reviewed
+    trigger_payload:
+      action: opened
+      number: 511
+      pull_request:
+        number: 511
+        title: "infra: add DB password to variables.tf"
+        body: "Sets db_password default in variables.tf for convenience."
+        html_url: "https://github.com/eval-org/infra/pull/511"
+        head: {ref: infra/db-vars, sha: "terraform011"}
+        base: {ref: main}
+        user: {login: junior-devops}
+        draft: false
+      repository:
+        full_name: eval-org/infra
+        name: infra
+        clone_url: "https://github.com/eval-org/infra.git"
+    extra_assertions:
+      should_post_review: true
+      expect_critical_findings: true
+
+  - id: multi_region_deployment
+    label: Infrastructure expanded to second AWS region
+    tags: [positive]
+    expected_outcome_type: terraform_reviewed
+    trigger_payload:
+      action: opened
+      number: 512
+      pull_request:
+        number: 512
+        title: "infra: add eu-west-1 region deployment"
+        body: "Expands infrastructure to EU region for GDPR compliance."
+        html_url: "https://github.com/eval-org/infra/pull/512"
+        head: {ref: infra/eu-region, sha: "terraform012"}
+        base: {ref: main}
+        user: {login: senior-devops}
+        draft: false
+      repository:
+        full_name: eval-org/infra
+        name: infra
+        clone_url: "https://github.com/eval-org/infra.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: kubernetes_rbac_change
+    label: Kubernetes RBAC permissions broadened
+    tags: [positive, security]
+    expected_outcome_type: terraform_reviewed
+    trigger_payload:
+      action: opened
+      number: 513
+      pull_request:
+        number: 513
+        title: "infra: update k8s ClusterRole for service account"
+        body: "Adds verbs [\"*\"] to service account cluster role for debugging."
+        html_url: "https://github.com/eval-org/infra/pull/513"
+        head: {ref: infra/k8s-rbac, sha: "terraform013"}
+        base: {ref: main}
+        user: {login: devops-eng}
+        draft: false
+      repository:
+        full_name: eval-org/infra
+        name: infra
+        clone_url: "https://github.com/eval-org/infra.git"
+    extra_assertions:
+      should_post_review: true
+
+  - id: resource_rename_forces_replace
+    label: Resource rename forces destroy+create in plan
+    tags: [positive]
+    expected_outcome_type: terraform_reviewed
+    trigger_payload:
+      action: opened
+      number: 514
+      pull_request:
+        number: 514
+        title: "infra: rename prod-db to production-database"
+        body: "Renames the RDS identifier from prod-db to production-database for clarity."
+        html_url: "https://github.com/eval-org/infra/pull/514"
+        head: {ref: infra/rename-db, sha: "terraform014"}
+        base: {ref: main}
+        user: {login: devops-eng}
+        draft: false
+      repository:
+        full_name: eval-org/infra
+        name: infra
+        clone_url: "https://github.com/eval-org/infra.git"
+    extra_assertions:
+      should_post_review: true
+      expect_critical_findings: true
+
+  - id: tagging_policy_added
+    label: Required tags added to all resources
+    tags: [positive]
+    expected_outcome_type: terraform_reviewed
+    trigger_payload:
+      action: opened
+      number: 515
+      pull_request:
+        number: 515
+        title: "infra: add cost allocation tags to all resources"
+        body: "Adds Environment, Team, and CostCenter tags to all AWS resources."
+        html_url: "https://github.com/eval-org/infra/pull/515"
+        head: {ref: infra/resource-tags, sha: "terraform015"}
+        base: {ref: main}
+        user: {login: platform-team}
+        draft: false
+      repository:
+        full_name: eval-org/infra
+        name: infra
+        clone_url: "https://github.com/eval-org/infra.git"
+    extra_assertions:
+      should_post_review: true
+
+  # ── Negative scenarios ────────────────────────────────────────────────────────
+
+  - id: no_tf_files_changed
+    label: "(negative) PR has no .tf file changes — not a Terraform PR"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      number: 600
+      pull_request:
+        number: 600
+        title: "docs: update runbook"
+        body: "Updates runbook.md with new deployment steps. No infra changes."
+        html_url: "https://github.com/eval-org/infra/pull/600"
+        head: {ref: docs/runbook, sha: "notfhash001"}
+        base: {ref: main}
+        user: {login: devops-eng}
+        draft: false
+      repository:
+        full_name: eval-org/infra
+        name: infra
+        clone_url: "https://github.com/eval-org/infra.git"
+
+  - id: pr_closed_infra
+    label: "(negative) Infrastructure PR closed — no review needed"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: closed
+      number: 601
+      pull_request:
+        number: 601
+        title: "infra: add monitoring stack"
+        body: "Closed without merging."
+        html_url: "https://github.com/eval-org/infra/pull/601"
+        head: {ref: infra/monitoring, sha: "closedhash01"}
+        base: {ref: main}
+        user: {login: devops-eng}
+        draft: false
+        merged: false
+      repository:
+        full_name: eval-org/infra
+        name: infra
+        clone_url: "https://github.com/eval-org/infra.git"
+
+  - id: no_op_plan
+    label: "(negative) Terraform plan shows no changes — nothing to review"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      number: 602
+      pull_request:
+        number: 602
+        title: "infra: formatting fix in main.tf"
+        body: "Only whitespace and comment changes. No resource changes."
+        html_url: "https://github.com/eval-org/infra/pull/602"
+        head: {ref: infra/fmt-fix, sha: "noophash0001"}
+        base: {ref: main}
+        user: {login: devops-eng}
+        draft: false
+      repository:
+        full_name: eval-org/infra
+        name: infra
+        clone_url: "https://github.com/eval-org/infra.git"
+
+  - id: draft_infra_pr
+    label: "(negative) Draft Terraform PR — not ready for review"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      number: 603
+      pull_request:
+        number: 603
+        title: "WIP: infra: multi-region setup"
+        body: "Work in progress. Do not review."
+        html_url: "https://github.com/eval-org/infra/pull/603"
+        head: {ref: wip/multi-region, sha: "draftinfra001"}
+        base: {ref: main}
+        user: {login: senior-devops}
+        draft: true
+      repository:
+        full_name: eval-org/infra
+        name: infra
+        clone_url: "https://github.com/eval-org/infra.git"
+
+  - id: issue_event_wrong
+    label: "(negative) Issue event sent to Terraform reviewer — wrong trigger"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      issue:
+        number: 700
+        title: "Review our Terraform setup"
+        body: "Can someone check if our infra is configured correctly?"
+        state: open
+        labels: []
+      repository:
+        full_name: eval-org/infra
+        name: infra
+        clone_url: "https://github.com/eval-org/infra.git"
+
+  - id: locked_pr
+    label: "(negative) Locked PR — cannot add review"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: locked
+      number: 604
+      pull_request:
+        number: 604
+        title: "infra: add prod database"
+        body: "Locked by maintainer."
+        html_url: "https://github.com/eval-org/infra/pull/604"
+        head: {ref: infra/prod-db, sha: "lockedhash001"}
+        base: {ref: main}
+        user: {login: devops-eng}
+        draft: false
+        locked: true
+      repository:
+        full_name: eval-org/infra
+        name: infra
+        clone_url: "https://github.com/eval-org/infra.git"
