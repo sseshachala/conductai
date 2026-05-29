@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run SmokeTest agents sequentially — one finishes before the next starts.
 # Usage:
-#   ./scripts/smoke_sequential.sh                    # all 12 agents
+#   ./scripts/smoke_sequential.sh                    # all 18 agents
 #   ./scripts/smoke_sequential.sh "CI Failure Alert" "Issue Triage"  # specific agents
 
 set -euo pipefail
@@ -18,10 +18,16 @@ DEFAULT_AGENTS=(
   "CI Failure Alert"
   "Issue Triage"
   "Incident Responder"
+  "Postmortem Drafter"
   "PR Reviewer"
   "Copilot / AI PR Reviewer"
   "Security Scanner"
   "Release Notes"
+  "Release Readiness Reviewer"
+  "Docs Drift Detector"
+  "Flaky Test Detective"
+  "Terraform Plan Reviewer"
+  "ai-ready autopilot"
   "Dependency Updater"
   "Security Patch Updater"
   "Autopilot Quick"
