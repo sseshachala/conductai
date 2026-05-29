@@ -48,6 +48,12 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         </div>
         <div className="flex items-center gap-4">
           <a
+            href="/benchmark"
+            className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
+          >
+            Benchmark
+          </a>
+          <a
             href="/compare"
             className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
           >
@@ -579,6 +585,76 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
               <p className="text-white pl-4">--environment Production</p>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Benchmark */}
+      <section className="border-t border-stone-100 py-16 px-6 bg-stone-50">
+        <div className="max-w-4xl mx-auto">
+          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">Public Benchmark</p>
+          <h2 className="text-2xl font-bold text-stone-900 text-center mb-4">Every playbook is scored. Every run is graded.</h2>
+          <p className="text-center text-stone-500 text-sm max-w-xl mx-auto mb-10">
+            We run all {playbookCount} playbooks against Claude Haiku, Sonnet, and Opus each edition — structural analysis plus live execution scored by an LLM judge. The results are public.
+          </p>
+
+          {/* Stats row */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-10">
+            {[
+              { value: "92.9%", label: "avg score, Edition 001", accent: "text-emerald-700" },
+              { value: "10 / 19", label: "Grade A playbooks", accent: "text-blue-700" },
+              { value: "3 models", label: "Haiku · Sonnet · Opus", accent: "text-indigo-700" },
+              { value: "170 pts", label: "max score per playbook", accent: "text-stone-700" },
+            ].map(({ value, label, accent }) => (
+              <div key={label} className="rounded-xl border border-stone-200 bg-white px-5 py-4 text-center">
+                <p className={`text-2xl font-black ${accent}`}>{value}</p>
+                <p className="text-[11px] text-stone-400 mt-1">{label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Two-column: scoring breakdown + link */}
+          <div className="grid sm:grid-cols-2 gap-6 mb-8">
+            <div className="rounded-xl border border-stone-200 bg-white px-6 py-5">
+              <p className="text-sm font-semibold text-stone-900 mb-3">How scoring works</p>
+              <div className="space-y-3 text-xs text-stone-500">
+                <div className="flex items-start gap-3">
+                  <span className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 font-bold text-xs flex items-center justify-center shrink-0">S</span>
+                  <div>
+                    <p className="font-semibold text-stone-700">Structural — 100 pts</p>
+                    <p>Static YAML analysis: trigger wiring, block reachability, output contracts, brain descriptions, 13 criteria.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="w-7 h-7 rounded-lg bg-violet-50 text-violet-700 font-bold text-xs flex items-center justify-center shrink-0">Q</span>
+                  <div>
+                    <p className="font-semibold text-stone-700">Quality — 70 pts</p>
+                    <p>Live execution + LLM-as-judge: run success, outcome detected, artifact produced, correctness, completeness, actionability.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-xl border border-stone-200 bg-white px-6 py-5 flex flex-col justify-between">
+              <div>
+                <p className="text-sm font-semibold text-stone-900 mb-2">Edition 001 results</p>
+                <p className="text-xs text-stone-500 leading-relaxed mb-4">
+                  All three models tied at 92.9% average. Grade A playbooks include PR Reviewer, Incident Responder, Issue Triage, Security Scanner, and 6 others. Results are versioned, public, and reproducible.
+                </p>
+              </div>
+              <a
+                href="/benchmark"
+                className="inline-flex items-center gap-2 rounded-xl bg-stone-900 hover:bg-stone-700 text-white font-medium px-5 py-2.5 text-sm transition-colors w-fit"
+              >
+                View full leaderboard →
+              </a>
+            </div>
+          </div>
+
+          <p className="text-center text-xs text-stone-400">
+            Benchmark is fully public — no sign-in required.{" "}
+            <a href="/benchmark" className="text-indigo-600 hover:text-indigo-800 transition-colors">
+              conductai.dev/benchmark
+            </a>
+          </p>
         </div>
       </section>
 

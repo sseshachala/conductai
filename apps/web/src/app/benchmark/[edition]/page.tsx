@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
@@ -336,10 +336,10 @@ function Methodology() {
         <div>
           <p className="font-semibold text-stone-700 mb-1">Scoring model</p>
           <p>
-            Edition 001 uses structural scoring only — criteria are evaluated by static analysis of
-            the playbook YAML, with no live LLM calls. Future editions will layer in live-mode scoring
-            (Claude Haiku, Sonnet, and Opus) to measure output quality against fixture-defined
-            expected outcomes.
+            Edition 001 uses two scoring layers: structural scoring (100 pts, offline, static YAML
+            analysis) and quality scoring (70 pts, live execution across Claude Haiku, Sonnet, and
+            Opus with an LLM-as-judge pass for correctness, completeness, and actionability).
+            All three models averaged 92.9% across 19 playbooks.
           </p>
         </div>
         <div>
@@ -398,6 +398,30 @@ function LoadingSkeleton() {
       <div className="h-72 rounded-xl bg-stone-100 animate-pulse" />
       <div className="h-40 rounded-xl bg-stone-100 animate-pulse" />
     </div>
+  )
+}
+
+// ─── Share button ─────────────────────────────────────────────────────────────
+
+function ShareButton() {
+  const [copied, setCopied] = useState(false)
+  const copy = useCallback(() => {
+    navigator.clipboard.writeText(window.location.href).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }, [])
+  return (
+    <button
+      onClick={copy}
+      className="inline-flex items-center gap-1.5 text-[10px] font-medium text-stone-500 hover:text-stone-800 border border-stone-200 hover:border-stone-300 rounded-full px-3 py-1 transition-colors bg-white"
+    >
+      {copied ? (
+        <><span className="text-emerald-500">✓</span> Copied</>
+      ) : (
+        <><span>↗</span> Share</>
+      )}
+    </button>
   )
 }
 
@@ -540,7 +564,10 @@ function BenchmarkContent({
               </span>
               <span className="text-[10px] text-stone-400">{edition.period}</span>
             </div>
-            <EditionNav edition={edition} />
+            <div className="flex items-center gap-3">
+              <ShareButton />
+              <EditionNav edition={edition} />
+            </div>
           </div>
           <h1 className="text-2xl font-black text-stone-900 mt-2">Conduct AI Benchmark</h1>
           <p className="text-sm text-stone-400 mt-1">
@@ -628,14 +655,12 @@ function BenchmarkContent({
   )
 }
 
-// ─── Auth wrapper ─────────────────────────────────────────────────────────────
+// ─── Auth wrapper (optional — benchmark is public) ────────────────────────────
+// Signed-in users get a token attached to requests for workspace context;
+// anonymous users see the same frozen baseline data without redirection.
 
 function BenchmarkWithAuth({ editionSlug }: { editionSlug: string }) {
-  const router = useRouter()
-  const { getToken, isLoaded, isSignedIn } = useAuth()
-  useEffect(() => {
-    if (isLoaded && !isSignedIn) router.replace("/")
-  }, [isLoaded, isSignedIn, router])
+  const { getToken, isLoaded } = useAuth()
   if (!isLoaded) return null
   return <BenchmarkContent editionSlug={editionSlug} getToken={getToken} />
 }
