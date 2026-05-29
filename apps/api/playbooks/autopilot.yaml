@@ -46,9 +46,18 @@ on:
     labels:
       - "{{inputs.trigger_label}}"
     label_mode: one_of
-    next: fetch_issue
+    next: recall_context
 
 blocks:
+  recall_context:
+    type: memory
+    label: Recall prior context
+    action: read
+    scope: repo
+    key: "{{_trigger.repo_full_name}}"
+    limit: 5
+    next: fetch_issue
+
   fetch_issue:
     type: tool
     integration: github
@@ -74,6 +83,13 @@ blocks:
       Issue body: {{fetch_issue.body}}
       Repo: {{_trigger.repo_full_name}}
       Clone URL: {{_trigger.clone_url}}
+
+      {% if recall_context.entries %}
+      Prior runs on this repo (use this to avoid re-exploring known structure):
+      {% for entry in recall_context.entries %}
+      - {{entry.summary}}
+      {% endfor %}
+      {% endif %}
 
       CRITICAL: Each run_shell call gets a FRESH container — do ALL git work in a
       SINGLE run_shell call. Do NOT split across multiple calls — /tmp is gone after each call.
@@ -154,6 +170,18 @@ blocks:
 
       Output ONLY the following JSON on the last line of your response:
         {"pr_url": "<full PR URL>"}
+    next: record_outcome
+
+  record_outcome:
+    type: memory
+    label: Record outcome
+    action: write
+    scope: repo
+    key: "{{_trigger.repo_full_name}}"
+    summary: |
+      Issue #{{fetch_issue.issue_number}}: {{fetch_issue.title}}
+      Fix: {{implement_fix.summary}}
+      PR: {{push_pr.pr_url}}
     next: notify_success
 
   notify_success:
@@ -179,25 +207,22 @@ test_trigger:
     label:
       name: "[TEST] autopilot ready"
     issue:
-      number: 9999
-      title: "[TEST] Create conductai_test.py"
+      number: 16
+      title: "[TEST] fix: address critical security findings on PR #12"
       body: |
-        Create a file `conductai_test.py` in the repo root that prints:
-        ```
-        print("Hello, Conduct AI!")
-        ```
         This is a test run — prefix the branch and PR with [TEST].
-      html_url: "https://github.com/sseshachala/conductai/issues/9999"
+        Review the security scan findings on PR #12 and implement fixes for any critical issues found.
+      html_url: "https://github.com/sseshachala/conductai-testbed-node/issues/16"
       user:
         login: conductai-test-bot
       labels:
         - name: "[TEST] autopilot ready"
     repository:
-      full_name: sseshachala/conductai
-      name: conductai
+      full_name: sseshachala/conductai-testbed-node
+      name: conductai-testbed-node
       owner:
         login: sseshachala
       default_branch: main
-      clone_url: "https://github.com/sseshachala/conductai.git"
+      clone_url: "https://github.com/sseshachala/conductai-testbed-node.git"
     sender:
       login: conductai-test-bot
