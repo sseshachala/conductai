@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
@@ -77,6 +77,24 @@ function Spinner() {
       className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin"
       aria-hidden="true"
     />
+  )
+}
+
+function ShareButton() {
+  const [copied, setCopied] = useState(false)
+  const copy = useCallback(() => {
+    navigator.clipboard.writeText(window.location.href).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }, [])
+  return (
+    <button
+      onClick={copy}
+      className="inline-flex items-center gap-1.5 text-[10px] font-medium text-stone-500 hover:text-stone-800 border border-stone-200 hover:border-stone-300 rounded-full px-3 py-1 transition-colors bg-white"
+    >
+      {copied ? <><span className="text-emerald-500">✓</span> Copied</> : <><span>↗</span> Share</>}
+    </button>
   )
 }
 
@@ -399,17 +417,20 @@ function EvalContent({ getToken }: { getToken: (() => Promise<string | null>) | 
             <p className="text-xs text-stone-400 mt-0.5">Playbook quality grades and failing criteria</p>
           </div>
 
-          {!loading && (
-            <button
-              type="button"
-              disabled={runningAll}
-              onClick={handleRunAll}
-              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-stone-900 text-white hover:bg-stone-700 transition-colors disabled:opacity-50"
-            >
-              {runningAll && <Spinner />}
-              {runningAll ? "Running…" : "Run all"}
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            <ShareButton />
+            {!loading && (
+              <button
+                type="button"
+                disabled={runningAll}
+                onClick={handleRunAll}
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-stone-900 text-white hover:bg-stone-700 transition-colors disabled:opacity-50"
+              >
+                {runningAll && <Spinner />}
+                {runningAll ? "Running…" : "Run all"}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Inline run-all error */}

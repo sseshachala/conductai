@@ -54,6 +54,12 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
             Benchmark
           </a>
           <a
+            href="/eval"
+            className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
+          >
+            Quality
+          </a>
+          <a
             href="/compare"
             className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
           >
