@@ -24,9 +24,18 @@ inputs:
 
 on:
   webhook:
-    next: gather_context
+    next: recall_context
 
 blocks:
+  recall_context:
+    type: memory
+    label: Recall prior context
+    action: read
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    limit: 5
+    next: gather_context
+
   gather_context:
     type: brain
     mode: agentic
@@ -62,6 +71,13 @@ blocks:
          - **What went well**: detection, response, comms
          - **Action items**: specific tasks with owners (leave TBD if unknown)
 
+      {% if recall_context.entries %}
+      Prior incidents on this repo/service:
+      {% for entry in recall_context.entries %}
+      - {{entry.summary}}
+      {% endfor %}
+      {% endif %}
+
       Output ONLY the following JSON on the last line:
         {
           "title": "Postmortem: <incident title>",
@@ -76,6 +92,8 @@ blocks:
   human_review:
     type: approval
     label: Review postmortem draft
+    via: slack
+    channel: "{{inputs.slack_channel}}"
     description: |
       AI has drafted a postmortem for: {{_trigger.title}}
 
@@ -113,6 +131,19 @@ blocks:
 
       Output ONLY the following JSON on the last line:
         {"issue_url": "<url>", "issue_number": <number>}
+    next: record_outcome
+
+  record_outcome:
+    type: memory
+    label: Record outcome
+    action: write
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    summary: |
+      Incident: {{_trigger.title}}
+      Root cause: {{gather_context.root_cause}}
+      Duration: {{gather_context.duration_minutes}} min
+      Issue: {{publish_postmortem.issue_url}}
     next: notify_published
 
   notify_published:

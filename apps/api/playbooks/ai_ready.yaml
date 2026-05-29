@@ -70,9 +70,18 @@ on:
       - "{{inputs.trigger_label}}"
       - ai-ready
     label_mode: one_of
-    next: fetch_issue
+    next: recall_context
 
 blocks:
+  recall_context:
+    type: memory
+    label: Recall prior context
+    action: read
+    scope: repo
+    key: "{{_trigger.repo_full_name}}"
+    limit: 5
+    next: fetch_issue
+
   fetch_issue:
     type: tool
     integration: github
@@ -174,6 +183,13 @@ blocks:
             "body":  "Automated fix by Conduct AI. Closes #{{fetch_issue.issue_number}}.",
             "draft": true}
 
+      {% if recall_context.entries %}
+      Prior runs on this repo (use to avoid re-exploring known structure):
+      {% for entry in recall_context.entries %}
+      - {{entry.summary}}
+      {% endfor %}
+      {% endif %}
+
       10. Output as the FINAL line of your response, JSON only:
            {"pr_url": "<full PR URL>",
             "stack":   "<node|python|go|ruby>",
@@ -182,6 +198,19 @@ blocks:
 
       If anything blocks you (missing token, unrecognised stack, repeated
       test failures), stop and report — do not push speculative changes.
+    next: record_outcome
+
+  record_outcome:
+    type: memory
+    label: Record outcome
+    action: write
+    scope: repo
+    key: "{{_trigger.repo_full_name}}"
+    summary: |
+      Repo: {{_trigger.repo_full_name}}
+      PR: {{implement.pr_url}}
+      Stack: {{implement.stack}} · Tests: {{implement.tests}}
+      Summary: {{implement.summary}}
     next: notify
 
   notify:

@@ -25,9 +25,18 @@ inputs:
 
 on:
   webhook:
-    next: investigate
+    next: recall_context
 
 blocks:
+  recall_context:
+    type: memory
+    label: Recall prior context
+    action: read
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    limit: 5
+    next: investigate
+
   investigate:
     type: brain
     mode: agentic
@@ -90,12 +99,31 @@ blocks:
         2. If commit is the culprit: revert `<sha>` or roll back the deploy
         3. Page <author> if confirmation needed
 
+      {% if recall_context.entries %}
+      Prior incidents on this repo/service:
+      {% for entry in recall_context.entries %}
+      - {{entry.summary}}
+      {% endfor %}
+      {% endif %}
+
       Output ONLY the following JSON on the last line:
         {"hypothesis": "<one sentence>", "suspect_commit": "<sha or null>", "message": "<slack message>"}
 
       If the payload is not a real alert (e.g. a test ping), output:
         {"hypothesis": null, "suspect_commit": null, "message": null}
       And stop — do not post to Slack.
+    next: record_outcome
+
+  record_outcome:
+    type: memory
+    label: Record outcome
+    action: write
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    summary: |
+      Repo: {{_trigger.repository.full_name}}
+      Hypothesis: {{investigate.hypothesis}}
+      Suspect commit: {{investigate.suspect_commit}}
     next: notify_incident
 
   notify_incident:

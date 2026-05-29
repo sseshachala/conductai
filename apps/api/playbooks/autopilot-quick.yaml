@@ -109,7 +109,7 @@ blocks:
     scope: repo
     key: "{{_trigger.repo_full_name}}"
     summary: |
-      Issue #{{fetch_issue.issue_number}}: {{fetch_issue.title}}
+      Issue #{{_trigger.issue_number}}: {{_trigger.title}}
       Fix: {{implement_fix.approach}}
       Files: {{implement_fix.files_changed}}
       PR: {{implement_fix.pr_url}}

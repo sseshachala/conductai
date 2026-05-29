@@ -36,9 +36,18 @@ inputs:
 
 on:
   webhook:
-    next: scan_and_update
+    next: recall_context
 
 blocks:
+  recall_context:
+    type: memory
+    label: Recall prior context
+    action: read
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    limit: 5
+    next: scan_and_update
+
   scan_and_update:
     type: brain
     mode: agentic
@@ -109,11 +118,30 @@ blocks:
          }
          Header: Authorization: token $GIT_TOKEN
 
+      {% if recall_context.entries %}
+      Prior context for this repo:
+      {% for entry in recall_context.entries %}
+      - {{entry.summary}}
+      {% endfor %}
+      {% endif %}
+
       Output ONLY the following JSON on the last line:
         {"pr_url": "<full PR URL>", "updated": <number of packages bumped>, "message": null}
 
       On any failure output:
         {"pr_url": null, "updated": 0, "message": "<error description>"}
+    next: record_outcome
+
+  record_outcome:
+    type: memory
+    label: Record outcome
+    action: write
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    summary: |
+      Repo: {{_trigger.repository.full_name}}
+      Updated {{scan_and_update.updated}} dependencies
+      PR: {{scan_and_update.pr_url}}
     next: notify_update
 
   notify_update:

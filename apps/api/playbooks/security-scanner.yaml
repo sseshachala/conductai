@@ -28,9 +28,18 @@ inputs:
 
 on:
   webhook:
-    next: fetch_pr_diff
+    next: recall_context
 
 blocks:
+  recall_context:
+    type: memory
+    label: Recall prior context
+    action: read
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    limit: 5
+    next: fetch_pr_diff
+
   fetch_pr_diff:
     type: brain
     mode: agentic
@@ -171,6 +180,13 @@ blocks:
       - Event: COMMENT
       - Body: <the formatted comment above>
 
+      {% if recall_context.entries %}
+      Prior scans on this repo (known patterns and false positives):
+      {% for entry in recall_context.entries %}
+      - {{entry.summary}}
+      {% endfor %}
+      {% endif %}
+
       Output ONLY the following JSON on the last line:
         {"review_url": "<PR URL>", "critical": <count of 🔴 findings>, "high": <count of 🟠 findings>, "medium": <count of 🟡 findings>, "total": <total findings>}
     next: has_critical
@@ -181,7 +197,7 @@ blocks:
     condition: "{{security_scan.critical}} > 0"
     next:
       pass: check_existing_issue
-      fail: notify_scan
+      fail: record_outcome
 
   check_existing_issue:
     type: brain
@@ -244,7 +260,7 @@ blocks:
 
       Output ONLY the following JSON on the last line:
         {"issue_url": "{{check_existing_issue.issue_url}}", "issue_number": {{check_existing_issue.issue_number}}}
-    next: notify_scan
+    next: record_outcome
 
   create_security_issue:
     type: brain
@@ -279,6 +295,18 @@ blocks:
 
       Output ONLY the following JSON on the last line:
         {"issue_url": "<url>", "issue_number": <number>}
+    next: record_outcome
+
+  record_outcome:
+    type: memory
+    label: Record outcome
+    action: write
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    summary: |
+      Repo: {{_trigger.repository.full_name}} PR #{{_trigger.number}}
+      Findings: {{security_scan.critical}} critical, {{security_scan.high}} high, {{security_scan.medium}} medium
+      Review: {{security_scan.review_url}}
     next: notify_scan
 
   notify_scan:
