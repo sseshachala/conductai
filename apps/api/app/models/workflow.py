@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, DateTime, ForeignKey
+from sqlalchemy import Column, String, DateTime, ForeignKey, Integer
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -32,6 +32,7 @@ class Workflow(Base):
     github_hook_repo = Column(String(255), nullable=True)  # owner/repo format
     github_hook_label = Column(String(255), nullable=True)  # label filter this workflow watches
     playbook_slug = Column(String(100), nullable=True)
+    default_max_turns = Column(Integer(), nullable=True)
 
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
