@@ -36,6 +36,7 @@ interface AttentionRun {
   triggered_by: string | null
   trigger_summary: string | null
   created_at: string
+  repo: string | null
 }
 
 interface RecentRun {
@@ -46,6 +47,7 @@ interface RecentRun {
   triggered_by: string | null
   started_at: string | null
   created_at: string
+  repo: string | null
 }
 
 interface AgentTokenUsage {
@@ -329,9 +331,14 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                         href={`/workflows/${run.workflow_id}/runs/${run.run_id}`}
                         className="flex items-center justify-between px-4 py-3 hover:bg-stone-50 transition-colors"
                       >
-                        <div>
-                          <span className="text-sm font-medium text-stone-900">{run.workflow_name}</span>
-                          <span className="text-xs text-stone-400 ml-2">{formatTrigger(run.triggered_by)}</span>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-sm font-medium text-stone-900 shrink-0">{run.workflow_name}</span>
+                          {run.repo && (
+                            <span className="text-[10px] font-medium text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded truncate max-w-[160px]">
+                              {run.repo}
+                            </span>
+                          )}
+                          <span className="text-xs text-stone-400 shrink-0">{formatTrigger(run.triggered_by)}</span>
                         </div>
                         <div className="flex items-center gap-3">
                           <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}>
@@ -393,10 +400,15 @@ function AttentionList({ runs }: { runs: AttentionRun[] }) {
               href={`/workflows/${run.workflow_id}/runs/${run.run_id}`}
               className="flex items-center justify-between px-4 py-3 hover:bg-red-100/60 transition-colors"
             >
-              <div className="min-w-0">
-                <span className="text-sm font-medium text-stone-900">{group.name}</span>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-sm font-medium text-stone-900 shrink-0">{group.name}</span>
+                {run.repo && (
+                  <span className="text-[10px] font-medium text-stone-400 bg-red-100 px-1.5 py-0.5 rounded truncate max-w-[140px]">
+                    {run.repo}
+                  </span>
+                )}
                 {run.trigger_summary && (
-                  <span className="text-xs text-stone-400 ml-2 truncate">{run.trigger_summary}</span>
+                  <span className="text-xs text-stone-400 truncate hidden sm:block">{run.trigger_summary}</span>
                 )}
               </div>
               <div className="flex items-center gap-3 shrink-0">

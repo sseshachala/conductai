@@ -5,6 +5,13 @@ from datetime import datetime
 from pydantic import BaseModel, model_validator
 
 
+def _extract_repo(state: dict | None) -> str | None:
+    if not state:
+        return None
+    trigger = state.get("_trigger") or {}
+    return (trigger.get("repository") or {}).get("full_name") or None
+
+
 def _extract_trigger_summary(state: dict | None) -> str | None:
     """Pull a human-readable line from the run's trigger payload."""
     if not state:
@@ -78,6 +85,7 @@ class RunOut(BaseModel):
     max_turns: Optional[int] = None
     created_at: datetime
     trigger_summary: Optional[str] = None
+    repo: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -88,8 +96,12 @@ class RunOut(BaseModel):
         if hasattr(data, "__dict__"):
             state = getattr(data, "state", None)
             data.__dict__.setdefault("trigger_summary", _extract_trigger_summary(state))
-        elif isinstance(data, dict) and "trigger_summary" not in data:
-            data["trigger_summary"] = _extract_trigger_summary(data.get("state"))
+            data.__dict__.setdefault("repo", _extract_repo(state))
+        elif isinstance(data, dict):
+            if "trigger_summary" not in data:
+                data["trigger_summary"] = _extract_trigger_summary(data.get("state"))
+            if "repo" not in data:
+                data["repo"] = _extract_repo(data.get("state"))
         return data
 
 
