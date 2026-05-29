@@ -73,6 +73,23 @@ app.include_router(webhooks.router)
 app.include_router(eval_router)
 
 
+@app.on_event("startup")
+def _warm_eval_cache() -> None:
+    """Pre-compute the structural eval report in the background so the first
+    real request hits the cache instead of paying the full scoring cost."""
+    import threading
+    from app.routers.eval import _cached_report
+
+    def _warm() -> None:
+        try:
+            _cached_report()
+            log.info("eval.cache_warmed")
+        except Exception as exc:
+            log.warning("eval.cache_warm_failed", error=str(exc))
+
+    threading.Thread(target=_warm, daemon=True, name="eval-cache-warmer").start()
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
