@@ -32,6 +32,7 @@ interface PlaybookEval {
   grade: string
   pct: number
   failing_criteria: number
+  total_criteria?: number  // added by API when available — len(criteria)
   total_max: number
   total_score: number
   structural_score?: number
@@ -252,9 +253,10 @@ function QualityTable({ playbooks }: { playbooks: PlaybookEval[] }) {
                     <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600">
                       <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
                       {p.failing_criteria}
-                      {p.total_max > 0 && (
-                        <span className="text-stone-400 font-normal"> / {p.total_max}</span>
+                      {p.total_criteria != null && (
+                        <span className="text-stone-400 font-normal"> / {p.total_criteria}</span>
                       )}
+                      {" "}criteria
                     </span>
                   ) : (
                     <span className="text-xs text-emerald-600 font-medium">All passing</span>
