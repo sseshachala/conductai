@@ -494,7 +494,7 @@ function EvalDetailContent({
             href="/eval"
             className="inline-flex items-center gap-1.5 text-xs text-stone-400 hover:text-stone-600 transition-colors"
           >
-            ← Evals
+            ← Quality
           </Link>
 
           {!loading && !error && detail && (
