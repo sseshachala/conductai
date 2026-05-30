@@ -2,13 +2,12 @@
 Watchdog daemon — scans for stale workers and approval timeouts, writes
 WatchdogEvent records, and sends Slack alerts when configured.
 
-Runs as a background daemon thread inside the worker process (alongside the
-existing stale-run reaper). The reaper marks runs as failed after 20 min;
-the watchdog flags them as stale at 15 min so the observability dashboard
-shows issues before the reaper hard-kills them.
+Slack config is per-workspace:
+  - Token:   the workspace's Slack integration (handle='slack', service='slack')
+             decrypted via app.core.crypto.decrypt
+  - Channel: workspace.preferences["watchdog_channel"]
 
-Slack alerting is opt-in: set WATCHDOG_SLACK_TOKEN + WATCHDOG_SLACK_CHANNEL
-env vars. Both must be set for alerts to fire.
+Both must be present for a workspace to receive Slack alerts.
 """
 import time
 from datetime import datetime, timedelta, timezone
@@ -24,15 +23,49 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _slack_enabled() -> bool:
-    return bool(settings.watchdog_slack_token and settings.watchdog_slack_channel)
+def _get_slack_config(db, workspace_id: str) -> tuple[str, str] | None:
+    """
+    Return (token, channel) for the workspace's Slack integration, or None
+    if either the integration or the watchdog_channel preference is missing.
+    """
+    from app.core.crypto import decrypt
+    from app.models.integration import Integration
+    from app.models.workspace import Workspace
+
+    row = (
+        db.query(Integration)
+        .filter(
+            Integration.workspace_id == workspace_id,
+            Integration.service == "slack",
+            Integration.encrypted_credentials.isnot(None),
+        )
+        .first()
+    )
+    if not row:
+        return None
+
+    try:
+        creds = decrypt(row.encrypted_credentials)
+    except Exception:
+        return None
+
+    token = creds.get("token") or creds.get("bot_token") or ""
+    if not token:
+        return None
+
+    ws = db.query(Workspace).filter(Workspace.id == workspace_id).first()
+    channel = (ws.preferences or {}).get("watchdog_channel", "") if ws else ""
+    if not channel:
+        return None
+
+    return token, channel
 
 
-def _send_slack_alert(event_type: str, run_id: str, workflow_name: str, workspace_id: str, detail: str) -> None:
+def _send_slack_alert(token: str, channel: str, event_type: str, run_id: str, workflow_name: str, workspace_id: str, detail: str) -> None:
     from app.runtime.integrations.slack import post_message
 
     run_url = f"{settings.app_url}/workflows/{workspace_id}/runs/{run_id}"
-    text = f":warning: *Conduct Watchdog* — {event_type.replace('_', ' ').title()}"
+    text = f":warning: Conduct Watchdog — {event_type.replace('_', ' ').title()}"
     blocks = [
         {
             "type": "section",
@@ -48,21 +81,14 @@ def _send_slack_alert(event_type: str, run_id: str, workflow_name: str, workspac
         }
     ]
     try:
-        post_message(
-            token=settings.watchdog_slack_token,
-            channel=settings.watchdog_slack_channel,
-            text=text,
-            blocks=blocks,
-        )
+        post_message(token=token, channel=channel, text=text, blocks=blocks)
         log.info("watchdog.slack_sent", event_type=event_type, run_id=run_id)
     except Exception:
         log.exception("watchdog.slack_failed", event_type=event_type, run_id=run_id)
 
 
 def _already_emitted(db, run_id, event_type: str, dedup_window_hours: int = 2) -> bool:
-    """Return True if we already wrote this event for this run within the dedup window."""
     from app.models.watchdog_event import WatchdogEvent
-    from sqlalchemy import and_
 
     cutoff = _now() - timedelta(hours=dedup_window_hours)
     return (
@@ -79,7 +105,7 @@ def _already_emitted(db, run_id, event_type: str, dedup_window_hours: int = 2) -
 def scan(db) -> dict:
     """
     Scan the DB for stale workers and approval timeouts.
-    Writes WatchdogEvent rows and sends Slack alerts.
+    Writes WatchdogEvent rows and sends per-workspace Slack alerts.
     Returns counts for logging.
     """
     from app.models.run import Run
@@ -89,6 +115,14 @@ def scan(db) -> dict:
     now = _now()
     stale_cutoff = now - timedelta(minutes=settings.watchdog_stale_minutes)
     approval_cutoff = now - timedelta(minutes=settings.watchdog_approval_timeout_minutes)
+
+    # Cache per-workspace Slack config so we only decrypt once per scan cycle
+    _slack_cache: dict[str, tuple[str, str] | None] = {}
+
+    def slack_for(workspace_id: str) -> tuple[str, str] | None:
+        if workspace_id not in _slack_cache:
+            _slack_cache[workspace_id] = _get_slack_config(db, workspace_id)
+        return _slack_cache[workspace_id]
 
     stale_flagged = 0
     approval_flagged = 0
@@ -111,27 +145,22 @@ def scan(db) -> dict:
             continue
 
         minutes_stale = int((now - run.locked_at).total_seconds() / 60)
-        event = WatchdogEvent(
+        db.add(WatchdogEvent(
             workspace_id=str(ws_id),
             run_id=run.id,
             workflow_id=wf_id,
             event_type="stale_worker",
             severity="warning",
-            payload={
-                "minutes_stale": minutes_stale,
-                "locked_by": run.locked_by,
-                "workflow_name": wf_name,
-            },
-        )
-        db.add(event)
+            payload={"minutes_stale": minutes_stale, "locked_by": run.locked_by, "workflow_name": wf_name},
+        ))
         stale_flagged += 1
 
-        if _slack_enabled():
+        slack = slack_for(str(ws_id))
+        if slack:
             _send_slack_alert(
-                event_type="stale_worker",
-                run_id=str(run.id),
-                workflow_name=wf_name,
-                workspace_id=str(ws_id),
+                token=slack[0], channel=slack[1],
+                event_type="stale_worker", run_id=str(run.id),
+                workflow_name=wf_name, workspace_id=str(ws_id),
                 detail=f"Run has been stuck for *{minutes_stale} minutes* (worker: {run.locked_by or 'unknown'}).",
             )
 
@@ -153,26 +182,22 @@ def scan(db) -> dict:
             continue
 
         minutes_waiting = int((now - run.paused_at).total_seconds() / 60)
-        event = WatchdogEvent(
+        db.add(WatchdogEvent(
             workspace_id=str(ws_id),
             run_id=run.id,
             workflow_id=wf_id,
             event_type="approval_timeout",
             severity="warning",
-            payload={
-                "minutes_waiting": minutes_waiting,
-                "workflow_name": wf_name,
-            },
-        )
-        db.add(event)
+            payload={"minutes_waiting": minutes_waiting, "workflow_name": wf_name},
+        ))
         approval_flagged += 1
 
-        if _slack_enabled():
+        slack = slack_for(str(ws_id))
+        if slack:
             _send_slack_alert(
-                event_type="approval_timeout",
-                run_id=str(run.id),
-                workflow_name=wf_name,
-                workspace_id=str(ws_id),
+                token=slack[0], channel=slack[1],
+                event_type="approval_timeout", run_id=str(run.id),
+                workflow_name=wf_name, workspace_id=str(ws_id),
                 detail=f"Approval has been pending for *{minutes_waiting} minutes*.",
             )
 
@@ -181,13 +206,11 @@ def scan(db) -> dict:
 
 
 def watchdog_loop() -> None:
-    """Daemon thread entry point — runs scan() on a fixed interval."""
     log.info(
         "watchdog.started",
         stale_minutes=settings.watchdog_stale_minutes,
         approval_timeout_minutes=settings.watchdog_approval_timeout_minutes,
         interval_seconds=settings.watchdog_interval_seconds,
-        slack_enabled=_slack_enabled(),
     )
 
     while True:
