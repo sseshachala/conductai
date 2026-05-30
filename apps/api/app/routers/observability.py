@@ -1,18 +1,24 @@
 """
-GET /observability/summary  — workspace health strip (active runs, stale workers, approvals, error rate)
+GET /observability/summary  — workspace health strip
 GET /observability/agents   — per-agent status grid
+GET /observability/stream   — SSE push of summary snapshots every 10 s
 """
+import asyncio
+import json
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import func, case
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_workspace_role
-from app.core.database import get_db
+from app.core.config import settings
+from app.core.database import SessionLocal, get_db
 from app.models.run import Run
 from app.models.watchdog_event import WatchdogEvent
+from app.routers.runs import get_workspace_id_sse, require_workspace_role_sse
 from app.models.workflow import Workflow, WorkflowVersion
 
 router = APIRouter(prefix="/observability", tags=["observability"])
@@ -219,3 +225,97 @@ def get_agents(
         ))
 
     return result
+
+
+# ── SSE live stream ───────────────────────────────────────────────────────────
+
+def _build_summary_payload(workspace_id: str) -> str:
+    """Build a fresh summary snapshot using a short-lived DB session."""
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        cutoff_24h = now - timedelta(hours=24)
+        stale_cutoff = now - timedelta(minutes=STALE_THRESHOLD_MINUTES)
+
+        base_q = (
+            db.query(Run)
+            .join(WorkflowVersion, Run.workflow_version_id == WorkflowVersion.id)
+            .join(Workflow, Workflow.id == WorkflowVersion.workflow_id)
+            .filter(Workflow.workspace_id == workspace_id)
+        )
+
+        active_runs = base_q.filter(Run.status == "running").count()
+        pending_approvals = base_q.filter(Run.status == "paused").count()
+        stale_workers = base_q.filter(Run.status == "running", Run.locked_at < stale_cutoff).count()
+
+        last_24h = base_q.filter(Run.created_at >= cutoff_24h).all()
+        succeeded_24h = sum(1 for r in last_24h if r.status == "succeeded")
+        failed_24h = sum(1 for r in last_24h if r.status == "failed")
+        total_24h = len(last_24h)
+
+        events_rows = (
+            db.query(WatchdogEvent)
+            .filter(WatchdogEvent.workspace_id == workspace_id)
+            .order_by(WatchdogEvent.created_at.desc())
+            .limit(20)
+            .all()
+        )
+
+        payload = {
+            "health": {
+                "active_runs": active_runs,
+                "pending_approvals": pending_approvals,
+                "stale_workers": stale_workers,
+                "succeeded_last_24h": succeeded_24h,
+                "failed_last_24h": failed_24h,
+                "total_last_24h": total_24h,
+                "error_rate_24h": round(failed_24h / total_24h, 3) if total_24h else 0.0,
+            },
+            "recent_events": [
+                {
+                    "id": str(e.id),
+                    "event_type": e.event_type,
+                    "severity": e.severity,
+                    "run_id": str(e.run_id) if e.run_id else None,
+                    "workflow_id": str(e.workflow_id) if e.workflow_id else None,
+                    "payload": e.payload or {},
+                    "created_at": e.created_at.isoformat(),
+                }
+                for e in events_rows
+            ],
+        }
+        return json.dumps(payload)
+    finally:
+        db.close()
+
+
+@router.get("/stream")
+async def stream_summary(
+    request: Request,
+    workspace_id: str = Depends(get_workspace_id_sse),
+    _role: str = Depends(require_workspace_role_sse("admin", "editor", "viewer")),
+):
+    """SSE endpoint — pushes a fresh summary snapshot every 10 seconds."""
+    PUSH_INTERVAL = 10  # seconds
+    MAX_DURATION  = 300  # reconnect after 5 min to avoid stale connections
+
+    async def event_generator():
+        deadline = asyncio.get_event_loop().time() + MAX_DURATION
+        while asyncio.get_event_loop().time() < deadline:
+            if await request.is_disconnected():
+                break
+            try:
+                payload = await asyncio.get_event_loop().run_in_executor(
+                    None, _build_summary_payload, workspace_id
+                )
+                yield f"data: {payload}\n\n"
+            except Exception:
+                yield "data: {\"error\": true}\n\n"
+            await asyncio.sleep(PUSH_INTERVAL)
+        yield "data: {\"kind\": \"stream_timeout\"}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
