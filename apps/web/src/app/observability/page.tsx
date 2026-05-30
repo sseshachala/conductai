@@ -94,10 +94,34 @@ function StatCard({ label, value, sub, accent }: { label: string; value: number 
   )
 }
 
+interface PlaybookStat {
+  playbook_slug: string
+  run_count: number
+  succeeded: number
+  failed: number
+  success_rate: number
+  avg_cost_usd: number | null
+  total_cost_usd: number
+  total_input_tokens: number
+  total_output_tokens: number
+}
+
+interface AnalyticsSummary {
+  total_runs: number
+  succeeded: number
+  failed: number
+  total_cost_usd: number
+  total_input_tokens: number
+  total_output_tokens: number
+  avg_duration_ms: number | null
+  top_playbooks: PlaybookStat[]
+}
+
 export default function ObservabilityPage() {
   const { getToken } = useAuth()
   const [summary, setSummary] = useState<ObservabilitySummary | null>(null)
   const [agents, setAgents] = useState<AgentStatus[]>([])
+  const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [live, setLive] = useState(false)
@@ -116,6 +140,21 @@ export default function ObservabilityPage() {
       setAgents(await res.json())
     } catch {
       // non-fatal — agents grid keeps last known state
+    }
+  }, [getToken])
+
+  const loadAnalytics = useCallback(async () => {
+    const token = await getToken()
+    const workspaceId = getCookie("delegator_project_id") ?? ""
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    if (token) headers["Authorization"] = `Bearer ${token}`
+    if (workspaceId) headers["x-workspace-id"] = workspaceId
+    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+    try {
+      const res = await fetch(`${base}/analytics/summary?days=30`, { headers })
+      if (res.ok) setAnalytics(await res.json())
+    } catch {
+      // non-fatal
     }
   }, [getToken])
 
@@ -158,18 +197,18 @@ export default function ObservabilityPage() {
   useEffect(() => {
     connectSSE()
     loadAgents()
-    // Refresh agent grid every 30s (agents endpoint is not streamed)
+    loadAnalytics()
     const agentInterval = setInterval(loadAgents, 30_000)
     return () => {
       agentInterval && clearInterval(agentInterval)
       esRef.current?.close()
     }
-  }, [connectSSE, loadAgents])
+  }, [connectSSE, loadAgents, loadAnalytics])
 
   const refresh = useCallback(async () => {
     setLoading(true)
-    await Promise.all([connectSSE(), loadAgents()])
-  }, [connectSSE, loadAgents])
+    await Promise.all([connectSSE(), loadAgents(), loadAnalytics()])
+  }, [connectSSE, loadAgents, loadAnalytics])
 
   const h = summary?.health
 
@@ -320,6 +359,67 @@ export default function ObservabilityPage() {
             </div>
           )}
         </div>
+
+        {/* Cost summary — 30 day window */}
+        {analytics && (
+          <div>
+            <h2 className="text-sm font-semibold text-stone-700 mb-3">Cost Summary <span className="font-normal text-stone-400">(last 30 days)</span></h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <StatCard
+                label="Total cost"
+                value={`$${analytics.total_cost_usd.toFixed(4)}`}
+                accent="text-stone-900"
+              />
+              <StatCard
+                label="Total runs"
+                value={analytics.total_runs}
+                sub={`${analytics.succeeded} succeeded · ${analytics.failed} failed`}
+              />
+              <StatCard
+                label="Input tokens"
+                value={analytics.total_input_tokens.toLocaleString()}
+              />
+              <StatCard
+                label="Output tokens"
+                value={analytics.total_output_tokens.toLocaleString()}
+              />
+            </div>
+            {analytics.top_playbooks.length > 0 && (
+              <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-stone-100 text-xs text-stone-400 uppercase tracking-wide">
+                      <th className="px-4 py-3 text-left font-medium">Playbook</th>
+                      <th className="px-4 py-3 text-right font-medium">Runs</th>
+                      <th className="px-4 py-3 text-right font-medium">Success</th>
+                      <th className="px-4 py-3 text-right font-medium">Avg cost</th>
+                      <th className="px-4 py-3 text-right font-medium">Total cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {analytics.top_playbooks.map(p => (
+                      <tr key={p.playbook_slug} className="border-b border-stone-100 last:border-0">
+                        <td className="px-4 py-3 font-medium text-stone-800">{p.playbook_slug}</td>
+                        <td className="px-4 py-3 text-right text-stone-600">{p.run_count}</td>
+                        <td className="px-4 py-3 text-right">
+                          <span className={p.success_rate >= 0.8 ? "text-green-700" : "text-red-600"}>
+                            {Math.round(p.success_rate * 100)}%
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right text-stone-500 text-xs font-mono">
+                          {p.avg_cost_usd != null ? `$${p.avg_cost_usd.toFixed(4)}` : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-right text-stone-700 text-xs font-mono font-medium">
+                          ${p.total_cost_usd.toFixed(4)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Watchdog events */}
         {summary && summary.recent_events.length > 0 && (
