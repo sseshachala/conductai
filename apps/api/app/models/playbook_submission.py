@@ -34,6 +34,9 @@ class PlaybookSubmission(Base):
     eval_run_at = Column(DateTime(timezone=True), nullable=False)
     promoted_at = Column(DateTime(timezone=True), nullable=True)
     notes = Column(Text, nullable=True)
+    yaml_content = Column(Text, nullable=True)                        # raw YAML for community submissions
+    submitter_email = Column(String(255), nullable=True)              # from Clerk or form
+    submitter_workspace_id = Column(String(255), nullable=True)       # set for logged-in users
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
