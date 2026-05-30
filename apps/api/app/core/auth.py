@@ -206,6 +206,9 @@ def get_user_id(
 
 def _assert_workspace_member(db: Session, workspace_id: str, user_id: str) -> None:
     """Raises 403 if user is not a member of the workspace (checks both join table and legacy owner_id)."""
+    import re as _re
+    if not _re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", workspace_id, _re.I):
+        raise HTTPException(status_code=403, detail="Invalid workspace ID — please select a workspace")
     from sqlalchemy import text
     row = db.execute(
         text("""
@@ -278,9 +281,9 @@ def get_workspace_id(
         _assert_workspace_member(db, x_workspace_id, user_id)
         return x_workspace_id
 
-    workspace_id = claims.get("org_id") or claims.get("sub")
+    workspace_id = claims.get("org_id")
     if not workspace_id:
-        raise HTTPException(status_code=401, detail="No workspace in token claims")
+        raise HTTPException(status_code=403, detail="No organization selected — please join or create a workspace")
 
     return workspace_id
 
@@ -296,6 +299,13 @@ def get_user_workspace_role(
     """
     if not _clerk_enabled():
         return "admin"
+
+    # workspace_id must be a valid UUID — Clerk user_ids (user_xxx) are not.
+    # This happens when the client cookie holds a personal Clerk ID instead of an org UUID.
+    import re as _re
+    _UUID_RE = _re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", _re.I)
+    if not _UUID_RE.match(workspace_id):
+        raise HTTPException(status_code=403, detail="Invalid workspace ID — please select a workspace")
 
     from sqlalchemy import text
     row = db.execute(
