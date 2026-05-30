@@ -5,18 +5,16 @@ import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import EnvironmentsManager from "@/components/settings/EnvironmentsManager"
 import MembersManager from "@/components/settings/MembersManager"
-import AuditLog from "@/components/settings/AuditLog"
 import PreferencesPanel from "@/components/settings/PreferencesPanel"
 import ApiKeysManager from "@/components/settings/ApiKeysManager"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
-type Tab = "credentials" | "members" | "audit-log" | "preferences" | "api-keys"
+type Tab = "credentials" | "members" | "preferences" | "api-keys"
 
 const TAB_LABELS: Record<Tab, string> = {
   credentials: "Environments",
   preferences: "Preferences",
   members: "Members",
-  "audit-log": "Audit Log",
   "api-keys": "API Keys",
 }
 
@@ -54,7 +52,7 @@ function SettingsPageWithAuth() {
 }
 
 function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolean; workspaceId: string; getToken: (() => Promise<string | null>) | null }) {
-  const tabs = (["credentials", "preferences", ...(isAdmin ? ["members", "audit-log", "api-keys"] : [])] as Tab[])
+  const tabs = (["credentials", "preferences", ...(isAdmin ? ["members", "api-keys"] : [])] as Tab[])
   const [activeTab, setActiveTab] = useState<Tab>("credentials")
   const [showTip, setShowTip] = useState(false)
 
@@ -115,7 +113,6 @@ function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolea
         {activeTab === "credentials" && <EnvironmentsManager isAdmin={isAdmin} />}
         {activeTab === "preferences" && <PreferencesPanel />}
         {activeTab === "members" && isAdmin && <MembersManager />}
-        {activeTab === "audit-log" && isAdmin && <AuditLog workspaceId={workspaceId} getToken={getToken} />}
         {activeTab === "api-keys" && isAdmin && <ApiKeysManager />}
       </div>
     </AppShell>
