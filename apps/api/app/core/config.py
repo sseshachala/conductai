@@ -67,8 +67,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""   # text-embedding-3-small (1536d)
     voyage_api_key: str = ""   # voyage-3-lite (512d) — future
 
-    # GitHub PAT for fixture promotion PRs — needs repo write on conductai/conductai
-    github_promotion_token: str = ""
+    # Fixture promotion — target repo for auto-opened PRs
     github_promotion_repo: str = "sseshachala/conductai"
 
     # Sentry — leave blank to disable

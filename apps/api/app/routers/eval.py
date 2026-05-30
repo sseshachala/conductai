@@ -651,11 +651,16 @@ def promote_fixture_candidate(
     if row.status != "pending":
         raise HTTPException(status_code=409, detail=f"Candidate is already {row.status}")
 
-    if not settings.github_promotion_token:
-        raise HTTPException(status_code=503, detail="GITHUB_PROMOTION_TOKEN not configured")
+    from app.routers.credentials import _github_token
+    from app.core.auth import DEV_WORKSPACE_ID
+
+    # Use the platform workspace's GitHub token (set in Settings → Environments)
+    try:
+        token = _github_token(DEV_WORKSPACE_ID, db)
+    except Exception:
+        raise HTTPException(status_code=503, detail="GitHub credentials not configured — add a GITHUB_TOKEN in Settings → Environments")
 
     repo = settings.github_promotion_repo
-    token = settings.github_promotion_token
     fixture_path = f"apps/api/eval/fixtures/{row.slug}.yaml"
     branch = f"fixture/promote-{str(row.id)[:8]}"
     headers = {
