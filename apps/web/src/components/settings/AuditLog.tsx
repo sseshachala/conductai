@@ -10,7 +10,7 @@ interface AuditEntry {
   action: string
   resource_type: string | null
   resource_id: string | null
-  metadata: Record<string, unknown> | null
+  metadata: Record<string, string | number | boolean | null | object> | null
   created_at: string | null
 }
 
@@ -50,6 +50,7 @@ export default function AuditLog({ workspaceId, getToken }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [actionFilter, setActionFilter] = useState("")
   const [page, setPage] = useState(0)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
   const limit = 50
 
   async function load(offset = 0) {
@@ -141,25 +142,74 @@ export default function AuditLog({ workspaceId, getToken }: Props) {
         <p className="text-xs text-stone-400 py-6 text-center">No audit events yet. Credential changes, agent runs, and member changes will appear here.</p>
       ) : (
         <div className="divide-y divide-stone-100 border border-stone-200 rounded-xl overflow-hidden">
-          {entries.map(e => (
-            <div key={e.id} className="flex items-start gap-3 px-4 py-2.5 text-xs hover:bg-stone-50">
-              <span className="text-stone-400 whitespace-nowrap shrink-0 pt-0.5">{fmt(e.created_at)}</span>
-              <span className={`shrink-0 px-1.5 py-0.5 rounded font-medium text-[10px] ${ACTION_COLORS[e.action] ?? "bg-stone-100 text-stone-600"}`}>
-                {actionLabel(e.action)}
-              </span>
-              <span className="text-stone-600 truncate">
-                {e.actor_email ?? e.actor_id ?? "system"}
-                {e.resource_id && (
-                  <span className="ml-1.5 text-stone-400 font-mono">
-                    {e.resource_type} {e.resource_id.slice(0, 8)}
+          {entries.map(e => {
+            const isOpen = expandedId === e.id
+            const meta = e.metadata ?? {}
+            const metaEntries = Object.entries(meta)
+            return (
+              <div key={e.id}>
+                <button
+                  onClick={() => setExpandedId(isOpen ? null : e.id)}
+                  className="w-full flex items-start gap-3 px-4 py-2.5 text-xs hover:bg-stone-50 text-left transition-colors"
+                >
+                  <span className="text-stone-400 whitespace-nowrap shrink-0 pt-0.5">{fmt(e.created_at)}</span>
+                  <span className={`shrink-0 px-1.5 py-0.5 rounded font-medium text-[10px] ${ACTION_COLORS[e.action] ?? "bg-stone-100 text-stone-600"}`}>
+                    {actionLabel(e.action)}
                   </span>
+                  <span className="text-stone-600 truncate flex-1">
+                    {e.actor_email ?? e.actor_id ?? "system"}
+                    {meta.name != null ? (
+                      <span className="ml-1.5 font-medium text-stone-800">— {String(meta.name)}</span>
+                    ) : e.resource_id ? (
+                      <span className="ml-1.5 text-stone-400 font-mono">
+                        {e.resource_type} {e.resource_id.slice(0, 8)}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="ml-auto shrink-0 text-stone-300">{isOpen ? "▲" : "▼"}</span>
+                </button>
+
+                {isOpen && (
+                  <div className="px-4 pb-3 pt-1 bg-stone-50 border-t border-stone-100 text-xs space-y-2">
+                    <div className="grid grid-cols-[120px_1fr] gap-x-3 gap-y-1.5">
+                      <span className="text-stone-400 font-medium">Action</span>
+                      <span className="text-stone-700">{e.action}</span>
+
+                      {e.actor_email && <>
+                        <span className="text-stone-400 font-medium">Actor</span>
+                        <span className="text-stone-700">{e.actor_email}{e.actor_role ? ` (${e.actor_role})` : ""}</span>
+                      </>}
+
+                      {e.resource_type && <>
+                        <span className="text-stone-400 font-medium">Resource</span>
+                        <span className="text-stone-700 font-mono">{e.resource_type}</span>
+                      </>}
+
+                      {e.resource_id && <>
+                        <span className="text-stone-400 font-medium">Resource ID</span>
+                        <span className="text-stone-700 font-mono break-all">{e.resource_id}</span>
+                      </>}
+
+                      {e.created_at && <>
+                        <span className="text-stone-400 font-medium">Timestamp</span>
+                        <span className="text-stone-700">{new Date(e.created_at).toLocaleString()}</span>
+                      </>}
+
+                      {metaEntries.length > 0 && <>
+                        <span className="text-stone-400 font-medium col-span-2 pt-1 border-t border-stone-200">Details</span>
+                        {metaEntries.map(([k, v]) => (
+                          <>
+                            <span key={`k-${k}`} className="text-stone-400 pl-2">{k}</span>
+                            <span key={`v-${k}`} className="text-stone-700 font-mono break-all">{typeof v === "object" ? JSON.stringify(v) : String(v ?? "")}</span>
+                          </>
+                        ))}
+                      </>}
+                    </div>
+                  </div>
                 )}
-              </span>
-              {e.actor_role && (
-                <span className="ml-auto shrink-0 text-stone-400">{e.actor_role}</span>
-              )}
-            </div>
-          ))}
+              </div>
+            )
+          })}
         </div>
       )}
 
