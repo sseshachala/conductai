@@ -10,7 +10,14 @@ down_revision = "0032"
 branch_labels = None
 depends_on = None
 
-_VALID_TYPES = ("stale_worker", "approval_timeout", "repeated_failure", "credential_expiry")
+_VALID_TYPES = (
+    "stale_worker",
+    "approval_timeout",
+    "repeated_failure",
+    "credential_expiry",
+    "queue_backup",
+    "silent_playbook",
+)
 _VALID_SEVERITIES = ("info", "warning", "error")
 
 

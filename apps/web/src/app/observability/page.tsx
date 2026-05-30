@@ -70,6 +70,8 @@ const EVENT_LABELS: Record<string, string> = {
   approval_timeout:  "Approval timeout",
   repeated_failure:  "Repeated failures",
   credential_expiry: "Credential expired (401)",
+  queue_backup:      "Queue backup",
+  silent_playbook:   "Silent playbook",
 }
 
 function HealthBadge({ health }: { health: string }) {
