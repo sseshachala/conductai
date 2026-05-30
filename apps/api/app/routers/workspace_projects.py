@@ -250,12 +250,14 @@ def list_audit_log(
 _PREFERENCE_DEFAULTS = {
     "show_dry_run": False,
     "show_test_trigger": True,
+    "watchdog_channel": "",
 }
 
 
 class PreferencesUpdate(BaseModel):
     show_dry_run: bool | None = None
     show_test_trigger: bool | None = None
+    watchdog_channel: str | None = None  # Slack channel for watchdog alerts (e.g. #ops-alerts)
 
 
 @preferences_router.get("")
