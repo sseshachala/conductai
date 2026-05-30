@@ -31,6 +31,7 @@ const EVENT_TYPES_FILTER = [
   { value: "credential_expiry", label: "Credential expired (401)" },
   { value: "queue_backup", label: "Queue backup" },
   { value: "silent_playbook", label: "Silent playbook" },
+  { value: "unknown", label: "Unknown" },
 ] as const
 
 const EVENT_LABELS: Record<string, string> = {
@@ -40,6 +41,7 @@ const EVENT_LABELS: Record<string, string> = {
   credential_expiry: "Credential expired (401)",
   queue_backup:      "Queue backup",
   silent_playbook:   "Silent playbook",
+  unknown:           "Unknown",
 }
 
 const SEVERITY_STYLES: Record<string, string> = {
