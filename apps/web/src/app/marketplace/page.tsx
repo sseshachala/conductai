@@ -130,6 +130,28 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   const [installedCount, setInstalledCount] = useState<Map<string, number>>(new Map())
   const [scores, setScores] = useState<Map<string, PlaybookScore>>(new Map())
 
+  // YAML preview modal
+  const [yamlSlug, setYamlSlug] = useState<string | null>(null)
+  const [yamlCache, setYamlCache] = useState<Map<string, string>>(new Map())
+  const [yamlLoading, setYamlLoading] = useState(false)
+
+  async function openYamlModal(slug: string) {
+    setYamlSlug(slug)
+    if (yamlCache.has(slug)) return
+    setYamlLoading(true)
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/playbooks/${slug}`)
+      if (res.ok) {
+        const data = await res.json()
+        if (data.yaml_source) {
+          setYamlCache(prev => new Map(prev).set(slug, data.yaml_source))
+        }
+      }
+    } finally {
+      setYamlLoading(false)
+    }
+  }
+
   // Install modal state
   const [pendingSlug, setPendingSlug] = useState<string | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
@@ -389,6 +411,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                       installCount={installedCount.get(p.slug) ?? 0}
                       grade={scores.get(p.slug)?.grade}
                       onInstall={openInstallModal}
+                      onViewYaml={openYamlModal}
                     />
                   ))}
                 </div>
@@ -406,11 +429,44 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                 installCount={installedCount.get(p.slug) ?? 0}
                 grade={scores.get(p.slug)?.grade}
                 onInstall={openInstallModal}
+                onViewYaml={openYamlModal}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* YAML preview modal */}
+      {yamlSlug && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setYamlSlug(null)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100">
+              <div>
+                <p className="text-sm font-semibold text-stone-900">{FRIENDLY_NAMES[yamlSlug] ?? yamlSlug}</p>
+                <p className="text-[10px] text-stone-400 font-mono mt-0.5">{yamlSlug}.yaml</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => openInstallModal(yamlSlug)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-stone-900 text-white rounded-lg hover:bg-stone-700 transition-colors"
+                >
+                  + Install
+                </button>
+                <button onClick={() => setYamlSlug(null)} className="text-stone-400 hover:text-stone-600 text-lg leading-none px-1">×</button>
+              </div>
+            </div>
+            <div className="overflow-y-auto flex-1 p-5">
+              {yamlLoading ? (
+                <div className="h-48 rounded-lg bg-stone-100 animate-pulse" />
+              ) : (
+                <pre className="text-[11px] font-mono text-stone-700 leading-relaxed whitespace-pre-wrap break-words">
+                  {yamlCache.get(yamlSlug) ?? "YAML not available."}
+                </pre>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Install modal */}
       {pendingSlug && (
@@ -583,12 +639,13 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   )
 }
 
-function PlaybookCard({ playbook, installing, installCount, grade, onInstall }: {
+function PlaybookCard({ playbook, installing, installCount, grade, onInstall, onViewYaml }: {
   playbook: Playbook
   installing: boolean
   installCount: number
   grade?: string
   onInstall: (slug: string) => void
+  onViewYaml: (slug: string) => void
 }) {
   return (
     <div className="rounded-xl border border-stone-200 bg-white p-5 flex flex-col gap-3 hover:border-stone-300 transition-colors">
@@ -616,13 +673,21 @@ function PlaybookCard({ playbook, installing, installCount, grade, onInstall }: 
         </p>
         <p className="text-xs text-stone-500 leading-relaxed">{playbook.description}</p>
       </div>
-      <button
-        onClick={() => onInstall(playbook.slug)}
-        disabled={installing}
-        className="mt-auto w-full rounded-lg px-3 py-2 text-xs font-medium bg-stone-900 text-white hover:bg-stone-700 disabled:opacity-40 transition-colors"
-      >
-        {installing ? "Installing…" : "+ Install"}
-      </button>
+      <div className="mt-auto flex gap-2">
+        <button
+          onClick={() => onViewYaml(playbook.slug)}
+          className="flex-1 rounded-lg px-3 py-2 text-xs font-medium border border-stone-200 text-stone-600 hover:bg-stone-50 transition-colors"
+        >
+          View YAML
+        </button>
+        <button
+          onClick={() => onInstall(playbook.slug)}
+          disabled={installing}
+          className="flex-1 rounded-lg px-3 py-2 text-xs font-medium bg-stone-900 text-white hover:bg-stone-700 disabled:opacity-40 transition-colors"
+        >
+          {installing ? "Installing…" : "+ Install"}
+        </button>
+      </div>
     </div>
   )
 }
