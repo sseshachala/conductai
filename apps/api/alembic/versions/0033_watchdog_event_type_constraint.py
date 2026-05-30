@@ -17,6 +17,7 @@ _VALID_TYPES = (
     "credential_expiry",
     "queue_backup",
     "silent_playbook",
+    "unknown",
 )
 _VALID_SEVERITIES = ("info", "warning", "error")
 
