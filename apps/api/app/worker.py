@@ -185,9 +185,13 @@ def _loop(thread_id: int) -> None:
 def main() -> None:
     log.info("worker.starting", concurrency=CONCURRENCY, queue=QUEUE_KEY)
 
-    # The reaper and online eval scorer run regardless of worker concurrency mode.
+    # The reaper, watchdog, and online eval scorer run regardless of concurrency.
     reaper = threading.Thread(target=_reaper_loop, daemon=True, name="reaper")
     reaper.start()
+
+    from app.watchdog import watchdog_loop
+    watchdog = threading.Thread(target=watchdog_loop, daemon=True, name="watchdog")
+    watchdog.start()
 
     online_eval = threading.Thread(target=_online_eval_loop, daemon=True, name="online-eval")
     online_eval.start()

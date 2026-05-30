@@ -70,6 +70,14 @@ class Settings(BaseSettings):
     # Fixture promotion — fallback repo if not derivable from the run's workflow
     github_promotion_repo: str = ""
 
+    # Watchdog — Slack alerts for stale workers and approval timeouts
+    # Leave blank to disable Slack alerting from the watchdog.
+    watchdog_slack_token: str = ""
+    watchdog_slack_channel: str = ""
+    watchdog_stale_minutes: int = 15        # flag run as stale after this many minutes
+    watchdog_approval_timeout_minutes: int = 120  # flag approval as timed-out after this many minutes
+    watchdog_interval_seconds: int = 60     # how often the watchdog scans
+
     # Sentry — leave blank to disable
     sentry_dsn: str = ""
     app_version: str = "1.0.0"
