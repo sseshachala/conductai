@@ -48,6 +48,12 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         </div>
         <div className="flex items-center gap-4">
           <a
+            href="/marketplace"
+            className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
+          >
+            Playbooks
+          </a>
+          <a
             href="/benchmark"
             className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
           >
