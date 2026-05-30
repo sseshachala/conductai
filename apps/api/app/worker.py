@@ -35,8 +35,10 @@ from app.runtime.executor import execute_run
 setup_logging()
 log = structlog.get_logger(__name__)
 
-QUEUE_KEY   = "marshal:runs:queue"
-CONCURRENCY = int(os.environ.get("WORKER_CONCURRENCY", "1"))
+QUEUE_KEY        = "marshal:runs:queue"
+ONLINE_EVAL_KEY  = "marshal:eval:online:queue"
+CONCURRENCY      = int(os.environ.get("WORKER_CONCURRENCY", "1"))
+JUDGE_SAMPLE_RATE = float(os.environ.get("ONLINE_EVAL_JUDGE_SAMPLE_RATE", "0.20"))
 
 # Reaper configuration — tunable via environment variables.
 STALE_RUN_THRESHOLD_MINUTES = int(os.environ.get("STALE_RUN_THRESHOLD_MINUTES", "20"))
@@ -127,6 +129,37 @@ def _reaper_loop() -> None:
             log.exception("reaper.loop_error")
 
 
+# ── online eval scorer ───────────────────────────────────────────────────────
+
+def _online_eval_loop() -> None:
+    """Daemon thread: consume the online eval queue and score each completed run."""
+    import random
+    r = redis.from_url(settings.redis_url, decode_responses=True)
+    log.info("online_eval.started", queue=ONLINE_EVAL_KEY, judge_sample_rate=JUDGE_SAMPLE_RATE)
+
+    while True:
+        try:
+            item = r.blpop(ONLINE_EVAL_KEY, timeout=30)
+            if item is None:
+                continue
+            _, run_id = item
+            use_judge = random.random() < JUDGE_SAMPLE_RATE
+            log.debug("online_eval.scoring", run_id=run_id, judge=use_judge)
+            try:
+                from app.core.database import SessionLocal
+                from eval.online_scorer import score_run_online
+                with SessionLocal() as db:
+                    score_run_online(run_id, db, judge=use_judge)
+            except Exception:
+                log.exception("online_eval.score_failed", run_id=run_id)
+        except redis.exceptions.ConnectionError:
+            log.warning("online_eval.redis_disconnected", retry_in=3)
+            time.sleep(3)
+        except Exception:
+            log.exception("online_eval.loop_error")
+            time.sleep(1)
+
+
 # ── queue worker ──────────────────────────────────────────────────────────────
 
 def _loop(thread_id: int) -> None:
@@ -152,9 +185,12 @@ def _loop(thread_id: int) -> None:
 def main() -> None:
     log.info("worker.starting", concurrency=CONCURRENCY, queue=QUEUE_KEY)
 
-    # The reaper runs regardless of worker concurrency mode.
+    # The reaper and online eval scorer run regardless of worker concurrency mode.
     reaper = threading.Thread(target=_reaper_loop, daemon=True, name="reaper")
     reaper.start()
+
+    online_eval = threading.Thread(target=_online_eval_loop, daemon=True, name="online-eval")
+    online_eval.start()
 
     if CONCURRENCY == 1:
         _loop(0)

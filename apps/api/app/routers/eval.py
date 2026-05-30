@@ -593,6 +593,195 @@ def list_playbook_baselines(
         raise HTTPException(status_code=500, detail=f"Failed to load baselines: {e}")
 
 
+@router.get("/candidates")
+def list_fixture_candidates(
+    slug: str | None = None,
+    status: str = "pending",
+    limit: int = 50,
+    _: None = Depends(_require_super_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    List production runs queued as fixture promotion candidates.
+
+    Query params:
+      slug    — filter by playbook slug
+      status  — pending | promoted | dismissed (default: pending)
+      limit   — max rows (default: 50)
+    """
+    from app.models.run_online_score import RunFixtureCandidate
+    q = db.query(RunFixtureCandidate).filter(RunFixtureCandidate.status == status)
+    if slug:
+        q = q.filter(RunFixtureCandidate.slug == slug)
+    rows = q.order_by(RunFixtureCandidate.created_at.desc()).limit(limit).all()
+    return [
+        {
+            "id": str(r.id),
+            "run_id": str(r.run_id),
+            "slug": r.slug,
+            "grade": r.grade,
+            "pct": float(r.pct),
+            "expected_outcome_type": r.expected_outcome_type,
+            "anon_trigger_payload": r.anon_trigger_payload,
+            "status": r.status,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]
+
+
+@router.post("/candidates/{candidate_id}/promote")
+def promote_fixture_candidate(
+    candidate_id: str,
+    _: None = Depends(_require_super_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Promote a fixture candidate by opening a GitHub PR that appends the
+    anonymized trigger payload as a new scenario in the playbook's YAML fixture.
+    """
+    from datetime import datetime, timezone
+    import yaml
+    import httpx
+    from app.models.run_online_score import RunFixtureCandidate
+
+    row = db.query(RunFixtureCandidate).filter_by(id=candidate_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    if row.status != "pending":
+        raise HTTPException(status_code=409, detail=f"Candidate is already {row.status}")
+
+    from app.routers.credentials import _github_token
+    from app.core.auth import DEV_WORKSPACE_ID
+
+    # Use the platform workspace's GitHub token (set in Settings → Environments)
+    try:
+        token = _github_token(DEV_WORKSPACE_ID, db)
+    except Exception:
+        raise HTTPException(status_code=503, detail="GitHub credentials not configured — add a GITHUB_TOKEN in Settings → Environments")
+
+    # Derive repo from the workflow connected to this run
+    from sqlalchemy import text as _text
+    repo_row = db.execute(
+        _text("""
+            SELECT w.github_hook_repo FROM runs r
+            JOIN workflow_versions wv ON wv.id = r.workflow_version_id
+            JOIN workflows w ON w.id = wv.workflow_id
+            WHERE r.id = :run_id LIMIT 1
+        """),
+        {"run_id": str(row.run_id)},
+    ).fetchone()
+    repo = repo_row[0] if repo_row and repo_row[0] else settings.github_promotion_repo
+    if not repo:
+        raise HTTPException(status_code=503, detail="Could not determine target repo — set GITHUB_PROMOTION_REPO or connect a GitHub repo to the workflow")
+    fixture_path = f"apps/api/eval/fixtures/{row.slug}.yaml"
+    branch = f"fixture/promote-{str(row.id)[:8]}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+    try:
+        base = f"https://api.github.com/repos/{repo}"
+
+        # Get default branch SHA
+        ref_res = httpx.get(f"{base}/git/ref/heads/main", headers=headers, timeout=10)
+        ref_res.raise_for_status()
+        sha = ref_res.json()["object"]["sha"]
+
+        # Create branch
+        httpx.post(f"{base}/git/refs", headers=headers, timeout=10, json={
+            "ref": f"refs/heads/{branch}", "sha": sha
+        }).raise_for_status()
+
+        # Get current fixture file content
+        file_res = httpx.get(f"{base}/contents/{fixture_path}", headers=headers, timeout=10)
+        if file_res.status_code == 404:
+            raise HTTPException(status_code=404, detail=f"Fixture file not found: {fixture_path}")
+        file_res.raise_for_status()
+        file_data = file_res.json()
+        current_content = __import__("base64").b64decode(file_data["content"]).decode()
+        file_sha = file_data["sha"]
+
+        # Build new scenario block
+        new_scenario = {
+            "id": f"promoted_{str(row.id)[:8]}",
+            "label": f"(promoted) Grade {row.grade} run — {row.expected_outcome_type or 'unknown outcome'}",
+            "tags": ["positive"] if row.grade in ("A", "B") else ["negative"],
+            "expected_outcome_type": row.expected_outcome_type,
+            "trigger_payload": row.anon_trigger_payload or {},
+        }
+        scenario_yaml = "\n  " + yaml.dump(
+            new_scenario, default_flow_style=False, allow_unicode=True
+        ).replace("\n", "\n  ").rstrip()
+        updated_content = current_content.rstrip() + f"\n{scenario_yaml}\n"
+
+        # Push updated file
+        import base64
+        httpx.put(
+            f"{base}/contents/{fixture_path}",
+            headers=headers,
+            timeout=10,
+            json={
+                "message": f"fixture: promote run {str(row.run_id)[:8]} ({row.slug}, grade {row.grade})",
+                "content": base64.b64encode(updated_content.encode()).decode(),
+                "sha": file_sha,
+                "branch": branch,
+            },
+        ).raise_for_status()
+
+        # Open PR
+        pr_res = httpx.post(f"{base}/pulls", headers=headers, timeout=10, json={
+            "title": f"fixture({row.slug}): promote production run as eval scenario",
+            "body": (
+                f"Auto-promoted from fixture candidate `{candidate_id}`.\n\n"
+                f"- Playbook: `{row.slug}`\n"
+                f"- Grade: **{row.grade}** ({float(row.pct):.0f}%)\n"
+                f"- Expected outcome: `{row.expected_outcome_type}`\n"
+                f"- Run ID: `{row.run_id}` (anonymized)\n\n"
+                f"Review the appended scenario in `{fixture_path}` before merging."
+            ),
+            "head": branch,
+            "base": "main",
+        })
+        pr_res.raise_for_status()
+        pr_url = pr_res.json()["html_url"]
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.error("candidates.promote_failed", candidate_id=candidate_id, error=str(exc))
+        raise HTTPException(status_code=500, detail=f"Failed to open PR: {exc}")
+
+    row.status = "promoted"
+    row.promoted_at = datetime.now(timezone.utc)
+    row.promoted_pr_url = pr_url
+    db.commit()
+
+    return {"status": "promoted", "pr_url": pr_url}
+
+
+@router.post("/candidates/{candidate_id}/dismiss")
+def dismiss_fixture_candidate(
+    candidate_id: str,
+    _: None = Depends(_require_super_admin),
+    db: Session = Depends(get_db),
+):
+    """Mark a fixture candidate as dismissed (won't appear in pending list)."""
+    from app.models.run_online_score import RunFixtureCandidate
+
+    row = db.query(RunFixtureCandidate).filter_by(id=candidate_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    if row.status != "pending":
+        raise HTTPException(status_code=409, detail=f"Candidate is already {row.status}")
+
+    row.status = "dismissed"
+    db.commit()
+    return {"status": "dismissed", "id": candidate_id}
+
+
 @router.get("/scenarios/{slug}")
 def get_scenario_set(
     slug: str,
