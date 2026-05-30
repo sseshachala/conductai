@@ -9,6 +9,8 @@ WATCHDOG_EVENT_TYPES = (
     "approval_timeout",
     "repeated_failure",
     "credential_expiry",
+    "queue_backup",
+    "silent_playbook",
 )
 
 WATCHDOG_SEVERITIES = ("info", "warning", "error")

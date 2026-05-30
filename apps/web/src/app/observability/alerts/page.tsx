@@ -29,6 +29,8 @@ const EVENT_TYPES_FILTER = [
   { value: "approval_timeout", label: "Approval timeout" },
   { value: "repeated_failure", label: "Repeated failures" },
   { value: "credential_expiry", label: "Credential expired (401)" },
+  { value: "queue_backup", label: "Queue backup" },
+  { value: "silent_playbook", label: "Silent playbook" },
 ] as const
 
 const EVENT_LABELS: Record<string, string> = {
@@ -36,6 +38,8 @@ const EVENT_LABELS: Record<string, string> = {
   approval_timeout:  "Approval timeout",
   repeated_failure:  "Repeated failures",
   credential_expiry: "Credential expired (401)",
+  queue_backup:      "Queue backup",
+  silent_playbook:   "Silent playbook",
 }
 
 const SEVERITY_STYLES: Record<string, string> = {
@@ -169,6 +173,10 @@ export default function AlertsPage() {
                     ? `${a.payload.fail_count ?? "?"} failures in 1h`
                     : a.event_type === "credential_expiry"
                     ? (a.payload.hint as string) ?? "Reconnect in Settings"
+                    : a.event_type === "queue_backup"
+                    ? `${a.payload.pending_count ?? "?"} pending runs (threshold: ${a.payload.threshold ?? 10})`
+                    : a.event_type === "silent_playbook"
+                    ? `No runs in ${a.payload.silent_days ?? 7} days`
                     : ""
 
                   return (

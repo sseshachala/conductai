@@ -347,12 +347,86 @@ def scan(db) -> dict:
                 detail="A block returned *401 Unauthorized* — reconnect GitHub or Slack in Settings.",
             )
 
+    # ── Queue backup (>10 pending runs) ──────────────────────────────────────
+    queue_flagged = 0
+    pending_count = db.execute(
+        text("SELECT COUNT(*) FROM runs WHERE status = 'pending'")
+    ).scalar() or 0
+
+    if pending_count > 10:
+        # Workspace-agnostic — one platform-level event; use a sentinel workspace
+        sentinel_ws = "platform"
+        recent = db.query(WatchdogEvent).filter(
+            WatchdogEvent.workspace_id == sentinel_ws,
+            WatchdogEvent.event_type == "queue_backup",
+            WatchdogEvent.created_at >= now - timedelta(hours=1),
+        ).first()
+        if not recent:
+            db.add(WatchdogEvent(
+                workspace_id=sentinel_ws,
+                run_id=None,
+                workflow_id=None,
+                event_type="queue_backup",
+                severity="warning",
+                payload={"pending_count": pending_count, "threshold": 10},
+            ))
+            queue_flagged += 1
+            log.warning("watchdog.queue_backup", pending_count=pending_count)
+
+    # ── Silent playbooks (installed, 0 runs in 7 days) ────────────────────────
+    silent_flagged = 0
+    seven_days_ago = now - timedelta(days=7)
+
+    silent_rows = db.execute(text("""
+        SELECT wf.id AS wf_id, wf.name AS wf_name, wf.workspace_id AS ws_id
+        FROM workflows wf
+        WHERE wf.current_version_id IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM runs r
+            JOIN workflow_versions wv ON wv.id = r.workflow_version_id
+            WHERE wv.workflow_id = wf.id
+              AND r.created_at >= :cutoff
+          )
+    """), {"cutoff": seven_days_ago}).fetchall()
+
+    for row in silent_rows:
+        ws_id = str(row.ws_id)
+        recent = db.query(WatchdogEvent).filter(
+            WatchdogEvent.workspace_id == ws_id,
+            WatchdogEvent.workflow_id == row.wf_id,
+            WatchdogEvent.event_type == "silent_playbook",
+            WatchdogEvent.created_at >= seven_days_ago,
+        ).first()
+        if recent:
+            continue
+
+        db.add(WatchdogEvent(
+            workspace_id=ws_id,
+            run_id=None,
+            workflow_id=row.wf_id,
+            event_type="silent_playbook",
+            severity="info",
+            payload={"workflow_name": row.wf_name, "silent_days": 7},
+        ))
+        silent_flagged += 1
+
+        slack = slack_for(ws_id)
+        if slack:
+            _send_slack_alert(
+                token=slack[0], channel=slack[1],
+                event_type="silent_playbook", run_id="",
+                workflow_name=row.wf_name, workspace_id=ws_id,
+                detail=f"*{row.wf_name}* has had no runs in the last 7 days — is it still needed?",
+            )
+
     db.commit()
     return {
         "stale_flagged": stale_flagged,
         "approval_flagged": approval_flagged,
         "repeated_flagged": repeated_flagged,
         "credential_flagged": credential_flagged,
+        "queue_flagged": queue_flagged,
+        "silent_flagged": silent_flagged,
     }
 
 
