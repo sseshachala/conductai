@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useRef, useState, useCallback } from "react"
 import Link from "next/link"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
@@ -98,37 +98,76 @@ export default function ObservabilityPage() {
   const [agents, setAgents] = useState<AgentStatus[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [live, setLive] = useState(false)
+  const esRef = useRef<EventSource | null>(null)
 
-  const load = useCallback(async () => {
+  const loadAgents = useCallback(async () => {
     const token = await getToken()
     const workspaceId = getCookie("workspaceId") ?? ""
     const headers: Record<string, string> = { "Content-Type": "application/json" }
     if (token) headers["Authorization"] = `Bearer ${token}`
     if (workspaceId) headers["x-workspace-id"] = workspaceId
-
     const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     try {
-      const [sumRes, agentsRes] = await Promise.all([
-        fetch(`${base}/observability/summary`, { headers }),
-        fetch(`${base}/observability/agents`, { headers }),
-      ])
-      if (!sumRes.ok || !agentsRes.ok) throw new Error("Failed to load observability data")
-      const [sumData, agentsData] = await Promise.all([sumRes.json(), agentsRes.json()])
-      setSummary(sumData)
-      setAgents(agentsData)
-      setError(null)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Unknown error")
-    } finally {
-      setLoading(false)
+      const res = await fetch(`${base}/observability/agents`, { headers })
+      if (!res.ok) throw new Error("Failed to load agent data")
+      setAgents(await res.json())
+    } catch {
+      // non-fatal — agents grid keeps last known state
+    }
+  }, [getToken])
+
+  const connectSSE = useCallback(async () => {
+    const token = await getToken()
+    const workspaceId = getCookie("workspaceId") ?? ""
+    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+    const params = new URLSearchParams()
+    if (token) params.set("token", token)
+    if (workspaceId) params.set("workspace_id", workspaceId)
+    const url = `${base}/observability/stream?${params.toString()}`
+
+    if (esRef.current) esRef.current.close()
+    const es = new EventSource(url)
+    esRef.current = es
+
+    es.onopen = () => setLive(true)
+    es.onerror = () => {
+      setLive(false)
+      // EventSource auto-reconnects; nothing extra needed
+    }
+    es.onmessage = (ev) => {
+      try {
+        const data = JSON.parse(ev.data)
+        if (data.kind === "stream_timeout") {
+          // Server closed — EventSource will reconnect
+          return
+        }
+        if (data.health) {
+          setSummary(data as ObservabilitySummary)
+          setLoading(false)
+          setError(null)
+        }
+      } catch {
+        // malformed frame — ignore
+      }
     }
   }, [getToken])
 
   useEffect(() => {
-    load()
-    const interval = setInterval(load, 30_000)
-    return () => clearInterval(interval)
-  }, [load])
+    connectSSE()
+    loadAgents()
+    // Refresh agent grid every 30s (agents endpoint is not streamed)
+    const agentInterval = setInterval(loadAgents, 30_000)
+    return () => {
+      agentInterval && clearInterval(agentInterval)
+      esRef.current?.close()
+    }
+  }, [connectSSE, loadAgents])
+
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    await Promise.all([connectSSE(), loadAgents()])
+  }, [connectSSE, loadAgents])
 
   const h = summary?.health
 
@@ -138,10 +177,13 @@ export default function ObservabilityPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold text-stone-900">Observability</h1>
-            <p className="text-sm text-stone-500 mt-1">Live health of all agents and runs in this workspace.</p>
+            <p className="text-sm text-stone-500 mt-1">
+              Live health of all agents and runs in this workspace.
+              {live && <span className="ml-2 text-green-600 text-xs">● live</span>}
+            </p>
           </div>
           <button
-            onClick={load}
+            onClick={refresh}
             className="text-xs text-stone-500 hover:text-stone-700 border border-stone-200 rounded-lg px-3 py-1.5 hover:bg-stone-50 transition-colors"
           >
             Refresh
