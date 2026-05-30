@@ -68,6 +68,8 @@ const SEVERITY_STYLES: Record<string, string> = {
 const EVENT_LABELS: Record<string, string> = {
   stale_worker:       "Stale worker detected",
   approval_timeout:   "Approval timeout",
+  repeated_failure:   "Repeated failures",
+  credential_expiry:  "Credential expired (401)",
   run_failed:         "Run failed",
   run_recovered:      "Run recovered",
 }

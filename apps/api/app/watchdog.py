@@ -246,8 +246,114 @@ def scan(db) -> dict:
                 detail=f"Approval has been pending for *{minutes_waiting} minutes*.",
             )
 
+    # ── Repeated failures (≥3 in 1 hour per workflow) ────────────────────────
+    repeated_flagged = 0
+    one_hour_ago = now - timedelta(hours=1)
+
+    repeated_rows = db.execute(text("""
+        SELECT wf.id AS wf_id, wf.name AS wf_name, wf.workspace_id AS ws_id,
+               COUNT(r.id) AS fail_count
+        FROM runs r
+        JOIN workflow_versions wv ON wv.id = r.workflow_version_id
+        JOIN workflows wf ON wf.id = wv.workflow_id
+        WHERE r.status = 'failed'
+          AND r.completed_at >= :cutoff
+        GROUP BY wf.id, wf.name, wf.workspace_id
+        HAVING COUNT(r.id) >= 3
+    """), {"cutoff": one_hour_ago}).fetchall()
+
+    for row in repeated_rows:
+        ws_id = str(row.ws_id)
+        wf_id = row.wf_id
+        # Dedup per workflow (run_id=None signals workflow-level event)
+        recent = db.query(WatchdogEvent).filter(
+            WatchdogEvent.workspace_id == ws_id,
+            WatchdogEvent.workflow_id == wf_id,
+            WatchdogEvent.event_type == "repeated_failure",
+            WatchdogEvent.created_at >= one_hour_ago,
+        ).first()
+        if recent:
+            continue
+
+        db.add(WatchdogEvent(
+            workspace_id=ws_id,
+            run_id=None,
+            workflow_id=wf_id,
+            event_type="repeated_failure",
+            severity="warning",
+            payload={"fail_count": row.fail_count, "window_minutes": 60, "workflow_name": row.wf_name},
+        ))
+        repeated_flagged += 1
+
+        slack = slack_for(ws_id)
+        if slack:
+            _send_slack_alert(
+                token=slack[0], channel=slack[1],
+                event_type="repeated_failure", run_id="",
+                workflow_name=row.wf_name, workspace_id=ws_id,
+                detail=f"*{row.fail_count} failures in the last hour* for this agent.",
+            )
+
+    # ── Credential expiry (401s in block_failed events in last hour) ──────────
+    credential_flagged = 0
+
+    cred_rows = db.execute(text("""
+        SELECT DISTINCT wf.workspace_id AS ws_id, wf.id AS wf_id, wf.name AS wf_name,
+                        re.run_id, re.payload
+        FROM run_events re
+        JOIN runs r ON r.id = re.run_id
+        JOIN workflow_versions wv ON wv.id = r.workflow_version_id
+        JOIN workflows wf ON wf.id = wv.workflow_id
+        WHERE re.kind = 'block_failed'
+          AND re.created_at >= :cutoff
+          AND (
+            re.payload::text ILIKE '%401%'
+            OR re.payload::text ILIKE '%unauthorized%'
+            OR re.payload::text ILIKE '%Bad credentials%'
+          )
+    """), {"cutoff": one_hour_ago}).fetchall()
+
+    seen_ws: set[str] = set()
+    for row in cred_rows:
+        ws_id = str(row.ws_id)
+        if ws_id in seen_ws:
+            continue
+        seen_ws.add(ws_id)
+
+        recent = db.query(WatchdogEvent).filter(
+            WatchdogEvent.workspace_id == ws_id,
+            WatchdogEvent.event_type == "credential_expiry",
+            WatchdogEvent.created_at >= one_hour_ago,
+        ).first()
+        if recent:
+            continue
+
+        db.add(WatchdogEvent(
+            workspace_id=ws_id,
+            run_id=row.run_id,
+            workflow_id=row.wf_id,
+            event_type="credential_expiry",
+            severity="warning",
+            payload={"workflow_name": row.wf_name, "hint": "Reconnect GitHub or Slack in Settings"},
+        ))
+        credential_flagged += 1
+
+        slack = slack_for(ws_id)
+        if slack:
+            _send_slack_alert(
+                token=slack[0], channel=slack[1],
+                event_type="credential_expiry", run_id=str(row.run_id),
+                workflow_name=row.wf_name, workspace_id=ws_id,
+                detail="A block returned *401 Unauthorized* — reconnect GitHub or Slack in Settings.",
+            )
+
     db.commit()
-    return {"stale_flagged": stale_flagged, "approval_flagged": approval_flagged}
+    return {
+        "stale_flagged": stale_flagged,
+        "approval_flagged": approval_flagged,
+        "repeated_flagged": repeated_flagged,
+        "credential_flagged": credential_flagged,
+    }
 
 
 def watchdog_loop() -> None:
