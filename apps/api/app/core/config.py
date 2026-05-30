@@ -67,6 +67,9 @@ class Settings(BaseSettings):
     openai_api_key: str = ""   # text-embedding-3-small (1536d)
     voyage_api_key: str = ""   # voyage-3-lite (512d) — future
 
+    # Fixture promotion — fallback repo if not derivable from the run's workflow
+    github_promotion_repo: str = ""
+
     # Sentry — leave blank to disable
     sentry_dsn: str = ""
     app_version: str = "1.0.0"
