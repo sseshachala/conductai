@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
@@ -366,9 +367,17 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
       <div className="mx-auto max-w-5xl px-6 py-10">
 
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-xl font-semibold text-stone-900">Playbooks</h1>
-          <p className="text-xs text-stone-400 mt-0.5">YAML-based agent recipes — install one into a project, configure it, and run it.</p>
+        <div className="mb-8 flex items-start justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-stone-900">Playbooks</h1>
+            <p className="text-xs text-stone-400 mt-0.5">YAML-based agent recipes — install one into a project, configure it, and run it.</p>
+          </div>
+          <Link
+            href="/playbooks/submit"
+            className="text-sm text-indigo-600 border border-indigo-200 rounded-lg px-4 py-2 hover:bg-indigo-50 transition-colors whitespace-nowrap"
+          >
+            + Submit a playbook
+          </Link>
         </div>
 
         {/* Category tabs */}
