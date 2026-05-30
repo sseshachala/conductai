@@ -103,7 +103,7 @@ export default function ObservabilityPage() {
 
   const loadAgents = useCallback(async () => {
     const token = await getToken()
-    const workspaceId = getCookie("workspaceId") ?? ""
+    const workspaceId = getCookie("delegator_project_id") ?? ""
     const headers: Record<string, string> = { "Content-Type": "application/json" }
     if (token) headers["Authorization"] = `Bearer ${token}`
     if (workspaceId) headers["x-workspace-id"] = workspaceId
@@ -119,7 +119,7 @@ export default function ObservabilityPage() {
 
   const connectSSE = useCallback(async () => {
     const token = await getToken()
-    const workspaceId = getCookie("workspaceId") ?? ""
+    const workspaceId = getCookie("delegator_project_id") ?? ""
     const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params = new URLSearchParams()
     if (token) params.set("token", token)
