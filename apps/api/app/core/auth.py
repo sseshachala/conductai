@@ -281,9 +281,9 @@ def get_workspace_id(
         _assert_workspace_member(db, x_workspace_id, user_id)
         return x_workspace_id
 
-    workspace_id = claims.get("org_id")
+    workspace_id = claims.get("org_id") or claims.get("sub")
     if not workspace_id:
-        raise HTTPException(status_code=403, detail="No organization selected — please join or create a workspace")
+        raise HTTPException(status_code=401, detail="No workspace in token claims")
 
     return workspace_id
 
