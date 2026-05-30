@@ -405,9 +405,11 @@ def get_playbook(slug: str):
         raise HTTPException(status_code=404, detail="Playbook not found")
     meta = _PLAYBOOK_META[slug]
     inputs: dict = {}
+    yaml_source: str = ""
     playbook_path = pathlib.Path(__file__).parent.parent.parent / "playbooks" / _TEMPLATE_PLAYBOOKS[slug]
     if playbook_path.exists():
-        raw = _yaml.safe_load(playbook_path.read_text()) or {}
+        yaml_source = playbook_path.read_text()
+        raw = _yaml.safe_load(yaml_source) or {}
         inputs = raw.get("inputs", {})
     github_webhook = slug in _GITHUB_WEBHOOK_EVENTS
     return {
@@ -418,6 +420,7 @@ def get_playbook(slug: str):
         "tags": meta["tags"],
         "featured": meta["featured"],
         "inputs": inputs,
+        "yaml_source": yaml_source,
         # All agents operate on a repo — requires_repo is always True.
         # github_webhook: True → Conduct registers a GitHub webhook automatically.
         # False → caller POSTs to the inbound URL (cron, PagerDuty, etc.) — repo is still needed.
