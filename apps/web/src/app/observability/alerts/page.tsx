@@ -23,6 +23,14 @@ interface Alert {
   resolved_at: string | null
 }
 
+const EVENT_TYPES_FILTER = [
+  { value: "", label: "All types" },
+  { value: "stale_worker", label: "Stale worker" },
+  { value: "approval_timeout", label: "Approval timeout" },
+  { value: "repeated_failure", label: "Repeated failures" },
+  { value: "credential_expiry", label: "Credential expired (401)" },
+] as const
+
 const EVENT_LABELS: Record<string, string> = {
   stale_worker:      "Stale worker",
   approval_timeout:  "Approval timeout",
@@ -36,13 +44,6 @@ const SEVERITY_STYLES: Record<string, string> = {
   error:   "text-red-700 bg-red-50 border-red-200",
 }
 
-const EVENT_TYPES = [
-  { value: "", label: "All types" },
-  { value: "stale_worker", label: "Stale worker" },
-  { value: "approval_timeout", label: "Approval timeout" },
-  { value: "repeated_failure", label: "Repeated failures" },
-  { value: "credential_expiry", label: "Credential expired" },
-]
 
 const PAGE_SIZE = 50
 
@@ -126,7 +127,7 @@ export default function AlertsPage() {
             onChange={e => setEventType(e.target.value)}
             className="text-sm border border-stone-200 rounded-lg px-3 py-1.5 bg-white text-stone-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
           >
-            {EVENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            {EVENT_TYPES_FILTER.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
         </div>
 
