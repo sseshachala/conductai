@@ -3,6 +3,7 @@
 import { useClerk, useUser } from "@clerk/nextjs"
 import { useRouter } from "next/navigation"
 import { useState, useRef, useEffect } from "react"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 
@@ -14,12 +15,14 @@ export default function AuthButton({ afterSignOutUrl = "/", dropUp = false }: { 
 function AccountMenu({ afterSignOutUrl, dropUp }: { afterSignOutUrl: string; dropUp?: boolean }) {
   const { signOut } = useClerk()
   const { user } = useUser()
+  const { activeWorkspace } = useWorkspace()
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
   const email = user?.primaryEmailAddress?.emailAddress ?? ""
   const initials = email ? email[0].toUpperCase() : "?"
+  const orgName = activeWorkspace?.name ?? ""
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -43,7 +46,10 @@ function AccountMenu({ afterSignOutUrl, dropUp }: { afterSignOutUrl: string; dro
         <div className={`absolute w-52 bg-white border border-stone-200 rounded-xl shadow-lg py-1 z-50 ${dropUp ? "bottom-full mb-1 left-0" : "top-9 right-0"}`}>
           {email && (
             <>
-              <p className="px-3 py-2 text-[11px] text-stone-400 truncate">{email}</p>
+              <div className="px-3 py-2">
+                <p className="text-[11px] text-stone-500 truncate">{email}</p>
+                {orgName && <p className="text-[11px] text-stone-400 truncate mt-0.5">{orgName}</p>}
+              </div>
               <div className="border-t border-stone-100 my-1" />
             </>
           )}
