@@ -77,6 +77,10 @@ class Settings(BaseSettings):
     watchdog_approval_timeout_minutes: int = 120
     watchdog_interval_seconds: int = 60
 
+    # reCAPTCHA v3 — used to verify anonymous playbook submissions
+    recaptcha_secret_key: str = ""
+    recaptcha_min_score: float = 0.5
+
     # Sentry — leave blank to disable
     sentry_dsn: str = ""
     app_version: str = "1.0.0"
