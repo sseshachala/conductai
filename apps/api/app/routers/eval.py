@@ -660,7 +660,20 @@ def promote_fixture_candidate(
     except Exception:
         raise HTTPException(status_code=503, detail="GitHub credentials not configured — add a GITHUB_TOKEN in Settings → Environments")
 
-    repo = settings.github_promotion_repo
+    # Derive repo from the workflow connected to this run
+    from sqlalchemy import text as _text
+    repo_row = db.execute(
+        _text("""
+            SELECT w.github_hook_repo FROM runs r
+            JOIN workflow_versions wv ON wv.id = r.workflow_version_id
+            JOIN workflows w ON w.id = wv.workflow_id
+            WHERE r.id = :run_id LIMIT 1
+        """),
+        {"run_id": str(row.run_id)},
+    ).fetchone()
+    repo = repo_row[0] if repo_row and repo_row[0] else settings.github_promotion_repo
+    if not repo:
+        raise HTTPException(status_code=503, detail="Could not determine target repo — set GITHUB_PROMOTION_REPO or connect a GitHub repo to the workflow")
     fixture_path = f"apps/api/eval/fixtures/{row.slug}.yaml"
     branch = f"fixture/promote-{str(row.id)[:8]}"
     headers = {
