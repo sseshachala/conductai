@@ -518,22 +518,25 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                 </label>
                 {reposLoading ? (
                   <div className="h-9 rounded-lg bg-stone-100 animate-pulse" />
-                ) : repos.length === 0 ? (
-                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                    No repos found. Connect GitHub in{" "}
-                    <a href="/settings/integrations" className="underline font-medium">Settings → Integrations</a>{" "}
-                    then re-open this modal.
-                  </div>
                 ) : (
-                  <select
-                    value={selectedRepo}
-                    onChange={e => setSelectedRepo(e.target.value)}
-                    className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
-                  >
-                    {repos.map(r => (
-                      <option key={r.full_name} value={r.full_name}>{r.full_name}</option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={selectedRepo}
+                      onChange={e => setSelectedRepo(e.target.value)}
+                      placeholder="owner/repo"
+                      className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
+                      list="repo-suggestions"
+                    />
+                    <datalist id="repo-suggestions">
+                      {repos.map(r => (
+                        <option key={r.full_name} value={r.full_name} />
+                      ))}
+                    </datalist>
+                    <p className="text-[10px] text-stone-400 mt-1">
+                      Your repos appear as suggestions — or type any public <span className="font-mono">owner/repo</span>
+                    </p>
+                  </div>
                 )}
               </div>
             )}
