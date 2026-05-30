@@ -102,6 +102,44 @@ def _already_emitted(db, run_id, event_type: str, dedup_window_hours: int = 2) -
     ) is not None
 
 
+def _has_open_approval_gate(db, run_id) -> bool:
+    """
+    Return True if the run has an unresolved approval gate in run_events.
+
+    An open gate means there is an approval_requested event with no matching
+    approval_received event for the same block_id.
+
+    This check is defensive: approval runs are already in status='paused' so
+    they should be caught by the approval_timeout scan instead of stale_worker.
+    However, race conditions between the worker writing locked_at and updating
+    status to 'paused' mean a run can briefly appear as status='running' while
+    an approval gate has already been emitted. Skipping these prevents false
+    stale_worker alerts.
+    """
+    from sqlalchemy import text
+
+    row = db.execute(
+        text(
+            """
+            SELECT 1
+            FROM run_events re1
+            WHERE re1.run_id = :rid
+              AND re1.kind = 'approval_requested'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM run_events re2
+                  WHERE re2.run_id = :rid
+                    AND re2.kind = 'approval_received'
+                    AND re2.block_id = re1.block_id
+              )
+            LIMIT 1
+            """
+        ),
+        {"rid": str(run_id)},
+    ).first()
+    return row is not None
+
+
 def scan(db) -> dict:
     """
     Scan the DB for stale workers and approval timeouts.
@@ -142,6 +180,13 @@ def scan(db) -> dict:
 
     for run, wf_id, wf_name, ws_id in stale_runs:
         if _already_emitted(db, run.id, "stale_worker"):
+            continue
+
+        # Skip runs that have an open approval gate — they are not stale workers.
+        # Approval runs should be status='paused' already, but a race between
+        # locked_at being set and status being updated can briefly surface them
+        # here. The approval_timeout scan will handle them correctly.
+        if _has_open_approval_gate(db, run.id):
             continue
 
         minutes_stale = int((now - run.locked_at).total_seconds() / 60)
