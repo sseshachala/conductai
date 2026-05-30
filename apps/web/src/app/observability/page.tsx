@@ -184,12 +184,17 @@ export default function ObservabilityPage() {
               {live && <span className="ml-2 text-green-600 text-xs">● live</span>}
             </p>
           </div>
-          <button
-            onClick={refresh}
-            className="text-xs text-stone-500 hover:text-stone-700 border border-stone-200 rounded-lg px-3 py-1.5 hover:bg-stone-50 transition-colors"
-          >
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <Link href="/observability/alerts" className="text-xs text-stone-500 hover:text-stone-700 border border-stone-200 rounded-lg px-3 py-1.5 hover:bg-stone-50 transition-colors">
+              Alert History
+            </Link>
+            <button
+              onClick={refresh}
+              className="text-xs text-stone-500 hover:text-stone-700 border border-stone-200 rounded-lg px-3 py-1.5 hover:bg-stone-50 transition-colors"
+            >
+              Refresh
+            </button>
+          </div>
         </div>
 
         {error && (
