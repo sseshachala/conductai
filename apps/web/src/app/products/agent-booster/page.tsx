@@ -249,7 +249,7 @@ const HOW_IT_WORKS_STEPS = [
   {
     n: "5",
     title: "Smart Model Routing",
-    desc: "Sonnet for most work, Opus only when needed",
+    desc: "route_model picks haiku, sonnet, or opus — ~4x savings on routine tasks",
     icon: "⟁",
     color: "text-amber-600",
     bg: "bg-amber-50 border-amber-200",
@@ -390,7 +390,11 @@ function QuickstartSection() {
             <InlineCodeBlock comment="or cursor, codex, all">booster init claude</InlineCodeBlock>
           </div>
           <div>
-            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 4 — Track savings</p>
+            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 4 — Route to the right model</p>
+            <InlineCodeBlock comment="haiku · sonnet · opus — auto-selected">booster route &quot;your task description&quot;</InlineCodeBlock>
+          </div>
+          <div>
+            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 5 — Track savings</p>
             <InlineCodeBlock>booster gain</InlineCodeBlock>
           </div>
         </div>
@@ -423,6 +427,13 @@ const MCP_TOOLS = [
     color: "text-emerald-700",
     bg: "bg-emerald-50 border-emerald-200",
   },
+  {
+    name: "route_model",
+    signature: "route_model(task, files?)",
+    desc: "Recommends haiku, sonnet, or opus based on task complexity — keyword signals, file count, and symbol count. Saves ~4x on routine tasks by skipping unnecessary Opus calls.",
+    color: "text-amber-700",
+    bg: "bg-amber-50 border-amber-200",
+  },
 ]
 
 function McpToolsSection() {
@@ -431,14 +442,14 @@ function McpToolsSection() {
       <div className="max-w-5xl mx-auto">
         <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">MCP Tools</p>
         <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
-          Three tools. Massive context savings.
+          Four tools. Massive context savings.
         </h2>
         <p className="text-center text-stone-500 text-sm max-w-xl mx-auto mb-12">
-          Agent Booster exposes three MCP tools that replace whole-file reads with
-          targeted symbol lookups — the model sees exactly what it needs and nothing else.
+          Agent Booster exposes four MCP tools — targeted symbol lookups, semantic search,
+          smart file reads, and automatic model routing. The model sees exactly what it needs and nothing else.
         </p>
 
-        <div className="grid sm:grid-cols-3 gap-5">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {MCP_TOOLS.map(tool => (
             <div key={tool.name} className={`rounded-2xl border ${tool.bg} px-6 py-6 flex flex-col gap-3`}>
               <div>
