@@ -16,7 +16,7 @@ PY_LANGUAGE = Language(tspython.language())
 TS_LANGUAGE = Language(tsts.language_typescript())
 TSX_LANGUAGE = Language(tsts.language_tsx())
 
-_SKIP_DIRS = {"node_modules", ".venv", "__pycache__", ".git", ".booster", "worktrees"}
+_SKIP_DIRS = {"node_modules", ".venv", "__pycache__", ".git", ".booster", "worktrees", ".next", "dist", "build"}
 
 _TS_EXTENSIONS = {".ts", ".tsx", ".js", ".jsx"}
 
@@ -68,7 +68,7 @@ def _extract_signature(node: Node, source: bytes) -> str:
     first_line_end = source.find(b"\n", node.start_byte)
     if first_line_end == -1:
         first_line_end = node.end_byte
-    return source[node.start_byte:first_line_end].decode("utf-8", errors="replace").strip()
+    return source[node.start_byte:first_line_end].decode("utf-8", errors="replace").strip()[:300]
 
 
 def _collect_ts_symbols(root_node: Node, source: bytes) -> list[tuple[str, str, int, int, str]]:
