@@ -8,7 +8,7 @@ from tree_sitter import Language, Node, Parser
 
 PY_LANGUAGE = Language(tspython.language())
 
-_SKIP_DIRS = {"node_modules", ".venv", "__pycache__", ".git", ".booster"}
+_SKIP_DIRS = {"node_modules", ".venv", "__pycache__", ".git", ".booster", "worktrees"}
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS symbols (
@@ -79,6 +79,8 @@ class SymbolIndexer:
         return inserted
 
     def index_all(self) -> tuple[int, int]:
+        self._conn.execute("DELETE FROM symbols")
+        self._conn.commit()
         files = 0
         symbols = 0
         for path in self.root.rglob("*.py"):
