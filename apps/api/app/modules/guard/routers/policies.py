@@ -187,7 +187,89 @@ def _policy_to_out(p: GuardPolicy) -> PolicyOut:
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 
-# Static route must come before /{id} to avoid path collision.
+_GENERATE_SYSTEM = """\
+You are a security policy assistant for ConductGuard, an MDM for AI coding tools.
+Given a plain-English description of a policy rule, output a single JSON object with these fields:
+
+{
+  "rule_id": "slug-format-only",       // lowercase, hyphens, no spaces
+  "description": "Short description",
+  "match_tool": "bash|edit|write|read|*|bash,edit|...",  // comma-separated or * for any
+  "match_pattern": "regex or null",    // regex matched against command content
+  "match_path_pattern": "regex or null", // regex matched against file path, or null
+  "action": "block|warn|audit|approval|inject",
+  "message": "Message shown to developer when rule fires"
+}
+
+Rules:
+- match_pattern OR match_path_pattern must be non-null (can be both)
+- action must be exactly one of: block, warn, audit, approval, inject
+- match_tool can be comma-separated (e.g. "bash,edit") or "*"
+- Output only valid JSON, no explanation, no markdown fences
+"""
+
+
+class PolicyGenerateRequest(BaseModel):
+    prompt: str
+    team_id: Optional[str] = None
+
+
+class PolicyGenerateOut(BaseModel):
+    rule_id: str
+    description: str
+    match_tool: str
+    match_pattern: Optional[str] = None
+    match_path_pattern: Optional[str] = None
+    action: str
+    message: str
+
+
+# Static routes must come before /{id} to avoid path collision.
+
+@router.post("/generate", response_model=PolicyGenerateOut)
+def generate_policy(
+    body: PolicyGenerateRequest,
+    _org_id: str = Depends(get_guard_org_id),
+):
+    """Use Claude to generate a policy rule from a plain-English description."""
+    import json
+    import os
+    import anthropic
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not configured")
+
+    client = anthropic.Anthropic(api_key=api_key)
+    try:
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=512,
+            system=_GENERATE_SYSTEM,
+            messages=[{"role": "user", "content": body.prompt}],
+        )
+        raw = response.content[0].text.strip()
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="AI returned invalid JSON — try rephrasing your request")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"AI generation failed: {e}")
+
+    action = data.get("action", "block")
+    if action not in _VALID_ACTIONS:
+        action = "block"
+
+    return PolicyGenerateOut(
+        rule_id=data.get("rule_id", "custom-rule"),
+        description=data.get("description", ""),
+        match_tool=data.get("match_tool", "*"),
+        match_pattern=data.get("match_pattern") or None,
+        match_path_pattern=data.get("match_path_pattern") or None,
+        action=action,
+        message=data.get("message", ""),
+    )
+
+
 @router.get("/sync", response_model=PolicySyncOut)
 def sync_policies(
     team_id: str = Query(...),
