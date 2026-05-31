@@ -50,9 +50,14 @@ Prefer booster MCP tools over native file reads:
 Run `booster gain` to see token savings.
 <!-- booster:end -->"""
 
-_HOOK_COMMAND = "python3 .claude/hooks/booster-gate.py"
-_GREP_HOOK_COMMAND = "python3 .claude/hooks/booster-grep-nudge.py"
-_ROUTE_HOOK_COMMAND = "python3 .claude/hooks/booster-route.py"
+def _hook_command(root: Path) -> str:
+    return f"python3 {root / '.claude' / 'hooks' / 'booster-gate.py'}"
+
+def _grep_hook_command(root: Path) -> str:
+    return f"python3 {root / '.claude' / 'hooks' / 'booster-grep-nudge.py'}"
+
+def _route_hook_command(root: Path) -> str:
+    return f"python3 {root / '.claude' / 'hooks' / 'booster-route.py'}"
 
 _GATE_SCRIPT = '''\
 #!/usr/bin/env python3
@@ -239,14 +244,18 @@ def _install_hook(root: Path) -> None:
             for h in pre
         )
 
-    if not _has("Read", _HOOK_COMMAND):
-        pre.append({"matcher": "Read", "hooks": [{"type": "command", "command": _HOOK_COMMAND}]})
-    if not _has("Grep", _GREP_HOOK_COMMAND):
-        pre.append({"matcher": "Grep", "hooks": [{"type": "command", "command": _GREP_HOOK_COMMAND}]})
+    hook_cmd = _hook_command(root)
+    grep_cmd = _grep_hook_command(root)
+    route_cmd = _route_hook_command(root)
+
+    if not _has("Read", hook_cmd):
+        pre.append({"matcher": "Read", "hooks": [{"type": "command", "command": hook_cmd}]})
+    if not _has("Grep", grep_cmd):
+        pre.append({"matcher": "Grep", "hooks": [{"type": "command", "command": grep_cmd}]})
 
     ups = hooks.setdefault("UserPromptSubmit", [])
-    if not any(e.get("command") == _ROUTE_HOOK_COMMAND for h in ups for e in h.get("hooks", [])):
-        ups.append({"hooks": [{"type": "command", "command": _ROUTE_HOOK_COMMAND}]})
+    if not any(e.get("command") == route_cmd for h in ups for e in h.get("hooks", [])):
+        ups.append({"hooks": [{"type": "command", "command": route_cmd}]})
 
     _BOOSTER_TOOLS = [
         "mcp__agent-booster__search_context",
@@ -277,7 +286,7 @@ def _remove_hook(root: Path) -> None:
     if not settings_path.exists():
         return
     settings = json.loads(settings_path.read_text())
-    booster_cmds = {_HOOK_COMMAND, _GREP_HOOK_COMMAND, _ROUTE_HOOK_COMMAND}
+    booster_cmds = {_hook_command(root), _grep_hook_command(root), _route_hook_command(root)}
 
     pre = settings.get("hooks", {}).get("PreToolUse", [])
     settings["hooks"]["PreToolUse"] = [
