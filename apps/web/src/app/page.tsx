@@ -54,7 +54,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
             Playbooks
           </a>
           <a
-            href="/tools/agent-booster"
+            href="/tools"
             className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
           >
             Tools
@@ -738,7 +738,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
           <span>·</span>
           <a href="https://github.com/sseshachala/conductai/discussions/new?category=ideas" target="_blank" rel="noopener noreferrer" className="hover:text-stone-600 transition-colors">💡 Request an idea</a>
           <span>·</span>
-          <a href="/tools/agent-booster" className="hover:text-stone-600 transition-colors">Tools</a>
+          <a href="/tools" className="hover:text-stone-600 transition-colors">Tools</a>
           <span>·</span>
           <a href="/compare" className="hover:text-stone-600 transition-colors">Compare</a>
           <span>·</span>

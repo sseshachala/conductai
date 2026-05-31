@@ -7,7 +7,7 @@ export default function AboutPage() {
         </a>
         <div className="flex items-center gap-4">
           <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
-          <a href="/tools/agent-booster" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Agent Booster</a>
+          <a href="/tools" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Tools</a>
           <a href="/marketplace" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Playbooks</a>
           <a href="https://github.com/sseshachala/conductai" target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">GitHub</a>
         </div>
