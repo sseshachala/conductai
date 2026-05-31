@@ -67,6 +67,13 @@ class TeamOut(BaseModel):
     updated_at: datetime
 
 
+class InstallStatusOut(BaseModel):
+    installed: bool
+    team_id: str | None = None
+    team_name: str | None = None
+    invite_code: str | None = None
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _unique_slug(db: Session, name: str) -> str:
@@ -130,6 +137,27 @@ def create_team(
     db.commit()
     db.refresh(team)
     return team
+
+
+@router.get("/installed", response_model=InstallStatusOut)
+def get_install_status(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    """Return whether a Guard team is installed for the caller's org."""
+    team = (
+        db.query(GuardTeam)
+        .filter(GuardTeam.conductai_org_id == workspace_id)
+        .first()
+    )
+    if team:
+        return InstallStatusOut(
+            installed=True,
+            team_id=str(team.id),
+            team_name=team.name,
+            invite_code=team.invite_code,
+        )
+    return InstallStatusOut(installed=False)
 
 
 @router.get("/me", response_model=TeamOut)

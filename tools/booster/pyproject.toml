@@ -6,7 +6,21 @@ build-backend = "setuptools.build_meta"
 name = "agent-booster"
 version = "0.1.0"
 description = "AST+vector context router for AI coding agents — cut token costs 5-15x"
-requires-python = ">=3.9"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "Sudhi Seshachala", email = "Sudhi@b2bsphere.com" }]
+keywords = ["ai", "llm", "claude", "cursor", "codex", "mcp", "tokens", "ast"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
     "tree-sitter>=0.23",
     "tree-sitter-python>=0.23",
@@ -16,6 +30,11 @@ dependencies = [
     "numpy>=1.26",
     "anthropic>=0.40",
 ]
+
+[project.urls]
+Homepage = "https://github.com/sseshachala/conductai"
+Repository = "https://github.com/sseshachala/conductai"
+Issues = "https://github.com/sseshachala/conductai/issues"
 
 [project.scripts]
 booster = "booster.cli:main"
