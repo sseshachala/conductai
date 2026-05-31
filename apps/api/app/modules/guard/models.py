@@ -125,6 +125,7 @@ class GuardSpendBudget(Base):
     monthly_limit_usd = Column(Float, nullable=False)
     alert_threshold_pct = Column(Integer, nullable=False, default=80)
     hard_limit_usd = Column(Float, nullable=True)
+    default_per_developer_usd = Column(Float, nullable=True)
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,

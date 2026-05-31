@@ -187,26 +187,8 @@ def _policy_to_out(p: GuardPolicy) -> PolicyOut:
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 
-_GENERATE_SYSTEM = """\
-You are a security policy assistant for ConductGuard, an MDM for AI coding tools.
-Given a plain-English description of a policy rule, output a single JSON object with these fields:
-
-{
-  "rule_id": "slug-format-only",
-  "description": "Short description",
-  "match_tool": "bash|edit|write|read|*|bash,edit|...",
-  "match_pattern": "regex or null",
-  "match_path_pattern": "regex or null",
-  "action": "block|warn|audit|approval|inject",
-  "message": "Message shown to developer when rule fires"
-}
-
-Rules:
-- match_pattern OR match_path_pattern must be non-null (can be both)
-- action must be exactly one of: block, warn, audit, approval, inject
-- match_tool can be comma-separated (e.g. "bash,edit") or "*"
-- Output ONLY raw JSON. No markdown, no code fences, no explanation, no extra text.
-"""
+_PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
+_GENERATE_SYSTEM = (_PROMPTS_DIR / "policy_generate_system.txt").read_text()
 
 
 class PolicyGenerateRequest(BaseModel):
