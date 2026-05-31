@@ -114,23 +114,22 @@ def _is_valid_uuid(val: str) -> bool:
 
 
 def _lookup_team(db: Session, lookup_id: str, fallback_org_id: str | None = None):
-    """Look up a GuardTeam preferring workspace_id, falling back to conductai_org_id."""
+    """Look up a GuardTeam preferring workspace_id FK, then conductai_org_id string match."""
     if _is_valid_uuid(lookup_id):
-        ws_uuid = uuid.UUID(lookup_id)
-        team = (
-            db.query(GuardTeam)
-            .filter(GuardTeam.workspace_id == ws_uuid)
-            .first()
-        )
+        # New teams: workspace_id FK is set
+        team = db.query(GuardTeam).filter(GuardTeam.workspace_id == uuid.UUID(lookup_id)).first()
         if team:
             return team
-    # Fall back to org_id match (existing teams pre-migration or Clerk org_id lookup)
-    for oid in filter(None, [lookup_id if not _is_valid_uuid(lookup_id) else None, fallback_org_id]):
-        team = db.query(GuardTeam).filter(GuardTeam.conductai_org_id == oid).first()
+    # Existing teams: conductai_org_id stores the workspace UUID string
+    team = db.query(GuardTeam).filter(GuardTeam.conductai_org_id == lookup_id).first()
+    if team:
+        return team
+    # Final fallback: Clerk org_id from JWT
+    if fallback_org_id and fallback_org_id != lookup_id:
+        team = db.query(GuardTeam).filter(GuardTeam.conductai_org_id == fallback_org_id).first()
         if team:
             return team
     return None
-    )
 
 
 def _unique_slug(db: Session, name: str) -> str:
