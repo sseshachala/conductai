@@ -64,6 +64,17 @@ def _extract_ts_name(node: Node, source: bytes) -> str:
     return ""
 
 
+def _keyword_match(symbols: list[dict], query: str, limit: int) -> list[dict]:
+    keywords = [w.lower() for w in query.split() if len(w) > 2]
+    if not keywords:
+        return symbols[:limit]
+    matched = [
+        s for s in symbols
+        if any(kw in s["name"].lower() or kw in s["signature"].lower() for kw in keywords)
+    ]
+    return matched[:limit]
+
+
 def _extract_signature(node: Node, source: bytes) -> str:
     first_line_end = source.find(b"\n", node.start_byte)
     if first_line_end == -1:
@@ -238,6 +249,48 @@ class SymbolIndexer:
 
         id_to_row = {r["id"]: dict(r) for r in rows}
         return [id_to_row[sid] for sid in symbol_ids if sid in id_to_row]
+
+    def vector_search_file(self, file: str, query: str, limit: int = 5) -> list[dict]:
+        """Vector search restricted to symbols in a single file."""
+        file_symbols = self.get_symbols(file)
+        if not file_symbols:
+            return []
+
+        db_dir = self.root / ".booster"
+        vec_path = db_dir / "vectors.npy"
+        ids_path = db_dir / "vector_ids.npy"
+
+        if not vec_path.exists() or not ids_path.exists():
+            return _keyword_match(file_symbols, query, limit)
+
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError:
+            return _keyword_match(file_symbols, query, limit)
+
+        file_id_set = {s["id"] for s in file_symbols}
+        all_ids = np.load(str(ids_path))
+        mask = np.array([int(i) in file_id_set for i in all_ids])
+        if not mask.any():
+            return _keyword_match(file_symbols, query, limit)
+
+        all_vecs = np.load(str(vec_path))
+        file_vecs = all_vecs[mask]
+        file_ids_ordered = [int(all_ids[i]) for i in range(len(all_ids)) if mask[i]]
+
+        model: _ST = SentenceTransformer("all-MiniLM-L6-v2")
+        q = model.encode([query], show_progress_bar=False, convert_to_numpy=True)[0]
+        norm = np.linalg.norm(q)
+        if norm > 0:
+            q = q / norm
+
+        scores = file_vecs @ q
+        top_k = min(limit, len(scores))
+        top_indices = np.argpartition(scores, -top_k)[-top_k:]
+        top_indices = top_indices[np.argsort(scores[top_indices])[::-1]]
+
+        id_to_sym = {s["id"]: s for s in file_symbols}
+        return [id_to_sym[file_ids_ordered[i]] for i in top_indices if file_ids_ordered[i] in id_to_sym]
 
     def get_symbols(self, file: str) -> list[dict]:
         rows = self._conn.execute(

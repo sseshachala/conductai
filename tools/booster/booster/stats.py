@@ -42,7 +42,7 @@ class StatsTracker:
         cur = self._conn.cursor()
 
         cur.execute("SELECT COUNT(DISTINCT ts) FROM reads")
-        sessions: int = cur.fetchone()[0]
+        active_days: int = cur.fetchone()[0]
 
         cur.execute("SELECT COUNT(*), SUM(full_tokens), SUM(slice_tokens) FROM reads")
         row = cur.fetchone()
@@ -66,7 +66,7 @@ class StatsTracker:
         top_files = [{"file": r[0], "saved": r[1], "reads": r[2]} for r in cur.fetchall()]
 
         return {
-            "sessions": sessions,
+            "active_days": active_days,
             "total_reads": total_reads,
             "full_tokens": full_tokens,
             "slice_tokens": slice_tokens,

@@ -120,7 +120,7 @@ def cmd_gain() -> None:
     click.echo()
     click.echo("Agent Booster — Token Savings Report")
     click.echo("\u2500" * 37)
-    click.echo(f"Sessions tracked:   {s['sessions']:,}")
+    click.echo(f"Active days:        {s['active_days']:,}")
     click.echo(f"Total reads:        {s['total_reads']:,}")
     click.echo(f"Tokens served:      {s['slice_tokens']:,}")
     click.echo(f"Tokens saved:       {s['saved_tokens']:,}")
