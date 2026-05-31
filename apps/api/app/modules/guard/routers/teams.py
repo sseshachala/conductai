@@ -45,7 +45,15 @@ class TeamCreate(BaseModel):
 class TeamJoin(BaseModel):
     invite_code: str
     email: str
-    user_id: str
+    user_id: str | None = None
+
+
+class JoinOut(BaseModel):
+    team_id: str
+    team_name: str
+    member_id: str
+    member_token: str
+    policy: dict
 
 
 class MemberPatch(BaseModel):
@@ -190,41 +198,90 @@ def get_my_team(
     return team
 
 
-@router.post("/join", response_model=MemberOut, status_code=201)
+@router.post("/join", response_model=JoinOut, status_code=201)
 def join_team(
     body: TeamJoin,
     db: Session = Depends(get_db),
-    _org_id: str = Depends(get_guard_org_id),
 ):
-    """Join a team using an invite code. 409 if the user is already an active member."""
+    """Join a team using an invite code. Invite code is the only auth required.
+    If the member already exists (matched by email), their token is re-issued and
+    their record is reactivated (upsert semantics).
+    """
     team = db.query(GuardTeam).filter(GuardTeam.invite_code == body.invite_code).first()
     if not team:
         raise HTTPException(status_code=404, detail="Invalid invite code")
+
+    user_id = body.user_id or f"cli:{body.email}"
+    new_token = secrets.token_urlsafe(32)
 
     existing = (
         db.query(GuardMember)
         .filter(
             GuardMember.team_id == team.id,
-            GuardMember.user_id == body.user_id,
-            GuardMember.active.is_(True),
+            GuardMember.email == body.email,
         )
         .first()
     )
-    if existing:
-        raise HTTPException(status_code=409, detail="User is already an active member of this team")
 
-    member = GuardMember(
-        team_id=team.id,
-        user_id=body.user_id,
-        email=body.email,
-        role="developer",
-        active=True,
-        joined_at=datetime.now(timezone.utc),
-    )
-    db.add(member)
+    if existing:
+        # Re-issue token and reactivate
+        existing.member_token = new_token
+        existing.active = True
+        existing.joined_at = datetime.now(timezone.utc)
+        member = existing
+    else:
+        member = GuardMember(
+            team_id=team.id,
+            user_id=user_id,
+            email=body.email,
+            role="developer",
+            active=True,
+            joined_at=datetime.now(timezone.utc),
+            member_token=new_token,
+        )
+        db.add(member)
+
     db.commit()
     db.refresh(member)
-    return member
+
+    # Build inline policy snapshot
+    active_policies = (
+        db.query(GuardPolicy)
+        .filter(GuardPolicy.team_id == team.id, GuardPolicy.enabled.is_(True))
+        .order_by(GuardPolicy.updated_at.desc())
+        .all()
+    )
+    if active_policies:
+        latest_ts = max(p.updated_at for p in active_policies)
+        version = latest_ts.strftime("%Y-%m-%dT%H:%M:%SZ")
+    else:
+        version = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    rules = [
+        {
+            "rule_id": p.rule_id,
+            "match_tool": p.match_tool,
+            "match_pattern": p.match_pattern,
+            "match_path_pattern": p.match_path_pattern,
+            "action": p.action,
+            "message": p.message,
+        }
+        for p in active_policies
+    ]
+
+    policy = {
+        "team_id": str(team.id),
+        "version": version,
+        "rules": rules,
+    }
+
+    return JoinOut(
+        team_id=str(team.id),
+        team_name=team.name,
+        member_id=str(member.id),
+        member_token=new_token,
+        policy=policy,
+    )
 
 
 @router.get("/{team_id}/members", response_model=list[MemberOut])

@@ -40,6 +40,7 @@ class GuardMember(Base):
     role = Column(String(20), nullable=False, default="developer")
     active = Column(Boolean, nullable=False, default=True)
     joined_at = Column(DateTime(timezone=True), nullable=True)
+    member_token = Column(String(64), nullable=True, unique=True)
 
 
 class GuardPolicy(Base):
