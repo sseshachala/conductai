@@ -11,9 +11,12 @@ jobs:
     environment: pypi
     permissions:
       id-token: write
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -28,3 +31,12 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: tools/booster/dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Agent Booster ${{ github.ref_name }}"
+          generate_release_notes: true
+          files: |
+            tools/booster/dist/*.whl
+            tools/booster/dist/*.tar.gz
