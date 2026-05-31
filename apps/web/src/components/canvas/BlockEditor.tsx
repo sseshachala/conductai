@@ -634,7 +634,8 @@ function GuardBlockPanel({
           : null
         const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
         const token = await getToken?.()
-        const headers = token ? { Authorization: `Bearer ${token}` } : {}
+        const headers: Record<string, string> = {}
+        if (token) headers["Authorization"] = `Bearer ${token}`
 
         const installUrl = ws ? `${base}/guard/teams/installed?workspace_id=${ws}` : `${base}/guard/teams/installed`
         const installRes = await fetch(installUrl, { headers })
