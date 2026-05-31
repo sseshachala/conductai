@@ -14,11 +14,11 @@ import uuid
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, require_workspace_role
+from app.core.auth import get_guard_org_id
 from app.core.database import get_db
 from app.modules.guard.models import GuardMember, GuardTeam
 
@@ -31,6 +31,7 @@ _VALID_ROLES = {"owner", "security", "developer"}
 
 class TeamCreate(BaseModel):
     name: str
+    org_id: str | None = None  # explicit org override (team picker flow)
 
 
 class TeamJoin(BaseModel):
@@ -122,16 +123,16 @@ def _get_member_or_404(db: Session, team_id: uuid.UUID, member_id: str) -> Guard
 def create_team(
     body: TeamCreate,
     db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin")),
+    token_org_id: str = Depends(get_guard_org_id),
 ):
     """Create a new guard team for the authenticated org."""
+    org_id = body.org_id or token_org_id
     slug = _unique_slug(db, body.name)
     team = GuardTeam(
         name=body.name,
         slug=slug,
         invite_code=_new_invite_code(),
-        conductai_org_id=workspace_id,
+        conductai_org_id=org_id,
     )
     db.add(team)
     db.commit()
@@ -142,12 +143,12 @@ def create_team(
 @router.get("/installed", response_model=InstallStatusOut)
 def get_install_status(
     db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
+    org_id: str = Depends(get_guard_org_id),
 ):
     """Return whether a Guard team is installed for the caller's org."""
     team = (
         db.query(GuardTeam)
-        .filter(GuardTeam.conductai_org_id == workspace_id)
+        .filter(GuardTeam.conductai_org_id == org_id)
         .first()
     )
     if team:
@@ -163,13 +164,12 @@ def get_install_status(
 @router.get("/me", response_model=TeamOut)
 def get_my_team(
     db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    org_id: str = Depends(get_guard_org_id),
 ):
     """Return the team associated with the caller's org."""
     team = (
         db.query(GuardTeam)
-        .filter(GuardTeam.conductai_org_id == workspace_id)
+        .filter(GuardTeam.conductai_org_id == org_id)
         .first()
     )
     if not team:
@@ -181,8 +181,7 @@ def get_my_team(
 def join_team(
     body: TeamJoin,
     db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin")),
+    _org_id: str = Depends(get_guard_org_id),
 ):
     """Join a team using an invite code. 409 if the user is already an active member."""
     team = db.query(GuardTeam).filter(GuardTeam.invite_code == body.invite_code).first()
@@ -219,8 +218,7 @@ def join_team(
 def list_members(
     team_id: str,
     db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    _org_id: str = Depends(get_guard_org_id),
 ):
     """Return all active members for a team."""
     team = _get_team_or_404(db, team_id)
@@ -237,8 +235,7 @@ def update_member_role(
     member_id: str,
     body: MemberPatch,
     db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin")),
+    _org_id: str = Depends(get_guard_org_id),
 ):
     """Update a member's role. Valid roles: owner, security, developer."""
     if body.role not in _VALID_ROLES:
@@ -259,8 +256,7 @@ def remove_member(
     team_id: str,
     member_id: str,
     db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin")),
+    _org_id: str = Depends(get_guard_org_id),
 ):
     """Soft-delete a member by setting active=False."""
     team = _get_team_or_404(db, team_id)
@@ -273,8 +269,7 @@ def remove_member(
 def regenerate_invite(
     team_id: str,
     db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin")),
+    _org_id: str = Depends(get_guard_org_id),
 ):
     """Invalidate the current invite code and generate a new one."""
     team = _get_team_or_404(db, team_id)
