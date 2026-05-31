@@ -226,19 +226,52 @@ class PolicyGenerateOut(BaseModel):
 
 # Static routes must come before /{id} to avoid path collision.
 
+def _get_anthropic_key(db: Session, team_id: str | None) -> str:
+    """Resolve Anthropic API key from the workspace credential vault."""
+    import uuid as _uuid
+    from app.core.crypto import decrypt
+    from app.models.integration import Integration
+
+    if team_id:
+        try:
+            tid = _uuid.UUID(team_id)
+            team = db.query(GuardTeam).filter(GuardTeam.id == tid).first()
+            workspace_id = team.conductai_org_id if team else None
+        except (ValueError, AttributeError):
+            workspace_id = None
+
+        if workspace_id:
+            row = (
+                db.query(Integration)
+                .filter(
+                    Integration.workspace_id == workspace_id,
+                    Integration.handle == "anthropic",
+                )
+                .first()
+            )
+            if row and row.encrypted_credentials:
+                creds = decrypt(row.encrypted_credentials)
+                key = creds.get("api_key", "")
+                if key:
+                    return key
+
+    from app.core.config import settings
+    return settings.anthropic_api_key
+
+
 @router.post("/generate", response_model=PolicyGenerateOut)
 def generate_policy(
     body: PolicyGenerateRequest,
+    db: Session = Depends(get_db),
     _org_id: str = Depends(get_guard_org_id),
 ):
     """Use Claude to generate a policy rule from a plain-English description."""
     import json
     import anthropic
-    from app.core.config import settings
 
-    api_key = settings.anthropic_api_key
+    api_key = _get_anthropic_key(db, body.team_id)
     if not api_key:
-        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not configured")
+        raise HTTPException(status_code=503, detail="Anthropic API key not configured — add it in Settings → Environments")
 
     client = anthropic.Anthropic(api_key=api_key)
     try:
