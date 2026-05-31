@@ -63,7 +63,7 @@ function ConductGuardModule() {
 
   const fetchInstallStatus = useCallback(async (wsId?: string) => {
     setLoading(true)
-    const guardWsId = wsId ?? (typeof window !== "undefined" ? localStorage.getItem("guard_workspace_id") ?? undefined : undefined) ?? activeWorkspace?.id
+    const guardWsId = wsId ?? activeWorkspace?.id
     try {
       const h = await buildHeaders(guardWsId)
       const res = await fetch(`${base}/guard/teams/installed${guardWsId ? `?workspace_id=${guardWsId}` : ""}`, { headers: h })
@@ -137,9 +137,7 @@ function ConductGuardModule() {
   async function handleUninstall() {
     setUninstalling(true)
     try {
-      const wsId = typeof window !== "undefined"
-        ? (localStorage.getItem("guard_workspace_id") ?? activeWorkspace?.id)
-        : activeWorkspace?.id
+      const wsId = activeWorkspace?.id
       const h = await buildHeaders(wsId)
       const qs = wsId ? `?workspace_id=${wsId}` : ""
       await fetch(`${base}/guard/teams/me${qs}`, { method: "DELETE", headers: h })
