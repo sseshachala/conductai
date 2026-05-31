@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useAuth, useOrganization } from "@clerk/nextjs"
+import { useAuth, useOrganization, useOrganizationList } from "@clerk/nextjs"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
 
@@ -27,9 +27,12 @@ function ModuleCard({ children }: { children: React.ReactNode }) {
 
 // ─── ConductGuard module ──────────────────────────────────────────────────────
 
+interface OrgOption { id: string; name: string }
+
 function ConductGuardModule() {
   const { getToken } = useAuth()
   const { organization } = useOrganization()
+  const { userMemberships } = useOrganizationList({ userMemberships: { infinite: true } })
 
   const [team, setTeam] = useState<GuardTeam | null>(null)
   const [loading, setLoading] = useState(true)
@@ -39,6 +42,13 @@ function ConductGuardModule() {
   const [copied, setCopied] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showTeamPicker, setShowTeamPicker] = useState(false)
+  const [selectedOrg, setSelectedOrg] = useState<OrgOption | null>(null)
+
+  const availableOrgs: OrgOption[] = userMemberships?.data?.map(m => ({
+    id: m.organization.id,
+    name: m.organization.name,
+  })) ?? (organization ? [{ id: organization.id, name: organization.name }] : [])
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -88,24 +98,31 @@ function ConductGuardModule() {
 
   // ── Install ──────────────────────────────────────────────────────────────────
 
-  async function handleInstall() {
+  function handleInstall() {
+    setError(null)
+    const defaultOrg = organization ? { id: organization.id, name: organization.name } : null
+    setSelectedOrg(defaultOrg)
+    setShowTeamPicker(true)
+  }
+
+  async function handleInstallConfirm() {
+    const org = selectedOrg ?? (organization ? { id: organization.id, name: organization.name } : null)
+    if (!org) return
+    setShowTeamPicker(false)
     setInstalling(true)
     setError(null)
     try {
-      const orgName = organization?.name ?? "My Organisation"
-      const orgId   = organization?.id   ?? ""
       const h = await buildHeaders()
       const res = await fetch(`${base}/guard/teams`, {
         method: "POST",
         headers: h,
-        body: JSON.stringify({ name: `${orgName} Guard Team`, org_id: orgId }),
+        body: JSON.stringify({ name: `${org.name} Guard Team`, org_id: org.id }),
       })
       if (!res.ok) {
         const body = await res.text()
         setError(`Installation failed — ${body || res.statusText}`)
         return
       }
-      // Re-fetch install status from server — single source of truth
       await fetchInstallStatus()
     } catch {
       setError("Installation failed — check your connection and try again.")
@@ -225,7 +242,7 @@ function ConductGuardModule() {
 
       {!isInstalled && (
         <p className="text-xs text-stone-400 border-t border-stone-100 pt-3">
-          Org-level — applies across all projects in your workspace.
+          Team-level — applies across all projects in the selected team.
         </p>
       )}
 
@@ -275,6 +292,55 @@ function ConductGuardModule() {
       {/* Error */}
       {error && (
         <p className="text-xs text-red-600 border-t border-red-100 pt-3">{error}</p>
+      )}
+
+      {/* Team picker dialog */}
+      {showTeamPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl border border-stone-200 shadow-xl max-w-sm w-full mx-4 p-6 space-y-4">
+            <div>
+              <h4 className="text-sm font-semibold text-stone-900">Select a team</h4>
+              <p className="text-xs text-stone-500 mt-1">Guard will apply to all projects in the selected team.</p>
+            </div>
+            <div className="space-y-1.5">
+              {availableOrgs.length === 0 && (
+                <p className="text-xs text-stone-400 py-2">No teams found.</p>
+              )}
+              {availableOrgs.map(org => (
+                <button
+                  key={org.id}
+                  onClick={() => setSelectedOrg(org)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors text-left ${
+                    selectedOrg?.id === org.id
+                      ? "bg-indigo-50 border border-indigo-200 text-indigo-900"
+                      : "hover:bg-stone-50 border border-transparent text-stone-700"
+                  }`}
+                >
+                  <span className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 text-xs font-semibold flex items-center justify-center shrink-0">
+                    {org.name.charAt(0).toUpperCase()}
+                  </span>
+                  <span className="font-medium">{org.name}</span>
+                  {selectedOrg?.id === org.id && <span className="ml-auto text-indigo-600 text-xs">✓</span>}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setShowTeamPicker(false)}
+                className="flex-1 text-sm font-medium text-stone-600 border border-stone-200 rounded-lg px-4 py-2 hover:bg-stone-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleInstallConfirm}
+                disabled={!selectedOrg}
+                className="flex-1 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg px-4 py-2 transition-colors disabled:opacity-40"
+              >
+                Install Guard
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Uninstall confirmation dialog */}

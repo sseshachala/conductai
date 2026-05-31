@@ -391,6 +391,23 @@ def audit(
             pass
 
 
+def get_guard_org_id(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
+) -> str:
+    """Extract org/user ID from Clerk token for Guard endpoints. No workspace UUID required."""
+    if not _clerk_enabled():
+        return "dev-org"
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    claims = _verify_clerk_token(credentials.credentials)
+    if not claims:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    org_id = claims.get("org_id") or claims.get("sub")
+    if not org_id:
+        raise HTTPException(status_code=401, detail="No org_id in token")
+    return org_id
+
+
 def require_workspace_role(*allowed_roles: str):
     """
     Dependency factory that enforces minimum role for an endpoint.
