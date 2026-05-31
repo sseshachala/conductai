@@ -11,7 +11,7 @@ Instead of sending full source files to the model on every read, Agent Booster b
 ```
 Without Booster                    With Booster
 ─────────────────                  ────────────────────────────
-Read executor.py                   Read executor.py + task hint
+Read executor.py                   smart_read executor.py + task
 → 1,881 lines (~6k tokens)         → 3 matching functions (~200 tokens)
 ```
 
@@ -19,11 +19,11 @@ Five layers work together:
 
 | Layer | What it does |
 |---|---|
-| **Symbol index** | tree-sitter parses every `.py` file, extracts functions/classes into SQLite |
-| **Semantic diff** | only re-indexes files that changed since last run |
-| **Smart read** | given a file + task description, returns only matching symbol line ranges |
-| **MCP server** | exposes tools over stdio so any MCP-compatible agent can call them |
-| **Platform init** | one command writes the right config for Claude Code, Cursor, or Codex |
+| **Symbol index** | tree-sitter parses every `.py`, `.ts`, `.tsx`, `.js`, `.jsx` file, extracts functions/classes into SQLite |
+| **Vector embeddings** | sentence-transformers encodes each symbol for semantic search |
+| **Smart read** | given a file + task, runs per-file vector search and returns only matching symbol line ranges |
+| **MCP server** | exposes four tools over stdio — any MCP-compatible agent can call them |
+| **Platform init** | one command writes the right config for Claude Code, Cursor, Windsurf, or Codex |
 
 ---
 
@@ -32,114 +32,173 @@ Five layers work together:
 Requires Python 3.10+.
 
 ```bash
-pip install -e tools/booster
-```
-
-Verify:
-
-```bash
-booster --help
+pip install agent-booster          # symbol index + MCP tools
+pip install agent-booster[embed]   # + semantic vector search (recommended)
 ```
 
 ---
 
 ## Quickstart
 
-**Step 1 — Index your codebase**
+**Step 1 — Wire up your AI tool**
+
+```bash
+booster init claude     # Claude Code
+booster init cursor     # Cursor
+booster init windsurf   # Windsurf
+booster init codex      # OpenAI Codex CLI
+booster init all        # all four
+```
+
+Each command shows exactly what files will change, asks for confirmation, then writes them. Fully reversible:
+
+```bash
+booster remove claude   # or cursor, windsurf, codex, all
+```
+
+**Step 2 — Index your codebase**
 
 Run once from your project root. Re-run after large refactors.
 
 ```bash
-booster index
-# Indexed 166 files, 1107 symbols.
+booster index && booster embed
+# Indexed 260 files, 1800 symbols.
+# Built embeddings for 1800 symbols.
 ```
 
-The index is stored at `.booster/symbols.db` (SQLite, gitignored).
-
-**Step 2 — Wire up your AI tool**
-
-```bash
-booster init claude    # Claude Code
-booster init cursor    # Cursor
-booster init codex     # OpenAI Codex CLI
-booster init all       # print all three
-```
-
-Each command prints the JSON config snippet to paste into the right file. For Claude Code, copy the output into `.mcp.json` at your project root (or use the pre-wired `.mcp.json` already in this repo).
+The index is stored at `.booster/` (gitignored).
 
 **Step 3 — Restart your AI tool**
 
-The `agent-booster` MCP server will be available in every session. No further setup needed.
+The `agent-booster` MCP server is now available in every session. Claude Code (and other tools) will use `smart_read` and `search_context` automatically on indexed files.
+
+**Step 4 — Track savings**
+
+```bash
+booster gain
+```
 
 ---
 
 ## CLI reference
 
+### `booster init <platform>`
+
+Writes the MCP server config and rules file for the target platform. Asks for confirmation before making any changes.
+
+```bash
+booster init claude     # .mcp.json + CLAUDE.md + .claude/settings.json hook
+booster init cursor     # .cursor/mcp.json + .cursorrules
+booster init windsurf   # ~/.windsurf/mcp.json + .windsurfrules
+booster init codex      # ~/.codex/config.json + AGENTS.md
+booster init all        # all four
+
+booster init claude --yes   # skip confirmation (CI/scripts)
+```
+
+### `booster remove <platform>`
+
+Cleanly undoes everything `init` wrote. No residue.
+
+```bash
+booster remove claude
+booster remove cursor
+booster remove windsurf
+booster remove codex
+booster remove all
+```
+
+### `booster index`
+
+Scans all `.py`, `.ts`, `.tsx`, `.js`, `.jsx` files from the current directory. Extracts functions, classes, methods, and interfaces into `.booster/symbols.db`. Skips `node_modules`, `.venv`, `__pycache__`, `.git`, `.booster`, `.next`, `dist`, `build`.
+
 ```bash
 booster index
+# Indexed 260 files, 1800 symbols.
 ```
-Scans all `.py` files from the current directory, extracts functions and classes, stores in `.booster/symbols.db`. Skips `node_modules`, `.venv`, `__pycache__`, `.git`, `.booster`.
 
----
+### `booster embed`
+
+Builds sentence-transformer vector embeddings for all indexed symbols. Required for semantic `search_context` calls. Uses `all-MiniLM-L6-v2` (local, no data leaves your machine).
 
 ```bash
-booster search "<query>"
+booster embed
+# Built embeddings for 1800 symbols.
 ```
+
+### `booster search "<query>"`
+
 Keyword search across all indexed symbols. Returns file path, line number, kind, name, and signature.
 
 ```bash
-booster search "workflow execute"
-# apps/api/app/runtime/executor.py:1165  function _execute_output  def _execute_output(...)
+booster search "guard install"
+# apps/web/src/app/settings/modules/page.tsx:99  function handleInstall  function handleInstall() {
 ```
 
----
+### `booster route "<task>"`
+
+Recommends `haiku`, `sonnet`, or `opus` based on task complexity — keyword signals, file count, and symbol count.
 
 ```bash
-booster serve
+booster route "fix the guard SSE role check"
+# haiku  (narrow task — 0 symbol(s) in 1 file)
+
+booster route "refactor the entire runtime compiler and DSL layer"
+# opus  (matches complexity keywords)
 ```
-Starts the MCP server over stdio. Claude Code, Cursor, and Codex connect to this automatically when configured via `booster init`.
 
----
+### `booster serve`
 
-```bash
-booster init <platform>
+Starts the MCP server over stdio. Called automatically by Claude Code, Cursor, Windsurf, and Codex when configured via `booster init`. You rarely need to run this directly.
+
+### `booster gain`
+
+Shows token savings from past `smart_read` calls — total reads, tokens served vs. tokens saved, savings rate, and top files by savings.
+
 ```
-Prints the MCP config snippet for the target platform. `platform` is one of: `claude`, `cursor`, `codex`, `all`.
+Agent Booster — Token Savings Report
+─────────────────────────────────────
+Active days:        3
+Total reads:        47
+Tokens served:      12,400
+Tokens saved:       89,200
+Savings rate:       88%
 
----
-
-```bash
-booster gain
+Top files by savings:
+  executor.py              18,400 tokens saved  (12 reads)
+  guard.py                 14,200 tokens saved  (8 reads)
 ```
-Shows token savings statistics from past sessions. (Full analytics in a future release — currently a stub.)
 
 ---
 
 ## MCP tools
 
-Once `booster serve` is running, these tools are available to the agent:
+Once `booster serve` is running, these four tools are available to the agent:
 
 ### `get_symbols(file)`
-Returns all indexed symbols for a file — name, kind, line range, and signature.
+
+Returns all indexed symbols for a file — name, kind, line range, and signature. No file read required.
 
 ```
 Input:  { "file": "apps/api/app/runtime/executor.py" }
 Output: function run_workflow (lines 42-89): def run_workflow(...)
         class WorkflowState (lines 91-140): class WorkflowState:
-        ...
 ```
 
 ### `search_context(task)`
-Keyword search across all symbols in the index. Returns top 10 matches with file locations.
+
+Semantic vector search across all symbols in the index. Returns top 10 matches by cosine similarity. Falls back to keyword search if embeddings haven't been built.
 
 ```
-Input:  { "task": "authenticate user token" }
-Output: apps/api/app/auth/middleware.py:34 function verify_token — def verify_token(...)
+Input:  { "task": "guard install uninstall" }
+Output: apps/web/src/app/settings/modules/page.tsx:99 function handleInstall — function handleInstall() {
+        apps/web/src/components/guard/GuardNav.tsx:13 function GuardNav — function GuardNav() {
         ...
 ```
 
 ### `smart_read(file, task)`
-Returns only the lines of a file that are relevant to the task. Falls back to full file content if no symbols match.
+
+Runs per-file vector search and returns only the source lines for matching symbols, with a header showing name and line range. If no symbols match, returns an explicit message so the model knows to fall back to a full Read rather than silently receiving the whole file.
 
 ```
 Input:  { "file": "apps/api/app/runtime/executor.py", "task": "execute output block" }
@@ -148,68 +207,41 @@ Output: # function _execute_output (lines 1165-1210)
             ...
 ```
 
+### `route_model(task, files?)`
+
+Recommends `haiku`, `sonnet`, or `opus` based on task complexity signals. If `files` is omitted, auto-detects via `search_context`.
+
+```
+Input:  { "task": "fix the login redirect bug" }
+Output: { "model": "haiku", "reason": "narrow task — 1 symbol in 1 file" }
+```
+
 ---
 
-## Platform config details
+## What `booster init claude` writes
 
-### Claude Code
+| File | Change |
+|---|---|
+| `.mcp.json` | Adds `agent-booster` to `mcpServers` |
+| `CLAUDE.md` | Appends booster usage rules block (sentinel markers) |
+| `.claude/settings.json` | Adds `PreToolUse` hook that intercepts `Read` on indexed files |
+| `.claude/hooks/booster-gate.py` | Hook script that checks the symbol index and redirects to `smart_read` |
 
-Add to `.mcp.json` in your project root:
-
-```json
-{
-  "mcpServers": {
-    "agent-booster": {
-      "command": "booster",
-      "args": ["serve"]
-    }
-  }
-}
-```
-
-### Cursor
-
-Add to `.cursor/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "agent-booster": {
-      "command": "booster",
-      "args": ["serve"]
-    }
-  }
-}
-```
-
-### OpenAI Codex CLI
-
-Add to `~/.codex/config.json`:
-
-```json
-{
-  "mcp": {
-    "servers": {
-      "agent-booster": {
-        "command": "booster",
-        "args": ["serve"]
-      }
-    }
-  }
-}
-```
+`booster remove claude` deletes the hook script, strips the CLAUDE.md block, removes the hook from settings.json, and removes the `.mcp.json` entry.
 
 ---
 
 ## Where it fits
 
-Agent Booster is the third layer in a three-layer token reduction stack — each layer is independent and addable separately:
+Agent Booster is the third layer in a three-layer token reduction stack:
 
 ```
 Layer 3 — Agent Booster     AST+semantic routing, smart file reads
-Layer 2 — RTK               Token compression on tool output
+Layer 2 — RTK               Token compression on CLI/git/build output
 Layer 1 — Prompt caching    Stable context reuse (native to Claude Code + API)
 ```
+
+Each layer is independent and addable separately.
 
 ---
 
@@ -220,20 +252,9 @@ tools/booster/
 ├── README.md
 ├── pyproject.toml
 └── booster/
-    ├── __init__.py
-    ├── cli.py          # click commands: index, search, serve, init, gain
-    ├── indexer.py      # tree-sitter parser + SQLite symbol store
-    ├── retriever.py    # smart_read: task description → relevant line slice
-    └── mcp_server.py   # MCP server exposing get_symbols, search_context, smart_read
+    ├── cli.py          # click commands: index, embed, search, serve, init, remove, route, gain
+    ├── indexer.py      # tree-sitter parser + SQLite symbol store + vector search
+    ├── retriever.py    # smart_read: per-file vector search → relevant line slice
+    ├── mcp_server.py   # MCP server: get_symbols, search_context, smart_read, route_model
+    └── stats.py        # token savings tracking (booster gain)
 ```
-
----
-
-## Roadmap
-
-- [ ] TypeScript/TSX support (tree-sitter-typescript)
-- [ ] Vector embeddings for semantic (not just keyword) search
-- [ ] Smart model routing (`route_model` tool: Haiku / Sonnet / Opus)
-- [ ] `booster gain` — real token savings analytics
-- [ ] Watch mode: auto re-index on file save
-- [ ] Publish to PyPI as `agent-booster`
