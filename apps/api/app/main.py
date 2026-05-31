@@ -11,6 +11,8 @@ from app.routers.observability import router as observability_router
 from app.routers.analytics import router as analytics_router
 from app.modules.guard.routers import teams as guard_teams
 from app.modules.guard.routers import policies as guard_policies
+from app.modules.guard.routers import events as guard_events
+from app.modules.guard.routers import spend as guard_spend
 from app.routers.organizations import router as organizations_router
 from app.routers.workspace_projects import router as workspace_projects_router, audit_router as audit_log_router, preferences_router as workspace_preferences_router, project_direct_router
 from app.routers.runs import workspace_runs_router
@@ -79,6 +81,8 @@ app.include_router(observability_router)
 app.include_router(analytics_router)
 app.include_router(guard_teams.router)
 app.include_router(guard_policies.router)
+app.include_router(guard_events.router)
+app.include_router(guard_spend.router)
 
 
 @app.on_event("startup")
