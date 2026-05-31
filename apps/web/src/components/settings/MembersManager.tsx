@@ -328,6 +328,143 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
         <p><span className="font-medium text-stone-700">Editor</span> — run agents, edit workflows, manage credentials and environments; cannot manage members</p>
         <p><span className="font-medium text-stone-700">Viewer</span> — read-only across all screens: view runs, workflows, credentials, and settings</p>
       </div>
+
+      {isAdmin && <GuardInviteSection getToken={getToken} workspaceId={activeWorkspace.id} />}
+    </div>
+  )
+}
+
+// ── Guard invite section ───────────────────────────────────────────────────────
+
+interface GuardMember {
+  id: string
+  email: string
+  role: string
+  joined_at: string | null
+}
+
+function GuardInviteSection({
+  getToken,
+  workspaceId,
+}: {
+  getToken: (() => Promise<string | null>) | null
+  workspaceId: string
+}) {
+  const [teamId, setTeamId] = useState<string | null>(null)
+  const [inviteCode, setInviteCode] = useState<string | null>(null)
+  const [guardMembers, setGuardMembers] = useState<GuardMember[]>([])
+  const [copied, setCopied] = useState(false)
+  const [regenerating, setRegenerating] = useState(false)
+
+  async function headers() {
+    const h: Record<string, string> = { "Content-Type": "application/json" }
+    if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
+    return h
+  }
+
+  useEffect(() => {
+    async function load() {
+      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+      const h = await headers()
+      const res = await fetch(`${base}/guard/teams/installed?workspace_id=${workspaceId}`, { headers: h })
+      if (!res.ok) return
+      const data = await res.json()
+      if (!data.installed) return
+      setTeamId(data.team_id)
+      setInviteCode(data.invite_code)
+
+      const mRes = await fetch(`${base}/guard/teams/${data.team_id}/members`, { headers: h })
+      if (mRes.ok) setGuardMembers(await mRes.json())
+    }
+    load()
+  }, [workspaceId])
+
+  async function regenerate() {
+    if (!teamId) return
+    setRegenerating(true)
+    try {
+      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+      const h = await headers()
+      const res = await fetch(`${base}/guard/teams/${teamId}/invite/regenerate`, { method: "POST", headers: h })
+      if (res.ok) { const d = await res.json(); setInviteCode(d.invite_code) }
+    } finally {
+      setRegenerating(false)
+    }
+  }
+
+  function copyCommand() {
+    if (!inviteCode) return
+    navigator.clipboard.writeText(`conduct guard join ${inviteCode}`)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  if (!inviteCode) return null
+
+  const cmd = `conduct guard join ${inviteCode}`
+
+  return (
+    <div className="space-y-3 pt-2">
+      <div className="flex items-center gap-2">
+        <div className="w-2 h-2 rounded-full bg-indigo-500" />
+        <p className="text-xs font-semibold text-stone-700 uppercase tracking-wider">ConductGuard</p>
+      </div>
+
+      <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-4 space-y-3">
+        <div>
+          <p className="text-xs font-medium text-stone-700 mb-1">Developer invite command</p>
+          <p className="text-[11px] text-stone-500 mb-2">
+            Share this with developers — they run it once to install Guard and start enforcing your policies.
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 bg-stone-900 text-green-400 text-xs font-mono px-3 py-2 rounded-lg truncate">
+              {cmd}
+            </code>
+            <button
+              onClick={copyCommand}
+              className="shrink-0 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 px-3 py-2 rounded-lg transition-colors"
+            >
+              {copied ? "Copied!" : "Copy"}
+            </button>
+          </div>
+        </div>
+        <div className="flex justify-end">
+          <button
+            onClick={regenerate}
+            disabled={regenerating}
+            className="text-[11px] text-stone-400 hover:text-red-500 disabled:opacity-50 transition-colors"
+          >
+            {regenerating ? "Regenerating…" : "Regenerate invite code"}
+          </button>
+        </div>
+      </div>
+
+      {guardMembers.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">
+            Guard members ({guardMembers.length})
+          </p>
+          <div className="rounded-xl border border-stone-200 bg-white divide-y divide-stone-100 overflow-hidden">
+            {guardMembers.map(m => (
+              <div key={m.id} className="flex items-center justify-between px-4 py-2.5">
+                <div>
+                  <p className="text-sm text-stone-700">{m.email}</p>
+                  {m.joined_at && (
+                    <p className="text-xs text-stone-400">Joined {new Date(m.joined_at).toLocaleDateString()}</p>
+                  )}
+                </div>
+                <span className="text-xs font-medium text-stone-500 bg-stone-100 px-2 py-0.5 rounded-full">
+                  {m.role}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {guardMembers.length === 0 && (
+        <p className="text-xs text-stone-400">No developers have joined yet. Share the command above.</p>
+      )}
     </div>
   )
 }
