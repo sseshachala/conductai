@@ -112,13 +112,10 @@ function HeroSection() {
       </p>
 
       <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
-        {/* pip install block */}
         <div className="flex items-center rounded-xl bg-stone-950 px-5 py-3">
           <code className="font-mono text-sm text-emerald-400">pip install agent-booster</code>
           <CopyButton text="pip install agent-booster" />
         </div>
-
-        {/* GitHub link */}
         <a
           href="https://github.com/sseshachala/conductai"
           target="_blank"
@@ -129,6 +126,9 @@ function HeroSection() {
           View on GitHub
         </a>
       </div>
+      <p className="mt-4 text-xs text-stone-400">
+        Python 3.10+ · MIT licensed · v0.1.5
+      </p>
     </section>
   )
 }
@@ -370,15 +370,19 @@ function QuickstartSection() {
         <div className="flex flex-col gap-5">
           <div>
             <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 1 — Install</p>
-            <InlineCodeBlock>pip install agent-booster</InlineCodeBlock>
+            <InlineCodeBlock comment="add [embed] for semantic search">pip install agent-booster</InlineCodeBlock>
           </div>
           <div>
             <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 2 — Index your codebase</p>
-            <InlineCodeBlock>booster index</InlineCodeBlock>
+            <InlineCodeBlock comment="add --embed to build semantic vectors">booster index</InlineCodeBlock>
           </div>
           <div>
             <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 3 — Wire to your tool</p>
             <InlineCodeBlock comment="or cursor, codex, all">booster init claude</InlineCodeBlock>
+          </div>
+          <div>
+            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 4 — Track savings</p>
+            <InlineCodeBlock>booster gain</InlineCodeBlock>
           </div>
         </div>
       </div>
@@ -399,14 +403,14 @@ const MCP_TOOLS = [
   {
     name: "search_context",
     signature: "search_context(task)",
-    desc: "Semantic search across the full codebase index — returns the most relevant symbols for a given task description.",
+    desc: "Semantic vector search across the full codebase — finds relevant symbols by meaning, not just keyword match. Falls back to keyword search if embeddings aren't built.",
     color: "text-violet-700",
     bg: "bg-violet-50 border-violet-200",
   },
   {
     name: "smart_read",
     signature: "smart_read(file, task)",
-    desc: "Returns only the relevant slice of a file — the functions and classes that match the task, not the whole file.",
+    desc: "Returns only the relevant slice of a file — the functions and classes that match the task. Logs token savings to booster gain.",
     color: "text-emerald-700",
     bg: "bg-emerald-50 border-emerald-200",
   },
@@ -508,27 +512,19 @@ function FooterCTASection() {
           <code className="font-mono text-sm text-emerald-400">pip install agent-booster</code>
           <CopyButton text="pip install agent-booster" />
         </div>
-
         <a
-          href="https://github.com/sseshachala/conductai/issues/434"
+          href="https://github.com/sseshachala/conductai"
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-6 py-3 text-sm font-semibold text-stone-700 hover:border-stone-300 hover:shadow-sm transition-all"
         >
           <GitHubIcon />
-          PyPI issue #434
-        </a>
-
-        <a
-          href="https://github.com/sseshachala/conductai/issues/432"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-6 py-3 text-sm font-semibold text-stone-700 hover:border-stone-300 hover:shadow-sm transition-all"
-        >
-          <GitHubIcon />
-          Main issue #432
+          View on GitHub
         </a>
       </div>
+      <p className="mt-6 text-xs text-stone-400">
+        + semantic search: <code className="font-mono bg-stone-100 px-1.5 py-0.5 rounded text-stone-600">pip install agent-booster[embed]</code>
+      </p>
     </section>
   )
 }
