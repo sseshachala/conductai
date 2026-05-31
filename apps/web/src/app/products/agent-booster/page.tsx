@@ -16,6 +16,7 @@ export default function AgentBoosterPage() {
         <McpToolsSection />
         <WorksWithSection />
         <FaqSection />
+        <InspirationSection />
         <FooterCTASection />
       </main>
       <PageFooter />
@@ -568,6 +569,58 @@ function FaqSection() {
               )}
             </div>
           ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── Inspiration ──────────────────────────────────────────────────────── */
+
+function InspirationSection() {
+  return (
+    <section className="bg-stone-50 px-6 py-20">
+      <div className="max-w-3xl mx-auto">
+        <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">Inspiration</p>
+        <h2 className="text-3xl font-bold text-stone-900 text-center mb-12">
+          Standing on the shoulders of sharp thinkers.
+        </h2>
+
+        <div className="rounded-2xl border border-stone-200 bg-white px-8 py-8 flex flex-col gap-6">
+          {/* Attribution header */}
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-full bg-stone-100 border border-stone-200 flex items-center justify-center shrink-0 text-lg font-bold text-stone-500">
+              RC
+            </div>
+            <div>
+              <p className="font-semibold text-stone-900">Reuven Cohen</p>
+              <p className="text-sm text-stone-500">Agentic Engineer · Founder @ Cognitum.One</p>
+            </div>
+          </div>
+
+          {/* Pull quote */}
+          <blockquote className="border-l-4 border-indigo-300 pl-5 text-stone-600 text-sm leading-relaxed space-y-3">
+            <p>
+              &ldquo;The going rate for a single developer running Claude Code using a swarm style development
+              is around $2.5k/day or $75k/month via Anthropic enterprise API.&rdquo;
+            </p>
+            <p>
+              &ldquo;The biggest cost in agentic development isn&apos;t the model. It&apos;s the constant replay of context.
+              Most autonomous coding systems keep resending the same architecture documents, ADRs, source files,
+              tool definitions, and conversation history over and over. That&apos;s where the money goes.&rdquo;
+            </p>
+            <p>
+              &ldquo;We&apos;re not optimizing models. We&apos;re optimizing information flow.&rdquo;
+            </p>
+          </blockquote>
+
+          {/* Context note */}
+          <p className="text-xs text-stone-400 leading-relaxed">
+            Reuven&apos;s post articulated the problem precisely. Agent Booster is our open-source implementation
+            of that insight — AST-level symbol routing, semantic vector search, and MCP integration built
+            directly into your coding workflow. The concept of operating at the AST and semantic level rather
+            than treating code as raw text comes directly from this framing.
+          </p>
         </div>
       </div>
     </section>
