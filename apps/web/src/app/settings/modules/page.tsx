@@ -1,9 +1,10 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useAuth, useOrganization, useOrganizationList } from "@clerk/nextjs"
+import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,8 +32,7 @@ interface OrgOption { id: string; name: string }
 
 function ConductGuardModule() {
   const { getToken } = useAuth()
-  const { organization } = useOrganization()
-  const { userMemberships } = useOrganizationList({ userMemberships: { infinite: true } })
+  const { workspaces, activeWorkspace } = useWorkspace()
 
   const [team, setTeam] = useState<GuardTeam | null>(null)
   const [loading, setLoading] = useState(true)
@@ -45,36 +45,32 @@ function ConductGuardModule() {
   const [showTeamPicker, setShowTeamPicker] = useState(false)
   const [selectedOrg, setSelectedOrg] = useState<OrgOption | null>(null)
 
-  const availableOrgs: OrgOption[] = userMemberships?.data?.map(m => ({
-    id: m.organization.id,
-    name: m.organization.name,
-  })) ?? (organization ? [{ id: organization.id, name: organization.name }] : [])
+  const availableOrgs: OrgOption[] = workspaces.map(w => ({ id: w.id, name: w.name }))
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
-  const buildHeaders = useCallback(async (): Promise<Record<string, string>> => {
+  const buildHeaders = useCallback(async (wsId?: string): Promise<Record<string, string>> => {
     const h: Record<string, string> = { "Content-Type": "application/json" }
-    if (getToken) {
-      const t = await getToken()
-      if (t) h["Authorization"] = `Bearer ${t}`
-    }
+    if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
+    const id = wsId ?? activeWorkspace?.id
+    if (id) h["X-Guard-Workspace-ID"] = id
     return h
-  }, [getToken])
+  }, [getToken, activeWorkspace])
 
   const base = process.env.NEXT_PUBLIC_API_URL ?? ""
 
   // ── Load installed state ─────────────────────────────────────────────────────
 
-  const fetchInstallStatus = useCallback(async () => {
+  const fetchInstallStatus = useCallback(async (wsId?: string) => {
     setLoading(true)
+    const guardWsId = wsId ?? (typeof window !== "undefined" ? localStorage.getItem("guard_workspace_id") ?? undefined : undefined) ?? activeWorkspace?.id
     try {
-      const h = await buildHeaders()
-      const res = await fetch(`${base}/guard/teams/installed`, { headers: h })
+      const h = await buildHeaders(guardWsId)
+      const res = await fetch(`${base}/guard/teams/installed${guardWsId ? `?workspace_id=${guardWsId}` : ""}`, { headers: h })
       if (res.ok) {
         const data = await res.json()
         if (data.installed) {
-          // Fetch full team details (developer_count, policy_count) from /me
-          const teamRes = await fetch(`${base}/guard/teams/me`, { headers: h })
+          const teamRes = await fetch(`${base}/guard/teams/me${guardWsId ? `?workspace_id=${guardWsId}` : ""}`, { headers: h })
           if (teamRes.ok) {
             setTeam(await teamRes.json())
           } else {
@@ -85,12 +81,11 @@ function ConductGuardModule() {
         }
       }
     } catch {
-      // Non-fatal: default to not installed
       setTeam(null)
     } finally {
       setLoading(false)
     }
-  }, [buildHeaders, base])
+  }, [buildHeaders, base, activeWorkspace])
 
   useEffect(() => {
     fetchInstallStatus()
@@ -100,30 +95,30 @@ function ConductGuardModule() {
 
   function handleInstall() {
     setError(null)
-    const defaultOrg = organization ? { id: organization.id, name: organization.name } : null
-    setSelectedOrg(defaultOrg)
+    setSelectedOrg(activeWorkspace ? { id: activeWorkspace.id, name: activeWorkspace.name } : null)
     setShowTeamPicker(true)
   }
 
   async function handleInstallConfirm() {
-    const org = selectedOrg ?? (organization ? { id: organization.id, name: organization.name } : null)
+    const org = selectedOrg
     if (!org) return
     setShowTeamPicker(false)
     setInstalling(true)
     setError(null)
     try {
-      const h = await buildHeaders()
+      const h = await buildHeaders(org.id)
       const res = await fetch(`${base}/guard/teams`, {
         method: "POST",
         headers: h,
-        body: JSON.stringify({ name: `${org.name} Guard Team`, org_id: org.id }),
+        body: JSON.stringify({ name: `${org.name} Guard`, org_id: org.id }),
       })
       if (!res.ok) {
         const body = await res.text()
         setError(`Installation failed — ${body || res.statusText}`)
         return
       }
-      await fetchInstallStatus()
+      if (typeof window !== "undefined") localStorage.setItem("guard_workspace_id", org.id)
+      await fetchInstallStatus(org.id)
     } catch {
       setError("Installation failed — check your connection and try again.")
     } finally {
