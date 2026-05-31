@@ -81,7 +81,16 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
       }
     }
     checkGuardInstall()
-    return () => { cancelled = true }
+
+    function onGuardChange(e: Event) {
+      const detail = (e as CustomEvent<{ installed: boolean }>).detail
+      setGuardInstalled(detail.installed)
+    }
+    window.addEventListener("guard-install-changed", onGuardChange)
+    return () => {
+      cancelled = true
+      window.removeEventListener("guard-install-changed", onGuardChange)
+    }
   }, [getToken, activeWorkspace])
 
   // Projects state
