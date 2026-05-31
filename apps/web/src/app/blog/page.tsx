@@ -8,6 +8,22 @@ export default function BlogIndex() {
       tag: "Agent Booster",
       tagColor: "text-amber-700 bg-amber-50 border-amber-200",
     },
+    {
+      slug: "rtk-how-we-cut-93-percent-of-cli-tokens",
+      title: "RTK: how we cut 93% of CLI token noise from AI coding sessions.",
+      excerpt: "Every time Claude runs a command, the full output lands in the context window. A single git log can burn 4,000 tokens. RTK filters that noise before it ever reaches the model.",
+      date: "May 31, 2026",
+      tag: "RTK",
+      tagColor: "text-stone-700 bg-stone-100 border-stone-200",
+    },
+    {
+      slug: "why-ai-reads-your-whole-file-when-it-only-needs-three-functions",
+      title: "Why your AI reads the whole file when it only needs three functions.",
+      excerpt: "AI coding tools aren't lazy — they're blind. They can't see inside a file without reading it. Agent Booster gives them a map so they don't have to.",
+      date: "May 31, 2026",
+      tag: "Agent Booster",
+      tagColor: "text-indigo-700 bg-indigo-50 border-indigo-200",
+    },
   ]
 
   return (
