@@ -113,6 +113,10 @@ def get_user_workspace_role_sse(
 
     user_id = _get_user_id_from_request(request)
 
+    import re as _re
+    if not _re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", workspace_id, _re.I):
+        raise HTTPException(status_code=403, detail="Invalid workspace ID — please select a workspace")
+
     from sqlalchemy import text
     row = db.execute(
         text("SELECT role FROM workspace_users WHERE workspace_id = :ws AND clerk_user_id = :uid"),
