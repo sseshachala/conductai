@@ -36,7 +36,8 @@ export default function GuardSettingsPage() {
     return headers
   }, [getToken])
 
-  const workspaceQuery = activeWorkspace ? `?workspace_id=${activeWorkspace.id}` : ""
+  const guardWsId = typeof window !== "undefined" ? (localStorage.getItem("guard_workspace_id") ?? activeWorkspace?.id) : activeWorkspace?.id
+  const workspaceQuery = guardWsId ? `?workspace_id=${guardWsId}` : ""
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -44,7 +45,7 @@ export default function GuardSettingsPage() {
     try {
       const headers = await buildHeaders()
       const res = await fetch(`${base}/guard/teams/me${workspaceQuery}`, { headers })
-      if (res.status === 404) { setNotInstalled(true); return }
+      if (res.status === 404) { setLoading(false); return }
       if (!res.ok) throw new Error(`Failed to load team (${res.status})`)
       const data = await res.json()
       setPrefs({
@@ -66,7 +67,7 @@ export default function GuardSettingsPage() {
 
   async function patch(body: Partial<TeamPrefs>) {
     const headers = await buildHeaders()
-    const qs = activeWorkspace ? `?workspace_id=${activeWorkspace.id}` : ""
+    const qs = guardWsId ? `?workspace_id=${guardWsId}` : ""
     const res = await fetch(`${base}/guard/teams/me${qs}`, {
       method: "PATCH",
       headers,
@@ -111,11 +112,6 @@ export default function GuardSettingsPage() {
 
         {loading ? (
           <div className="text-sm text-stone-400 py-8 text-center">Loading settings...</div>
-        ) : notInstalled ? (
-          <div className="bg-white rounded-xl border border-stone-200 px-6 py-8 text-center space-y-2">
-            <p className="text-sm font-medium text-stone-700">Guard is not installed for this workspace.</p>
-            <p className="text-xs text-stone-500">Go to <a href="/guard/policies" className="underline">Policies</a> to set up Guard.</p>
-          </div>
         ) : error ? (
           <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">{error}</div>
         ) : (
