@@ -591,6 +591,21 @@ function FieldInput({
 
 // ── Guard block panel ─────────────────────────────────────────────────────────
 
+interface GuardPolicy {
+  id: string
+  rule_id: string
+  description: string | null
+  action: string
+  enabled: boolean
+  builtin: boolean
+}
+
+const MODE_LABELS: Record<string, { label: string; sub: string; color: string; dot: string }> = {
+  block: { label: "Block on violation",  sub: "Halts the run immediately when a policy fires.",     color: "text-red-700",    dot: "bg-red-500"    },
+  warn:  { label: "Warn and continue",   sub: "Logs the violation but lets the run finish.",         color: "text-amber-700",  dot: "bg-amber-400"  },
+  audit: { label: "Audit only",          sub: "Records violations silently — no run impact.",        color: "text-stone-600",  dot: "bg-stone-400"  },
+}
+
 function GuardBlockPanel({
   getToken,
   config,
@@ -601,35 +616,48 @@ function GuardBlockPanel({
   onChange: (key: string, value: unknown) => void
 }) {
   const [installed, setInstalled] = useState<boolean | null>(null)
+  const [teamId, setTeamId] = useState<string | null>(null)
+  const [policies, setPolicies] = useState<GuardPolicy[]>([])
 
   useEffect(() => {
     let cancelled = false
-    async function check() {
+    async function load() {
       try {
         const ws = typeof document !== "undefined"
           ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1]
           : null
         const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
-        const url = ws ? `${base}/guard/teams/installed?workspace_id=${ws}` : `${base}/guard/teams/installed`
         const token = await getToken?.()
-        const res = await fetch(url, token ? { headers: { Authorization: `Bearer ${token}` } } : {})
-        if (!res.ok) { if (!cancelled) setInstalled(false); return }
-        const data = await res.json()
-        if (!cancelled) setInstalled(data.installed === true)
+        const headers = token ? { Authorization: `Bearer ${token}` } : {}
+
+        const installUrl = ws ? `${base}/guard/teams/installed?workspace_id=${ws}` : `${base}/guard/teams/installed`
+        const installRes = await fetch(installUrl, { headers })
+        if (!installRes.ok) { if (!cancelled) setInstalled(false); return }
+        const installData = await installRes.json()
+        if (cancelled) return
+        if (!installData.installed) { setInstalled(false); return }
+
+        setInstalled(true)
+        setTeamId(installData.team_id)
+
+        const polRes = await fetch(`${base}/guard/policies?team_id=${installData.team_id}`, { headers })
+        if (!polRes.ok) return
+        const polData: GuardPolicy[] = await polRes.json()
+        if (!cancelled) setPolicies(polData.filter(p => p.enabled))
       } catch {
         if (!cancelled) setInstalled(false)
       }
     }
-    check()
+    load()
     return () => { cancelled = true }
   }, [getToken])
 
   const mode = (config["config.enforcement_mode"] as string) || "block"
+  const modeInfo = MODE_LABELS[mode] ?? MODE_LABELS.block
+  const modePolicies = policies.filter(p => p.action === mode)
 
   if (installed === null) {
-    return (
-      <div className="px-4 py-3 text-[11px] text-stone-400">Checking Guard status…</div>
-    )
+    return <div className="px-4 py-3 text-[11px] text-stone-400">Checking Guard status…</div>
   }
 
   if (!installed) {
@@ -651,6 +679,7 @@ function GuardBlockPanel({
 
   return (
     <div className="px-4 py-3 space-y-3">
+      {/* Enforcement mode */}
       <div>
         <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide block mb-1.5">Enforcement mode</span>
         <select
@@ -658,14 +687,46 @@ function GuardBlockPanel({
           onChange={e => onChange("config.enforcement_mode", e.target.value)}
           className="w-full text-[11px] border border-stone-200 rounded-lg px-2.5 py-1.5 bg-white text-stone-800 focus:outline-none focus:ring-1 focus:ring-stone-300"
         >
-          <option value="block">Block — halt the run on violation</option>
-          <option value="warn">Warn — log violation, continue run</option>
-          <option value="audit">Audit — record only, no action</option>
+          <option value="block">Block on violation</option>
+          <option value="warn">Warn and continue</option>
+          <option value="audit">Audit only</option>
         </select>
-        <p className="text-[10px] text-stone-400 mt-1">
-          Policies are configured in{" "}
-          <a href="/settings/modules" className="underline hover:text-stone-600">Settings → Modules</a>.
-        </p>
+        <p className={`text-[10px] mt-1 ${modeInfo.color}`}>{modeInfo.sub}</p>
+      </div>
+
+      {/* Policies active for selected mode */}
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">
+            {mode} policies
+          </span>
+          <a
+            href={teamId ? `/guard/policies` : "/settings/modules"}
+            className="text-[10px] text-stone-400 hover:text-stone-600 underline"
+          >
+            Manage →
+          </a>
+        </div>
+        {modePolicies.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-stone-200 bg-stone-50 px-3 py-2.5 text-[10px] text-stone-400">
+            No {mode} policies configured.{" "}
+            <a href="/guard/policies" className="underline hover:text-stone-600">Add one →</a>
+          </div>
+        ) : (
+          <ul className="space-y-1">
+            {modePolicies.map(p => (
+              <li key={p.id} className="flex items-start gap-2 rounded-lg border border-stone-100 bg-stone-50 px-2.5 py-2">
+                <span className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${modeInfo.dot}`} />
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold text-stone-700 truncate">{p.rule_id}</p>
+                  {p.description && (
+                    <p className="text-[9px] text-stone-400 leading-snug mt-0.5 line-clamp-2">{p.description}</p>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   )
