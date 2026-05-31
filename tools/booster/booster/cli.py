@@ -229,7 +229,7 @@ def cmd_serve() -> None:
 
 
 @main.command("init")
-@click.argument("platform", type=click.Choice(["claude", "cursor", "codex", "all"]))
+@click.argument("platform", type=click.Choice(["claude", "cursor", "windsurf", "codex", "all"]))
 def cmd_init(platform: str) -> None:
     root = Path.cwd()
 
@@ -246,7 +246,15 @@ def cmd_init(platform: str) -> None:
         existing: dict = json.loads(mcp_path.read_text()) if mcp_path.exists() else {}
         existing.setdefault("mcpServers", {})["agent-booster"] = _MCP_ENTRY
         mcp_path.write_text(json.dumps(existing, indent=2) + "\n")
-        click.echo(f"Wrote {mcp_path}")
+        click.echo(f"  wrote {mcp_path}")
+
+    if platform in ("windsurf", "all"):
+        mcp_path = Path.home() / ".windsurf" / "mcp.json"
+        mcp_path.parent.mkdir(parents=True, exist_ok=True)
+        existing2: dict = json.loads(mcp_path.read_text()) if mcp_path.exists() else {}
+        existing2.setdefault("mcpServers", {})["agent-booster"] = _MCP_ENTRY
+        mcp_path.write_text(json.dumps(existing2, indent=2) + "\n")
+        click.echo(f"  wrote {mcp_path}")
 
     if platform in ("codex", "all"):
         click.echo("Add to ~/.codex/config.json:")
@@ -254,7 +262,7 @@ def cmd_init(platform: str) -> None:
 
 
 @main.command("remove")
-@click.argument("platform", type=click.Choice(["claude", "cursor", "codex", "all"]))
+@click.argument("platform", type=click.Choice(["claude", "cursor", "windsurf", "codex", "all"]))
 def cmd_remove(platform: str) -> None:
     root = Path.cwd()
 
@@ -271,7 +279,15 @@ def cmd_remove(platform: str) -> None:
             data = json.loads(mcp_path.read_text())
             data.get("mcpServers", {}).pop("agent-booster", None)
             mcp_path.write_text(json.dumps(data, indent=2) + "\n")
-            click.echo(f"Cleaned {mcp_path}")
+            click.echo(f"  cleaned {mcp_path}")
+
+    if platform in ("windsurf", "all"):
+        mcp_path = Path.home() / ".windsurf" / "mcp.json"
+        if mcp_path.exists():
+            data = json.loads(mcp_path.read_text())
+            data.get("mcpServers", {}).pop("agent-booster", None)
+            mcp_path.write_text(json.dumps(data, indent=2) + "\n")
+            click.echo(f"  cleaned {mcp_path}")
 
 
 @main.command("route")
