@@ -47,6 +47,13 @@ interface Budget {
   monthly_limit_usd: number
 }
 
+interface TeamBudgetSettings {
+  team_monthly_limit_usd: number | null
+  alert_threshold_pct: number
+  hard_cap_enabled: boolean
+  default_per_developer_usd: number | null
+}
+
 function StatCard({
   label,
   value,
@@ -166,6 +173,155 @@ function BudgetInput({
   )
 }
 
+function SpendControlsPanel({
+  settings,
+  onSave,
+}: {
+  settings: TeamBudgetSettings
+  onSave: (s: TeamBudgetSettings) => Promise<void>
+}) {
+  const [editing, setEditing] = useState(false)
+  const [local, setLocal] = useState(settings)
+  const [saving, setSaving] = useState(false)
+
+  function reset() { setLocal(settings); setEditing(false) }
+
+  async function handleSave() {
+    setSaving(true)
+    try { await onSave(local); setEditing(false) } finally { setSaving(false) }
+  }
+
+  const teamPct =
+    settings.team_monthly_limit_usd && settings.team_monthly_limit_usd > 0
+      ? Math.min((0 / settings.team_monthly_limit_usd) * 100, 100)
+      : null
+
+  return (
+    <div className="bg-white rounded-xl border border-amber-200 overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100">
+        <div className="flex items-center gap-2">
+          <span className="text-base" aria-hidden>⚡</span>
+          <div>
+            <h2 className="text-sm font-semibold text-stone-900">Spend Controls</h2>
+            <p className="text-xs text-stone-500">Set limits now — not after the bill arrives.</p>
+          </div>
+        </div>
+        {!editing ? (
+          <button
+            onClick={() => setEditing(true)}
+            className="text-xs font-medium text-indigo-600 hover:text-indigo-800 border border-indigo-200 rounded-lg px-3 py-1.5 transition-colors"
+          >
+            Configure
+          </button>
+        ) : (
+          <div className="flex gap-2">
+            <button onClick={reset} className="text-xs text-stone-500 hover:text-stone-700 border border-stone-200 rounded-lg px-3 py-1.5 transition-colors">
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-2 gap-5">
+        {/* Team monthly budget */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-stone-700">Team monthly budget</label>
+          {editing ? (
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm text-stone-400">$</span>
+              <input
+                type="number" min="0" step="100"
+                value={local.team_monthly_limit_usd ?? ""}
+                onChange={e => setLocal(p => ({ ...p, team_monthly_limit_usd: e.target.value ? parseFloat(e.target.value) : null }))}
+                placeholder="No limit"
+                className="w-32 text-sm border border-stone-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+          ) : (
+            <p className="text-sm font-semibold text-stone-900">
+              {settings.team_monthly_limit_usd != null ? `$${settings.team_monthly_limit_usd.toLocaleString()} / month` : <span className="text-stone-400 font-normal">No limit set</span>}
+            </p>
+          )}
+          {teamPct != null && !editing && (
+            <BudgetBar used={0} limit={settings.team_monthly_limit_usd} />
+          )}
+        </div>
+
+        {/* Default per-developer */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-stone-700">Default per-developer limit</label>
+          {editing ? (
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm text-stone-400">$</span>
+              <input
+                type="number" min="0" step="50"
+                value={local.default_per_developer_usd ?? ""}
+                onChange={e => setLocal(p => ({ ...p, default_per_developer_usd: e.target.value ? parseFloat(e.target.value) : null }))}
+                placeholder="No limit"
+                className="w-32 text-sm border border-stone-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+          ) : (
+            <p className="text-sm font-semibold text-stone-900">
+              {settings.default_per_developer_usd != null ? `$${settings.default_per_developer_usd.toLocaleString()} / month` : <span className="text-stone-400 font-normal">No limit set</span>}
+            </p>
+          )}
+        </div>
+
+        {/* Alert threshold */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-stone-700">Alert threshold</label>
+          {editing ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="range" min="50" max="99" step="5"
+                value={local.alert_threshold_pct}
+                onChange={e => setLocal(p => ({ ...p, alert_threshold_pct: parseInt(e.target.value) }))}
+                className="w-32 accent-indigo-600"
+              />
+              <span className="text-sm font-medium text-stone-700 w-10">{local.alert_threshold_pct}%</span>
+            </div>
+          ) : (
+            <p className="text-sm font-semibold text-stone-900">
+              Alert at <span className="text-amber-600">{settings.alert_threshold_pct}%</span>
+              <span className="text-xs font-normal text-stone-400 ml-1">— notify team lead + developer</span>
+            </p>
+          )}
+        </div>
+
+        {/* Hard cap */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-stone-700">Hard cap at 100%</label>
+          {editing ? (
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={local.hard_cap_enabled}
+                onChange={e => setLocal(p => ({ ...p, hard_cap_enabled: e.target.checked }))}
+                className="w-4 h-4 accent-indigo-600"
+              />
+              <span className="text-sm text-stone-700">Block new AI sessions when budget is exhausted</span>
+            </label>
+          ) : (
+            <p className="text-sm font-semibold text-stone-900">
+              {settings.hard_cap_enabled
+                ? <span className="text-red-600">Hard cap on — sessions blocked at 100%</span>
+                : <span className="text-stone-400 font-normal">Off — spend can exceed limit</span>}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const MONTHS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
@@ -242,6 +398,12 @@ export default function SpendPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedDev, setExpandedDev] = useState<string | null>(null)
+  const [teamSettings, setTeamSettings] = useState<TeamBudgetSettings>({
+    team_monthly_limit_usd: null,
+    alert_threshold_pct: 80,
+    hard_cap_enabled: false,
+    default_per_developer_usd: null,
+  })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -275,6 +437,16 @@ export default function SpendPage() {
   }, [getToken, month])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    const stored = localStorage.getItem("guard_team_budget_settings")
+    if (stored) { try { setTeamSettings(JSON.parse(stored)) } catch {} }
+  }, [])
+
+  async function saveTeamSettings(s: TeamBudgetSettings) {
+    setTeamSettings(s)
+    localStorage.setItem("guard_team_budget_settings", JSON.stringify(s))
+  }
 
   async function saveBudget(email: string, limit: number) {
     const token = await getToken()
@@ -311,6 +483,9 @@ export default function SpendPage() {
         {error && (
           <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>
         )}
+
+        {/* Spend controls config */}
+        <SpendControlsPanel settings={teamSettings} onSave={saveTeamSettings} />
 
         {/* Summary cards */}
         {loading ? (

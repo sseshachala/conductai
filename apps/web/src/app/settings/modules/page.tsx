@@ -227,9 +227,10 @@ function ConductGuardModule() {
       {!isInstalled && (
         <ul className="space-y-1.5 text-sm text-stone-600">
           {[
+            "Monthly spend limits with hard caps — blocks sessions when budget is hit",
+            "Alert at configurable thresholds (80%, 90%, custom) before costs spiral",
             "Real-time activity feed across Claude Code, Codex, Cursor",
             "Policy enforcement — pushed to all developers automatically",
-            "Token spend tracking and per-developer budgets",
             "Full audit trail — SOC 2 ready",
           ].map(feat => (
             <li key={feat} className="flex items-start gap-2">
