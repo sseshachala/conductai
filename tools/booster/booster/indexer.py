@@ -6,14 +6,19 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import tree_sitter_python as tspython
+import tree_sitter_typescript as tsts
 from tree_sitter import Language, Node, Parser
 
 if TYPE_CHECKING:
     from sentence_transformers import SentenceTransformer as _ST
 
 PY_LANGUAGE = Language(tspython.language())
+TS_LANGUAGE = Language(tsts.language_typescript())
+TSX_LANGUAGE = Language(tsts.language_tsx())
 
 _SKIP_DIRS = {"node_modules", ".venv", "__pycache__", ".git", ".booster", "worktrees"}
+
+_TS_EXTENSIONS = {".ts", ".tsx", ".js", ".jsx"}
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS symbols (
@@ -27,9 +32,16 @@ CREATE TABLE IF NOT EXISTS symbols (
 )
 """
 
-_KIND_MAP = {
+_PY_KIND_MAP = {
     "function_definition": "function",
     "class_definition": "class",
+}
+
+_TS_KIND_MAP = {
+    "function_declaration": "function",
+    "class_declaration": "class",
+    "method_definition": "method",
+    "interface_declaration": "interface",
 }
 
 
@@ -40,11 +52,57 @@ def _extract_name(node: Node, source: bytes) -> str:
     return ""
 
 
+def _extract_ts_name(node: Node, source: bytes) -> str:
+    if node.type == "method_definition":
+        for child in node.children:
+            if child.type == "property_identifier":
+                return source[child.start_byte:child.end_byte].decode("utf-8", errors="replace")
+    else:
+        for child in node.children:
+            if child.type in ("identifier", "type_identifier"):
+                return source[child.start_byte:child.end_byte].decode("utf-8", errors="replace")
+    return ""
+
+
 def _extract_signature(node: Node, source: bytes) -> str:
     first_line_end = source.find(b"\n", node.start_byte)
     if first_line_end == -1:
         first_line_end = node.end_byte
     return source[node.start_byte:first_line_end].decode("utf-8", errors="replace").strip()
+
+
+def _collect_ts_symbols(root_node: Node, source: bytes) -> list[tuple[str, str, int, int, str]]:
+    """Walk TS/TSX AST, returning (name, kind, start_line, end_line, signature) tuples."""
+    results: list[tuple[str, str, int, int, str]] = []
+    stack = [root_node]
+    while stack:
+        node = stack.pop()
+        if node.type in _TS_KIND_MAP:
+            name = _extract_ts_name(node, source)
+            if name:
+                sig = _extract_signature(node, source)
+                results.append((name, _TS_KIND_MAP[node.type], node.start_point[0] + 1, node.end_point[0] + 1, sig))
+        elif node.type == "lexical_declaration":
+            # const foo = (...) => { ... }  — extract named arrow functions
+            for declarator in node.children:
+                if declarator.type != "variable_declarator":
+                    continue
+                has_arrow = any(c.type == "arrow_function" for c in declarator.children)
+                if not has_arrow:
+                    continue
+                name = ""
+                arrow_node: Node | None = None
+                for child in declarator.children:
+                    if child.type == "identifier" and not name:
+                        name = source[child.start_byte:child.end_byte].decode("utf-8", errors="replace")
+                    if child.type == "arrow_function":
+                        arrow_node = child
+                if name and arrow_node:
+                    sig = _extract_signature(declarator, source)
+                    results.append((name, "function", arrow_node.start_point[0] + 1, arrow_node.end_point[0] + 1, sig))
+                    continue  # don't recurse into arrow body for nested arrows
+        stack.extend(node.children)
+    return results
 
 
 class SymbolIndexer:
@@ -56,29 +114,47 @@ class SymbolIndexer:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute(_CREATE_TABLE)
         self._conn.commit()
-        self._parser = Parser(PY_LANGUAGE)
+        self._py_parser = Parser(PY_LANGUAGE)
+        self._ts_parser = Parser(TS_LANGUAGE)
+        self._tsx_parser = Parser(TSX_LANGUAGE)
+
+    def _parser_for(self, path: Path) -> Parser:
+        if path.suffix == ".tsx" or path.suffix == ".jsx":
+            return self._tsx_parser
+        if path.suffix in _TS_EXTENSIONS:
+            return self._ts_parser
+        return self._py_parser
 
     def index_file(self, path: Path) -> int:
         source = path.read_bytes()
-        tree = self._parser.parse(source)
         rel = str(path.relative_to(self.root))
-
         self._conn.execute("DELETE FROM symbols WHERE file = ?", (rel,))
-
         inserted = 0
-        cursor = [tree.root_node]
-        while cursor:
-            node = cursor.pop()
-            if node.type in _KIND_MAP:
-                name = _extract_name(node, source)
-                if name:
-                    sig = _extract_signature(node, source)
-                    self._conn.execute(
-                        "INSERT INTO symbols (file, name, kind, start_line, end_line, signature) VALUES (?, ?, ?, ?, ?, ?)",
-                        (rel, name, _KIND_MAP[node.type], node.start_point[0] + 1, node.end_point[0] + 1, sig),
-                    )
-                    inserted += 1
-            cursor.extend(node.children)
+
+        if path.suffix in _TS_EXTENSIONS:
+            parser = self._parser_for(path)
+            tree = parser.parse(source)
+            for name, kind, start_line, end_line, sig in _collect_ts_symbols(tree.root_node, source):
+                self._conn.execute(
+                    "INSERT INTO symbols (file, name, kind, start_line, end_line, signature) VALUES (?, ?, ?, ?, ?, ?)",
+                    (rel, name, kind, start_line, end_line, sig),
+                )
+                inserted += 1
+        else:
+            tree = self._py_parser.parse(source)
+            cursor = [tree.root_node]
+            while cursor:
+                node = cursor.pop()
+                if node.type in _PY_KIND_MAP:
+                    name = _extract_name(node, source)
+                    if name:
+                        sig = _extract_signature(node, source)
+                        self._conn.execute(
+                            "INSERT INTO symbols (file, name, kind, start_line, end_line, signature) VALUES (?, ?, ?, ?, ?, ?)",
+                            (rel, name, _PY_KIND_MAP[node.type], node.start_point[0] + 1, node.end_point[0] + 1, sig),
+                        )
+                        inserted += 1
+                cursor.extend(node.children)
 
         self._conn.commit()
         return inserted
@@ -88,14 +164,16 @@ class SymbolIndexer:
         self._conn.commit()
         files = 0
         symbols = 0
-        for path in self.root.rglob("*.py"):
-            if any(part in _SKIP_DIRS for part in path.parts):
-                continue
-            try:
-                symbols += self.index_file(path)
-                files += 1
-            except Exception:
-                pass
+        patterns = ["*.py", "*.ts", "*.tsx", "*.js", "*.jsx"]
+        for pattern in patterns:
+            for path in self.root.rglob(pattern):
+                if any(part in _SKIP_DIRS for part in path.parts):
+                    continue
+                try:
+                    symbols += self.index_file(path)
+                    files += 1
+                except Exception:
+                    pass
         if embed:
             self.build_embeddings()
         return files, symbols
