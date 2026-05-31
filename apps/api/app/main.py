@@ -9,6 +9,7 @@ from app.routers import credentials, dashboard, email_templates, environments, p
 from app.routers.eval import router as eval_router
 from app.routers.observability import router as observability_router
 from app.routers.analytics import router as analytics_router
+from app.modules.guard.routers import teams as guard_teams
 from app.routers.organizations import router as organizations_router
 from app.routers.workspace_projects import router as workspace_projects_router, audit_router as audit_log_router, preferences_router as workspace_preferences_router, project_direct_router
 from app.routers.runs import workspace_runs_router
@@ -75,6 +76,7 @@ app.include_router(webhooks.router)
 app.include_router(eval_router)
 app.include_router(observability_router)
 app.include_router(analytics_router)
+app.include_router(guard_teams.router)
 
 
 @app.on_event("startup")
