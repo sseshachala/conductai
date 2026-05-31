@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+import numpy as np
 import tree_sitter_python as tspython
 from tree_sitter import Language, Node, Parser
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer as _ST
 
 PY_LANGUAGE = Language(tspython.language())
 
@@ -78,7 +83,7 @@ class SymbolIndexer:
         self._conn.commit()
         return inserted
 
-    def index_all(self) -> tuple[int, int]:
+    def index_all(self, embed: bool = False) -> tuple[int, int]:
         self._conn.execute("DELETE FROM symbols")
         self._conn.commit()
         files = 0
@@ -91,7 +96,62 @@ class SymbolIndexer:
                 files += 1
             except Exception:
                 pass
+        if embed:
+            self.build_embeddings()
         return files, symbols
+
+    def build_embeddings(self) -> int:
+        from sentence_transformers import SentenceTransformer
+
+        rows = self._conn.execute("SELECT id, name, signature FROM symbols ORDER BY id").fetchall()
+        if not rows:
+            return 0
+
+        model: _ST = SentenceTransformer("all-MiniLM-L6-v2")
+        ids = np.array([r["id"] for r in rows], dtype=np.int64)
+        texts = [f"{r['name']} {r['signature']}" for r in rows]
+        vecs = model.encode(texts, show_progress_bar=False, convert_to_numpy=True)
+        norms = np.linalg.norm(vecs, axis=1, keepdims=True)
+        norms = np.where(norms == 0, 1.0, norms)
+        vecs = vecs / norms
+
+        db_dir = self.root / ".booster"
+        np.save(str(db_dir / "vectors.npy"), vecs)
+        np.save(str(db_dir / "vector_ids.npy"), ids)
+        return len(rows)
+
+    def vector_search(self, query: str, limit: int = 10) -> list[dict]:
+        db_dir = self.root / ".booster"
+        vec_path = db_dir / "vectors.npy"
+        ids_path = db_dir / "vector_ids.npy"
+
+        if not vec_path.exists() or not ids_path.exists():
+            return self.search(query, limit)
+
+        from sentence_transformers import SentenceTransformer
+
+        model: _ST = SentenceTransformer("all-MiniLM-L6-v2")
+        vecs = np.load(str(vec_path))
+        ids = np.load(str(ids_path))
+
+        q = model.encode([query], show_progress_bar=False, convert_to_numpy=True)[0]
+        norm = np.linalg.norm(q)
+        if norm > 0:
+            q = q / norm
+
+        scores = vecs @ q
+        top_k = min(limit, len(scores))
+        top_indices = np.argpartition(scores, -top_k)[-top_k:]
+        top_indices = top_indices[np.argsort(scores[top_indices])[::-1]]
+
+        symbol_ids = [int(ids[i]) for i in top_indices]
+        placeholders = ",".join("?" * len(symbol_ids))
+        rows = self._conn.execute(
+            f"SELECT * FROM symbols WHERE id IN ({placeholders})", symbol_ids
+        ).fetchall()
+
+        id_to_row = {r["id"]: dict(r) for r in rows}
+        return [id_to_row[sid] for sid in symbol_ids if sid in id_to_row]
 
     def get_symbols(self, file: str) -> list[dict]:
         rows = self._conn.execute(

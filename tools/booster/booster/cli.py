@@ -44,11 +44,20 @@ def main() -> None:
 
 
 @main.command("index")
-def cmd_index() -> None:
+@click.option("--embed", is_flag=True, default=False)
+def cmd_index(embed: bool) -> None:
     root = Path.cwd()
     indexer = SymbolIndexer(root)
-    files, symbols = indexer.index_all()
+    files, symbols = indexer.index_all(embed=embed)
     click.echo(f"Indexed {files} files, {symbols} symbols.")
+
+
+@main.command("embed")
+def cmd_embed() -> None:
+    root = Path.cwd()
+    indexer = SymbolIndexer(root)
+    n = indexer.build_embeddings()
+    click.echo(f"Built embeddings for {n} symbols.")
 
 
 @main.command("search")
