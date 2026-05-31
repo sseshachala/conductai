@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
@@ -143,12 +143,14 @@ def create_team(
 @router.get("/installed", response_model=InstallStatusOut)
 def get_install_status(
     db: Session = Depends(get_db),
-    org_id: str = Depends(get_guard_org_id),
+    token_org_id: str = Depends(get_guard_org_id),
+    workspace_id: str | None = Query(default=None),
 ):
-    """Return whether a Guard team is installed for the caller's org."""
+    """Return whether a Guard team is installed for the given workspace or caller's org."""
+    lookup_id = workspace_id or token_org_id
     team = (
         db.query(GuardTeam)
-        .filter(GuardTeam.conductai_org_id == org_id)
+        .filter(GuardTeam.conductai_org_id == lookup_id)
         .first()
     )
     if team:
@@ -164,12 +166,14 @@ def get_install_status(
 @router.get("/me", response_model=TeamOut)
 def get_my_team(
     db: Session = Depends(get_db),
-    org_id: str = Depends(get_guard_org_id),
+    token_org_id: str = Depends(get_guard_org_id),
+    workspace_id: str | None = Query(default=None),
 ):
-    """Return the team associated with the caller's org."""
+    """Return the team associated with the given workspace or caller's org."""
+    lookup_id = workspace_id or token_org_id
     team = (
         db.query(GuardTeam)
-        .filter(GuardTeam.conductai_org_id == org_id)
+        .filter(GuardTeam.conductai_org_id == lookup_id)
         .first()
     )
     if not team:
