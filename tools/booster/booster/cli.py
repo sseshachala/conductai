@@ -51,6 +51,8 @@ Run `booster gain` to see token savings.
 <!-- booster:end -->"""
 
 _HOOK_COMMAND = "python3 .claude/hooks/booster-gate.py"
+_GREP_HOOK_COMMAND = "python3 .claude/hooks/booster-grep-nudge.py"
+_ROUTE_HOOK_COMMAND = "python3 .claude/hooks/booster-route.py"
 
 _GATE_SCRIPT = '''\
 #!/usr/bin/env python3
@@ -90,6 +92,62 @@ if count > 0:
         "to read only the relevant sections and save tokens."
     )
     sys.exit(1)
+
+sys.exit(0)
+'''
+
+_GREP_NUDGE_SCRIPT = '''\
+#!/usr/bin/env python3
+"""Booster grep nudge — suggests search_context for semantic-looking Grep patterns."""
+import json
+import sys
+
+data = json.load(sys.stdin)
+pattern = data.get("tool_input", {}).get("pattern", "")
+
+if not pattern:
+    sys.exit(0)
+
+REGEX_CHARS = set(r"^$*+?[](){}\\\\|.")
+is_regex = any(c in REGEX_CHARS for c in pattern)
+word_count = len(pattern.split())
+
+if not is_regex and word_count >= 2:
+    print(
+        f"[booster] \\'{pattern}\\' looks like a semantic search. "
+        "Consider mcp__agent-booster__search_context instead of Grep — "
+        "it searches by meaning across all indexed symbols, not just text match."
+    )
+
+sys.exit(0)
+'''
+
+_ROUTE_SCRIPT = '''\
+#!/usr/bin/env python3
+"""Booster route hook — recommends model tier at the start of every user turn."""
+import json
+import subprocess
+import sys
+
+data = json.load(sys.stdin)
+message = data.get("message", "")
+
+if not message or len(message.strip()) < 10:
+    sys.exit(0)
+
+try:
+    result = subprocess.run(
+        ["booster", "route", message[:300]],
+        capture_output=True,
+        text=True,
+        timeout=5,
+        cwd=data.get("cwd", "."),
+    )
+    recommendation = result.stdout.strip()
+    if recommendation:
+        print(f"[booster/route] {recommendation}")
+except Exception:
+    pass
 
 sys.exit(0)
 '''
@@ -158,9 +216,13 @@ def _remove_rules_block(path: Path, label: str) -> None:
 def _install_hook(root: Path) -> None:
     hooks_dir = root / ".claude" / "hooks"
     hooks_dir.mkdir(parents=True, exist_ok=True)
-    gate = hooks_dir / "booster-gate.py"
-    gate.write_text(_GATE_SCRIPT)
-    click.echo(f"  wrote {gate.relative_to(root)}")
+
+    (hooks_dir / "booster-gate.py").write_text(_GATE_SCRIPT)
+    (hooks_dir / "booster-grep-nudge.py").write_text(_GREP_NUDGE_SCRIPT)
+    (hooks_dir / "booster-route.py").write_text(_ROUTE_SCRIPT)
+    click.echo(f"  wrote .claude/hooks/booster-gate.py (Read gate)")
+    click.echo(f"  wrote .claude/hooks/booster-grep-nudge.py (Grep nudge)")
+    click.echo(f"  wrote .claude/hooks/booster-route.py (route_model on every turn)")
 
     settings_path = root / ".claude" / "settings.json"
     settings: dict = {}
@@ -170,13 +232,21 @@ def _install_hook(root: Path) -> None:
     hooks = settings.setdefault("hooks", {})
     pre = hooks.setdefault("PreToolUse", [])
 
-    already = any(
-        h.get("matcher") == "Read"
-        and any(e.get("command") == _HOOK_COMMAND for e in h.get("hooks", []))
-        for h in pre
-    )
-    if not already:
+    def _has(matcher: str, cmd: str) -> bool:
+        return any(
+            h.get("matcher") == matcher
+            and any(e.get("command") == cmd for e in h.get("hooks", []))
+            for h in pre
+        )
+
+    if not _has("Read", _HOOK_COMMAND):
         pre.append({"matcher": "Read", "hooks": [{"type": "command", "command": _HOOK_COMMAND}]})
+    if not _has("Grep", _GREP_HOOK_COMMAND):
+        pre.append({"matcher": "Grep", "hooks": [{"type": "command", "command": _GREP_HOOK_COMMAND}]})
+
+    ups = hooks.setdefault("UserPromptSubmit", [])
+    if not any(e.get("command") == _ROUTE_HOOK_COMMAND for h in ups for e in h.get("hooks", [])):
+        ups.append({"hooks": [{"type": "command", "command": _ROUTE_HOOK_COMMAND}]})
 
     settings_path.parent.mkdir(parents=True, exist_ok=True)
     settings_path.write_text(json.dumps(settings, indent=2) + "\n")
@@ -184,24 +254,29 @@ def _install_hook(root: Path) -> None:
 
 
 def _remove_hook(root: Path) -> None:
-    gate = root / ".claude" / "hooks" / "booster-gate.py"
-    if gate.exists():
-        gate.unlink()
-        click.echo(f"  removed {gate.relative_to(root)}")
+    hooks_dir = root / ".claude" / "hooks"
+    for name in ("booster-gate.py", "booster-grep-nudge.py", "booster-route.py"):
+        f = hooks_dir / name
+        if f.exists():
+            f.unlink()
+            click.echo(f"  removed .claude/hooks/{name}")
 
     settings_path = root / ".claude" / "settings.json"
     if not settings_path.exists():
         return
     settings = json.loads(settings_path.read_text())
+    booster_cmds = {_HOOK_COMMAND, _GREP_HOOK_COMMAND, _ROUTE_HOOK_COMMAND}
+
     pre = settings.get("hooks", {}).get("PreToolUse", [])
-    filtered = [
+    settings["hooks"]["PreToolUse"] = [
         h for h in pre
-        if not (
-            h.get("matcher") == "Read"
-            and any(e.get("command") == _HOOK_COMMAND for e in h.get("hooks", []))
-        )
+        if not any(e.get("command") in booster_cmds for e in h.get("hooks", []))
     ]
-    settings["hooks"]["PreToolUse"] = filtered
+    ups = settings.get("hooks", {}).get("UserPromptSubmit", [])
+    settings["hooks"]["UserPromptSubmit"] = [
+        h for h in ups
+        if not any(e.get("command") in booster_cmds for e in h.get("hooks", []))
+    ]
     settings_path.write_text(json.dumps(settings, indent=2) + "\n")
     click.echo(f"  updated {settings_path.relative_to(root)}")
 
@@ -258,10 +333,12 @@ def cmd_init(platform: str, yes: bool) -> None:
         click.echo("Agent Booster — Claude Code setup")
         click.echo("\u2500" * 34)
         click.echo("This will make the following changes:")
-        click.echo(f"  + .mcp.json              (add agent-booster MCP server)")
-        click.echo(f"  + CLAUDE.md              (append booster usage rules)")
-        click.echo(f"  + .claude/settings.json  (add PreToolUse hook for Read)")
-        click.echo(f"  + .claude/hooks/booster-gate.py  (hook script)")
+        click.echo(f"  + .mcp.json                        (add agent-booster MCP server)")
+        click.echo(f"  + CLAUDE.md                        (append booster usage rules)")
+        click.echo(f"  + .claude/settings.json            (add PreToolUse + UserPromptSubmit hooks)")
+        click.echo(f"  + .claude/hooks/booster-gate.py        (blocks Read on indexed files)")
+        click.echo(f"  + .claude/hooks/booster-grep-nudge.py  (nudges semantic Grep to search_context)")
+        click.echo(f"  + .claude/hooks/booster-route.py       (recommends model tier each turn)")
         click.echo()
         click.echo("All changes are reversible: run 'booster remove claude' to undo.")
         click.echo()
