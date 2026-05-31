@@ -1,4 +1,12 @@
 {
+  "permissions": {
+    "allow": [
+      "mcp__agent-booster__search_context",
+      "mcp__agent-booster__smart_read",
+      "mcp__agent-booster__get_symbols",
+      "mcp__agent-booster__route_model"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {
@@ -6,7 +14,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/block-dangerous-git.sh"
+            "command": "bash /Users/sudhiseshachala/projects/marshal/.claude/hooks/block-dangerous-git.sh"
           }
         ]
       },
@@ -15,7 +23,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/hooks/booster-gate.py"
+            "command": "python3 /Users/sudhiseshachala/projects/marshal/.claude/hooks/booster-gate.py"
           }
         ]
       },
@@ -24,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/hooks/booster-grep-nudge.py"
+            "command": "python3 /Users/sudhiseshachala/projects/marshal/.claude/hooks/booster-grep-nudge.py"
           }
         ]
       }
@@ -34,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/hooks/booster-route.py"
+            "command": "python3 /Users/sudhiseshachala/projects/marshal/.claude/hooks/booster-route.py"
           }
         ]
       }
