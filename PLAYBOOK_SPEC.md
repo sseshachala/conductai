@@ -157,6 +157,7 @@ blocks:
 | `mode` | No | `single` = one-shot response. `agentic` = multi-turn with tool use. |
 | `custom_instructions` | No | Appended to description at runtime. |
 | `runs_on` | No | SSH into a remote host before running (see below). |
+| `guard` | No | ConductGuard policy config for this block (see below). |
 
 **Remote execution (`runs_on`):**
 
@@ -167,6 +168,49 @@ runs_on:
   username: root
   port: 22
 ```
+
+**Guard config (`guard`):**
+
+Link specific ConductGuard policies to a brain block. Policies are defined in your team's ConductGuard library and referenced by rule ID. Requires ConductGuard to be installed on the workspace — ignored gracefully if not.
+
+```yaml
+guard:
+  policies:
+    - no-rm-rf                # block recursive deletes
+    - no-hardcoded-secrets    # warn on secrets in file edits
+    - approve-prod-deploy     # require Slack approval before production deploys
+    - audit-migrations        # silently log all migration file changes
+  on_violation: halt          # halt | warn | continue
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `policies` | Yes | List of rule IDs from the team's ConductGuard policy library |
+| `on_violation` | No | `halt` = stop the run (default). `warn` = log and continue. `continue` = audit only. |
+
+Different blocks in the same playbook can have different guard configs:
+
+```yaml
+blocks:
+  analyze_code:
+    type: brain
+    mode: agentic
+    guard:
+      policies: [no-hardcoded-secrets]
+      on_violation: warn          # non-critical — warn and continue
+
+  deploy_to_production:
+    type: brain
+    mode: agentic
+    guard:
+      policies: [approve-prod-deploy, audit-migrations]
+      on_violation: halt          # critical — stop and require approval
+```
+
+When a guard policy fires:
+- `halt` — run stops, violation logged in ConductGuard dashboard, Slack notified if configured
+- `warn` — run continues, violation flagged in dashboard
+- `continue` — audit record written silently, no interruption
 
 **Brain block output:** The entire text response is available as `{{block_id.output}}`. If the response ends with a JSON object, its keys are also available directly: `{{block_id.issues}}`, `{{block_id.severity}}`, etc.
 
