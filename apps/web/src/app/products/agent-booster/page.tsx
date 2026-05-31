@@ -135,7 +135,7 @@ function HeroSection() {
         </a>
       </div>
       <p className="mt-4 text-xs text-stone-400">
-        Python 3.10+ · MIT licensed · v0.1.5
+        Python 3.10+ · MIT licensed · v0.2.1
       </p>
     </section>
   )
@@ -385,15 +385,16 @@ function QuickstartSection() {
         <div className="flex flex-col gap-5">
           <div>
             <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 1 — Install</p>
-            <InlineCodeBlock comment="add [embed] for semantic search">pip install agent-booster</InlineCodeBlock>
+            <InlineCodeBlock comment="[embed] adds semantic vector search">pip install agent-booster[embed]</InlineCodeBlock>
           </div>
           <div>
-            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 2 — Index your codebase</p>
-            <InlineCodeBlock comment="add --embed to build semantic vectors">booster index</InlineCodeBlock>
+            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 2 — Wire to your tool</p>
+            <InlineCodeBlock comment="claude · cursor · windsurf · codex · all — shows what changes, asks to confirm">booster init claude</InlineCodeBlock>
+            <p className="mt-2 text-xs text-stone-400">Writes .mcp.json, CLAUDE.md rules, and a PreToolUse hook. Fully reversible with <code className="font-mono bg-stone-100 px-1 rounded text-stone-600">booster remove claude</code>.</p>
           </div>
           <div>
-            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 3 — Wire to your tool</p>
-            <InlineCodeBlock comment="or cursor, codex, all">booster init claude</InlineCodeBlock>
+            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 3 — Index your codebase</p>
+            <InlineCodeBlock comment="builds symbol index + semantic vectors">booster index &amp;&amp; booster embed</InlineCodeBlock>
           </div>
           <div>
             <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 4 — Route to the right model</p>
@@ -478,21 +479,28 @@ const WORKS_WITH = [
     icon: "◈",
     color: "text-orange-600",
     bg: "bg-orange-50 border-orange-200",
-    desc: "Native MCP integration via booster init claude",
+    desc: "booster init claude",
   },
   {
     name: "Cursor",
     icon: "⊙",
     color: "text-blue-600",
     bg: "bg-blue-50 border-blue-200",
-    desc: "Drop-in via booster init cursor",
+    desc: "booster init cursor",
+  },
+  {
+    name: "Windsurf",
+    icon: "◭",
+    color: "text-violet-600",
+    bg: "bg-violet-50 border-violet-200",
+    desc: "booster init windsurf",
   },
   {
     name: "OpenAI Codex",
     icon: "◎",
     color: "text-emerald-600",
     bg: "bg-emerald-50 border-emerald-200",
-    desc: "Full support via booster init codex",
+    desc: "booster init codex",
   },
 ]
 
@@ -505,17 +513,22 @@ function WorksWithSection() {
           Works with every major AI coding tool.
         </h2>
 
-        <div className="grid sm:grid-cols-3 gap-5">
+        <div className="grid sm:grid-cols-4 gap-5">
           {WORKS_WITH.map(tool => (
             <div key={tool.name} className={`rounded-2xl border ${tool.bg} px-6 py-6 flex flex-col items-center text-center gap-3`}>
               <span className={`text-3xl font-black ${tool.color}`}>{tool.icon}</span>
               <div>
                 <p className="font-semibold text-stone-900 mb-1">{tool.name}</p>
-                <p className="text-xs text-stone-500">{tool.desc}</p>
+                <code className="text-xs text-stone-500 font-mono">{tool.desc}</code>
               </div>
             </div>
           ))}
         </div>
+
+        <p className="text-center text-xs text-stone-400 mt-6">
+          Each command shows exactly what files will change and asks for confirmation before writing anything.
+          Run <code className="font-mono bg-stone-200 px-1 rounded">booster remove &lt;platform&gt;</code> to cleanly undo.
+        </p>
       </div>
     </section>
   )
@@ -538,11 +551,15 @@ const FAQS = [
   },
   {
     q: "What happens when Claude reads a file through Booster?",
-    a: "The MCP smart_read tool intercepts the file + task pair. It looks up all symbols in that file from the index, tokenizes the task description into keywords, and returns only the source lines that belong to matching symbols — with a header showing the symbol name and line range. If no symbols match, it returns the full file as a fallback. Every call is logged to .booster/stats.db so booster gain can report real token savings.",
+    a: "The MCP smart_read tool receives the file path and a task description. It runs a per-file vector search against the symbol index — finding the symbols most semantically similar to the task using cosine similarity on sentence-transformer embeddings. It returns only the source lines for those symbols, with a header showing name and line range. If no symbols match, it returns an explicit 'no matching symbols' message so Claude knows to fall back to a full Read rather than silently receiving the whole file. Every call is logged to .booster/stats.db so booster gain can report real token savings.",
   },
   {
     q: "How does token savings tracking work?",
     a: "Each smart_read call records three things in .booster/stats.db: the full file text size, the slice size returned, and the task description. Token count is estimated as len(text) // 4 (a standard rough approximation). booster gain reads this database and reports total tokens served vs. tokens that would have been sent without Booster, broken down by file.",
+  },
+  {
+    q: "What does booster init actually change on my machine?",
+    a: "For Claude Code, booster init claude writes four things: .mcp.json (registers the MCP server), CLAUDE.md (appends a rules block telling the model to prefer smart_read and search_context over Read/Grep), .claude/settings.json (adds a PreToolUse hook that intercepts Read calls on indexed files and redirects them), and .claude/hooks/booster-gate.py (the hook script itself). Before writing anything, it prints a full list of changes and asks for confirmation. If booster ever becomes a bottleneck, run booster remove claude — it deletes the hook script, removes the CLAUDE.md block, strips the hook from settings.json, and removes the .mcp.json entry. No residue.",
   },
   {
     q: "Does Booster send my code anywhere?",
@@ -550,7 +567,7 @@ const FAQS = [
   },
   {
     q: "Does it work with TypeScript and other languages?",
-    a: "Python and TypeScript/TSX indexing is on the roadmap (#436). The current release indexes .py files only. The tree-sitter-typescript package is already in the dependencies — we just haven't wired up the TypeScript parser yet. Contributions welcome.",
+    a: "Yes. Booster indexes Python (.py) and TypeScript/TSX/JS/JSX files. We use tree-sitter-python for Python and tree-sitter-typescript for TypeScript — extracting functions, classes, methods, interfaces, and named arrow functions. Build artifacts (.next/, dist/, build/) are automatically excluded from indexing so minified bundles never pollute the symbol index.",
   },
   {
     q: "How is this different from just using prompt caching?",
