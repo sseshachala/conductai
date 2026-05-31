@@ -54,6 +54,12 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
             Playbooks
           </a>
           <a
+            href="/products/agent-booster"
+            className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
+          >
+            Tools
+          </a>
+          <a
             href="/benchmark"
             className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
           >
@@ -731,6 +737,8 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
           <span>MIT licensed</span>
           <span>·</span>
           <a href="https://github.com/sseshachala/conductai/discussions/new?category=ideas" target="_blank" rel="noopener noreferrer" className="hover:text-stone-600 transition-colors">💡 Request an idea</a>
+          <span>·</span>
+          <a href="/products/agent-booster" className="hover:text-stone-600 transition-colors">Tools</a>
           <span>·</span>
           <a href="/compare" className="hover:text-stone-600 transition-colors">Compare</a>
           <span>·</span>
