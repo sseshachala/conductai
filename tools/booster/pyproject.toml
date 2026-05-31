@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-booster"
+version = "0.1.0"
+description = "AST+vector context router for AI coding agents — cut token costs 5-15x"
+requires-python = ">=3.9"
+dependencies = [
+    "tree-sitter>=0.23",
+    "tree-sitter-python>=0.23",
+    "tree-sitter-typescript>=0.23",
+    "click>=8.1",
+    "mcp>=1.0",
+    "numpy>=1.26",
+    "anthropic>=0.40",
+]
+
+[project.scripts]
+booster = "booster.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["booster*"]
