@@ -9,8 +9,10 @@ GET    /guard/policies/sync     — returns current active ruleset as JSON (poll
 """
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
+import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -23,82 +25,22 @@ router = APIRouter(prefix="/guard/policies", tags=["guard-policies"])
 
 _VALID_ACTIONS = {"block", "warn", "audit", "approval", "inject"}
 
-# ── Built-in rule definitions ─────────────────────────────────────────────────
+# ── Built-in rule definitions (loaded from YAML) ──────────────────────────────
 
-_BUILTIN_RULES: list[dict] = [
-    {
-        "rule_id": "no-rm-rf",
-        "description": "Block recursive deletes",
-        "match_tool": "bash",
-        "match_pattern": r"rm\s+-rf",
-        "match_path_pattern": None,
-        "action": "block",
-        "message": "Recursive delete blocked. Delete files individually.",
-    },
-    {
-        "rule_id": "no-drop-table",
-        "description": "Block DROP TABLE statements",
-        "match_tool": "bash,edit,write",
-        "match_pattern": r"DROP\s+TABLE",
-        "match_path_pattern": None,
-        "action": "block",
-        "message": "DROP TABLE blocked. Use a migration with rollback.",
-    },
-    {
-        "rule_id": "no-env-commits",
-        "description": "Block committing .env files",
-        "match_tool": "bash",
-        "match_pattern": r"git (add|commit).+\.env",
-        "match_path_pattern": None,
-        "action": "block",
-        "message": ".env files must not be committed.",
-    },
-    {
-        "rule_id": "no-hardcoded-secrets",
-        "description": "Warn on possible hardcoded secrets",
-        "match_tool": "edit,write",
-        "match_pattern": r"(API_KEY|SECRET|PASSWORD|TOKEN)\s*=\s*['\"][A-Za-z0-9+/]{16,}",
-        "match_path_pattern": None,
-        "action": "warn",
-        "message": "Possible hardcoded secret. Use environment variables.",
-    },
-    {
-        "rule_id": "approve-prod-deploy",
-        "description": "Require approval for production deploys",
-        "match_tool": "bash",
-        "match_pattern": r"deploy.*(prod|production)|vercel.*--prod|railway.*prod",
-        "match_path_pattern": None,
-        "action": "approval",
-        "message": "Production deploy requested. Approve?",
-    },
-    {
-        "rule_id": "approve-db-migration-prod",
-        "description": "Require approval for production DB migrations",
-        "match_tool": "bash",
-        "match_pattern": r"alembic upgrade|prisma migrate deploy",
-        "match_path_pattern": None,
-        "action": "approval",
-        "message": "DB migration in production. Approve?",
-    },
-    {
-        "rule_id": "audit-migrations",
-        "description": "Audit migration file modifications",
-        "match_tool": "edit,write",
-        "match_pattern": None,
-        "match_path_pattern": r"alembic/versions/.*\.py$",
-        "action": "audit",
-        "message": "Migration file modified",
-    },
-    {
-        "rule_id": "audit-ci-config",
-        "description": "Audit CI config modifications",
-        "match_tool": "edit,write",
-        "match_pattern": None,
-        "match_path_pattern": r"\.github/workflows/.*",
-        "action": "audit",
-        "message": "CI config modified",
-    },
-]
+_POLICIES_FILE = Path(__file__).parent.parent / "builtin_policies.yaml"
+
+
+def _load_builtin_rules() -> list[dict]:
+    with _POLICIES_FILE.open() as f:
+        rules = yaml.safe_load(f) or []
+    # Normalise: ensure match_pattern and match_path_pattern are present
+    for r in rules:
+        r.setdefault("match_pattern", None)
+        r.setdefault("match_path_pattern", None)
+    return rules
+
+
+_BUILTIN_RULES: list[dict] = _load_builtin_rules()
 
 
 def seed_builtin_policies(db: Session, team_id) -> None:
