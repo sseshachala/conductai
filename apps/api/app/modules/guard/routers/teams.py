@@ -20,7 +20,14 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_guard_org_id
 from app.core.database import get_db
-from app.modules.guard.models import GuardMember, GuardTeam
+from app.modules.guard.models import (
+    GuardAuditEvent,
+    GuardMember,
+    GuardPolicy,
+    GuardSession,
+    GuardSpendBudget,
+    GuardTeam,
+)
 
 router = APIRouter(prefix="/guard/teams", tags=["guard-teams"])
 
@@ -266,6 +273,24 @@ def remove_member(
     team = _get_team_or_404(db, team_id)
     member = _get_member_or_404(db, team.id, member_id)
     member.active = False
+    db.commit()
+
+
+@router.delete("/{team_id}", status_code=204)
+def delete_team(
+    team_id: str,
+    db: Session = Depends(get_db),
+    _org_id: str = Depends(get_guard_org_id),
+):
+    """Delete a guard team and all associated data (uninstall)."""
+    team = _get_team_or_404(db, team_id)
+    # Delete child records in FK dependency order (no cascade configured in models)
+    db.query(GuardAuditEvent).filter(GuardAuditEvent.team_id == team.id).delete()
+    db.query(GuardSpendBudget).filter(GuardSpendBudget.team_id == team.id).delete()
+    db.query(GuardSession).filter(GuardSession.team_id == team.id).delete()
+    db.query(GuardPolicy).filter(GuardPolicy.team_id == team.id).delete()
+    db.query(GuardMember).filter(GuardMember.team_id == team.id).delete()
+    db.delete(team)
     db.commit()
 
 

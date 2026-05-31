@@ -136,14 +136,24 @@ function ConductGuardModule() {
 
   async function handleUninstall() {
     setUninstalling(true)
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("guard_team_id")
-      localStorage.removeItem("guard_workspace_id")
-      window.dispatchEvent(new CustomEvent("guard-install-changed", { detail: { installed: false } }))
+    try {
+      const teamId = typeof window !== "undefined" ? localStorage.getItem("guard_team_id") : null
+      if (teamId) {
+        const h = await buildHeaders()
+        await fetch(`${base}/guard/teams/${teamId}`, { method: "DELETE", headers: h })
+      }
+    } catch {
+      // Non-fatal — clear local state regardless
+    } finally {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("guard_team_id")
+        localStorage.removeItem("guard_workspace_id")
+        window.dispatchEvent(new CustomEvent("guard-install-changed", { detail: { installed: false } }))
+      }
+      setTeam(null)
+      setConfirmUninstall(false)
+      setUninstalling(false)
     }
-    setTeam(null)
-    setConfirmUninstall(false)
-    setUninstalling(false)
   }
 
   // ── Copy invite code ──────────────────────────────────────────────────────────
