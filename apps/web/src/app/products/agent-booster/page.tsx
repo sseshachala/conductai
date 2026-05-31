@@ -707,6 +707,8 @@ function PageFooter() {
         <span>·</span>
         <a href="/docs" className="hover:text-stone-600 transition-colors">Docs</a>
         <span>·</span>
+        <a href="/about" className="hover:text-stone-600 transition-colors">About</a>
+        <span>·</span>
         <a href="/privacy" className="hover:text-stone-600 transition-colors">Privacy</a>
         <span>·</span>
         <a href="/terms" className="hover:text-stone-600 transition-colors">Terms</a>
