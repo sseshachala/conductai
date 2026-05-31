@@ -224,10 +224,12 @@ Output: { "model": "haiku", "reason": "narrow task — 1 symbol in 1 file" }
 |---|---|
 | `.mcp.json` | Adds `agent-booster` to `mcpServers` |
 | `CLAUDE.md` | Appends booster usage rules block (sentinel markers) |
-| `.claude/settings.json` | Adds `PreToolUse` hook that intercepts `Read` on indexed files |
-| `.claude/hooks/booster-gate.py` | Hook script that checks the symbol index and redirects to `smart_read` |
+| `.claude/settings.json` | Wires `PreToolUse` (Read + Grep) and `UserPromptSubmit` hooks |
+| `.claude/hooks/booster-gate.py` | **Blocks** `Read` on indexed files — forces `smart_read` |
+| `.claude/hooks/booster-grep-nudge.py` | **Nudges** semantic `Grep` patterns toward `search_context` |
+| `.claude/hooks/booster-route.py` | **Auto route_model** — recommends haiku/sonnet/opus on every user turn |
 
-`booster remove claude` deletes the hook script, strips the CLAUDE.md block, removes the hook from settings.json, and removes the `.mcp.json` entry.
+`booster remove claude` removes all six, cleanly. No residue.
 
 ---
 
