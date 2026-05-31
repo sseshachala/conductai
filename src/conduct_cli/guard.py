@@ -20,6 +20,129 @@ GUARD_DIR    = Path.home() / ".conductguard"
 CONFIG_PATH  = GUARD_DIR / "config.json"
 POLICY_PATH  = GUARD_DIR / "policy.json"
 
+_HOOK_SCRIPT = '''\
+#!/usr/bin/env python3
+"""ConductGuard PreToolUse hook — enforces team policies locally."""
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+GUARD_DIR = Path.home() / ".conductguard"
+POLICY_PATH = GUARD_DIR / "policy.json"
+CONFIG_PATH = GUARD_DIR / "config.json"
+
+
+def main():
+    try:
+        data = json.load(sys.stdin)
+    except Exception:
+        sys.exit(0)
+
+    tool_name = (data.get("tool_name") or "").lower()
+    tool_input = data.get("tool_input") or {}
+
+    if not POLICY_PATH.exists():
+        sys.exit(0)
+    try:
+        policy = json.loads(POLICY_PATH.read_text())
+    except Exception:
+        sys.exit(0)
+
+    rules = policy.get("rules", [])
+    if not rules:
+        sys.exit(0)
+
+    input_text = json.dumps(tool_input)
+    path_fields = ["file_path", "path", "command"]
+    path_text = " ".join(str(tool_input.get(f, "")) for f in path_fields)
+
+    for rule in rules:
+        match_tool = (rule.get("match_tool") or "*").lower()
+        if match_tool != "*":
+            allowed = [t.strip() for t in match_tool.split(",")]
+            if tool_name not in allowed:
+                continue
+
+        pattern = rule.get("match_pattern")
+        if pattern:
+            try:
+                if not re.search(pattern, input_text, re.IGNORECASE):
+                    continue
+            except re.error:
+                continue
+
+        path_pattern = rule.get("match_path_pattern")
+        if path_pattern:
+            try:
+                if not re.search(path_pattern, path_text, re.IGNORECASE):
+                    continue
+            except re.error:
+                continue
+
+        action = rule.get("action", "audit")
+        message = rule.get("message") or f"Policy violation: {rule.get(\'rule_id\', \'unknown\')}"
+        rule_id = rule.get("rule_id", "unknown")
+
+        _post_event(tool_name, tool_input, rule_id, action, message)
+
+        if action == "block":
+            print(f"[ConductGuard] {message}")
+            sys.exit(2)
+        elif action in ("warn", "approval"):
+            print(f"[ConductGuard] {message}")
+            sys.exit(0)
+        # audit: silent, fall through
+
+    sys.exit(0)
+
+
+def _post_event(tool_name, tool_input, rule_id, action, message):
+    try:
+        cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
+    except Exception:
+        return
+
+    team_id = cfg.get("team_id")
+    if not team_id:
+        return
+
+    input_text = json.dumps(tool_input)
+    decision = {"block": "blocked", "warn": "warned", "approval": "blocked"}.get(action, "audited")
+    payload = json.dumps({
+        "team_id": team_id,
+        "member_id": cfg.get("member_id"),
+        "user_email": cfg.get("user_email"),
+        "ai_tool": "claude-code",
+        "tool_call": tool_name,
+        "input_summary": input_text[:200],
+        "decision": decision,
+        "rule_id": rule_id,
+        "rule_message": message,
+    })
+
+    api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+    script = (
+        "import urllib.request\\n"
+        "try:\\n"
+        f"    req = urllib.request.Request(\\"{api_url}/guard/events\\","
+        f" data={repr(payload.encode())}, headers={{\\\"Content-Type\\\": \\\"application/json\\\"}}, method=\\"POST\\")\\n"
+        "    urllib.request.urlopen(req, timeout=5)\\n"
+        "except: pass\\n"
+    )
+    subprocess.Popen(
+        [sys.executable, "-c", script],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+
+if __name__ == "__main__":
+    main()
+'''
+
 # AI tool config files and the label to show the user
 _MCP_TARGETS = [
     (Path.home() / ".claude"    / "settings.json", "Claude Code"),
@@ -142,6 +265,36 @@ def _parse_since(since_str: str) -> str:
     return (datetime.now(tz=timezone.utc) - delta_map[unit]).isoformat()
 
 
+# ── Hook helpers ─────────────────────────────────────────────────────────────
+
+def _install_claude_hook(hook_path: Path) -> None:
+    """Register hook_path as a PreToolUse hook in ~/.claude/settings.json."""
+    claude_settings = Path.home() / ".claude" / "settings.json"
+    settings: dict = {}
+    if claude_settings.exists():
+        try:
+            settings = json.loads(claude_settings.read_text())
+        except json.JSONDecodeError:
+            settings = {}
+
+    hooks = settings.setdefault("hooks", {})
+    pre = hooks.setdefault("PreToolUse", [])
+    cmd = f"python3 {hook_path}"
+
+    already = any(
+        e.get("command") == cmd
+        for h in pre
+        for e in h.get("hooks", [])
+    )
+    if not already:
+        pre.append({"matcher": ".*", "hooks": [{"type": "command", "command": cmd}]})
+        claude_settings.parent.mkdir(parents=True, exist_ok=True)
+        claude_settings.write_text(json.dumps(settings, indent=2))
+        print(f"  {GREEN}Claude Code hook registered{RESET}")
+    else:
+        print(f"  {GRAY}Claude Code hook already registered{RESET}")
+
+
 # ── Commands ──────────────────────────────────────────────────────────────────
 
 def cmd_guard_join(args):
@@ -196,6 +349,15 @@ def cmd_guard_join(args):
     if member_token:
         cfg["member_token"] = member_token
     _save_guard_config(cfg)
+
+    # Write hook script
+    hook_path = GUARD_DIR / "hook.py"
+    hook_path.write_text(_HOOK_SCRIPT)
+    hook_path.chmod(0o755)
+    print(f"  {GREEN}Hook script written:{RESET} {hook_path}")
+
+    # Install PreToolUse hook in ~/.claude/settings.json
+    _install_claude_hook(hook_path)
 
     print(
         f"\n{BOLD}{GREEN}Connected to {team_name}.{RESET} "
