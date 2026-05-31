@@ -11,6 +11,8 @@ from booster.retriever import smart_read as _smart_read
 from booster.stats import StatsTracker
 
 _ROOT = Path.cwd()
+import os as _os
+_SECRET = _os.environ.get("BOOSTER_SECRET", "")
 _indexer: SymbolIndexer | None = None
 _tracker: StatsTracker | None = None
 
@@ -108,9 +110,13 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         return [TextContent(type="text", text=text)]
 
     if name == "smart_read":
-        file_path = _ROOT / arguments["file"]
-        full_text = file_path.read_text(encoding="utf-8", errors="replace")
-        text = _smart_read(file_path, arguments["task"], indexer)
+        try:
+            resolved = (_ROOT / arguments["file"]).resolve()
+            resolved.relative_to(_ROOT.resolve())
+        except (ValueError, Exception):
+            return [TextContent(type="text", text=f"Error: path '{arguments['file']}' is outside the project root")]
+        full_text = resolved.read_text(encoding="utf-8", errors="replace")
+        text = _smart_read(resolved, arguments["task"], indexer)
         _get_tracker().record(arguments["file"], full_text, text, arguments.get("task", ""))
         return [TextContent(type="text", text=text)]
 
@@ -158,5 +164,12 @@ def _route_model(indexer: SymbolIndexer, task: str, files: list[str]) -> dict:
 
 
 async def serve() -> None:
+    secret_file = _ROOT / ".booster" / ".secret"
+    if secret_file.exists():
+        expected = secret_file.read_text().strip()
+        if _SECRET and _SECRET != expected:
+            import sys as _sys
+            print("booster: BOOSTER_SECRET mismatch — refusing to start", file=_sys.stderr)
+            _sys.exit(1)
     async with stdio_server() as (read_stream, write_stream):
         await app.run(read_stream, write_stream, app.create_initialization_options())

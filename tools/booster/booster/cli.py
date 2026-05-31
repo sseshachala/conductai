@@ -133,8 +133,10 @@ _ROUTE_SCRIPT = '''\
 #!/usr/bin/env python3
 """Booster route hook — recommends model tier at the start of every user turn."""
 import json
+import re
 import subprocess
 import sys
+from pathlib import Path
 
 data = json.load(sys.stdin)
 message = data.get("message", "")
@@ -142,13 +144,19 @@ message = data.get("message", "")
 if not message or len(message.strip()) < 10:
     sys.exit(0)
 
+# Strip control characters and null bytes before passing to subprocess
+safe_message = re.sub(r\'[\\x00-\\x1f\\x7f]\', \' \', message).strip()[:300]
+
+# Derive project root from this hook\'s known location — never trust external cwd
+safe_cwd = Path(__file__).resolve().parent.parent
+
 try:
     result = subprocess.run(
-        ["booster", "route", message[:300]],
+        ["booster", "route", safe_message],
         capture_output=True,
         text=True,
         timeout=5,
-        cwd=data.get("cwd", "."),
+        cwd=str(safe_cwd),
     )
     recommendation = result.stdout.strip()
     if recommendation:
@@ -252,6 +260,19 @@ def _remove_rules_block(path: Path, label: str) -> None:
     click.echo(f"  removed booster block from {label}")
 
 
+def _update_mcp_secret(root: Path, token: str) -> None:
+    """Write BOOSTER_SECRET into the agent-booster MCP server env in .mcp.json."""
+    mcp_path = root / ".mcp.json"
+    if not mcp_path.exists():
+        return
+    data = json.loads(mcp_path.read_text())
+    server = data.get("mcpServers", {}).get("agent-booster")
+    if server is None:
+        return
+    server["env"] = {"BOOSTER_SECRET": token}
+    mcp_path.write_text(json.dumps(data, indent=2) + "\n")
+
+
 def _install_hook(root: Path) -> None:
     hooks_dir = root / ".claude" / "hooks"
     hooks_dir.mkdir(parents=True, exist_ok=True)
@@ -311,6 +332,18 @@ def _install_hook(root: Path) -> None:
     settings_path.parent.mkdir(parents=True, exist_ok=True)
     settings_path.write_text(json.dumps(settings, indent=2) + "\n")
     click.echo(f"  updated {settings_path.relative_to(root)}")
+
+    # Generate BOOSTER_SECRET for the MCP server
+    import secrets as _secrets
+    booster_dir = root / ".booster"
+    booster_dir.mkdir(exist_ok=True)
+    secret_file = booster_dir / ".secret"
+    if not secret_file.exists():
+        token = _secrets.token_hex(32)
+        secret_file.write_text(token)
+        secret_file.chmod(0o600)
+        click.echo(f"  generated .booster/.secret (BOOSTER_SECRET)")
+    _update_mcp_secret(root, secret_file.read_text().strip())
 
 
 def _remove_hook(root: Path) -> None:
