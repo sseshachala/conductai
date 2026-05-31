@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
+import GuardNav from "@/components/guard/GuardNav"
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
@@ -472,11 +473,12 @@ export default function SpendPage() {
       <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
 
         {/* Header */}
+        <div>
+          <h1 className="text-xl font-semibold text-stone-900 mb-1">Guard</h1>
+          <GuardNav />
+        </div>
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-stone-900">Guard &middot; Spend</h1>
-            <p className="text-sm text-stone-500 mt-1">Token usage and cost tracking for your team.</p>
-          </div>
+          <p className="text-sm text-stone-500">Token usage and cost tracking for your team.</p>
           <MonthPicker value={month} onChange={setMonth} />
         </div>
 
