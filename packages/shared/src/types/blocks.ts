@@ -7,6 +7,7 @@ export type BlockType =
   | "approval"
   | "output"
   | "cleanup"
+  | "guard"
 
 export interface Block {
   id: string

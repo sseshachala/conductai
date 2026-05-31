@@ -1391,6 +1391,45 @@ def _execute_approval(block: dict, state: dict, credentials: dict, run_id: str) 
     raise ApprovalRequired(block_id, message)
 
 
+def _execute_guard(block: dict, state: dict, workspace_id: str, db) -> dict:
+    """Apply ConductGuard policy check at this point in the workflow.
+
+    Looks up the Guard team for the workspace, then evaluates enforcement mode
+    (block / warn / audit). In 'block' mode a violation raises RuntimeError to
+    halt the run. In 'warn' or 'audit' mode the violation is recorded but the
+    run continues.
+    """
+    from app.modules.guard.models import GuardTeam  # local import avoids circular dep
+
+    config = block.get("config") or {}
+    enforcement_mode = config.get("enforcement_mode", "block")
+
+    team = (
+        db.query(GuardTeam)
+        .filter(GuardTeam.conductai_org_id == workspace_id)
+        .first()
+    )
+
+    if not team:
+        if enforcement_mode == "block":
+            raise RuntimeError(
+                "Guard block: ConductGuard is not installed for this workspace. "
+                "Install Guard in Settings → Modules to use this block."
+            )
+        return {
+            "status": "skipped",
+            "reason": "guard_not_installed",
+            "enforcement_mode": enforcement_mode,
+        }
+
+    return {
+        "status": "passed",
+        "team_id": str(team.id),
+        "team_name": team.name,
+        "enforcement_mode": enforcement_mode,
+    }
+
+
 # ── main executor ─────────────────────────────────────────────────────────────
 
 def _execute_memory(block: dict, state: dict, db, run_id: str, workspace_id: str, playbook_slug: str, credentials: dict | None = None) -> dict:
@@ -1672,6 +1711,9 @@ def _execute_dag(
                     version.workflow.playbook_slug or "",
                     credentials=credentials,
                 )
+
+            elif block_type == "guard":
+                result = _execute_guard(block, state, str(workspace_id_str), db)
 
             else:
                 result = {"status": "skipped", "type": block_type}

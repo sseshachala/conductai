@@ -7,6 +7,7 @@ export type BlockType =
   | "approval"
   | "output"
   | "cleanup"
+  | "guard"
 
 export interface BlockStyle {
   bg: string
@@ -27,6 +28,7 @@ export const BLOCK_STYLES: Record<BlockType, BlockStyle> = {
   approval: { bg: "bg-orange-50", border: "border-orange-200", label: "bg-orange-50 text-orange-700",labelText: "APPROVAL",   text: "text-orange-700", icon: "approval", buttonClass: "bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100" },
   output:   { bg: "bg-rose-50",   border: "border-rose-200",   label: "bg-rose-50 text-rose-700",    labelText: "NOTIFY",     text: "text-rose-700",   icon: "output",   buttonClass: "bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100"       },
   cleanup:  { bg: "bg-stone-50",  border: "border-stone-300",  label: "bg-stone-100 text-stone-500", labelText: "CLEANUP",    text: "text-stone-500",  icon: "cleanup",  buttonClass: "bg-stone-50 border-stone-300 text-stone-500 hover:bg-stone-100"   },
+  guard:    { bg: "bg-red-50",    border: "border-red-200",    label: "bg-red-50 text-red-700",      labelText: "GUARD",      text: "text-red-700",    icon: "guard",    buttonClass: "bg-red-50 border-red-200 text-red-700 hover:bg-red-100"           },
 }
 
 export const BLOCK_LIBRARY: { type: BlockType; title: string; sub: string; description: string }[] = [
@@ -38,4 +40,5 @@ export const BLOCK_LIBRARY: { type: BlockType; title: string; sub: string; descr
   { type: "approval", title: "Approval",   sub: "wait for human",   description: "Pause the run until a human approves or rejects" },
   { type: "output",   title: "Notify",     sub: "send output",      description: "Post to Slack, send email, or write a comment" },
   { type: "cleanup",  title: "Cleanup",    sub: "always runs",      description: "Teardown or finalize — executes even if the run fails" },
+  { type: "guard",    title: "Guard",      sub: "enforce policies", description: "Apply ConductGuard policies to this workflow — spend caps, tool blocks, audit" },
 ]

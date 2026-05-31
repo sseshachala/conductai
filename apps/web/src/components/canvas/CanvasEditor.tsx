@@ -335,8 +335,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
           const styledEdges = (es: Edge[]) => es.map(e => ({
             ...e,
             type: e.type ?? "smoothstep",
-            markerEnd: e.markerEnd ?? { type: MarkerType.ArrowClosed, width: 10, height: 10, color: "#d6d3d1" },
-            style: e.style ?? { stroke: "#d6d3d1", strokeWidth: 1 },
+            markerEnd: e.markerEnd ?? { type: MarkerType.ArrowClosed, width: 12, height: 12, color: "#a8a29e" },
+            style: e.style ?? { stroke: "#a8a29e", strokeWidth: 2 },
           }))
           if (allAtOrigin || allSameY) {
             const laid = autoLayout(graph.nodes, graph.edges)
@@ -351,8 +351,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
           if (graph?.edges) setEdges(graph.edges.map((e: Edge) => ({
             ...e,
             type: e.type ?? "smoothstep",
-            markerEnd: e.markerEnd ?? { type: MarkerType.ArrowClosed, width: 10, height: 10, color: "#d6d3d1" },
-            style: e.style ?? { stroke: "#d6d3d1", strokeWidth: 1 },
+            markerEnd: e.markerEnd ?? { type: MarkerType.ArrowClosed, width: 12, height: 12, color: "#a8a29e" },
+            style: e.style ?? { stroke: "#a8a29e", strokeWidth: 2 },
           })))
         }
         setTimeout(() => { isFirstLoad.current = false }, 100)
@@ -495,8 +495,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
     (connection: Connection) => setEdges((eds) => addEdge({
       ...connection,
       type: "smoothstep",
-      markerEnd: { type: MarkerType.ArrowClosed, width: 10, height: 10, color: "#d6d3d1" },
-      style: { stroke: "#d6d3d1", strokeWidth: 1 },
+      markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12, color: "#a8a29e" },
+      style: { stroke: "#a8a29e", strokeWidth: 2 },
     }, eds)),
     [setEdges]
   )

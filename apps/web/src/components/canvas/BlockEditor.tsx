@@ -589,6 +589,88 @@ function FieldInput({
   )
 }
 
+// ── Guard block panel ─────────────────────────────────────────────────────────
+
+function GuardBlockPanel({
+  getToken,
+  config,
+  onChange,
+}: {
+  getToken?: (() => Promise<string | null>) | null
+  config: Record<string, unknown>
+  onChange: (key: string, value: unknown) => void
+}) {
+  const [installed, setInstalled] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function check() {
+      try {
+        const ws = typeof document !== "undefined"
+          ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1]
+          : null
+        const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
+        const url = ws ? `${base}/guard/teams/installed?workspace_id=${ws}` : `${base}/guard/teams/installed`
+        const token = await getToken?.()
+        const res = await fetch(url, token ? { headers: { Authorization: `Bearer ${token}` } } : {})
+        if (!res.ok) { if (!cancelled) setInstalled(false); return }
+        const data = await res.json()
+        if (!cancelled) setInstalled(data.installed === true)
+      } catch {
+        if (!cancelled) setInstalled(false)
+      }
+    }
+    check()
+    return () => { cancelled = true }
+  }, [getToken])
+
+  const mode = (config["config.enforcement_mode"] as string) || "block"
+
+  if (installed === null) {
+    return (
+      <div className="px-4 py-3 text-[11px] text-stone-400">Checking Guard status…</div>
+    )
+  }
+
+  if (!installed) {
+    return (
+      <div className="mx-4 my-3 rounded-lg border border-red-200 bg-red-50 px-3 py-3 space-y-2">
+        <p className="text-[11px] font-semibold text-red-700">ConductGuard not installed</p>
+        <p className="text-[10px] text-red-600 leading-relaxed">
+          This block enforces spend caps, tool blocks, and audit policies — but Guard is not installed for this workspace.
+        </p>
+        <a
+          href="/settings/modules"
+          className="inline-block text-[10px] font-semibold text-red-700 border border-red-300 rounded px-2 py-1 hover:bg-red-100 transition-colors"
+        >
+          Install Guard →
+        </a>
+      </div>
+    )
+  }
+
+  return (
+    <div className="px-4 py-3 space-y-3">
+      <div>
+        <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide block mb-1.5">Enforcement mode</span>
+        <select
+          value={mode}
+          onChange={e => onChange("config.enforcement_mode", e.target.value)}
+          className="w-full text-[11px] border border-stone-200 rounded-lg px-2.5 py-1.5 bg-white text-stone-800 focus:outline-none focus:ring-1 focus:ring-stone-300"
+        >
+          <option value="block">Block — halt the run on violation</option>
+          <option value="warn">Warn — log violation, continue run</option>
+          <option value="audit">Audit — record only, no action</option>
+        </select>
+        <p className="text-[10px] text-stone-400 mt-1">
+          Policies are configured in{" "}
+          <a href="/settings/modules" className="underline hover:text-stone-600">Settings → Modules</a>.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function BlockEditor({
@@ -1206,6 +1288,15 @@ export default function BlockEditor({
           </>
         )
       })()}
+
+      {/* ── Guard block ── */}
+      {blockType === "guard" && (
+        <GuardBlockPanel
+          getToken={getToken}
+          config={blockData}
+          onChange={handleFieldChange}
+        />
+      )}
 
       {/* ── Brain: compiled prompt preview (collapsed by default) ── */}
       {blockType === "brain" && (
