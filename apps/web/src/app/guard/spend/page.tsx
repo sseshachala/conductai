@@ -409,7 +409,7 @@ export default function SpendPage() {
     setLoading(true)
     setError(null)
     const token = await getToken()
-    const teamId = getCookie("delegator_project_id") ?? ""
+    const teamId = (typeof window !== "undefined" ? localStorage.getItem("guard_team_id") : null) ?? ""
     const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     const headers: Record<string, string> = { "Content-Type": "application/json" }
     if (token) headers["Authorization"] = `Bearer ${token}`
@@ -450,7 +450,7 @@ export default function SpendPage() {
 
   async function saveBudget(email: string, limit: number) {
     const token = await getToken()
-    const teamId = getCookie("delegator_project_id") ?? ""
+    const teamId = (typeof window !== "undefined" ? localStorage.getItem("guard_team_id") : null) ?? ""
     const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     const headers: Record<string, string> = {
       "Content-Type": "application/json",

@@ -451,8 +451,8 @@ function formatUpdatedAt(iso: string | undefined): string {
 // ---------------------------------------------------------------------------
 
 function getTeamId(): string {
-  if (typeof document === "undefined") return ""
-  return document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] ?? ""
+  if (typeof window === "undefined") return ""
+  return localStorage.getItem("guard_team_id") ?? ""
 }
 
 export default function PoliciesPage() {

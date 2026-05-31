@@ -140,7 +140,7 @@ export default function GuardPage() {
 
   const buildHeaders = useCallback(async (): Promise<Record<string, string>> => {
     const token = await getToken()
-    const teamId = getCookie("delegator_project_id") ?? ""
+    const teamId = (typeof window !== "undefined" ? localStorage.getItem("guard_team_id") : null) ?? ""
     const h: Record<string, string> = { "Content-Type": "application/json" }
     if (token)  h["Authorization"]  = `Bearer ${token}`
     if (teamId) h["X-Workspace-Id"] = teamId
@@ -182,7 +182,7 @@ export default function GuardPage() {
 
   const connectSSE = useCallback(async () => {
     const token  = await getToken()
-    const teamId = getCookie("delegator_project_id") ?? ""
+    const teamId = (typeof window !== "undefined" ? localStorage.getItem("guard_team_id") : null) ?? ""
     const base   = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params = new URLSearchParams()
     if (token)  params.set("token",   token)
