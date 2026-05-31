@@ -6,6 +6,7 @@ export default function ToolsPage() {
       <Nav />
       <main>
         <HeroSection />
+        <GuardSection />
         <ToolsSection />
         <StackSection />
         <FooterCTASection />
@@ -49,18 +50,88 @@ function Nav() {
 
 function HeroSection() {
   return (
-    <section className="flex flex-col items-center justify-center px-6 pt-16 pb-16 text-center">
+    <section className="flex flex-col items-center justify-center px-6 pt-16 pb-12 text-center">
       <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 border border-indigo-100 text-xs font-semibold px-3 py-1.5 rounded-full mb-8 uppercase tracking-widest">
-        Open Source Developer Tools
+        Open Source · Built for teams
       </div>
       <h1 className="text-5xl sm:text-6xl font-bold text-stone-900 leading-[1.1] tracking-tight max-w-3xl">
-        Tools that make AI coding{" "}
-        <span className="text-indigo-600">faster and cheaper.</span>
+        Set the rules once.{" "}
+        <span className="text-indigo-600">Let your team move fast.</span>
       </h1>
       <p className="mt-6 text-xl text-stone-500 max-w-2xl leading-relaxed">
-        Free, open-source utilities built from running Claude Code at scale.
-        Each one solves a real problem — workspace setup, token costs, model routing.
+        ConductGuard lets you set policies for your whole team in one place.
+        The tools below help every developer work faster — within those rules, automatically.
       </p>
+    </section>
+  )
+}
+
+/* ─── Guard ─────────────────────────────────────────────────────────────── */
+
+function GuardSection() {
+  return (
+    <section className="px-6 py-16 bg-stone-50">
+      <div className="max-w-5xl mx-auto">
+        <div className="text-center mb-12">
+          <div className="inline-flex items-center gap-2 bg-red-50 text-red-700 border border-red-100 text-xs font-semibold px-3 py-1.5 rounded-full mb-4 uppercase tracking-widest">
+            ConductGuard · Inside Conduct
+          </div>
+          <h2 className="text-3xl font-bold text-stone-900 mb-4">
+            One place to set the rules for your whole team
+          </h2>
+          <p className="text-stone-500 text-base max-w-2xl mx-auto leading-relaxed">
+            You decide what your team&apos;s AI tools are allowed to do — how much they can spend,
+            what actions they can take, what gets logged. Set it once in Conduct.
+            It applies to every workflow and every developer on your team, automatically.
+          </p>
+        </div>
+
+        <div className="grid sm:grid-cols-3 gap-6 mb-10">
+          <div className="bg-white rounded-2xl border border-stone-200 p-6 flex flex-col gap-3">
+            <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center text-xl">💸</div>
+            <p className="font-semibold text-stone-900">Spending limits</p>
+            <p className="text-sm text-stone-500 leading-relaxed">
+              Set a limit on how much any developer or workflow can spend in a day.
+              Everyone on the team gets the same limit without any extra setup.
+            </p>
+          </div>
+          <div className="bg-white rounded-2xl border border-stone-200 p-6 flex flex-col gap-3">
+            <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center text-xl">🚫</div>
+            <p className="font-semibold text-stone-900">Block risky actions</p>
+            <p className="text-sm text-stone-500 leading-relaxed">
+              Decide which actions an AI agent is not allowed to take — like writing
+              to production files or running certain commands. Blocked for everyone, everywhere.
+            </p>
+          </div>
+          <div className="bg-white rounded-2xl border border-stone-200 p-6 flex flex-col gap-3">
+            <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center text-xl">📋</div>
+            <p className="font-semibold text-stone-900">One audit log</p>
+            <p className="text-sm text-stone-500 leading-relaxed">
+              See exactly what every AI tool did, when, and who triggered it.
+              One log for the whole team — not scattered across individual machines.
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-red-100 p-6 flex flex-col sm:flex-row items-start sm:items-center gap-6">
+          <div className="flex-1">
+            <p className="font-semibold text-stone-900 mb-1">Rules flow in two directions</p>
+            <p className="text-sm text-stone-500 leading-relaxed">
+              Every policy you set in Conduct flows automatically into your AI workflows
+              <span className="text-stone-700 font-medium"> and </span>
+              into every developer&apos;s local environment when they run{" "}
+              <code className="font-mono text-xs bg-stone-100 px-1.5 py-0.5 rounded">conduct guard join</code>.
+              Change a rule once — it updates everywhere.
+            </p>
+          </div>
+          <a
+            href="/dashboard"
+            className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-red-700 transition-colors"
+          >
+            Open Conduct →
+          </a>
+        </div>
+      </div>
     </section>
   )
 }
@@ -69,115 +140,127 @@ function HeroSection() {
 
 function ToolsSection() {
   return (
-    <section className="px-6 py-12">
-      <div className="max-w-5xl mx-auto grid sm:grid-cols-2 gap-8">
-
-        {/* Agent Booster */}
-        <div className="rounded-2xl border border-stone-200 bg-white px-8 py-8 flex flex-col gap-5 hover:border-indigo-200 hover:shadow-sm transition-all">
-          <div className="flex items-start justify-between">
-            <div>
-              <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-1 rounded-full mb-3">
-                v0.2.3 · PyPI
-              </span>
-              <h2 className="text-2xl font-bold text-stone-900">Agent Booster</h2>
-              <p className="text-sm text-stone-500 mt-1">Cut token costs 5–15x</p>
-            </div>
-            <span className="text-3xl font-black text-indigo-600">◈</span>
-          </div>
-
-          <p className="text-sm text-stone-600 leading-relaxed">
-            AST + vector index of your codebase. Instead of sending full files to the model,
-            routes only the functions and classes relevant to the task.
-            Three hooks enforce it automatically — Read gate, Grep nudge, and auto model routing on every turn.
+    <section className="px-6 py-16">
+      <div className="max-w-5xl mx-auto">
+        <div className="text-center mb-10">
+          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-3">Open source tools</p>
+          <h2 className="text-2xl font-bold text-stone-900 mb-3">Help your team work faster</h2>
+          <p className="text-stone-500 text-sm max-w-xl mx-auto">
+            These tools cut the cost and time of running AI assistants.
+            They work on their own — and work within whatever rules Guard sets.
           </p>
-
-          <div className="flex flex-col gap-2">
-            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">What it does</p>
-            <ul className="space-y-1.5">
-              {[
-                "smart_read — returns only relevant symbol slices",
-                "search_context — semantic search across all indexed symbols",
-                "route_model — recommends haiku / sonnet / opus per task",
-                "booster gain — tracks token savings over time",
-              ].map(item => (
-                <li key={item} className="flex items-start gap-2 text-sm text-stone-600">
-                  <span className="text-emerald-500 mt-0.5 shrink-0">✓</span>
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="mt-auto pt-4 border-t border-stone-100 flex items-center gap-3 flex-wrap">
-            <a
-              href="/tools/agent-booster"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors"
-            >
-              Learn more →
-            </a>
-            <a
-              href="https://github.com/sseshachala/conductai"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 px-4 py-2 text-sm font-medium text-stone-600 hover:border-stone-300 transition-colors"
-            >
-              <GitHubIcon />
-              GitHub
-            </a>
-            <code className="font-mono text-xs text-stone-400 bg-stone-50 px-2 py-1 rounded">pip install agent-booster</code>
-          </div>
         </div>
 
-        {/* Workspace Starter */}
-        <div className="rounded-2xl border border-stone-200 bg-white px-8 py-8 flex flex-col gap-5 hover:border-violet-200 hover:shadow-sm transition-all">
-          <div className="flex items-start justify-between">
-            <div>
-              <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-100 px-2.5 py-1 rounded-full mb-3">
-                Free · MIT
-              </span>
-              <h2 className="text-2xl font-bold text-stone-900">Workspace Starter</h2>
-              <p className="text-sm text-stone-500 mt-1">Claude Code scaffold for any team</p>
+        <div className="grid sm:grid-cols-2 gap-8">
+
+          {/* Agent Booster */}
+          <div className="rounded-2xl border border-stone-200 bg-white px-8 py-8 flex flex-col gap-5 hover:border-indigo-200 hover:shadow-sm transition-all">
+            <div className="flex items-start justify-between">
+              <div>
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-1 rounded-full mb-3">
+                  v0.2.8 · PyPI
+                </span>
+                <h2 className="text-2xl font-bold text-stone-900">Agent Booster</h2>
+                <p className="text-sm text-stone-500 mt-1">Cut AI running costs by up to 15×</p>
+              </div>
+              <span className="text-3xl font-black text-indigo-600">◈</span>
             </div>
-            <span className="text-3xl font-black text-violet-600">⬡</span>
+
+            <p className="text-sm text-stone-600 leading-relaxed">
+              Instead of sending your whole codebase to the AI on every question,
+              Agent Booster sends only the parts that matter. Less sent means less spent.
+              It also picks the right AI model for the job — no more using the expensive
+              one when a cheaper one would do.
+            </p>
+
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">What it does</p>
+              <ul className="space-y-1.5">
+                {[
+                  "Sends only the relevant code — not the whole file",
+                  "Finds the right code by meaning, not just keywords",
+                  "Picks the cheapest model that can handle the task",
+                  "Shows you how much you've saved over time",
+                ].map(item => (
+                  <li key={item} className="flex items-start gap-2 text-sm text-stone-600">
+                    <span className="text-emerald-500 mt-0.5 shrink-0">✓</span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="mt-auto pt-4 border-t border-stone-100 flex items-center gap-3 flex-wrap">
+              <a
+                href="/tools/agent-booster"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors"
+              >
+                Learn more →
+              </a>
+              <a
+                href="https://github.com/sseshachala/conductai"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg border border-stone-200 px-4 py-2 text-sm font-medium text-stone-600 hover:border-stone-300 transition-colors"
+              >
+                <GitHubIcon />
+                GitHub
+              </a>
+              <code className="font-mono text-xs text-stone-400 bg-stone-50 px-2 py-1 rounded">pip install agent-booster</code>
+            </div>
           </div>
 
-          <p className="text-sm text-stone-600 leading-relaxed">
-            Production-ready Claude Code setup across all 5 layers — CLAUDE.md, skills, hooks,
-            subagents, and plugins — pre-configured for three personas: Enterprise, SMB, and Startup.
-            One <code className="font-mono text-xs bg-stone-100 px-1 rounded">install.sh</code> and you&apos;re running.
-          </p>
+          {/* Workspace Starter */}
+          <div className="rounded-2xl border border-stone-200 bg-white px-8 py-8 flex flex-col gap-5 hover:border-violet-200 hover:shadow-sm transition-all">
+            <div className="flex items-start justify-between">
+              <div>
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-100 px-2.5 py-1 rounded-full mb-3">
+                  Free · MIT
+                </span>
+                <h2 className="text-2xl font-bold text-stone-900">Workspace Starter</h2>
+                <p className="text-sm text-stone-500 mt-1">Get your team set up in minutes</p>
+              </div>
+              <span className="text-3xl font-black text-violet-600">⬡</span>
+            </div>
 
-          <div className="flex flex-col gap-2">
-            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">What&apos;s inside</p>
-            <ul className="space-y-1.5">
-              {[
-                "CLAUDE.md — your agent's constitution, per team type",
-                "Skills — compliance, shipping, cost-optimization and more",
-                "Hooks — secrets blocker, audit log, deploy guard",
-                "Subagents — security officer, PM, founding engineer",
-              ].map(item => (
-                <li key={item} className="flex items-start gap-2 text-sm text-stone-600">
-                  <span className="text-violet-500 mt-0.5 shrink-0">✓</span>
-                  {item}
-                </li>
-              ))}
-            </ul>
+            <p className="text-sm text-stone-600 leading-relaxed">
+              A ready-to-use setup for teams using Claude Code. Instead of every
+              developer configuring things from scratch, this gives the whole team
+              a shared starting point — the same rules, the same shortcuts, the same checks.
+            </p>
+
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">What&apos;s inside</p>
+              <ul className="space-y-1.5">
+                {[
+                  "Shared instructions so the AI knows how your team works",
+                  "Pre-built shortcuts for common tasks",
+                  "Automatic checks that run before risky actions",
+                  "Roles for different team types — startup, SMB, enterprise",
+                ].map(item => (
+                  <li key={item} className="flex items-start gap-2 text-sm text-stone-600">
+                    <span className="text-violet-500 mt-0.5 shrink-0">✓</span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="mt-auto pt-4 border-t border-stone-100 flex items-center gap-3 flex-wrap">
+              <a
+                href="https://github.com/sseshachala/claude-code-workspace-starter"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 transition-colors"
+              >
+                <GitHubIcon />
+                View on GitHub
+              </a>
+              <code className="font-mono text-xs text-stone-400 bg-stone-50 px-2 py-1 rounded">bash install.sh</code>
+            </div>
           </div>
 
-          <div className="mt-auto pt-4 border-t border-stone-100 flex items-center gap-3 flex-wrap">
-            <a
-              href="https://github.com/sseshachala/claude-code-workspace-starter"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 transition-colors"
-            >
-              <GitHubIcon />
-              View on GitHub
-            </a>
-            <code className="font-mono text-xs text-stone-400 bg-stone-50 px-2 py-1 rounded">bash install.sh</code>
-          </div>
         </div>
-
       </div>
     </section>
   )
@@ -189,48 +272,65 @@ function StackSection() {
   return (
     <section className="bg-stone-900 px-6 py-20 mt-8">
       <div className="max-w-3xl mx-auto text-center">
-        <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-3">Better together</p>
+        <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-3">The full picture</p>
         <h2 className="text-3xl font-bold text-white mb-4">
-          They stack.
+          How it all works together
         </h2>
         <p className="text-stone-400 text-sm max-w-xl mx-auto mb-12">
-          Workspace Starter sets up how Claude Code behaves.
-          Agent Booster cuts what it costs to run.
-          Use both for a fully optimized AI coding environment.
+          Guard sits at the top — it sets the rules.
+          The tools below help everyone work faster within those rules.
+          Each layer builds on the one below it.
         </p>
+
+        <div className="flex flex-col gap-2 text-left mb-4">
+          <div className="rounded-xl border border-red-400 bg-red-950 px-6 py-4 flex items-center gap-4">
+            <span className="text-2xl">🛡️</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-white">ConductGuard — inside Conduct</p>
+              <p className="text-xs text-red-300">spending limits, blocked actions, audit log — one policy for the whole team</p>
+            </div>
+            <span className="ml-auto shrink-0 text-xs font-semibold text-red-300 bg-red-900 border border-red-700 px-2 py-0.5 rounded-full">Rules layer</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 mb-4 px-2">
+          <div className="flex-1 border-t border-stone-700" />
+          <p className="text-xs text-stone-500 whitespace-nowrap">tools work within these rules</p>
+          <div className="flex-1 border-t border-stone-700" />
+        </div>
 
         <div className="flex flex-col gap-3 text-left">
           <div className="rounded-xl border border-indigo-400 bg-indigo-900 px-6 py-4 flex items-center gap-4">
             <span className="text-2xl font-black text-indigo-300">◈</span>
-            <div>
+            <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-white">Agent Booster</p>
-              <p className="text-xs text-indigo-300">token costs, smart reads, model routing</p>
+              <p className="text-xs text-indigo-300">sends less code, picks the right model, costs less to run</p>
             </div>
-            <span className="ml-auto text-xs font-semibold text-indigo-300 bg-indigo-800 border border-indigo-600 px-2 py-0.5 rounded-full">Layer 3</span>
+            <span className="ml-auto shrink-0 text-xs font-semibold text-indigo-300 bg-indigo-800 border border-indigo-600 px-2 py-0.5 rounded-full">Layer 3</span>
           </div>
           <div className="rounded-xl border border-violet-400 bg-violet-900 px-6 py-4 flex items-center gap-4">
             <span className="text-2xl font-black text-violet-300">⬡</span>
-            <div>
+            <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-white">Workspace Starter</p>
-              <p className="text-xs text-violet-300">CLAUDE.md, skills, hooks, subagents, plugins</p>
+              <p className="text-xs text-violet-300">shared team setup, shortcuts, and checks out of the box</p>
             </div>
-            <span className="ml-auto text-xs font-semibold text-violet-300 bg-violet-800 border border-violet-600 px-2 py-0.5 rounded-full">Layers 1–5</span>
+            <span className="ml-auto shrink-0 text-xs font-semibold text-violet-300 bg-violet-800 border border-violet-600 px-2 py-0.5 rounded-full">Layers 1–5</span>
           </div>
           <div className="rounded-xl border border-amber-600 bg-amber-950 px-6 py-4 flex items-center gap-4">
             <span className="text-2xl font-black text-amber-400">≋</span>
-            <div>
+            <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-white">RTK — Rust Token Killer</p>
-              <p className="text-xs text-amber-300">CLI output compression, 60–90% token savings</p>
+              <p className="text-xs text-amber-300">shrinks what the AI reads from your terminal, 60–90% less</p>
             </div>
-            <span className="ml-auto text-xs font-semibold text-amber-300 bg-amber-900 border border-amber-700 px-2 py-0.5 rounded-full">Layer 2</span>
+            <span className="ml-auto shrink-0 text-xs font-semibold text-amber-300 bg-amber-900 border border-amber-700 px-2 py-0.5 rounded-full">Layer 2</span>
           </div>
           <div className="rounded-xl border border-teal-600 bg-teal-950 px-6 py-4 flex items-center gap-4">
             <span className="text-2xl font-black text-teal-400">⊙</span>
-            <div>
+            <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-white">Prompt Caching</p>
-              <p className="text-xs text-teal-300">stable context reuse at 90% discount</p>
+              <p className="text-xs text-teal-300">reuses what the AI already read — 90% cheaper on repeated context</p>
             </div>
-            <span className="ml-auto text-xs font-semibold text-teal-300 bg-teal-900 border border-teal-700 px-2 py-0.5 rounded-full">Layer 1</span>
+            <span className="ml-auto shrink-0 text-xs font-semibold text-teal-300 bg-teal-900 border border-teal-700 px-2 py-0.5 rounded-full">Layer 1</span>
           </div>
         </div>
       </div>
@@ -243,11 +343,14 @@ function StackSection() {
 function FooterCTASection() {
   return (
     <section className="px-6 py-20 text-center">
-      <h2 className="text-2xl font-bold text-stone-900 mb-3">Free. Open source. No sign-up.</h2>
+      <h2 className="text-2xl font-bold text-stone-900 mb-3">Start with the rules. Then speed things up.</h2>
       <p className="text-stone-500 text-sm mb-8 max-w-md mx-auto">
-        Both tools are MIT licensed and live on GitHub. Install them in any project, any team size.
+        Set your team&apos;s policies in Conduct. Then give your developers the tools to move fast within them.
       </p>
       <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+        <a href="/dashboard" className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-6 py-3 text-sm font-semibold text-white hover:bg-red-700 transition-colors">
+          Set up Guard →
+        </a>
         <a href="/tools/agent-booster" className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors">
           Agent Booster docs →
         </a>
