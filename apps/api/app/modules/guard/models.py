@@ -8,13 +8,15 @@ from app.core.database import Base
 
 
 class GuardTeam(Base):
+    """One Guard team per Clerk org — spans all projects in the org."""
+
     __tablename__ = "guard_teams"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False)
     slug = Column(String(100), nullable=False, unique=True)
     invite_code = Column(String(32), nullable=False, unique=True)
-    conductai_workspace_id = Column(String(255), nullable=True)
+    conductai_org_id = Column(String(255), nullable=True)
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
