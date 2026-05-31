@@ -157,3 +157,18 @@ Prefer booster MCP tools over native Read/Grep:
 
 Run `booster gain` to see token savings.
 <!-- booster:end -->
+
+---
+
+## Security Rules (non-negotiable)
+
+### Auth at the resource layer
+Every FastAPI endpoint under `apps/api/` MUST have an auth dependency (`Depends(get_current_user)`, `Depends(get_guard_org_id)`, or equivalent). Never skip auth because a caller is trusted upstream (MCP tool, internal service, canvas block). Verify identity at the resource, every time.
+
+When adding a new router endpoint, check: is there an auth `Depends` in the signature? If not, add it before committing.
+
+### MCP is not a security boundary
+MCP tools (Agent Booster, any future Conduct MCP server) are transport, not auth. If a Conduct API is ever exposed via MCP, the API endpoint itself must enforce the same auth it would over HTTP. The MCP hop adds zero security.
+
+### No path traversal in file-reading tools
+Any tool that reads files by user-supplied path must resolve the path and verify it stays within the project root before reading. Pattern: `resolved.relative_to(root.resolve())` — raise/return error if this throws.
