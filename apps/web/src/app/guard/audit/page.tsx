@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react"
 import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
+import GuardNav from "@/components/guard/GuardNav"
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
@@ -157,11 +158,12 @@ export default function AuditPage() {
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
 
         {/* Header */}
+        <div>
+          <h1 className="text-xl font-semibold text-stone-900 mb-1">Guard</h1>
+          <GuardNav />
+        </div>
         <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-semibold text-stone-900">Guard &middot; Audit Trail</h1>
-            <p className="text-sm text-stone-500 mt-1">Complete log of all AI tool actions across your team.</p>
-          </div>
+          <p className="text-sm text-stone-500">Complete log of all AI tool actions across your team.</p>
           <button
             onClick={() => exportCsv(events)}
             disabled={events.length === 0}

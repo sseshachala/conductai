@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
+import GuardNav from "@/components/guard/GuardNav"
 import { timeAgo } from "@/lib/runUtils"
 
 function getCookie(name: string): string | null {
@@ -247,6 +248,7 @@ export default function GuardPage() {
       <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
 
         {/* Header */}
+        <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold text-stone-900">Guard</h1>
@@ -264,6 +266,8 @@ export default function GuardPage() {
               : "—"
             }
           </div>
+        </div>
+        <GuardNav />
         </div>
 
         {/* Stats cards */}
