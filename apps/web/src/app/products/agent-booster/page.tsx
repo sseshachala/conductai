@@ -614,6 +614,15 @@ function InspirationSection() {
             </p>
           </blockquote>
 
+          {/* Infographic */}
+          <div className="rounded-xl overflow-hidden border border-stone-200">
+            <img
+              src="/reuven-cohen-agent-booster.png"
+              alt="Cut Claude Code Costs by 3x–15x — infographic by Reuven Cohen"
+              className="w-full"
+            />
+          </div>
+
           {/* Context note */}
           <p className="text-xs text-stone-400 leading-relaxed">
             Reuven&apos;s post articulated the problem precisely. Agent Booster is our open-source implementation
