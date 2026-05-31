@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, require_workspace_role
+from app.core.auth import get_guard_org_id
 from app.core.database import get_db
 from app.modules.guard.models import GuardPolicy, GuardTeam
 
@@ -211,8 +211,7 @@ def _get_policy(db: Session, policy_id: str, team_id) -> GuardPolicy:
 @router.get("/sync", response_model=PolicySyncOut)
 def sync_policies(
     db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    _org_id: str = Depends(get_guard_org_id),
 ):
     """
     Return the current active ruleset for the hook binary.
@@ -257,8 +256,7 @@ def sync_policies(
 @router.get("", response_model=list[PolicyOut])
 def list_policies(
     db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    _org_id: str = Depends(get_guard_org_id),
 ):
     """Return all team policies (enabled and disabled)."""
     team = _get_team_for_workspace(db, workspace_id)
@@ -274,8 +272,7 @@ def list_policies(
 def create_policy(
     body: PolicyCreate,
     db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin")),
+    _org_id: str = Depends(get_guard_org_id),
 ):
     """Create a custom (non-builtin) policy rule."""
     if body.action not in _VALID_ACTIONS:
@@ -308,8 +305,7 @@ def patch_policy(
     policy_id: str,
     body: PolicyPatch,
     db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin")),
+    _org_id: str = Depends(get_guard_org_id),
 ):
     """Update a policy rule (enable/disable/edit). Works on both builtin and custom rules."""
     if body.action is not None and body.action not in _VALID_ACTIONS:
@@ -343,8 +339,7 @@ def patch_policy(
 def delete_policy(
     policy_id: str,
     db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin")),
+    _org_id: str = Depends(get_guard_org_id),
 ):
     """Delete a custom policy rule. Built-in rules cannot be deleted."""
     team = _get_team_for_workspace(db, workspace_id)

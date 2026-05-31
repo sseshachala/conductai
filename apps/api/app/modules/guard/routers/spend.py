@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, require_workspace_role
+from app.core.auth import get_guard_org_id
 from app.core.database import get_db
 from app.modules.guard.models import GuardAuditEvent, GuardSession, GuardSpendBudget, GuardTeam, GuardMember
 
@@ -102,8 +102,7 @@ class BudgetOut(BaseModel):
 def get_spend_summary(
     team_id: str = Query(..., description="Team ID"),
     db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    _org_id: str = Depends(get_guard_org_id),
 ):
     """Spend summary for a team for the current calendar month."""
     period_start = _current_period_start()
@@ -224,8 +223,7 @@ def list_sessions(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    _org_id: str = Depends(get_guard_org_id),
 ):
     """List sessions with cumulative spend totals."""
     rows = (
@@ -262,8 +260,7 @@ def list_sessions(
 def upsert_budget(
     body: BudgetCreate,
     db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor")),
+    _org_id: str = Depends(get_guard_org_id),
 ):
     """Create or update a spend budget for a member or the whole team."""
     # Upsert: one budget per (team_id, member_id) pair
@@ -307,8 +304,7 @@ def upsert_budget(
 def list_budgets(
     team_id: str = Query(..., description="Team ID"),
     db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    _org_id: str = Depends(get_guard_org_id),
 ):
     """List all budgets for a team, each annotated with current month usage."""
     budgets = (
