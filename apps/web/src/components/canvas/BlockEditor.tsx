@@ -659,7 +659,7 @@ function GuardBlockPanel({
     return () => { cancelled = true }
   }, [getToken])
 
-  const mode = (config["config.enforcement_mode"] as string) || "block"
+  const mode = (getNestedValue(config, "config.enforcement_mode") as string) || "block"
   const modeInfo = MODE_LABELS[mode] ?? MODE_LABELS.block
   const modePolicies = policies.filter(p => p.action === mode)
 
