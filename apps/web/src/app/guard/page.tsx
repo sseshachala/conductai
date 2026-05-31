@@ -149,7 +149,7 @@ export default function GuardPage() {
 
   const loadEvents = useCallback(async () => {
     const headers = await buildHeaders()
-    const teamId  = getCookie("delegator_project_id") ?? ""
+    const teamId  = (typeof window !== "undefined" ? localStorage.getItem("guard_team_id") : null) ?? ""
     const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params  = new URLSearchParams({ limit: "100" })
     if (teamId) params.set("team_id", teamId)
@@ -168,7 +168,7 @@ export default function GuardPage() {
 
   const loadStats = useCallback(async () => {
     const headers = await buildHeaders()
-    const teamId  = getCookie("delegator_project_id") ?? ""
+    const teamId  = (typeof window !== "undefined" ? localStorage.getItem("guard_team_id") : null) ?? ""
     const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params  = new URLSearchParams()
     if (teamId) params.set("team_id", teamId)

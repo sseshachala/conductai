@@ -12,10 +12,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, require_workspace_role
+from app.core.auth import get_guard_org_id, _clerk_enabled, _verify_clerk_token
 from app.core.database import SessionLocal, get_db
 from app.modules.guard.models import GuardAuditEvent, GuardSession, GuardSpendBudget, GuardTeam, GuardMember
-from app.routers.runs import get_workspace_id_sse, require_workspace_role_sse
 
 router = APIRouter(prefix="/guard/events", tags=["guard"])
 
@@ -211,8 +210,7 @@ def ingest_event(
 @router.get("", response_model=list[EventOut])
 def list_events(
     db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    _org_id: str = Depends(get_guard_org_id),
     team_id: str = Query(..., description="Team ID to filter by"),
     decision: str | None = Query(default=None, description="allowed|blocked|warned|approval"),
     ai_tool: str | None = Query(default=None, description="claude_code|codex|cursor|copilot|windsurf|gemini"),
@@ -270,9 +268,12 @@ def _fetch_new_events(team_id: str, since: datetime) -> tuple[list[dict], dateti
 async def stream_events(
     request: Request,
     team_id: str = Query(..., description="Team ID"),
-    workspace_id: str = Depends(get_workspace_id_sse),
-    _role: str = Depends(require_workspace_role_sse("admin", "editor", "viewer")),
+    token: str | None = Query(default=None, description="Bearer token (SSE can't set headers)"),
 ):
+    if _clerk_enabled():
+        if not token or not _verify_clerk_token(token):
+            from fastapi.responses import Response
+            return Response(status_code=403, content="Invalid or missing token")
     """SSE endpoint — polls DB every 2s and pushes new events since last check."""
 
     async def event_generator():
