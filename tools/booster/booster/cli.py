@@ -230,34 +230,78 @@ def cmd_serve() -> None:
 
 @main.command("init")
 @click.argument("platform", type=click.Choice(["claude", "cursor", "windsurf", "codex", "all"]))
-def cmd_init(platform: str) -> None:
+@click.option("--yes", "-y", is_flag=True, default=False, help="Skip confirmation prompt.")
+def cmd_init(platform: str, yes: bool) -> None:
     root = Path.cwd()
 
     if platform in ("claude", "all"):
-        click.echo("Installing booster for Claude Code:")
+        click.echo()
+        click.echo("Agent Booster — Claude Code setup")
+        click.echo("\u2500" * 34)
+        click.echo("This will make the following changes:")
+        click.echo(f"  + .mcp.json              (add agent-booster MCP server)")
+        click.echo(f"  + CLAUDE.md              (append booster usage rules)")
+        click.echo(f"  + .claude/settings.json  (add PreToolUse hook for Read)")
+        click.echo(f"  + .claude/hooks/booster-gate.py  (hook script)")
+        click.echo()
+        click.echo("All changes are reversible: run 'booster remove claude' to undo.")
+        click.echo()
+
+        if not yes:
+            click.confirm("Proceed?", default=True, abort=True)
+
         _merge_mcp_json(root)
         _append_claude_md(root)
         _install_hook(root)
-        click.echo("Done. Run: booster index && booster embed")
+        click.echo()
+        click.echo("Done. Next steps:")
+        click.echo("  booster index && booster embed")
+        click.echo("  Restart Claude Code to activate the MCP server.")
+        click.echo()
+        click.echo("To remove at any time: booster remove claude")
 
     if platform in ("cursor", "all"):
         mcp_path = root / ".cursor" / "mcp.json"
+        click.echo()
+        click.echo("Agent Booster — Cursor setup")
+        click.echo("\u2500" * 28)
+        click.echo(f"This will add agent-booster to {mcp_path}")
+        click.echo("Reversible: run 'booster remove cursor' to undo.")
+        click.echo()
+
+        if not yes:
+            click.confirm("Proceed?", default=True, abort=True)
+
         mcp_path.parent.mkdir(exist_ok=True)
         existing: dict = json.loads(mcp_path.read_text()) if mcp_path.exists() else {}
         existing.setdefault("mcpServers", {})["agent-booster"] = _MCP_ENTRY
         mcp_path.write_text(json.dumps(existing, indent=2) + "\n")
         click.echo(f"  wrote {mcp_path}")
+        click.echo("Restart Cursor to activate.")
 
     if platform in ("windsurf", "all"):
         mcp_path = Path.home() / ".windsurf" / "mcp.json"
+        click.echo()
+        click.echo("Agent Booster — Windsurf setup")
+        click.echo("\u2500" * 30)
+        click.echo(f"This will add agent-booster to {mcp_path}")
+        click.echo("Reversible: run 'booster remove windsurf' to undo.")
+        click.echo()
+
+        if not yes:
+            click.confirm("Proceed?", default=True, abort=True)
+
         mcp_path.parent.mkdir(parents=True, exist_ok=True)
         existing2: dict = json.loads(mcp_path.read_text()) if mcp_path.exists() else {}
         existing2.setdefault("mcpServers", {})["agent-booster"] = _MCP_ENTRY
         mcp_path.write_text(json.dumps(existing2, indent=2) + "\n")
         click.echo(f"  wrote {mcp_path}")
+        click.echo("Restart Windsurf to activate.")
 
     if platform in ("codex", "all"):
-        click.echo("Add to ~/.codex/config.json:")
+        click.echo()
+        click.echo("Agent Booster — Codex setup")
+        click.echo("Add the following to ~/.codex/config.json:")
         click.echo(json.dumps(_CODEX_SNIPPET, indent=2))
 
 
