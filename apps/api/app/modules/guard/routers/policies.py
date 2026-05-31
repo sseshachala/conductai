@@ -288,12 +288,8 @@ def list_policies(
     db: Session = Depends(get_db),
     _org_id: str = Depends(get_guard_org_id),
 ):
-    """Return all team policies. Seeds built-in rules on first call."""
+    """Return all team policies."""
     team = _resolve_team(db, team_id)
-
-    existing_count = db.query(GuardPolicy).filter(GuardPolicy.team_id == team.id).count()
-    if existing_count == 0:
-        seed_builtin_policies(db, team.id)
 
     policies = (
         db.query(GuardPolicy)

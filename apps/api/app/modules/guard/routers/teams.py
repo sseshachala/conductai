@@ -28,6 +28,7 @@ from app.modules.guard.models import (
     GuardSpendBudget,
     GuardTeam,
 )
+from app.modules.guard.routers.policies import seed_builtin_policies
 
 router = APIRouter(prefix="/guard/teams", tags=["guard-teams"])
 
@@ -144,6 +145,7 @@ def create_team(
     db.add(team)
     db.commit()
     db.refresh(team)
+    seed_builtin_policies(db, team.id)
     return team
 
 
