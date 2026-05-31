@@ -282,6 +282,12 @@ def generate_policy(
             messages=[{"role": "user", "content": body.prompt}],
         )
         raw = response.content[0].text.strip()
+        # Strip markdown fences if the model wrapped the JSON
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+            raw = raw.strip()
         data = json.loads(raw)
     except json.JSONDecodeError:
         raise HTTPException(status_code=422, detail="AI returned invalid JSON — try rephrasing your request")
