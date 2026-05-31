@@ -245,7 +245,9 @@ def patch_my_team(
     lookup_id = workspace_id or token_org_id
     team = _lookup_team(db, lookup_id, fallback_org_id=token_org_id)
     if not team:
-        raise HTTPException(status_code=404, detail="No team found for this org")
+        all_teams = db.query(GuardTeam.id, GuardTeam.conductai_org_id, GuardTeam.workspace_id).all()
+        debug = [{"id": str(r.id), "conductai_org_id": r.conductai_org_id, "workspace_id": str(r.workspace_id) if r.workspace_id else None} for r in all_teams]
+        raise HTTPException(status_code=404, detail={"msg": "No team found", "lookup_id": lookup_id, "token_org_id": token_org_id, "teams": debug})
     if body.alert_channel is not None:
         team.alert_channel = body.alert_channel
     if body.notify_on_block is not None:
