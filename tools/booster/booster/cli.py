@@ -37,6 +37,19 @@ Prefer booster MCP tools over native Read/Grep:
 Run `booster gain` to see token savings.
 <!-- booster:end -->"""
 
+_RULES_BLOCK = """\
+<!-- booster:start -->
+## Agent Booster — Context-Efficient Reads
+
+Prefer booster MCP tools over native file reads:
+- `search_context` instead of searching files — semantic search across all indexed symbols
+- `smart_read` instead of reading full files — returns only the relevant symbol slices for a task
+- `get_symbols` to survey a file's structure before reading it
+- `route_model` at the start of any non-trivial task to pick the right model tier
+
+Run `booster gain` to see token savings.
+<!-- booster:end -->"""
+
 _HOOK_COMMAND = "python3 .claude/hooks/booster-gate.py"
 
 _GATE_SCRIPT = '''\
@@ -108,21 +121,27 @@ def _remove_mcp_json(root: Path) -> None:
 
 
 def _append_claude_md(root: Path) -> None:
-    claude_md = root / "CLAUDE.md"
-    existing = claude_md.read_text() if claude_md.exists() else ""
-    if "<!-- booster:start -->" in existing:
-        click.echo("  CLAUDE.md already has booster block — skipped")
-        return
-    sep = "\n\n" if existing and not existing.endswith("\n\n") else ""
-    claude_md.write_text(existing + sep + _CLAUDE_MD_BLOCK + "\n")
-    click.echo(f"  appended booster block to {claude_md.relative_to(root)}")
+    _append_rules_block(root / "CLAUDE.md", _CLAUDE_MD_BLOCK, "CLAUDE.md")
 
 
 def _remove_claude_md(root: Path) -> None:
-    claude_md = root / "CLAUDE.md"
-    if not claude_md.exists():
+    _remove_rules_block(root / "CLAUDE.md", "CLAUDE.md")
+
+
+def _append_rules_block(path: Path, block: str, label: str) -> None:
+    existing = path.read_text() if path.exists() else ""
+    if "<!-- booster:start -->" in existing:
+        click.echo(f"  {label} already has booster block — skipped")
         return
-    text = claude_md.read_text()
+    sep = "\n\n" if existing and not existing.endswith("\n\n") else ""
+    path.write_text(existing + sep + block + "\n")
+    click.echo(f"  appended booster block to {label}")
+
+
+def _remove_rules_block(path: Path, label: str) -> None:
+    if not path.exists():
+        return
+    text = path.read_text()
     start = text.find("<!-- booster:start -->")
     end = text.find("<!-- booster:end -->")
     if start == -1 or end == -1:
@@ -130,10 +149,10 @@ def _remove_claude_md(root: Path) -> None:
     end += len("<!-- booster:end -->")
     cleaned = (text[:start].rstrip() + "\n" + text[end:].lstrip()).strip()
     if cleaned:
-        claude_md.write_text(cleaned + "\n")
+        path.write_text(cleaned + "\n")
     else:
-        claude_md.unlink()
-    click.echo(f"  removed booster block from {claude_md.relative_to(root)}")
+        path.unlink()
+    click.echo(f"  removed booster block from {label}")
 
 
 def _install_hook(root: Path) -> None:
@@ -262,10 +281,14 @@ def cmd_init(platform: str, yes: bool) -> None:
 
     if platform in ("cursor", "all"):
         mcp_path = root / ".cursor" / "mcp.json"
+        rules_path = root / ".cursorrules"
         click.echo()
         click.echo("Agent Booster — Cursor setup")
         click.echo("\u2500" * 28)
-        click.echo(f"This will add agent-booster to {mcp_path}")
+        click.echo("This will make the following changes:")
+        click.echo(f"  + .cursor/mcp.json   (add agent-booster MCP server)")
+        click.echo(f"  + .cursorrules       (append booster usage rules)")
+        click.echo()
         click.echo("Reversible: run 'booster remove cursor' to undo.")
         click.echo()
 
@@ -276,15 +299,22 @@ def cmd_init(platform: str, yes: bool) -> None:
         existing: dict = json.loads(mcp_path.read_text()) if mcp_path.exists() else {}
         existing.setdefault("mcpServers", {})["agent-booster"] = _MCP_ENTRY
         mcp_path.write_text(json.dumps(existing, indent=2) + "\n")
-        click.echo(f"  wrote {mcp_path}")
-        click.echo("Restart Cursor to activate.")
+        click.echo(f"  wrote .cursor/mcp.json")
+        _append_rules_block(rules_path, _RULES_BLOCK, ".cursorrules")
+        click.echo()
+        click.echo("Done. Restart Cursor to activate the MCP server.")
+        click.echo("To remove: booster remove cursor")
 
     if platform in ("windsurf", "all"):
         mcp_path = Path.home() / ".windsurf" / "mcp.json"
+        rules_path = root / ".windsurfrules"
         click.echo()
         click.echo("Agent Booster — Windsurf setup")
         click.echo("\u2500" * 30)
-        click.echo(f"This will add agent-booster to {mcp_path}")
+        click.echo("This will make the following changes:")
+        click.echo(f"  + ~/.windsurf/mcp.json  (add agent-booster MCP server)")
+        click.echo(f"  + .windsurfrules        (append booster usage rules)")
+        click.echo()
         click.echo("Reversible: run 'booster remove windsurf' to undo.")
         click.echo()
 
@@ -295,14 +325,37 @@ def cmd_init(platform: str, yes: bool) -> None:
         existing2: dict = json.loads(mcp_path.read_text()) if mcp_path.exists() else {}
         existing2.setdefault("mcpServers", {})["agent-booster"] = _MCP_ENTRY
         mcp_path.write_text(json.dumps(existing2, indent=2) + "\n")
-        click.echo(f"  wrote {mcp_path}")
-        click.echo("Restart Windsurf to activate.")
+        click.echo(f"  wrote ~/.windsurf/mcp.json")
+        _append_rules_block(rules_path, _RULES_BLOCK, ".windsurfrules")
+        click.echo()
+        click.echo("Done. Restart Windsurf to activate the MCP server.")
+        click.echo("To remove: booster remove windsurf")
 
     if platform in ("codex", "all"):
+        agents_md = root / "AGENTS.md"
+        codex_cfg = Path.home() / ".codex" / "config.json"
         click.echo()
         click.echo("Agent Booster — Codex setup")
-        click.echo("Add the following to ~/.codex/config.json:")
-        click.echo(json.dumps(_CODEX_SNIPPET, indent=2))
+        click.echo("\u2500" * 27)
+        click.echo("This will make the following changes:")
+        click.echo(f"  + ~/.codex/config.json  (add agent-booster MCP server)")
+        click.echo(f"  + AGENTS.md             (append booster usage rules)")
+        click.echo()
+        click.echo("Reversible: run 'booster remove codex' to undo.")
+        click.echo()
+
+        if not yes:
+            click.confirm("Proceed?", default=True, abort=True)
+
+        codex_cfg.parent.mkdir(parents=True, exist_ok=True)
+        existing3: dict = json.loads(codex_cfg.read_text()) if codex_cfg.exists() else {}
+        existing3.setdefault("mcp", {}).setdefault("servers", {})["agent-booster"] = _MCP_ENTRY
+        codex_cfg.write_text(json.dumps(existing3, indent=2) + "\n")
+        click.echo(f"  wrote ~/.codex/config.json")
+        _append_rules_block(agents_md, _RULES_BLOCK, "AGENTS.md")
+        click.echo()
+        click.echo("Done. Run: booster index && booster embed")
+        click.echo("To remove: booster remove codex")
 
 
 @main.command("remove")
@@ -318,20 +371,37 @@ def cmd_remove(platform: str) -> None:
         click.echo("Done.")
 
     if platform in ("cursor", "all"):
+        click.echo("Removing booster from Cursor:")
         mcp_path = root / ".cursor" / "mcp.json"
         if mcp_path.exists():
             data = json.loads(mcp_path.read_text())
             data.get("mcpServers", {}).pop("agent-booster", None)
             mcp_path.write_text(json.dumps(data, indent=2) + "\n")
-            click.echo(f"  cleaned {mcp_path}")
+            click.echo("  cleaned .cursor/mcp.json")
+        _remove_rules_block(root / ".cursorrules", ".cursorrules")
+        click.echo("Done.")
 
     if platform in ("windsurf", "all"):
+        click.echo("Removing booster from Windsurf:")
         mcp_path = Path.home() / ".windsurf" / "mcp.json"
         if mcp_path.exists():
             data = json.loads(mcp_path.read_text())
             data.get("mcpServers", {}).pop("agent-booster", None)
             mcp_path.write_text(json.dumps(data, indent=2) + "\n")
-            click.echo(f"  cleaned {mcp_path}")
+            click.echo("  cleaned ~/.windsurf/mcp.json")
+        _remove_rules_block(root / ".windsurfrules", ".windsurfrules")
+        click.echo("Done.")
+
+    if platform in ("codex", "all"):
+        click.echo("Removing booster from Codex:")
+        codex_cfg = Path.home() / ".codex" / "config.json"
+        if codex_cfg.exists():
+            data = json.loads(codex_cfg.read_text())
+            data.get("mcp", {}).get("servers", {}).pop("agent-booster", None)
+            codex_cfg.write_text(json.dumps(data, indent=2) + "\n")
+            click.echo("  cleaned ~/.codex/config.json")
+        _remove_rules_block(root / "AGENTS.md", "AGENTS.md")
+        click.echo("Done.")
 
 
 @main.command("route")
