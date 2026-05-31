@@ -9,6 +9,7 @@ export default function AgentBoosterPage() {
       <Nav />
       <main>
         <HeroSection />
+        <InspirationSection />
         <ProblemSection />
         <HowItWorksSection />
         <ThreeLayersSection />
@@ -16,7 +17,6 @@ export default function AgentBoosterPage() {
         <McpToolsSection />
         <WorksWithSection />
         <FaqSection />
-        <InspirationSection />
         <FooterCTASection />
       </main>
       <PageFooter />
