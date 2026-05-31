@@ -43,9 +43,28 @@ interface SpendData {
   by_ai_tool: AiToolBreakdown[]
 }
 
-interface Budget {
-  email: string
+type Currency = "USD" | "EUR" | "INR"
+
+const CURRENCY_SYMBOLS: Record<Currency, string> = { USD: "$", EUR: "€", INR: "₹" }
+const CURRENCY_RATES: Record<Currency, number> = { USD: 1, EUR: 0.92, INR: 83.5 }
+
+function toUsd(amount: number, currency: Currency): number {
+  return amount / CURRENCY_RATES[currency]
+}
+
+function fromUsd(amount: number, currency: Currency): number {
+  return amount * CURRENCY_RATES[currency]
+}
+
+interface BudgetOut {
+  id: string
+  team_id: string
+  member_id: string | null
   monthly_limit_usd: number
+  alert_threshold_pct: number
+  hard_limit_usd: number | null
+  default_per_developer_usd: number | null
+  current_month_cost_usd: number
 }
 
 interface TeamBudgetSettings {
@@ -177,13 +196,18 @@ function BudgetInput({
 function SpendControlsPanel({
   settings,
   onSave,
+  currency,
 }: {
   settings: TeamBudgetSettings
   onSave: (s: TeamBudgetSettings) => Promise<void>
+  currency: Currency
 }) {
   const [editing, setEditing] = useState(false)
   const [local, setLocal] = useState(settings)
   const [saving, setSaving] = useState(false)
+  const sym = CURRENCY_SYMBOLS[currency]
+
+  useEffect(() => { setLocal(settings) }, [settings])
 
   function reset() { setLocal(settings); setEditing(false) }
 
@@ -196,6 +220,16 @@ function SpendControlsPanel({
     settings.team_monthly_limit_usd && settings.team_monthly_limit_usd > 0
       ? Math.min((0 / settings.team_monthly_limit_usd) * 100, 100)
       : null
+
+  function displayAmt(usd: number | null): string {
+    if (usd == null) return ""
+    return String(Math.round(fromUsd(usd, currency)))
+  }
+
+  function parseAmt(val: string): number | null {
+    const n = parseFloat(val)
+    return isNaN(n) || n < 0 ? null : toUsd(n, currency)
+  }
 
   return (
     <div className="bg-white rounded-xl border border-amber-200 overflow-hidden">
@@ -236,18 +270,20 @@ function SpendControlsPanel({
           <label className="text-xs font-medium text-stone-700">Team monthly budget</label>
           {editing ? (
             <div className="flex items-center gap-1.5">
-              <span className="text-sm text-stone-400">$</span>
+              <span className="text-sm text-stone-400">{sym}</span>
               <input
                 type="number" min="0" step="100"
-                value={local.team_monthly_limit_usd ?? ""}
-                onChange={e => setLocal(p => ({ ...p, team_monthly_limit_usd: e.target.value ? parseFloat(e.target.value) : null }))}
+                value={displayAmt(local.team_monthly_limit_usd)}
+                onChange={e => setLocal(p => ({ ...p, team_monthly_limit_usd: parseAmt(e.target.value) }))}
                 placeholder="No limit"
                 className="w-32 text-sm border border-stone-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
               />
             </div>
           ) : (
             <p className="text-sm font-semibold text-stone-900">
-              {settings.team_monthly_limit_usd != null ? `$${settings.team_monthly_limit_usd.toLocaleString()} / month` : <span className="text-stone-400 font-normal">No limit set</span>}
+              {settings.team_monthly_limit_usd != null
+                ? `${sym}${Math.round(fromUsd(settings.team_monthly_limit_usd, currency)).toLocaleString()} / month`
+                : <span className="text-stone-400 font-normal">No limit set</span>}
             </p>
           )}
           {teamPct != null && !editing && (
@@ -260,18 +296,20 @@ function SpendControlsPanel({
           <label className="text-xs font-medium text-stone-700">Default per-developer limit</label>
           {editing ? (
             <div className="flex items-center gap-1.5">
-              <span className="text-sm text-stone-400">$</span>
+              <span className="text-sm text-stone-400">{sym}</span>
               <input
                 type="number" min="0" step="50"
-                value={local.default_per_developer_usd ?? ""}
-                onChange={e => setLocal(p => ({ ...p, default_per_developer_usd: e.target.value ? parseFloat(e.target.value) : null }))}
+                value={displayAmt(local.default_per_developer_usd)}
+                onChange={e => setLocal(p => ({ ...p, default_per_developer_usd: parseAmt(e.target.value) }))}
                 placeholder="No limit"
                 className="w-32 text-sm border border-stone-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
               />
             </div>
           ) : (
             <p className="text-sm font-semibold text-stone-900">
-              {settings.default_per_developer_usd != null ? `$${settings.default_per_developer_usd.toLocaleString()} / month` : <span className="text-stone-400 font-normal">No limit set</span>}
+              {settings.default_per_developer_usd != null
+                ? `${sym}${Math.round(fromUsd(settings.default_per_developer_usd, currency)).toLocaleString()} / month`
+                : <span className="text-stone-400 font-normal">No limit set</span>}
             </p>
           )}
         </div>
@@ -399,6 +437,7 @@ export default function SpendPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedDev, setExpandedDev] = useState<string | null>(null)
+  const [currency, setCurrency] = useState<Currency>("USD")
   const [teamSettings, setTeamSettings] = useState<TeamBudgetSettings>({
     team_monthly_limit_usd: null,
     alert_threshold_pct: 80,
@@ -425,9 +464,22 @@ export default function SpendPage() {
       setData(spendJson)
 
       if (budgetRes.ok) {
-        const budgetList: Budget[] = await budgetRes.json()
+        const budgetList: BudgetOut[] = await budgetRes.json()
+        // Team-wide settings (member_id === null)
+        const teamBudget = budgetList.find(b => b.member_id === null)
+        if (teamBudget) {
+          setTeamSettings({
+            team_monthly_limit_usd: teamBudget.monthly_limit_usd,
+            alert_threshold_pct: teamBudget.alert_threshold_pct,
+            hard_cap_enabled: teamBudget.hard_limit_usd != null,
+            default_per_developer_usd: teamBudget.default_per_developer_usd,
+          })
+        }
+        // Per-developer budgets keyed by member_id
         const map: Record<string, number | null> = {}
-        for (const b of budgetList) map[b.email] = b.monthly_limit_usd
+        for (const b of budgetList) {
+          if (b.member_id != null) map[b.member_id] = b.monthly_limit_usd
+        }
         setBudgets(map)
       }
     } catch (err) {
@@ -439,14 +491,28 @@ export default function SpendPage() {
 
   useEffect(() => { load() }, [load])
 
-  useEffect(() => {
-    const stored = localStorage.getItem("guard_team_budget_settings")
-    if (stored) { try { setTeamSettings(JSON.parse(stored)) } catch {} }
-  }, [])
-
   async function saveTeamSettings(s: TeamBudgetSettings) {
+    const token = await getToken()
+    const teamId = (typeof window !== "undefined" ? localStorage.getItem("guard_team_id") : null) ?? ""
+    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    }
+    const res = await fetch(`${base}/guard/spend/budgets`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        team_id: teamId,
+        member_id: null,
+        monthly_limit_usd: s.team_monthly_limit_usd ?? 0,
+        alert_threshold_pct: s.alert_threshold_pct,
+        hard_limit_usd: s.hard_cap_enabled ? (s.team_monthly_limit_usd ?? 0) : null,
+        default_per_developer_usd: s.default_per_developer_usd,
+      }),
+    })
+    if (!res.ok) throw new Error("Failed to save spend controls")
     setTeamSettings(s)
-    localStorage.setItem("guard_team_budget_settings", JSON.stringify(s))
   }
 
   async function saveBudget(email: string, limit: number) {
@@ -479,7 +545,18 @@ export default function SpendPage() {
         </div>
         <div className="flex items-center justify-between">
           <p className="text-sm text-stone-500">Token usage and cost tracking for your team.</p>
-          <MonthPicker value={month} onChange={setMonth} />
+          <div className="flex items-center gap-2">
+            <select
+              value={currency}
+              onChange={e => setCurrency(e.target.value as Currency)}
+              className="text-xs border border-stone-200 rounded-lg px-2.5 py-1.5 text-stone-600 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            >
+              <option value="USD">$ USD</option>
+              <option value="EUR">€ EUR</option>
+              <option value="INR">₹ INR</option>
+            </select>
+            <MonthPicker value={month} onChange={setMonth} />
+          </div>
         </div>
 
         {error && (
@@ -487,7 +564,7 @@ export default function SpendPage() {
         )}
 
         {/* Spend controls config */}
-        <SpendControlsPanel settings={teamSettings} onSave={saveTeamSettings} />
+        <SpendControlsPanel settings={teamSettings} onSave={saveTeamSettings} currency={currency} />
 
         {/* Summary cards */}
         {loading ? (
@@ -500,7 +577,7 @@ export default function SpendPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatCard
               label="Total cost this month"
-              value={`$${s.total_cost_usd.toFixed(2)}`}
+              value={`${CURRENCY_SYMBOLS[currency]}${fromUsd(s.total_cost_usd, currency).toFixed(2)}`}
               accent="text-stone-900"
             />
             <StatCard
@@ -511,12 +588,12 @@ export default function SpendPage() {
             />
             <StatCard
               label="Cost without optimisation"
-              value={`$${s.cost_without_optimisation.toFixed(0)}`}
+              value={`${CURRENCY_SYMBOLS[currency]}${fromUsd(s.cost_without_optimisation, currency).toFixed(0)}`}
               accent="text-stone-500"
             />
             <StatCard
               label="Money saved"
-              value={`$${s.money_saved.toFixed(0)}`}
+              value={`${CURRENCY_SYMBOLS[currency]}${fromUsd(s.money_saved, currency).toFixed(0)}`}
               accent="text-indigo-700"
             />
           </div>
@@ -566,10 +643,10 @@ export default function SpendPage() {
                             {formatTokens(dev.tokens_used)}
                           </td>
                           <td className="px-4 py-3 text-right text-stone-700 font-mono text-xs font-medium">
-                            ${dev.cost_usd.toFixed(2)}
+                            {CURRENCY_SYMBOLS[currency]}{fromUsd(dev.cost_usd, currency).toFixed(2)}
                           </td>
                           <td className="px-4 py-3 text-right text-green-700 font-mono text-xs">
-                            ${dev.saved_usd.toFixed(2)}
+                            {CURRENCY_SYMBOLS[currency]}{fromUsd(dev.saved_usd, currency).toFixed(2)}
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
@@ -633,7 +710,7 @@ export default function SpendPage() {
                         {formatTokens(t.tokens_used)}
                       </td>
                       <td className="px-4 py-3 text-right text-stone-700 font-mono text-xs font-medium">
-                        ${t.cost_usd.toFixed(2)}
+                        {CURRENCY_SYMBOLS[currency]}{fromUsd(t.cost_usd, currency).toFixed(2)}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">

@@ -79,9 +79,11 @@ class SessionOut(BaseModel):
 class BudgetCreate(BaseModel):
     team_id: str
     member_id: str | None = None   # null = team-wide
+    email: str | None = None       # alternative to member_id for per-dev budgets
     monthly_limit_usd: float
     alert_threshold_pct: int = 80
     hard_limit_usd: float | None = None
+    default_per_developer_usd: float | None = None  # team-wide record only
 
 
 class BudgetOut(BaseModel):
@@ -91,6 +93,7 @@ class BudgetOut(BaseModel):
     monthly_limit_usd: float
     alert_threshold_pct: int
     hard_limit_usd: float | None
+    default_per_developer_usd: float | None
     current_month_cost_usd: float
     created_at: str
     updated_at: str
@@ -263,12 +266,29 @@ def upsert_budget(
     _org_id: str = Depends(get_guard_org_id),
 ):
     """Create or update a spend budget for a member or the whole team."""
+    import uuid as _uuid
+    from fastapi import HTTPException as _HTTPException
+
+    # Resolve email → member_id if provided
+    resolved_member_id = body.member_id
+    if resolved_member_id is None and body.email:
+        member = db.query(GuardMember).filter(GuardMember.email == body.email).first()
+        if not member:
+            raise _HTTPException(status_code=404, detail=f"Member with email {body.email!r} not found")
+        resolved_member_id = str(member.id)
+
     # Upsert: one budget per (team_id, member_id) pair
+    try:
+        team_uuid = _uuid.UUID(body.team_id)
+        member_uuid = _uuid.UUID(resolved_member_id) if resolved_member_id else None
+    except ValueError:
+        raise _HTTPException(status_code=422, detail="Invalid team_id or member_id")
+
     existing = (
         db.query(GuardSpendBudget)
         .filter(
-            GuardSpendBudget.team_id == body.team_id,
-            GuardSpendBudget.member_id == body.member_id,
+            GuardSpendBudget.team_id == team_uuid,
+            GuardSpendBudget.member_id == member_uuid,
         )
         .first()
     )
@@ -278,23 +298,26 @@ def upsert_budget(
         existing.monthly_limit_usd = body.monthly_limit_usd
         existing.alert_threshold_pct = body.alert_threshold_pct
         existing.hard_limit_usd = body.hard_limit_usd
+        if body.default_per_developer_usd is not None or member_uuid is None:
+            existing.default_per_developer_usd = body.default_per_developer_usd
         existing.updated_at = now
         db.commit()
         db.refresh(existing)
         budget = existing
     else:
         budget = GuardSpendBudget(
-            team_id=body.team_id,
-            member_id=body.member_id,
+            team_id=team_uuid,
+            member_id=member_uuid,
             monthly_limit_usd=body.monthly_limit_usd,
             alert_threshold_pct=body.alert_threshold_pct,
             hard_limit_usd=body.hard_limit_usd,
+            default_per_developer_usd=body.default_per_developer_usd,
         )
         db.add(budget)
         db.commit()
         db.refresh(budget)
 
-    current_cost = _current_month_cost(db, body.team_id, body.member_id)
+    current_cost = _current_month_cost(db, body.team_id, resolved_member_id)
     return _budget_out(budget, current_cost)
 
 
@@ -349,6 +372,7 @@ def _budget_out(budget: GuardSpendBudget, current_cost: float) -> BudgetOut:
         monthly_limit_usd=budget.monthly_limit_usd,
         alert_threshold_pct=budget.alert_threshold_pct,
         hard_limit_usd=budget.hard_limit_usd,
+        default_per_developer_usd=budget.default_per_developer_usd,
         current_month_cost_usd=round(current_cost, 6),
         created_at=budget.created_at.isoformat(),
         updated_at=budget.updated_at.isoformat(),
