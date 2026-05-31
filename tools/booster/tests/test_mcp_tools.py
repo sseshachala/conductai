@@ -44,12 +44,15 @@ def multiply(a, b):
 
 
 def test_smart_read_falls_back_on_no_match(tmp_root):
+    # With no embeddings, vector_search_file falls back to keyword match.
+    # "authenticate users" has no keyword overlap with "obscure_xyz" → no match.
     content = "def obscure_xyz():\n    pass\n"
     _write(tmp_root, "app/misc.py", content)
     ix = SymbolIndexer(tmp_root)
     ix.index_all()
     result = smart_read(tmp_root / "app/misc.py", "authenticate users", ix)
-    assert "obscure_xyz" in result
+    assert "no matching symbols" in result
+    assert "Use Read tool" in result
 
 
 def test_smart_read_includes_line_header(tmp_root):
