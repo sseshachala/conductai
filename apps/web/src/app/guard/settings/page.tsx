@@ -23,7 +23,6 @@ export default function GuardSettingsPage() {
   const [channelInput, setChannelInput] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [notInstalled, setNotInstalled] = useState(false)
   const [channelSaved, setChannelSaved] = useState(false)
   const [savingChannel, setSavingChannel] = useState(false)
 
@@ -36,8 +35,7 @@ export default function GuardSettingsPage() {
     return headers
   }, [getToken])
 
-  const guardWsId = typeof window !== "undefined" ? (localStorage.getItem("guard_workspace_id") ?? activeWorkspace?.id) : activeWorkspace?.id
-  const workspaceQuery = guardWsId ? `?workspace_id=${guardWsId}` : ""
+  const workspaceQuery = activeWorkspace ? `?workspace_id=${activeWorkspace.id}` : ""
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -67,7 +65,7 @@ export default function GuardSettingsPage() {
 
   async function patch(body: Partial<TeamPrefs>) {
     const headers = await buildHeaders()
-    const qs = guardWsId ? `?workspace_id=${guardWsId}` : ""
+    const qs = activeWorkspace ? `?workspace_id=${activeWorkspace.id}` : ""
     const res = await fetch(`${base}/guard/teams/me${qs}`, {
       method: "PATCH",
       headers,

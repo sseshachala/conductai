@@ -17,6 +17,7 @@ class GuardTeam(Base):
     slug = Column(String(100), nullable=False, unique=True)
     invite_code = Column(String(32), nullable=False, unique=True)
     conductai_org_id = Column(String(255), nullable=True)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="SET NULL"), nullable=True, index=True)
     alert_channel = Column(String(100), nullable=True)
     notify_on_block = Column(Boolean, nullable=False, default=True)
     notify_on_budget = Column(Boolean, nullable=False, default=True)
