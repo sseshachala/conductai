@@ -11,10 +11,20 @@ from app.models.run_trace import RunTrace
 from app.models.audit_log import AuditLog
 from app.models.email_template import EmailTemplate
 from app.models.playbook_submission import PlaybookSubmission
+from app.modules.guard.models import (
+    GuardTeam,
+    GuardMember,
+    GuardPolicy,
+    GuardSession,
+    GuardAuditEvent,
+    GuardSpendBudget,
+)
 
 __all__ = [
     "Organization", "Workspace", "User", "WorkspaceUser", "Project",
     "Workflow", "WorkflowVersion", "Integration", "Run", "RunEvent",
     "RunAnalyticsEvent", "RunTrace", "AuditLog", "EmailTemplate",
     "PlaybookSubmission",
+    "GuardTeam", "GuardMember", "GuardPolicy", "GuardSession",
+    "GuardAuditEvent", "GuardSpendBudget",
 ]
