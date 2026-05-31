@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 
-export const metadata = undefined // metadata not supported in "use client" — set via generateMetadata if needed
 
 export default function AgentBoosterPage() {
   return (
