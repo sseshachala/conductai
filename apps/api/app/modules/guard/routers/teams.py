@@ -2,7 +2,7 @@
 Guard team management endpoints.
 
 POST   /guard/teams                                  — create team (returns team + invite_code)
-GET    /guard/teams/me                               — get my team (by conductai_workspace_id header)
+GET    /guard/teams/me                               — get my team (by conductai_org_id)
 POST   /guard/teams/join                             — join via invite code
 GET    /guard/teams/{team_id}/members                — list active members
 PATCH  /guard/teams/{team_id}/members/{member_id}   — update role (owner|security|developer)
@@ -62,7 +62,7 @@ class TeamOut(BaseModel):
     name: str
     slug: str
     invite_code: str
-    conductai_workspace_id: str | None
+    conductai_org_id: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -118,13 +118,13 @@ def create_team(
     workspace_id: str = Depends(get_workspace_id),
     _role: str = Depends(require_workspace_role("admin")),
 ):
-    """Create a new guard team for the authenticated workspace."""
+    """Create a new guard team for the authenticated org."""
     slug = _unique_slug(db, body.name)
     team = GuardTeam(
         name=body.name,
         slug=slug,
         invite_code=_new_invite_code(),
-        conductai_workspace_id=workspace_id,
+        conductai_org_id=workspace_id,
     )
     db.add(team)
     db.commit()
@@ -138,14 +138,14 @@ def get_my_team(
     workspace_id: str = Depends(get_workspace_id),
     _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
 ):
-    """Return the team associated with the caller's workspace."""
+    """Return the team associated with the caller's org."""
     team = (
         db.query(GuardTeam)
-        .filter(GuardTeam.conductai_workspace_id == workspace_id)
+        .filter(GuardTeam.conductai_org_id == workspace_id)
         .first()
     )
     if not team:
-        raise HTTPException(status_code=404, detail="No team found for this workspace")
+        raise HTTPException(status_code=404, detail="No team found for this org")
     return team
 
 
