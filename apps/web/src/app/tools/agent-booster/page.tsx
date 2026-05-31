@@ -136,7 +136,7 @@ function HeroSection() {
         </a>
       </div>
       <p className="mt-4 text-xs text-stone-400">
-        Python 3.10+ · MIT licensed · v0.2.1
+        Python 3.10+ · MIT licensed · v0.2.3
       </p>
     </section>
   )
@@ -391,7 +391,7 @@ function QuickstartSection() {
           <div>
             <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 2 — Wire to your tool</p>
             <InlineCodeBlock comment="claude · cursor · windsurf · codex · all — shows what changes, asks to confirm">booster init claude</InlineCodeBlock>
-            <p className="mt-2 text-xs text-stone-400">Writes .mcp.json, CLAUDE.md rules, and a PreToolUse hook. Fully reversible with <code className="font-mono bg-stone-100 px-1 rounded text-stone-600">booster remove claude</code>.</p>
+            <p className="mt-2 text-xs text-stone-400">Writes .mcp.json, CLAUDE.md rules, and three hooks: Read gate, Grep nudge, and auto route_model on every turn. Fully reversible with <code className="font-mono bg-stone-100 px-1 rounded text-stone-600">booster remove claude</code>.</p>
           </div>
           <div>
             <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 3 — Index your codebase</p>
@@ -478,7 +478,7 @@ const CLI_COMMANDS = [
   {
     cmd: "booster init <platform>",
     when: "Once per project, after install",
-    what: "Writes MCP config + rules file for claude, cursor, windsurf, or codex. Shows what will change, asks for confirmation.",
+    what: "Writes MCP config, rules file, and hooks for claude, cursor, windsurf, or codex. For Claude Code: Read gate, Grep nudge, and auto route_model on every turn. Shows what will change, asks for confirmation.",
     note: "booster init claude --yes  to skip prompt",
   },
   {
@@ -642,7 +642,7 @@ const FAQS = [
   },
   {
     q: "What does booster init actually change on my machine?",
-    a: "For Claude Code, booster init claude writes four things: .mcp.json (registers the MCP server), CLAUDE.md (appends a rules block telling the model to prefer smart_read and search_context over Read/Grep), .claude/settings.json (adds a PreToolUse hook that intercepts Read calls on indexed files and redirects them), and .claude/hooks/booster-gate.py (the hook script itself). Before writing anything, it prints a full list of changes and asks for confirmation. If booster ever becomes a bottleneck, run booster remove claude — it deletes the hook script, removes the CLAUDE.md block, strips the hook from settings.json, and removes the .mcp.json entry. No residue.",
+    a: "For Claude Code, booster init claude writes six things: .mcp.json (registers the MCP server), CLAUDE.md (appends a rules block), .claude/settings.json (wires three hooks), and three hook scripts — booster-gate.py (blocks Read on indexed files and forces smart_read), booster-grep-nudge.py (detects semantic Grep patterns and suggests search_context instead), and booster-route.py (fires on every user message and recommends haiku/sonnet/opus before Claude starts work). Before writing anything, it prints a full list of changes and asks for confirmation. Run booster remove claude to undo everything cleanly. No residue.",
   },
   {
     q: "Does Booster send my code anywhere?",
