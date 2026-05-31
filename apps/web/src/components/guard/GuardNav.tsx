@@ -8,6 +8,7 @@ const TABS = [
   { label: "Policies", href: "/guard/policies" },
   { label: "Spend",    href: "/guard/spend" },
   { label: "Audit",   href: "/guard/audit" },
+  { label: "Settings", href: "/guard/settings" },
 ]
 
 export default function GuardNav() {

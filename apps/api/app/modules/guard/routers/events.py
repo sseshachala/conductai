@@ -99,8 +99,38 @@ def _event_to_dict(e: GuardAuditEvent) -> dict:
     }
 
 
-def _check_spend_budget(db: Session, team_id: str) -> None:
-    """Log a warning if any active budget for this team has exceeded alert_threshold_pct."""
+def _send_guard_slack(db: Session, team: GuardTeam, text: str) -> None:
+    """Fire-and-forget Slack notification. Silently skips if not configured."""
+    from app.core.crypto import decrypt
+    from app.models.integration import Integration
+
+    if not team.alert_channel or not team.conductai_org_id:
+        return
+
+    row = (
+        db.query(Integration)
+        .filter(
+            Integration.workspace_id == team.conductai_org_id,
+            Integration.handle == "slack",
+        )
+        .first()
+    )
+    if not row or not row.encrypted_credentials:
+        return
+
+    try:
+        creds = decrypt(row.encrypted_credentials)
+        token = creds.get("token") or creds.get("bot_token", "")
+        if not token:
+            return
+        from app.runtime.integrations.slack import post_message
+        post_message(token=token, channel=team.alert_channel, text=text)
+    except Exception:
+        pass  # never crash ingest on Slack failure
+
+
+def _check_spend_budget(db: Session, team_id: str, team_obj: GuardTeam | None = None) -> None:
+    """Log a warning (and send Slack alert) if any active budget has exceeded alert_threshold_pct."""
     now = _now()
     period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
@@ -123,6 +153,8 @@ def _check_spend_budget(db: Session, team_id: str) -> None:
         .scalar()
     ) or 0.0
 
+    team = team_obj or db.query(GuardTeam).filter(GuardTeam.id == team_id).first()
+
     for budget in budgets:
         threshold_usd = budget.monthly_limit_usd * (budget.alert_threshold_pct / 100.0)
         if monthly_cost >= threshold_usd:
@@ -132,6 +164,15 @@ def _check_spend_budget(db: Session, team_id: str) -> None:
                 f"monthly_cost=${monthly_cost:.4f} threshold=${threshold_usd:.4f} "
                 f"({budget.alert_threshold_pct}% of ${budget.monthly_limit_usd:.2f})"
             )
+            if team and budget.monthly_limit_usd > 0 and team.notify_on_budget:
+                pct_used = round((monthly_cost / budget.monthly_limit_usd) * 100)
+                who = f"member={budget.member_id}" if budget.member_id else "team-wide"
+                msg = (
+                    f"\u26a0\ufe0f *Guard spend alert* ({who}): "
+                    f"${monthly_cost:.2f} of ${budget.monthly_limit_usd:.2f} used ({pct_used}%) \u2014 "
+                    f"alert threshold {budget.alert_threshold_pct}% reached"
+                )
+                _send_guard_slack(db, team, msg)
 
 
 # ── POST /guard/events — ingest ───────────────────────────────────────────────
@@ -196,9 +237,22 @@ def ingest_event(
     db.commit()
     db.refresh(event)
 
-    # 3. Check spend budget (non-fatal — log only)
+    # 3. Send Slack block/warn notification (non-fatal)
     try:
-        _check_spend_budget(db, body.team_id)
+        if body.decision in ("blocked", "warned") and team.notify_on_block:
+            who = body.user_email or body.member_id or "unknown"
+            emoji = "\U0001f6ab" if body.decision == "blocked" else "\u26a0\ufe0f"
+            rule_label = f"`{body.rule_id}`" if body.rule_id else "a policy"
+            msg = f"{emoji} *{who}* {body.decision} by {rule_label} in {body.ai_tool or 'Claude Code'}"
+            if body.rule_message:
+                msg += f"\n> {body.rule_message}"
+            _send_guard_slack(db, team, msg)
+    except Exception as exc:
+        print(f"[guard] slack block notification failed: {exc}")
+
+    # 4. Check spend budget (non-fatal — log + Slack)
+    try:
+        _check_spend_budget(db, body.team_id, team_obj=team)
     except Exception as exc:
         print(f"[guard] spend budget check failed: {exc}")
 

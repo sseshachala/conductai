@@ -80,8 +80,17 @@ class TeamOut(BaseModel):
     slug: str
     invite_code: str
     conductai_org_id: str | None
+    alert_channel: str | None
+    notify_on_block: bool
+    notify_on_budget: bool
     created_at: datetime
     updated_at: datetime
+
+
+class TeamPatch(BaseModel):
+    alert_channel: str | None = None
+    notify_on_block: bool | None = None
+    notify_on_budget: bool | None = None
 
 
 class InstallStatusOut(BaseModel):
@@ -195,6 +204,34 @@ def get_my_team(
     )
     if not team:
         raise HTTPException(status_code=404, detail="No team found for this org")
+    return team
+
+
+@router.patch("/me", response_model=TeamOut)
+def patch_my_team(
+    body: TeamPatch,
+    db: Session = Depends(get_db),
+    token_org_id: str = Depends(get_guard_org_id),
+    workspace_id: str | None = Query(default=None),
+):
+    """Update notification preferences for the caller's Guard team."""
+    lookup_id = workspace_id or token_org_id
+    team = (
+        db.query(GuardTeam)
+        .filter(GuardTeam.conductai_org_id == lookup_id)
+        .first()
+    )
+    if not team:
+        raise HTTPException(status_code=404, detail="No team found for this org")
+    if body.alert_channel is not None:
+        team.alert_channel = body.alert_channel
+    if body.notify_on_block is not None:
+        team.notify_on_block = body.notify_on_block
+    if body.notify_on_budget is not None:
+        team.notify_on_budget = body.notify_on_budget
+    team.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(team)
     return team
 
 
