@@ -16,6 +16,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_guard_org_id
@@ -40,6 +41,7 @@ _VALID_ROLES = {"owner", "security", "developer"}
 class TeamCreate(BaseModel):
     name: str
     org_id: str | None = None  # explicit org override (team picker flow)
+    workspace_id: str | None = None  # Conduct internal workspace UUID
 
 
 class TeamJoin(BaseModel):
@@ -80,6 +82,7 @@ class TeamOut(BaseModel):
     slug: str
     invite_code: str
     conductai_org_id: str | None
+    workspace_id: uuid.UUID | None
     alert_channel: str | None
     notify_on_block: bool
     notify_on_budget: bool
@@ -101,6 +104,35 @@ class InstallStatusOut(BaseModel):
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _is_valid_uuid(val: str) -> bool:
+    try:
+        uuid.UUID(val)
+        return True
+    except (ValueError, AttributeError):
+        return False
+
+
+def _lookup_team(db: Session, lookup_id: str):
+    """Look up a GuardTeam preferring workspace_id, falling back to conductai_org_id."""
+    if _is_valid_uuid(lookup_id):
+        ws_uuid = uuid.UUID(lookup_id)
+        return (
+            db.query(GuardTeam)
+            .filter(
+                or_(
+                    GuardTeam.workspace_id == ws_uuid,
+                    GuardTeam.conductai_org_id == lookup_id,
+                )
+            )
+            .first()
+        )
+    return (
+        db.query(GuardTeam)
+        .filter(GuardTeam.conductai_org_id == lookup_id)
+        .first()
+    )
+
 
 def _unique_slug(db: Session, name: str) -> str:
     base = name.lower().replace(" ", "-")[:50]
@@ -158,6 +190,7 @@ def create_team(
         slug=slug,
         invite_code=_new_invite_code(),
         conductai_org_id=org_id,
+        workspace_id=uuid.UUID(body.workspace_id) if body.workspace_id and _is_valid_uuid(body.workspace_id) else None,
     )
     db.add(team)
     db.commit()
@@ -174,11 +207,7 @@ def get_install_status(
 ):
     """Return whether a Guard team is installed for the given workspace or caller's org."""
     lookup_id = workspace_id or token_org_id
-    team = (
-        db.query(GuardTeam)
-        .filter(GuardTeam.conductai_org_id == lookup_id)
-        .first()
-    )
+    team = _lookup_team(db, lookup_id)
     if team:
         return InstallStatusOut(
             installed=True,
@@ -197,11 +226,7 @@ def get_my_team(
 ):
     """Return the team associated with the given workspace or caller's org."""
     lookup_id = workspace_id or token_org_id
-    team = (
-        db.query(GuardTeam)
-        .filter(GuardTeam.conductai_org_id == lookup_id)
-        .first()
-    )
+    team = _lookup_team(db, lookup_id)
     if not team:
         raise HTTPException(status_code=404, detail="No team found for this org")
     return team
@@ -216,11 +241,7 @@ def patch_my_team(
 ):
     """Update notification preferences for the caller's Guard team."""
     lookup_id = workspace_id or token_org_id
-    team = (
-        db.query(GuardTeam)
-        .filter(GuardTeam.conductai_org_id == lookup_id)
-        .first()
-    )
+    team = _lookup_team(db, lookup_id)
     if not team:
         raise HTTPException(status_code=404, detail="No team found for this org")
     if body.alert_channel is not None:
@@ -380,7 +401,7 @@ def delete_my_team(
 ):
     """Delete the guard team for the given workspace (uninstall). No-op if already gone."""
     lookup_id = workspace_id or token_org_id
-    team = db.query(GuardTeam).filter(GuardTeam.conductai_org_id == lookup_id).first()
+    team = _lookup_team(db, lookup_id)
     if not team:
         return  # Already uninstalled — 204 is correct
     db.query(GuardAuditEvent).filter(GuardAuditEvent.team_id == team.id).delete()
