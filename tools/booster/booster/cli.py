@@ -95,6 +95,17 @@ def cmd_init(platform: str) -> None:
         _print("Add to ~/.codex/config.json", _CODEX_SNIPPET)
 
 
+@main.command("route")
+@click.argument("task")
+def cmd_route(task: str) -> None:
+    from booster.mcp_server import _route_model
+
+    root = Path.cwd()
+    indexer = SymbolIndexer(root)
+    result = _route_model(indexer, task, [])
+    click.echo(f"{result['model']}  ({result['reason']})")
+
+
 @main.command("gain")
 def cmd_gain() -> None:
     from booster.stats import StatsTracker
