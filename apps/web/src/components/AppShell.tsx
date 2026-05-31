@@ -57,16 +57,21 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
   const deleteConfirmRef = useRef<HTMLInputElement>(null)
   const { workspaces, activeWorkspace, setActiveWorkspace, refresh: refreshWorkspaces } = useWorkspace()
 
-  // Guard install state — fetched once from server on mount
+  // Guard install state — re-checked whenever the active workspace changes
   const [guardInstalled, setGuardInstalled] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     async function checkGuardInstall() {
+      const wsId = activeWorkspace?.id
+      if (!wsId) return
       try {
         const h: Record<string, string> = {}
         if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/guard/teams/installed`, { headers: h })
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/guard/teams/installed?workspace_id=${wsId}`,
+          { headers: h }
+        )
         if (!cancelled && res.ok) {
           const data = await res.json()
           setGuardInstalled(!!data.installed)
@@ -77,7 +82,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
     }
     checkGuardInstall()
     return () => { cancelled = true }
-  }, [getToken])
+  }, [getToken, activeWorkspace])
 
   // Projects state
   const [projects, setProjects] = useState<Project[]>([])
