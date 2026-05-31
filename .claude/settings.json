@@ -35,6 +35,15 @@
             "command": "python3 /Users/sudhiseshachala/projects/marshal/.claude/hooks/booster-grep-nudge.py"
           }
         ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/sudhiseshachala/projects/marshal/.claude/hooks/booster-agent-inject.py"
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
