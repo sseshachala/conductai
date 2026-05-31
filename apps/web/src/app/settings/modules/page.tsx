@@ -120,7 +120,10 @@ function ConductGuardModule() {
         setError(`Installation failed — ${body || res.statusText}`)
         return
       }
-      if (typeof window !== "undefined") localStorage.setItem("guard_workspace_id", org.id)
+      if (typeof window !== "undefined") {
+        localStorage.setItem("guard_workspace_id", org.id)
+        window.dispatchEvent(new CustomEvent("guard-install-changed", { detail: { installed: true } }))
+      }
       await fetchInstallStatus(org.id)
     } catch {
       setError("Installation failed — check your connection and try again.")
@@ -133,8 +136,11 @@ function ConductGuardModule() {
 
   async function handleUninstall() {
     setUninstalling(true)
-    // Clear any stale localStorage entry (backward compat)
-    if (typeof window !== "undefined") localStorage.removeItem("guard_team_id")
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("guard_team_id")
+      localStorage.removeItem("guard_workspace_id")
+      window.dispatchEvent(new CustomEvent("guard-install-changed", { detail: { installed: false } }))
+    }
     setTeam(null)
     setConfirmUninstall(false)
     setUninstalling(false)
