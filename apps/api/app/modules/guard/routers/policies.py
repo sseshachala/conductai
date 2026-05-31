@@ -233,10 +233,10 @@ def generate_policy(
 ):
     """Use Claude to generate a policy rule from a plain-English description."""
     import json
-    import os
     import anthropic
+    from app.core.config import settings
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    api_key = settings.anthropic_api_key
     if not api_key:
         raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not configured")
 
