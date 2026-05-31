@@ -59,6 +59,9 @@ def _grep_hook_command(root: Path) -> str:
 def _route_hook_command(root: Path) -> str:
     return f"python3 {root / '.claude' / 'hooks' / 'booster-route.py'}"
 
+def _agent_inject_command(root: Path) -> str:
+    return f"python3 {root / '.claude' / 'hooks' / 'booster-agent-inject.py'}"
+
 _GATE_SCRIPT = '''\
 #!/usr/bin/env python3
 """Agent Booster gate hook — redirects Read to smart_read for indexed files."""
@@ -157,6 +160,38 @@ sys.exit(0)
 '''
 
 
+_AGENT_INJECT_SCRIPT = '''\
+#!/usr/bin/env python3
+"""Inject booster instructions into every subagent prompt so they use
+mcp__agent-booster__search_context instead of Grep/Bash for searches."""
+import json
+import sys
+
+data = json.load(sys.stdin)
+prompt = data.get("tool_input", {}).get("prompt", "")
+
+if not prompt:
+    sys.exit(0)
+
+BOOSTER_INSTRUCTION = (
+    "\\n\\n[booster] IMPORTANT: This session has Agent Booster installed. "
+    "For ANY search or code exploration task, use mcp__agent-booster__search_context "
+    "instead of Grep or Bash grep/find. Use mcp__agent-booster__smart_read instead of "
+    "Read for targeted file reads. Use mcp__agent-booster__get_symbols to survey a "
+    "file\'s structure. These tools are faster, token-efficient, and already available."
+)
+
+if "mcp__agent-booster" not in prompt:
+    new_prompt = prompt + BOOSTER_INSTRUCTION
+    output = dict(data)
+    output["tool_input"] = dict(data.get("tool_input", {}))
+    output["tool_input"]["prompt"] = new_prompt
+    print(json.dumps(output))
+
+sys.exit(0)
+'''
+
+
 def _merge_mcp_json(root: Path) -> None:
     mcp_path = root / ".mcp.json"
     data: dict = {}
@@ -224,9 +259,11 @@ def _install_hook(root: Path) -> None:
     (hooks_dir / "booster-gate.py").write_text(_GATE_SCRIPT)
     (hooks_dir / "booster-grep-nudge.py").write_text(_GREP_NUDGE_SCRIPT)
     (hooks_dir / "booster-route.py").write_text(_ROUTE_SCRIPT)
+    (hooks_dir / "booster-agent-inject.py").write_text(_AGENT_INJECT_SCRIPT)
     click.echo(f"  wrote .claude/hooks/booster-gate.py (Read gate)")
     click.echo(f"  wrote .claude/hooks/booster-grep-nudge.py (Grep nudge)")
     click.echo(f"  wrote .claude/hooks/booster-route.py (route_model on every turn)")
+    click.echo(f"  wrote .claude/hooks/booster-agent-inject.py (Agent prompt injection)")
 
     settings_path = root / ".claude" / "settings.json"
     settings: dict = {}
@@ -246,11 +283,14 @@ def _install_hook(root: Path) -> None:
     hook_cmd = _hook_command(root)
     grep_cmd = _grep_hook_command(root)
     route_cmd = _route_hook_command(root)
+    agent_cmd = _agent_inject_command(root)
 
     if not _has("Read", hook_cmd):
         pre.append({"matcher": "Read", "hooks": [{"type": "command", "command": hook_cmd}]})
     if not _has("Grep", grep_cmd):
         pre.append({"matcher": "Grep", "hooks": [{"type": "command", "command": grep_cmd}]})
+    if not _has("Agent", agent_cmd):
+        pre.append({"matcher": "Agent", "hooks": [{"type": "command", "command": agent_cmd}]})
 
     ups = hooks.setdefault("UserPromptSubmit", [])
     if not any(e.get("command") == route_cmd for h in ups for e in h.get("hooks", [])):
@@ -275,7 +315,7 @@ def _install_hook(root: Path) -> None:
 
 def _remove_hook(root: Path) -> None:
     hooks_dir = root / ".claude" / "hooks"
-    for name in ("booster-gate.py", "booster-grep-nudge.py", "booster-route.py"):
+    for name in ("booster-gate.py", "booster-grep-nudge.py", "booster-route.py", "booster-agent-inject.py"):
         f = hooks_dir / name
         if f.exists():
             f.unlink()
@@ -285,7 +325,7 @@ def _remove_hook(root: Path) -> None:
     if not settings_path.exists():
         return
     settings = json.loads(settings_path.read_text())
-    booster_cmds = {_hook_command(root), _grep_hook_command(root), _route_hook_command(root)}
+    booster_cmds = {_hook_command(root), _grep_hook_command(root), _route_hook_command(root), _agent_inject_command(root)}
 
     pre = settings.get("hooks", {}).get("PreToolUse", [])
     settings["hooks"]["PreToolUse"] = [
