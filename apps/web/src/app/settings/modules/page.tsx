@@ -55,37 +55,36 @@ function ConductGuardModule() {
 
   // ── Load installed state ─────────────────────────────────────────────────────
 
-  useEffect(() => {
-    async function init() {
-      setLoading(true)
-      const storedTeamId = typeof window !== "undefined"
-        ? localStorage.getItem("guard_team_id")
-        : null
-
-      if (!storedTeamId) {
-        setLoading(false)
-        return
-      }
-
-      try {
-        const h = await buildHeaders()
-        const res = await fetch(`${base}/guard/teams/me`, { headers: h })
-        if (res.ok) {
-          const data: GuardTeam = await res.json()
-          setTeam(data)
+  const fetchInstallStatus = useCallback(async () => {
+    setLoading(true)
+    try {
+      const h = await buildHeaders()
+      const res = await fetch(`${base}/guard/teams/installed`, { headers: h })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.installed) {
+          // Fetch full team details (developer_count, policy_count) from /me
+          const teamRes = await fetch(`${base}/guard/teams/me`, { headers: h })
+          if (teamRes.ok) {
+            setTeam(await teamRes.json())
+          } else {
+            setTeam({ id: data.team_id, name: data.team_name ?? "", invite_code: data.invite_code ?? "", developer_count: 0, policy_count: 0 })
+          }
         } else {
-          // Team no longer exists on the server — clear stale local state
-          localStorage.removeItem("guard_team_id")
+          setTeam(null)
         }
-      } catch {
-        // Non-fatal: keep stored id, show installed UI optimistically
-        setTeam({ id: storedTeamId, name: "", invite_code: "", developer_count: 0, policy_count: 0 })
-      } finally {
-        setLoading(false)
       }
+    } catch {
+      // Non-fatal: default to not installed
+      setTeam(null)
+    } finally {
+      setLoading(false)
     }
-    init()
   }, [buildHeaders, base])
+
+  useEffect(() => {
+    fetchInstallStatus()
+  }, [fetchInstallStatus])
 
   // ── Install ──────────────────────────────────────────────────────────────────
 
@@ -106,11 +105,8 @@ function ConductGuardModule() {
         setError(`Installation failed — ${body || res.statusText}`)
         return
       }
-      const data: GuardTeam = await res.json()
-      localStorage.setItem("guard_team_id", data.id)
-      setTeam(data)
-      // Dispatch storage event so AppShell can react without a reload
-      window.dispatchEvent(new Event("storage"))
+      // Re-fetch install status from server — single source of truth
+      await fetchInstallStatus()
     } catch {
       setError("Installation failed — check your connection and try again.")
     } finally {
@@ -122,8 +118,8 @@ function ConductGuardModule() {
 
   async function handleUninstall() {
     setUninstalling(true)
-    localStorage.removeItem("guard_team_id")
-    window.dispatchEvent(new Event("storage"))
+    // Clear any stale localStorage entry (backward compat)
+    if (typeof window !== "undefined") localStorage.removeItem("guard_team_id")
     setTeam(null)
     setConfirmUninstall(false)
     setUninstalling(false)

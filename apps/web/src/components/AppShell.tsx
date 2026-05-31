@@ -57,17 +57,27 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
   const deleteConfirmRef = useRef<HTMLInputElement>(null)
   const { workspaces, activeWorkspace, setActiveWorkspace, refresh: refreshWorkspaces } = useWorkspace()
 
-  // Guard install state
+  // Guard install state — fetched once from server on mount
   const [guardInstalled, setGuardInstalled] = useState(false)
 
   useEffect(() => {
-    function syncGuard() {
-      setGuardInstalled(!!localStorage.getItem("guard_team_id"))
+    let cancelled = false
+    async function checkGuardInstall() {
+      try {
+        const h: Record<string, string> = {}
+        if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/guard/teams/installed`, { headers: h })
+        if (!cancelled && res.ok) {
+          const data = await res.json()
+          setGuardInstalled(!!data.installed)
+        }
+      } catch {
+        // Non-fatal: default to hidden
+      }
     }
-    syncGuard()
-    window.addEventListener("storage", syncGuard)
-    return () => window.removeEventListener("storage", syncGuard)
-  }, [])
+    checkGuardInstall()
+    return () => { cancelled = true }
+  }, [getToken])
 
   // Projects state
   const [projects, setProjects] = useState<Project[]>([])
