@@ -21,6 +21,8 @@ interface BlockEditorProps {
   blockData: Record<string, unknown>
   onChange: (blockId: string, changes: Record<string, unknown>) => void
   getToken?: (() => Promise<string | null>) | null
+  isAdmin?: boolean
+  isViewer?: boolean
   selectedEnvId?: string
   githubHookRepo?: string | null
   githubHookId?: string | null
@@ -610,10 +612,14 @@ function GuardBlockPanel({
   getToken,
   config,
   onChange,
+  isAdmin = false,
+  isViewer = false,
 }: {
   getToken?: (() => Promise<string | null>) | null
   config: Record<string, unknown>
   onChange: (key: string, value: unknown) => void
+  isAdmin?: boolean
+  isViewer?: boolean
 }) {
   const [installed, setInstalled] = useState<boolean | null>(null)
   const [teamId, setTeamId] = useState<string | null>(null)
@@ -664,15 +670,23 @@ function GuardBlockPanel({
     return (
       <div className="mx-4 my-3 rounded-lg border border-red-200 bg-red-50 px-3 py-3 space-y-2">
         <p className="text-[11px] font-semibold text-red-700">ConductGuard not installed</p>
-        <p className="text-[10px] text-red-600 leading-relaxed">
-          This block enforces spend caps, tool blocks, and audit policies — but Guard is not installed for this workspace.
-        </p>
-        <a
-          href="/settings/modules"
-          className="inline-block text-[10px] font-semibold text-red-700 border border-red-300 rounded px-2 py-1 hover:bg-red-100 transition-colors"
-        >
-          Install Guard →
-        </a>
+        {isAdmin ? (
+          <>
+            <p className="text-[10px] text-red-600 leading-relaxed">
+              This block enforces spend caps, tool blocks, and audit policies — but Guard is not installed for this workspace.
+            </p>
+            <a
+              href="/settings/modules"
+              className="inline-block text-[10px] font-semibold text-red-700 border border-red-300 rounded px-2 py-1 hover:bg-red-100 transition-colors"
+            >
+              Install Guard →
+            </a>
+          </>
+        ) : (
+          <p className="text-[10px] text-red-600 leading-relaxed">
+            Guard is not installed for this workspace. Ask your workspace admin to install it in Settings → Modules.
+          </p>
+        )}
       </div>
     )
   }
@@ -684,8 +698,9 @@ function GuardBlockPanel({
         <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide block mb-1.5">Enforcement mode</span>
         <select
           value={mode}
-          onChange={e => onChange("config.enforcement_mode", e.target.value)}
-          className="w-full text-[11px] border border-stone-200 rounded-lg px-2.5 py-1.5 bg-white text-stone-800 focus:outline-none focus:ring-1 focus:ring-stone-300"
+          onChange={e => !isViewer && onChange("config.enforcement_mode", e.target.value)}
+          disabled={isViewer}
+          className="w-full text-[11px] border border-stone-200 rounded-lg px-2.5 py-1.5 bg-white text-stone-800 focus:outline-none focus:ring-1 focus:ring-stone-300 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           <option value="block">Block on violation</option>
           <option value="warn">Warn and continue</option>
@@ -700,12 +715,14 @@ function GuardBlockPanel({
           <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">
             {mode} policies
           </span>
-          <a
-            href={teamId ? `/guard/policies` : "/settings/modules"}
-            className="text-[10px] text-stone-400 hover:text-stone-600 underline"
-          >
-            Manage →
-          </a>
+          {isAdmin && (
+            <a
+              href="/guard/policies"
+              className="text-[10px] text-stone-400 hover:text-stone-600 underline"
+            >
+              Manage →
+            </a>
+          )}
         </div>
         {modePolicies.length === 0 ? (
           <div className="rounded-lg border border-dashed border-stone-200 bg-stone-50 px-3 py-2.5 text-[10px] text-stone-400">
@@ -743,6 +760,8 @@ export default function BlockEditor({
   blockData,
   onChange,
   getToken,
+  isAdmin = false,
+  isViewer = false,
   selectedEnvId,
   githubHookRepo,
   githubHookId,
@@ -1356,6 +1375,8 @@ export default function BlockEditor({
           getToken={getToken}
           config={blockData}
           onChange={handleFieldChange}
+          isAdmin={isAdmin}
+          isViewer={isViewer}
         />
       )}
 
