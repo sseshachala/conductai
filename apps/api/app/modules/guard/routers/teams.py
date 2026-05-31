@@ -278,6 +278,26 @@ def remove_member(
     db.commit()
 
 
+@router.delete("/me", status_code=204)
+def delete_my_team(
+    db: Session = Depends(get_db),
+    token_org_id: str = Depends(get_guard_org_id),
+    workspace_id: str | None = Query(default=None),
+):
+    """Delete the guard team for the given workspace (uninstall). No-op if already gone."""
+    lookup_id = workspace_id or token_org_id
+    team = db.query(GuardTeam).filter(GuardTeam.conductai_org_id == lookup_id).first()
+    if not team:
+        return  # Already uninstalled — 204 is correct
+    db.query(GuardAuditEvent).filter(GuardAuditEvent.team_id == team.id).delete()
+    db.query(GuardSpendBudget).filter(GuardSpendBudget.team_id == team.id).delete()
+    db.query(GuardSession).filter(GuardSession.team_id == team.id).delete()
+    db.query(GuardPolicy).filter(GuardPolicy.team_id == team.id).delete()
+    db.query(GuardMember).filter(GuardMember.team_id == team.id).delete()
+    db.delete(team)
+    db.commit()
+
+
 @router.delete("/{team_id}", status_code=204)
 def delete_team(
     team_id: str,
