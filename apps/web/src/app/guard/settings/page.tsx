@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { useAuth } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import AppShell from "@/components/AppShell"
 import GuardNav from "@/components/guard/GuardNav"
 
 interface TeamPrefs {
@@ -99,14 +100,15 @@ export default function GuardSettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-stone-50">
-      <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
-        <div>
-          <h1 className="text-xl font-semibold text-stone-900">Guard</h1>
-          <p className="text-sm text-stone-500 mt-0.5">Policy enforcement and spend controls for your team.</p>
+    <AppShell>
+      <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
+        <div className="space-y-4">
+          <div>
+            <h1 className="text-xl font-semibold text-stone-900">Guard</h1>
+            <p className="text-sm text-stone-500 mt-0.5">Policy enforcement and spend controls for your team.</p>
+          </div>
+          <GuardNav />
         </div>
-
-        <GuardNav />
 
         {loading ? (
           <div className="text-sm text-stone-400 py-8 text-center">Loading settings...</div>
@@ -201,6 +203,6 @@ export default function GuardSettingsPage() {
           </div>
         )}
       </div>
-    </div>
+    </AppShell>
   )
 }
