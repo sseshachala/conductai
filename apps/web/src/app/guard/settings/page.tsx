@@ -23,6 +23,7 @@ export default function GuardSettingsPage() {
   const [channelInput, setChannelInput] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [notInstalled, setNotInstalled] = useState(false)
   const [channelSaved, setChannelSaved] = useState(false)
   const [savingChannel, setSavingChannel] = useState(false)
 
@@ -43,6 +44,7 @@ export default function GuardSettingsPage() {
     try {
       const headers = await buildHeaders()
       const res = await fetch(`${base}/guard/teams/me${workspaceQuery}`, { headers })
+      if (res.status === 404) { setNotInstalled(true); return }
       if (!res.ok) throw new Error(`Failed to load team (${res.status})`)
       const data = await res.json()
       setPrefs({
@@ -109,6 +111,11 @@ export default function GuardSettingsPage() {
 
         {loading ? (
           <div className="text-sm text-stone-400 py-8 text-center">Loading settings...</div>
+        ) : notInstalled ? (
+          <div className="bg-white rounded-xl border border-stone-200 px-6 py-8 text-center space-y-2">
+            <p className="text-sm font-medium text-stone-700">Guard is not installed for this workspace.</p>
+            <p className="text-xs text-stone-500">Go to <a href="/guard/policies" className="underline">Policies</a> to set up Guard.</p>
+          </div>
         ) : error ? (
           <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">{error}</div>
         ) : (
