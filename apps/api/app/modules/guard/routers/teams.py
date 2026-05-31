@@ -113,24 +113,23 @@ def _is_valid_uuid(val: str) -> bool:
         return False
 
 
-def _lookup_team(db: Session, lookup_id: str):
+def _lookup_team(db: Session, lookup_id: str, fallback_org_id: str | None = None):
     """Look up a GuardTeam preferring workspace_id, falling back to conductai_org_id."""
     if _is_valid_uuid(lookup_id):
         ws_uuid = uuid.UUID(lookup_id)
-        return (
+        team = (
             db.query(GuardTeam)
-            .filter(
-                or_(
-                    GuardTeam.workspace_id == ws_uuid,
-                    GuardTeam.conductai_org_id == lookup_id,
-                )
-            )
+            .filter(GuardTeam.workspace_id == ws_uuid)
             .first()
         )
-    return (
-        db.query(GuardTeam)
-        .filter(GuardTeam.conductai_org_id == lookup_id)
-        .first()
+        if team:
+            return team
+    # Fall back to org_id match (existing teams pre-migration or Clerk org_id lookup)
+    for oid in filter(None, [lookup_id if not _is_valid_uuid(lookup_id) else None, fallback_org_id]):
+        team = db.query(GuardTeam).filter(GuardTeam.conductai_org_id == oid).first()
+        if team:
+            return team
+    return None
     )
 
 
@@ -207,7 +206,7 @@ def get_install_status(
 ):
     """Return whether a Guard team is installed for the given workspace or caller's org."""
     lookup_id = workspace_id or token_org_id
-    team = _lookup_team(db, lookup_id)
+    team = _lookup_team(db, lookup_id, fallback_org_id=token_org_id)
     if team:
         return InstallStatusOut(
             installed=True,
@@ -226,7 +225,7 @@ def get_my_team(
 ):
     """Return the team associated with the given workspace or caller's org."""
     lookup_id = workspace_id or token_org_id
-    team = _lookup_team(db, lookup_id)
+    team = _lookup_team(db, lookup_id, fallback_org_id=token_org_id)
     if not team:
         raise HTTPException(status_code=404, detail="No team found for this org")
     return team
@@ -241,7 +240,7 @@ def patch_my_team(
 ):
     """Update notification preferences for the caller's Guard team."""
     lookup_id = workspace_id or token_org_id
-    team = _lookup_team(db, lookup_id)
+    team = _lookup_team(db, lookup_id, fallback_org_id=token_org_id)
     if not team:
         raise HTTPException(status_code=404, detail="No team found for this org")
     if body.alert_channel is not None:
@@ -401,7 +400,7 @@ def delete_my_team(
 ):
     """Delete the guard team for the given workspace (uninstall). No-op if already gone."""
     lookup_id = workspace_id or token_org_id
-    team = _lookup_team(db, lookup_id)
+    team = _lookup_team(db, lookup_id, fallback_org_id=token_org_id)
     if not team:
         return  # Already uninstalled — 204 is correct
     db.query(GuardAuditEvent).filter(GuardAuditEvent.team_id == team.id).delete()
