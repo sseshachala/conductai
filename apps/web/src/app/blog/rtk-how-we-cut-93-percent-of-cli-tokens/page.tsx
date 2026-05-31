@@ -210,7 +210,7 @@ export default function BlogPost() {
           <div className="flex items-center justify-between text-sm">
             <a href="/blog" className="text-stone-400 hover:text-stone-700 transition-colors">← All posts</a>
             <a
-              href="/products/agent-booster"
+              href="/tools/agent-booster"
               className="inline-flex items-center gap-2 rounded-lg bg-stone-900 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-700 transition-colors"
             >
               Agent Booster →
@@ -228,7 +228,7 @@ function BlogNav() {
       <a href="/"><img src="/logo.png" alt="Conduct AI" className="h-10 w-auto" /></a>
       <div className="flex items-center gap-4">
         <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
-        <a href="/products/agent-booster" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Agent Booster</a>
+        <a href="/tools/agent-booster" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Agent Booster</a>
         <a href="/marketplace" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Playbooks</a>
         <a href="/docs" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
       </div>

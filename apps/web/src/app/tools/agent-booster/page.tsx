@@ -49,7 +49,7 @@ function Nav() {
           Playbooks
         </a>
         <a
-          href="/products/agent-booster"
+          href="/tools/agent-booster"
           className="flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-900 transition-colors"
         >
           Tools
