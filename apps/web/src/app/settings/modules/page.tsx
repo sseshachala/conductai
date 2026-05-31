@@ -70,9 +70,12 @@ function ConductGuardModule() {
       if (res.ok) {
         const data = await res.json()
         if (data.installed) {
+          if (data.team_id && typeof window !== "undefined") localStorage.setItem("guard_team_id", data.team_id)
           const teamRes = await fetch(`${base}/guard/teams/me${guardWsId ? `?workspace_id=${guardWsId}` : ""}`, { headers: h })
           if (teamRes.ok) {
-            setTeam(await teamRes.json())
+            const t = await teamRes.json()
+            if (t.id && typeof window !== "undefined") localStorage.setItem("guard_team_id", t.id)
+            setTeam(t)
           } else {
             setTeam({ id: data.team_id, name: data.team_name ?? "", invite_code: data.invite_code ?? "", developer_count: 0, policy_count: 0 })
           }

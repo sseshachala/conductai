@@ -96,7 +96,7 @@ export default function AuditPage() {
   const tools = Array.from(new Set(events.map((e) => e.ai_tool))).sort()
 
   function buildParams(offset: number) {
-    const teamId = getCookie("delegator_project_id") ?? ""
+    const teamId = (typeof window !== "undefined" ? localStorage.getItem("guard_team_id") : null) ?? ""
     const p = new URLSearchParams({ team_id: teamId, limit: String(PAGE_SIZE), offset: String(offset) })
     if (filterDeveloper) p.set("user_email", filterDeveloper)
     if (filterTool) p.set("ai_tool", filterTool)
