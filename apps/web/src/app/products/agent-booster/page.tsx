@@ -102,14 +102,14 @@ function HeroSection() {
       </div>
 
       <h1 className="text-5xl sm:text-6xl font-bold text-stone-900 leading-[1.1] tracking-tight max-w-3xl">
-        Cut AI coding costs{" "}
-        <span className="text-indigo-600">5–15x</span>
+        Every token you don&apos;t send is a token{" "}
+        <span className="text-indigo-600">you don&apos;t pay for.</span>
       </h1>
 
       <p className="mt-6 text-xl text-stone-500 max-w-2xl leading-relaxed">
-        Agent Booster routes only the code that matters to the model — instead of
-        sending full files, it sends only the functions and classes relevant to
-        your task.
+        Swarm-style AI development costs up to $2,500/day — not because models are expensive,
+        but because the same architecture docs, source files, and conversation history get
+        resent on every single call. Agent Booster fixes the information flow.
       </p>
 
       <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
@@ -139,8 +139,10 @@ function HeroSection() {
 function ProblemSection() {
   const oldWay = [
     "Architecture docs",
+    "ADRs",
     "Source files",
     "Tool definitions",
+    "Repo state",
     "Conversation history",
   ]
   const boosterWay = [
@@ -149,15 +151,20 @@ function ProblemSection() {
     "Dependencies",
     "Structural diffs",
     "Semantic context",
+    "Task-specific info only",
   ]
 
   return (
     <section className="bg-stone-50 px-6 py-20">
       <div className="max-w-5xl mx-auto">
         <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">The problem</p>
-        <h2 className="text-3xl font-bold text-stone-900 text-center mb-12">
-          Full files are expensive. Symbols are cheap.
+        <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
+          The biggest cost isn&apos;t the model. It&apos;s context replay.
         </h2>
+        <p className="text-center text-stone-500 text-sm max-w-2xl mx-auto mb-12">
+          Most autonomous coding systems keep resending the same files over and over.
+          Agent Booster operates at the AST and semantic level — routing only the pieces that actually matter to the task.
+        </p>
 
         <div className="grid sm:grid-cols-2 gap-6">
           {/* Old way */}
@@ -175,7 +182,7 @@ function ProblemSection() {
               ))}
             </ul>
             <div className="mt-auto pt-4 border-t border-stone-100">
-              <p className="text-sm font-semibold text-red-600">High token replay $$$</p>
+              <p className="text-sm font-semibold text-red-600">~$2,500/day. High token replay.</p>
             </div>
           </div>
 
@@ -194,7 +201,7 @@ function ProblemSection() {
               ))}
             </ul>
             <div className="mt-auto pt-4 border-t border-emerald-100">
-              <p className="text-sm font-semibold text-emerald-600">Minimal token transmission $</p>
+              <p className="text-sm font-semibold text-emerald-600">3–15x lower cost. Same output quality.</p>
             </div>
           </div>
         </div>
@@ -573,10 +580,12 @@ function FooterCTASection() {
   return (
     <section className="px-6 py-20 text-center">
       <h2 className="text-3xl font-bold text-stone-900 mb-4">
-        Start saving tokens today.
+        We&apos;re not optimizing models.<br />We&apos;re optimizing information flow.
       </h2>
-      <p className="text-stone-500 mb-8 max-w-md mx-auto">
-        Open source, MIT licensed. File issues and contribute on GitHub.
+      <p className="text-stone-500 mb-8 max-w-lg mx-auto">
+        A workflow that costs $2,500/day with brute-force context replay can often be reduced
+        by several multiples — while maintaining comparable output quality.
+        Every token you don&apos;t send is a token you don&apos;t pay for.
       </p>
 
       <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
