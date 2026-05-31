@@ -56,6 +56,11 @@ Each command shows exactly what files will change, asks for confirmation, then w
 booster remove claude   # or cursor, windsurf, codex, all
 ```
 
+> **Run once per project, not once per session.**
+> The hooks live in `.claude/settings.json` and `.mcp.json` at the project root.
+> Every Claude Code session opened in this directory — any terminal window, same machine — picks them up automatically.
+> No per-session setup needed.
+
 **Step 2 — Index your codebase**
 
 Run once from your project root. Re-run after large refactors.
@@ -66,7 +71,7 @@ booster index && booster embed
 # Built embeddings for 1800 symbols.
 ```
 
-The index is stored at `.booster/` (gitignored).
+The index is stored at `.booster/` (gitignored). The index is shared across all sessions.
 
 **Step 3 — Restart your AI tool**
 
@@ -246,6 +251,20 @@ Layer 1 — Prompt caching    Stable context reuse (native to Claude Code + API)
 Each layer is independent and addable separately.
 
 ---
+
+## Common questions
+
+**Does it work if I open a second terminal?**
+Yes. The hooks are wired into `.claude/settings.json` and `.mcp.json` in your project root — not inside a specific terminal session. Any new Claude Code window you open in this project picks them up automatically.
+
+**Do I need to run `booster init` again after restarting my machine?**
+No. `booster init` writes files to disk once. They persist across restarts and across sessions. The only time you re-run it is if you delete those files or switch to a new project.
+
+**Do teammates need to run `booster init` too?**
+Yes — once per developer, once per project. If you commit `.mcp.json` and `.claude/settings.json` to the repo, teammates get the hooks when they clone. They still need to run `pip install agent-booster[embed]` and `booster index && booster embed` locally, since the symbol index is gitignored.
+
+**Can I undo it completely?**
+Yes. `booster remove claude` removes all six files and cleans the settings entries. No residue.
 
 ## Project layout
 

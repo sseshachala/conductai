@@ -392,7 +392,7 @@ function QuickstartSection() {
           <div>
             <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 2 — Wire to your tool</p>
             <InlineCodeBlock comment="claude · cursor · windsurf · codex · all — shows what changes, asks to confirm">booster init claude</InlineCodeBlock>
-            <p className="mt-2 text-xs text-stone-400">Writes .mcp.json, CLAUDE.md rules, and three hooks: Read gate, Grep nudge, and auto route_model on every turn. Fully reversible with <code className="font-mono bg-stone-100 px-1 rounded text-stone-600">booster remove claude</code>.</p>
+            <p className="mt-2 text-xs text-stone-400">Writes .mcp.json, CLAUDE.md rules, and three hooks: Read gate, Grep nudge, and auto route_model on every turn. Run once per project — hooks fire in <strong>every</strong> Claude Code session opened in this directory, any terminal. Fully reversible with <code className="font-mono bg-stone-100 px-1 rounded text-stone-600">booster remove claude</code>.</p>
           </div>
           <div>
             <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 3 — Index your codebase</p>
@@ -656,6 +656,14 @@ const FAQS = [
   {
     q: "How is this different from just using prompt caching?",
     a: "Prompt caching (Layer 1) reuses stable prefixes that have already been sent — it reduces cost on repeated context. Booster (Layer 3) prevents that context from being sent in the first place. A 1,800-line file cached still costs full price on the first read of a session. Booster routes only the relevant 80 lines every time, whether or not caching is active. The two stack: Booster reduces what you send, caching reduces the cost of what you sent previously.",
+  },
+  {
+    q: "Does it work across multiple terminal sessions on the same machine?",
+    a: "Yes. The hooks and MCP server are wired via .claude/settings.json and .mcp.json at the project root — not tied to any specific terminal window or session. Every Claude Code session you open inside the project directory (any terminal, same machine) automatically gets the Read gate, Grep nudge, and route_model hook. The MCP server starts fresh per session but the index is shared (it's just .booster/symbols.db on disk). The only requirement: run booster init claude once per project, not once per session.",
+  },
+  {
+    q: "Does each developer on my team need to run booster init?",
+    a: "Yes — once per developer, once per project. booster init writes files into the project directory (.mcp.json, .claude/settings.json, hook scripts). If you commit those files to the repo, teammates who clone it get the hooks automatically but still need to run pip install agent-booster[embed] and booster index && booster embed locally since the symbol index is gitignored. For teams, the Sentinel integration (coming) will push the init automatically to every developer's workspace.",
   },
 ]
 
