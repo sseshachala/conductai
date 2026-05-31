@@ -1,10 +1,4 @@
-from pathlib import Path
-
 from pydantic_settings import BaseSettings
-
-# Walk up to the repo root so the .env is found regardless of working directory
-_ROOT = Path(__file__).parents[4]
-_ENV_FILE = _ROOT / ".env" if (_ROOT / ".env").exists() else ".env"
 
 
 class Settings(BaseSettings):
@@ -92,7 +86,7 @@ class Settings(BaseSettings):
     app_version: str = "1.0.0"
 
     class Config:
-        env_file = str(_ENV_FILE)
+        env_file = ".env"
 
 
 settings = Settings()
