@@ -88,4 +88,27 @@ def cmd_init(platform: str) -> None:
 
 @main.command("gain")
 def cmd_gain() -> None:
-    click.echo("No stats yet. Run some sessions first.")
+    from booster.stats import StatsTracker
+
+    tracker = StatsTracker(Path.cwd())
+    s = tracker.summary()
+
+    if s["total_reads"] == 0:
+        click.echo("No data yet. Use booster serve and make some smart_read calls first.")
+        return
+
+    click.echo()
+    click.echo("Agent Booster — Token Savings Report")
+    click.echo("\u2500" * 37)
+    click.echo(f"Sessions tracked:   {s['sessions']:,}")
+    click.echo(f"Total reads:        {s['total_reads']:,}")
+    click.echo(f"Tokens served:      {s['slice_tokens']:,}")
+    click.echo(f"Tokens saved:       {s['saved_tokens']:,}")
+    click.echo(f"Savings rate:       {s['savings_pct']:.0f}%")
+
+    if s["top_files"]:
+        click.echo()
+        click.echo("Top files by savings:")
+        for entry in s["top_files"]:
+            name = Path(entry["file"]).name
+            click.echo(f"  {name:<24} {entry['saved']:,} tokens saved  ({entry['reads']} reads)")

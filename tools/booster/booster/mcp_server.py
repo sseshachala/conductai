@@ -8,9 +8,11 @@ from mcp.types import TextContent, Tool
 
 from booster.indexer import SymbolIndexer
 from booster.retriever import smart_read as _smart_read
+from booster.stats import StatsTracker
 
 _ROOT = Path.cwd()
 _indexer: SymbolIndexer | None = None
+_tracker: StatsTracker | None = None
 
 
 def _get_indexer() -> SymbolIndexer:
@@ -18,6 +20,13 @@ def _get_indexer() -> SymbolIndexer:
     if _indexer is None:
         _indexer = SymbolIndexer(_ROOT)
     return _indexer
+
+
+def _get_tracker() -> StatsTracker:
+    global _tracker
+    if _tracker is None:
+        _tracker = StatsTracker(_ROOT)
+    return _tracker
 
 
 app = Server("agent-booster")
@@ -84,7 +93,9 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
     if name == "smart_read":
         file_path = _ROOT / arguments["file"]
+        full_text = file_path.read_text(encoding="utf-8", errors="replace")
         text = _smart_read(file_path, arguments["task"], indexer)
+        _get_tracker().record(arguments["file"], full_text, text, arguments.get("task", ""))
         return [TextContent(type="text", text=text)]
 
     return [TextContent(type="text", text=f"Unknown tool: {name}")]
