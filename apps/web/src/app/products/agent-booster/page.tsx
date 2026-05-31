@@ -15,6 +15,7 @@ export default function AgentBoosterPage() {
         <QuickstartSection />
         <McpToolsSection />
         <WorksWithSection />
+        <FaqSection />
         <FooterCTASection />
       </main>
       <PageFooter />
@@ -487,6 +488,77 @@ function WorksWithSection() {
                 <p className="font-semibold text-stone-900 mb-1">{tool.name}</p>
                 <p className="text-xs text-stone-500">{tool.desc}</p>
               </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── FAQ ──────────────────────────────────────────────────────────────── */
+
+const FAQS = [
+  {
+    q: "What is an AST and why does it matter?",
+    a: "AST stands for Abstract Syntax Tree — a structured representation of source code. Instead of treating code as raw text, we parse it into a tree of nodes: functions, classes, parameters, and their relationships. This lets us extract just the symbols relevant to a task (say, 3 functions out of 1,800 lines) rather than sending the entire file. We use tree-sitter to parse Python and TypeScript files.",
+  },
+  {
+    q: "How does the symbol index work?",
+    a: "When you run booster index, we walk every .py file in your project using tree-sitter, extract all function_definition and class_definition nodes, and store their name, kind, file path, start/end line, and signature into a local SQLite database at .booster/symbols.db. Re-indexing is safe — we clear and rebuild the table each run, skipping worktrees, node_modules, .venv, and __pycache__.",
+  },
+  {
+    q: "How does semantic search work?",
+    a: "When you run booster index --embed (or booster embed), we load each symbol's name + signature into the all-MiniLM-L6-v2 model from sentence-transformers, encode them into 384-dimensional vectors, L2-normalize them, and save the matrix to .booster/vectors.npy. At query time we encode the task description the same way and compute cosine similarity (a dot product since both sides are unit-normalized) to find the top-K matching symbols. If the vector files don't exist, search automatically falls back to keyword matching.",
+  },
+  {
+    q: "What happens when Claude reads a file through Booster?",
+    a: "The MCP smart_read tool intercepts the file + task pair. It looks up all symbols in that file from the index, tokenizes the task description into keywords, and returns only the source lines that belong to matching symbols — with a header showing the symbol name and line range. If no symbols match, it returns the full file as a fallback. Every call is logged to .booster/stats.db so booster gain can report real token savings.",
+  },
+  {
+    q: "How does token savings tracking work?",
+    a: "Each smart_read call records three things in .booster/stats.db: the full file text size, the slice size returned, and the task description. Token count is estimated as len(text) // 4 (a standard rough approximation). booster gain reads this database and reports total tokens served vs. tokens that would have been sent without Booster, broken down by file.",
+  },
+  {
+    q: "Does Booster send my code anywhere?",
+    a: "No. Everything runs locally on your machine. The symbol index, vector store, and stats database are all stored in .booster/ inside your project. The MCP server runs as a local stdio process — no network calls, no telemetry. The only external call is the one-time model download from HuggingFace when you first run booster embed.",
+  },
+  {
+    q: "Does it work with TypeScript and other languages?",
+    a: "Python and TypeScript/TSX indexing is on the roadmap (#436). The current release indexes .py files only. The tree-sitter-typescript package is already in the dependencies — we just haven't wired up the TypeScript parser yet. Contributions welcome.",
+  },
+  {
+    q: "How is this different from just using prompt caching?",
+    a: "Prompt caching (Layer 1) reuses stable prefixes that have already been sent — it reduces cost on repeated context. Booster (Layer 3) prevents that context from being sent in the first place. A 1,800-line file cached still costs full price on the first read of a session. Booster routes only the relevant 80 lines every time, whether or not caching is active. The two stack: Booster reduces what you send, caching reduces the cost of what you sent previously.",
+  },
+]
+
+function FaqSection() {
+  const [open, setOpen] = useState<number | null>(null)
+
+  return (
+    <section className="px-6 py-20">
+      <div className="max-w-3xl mx-auto">
+        <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">Under the hood</p>
+        <h2 className="text-3xl font-bold text-stone-900 text-center mb-12">
+          How it&apos;s actually built.
+        </h2>
+
+        <div className="flex flex-col divide-y divide-stone-100">
+          {FAQS.map((faq, idx) => (
+            <div key={idx} className="py-5">
+              <button
+                onClick={() => setOpen(open === idx ? null : idx)}
+                className="w-full flex items-start justify-between gap-4 text-left"
+              >
+                <span className="text-sm font-semibold text-stone-900">{faq.q}</span>
+                <span className="shrink-0 mt-0.5 text-stone-400 text-lg leading-none">
+                  {open === idx ? "−" : "+"}
+                </span>
+              </button>
+              {open === idx && (
+                <p className="mt-3 text-sm text-stone-500 leading-relaxed">{faq.a}</p>
+              )}
             </div>
           ))}
         </div>
