@@ -364,6 +364,14 @@ def add_member(
         ws_row = db.execute(text("SELECT name FROM workspaces WHERE id = :id"), {"id": workspace_id}).fetchone()
         workspace_name = ws_row.name if ws_row else "your workspace"
         inviter_email = get_clerk_user_email(user_id)
+
+        # Include Guard invite command if Guard is installed for this workspace
+        guard_row = db.execute(
+            text("SELECT invite_code FROM guard_teams WHERE conductai_org_id = :ws LIMIT 1"),
+            {"ws": workspace_id},
+        ).fetchone()
+        guard_invite_cmd = f"conduct guard join {guard_row.invite_code}" if guard_row else ""
+
         send_template_email(
             slug="workspace_invite",
             to=email,
@@ -373,6 +381,7 @@ def add_member(
                 "role": body.role,
                 "role_description": _ROLE_DESCRIPTIONS.get(body.role, ""),
                 "app_url": APP_URL,
+                "guard_invite_cmd": guard_invite_cmd,
             },
             workspace_id=workspace_id,
             db=db,

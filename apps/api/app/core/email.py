@@ -63,9 +63,21 @@ _FALLBACK_TEMPLATES: dict[str, dict] = {
               </a>
             </td></tr>
           </table>
-          <p style="margin:0;font-size:12px;color:#a8a29e;">
+          <p style="margin:0 0 24px;font-size:12px;color:#a8a29e;">
             Sign in with <b>this email address</b> and you'll be added to {{ workspace_name }} automatically.
           </p>
+          {% if guard_invite_cmd %}
+          <table cellpadding="0" cellspacing="0" style="width:100%;margin-top:8px;">
+            <tr><td style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;padding:16px 20px;">
+              <p style="margin:0 0 4px;font-size:11px;font-weight:600;color:#6d28d9;text-transform:uppercase;letter-spacing:.05em;">ConductGuard</p>
+              <p style="margin:0 0 10px;font-size:13px;color:#44403c;">
+                This workspace uses <b>ConductGuard</b> to enforce AI coding policies. Run this command once to activate it on your machine:
+              </p>
+              <code style="display:block;background:#1c1917;color:#86efac;font-size:12px;font-family:monospace;padding:10px 14px;border-radius:7px;letter-spacing:.01em;">{{ guard_invite_cmd }}</code>
+              <p style="margin:8px 0 0;font-size:11px;color:#a8a29e;">Requires the Conduct CLI — <code style="font-size:11px;">pip install conduct-cli</code></p>
+            </td></tr>
+          </table>
+          {% endif %}
         </td></tr>
         <tr><td style="padding:16px 0;text-align:center;">
           <p style="margin:0;font-size:11px;color:#a8a29e;">
