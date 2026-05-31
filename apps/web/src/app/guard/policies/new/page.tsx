@@ -25,6 +25,23 @@ interface GeneratedPolicy {
 }
 
 // ---------------------------------------------------------------------------
+// Templates
+// ---------------------------------------------------------------------------
+
+const TEMPLATES = [
+  { label: "Approve merge to main",        prompt: "Require approval before merging to the main or master branch" },
+  { label: "Meaningful commit messages",   prompt: "Warn when commit messages are shorter than 10 characters or left empty" },
+  { label: "No PII in files",              prompt: "Block writing files that contain email addresses or phone numbers" },
+  { label: "No SELECT *",                  prompt: "Warn when SQL queries use SELECT * instead of explicit column names" },
+  { label: "No hardcoded IPs",             prompt: "Block hardcoded IP addresses in source code files" },
+  { label: "Audit dependency changes",     prompt: "Audit any changes to package.json, requirements.txt, or pyproject.toml" },
+  { label: "Non-standard registries",      prompt: "Warn when installing packages from non-standard or private registries" },
+  { label: "No privileged ports",          prompt: "Block opening or binding to ports below 1024 in code" },
+  { label: "Approve K8s manifests",        prompt: "Require approval before modifying Kubernetes manifest files" },
+  { label: "Audit Terraform state",        prompt: "Audit any changes to Terraform state files (.tfstate)" },
+]
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -362,6 +379,29 @@ export default function NewPolicyPage() {
           <p className="text-sm text-stone-500 mt-1">
             Describe what you want to control in plain English — the AI will suggest the rule fields for you to review and save.
           </p>
+        </div>
+
+        {/* Template chips */}
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-stone-500">Start from a template</p>
+          <div className="flex flex-wrap gap-2">
+            {TEMPLATES.map((t) => (
+              <button
+                key={t.label}
+                type="button"
+                disabled={generating}
+                onClick={() => {
+                  setPrompt(t.prompt)
+                  setGeneratedPolicy(null)
+                  setSaveError(null)
+                  setGenerateError(null)
+                }}
+                className="text-xs px-3 py-1.5 rounded-full border border-stone-200 bg-white text-stone-600 hover:border-indigo-300 hover:text-indigo-700 hover:bg-indigo-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Prompt input card */}
