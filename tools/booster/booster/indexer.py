@@ -101,7 +101,10 @@ class SymbolIndexer:
         return files, symbols
 
     def build_embeddings(self) -> int:
-        from sentence_transformers import SentenceTransformer
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError:
+            raise SystemExit("Semantic search requires: pip install agent-booster[embed]")
 
         rows = self._conn.execute("SELECT id, name, signature FROM symbols ORDER BY id").fetchall()
         if not rows:
@@ -126,6 +129,11 @@ class SymbolIndexer:
         ids_path = db_dir / "vector_ids.npy"
 
         if not vec_path.exists() or not ids_path.exists():
+            return self.search(query, limit)
+
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError:
             return self.search(query, limit)
 
         from sentence_transformers import SentenceTransformer
