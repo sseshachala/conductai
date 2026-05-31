@@ -96,7 +96,6 @@ if count > 0:
         "Use mcp__agent-booster__smart_read with a task description "
         "to read only the relevant sections and save tokens."
     )
-    sys.exit(1)
 
 sys.exit(0)
 '''
