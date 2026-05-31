@@ -114,21 +114,25 @@ def _is_valid_uuid(val: str) -> bool:
 
 
 def _lookup_team(db: Session, lookup_id: str, fallback_org_id: str | None = None):
-    """Look up a GuardTeam preferring workspace_id FK, then conductai_org_id string match."""
+    """Look up a GuardTeam by workspace_id FK (new teams) or conductai_org_id string (existing teams)."""
+    # 1. Try workspace_id FK (new teams post-migration)
     if _is_valid_uuid(lookup_id):
-        # New teams: workspace_id FK is set
-        team = db.query(GuardTeam).filter(GuardTeam.workspace_id == uuid.UUID(lookup_id)).first()
-        if team:
-            return team
-    # Existing teams: conductai_org_id stores the workspace UUID string
-    team = db.query(GuardTeam).filter(GuardTeam.conductai_org_id == lookup_id).first()
-    if team:
-        return team
-    # Final fallback: Clerk org_id from JWT
-    if fallback_org_id and fallback_org_id != lookup_id:
-        team = db.query(GuardTeam).filter(GuardTeam.conductai_org_id == fallback_org_id).first()
-        if team:
-            return team
+        try:
+            team = db.query(GuardTeam).filter(GuardTeam.workspace_id == uuid.UUID(lookup_id)).first()
+            if team:
+                return team
+        except Exception:
+            db.rollback()
+
+    # 2. Try conductai_org_id string match (existing teams store workspace UUID here)
+    for candidate in filter(None, dict.fromkeys([lookup_id, fallback_org_id])):
+        try:
+            team = db.query(GuardTeam).filter(GuardTeam.conductai_org_id == candidate).first()
+            if team:
+                return team
+        except Exception:
+            db.rollback()
+
     return None
 
 
