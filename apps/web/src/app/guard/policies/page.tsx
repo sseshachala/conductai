@@ -33,14 +33,28 @@ interface Policy {
 // ---------------------------------------------------------------------------
 
 const RULE_CATEGORIES: Record<string, string> = {
+  // Destructive Operations
   "no-rm-rf": "Destructive Operations",
+  "no-git-reset-hard": "Destructive Operations",
+  "no-force-push": "Destructive Operations",
   "no-drop-table": "Destructive Operations",
+  "no-truncate-table": "Destructive Operations",
+  "no-delete-without-where": "Destructive Operations",
+  // Secrets & Credentials
   "no-env-commits": "Secrets & Credentials",
   "no-hardcoded-secrets": "Secrets & Credentials",
+  "no-aws-keys": "Secrets & Credentials",
+  "no-private-key-files": "Secrets & Credentials",
+  // Production Gates
   "approve-prod-deploy": "Production Gates",
   "approve-db-migration-prod": "Production Gates",
+  "approve-terraform-destroy": "Production Gates",
+  "approve-kubectl-delete": "Production Gates",
+  "approve-prod-env-edit": "Production Gates",
+  // Audit
   "audit-migrations": "Audit",
   "audit-ci-config": "Audit",
+  "audit-dockerfile": "Audit",
 }
 
 const CATEGORY_ORDER = [
