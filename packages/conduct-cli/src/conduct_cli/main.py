@@ -8,6 +8,7 @@ from pathlib import Path
 import yaml
 
 from conduct_cli import api
+from conduct_cli import guard as _guard
 
 RESET  = "\033[0m"
 BOLD   = "\033[1m"
@@ -1098,6 +1099,9 @@ def main():
     run_p = sub.add_parser("run", help="Run a workflow from a YAML file")
     run_p.add_argument("yaml", help="Path to workflow YAML")
 
+    # conduct guard
+    guard_p, _guard_sub = _guard.register_guard_parser(sub)
+
     args = parser.parse_args()
 
     if args.command == "login":
@@ -1140,6 +1144,8 @@ def main():
         cmd_test(args)
     elif args.command == "run":
         cmd_run(args)
+    elif args.command == "guard":
+        _guard.dispatch_guard(args, guard_p)
     else:
         parser.print_help()
 
