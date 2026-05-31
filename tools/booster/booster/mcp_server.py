@@ -66,6 +66,22 @@ async def list_tools() -> list[Tool]:
                 "required": ["file", "task"],
             },
         ),
+        Tool(
+            name="route_model",
+            description="Recommend the right model tier (haiku/sonnet/opus) for a task based on complexity signals.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task": {"type": "string", "description": "Task description"},
+                    "files": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Files the task will touch (optional — auto-detected via search if omitted)",
+                    },
+                },
+                "required": ["task"],
+            },
+        ),
     ]
 
 
@@ -98,7 +114,47 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         _get_tracker().record(arguments["file"], full_text, text, arguments.get("task", ""))
         return [TextContent(type="text", text=text)]
 
+    if name == "route_model":
+        import json as _json
+        result = _route_model(indexer, arguments["task"], arguments.get("files") or [])
+        return [TextContent(type="text", text=_json.dumps(result))]
+
     return [TextContent(type="text", text=f"Unknown tool: {name}")]
+
+
+_OPUS_KEYWORDS = {"refactor", "architect", "design", "migrate", "migration", "security", "audit", "overhaul", "redesign"}
+
+
+def _route_model(indexer: SymbolIndexer, task: str, files: list[str]) -> dict:
+    task_lower = task.lower()
+    words = set(task_lower.split())
+
+    if words & _OPUS_KEYWORDS:
+        matched = words & _OPUS_KEYWORDS
+        return {"model": "opus", "reason": f"complexity keyword(s): {', '.join(sorted(matched))}"}
+
+    if files:
+        distinct_files = len(set(files))
+    else:
+        results = indexer.vector_search(task, limit=20)
+        distinct_files = len({r["file"] for r in results})
+
+    if distinct_files >= 5:
+        return {"model": "opus", "reason": f"task spans {distinct_files} files"}
+    if distinct_files >= 2:
+        return {"model": "sonnet", "reason": f"task spans {distinct_files} files"}
+
+    # 1 file — check symbol count
+    if files:
+        symbols = indexer.get_symbols(files[0]) if files else []
+    else:
+        results = indexer.vector_search(task, limit=10)
+        symbols = results
+
+    if len(symbols) < 3:
+        return {"model": "haiku", "reason": f"narrow task — {len(symbols)} symbol(s) in 1 file"}
+
+    return {"model": "sonnet", "reason": "moderate scope — default"}
 
 
 async def serve() -> None:
