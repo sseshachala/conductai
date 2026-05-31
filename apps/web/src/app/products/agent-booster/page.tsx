@@ -15,6 +15,7 @@ export default function AgentBoosterPage() {
         <ThreeLayersSection />
         <QuickstartSection />
         <McpToolsSection />
+        <CliReferenceSection />
         <WorksWithSection />
         <FaqSection />
         <FooterCTASection />
@@ -463,6 +464,88 @@ function McpToolsSection() {
                 <code className={`font-mono text-sm font-semibold ${tool.color}`}>{tool.signature}</code>
               </div>
               <p className="text-sm text-stone-600 leading-relaxed">{tool.desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── CLI Reference ────────────────────────────────────────────────────── */
+
+const CLI_COMMANDS = [
+  {
+    cmd: "booster init <platform>",
+    when: "Once per project, after install",
+    what: "Writes MCP config + rules file for claude, cursor, windsurf, or codex. Shows what will change, asks for confirmation.",
+    note: "booster init claude --yes  to skip prompt",
+  },
+  {
+    cmd: "booster remove <platform>",
+    when: "When you want to uninstall",
+    what: "Cleanly removes everything init wrote — MCP entry, rules block, hook script. No residue.",
+    note: null,
+  },
+  {
+    cmd: "booster index",
+    when: "After install, and after large refactors",
+    what: "Parses all .py / .ts / .tsx / .js / .jsx files with tree-sitter, stores symbols in .booster/symbols.db.",
+    note: "Skips .next/, dist/, build/, node_modules, .venv",
+  },
+  {
+    cmd: "booster embed",
+    when: "After booster index",
+    what: "Builds sentence-transformer vector embeddings for all symbols. Required for semantic search_context calls.",
+    note: "Needs pip install agent-booster[embed]",
+  },
+  {
+    cmd: "booster route \"<task>\"",
+    when: "Before starting a non-trivial task",
+    what: "Recommends haiku, sonnet, or opus based on task complexity — keyword signals, file count, symbol count.",
+    note: null,
+  },
+  {
+    cmd: "booster search \"<query>\"",
+    when: "To explore the index from the terminal",
+    what: "Keyword search across all indexed symbols. Same as search_context but run from the CLI.",
+    note: null,
+  },
+  {
+    cmd: "booster gain",
+    when: "Any time, to see ROI",
+    what: "Reports total smart_read calls, tokens served vs. saved, savings rate, and top files.",
+    note: null,
+  },
+  {
+    cmd: "booster serve",
+    when: "Automatic — you rarely run this directly",
+    what: "Starts the MCP stdio server. Called automatically by Claude Code / Cursor / Windsurf / Codex.",
+    note: null,
+  },
+]
+
+function CliReferenceSection() {
+  return (
+    <section className="px-6 py-20 bg-stone-50">
+      <div className="max-w-5xl mx-auto">
+        <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">CLI Reference</p>
+        <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
+          Every command, and when to use it.
+        </h2>
+        <p className="text-center text-stone-500 text-sm max-w-xl mx-auto mb-12">
+          Most of the time you only need three: <code className="font-mono bg-stone-200 px-1 rounded">init</code>, <code className="font-mono bg-stone-200 px-1 rounded">index &amp;&amp; embed</code>, and <code className="font-mono bg-stone-200 px-1 rounded">gain</code>.
+        </p>
+
+        <div className="flex flex-col divide-y divide-stone-200 rounded-2xl border border-stone-200 bg-white overflow-hidden">
+          {CLI_COMMANDS.map((c) => (
+            <div key={c.cmd} className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_3fr] gap-2 sm:gap-6 px-6 py-5 items-start">
+              <code className="font-mono text-sm font-semibold text-indigo-700 bg-indigo-50 px-2 py-1 rounded self-start">{c.cmd}</code>
+              <p className="text-xs text-stone-400 italic pt-1">{c.when}</p>
+              <div>
+                <p className="text-sm text-stone-700">{c.what}</p>
+                {c.note && <p className="mt-1 text-xs text-stone-400 font-mono">{c.note}</p>}
+              </div>
             </div>
           ))}
         </div>
