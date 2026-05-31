@@ -57,6 +57,18 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
   const deleteConfirmRef = useRef<HTMLInputElement>(null)
   const { workspaces, activeWorkspace, setActiveWorkspace, refresh: refreshWorkspaces } = useWorkspace()
 
+  // Guard install state
+  const [guardInstalled, setGuardInstalled] = useState(false)
+
+  useEffect(() => {
+    function syncGuard() {
+      setGuardInstalled(!!localStorage.getItem("guard_team_id"))
+    }
+    syncGuard()
+    window.addEventListener("storage", syncGuard)
+    return () => window.removeEventListener("storage", syncGuard)
+  }, [])
+
   // Projects state
   const [projects, setProjects] = useState<Project[]>([])
   const [projectsOpen, setProjectsOpen] = useState(true)
@@ -430,7 +442,9 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
           <div className="pt-2 border-t border-stone-100 mt-2 space-y-0.5">
             <NavItem href="/runs" icon="▶" label="Runs" collapsed={collapsed} pathname={pathname} />
             <NavItem href="/observability" icon="◉" label="Observability" collapsed={collapsed} pathname={pathname} />
-            <NavItem href="/guard" icon="🛡" label="Guard" collapsed={collapsed} pathname={pathname} />
+            {guardInstalled && (
+              <NavItem href="/guard" icon="🛡" label="Guard" collapsed={collapsed} pathname={pathname} />
+            )}
             <NavItem href="/audit" icon="📋" label="Audit Log" collapsed={collapsed} pathname={pathname} />
             <NavItem href="/settings" icon="⚙" label="Settings" collapsed={collapsed} pathname={pathname} />
           </div>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useAuth } from "@clerk/nextjs"
+import Link from "next/link"
 import AppShell from "@/components/AppShell"
 import EnvironmentsManager from "@/components/settings/EnvironmentsManager"
 import MembersManager from "@/components/settings/MembersManager"
@@ -108,6 +109,12 @@ function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolea
               {TAB_LABELS[tab]}
             </button>
           ))}
+          <Link
+            href="/settings/modules"
+            className="px-4 py-1.5 rounded-md text-sm font-medium transition-colors text-stone-500 hover:text-stone-800"
+          >
+            Modules
+          </Link>
         </div>
 
         {activeTab === "credentials" && <EnvironmentsManager isAdmin={isAdmin} />}
