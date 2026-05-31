@@ -7,10 +7,11 @@ PATCH  /guard/policies/{id}     — update rule (enable/disable/edit)
 DELETE /guard/policies/{id}     — delete custom rule (builtin=True rules cannot be deleted)
 GET    /guard/policies/sync     — returns current active ruleset as JSON (polled by hook binary every 60s)
 """
+import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -125,6 +126,7 @@ def seed_builtin_policies(db: Session, team_id) -> None:
 
 
 class PolicyCreate(BaseModel):
+    team_id: Optional[str] = None
     rule_id: str
     description: Optional[str] = None
     match_tool: Optional[str] = None
@@ -161,6 +163,25 @@ class PolicyOut(BaseModel):
     class Config:
         from_attributes = True
 
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        data = {
+            "id": str(obj.id),
+            "team_id": str(obj.team_id),
+            "rule_id": obj.rule_id,
+            "description": obj.description,
+            "match_tool": obj.match_tool,
+            "match_pattern": obj.match_pattern,
+            "match_path_pattern": obj.match_path_pattern,
+            "action": obj.action,
+            "message": obj.message,
+            "enabled": obj.enabled,
+            "builtin": obj.builtin,
+            "created_at": obj.created_at,
+            "updated_at": obj.updated_at,
+        }
+        return cls(**data)
+
 
 class PolicySyncRule(BaseModel):
     rule_id: str
@@ -180,28 +201,45 @@ class PolicySyncOut(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _get_team_for_workspace(db: Session, workspace_id: str) -> GuardTeam:
-    """Return the GuardTeam bound to this workspace, 404 if none."""
-    team = (
-        db.query(GuardTeam)
-        .filter(GuardTeam.conductai_workspace_id == workspace_id)
-        .first()
-    )
+def _resolve_team(db: Session, team_id: str) -> GuardTeam:
+    """Return GuardTeam by id, 404 if not found."""
+    try:
+        tid = uuid.UUID(team_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Team not found")
+    team = db.query(GuardTeam).filter(GuardTeam.id == tid).first()
     if not team:
-        raise HTTPException(status_code=404, detail="No ConductGuard team found for this workspace.")
+        raise HTTPException(status_code=404, detail="No ConductGuard team found")
     return team
 
 
-def _get_policy(db: Session, policy_id: str, team_id) -> GuardPolicy:
-    """Return a GuardPolicy by id scoped to team, 404 if not found."""
-    policy = (
-        db.query(GuardPolicy)
-        .filter(GuardPolicy.id == policy_id, GuardPolicy.team_id == team_id)
-        .first()
-    )
+def _get_policy_or_404(db: Session, policy_id: str) -> GuardPolicy:
+    try:
+        pid = uuid.UUID(policy_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    policy = db.query(GuardPolicy).filter(GuardPolicy.id == pid).first()
     if not policy:
-        raise HTTPException(status_code=404, detail=f"Policy '{policy_id}' not found.")
+        raise HTTPException(status_code=404, detail="Policy not found")
     return policy
+
+
+def _policy_to_out(p: GuardPolicy) -> PolicyOut:
+    return PolicyOut(
+        id=str(p.id),
+        team_id=str(p.team_id),
+        rule_id=p.rule_id,
+        description=p.description,
+        match_tool=p.match_tool,
+        match_pattern=p.match_pattern,
+        match_path_pattern=p.match_path_pattern,
+        action=p.action,
+        message=p.message,
+        enabled=p.enabled,
+        builtin=p.builtin,
+        created_at=p.created_at,
+        updated_at=p.updated_at,
+    )
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -210,17 +248,12 @@ def _get_policy(db: Session, policy_id: str, team_id) -> GuardPolicy:
 # Static route must come before /{id} to avoid path collision.
 @router.get("/sync", response_model=PolicySyncOut)
 def sync_policies(
+    team_id: str = Query(...),
     db: Session = Depends(get_db),
     _org_id: str = Depends(get_guard_org_id),
 ):
-    """
-    Return the current active ruleset for the hook binary.
-    Only enabled=True rules are included.
-    version is the latest updated_at timestamp across all active rules.
-    Polled by the hook binary every 60 seconds.
-    """
-    team = _get_team_for_workspace(db, workspace_id)
-
+    """Return the current active ruleset for the hook binary."""
+    team = _resolve_team(db, team_id)
     active_policies = (
         db.query(GuardPolicy)
         .filter(GuardPolicy.team_id == team.id, GuardPolicy.enabled.is_(True))
@@ -246,26 +279,29 @@ def sync_policies(
         for p in active_policies
     ]
 
-    return PolicySyncOut(
-        team_id=str(team.id),
-        version=version,
-        rules=rules,
-    )
+    return PolicySyncOut(team_id=str(team.id), version=version, rules=rules)
 
 
 @router.get("", response_model=list[PolicyOut])
 def list_policies(
+    team_id: str = Query(...),
     db: Session = Depends(get_db),
     _org_id: str = Depends(get_guard_org_id),
 ):
-    """Return all team policies (enabled and disabled)."""
-    team = _get_team_for_workspace(db, workspace_id)
-    return (
+    """Return all team policies. Seeds built-in rules on first call."""
+    team = _resolve_team(db, team_id)
+
+    existing_count = db.query(GuardPolicy).filter(GuardPolicy.team_id == team.id).count()
+    if existing_count == 0:
+        seed_builtin_policies(db, team.id)
+
+    policies = (
         db.query(GuardPolicy)
         .filter(GuardPolicy.team_id == team.id)
         .order_by(GuardPolicy.builtin.desc(), GuardPolicy.created_at.asc())
         .all()
     )
+    return [_policy_to_out(p) for p in policies]
 
 
 @router.post("", response_model=PolicyOut, status_code=201)
@@ -280,7 +316,9 @@ def create_policy(
             status_code=422,
             detail=f"Invalid action '{body.action}'. Must be one of: {sorted(_VALID_ACTIONS)}",
         )
-    team = _get_team_for_workspace(db, workspace_id)
+    if not body.team_id:
+        raise HTTPException(status_code=422, detail="team_id is required")
+    team = _resolve_team(db, body.team_id)
 
     policy = GuardPolicy(
         team_id=team.id,
@@ -297,7 +335,7 @@ def create_policy(
     db.add(policy)
     db.commit()
     db.refresh(policy)
-    return policy
+    return _policy_to_out(policy)
 
 
 @router.patch("/{policy_id}", response_model=PolicyOut)
@@ -313,8 +351,7 @@ def patch_policy(
             status_code=422,
             detail=f"Invalid action '{body.action}'. Must be one of: {sorted(_VALID_ACTIONS)}",
         )
-    team = _get_team_for_workspace(db, workspace_id)
-    policy = _get_policy(db, policy_id, team.id)
+    policy = _get_policy_or_404(db, policy_id)
 
     if body.enabled is not None:
         policy.enabled = body.enabled
@@ -332,7 +369,7 @@ def patch_policy(
     policy.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(policy)
-    return policy
+    return _policy_to_out(policy)
 
 
 @router.delete("/{policy_id}", status_code=204)
@@ -342,8 +379,7 @@ def delete_policy(
     _org_id: str = Depends(get_guard_org_id),
 ):
     """Delete a custom policy rule. Built-in rules cannot be deleted."""
-    team = _get_team_for_workspace(db, workspace_id)
-    policy = _get_policy(db, policy_id, team.id)
+    policy = _get_policy_or_404(db, policy_id)
 
     if policy.builtin:
         raise HTTPException(
