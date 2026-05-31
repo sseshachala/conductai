@@ -100,6 +100,7 @@ interface CanvasEditorProps {
   workflowId: string
   getToken?: (() => Promise<string | null>) | null
   isViewer?: boolean
+  isAdmin?: boolean
 }
 
 function getWorkspaceId(): string | null {
@@ -121,7 +122,7 @@ async function authHeaders(getToken?: (() => Promise<string | null>) | null): Pr
   return headers
 }
 
-function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEditorProps) {
+function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = false }: CanvasEditorProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
@@ -1156,6 +1157,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
                       blockData={selectedNode.data as Record<string, unknown>}
                       onChange={handleBlockChange}
                       getToken={getToken}
+                      isAdmin={isAdmin}
+                      isViewer={isViewer}
                       githubHookRepo={githubHookRepo}
                       githubHookId={githubHookId}
                       githubWebhook={githubWebhook}
@@ -1478,6 +1481,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false }: CanvasEdi
 function CanvasEditorWithClerk({ workflowId }: { workflowId: string }) {
   const { getToken, userId } = useAuth()
   const [isViewer, setIsViewer] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   useEffect(() => {
     if (!userId) return
@@ -1495,14 +1499,15 @@ function CanvasEditorWithClerk({ workflowId }: { workflowId: string }) {
         const members: { clerk_user_id: string; role: string }[] = await res.json()
         const role = members.find(m => m.clerk_user_id === userId)?.role
         setIsViewer(role === "viewer")
-      } catch { /* stay false (non-viewer) */ }
+        setIsAdmin(role === "admin")
+      } catch { /* stay false */ }
     }
     fetchRole()
   }, [userId])
 
   return (
     <ReactFlowProvider>
-      <CanvasEditorInner workflowId={workflowId} getToken={getToken} isViewer={isViewer} />
+      <CanvasEditorInner workflowId={workflowId} getToken={getToken} isViewer={isViewer} isAdmin={isAdmin} />
     </ReactFlowProvider>
   )
 }
