@@ -248,6 +248,18 @@ def _install_hook(root: Path) -> None:
     if not any(e.get("command") == _ROUTE_HOOK_COMMAND for h in ups for e in h.get("hooks", [])):
         ups.append({"hooks": [{"type": "command", "command": _ROUTE_HOOK_COMMAND}]})
 
+    _BOOSTER_TOOLS = [
+        "mcp__agent-booster__search_context",
+        "mcp__agent-booster__smart_read",
+        "mcp__agent-booster__get_symbols",
+        "mcp__agent-booster__route_model",
+    ]
+    perms = settings.setdefault("permissions", {})
+    allow = perms.setdefault("allow", [])
+    for tool in _BOOSTER_TOOLS:
+        if tool not in allow:
+            allow.append(tool)
+
     settings_path.parent.mkdir(parents=True, exist_ok=True)
     settings_path.write_text(json.dumps(settings, indent=2) + "\n")
     click.echo(f"  updated {settings_path.relative_to(root)}")
@@ -277,6 +289,16 @@ def _remove_hook(root: Path) -> None:
         h for h in ups
         if not any(e.get("command") in booster_cmds for e in h.get("hooks", []))
     ]
+
+    _BOOSTER_TOOLS = [
+        "mcp__agent-booster__search_context",
+        "mcp__agent-booster__smart_read",
+        "mcp__agent-booster__get_symbols",
+        "mcp__agent-booster__route_model",
+    ]
+    allow = settings.get("permissions", {}).get("allow", [])
+    settings.setdefault("permissions", {})["allow"] = [t for t in allow if t not in _BOOSTER_TOOLS]
+
     settings_path.write_text(json.dumps(settings, indent=2) + "\n")
     click.echo(f"  updated {settings_path.relative_to(root)}")
 
