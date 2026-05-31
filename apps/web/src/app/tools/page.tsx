@@ -216,21 +216,21 @@ function StackSection() {
             </div>
             <span className="ml-auto text-xs font-semibold text-violet-300 bg-violet-800 border border-violet-600 px-2 py-0.5 rounded-full">Layers 1–5</span>
           </div>
-          <div className="rounded-xl border border-stone-700 bg-stone-800 px-6 py-4 flex items-center gap-4">
-            <span className="text-2xl font-black text-stone-400">≋</span>
+          <div className="rounded-xl border border-amber-600 bg-amber-950 px-6 py-4 flex items-center gap-4">
+            <span className="text-2xl font-black text-amber-400">≋</span>
             <div>
               <p className="text-sm font-semibold text-white">RTK — Rust Token Killer</p>
-              <p className="text-xs text-stone-400">CLI output compression, 60–90% token savings</p>
+              <p className="text-xs text-amber-300">CLI output compression, 60–90% token savings</p>
             </div>
-            <span className="ml-auto text-xs font-semibold text-stone-400 bg-stone-700 border border-stone-600 px-2 py-0.5 rounded-full">Layer 2</span>
+            <span className="ml-auto text-xs font-semibold text-amber-300 bg-amber-900 border border-amber-700 px-2 py-0.5 rounded-full">Layer 2</span>
           </div>
-          <div className="rounded-xl border border-stone-700 bg-stone-800 px-6 py-4 flex items-center gap-4">
-            <span className="text-2xl font-black text-stone-400">⊙</span>
+          <div className="rounded-xl border border-teal-600 bg-teal-950 px-6 py-4 flex items-center gap-4">
+            <span className="text-2xl font-black text-teal-400">⊙</span>
             <div>
               <p className="text-sm font-semibold text-white">Prompt Caching</p>
-              <p className="text-xs text-stone-400">stable context reuse at 90% discount</p>
+              <p className="text-xs text-teal-300">stable context reuse at 90% discount</p>
             </div>
-            <span className="ml-auto text-xs font-semibold text-stone-400 bg-stone-700 border border-stone-600 px-2 py-0.5 rounded-full">Layer 1</span>
+            <span className="ml-auto text-xs font-semibold text-teal-300 bg-teal-900 border border-teal-700 px-2 py-0.5 rounded-full">Layer 1</span>
           </div>
         </div>
       </div>
