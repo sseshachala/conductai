@@ -21,6 +21,13 @@ interface Invite {
   created_at: string
 }
 
+interface MemberWorkspace {
+  id: string
+  name: string
+  role: string
+  joined_at: string
+}
+
 const ROLE_COLORS: Record<string, string> = {
   admin:    "bg-indigo-50 text-indigo-700",
   editor:   "bg-emerald-50 text-emerald-700",
@@ -57,6 +64,9 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
   const [cancelling, setCancelling] = useState<string | null>(null)
   const [error, setError] = useState("")
   const [emailWarning, setEmailWarning] = useState("")
+  const [expandedMember, setExpandedMember] = useState<string | null>(null)
+  const [memberWorkspaces, setMemberWorkspaces] = useState<Record<string, MemberWorkspace[]>>({})
+  const [loadingWorkspaces, setLoadingWorkspaces] = useState<string | null>(null)
 
   async function buildHeaders(contentType = false): Promise<Record<string, string>> {
     const headers: Record<string, string> = {}
@@ -182,6 +192,29 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
     }
   }
 
+  async function toggleMemberWorkspaces(clerk_user_id: string) {
+    if (expandedMember === clerk_user_id) {
+      setExpandedMember(null)
+      return
+    }
+    setExpandedMember(clerk_user_id)
+    if (memberWorkspaces[clerk_user_id]) return
+    setLoadingWorkspaces(clerk_user_id)
+    try {
+      const headers = await buildHeaders()
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace!.id}/members/${clerk_user_id}/workspaces`,
+        { headers },
+      )
+      if (res.ok) {
+        const data = await res.json()
+        setMemberWorkspaces(prev => ({ ...prev, [clerk_user_id]: data }))
+      }
+    } finally {
+      setLoadingWorkspaces(null)
+    }
+  }
+
   const currentUserRole = members.find(m => m.clerk_user_id === currentClerkId)?.role ?? null
   const isAdmin = currentUserRole === "admin"
 
@@ -297,44 +330,75 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
           <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Active members</p>
           <div className="rounded-xl border border-stone-200 bg-white divide-y divide-stone-100 overflow-hidden">
             {members.map(m => (
-              <div key={m.clerk_user_id} className="flex items-center justify-between px-4 py-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-stone-700 truncate">
-                    {m.name || m.email || m.clerk_user_id}
-                  </p>
-                  {m.email && m.name && (
-                    <p className="text-xs text-stone-400 truncate">{m.email}</p>
-                  )}
-                  <p className="text-xs text-stone-400">Joined {new Date(m.joined_at).toLocaleDateString()}</p>
-                </div>
-                <div className="flex items-center gap-3 shrink-0 ml-4">
-                  {isAdmin ? (
-                    <>
-                      <select
-                        value={m.role}
-                        onChange={e => handleRoleChange(m.clerk_user_id, e.target.value)}
-                        className={`text-xs font-medium px-2 py-1 rounded-full border-0 focus:outline-none focus:ring-2 focus:ring-indigo-200 cursor-pointer ${ROLE_COLORS[m.role]}`}
+              <div key={m.clerk_user_id} className="divide-y divide-stone-100">
+                <div className="flex items-center justify-between px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-stone-700 truncate">
+                      {m.name || m.email || m.clerk_user_id}
+                    </p>
+                    {m.email && m.name && (
+                      <p className="text-xs text-stone-400 truncate">{m.email}</p>
+                    )}
+                    <p className="text-xs text-stone-400">Joined {new Date(m.joined_at).toLocaleDateString()}</p>
+                    {isAdmin && (
+                      <button
+                        onClick={() => toggleMemberWorkspaces(m.clerk_user_id)}
+                        className="text-xs text-indigo-500 hover:text-indigo-700 mt-0.5 transition-colors"
                       >
-                        <option value="admin">Admin</option>
-                        <option value="editor">Editor</option>
-                        <option value="viewer">Viewer</option>
-                      </select>
-                      {m.clerk_user_id !== currentClerkId && (
-                        <button
-                          onClick={() => handleRemove(m.clerk_user_id)}
-                          disabled={removing === m.clerk_user_id}
-                          className="text-xs text-stone-400 hover:text-red-500 disabled:opacity-50 transition-colors"
+                        {expandedMember === m.clerk_user_id ? "Hide workspaces" : "Show workspaces"}
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0 ml-4">
+                    {isAdmin ? (
+                      <>
+                        <select
+                          value={m.role}
+                          onChange={e => handleRoleChange(m.clerk_user_id, e.target.value)}
+                          className={`text-xs font-medium px-2 py-1 rounded-full border-0 focus:outline-none focus:ring-2 focus:ring-indigo-200 cursor-pointer ${ROLE_COLORS[m.role]}`}
                         >
-                          {removing === m.clerk_user_id ? "Removing…" : "Remove"}
-                        </button>
-                      )}
-                    </>
-                  ) : (
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ROLE_COLORS[m.role]}`}>
-                      {m.role}
-                    </span>
-                  )}
+                          <option value="admin">Admin</option>
+                          <option value="editor">Editor</option>
+                          <option value="viewer">Viewer</option>
+                        </select>
+                        {m.clerk_user_id !== currentClerkId && (
+                          <button
+                            onClick={() => handleRemove(m.clerk_user_id)}
+                            disabled={removing === m.clerk_user_id}
+                            className="text-xs text-stone-400 hover:text-red-500 disabled:opacity-50 transition-colors"
+                          >
+                            {removing === m.clerk_user_id ? "Removing…" : "Remove"}
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ROLE_COLORS[m.role]}`}>
+                        {m.role}
+                      </span>
+                    )}
+                  </div>
                 </div>
+                {isAdmin && expandedMember === m.clerk_user_id && (
+                  <div className="px-4 py-3 bg-stone-50">
+                    <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Workspaces</p>
+                    {loadingWorkspaces === m.clerk_user_id ? (
+                      <p className="text-xs text-stone-400">Loading…</p>
+                    ) : (memberWorkspaces[m.clerk_user_id] ?? []).length === 0 ? (
+                      <p className="text-xs text-stone-400">No workspaces found.</p>
+                    ) : (
+                      <div className="space-y-1">
+                        {(memberWorkspaces[m.clerk_user_id] ?? []).map(ws => (
+                          <div key={ws.id} className="flex items-center justify-between">
+                            <p className="text-xs text-stone-700">{ws.name}</p>
+                            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ROLE_COLORS[ws.role] ?? "bg-stone-100 text-stone-600"}`}>
+                              {ws.role}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
