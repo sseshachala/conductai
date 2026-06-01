@@ -414,6 +414,7 @@ def add_member(
                 "role": body.role,
                 "role_description": _ROLE_DESCRIPTIONS.get(body.role, ""),
                 "app_url": APP_URL,
+                "workspace_id": workspace_id,
                 "guard_invite_cmd": guard_invite_cmd,
             },
             workspace_id=workspace_id,
