@@ -75,13 +75,21 @@ export async function deleteClerkUser(clerkUserId: string): Promise<void> {
  * Note: Clerk sign-in tokens are linked to a user ID, not credentials.
  * To get a user ID from email, first call findClerkUserByEmail().
  */
-export async function createSignInToken(clerkUserId: string): Promise<string> {
+/**
+ * Returns { token, url } — navigate the browser to `url` to sign in
+ * without any form, 2FA, or password. Bypasses all Clerk verification steps.
+ */
+export async function createSignInToken(
+  clerkUserId: string,
+  redirectUrl?: string
+): Promise<{ token: string; url: string }> {
   const res = await fetch(`${CLERK_API}/sign_in_tokens`, {
     method: "POST",
     headers: clerkHeaders(),
     body: JSON.stringify({
       user_id: clerkUserId,
-      expires_in_seconds: 300, // 5 minutes — enough for a single test flow
+      expires_in_seconds: 300,
+      ...(redirectUrl ? { redirect_url: redirectUrl } : {}),
     }),
   })
 
@@ -93,7 +101,7 @@ export async function createSignInToken(clerkUserId: string): Promise<string> {
   }
 
   const data = await res.json()
-  return data.token as string
+  return { token: data.token as string, url: data.url as string }
 }
 
 /**
