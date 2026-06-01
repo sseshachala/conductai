@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
-import GuardNav from "@/components/guard/GuardNav"
 import { getGuardTeamId } from "@/lib/guardStorage"
 
 // ---------------------------------------------------------------------------
@@ -625,12 +624,9 @@ export default function PoliciesPage() {
     <AppShell>
       <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
         {/* Header */}
-        <div>
-          <h1 className="text-xl font-semibold text-stone-900 mb-1">Guard</h1>
-          <GuardNav />
-        </div>
         <div className="flex items-start justify-between gap-4">
           <div>
+            <h1 className="text-xl font-semibold text-stone-900">Policies</h1>
             <p className="text-sm text-stone-500 mt-1">
               Set rules that apply to all developer AI tool sessions.
             </p>
