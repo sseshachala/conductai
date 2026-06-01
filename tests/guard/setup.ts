@@ -24,9 +24,8 @@
  */
 
 import { writeFileSync } from "fs"
+import { chromium } from "playwright"
 import { upsertClerkUser } from "./lib/clerk.js"
-import { getOrCreateTestWorkspace, addMemberWithRole } from "./lib/conduct.js"
-import { createBrowser, signInWithPassword } from "./lib/stagehand.js"
 
 // ── Test user definitions ──────────────────────────────────────────────────
 
@@ -76,12 +75,23 @@ async function setupWorkspaceViaBrowser(
   const apiUrl = (process.env.CONDUCT_API_URL ?? "http://localhost:8000").replace(/\/$/, "")
 
   console.log("  [browser] opening browser, signing in as admin…")
-  const { stagehand, page } = await createBrowser(true)
+  const browser = await chromium.launch({ headless: true })
+  const context = await browser.newContext()
+  const page = await context.newPage()
 
   try {
-    await signInWithPassword(page, TEST_USERS.admin.email, TEST_USERS.admin.password, appUrl)
+    // Navigate to app — Clerk will redirect to sign-in
+    await page.goto(`${appUrl}/sign-in`, { waitUntil: "networkidle" })
 
-    // Wait for Clerk to fully hydrate (session + token ready)
+    // Clerk sign-in form: email → Continue → password → Continue
+    await page.fill('input[name="identifier"], input[type="email"]', TEST_USERS.admin.email)
+    await page.click('button[type="submit"]')
+    await page.waitForTimeout(1500)
+    await page.fill('input[type="password"]', TEST_USERS.admin.password)
+    await page.click('button[type="submit"]')
+
+    // Wait for redirect away from /sign-in and Clerk session to hydrate
+    await page.waitForURL((url) => !url.pathname.includes("sign-in"), { timeout: 15000 })
     await page.waitForTimeout(3000)
 
     // All API calls happen inside page.evaluate() — Clerk session is live here
@@ -157,7 +167,7 @@ async function setupWorkspaceViaBrowser(
 
     return result.workspaceId as string
   } finally {
-    await stagehand.close()
+    await browser.close()
   }
 }
 
