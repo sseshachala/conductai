@@ -94,10 +94,11 @@ export default function GuardSettingsPage() {
   }
 
   async function handleToggle(field: "notify_on_block" | "notify_on_budget", value: boolean) {
+    setPrefs(p => ({ ...p, [field]: value }))
     try {
-      const data = await patch({ [field]: value })
-      setPrefs(p => ({ ...p, [field]: data[field] }))
+      await patch({ [field]: value })
     } catch (e) {
+      setPrefs(p => ({ ...p, [field]: !value }))
       setError(e instanceof Error ? e.message : "Save failed")
     }
   }
