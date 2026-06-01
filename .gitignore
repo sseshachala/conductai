@@ -61,3 +61,4 @@ apps/web/e2e/auth-states/*.json
 *.p12
 .vercel
 .rundock/
+.booster/
