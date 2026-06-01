@@ -2,43 +2,32 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useAuth } from "@clerk/nextjs"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
 import GuardNav from "@/components/guard/GuardNav"
-
-function getCookie(name: string): string | null {
-  if (typeof document === "undefined") return null
-  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
-  return m ? decodeURIComponent(m[1]) : null
-}
-
-interface SpendSummary {
-  total_cost_usd: number
-  tokens_used: number
-  tokens_saved: number
-  reduction_pct: number
-  cost_without_optimisation: number
-  money_saved: number
-}
 
 interface DeveloperSpend {
   email: string
   sessions: number
-  tokens_used: number
+  tokens_after: number
   cost_usd: number
   saved_usd: number
-  budget_used_usd: number
-  budget_limit_usd: number | null
 }
 
 interface AiToolBreakdown {
-  tool: string
-  tokens_used: number
+  ai_tool: string
+  tokens_after: number
   cost_usd: number
-  pct_of_total: number
 }
 
 interface SpendData {
-  summary: SpendSummary
+  team_id: string
+  period: string
+  total_tokens_before: number
+  total_tokens_after: number
+  total_saved_pct: number
+  total_cost_usd: number
+  total_saved_usd: number
   by_developer: DeveloperSpend[]
   by_ai_tool: AiToolBreakdown[]
 }
@@ -265,7 +254,6 @@ function SpendControlsPanel({
       </div>
 
       <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-2 gap-5">
-        {/* Team monthly budget */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-stone-700">Team monthly budget</label>
           {editing ? (
@@ -291,7 +279,6 @@ function SpendControlsPanel({
           )}
         </div>
 
-        {/* Default per-developer */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-stone-700">Default per-developer limit</label>
           {editing ? (
@@ -314,7 +301,6 @@ function SpendControlsPanel({
           )}
         </div>
 
-        {/* Alert threshold */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-stone-700">Alert threshold</label>
           {editing ? (
@@ -335,7 +321,6 @@ function SpendControlsPanel({
           )}
         </div>
 
-        {/* Hard cap */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-stone-700">Hard cap at 100%</label>
           {editing ? (
@@ -367,7 +352,6 @@ const MONTHS = [
 ]
 
 function MonthPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  // value is "YYYY-MM"
   const [open, setOpen] = useState(false)
   const [year, month] = value.split("-").map(Number)
   const label = `${MONTHS[month - 1]} ${year}`
@@ -428,16 +412,18 @@ function MonthPicker({ value, onChange }: { value: string; onChange: (v: string)
 
 export default function SpendPage() {
   const { getToken } = useAuth()
+  const { activeWorkspace } = useWorkspace()
   const now = new Date()
   const [month, setMonth] = useState(
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
   )
   const [data, setData] = useState<SpendData | null>(null)
   const [budgets, setBudgets] = useState<Record<string, number | null>>({})
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [expandedDev, setExpandedDev] = useState<string | null>(null)
   const [currency, setCurrency] = useState<Currency>("USD")
+  const [teamId, setTeamId] = useState<string | null>(null)
   const [teamSettings, setTeamSettings] = useState<TeamBudgetSettings>({
     team_monthly_limit_usd: null,
     alert_threshold_pct: 80,
@@ -446,18 +432,31 @@ export default function SpendPage() {
   })
 
   const load = useCallback(async () => {
+    if (!activeWorkspace) return
     setLoading(true)
     setError(null)
     const token = await getToken()
-    const teamId = (typeof window !== "undefined" ? localStorage.getItem("guard_team_id") : null) ?? ""
     const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-    const headers: Record<string, string> = { "Content-Type": "application/json" }
-    if (token) headers["Authorization"] = `Bearer ${token}`
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    }
 
     try {
-      const [spendRes, budgetRes] = await Promise.all([
-        fetch(`${base}/guard/spend?team_id=${teamId}&month=${month}`, { headers }),
-        fetch(`${base}/guard/spend/budgets?team_id=${teamId}`, { headers }),
+      const teamRes = await fetch(`${base}/guard/teams/me?workspace_id=${activeWorkspace.id}`, { headers })
+      if (!teamRes.ok) {
+        setError("Guard is not installed for this workspace")
+        setLoading(false)
+        return
+      }
+      const team = await teamRes.json()
+      const resolvedTeamId: string = team.id
+      setTeamId(resolvedTeamId)
+
+      const [spendRes, budgetRes, membersRes] = await Promise.all([
+        fetch(`${base}/guard/spend?team_id=${resolvedTeamId}&month=${month}`, { headers }),
+        fetch(`${base}/guard/spend/budgets?team_id=${resolvedTeamId}`, { headers }),
+        fetch(`${base}/guard/teams/${resolvedTeamId}/members`, { headers }),
       ])
       if (!spendRes.ok) throw new Error("Failed to load spend data")
       const spendJson: SpendData = await spendRes.json()
@@ -465,7 +464,6 @@ export default function SpendPage() {
 
       if (budgetRes.ok) {
         const budgetList: BudgetOut[] = await budgetRes.json()
-        // Team-wide settings (member_id === null)
         const teamBudget = budgetList.find(b => b.member_id === null)
         if (teamBudget) {
           setTeamSettings({
@@ -475,10 +473,17 @@ export default function SpendPage() {
             default_per_developer_usd: teamBudget.default_per_developer_usd,
           })
         }
-        // Per-developer budgets keyed by member_id
+        const idToEmail: Record<string, string> = {}
+        if (membersRes.ok) {
+          const members: Array<{ id: string; email: string }> = await membersRes.json()
+          for (const m of members) idToEmail[m.id] = m.email
+        }
         const map: Record<string, number | null> = {}
         for (const b of budgetList) {
-          if (b.member_id != null) map[b.member_id] = b.monthly_limit_usd
+          if (b.member_id != null) {
+            const email = idToEmail[b.member_id]
+            if (email) map[email] = b.monthly_limit_usd
+          }
         }
         setBudgets(map)
       }
@@ -487,13 +492,13 @@ export default function SpendPage() {
     } finally {
       setLoading(false)
     }
-  }, [getToken, month])
+  }, [getToken, activeWorkspace, month])
 
   useEffect(() => { load() }, [load])
 
   async function saveTeamSettings(s: TeamBudgetSettings) {
+    if (!teamId) return
     const token = await getToken()
-    const teamId = (typeof window !== "undefined" ? localStorage.getItem("guard_team_id") : null) ?? ""
     const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -516,8 +521,8 @@ export default function SpendPage() {
   }
 
   async function saveBudget(email: string, limit: number) {
+    if (!teamId) return
     const token = await getToken()
-    const teamId = (typeof window !== "undefined" ? localStorage.getItem("guard_team_id") : null) ?? ""
     const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -532,13 +537,15 @@ export default function SpendPage() {
     setBudgets((prev) => ({ ...prev, [email]: limit }))
   }
 
-  const s = data?.summary
+  const monthLabel = (() => {
+    const [y, m] = month.split("-").map(Number)
+    return `${MONTHS[m - 1]} ${y}`
+  })()
 
   return (
     <AppShell>
       <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
 
-        {/* Header */}
         <div>
           <h1 className="text-xl font-semibold text-stone-900 mb-1">Guard</h1>
           <GuardNav />
@@ -563,43 +570,45 @@ export default function SpendPage() {
           <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>
         )}
 
-        {/* Spend controls config */}
         <SpendControlsPanel settings={teamSettings} onSave={saveTeamSettings} currency={currency} />
 
-        {/* Summary cards */}
         {loading ? (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-pulse">
             {[...Array(4)].map((_, i) => (
               <div key={i} className="bg-stone-100 rounded-xl h-24" />
             ))}
           </div>
-        ) : s ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard
-              label="Total cost this month"
-              value={`${CURRENCY_SYMBOLS[currency]}${fromUsd(s.total_cost_usd, currency).toFixed(2)}`}
-              accent="text-stone-900"
-            />
-            <StatCard
-              label="Tokens saved"
-              value={formatTokens(s.tokens_saved)}
-              sub={`${Math.round(s.reduction_pct)}% reduction`}
-              accent="text-green-700"
-            />
-            <StatCard
-              label="Cost without optimisation"
-              value={`${CURRENCY_SYMBOLS[currency]}${fromUsd(s.cost_without_optimisation, currency).toFixed(0)}`}
-              accent="text-stone-500"
-            />
-            <StatCard
-              label="Money saved"
-              value={`${CURRENCY_SYMBOLS[currency]}${fromUsd(s.money_saved, currency).toFixed(0)}`}
-              accent="text-indigo-700"
-            />
-          </div>
+        ) : data ? (
+          <>
+            <p className="text-xs font-medium text-stone-500 uppercase tracking-wide -mb-4">
+              Spend for {monthLabel}
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <StatCard
+                label="Total cost this month"
+                value={`${CURRENCY_SYMBOLS[currency]}${fromUsd(data.total_cost_usd, currency).toFixed(2)}`}
+                accent="text-stone-900"
+              />
+              <StatCard
+                label="Tokens saved"
+                value={formatTokens(data.total_tokens_before - data.total_tokens_after)}
+                sub={`${Math.round(data.total_saved_pct)}% reduction`}
+                accent="text-green-700"
+              />
+              <StatCard
+                label="Cost without optimisation"
+                value={`${CURRENCY_SYMBOLS[currency]}${fromUsd(data.total_cost_usd + data.total_saved_usd, currency).toFixed(0)}`}
+                accent="text-stone-500"
+              />
+              <StatCard
+                label="Money saved"
+                value={`${CURRENCY_SYMBOLS[currency]}${fromUsd(data.total_saved_usd, currency).toFixed(0)}`}
+                accent="text-indigo-700"
+              />
+            </div>
+          </>
         ) : null}
 
-        {/* By developer */}
         <div>
           <h2 className="text-sm font-semibold text-stone-700 mb-3">By Developer</h2>
           {loading ? (
@@ -628,7 +637,7 @@ export default function SpendPage() {
                 </thead>
                 <tbody>
                   {data.by_developer.map((dev) => {
-                    const budgetLimit = budgets[dev.email] ?? dev.budget_limit_usd
+                    const budgetLimit = budgets[dev.email] ?? null
                     const isExpanded = expandedDev === dev.email
                     return (
                       <>
@@ -640,7 +649,7 @@ export default function SpendPage() {
                           <td className="px-4 py-3 font-medium text-stone-800">{dev.email}</td>
                           <td className="px-4 py-3 text-right text-stone-600">{dev.sessions}</td>
                           <td className="px-4 py-3 text-right text-stone-600 font-mono text-xs">
-                            {formatTokens(dev.tokens_used)}
+                            {formatTokens(dev.tokens_after)}
                           </td>
                           <td className="px-4 py-3 text-right text-stone-700 font-mono text-xs font-medium">
                             {CURRENCY_SYMBOLS[currency]}{fromUsd(dev.cost_usd, currency).toFixed(2)}
@@ -651,15 +660,15 @@ export default function SpendPage() {
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
                               <span className="text-xs text-stone-500 font-mono whitespace-nowrap">
-                                ${dev.budget_used_usd.toFixed(0)}/{budgetLimit != null ? `$${budgetLimit}` : "—"}
+                                ${dev.cost_usd.toFixed(0)}/{budgetLimit != null ? `$${budgetLimit}` : "—"}
                               </span>
-                              <BudgetBar used={dev.budget_used_usd} limit={budgetLimit} />
+                              <BudgetBar used={dev.cost_usd} limit={budgetLimit} />
                             </div>
                           </td>
                           <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                             <BudgetInput
                               email={dev.email}
-                              current={budgetLimit ?? null}
+                              current={budgetLimit}
                               onSave={saveBudget}
                             />
                           </td>
@@ -688,7 +697,6 @@ export default function SpendPage() {
           )}
         </div>
 
-        {/* By AI tool */}
         {data && data.by_ai_tool.length > 0 && (
           <div>
             <h2 className="text-sm font-semibold text-stone-700 mb-3">By AI Tool</h2>
@@ -703,30 +711,35 @@ export default function SpendPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.by_ai_tool.map((t) => (
-                    <tr key={t.tool} className="border-b border-stone-100 last:border-0">
-                      <td className="px-4 py-3 font-medium text-stone-800">{t.tool}</td>
-                      <td className="px-4 py-3 text-right text-stone-600 font-mono text-xs">
-                        {formatTokens(t.tokens_used)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-stone-700 font-mono text-xs font-medium">
-                        {CURRENCY_SYMBOLS[currency]}{fromUsd(t.cost_usd, currency).toFixed(2)}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <div className="w-16 h-1.5 bg-stone-200 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-indigo-500 rounded-full"
-                              style={{ width: `${Math.min(t.pct_of_total, 100)}%` }}
-                            />
+                  {data.by_ai_tool.map((t) => {
+                    const pct = data.total_tokens_after > 0
+                      ? (t.tokens_after / data.total_tokens_after) * 100
+                      : 0
+                    return (
+                      <tr key={t.ai_tool} className="border-b border-stone-100 last:border-0">
+                        <td className="px-4 py-3 font-medium text-stone-800">{t.ai_tool}</td>
+                        <td className="px-4 py-3 text-right text-stone-600 font-mono text-xs">
+                          {formatTokens(t.tokens_after)}
+                        </td>
+                        <td className="px-4 py-3 text-right text-stone-700 font-mono text-xs font-medium">
+                          {CURRENCY_SYMBOLS[currency]}{fromUsd(t.cost_usd, currency).toFixed(2)}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <div className="w-16 h-1.5 bg-stone-200 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-indigo-500 rounded-full"
+                                style={{ width: `${Math.min(pct, 100)}%` }}
+                              />
+                            </div>
+                            <span className="text-xs text-stone-500 w-8 text-right">
+                              {Math.round(pct)}%
+                            </span>
                           </div>
-                          <span className="text-xs text-stone-500 w-8 text-right">
-                            {Math.round(t.pct_of_total)}%
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
