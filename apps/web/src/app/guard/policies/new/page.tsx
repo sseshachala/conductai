@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
-import GuardNav from "@/components/guard/GuardNav"
 import { getGuardTeamId } from "@/lib/guardStorage"
 
 // ---------------------------------------------------------------------------
@@ -355,12 +354,6 @@ export default function NewPolicyPage() {
   return (
     <AppShell>
       <div className="max-w-2xl mx-auto px-6 py-8 space-y-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-xl font-semibold text-stone-900 mb-1">Guard</h1>
-          <GuardNav />
-        </div>
-
         {/* Back link + page title */}
         <div className="flex items-center gap-2">
           <Link

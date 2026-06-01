@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from "react"
 import { useAuth } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
-import GuardNav from "@/components/guard/GuardNav"
 
 interface DeveloperSpend {
   email: string
@@ -546,12 +545,11 @@ export default function SpendPage() {
     <AppShell>
       <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
 
-        <div>
-          <h1 className="text-xl font-semibold text-stone-900 mb-1">Guard</h1>
-          <GuardNav />
-        </div>
         <div className="flex items-center justify-between">
-          <p className="text-sm text-stone-500">Token usage and cost tracking for your team.</p>
+          <div>
+            <h1 className="text-xl font-semibold text-stone-900 mb-1">Spend</h1>
+            <p className="text-sm text-stone-500">Token usage and cost tracking for your team.</p>
+          </div>
           <div className="flex items-center gap-2">
             <select
               value={currency}
