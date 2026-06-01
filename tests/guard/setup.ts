@@ -64,9 +64,10 @@ type RoleKey = keyof typeof TEST_USERS
 // ── Browser-based workspace setup ─────────────────────────────────────────
 
 /**
- * Signs in as admin in a real browser, then makes all Conduct API calls
- * from inside page.evaluate() using the live Clerk session.
- * No JWT extraction — the browser owns the session throughout.
+ * Signs in as admin via Clerk sign-in token (bypasses 2FA), captures the
+ * Bearer JWT from the first API request the Guard page makes, then uses
+ * that token in plain Node.js fetch calls to create the workspace and members.
+ * No page.evaluate() — avoids all TypeScript/esbuild browser injection issues.
  */
 async function setupWorkspaceViaBrowser(
   clerkIds: Record<RoleKey, string>
@@ -74,100 +75,97 @@ async function setupWorkspaceViaBrowser(
   const appUrl = (process.env.CONDUCT_APP_URL ?? "http://localhost:3000").replace(/\/$/, "")
   const apiUrl = (process.env.CONDUCT_API_URL ?? "http://localhost:8000").replace(/\/$/, "")
 
-  console.log("  [browser] opening browser, signing in as admin…")
+  console.log("  [browser] opening browser to capture auth token…")
   const browser = await chromium.launch({ headless: true })
   const context = await browser.newContext()
   const page = await context.newPage()
+  let capturedToken: string | null = null
 
   try {
-    // Use a Clerk sign-in token — bypasses password form AND 2FA entirely.
-    // Navigate the browser directly to the ticket URL; Clerk auto-signs in
-    // and redirects to the app with a live session.
-    const adminClerkId = clerkIds.admin
-    const { url: ticketUrl } = await createSignInToken(adminClerkId, `${appUrl}/guard`)
-    console.log("  [auth] navigating to Clerk sign-in ticket URL…")
+    // Intercept ALL outgoing requests and grab the first Bearer token we see
+    await page.route("**/*", async (route) => {
+      const auth = route.request().headers()["authorization"] ?? ""
+      if (auth.startsWith("Bearer ") && !capturedToken) {
+        capturedToken = auth.slice(7)
+        console.log("  [auth] Bearer token captured from network request")
+      }
+      await route.continue()
+    })
+
+    // Clerk sign-in token bypasses 2FA — navigate browser to the ticket URL
+    const { url: ticketUrl } = await createSignInToken(clerkIds.admin, `${appUrl}/guard`)
+    console.log("  [auth] navigating to Clerk ticket URL (bypasses 2FA)…")
     await page.goto(ticketUrl, { waitUntil: "networkidle" })
 
-    // Wait for Clerk session to hydrate after the auto sign-in
-    await page.waitForURL((url) => !url.pathname.includes("sign-in"), { timeout: 20000 })
-    await page.waitForTimeout(3000)
-
-    // All API calls happen inside page.evaluate() — Clerk session is live here
-    const result = await page.evaluate(
-      async ({ apiUrl, workspaceName, members }) => {
-        const win = window as typeof window & {
-          Clerk?: { session?: { getToken(): Promise<string | null> } }
-        }
-
-        // Arrow function — avoids esbuild __name helper injection into browser context
-        const authFetch = async (path: string, opts: RequestInit = {}) => {
-          const token = await win.Clerk?.session?.getToken()
-          if (!token) throw new Error("No Clerk session token available")
-          const res = await fetch(`${apiUrl}${path}`, {
-            ...opts,
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-              ...(opts.headers ?? {}),
-            },
-          })
-          const body = await res.json().catch(() => ({}))
-          if (!res.ok) throw new Error(`HTTP ${res.status} ${JSON.stringify(body)}`)
-          return body
-        }
-
-        // Get or create the Acme workspace
-        const projects = await authFetch("/projects")
-        let workspaceId: string | null = null
-        if (Array.isArray(projects)) {
-          const existing = projects.find((p: { name: string }) => p.name === workspaceName)
-          if (existing) workspaceId = existing.id
-        }
-        if (!workspaceId) {
-          const created = await authFetch("/projects", {
-            method: "POST",
-            body: JSON.stringify({ name: workspaceName }),
-          })
-          workspaceId = created.id
-        }
-
-        // Add each member with their role
-        const memberResults: string[] = []
-        for (const { clerkId, role } of members) {
-          try {
-            await authFetch(`/projects/${workspaceId}/members`, {
-              method: "POST",
-              body: JSON.stringify({ clerk_user_id: clerkId, role }),
-            })
-            memberResults.push(`ok:${role}`)
-          } catch (e) {
-            memberResults.push(`warn:${role}:${e instanceof Error ? e.message : String(e)}`)
-          }
-        }
-
-        return { workspaceId, memberResults }
-      },
-      {
-        apiUrl,
-        workspaceName: WORKSPACE_NAME,
-        members: [
-          { clerkId: clerkIds.dev1,     role: "editor" },
-          { clerkId: clerkIds.dev2,     role: "editor" },
-          { clerkId: clerkIds.security, role: "security" },
-          { clerkId: clerkIds.viewer,   role: "viewer" },
-        ],
-      }
-    )
-
-    for (const r of result.memberResults) {
-      if (r.startsWith("ok:")) console.log(`  [ok] added ${r.slice(3)}`)
-      else console.warn(`  [warn] ${r.slice(5)}`)
+    // Wait up to 15 s for the Guard page to make an authenticated API call
+    const deadline = Date.now() + 15_000
+    while (!capturedToken && Date.now() < deadline) {
+      await page.waitForTimeout(300)
     }
-
-    return result.workspaceId as string
+    if (!capturedToken) throw new Error(
+      "No Bearer token observed after sign-in. " +
+      "Check CONDUCT_APP_URL and that the Guard page makes API calls on load."
+    )
   } finally {
     await browser.close()
   }
+
+  // ── All remaining steps use plain Node.js fetch with the captured token ──
+
+  async function apiFetch(path: string, opts: RequestInit = {}): Promise<unknown> {
+    const res = await fetch(`${apiUrl}${path}`, {
+      ...opts,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${capturedToken}`,
+        ...(opts.headers ?? {}),
+      },
+    })
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(`HTTP ${res.status} on ${path}: ${JSON.stringify(body)}`)
+    return body
+  }
+
+  // Create or reuse the Acme workspace
+  console.log("\n3. Creating Acme workspace…")
+  const projects = await apiFetch("/projects") as Array<{ id: string; name: string }>
+  let workspaceId: string | null = null
+  if (Array.isArray(projects)) {
+    const existing = projects.find((p) => p.name === WORKSPACE_NAME)
+    if (existing) {
+      workspaceId = existing.id
+      console.log(`  [ok] reusing existing workspace: ${workspaceId}`)
+    }
+  }
+  if (!workspaceId) {
+    const created = await apiFetch("/projects", {
+      method: "POST",
+      body: JSON.stringify({ name: WORKSPACE_NAME }),
+    }) as { id: string }
+    workspaceId = created.id
+    console.log(`  [ok] created workspace: ${workspaceId}`)
+  }
+
+  // Add members
+  console.log("\n4. Assigning roles…")
+  for (const [key, clerkId, role] of [
+    ["dev1",     clerkIds.dev1,     "editor"],
+    ["dev2",     clerkIds.dev2,     "editor"],
+    ["security", clerkIds.security, "security"],
+    ["viewer",   clerkIds.viewer,   "viewer"],
+  ] as [string, string, string][]) {
+    try {
+      await apiFetch(`/projects/${workspaceId}/members`, {
+        method: "POST",
+        body: JSON.stringify({ clerk_user_id: clerkId, role }),
+      })
+      console.log(`  [ok] ${key} → ${role}`)
+    } catch (err) {
+      console.warn(`  [warn] ${key}: ${err instanceof Error ? err.message : err}`)
+    }
+  }
+
+  return workspaceId
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
