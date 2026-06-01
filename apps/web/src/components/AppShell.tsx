@@ -158,7 +158,15 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
       }
     }
     fetchOrgName()
-    return () => { cancelled = true }
+    function onOrgNameChange(e: Event) {
+      const { name } = (e as CustomEvent<{ name: string }>).detail
+      setOrgName(name)
+    }
+    window.addEventListener("conduct:org-name-changed", onOrgNameChange)
+    return () => {
+      cancelled = true
+      window.removeEventListener("conduct:org-name-changed", onOrgNameChange)
+    }
   }, [activeWorkspace?.id])
 
   // Guard install check
