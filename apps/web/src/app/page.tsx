@@ -114,10 +114,18 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
             <GitHubIcon />
             Star on GitHub
           </a>
+          <a
+            href="https://cal.com/conductai/demo"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm font-medium bg-violet-700 hover:bg-violet-800 text-white px-4 py-2 rounded-lg transition-colors"
+          >
+            Book a demo
+          </a>
           {isLoaded && (
             isSignedIn ? (
               <button
-                onClick={() => router.push("/dashboard")}
+                onClick={() => router.push("/guard")}
                 className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
               >
                 Open app →
@@ -137,18 +145,17 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
       <section className="flex-1 flex flex-col items-center justify-center px-6 pt-16 pb-24 text-center">
         <div className="inline-flex items-center gap-2 bg-stone-100 text-stone-600 text-xs font-medium px-3 py-1.5 rounded-full mb-8">
           <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-          Now in early access — sign in to try it free
+          Free during early access · No credit card · Enterprise-ready
         </div>
 
         <h1 className="text-5xl sm:text-6xl font-bold text-stone-900 leading-[1.1] tracking-tight max-w-3xl">
-          AI agents for the work<br />
-          <span className="text-indigo-600">around code.</span>
+          You have AI that writes code.<br />
+          <span className="text-indigo-600">Conduct handles the work around it.</span>
         </h1>
 
         <p className="mt-6 text-xl text-stone-500 max-w-2xl leading-relaxed">
-          Conduct turns tickets, PRs, alerts, and incidents into auditable AI agent workflows.
-          Install a playbook, connect your tools, and let agents triage, review, patch, and
-          notify with human approval before anything ships.
+          Conduct turns the surrounding work — tickets, PRs, alerts, incidents — into auditable AI agent workflows.
+          Install a playbook. Connect your tools. Human approval before anything ships.
         </p>
 
         <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
@@ -168,6 +175,14 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
               </SignInButton>
             ) : null
           )}
+          <a
+            href="https://cal.com/conductai/demo"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 border border-stone-200 hover:border-stone-300 text-stone-700 font-semibold px-7 py-3.5 rounded-xl text-sm transition-colors"
+          >
+            Book a demo →
+          </a>
           {isLoaded && !isSignedIn && clerkEnabled && (
             <p className="text-xs text-stone-400">No credit card · Connect your existing tools · Sign in with Google, GitHub, or Microsoft</p>
           )}
@@ -216,7 +231,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
               },
               {
                 icon: "🚀",
-                label: "Teams of 2–5",
+                label: "Teams of 2–10",
                 tag: "Early-stage",
                 desc: "Every engineer counts. Let agents pick up tickets, review PRs, and triage issues overnight.",
                 accent: "from-violet-50 to-indigo-50 border-violet-200",
@@ -224,17 +239,17 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
               },
               {
                 icon: "🔥",
-                label: "Teams of 5–10",
+                label: "Teams of 10–50",
                 tag: "Growing",
-                desc: "Drowning in issues and incident triage? Agents run 24/7 so your team can focus on features.",
+                desc: "Drowning in issues and incident triage? Agents run 24/7 so your team can focus on features. Guard enforces spend policy across the whole team.",
                 accent: "from-blue-50 to-sky-50 border-blue-200",
                 iconBg: "bg-blue-100 text-blue-600",
               },
               {
                 icon: "🏗️",
-                label: "Teams of 10–15",
-                tag: "Scaling",
-                desc: "Consistent process across the team without adding headcount. Every workflow audited and gated.",
+                label: "Teams of 50+",
+                tag: "Enterprise",
+                desc: "AI spend is a board-level concern. Guard gives your VP Eng and CFO visibility, policy control, and audit across every AI tool your team uses.",
                 accent: "from-emerald-50 to-teal-50 border-emerald-200",
                 iconBg: "bg-emerald-100 text-emerald-600",
               },
@@ -374,6 +389,16 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
           </div>
         </div>
       </section>
+
+      {/* Guard enterprise CTA strip */}
+      <div className="max-w-5xl mx-auto px-6 pb-10 -mt-6 text-center">
+        <p className="text-sm text-stone-500">
+          Engineering leadership?{" "}
+          <a href="/guard-landing" className="text-violet-700 font-semibold hover:underline">
+            See Guard&apos;s full governance story →
+          </a>
+        </p>
+      </div>
 
       {/* Templates */}
       <section className="px-6 py-20">
