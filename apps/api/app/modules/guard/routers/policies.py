@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_guard_org_id
+from app.core.auth import get_guard_org_id, get_guard_hook_auth
 from app.core.database import get_db
 from app.modules.guard.models import GuardPolicy, GuardTeam
 
@@ -295,9 +295,9 @@ def generate_policy(
 def sync_policies(
     team_id: str = Query(...),
     db: Session = Depends(get_db),
-    _org_id: str = Depends(get_guard_org_id),
+    _auth: str = Depends(get_guard_hook_auth),
 ):
-    """Return the current active ruleset for the hook binary."""
+    """Return the current active ruleset for the hook binary or MCP server."""
     team = _resolve_team(db, team_id)
     active_policies = (
         db.query(GuardPolicy)
