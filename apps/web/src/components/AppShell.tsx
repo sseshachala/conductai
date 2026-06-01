@@ -279,7 +279,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
   const activeProjectId = pathname.match(/\/projects\/([^/]+)/)?.[1]
 
   // Role-based visibility
-  const canSeeGuard = guardInstalled && (userRole === "admin" || userRole === "security")
+  const canSeeGuard = guardInstalled
   const canSeeProjects = userRole === "admin" || userRole === "editor" || userRole === "viewer"
   const canCreateProject = userRole === "admin" || userRole === "editor"
 
@@ -306,7 +306,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
           <NavItem href="/runs" icon="▶" label="Runs" collapsed={collapsed} pathname={pathname} />
           <NavItem href="/observability" icon="◉" label="Observability" collapsed={collapsed} pathname={pathname} />
 
-          {/* Guard section — admin and security only */}
+          {/* Guard section — all roles see Guard when it is installed */}
           {canSeeGuard && (
             <div className="pt-3">
               {!collapsed && (

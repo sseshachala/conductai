@@ -119,6 +119,8 @@ export default function DocsPage() {
             <li><a href="#guard-hook" className="hover:text-stone-900 transition-colors block py-0.5">PreToolUse hook</a></li>
             <li><a href="#guard-mcp" className="hover:text-stone-900 transition-colors block py-0.5">conductguard-mcp</a></li>
             <li><a href="#guard-spend" className="hover:text-stone-900 transition-colors block py-0.5">Spend controls</a></li>
+            <li><a href="#guard-roles" className="hover:text-stone-900 transition-colors block py-0.5">Roles & permissions</a></li>
+            <li><a href="#guard-onboarding" className="hover:text-stone-900 transition-colors block py-0.5">Team onboarding</a></li>
           </ul>
 
           <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mt-6 mb-3">Integrations</p>
@@ -1208,6 +1210,162 @@ conductguard-mcp \\
             <div className="mt-3 rounded-xl bg-stone-100 border border-stone-200 px-4 py-3 text-sm text-stone-700">
               The cache file lives at <Code>~/.guard/budget_cache.json</Code> and has a 5-minute TTL.
               Delete it to force an immediate re-check.
+            </div>
+          </section>
+
+          {/* ── Roles & Permissions ── */}
+          <section id="guard-roles">
+            <SectionHeading id="guard-roles">Roles & permissions</SectionHeading>
+            <p className="text-stone-500 text-sm mb-6 leading-relaxed">
+              Every workspace member is assigned one of four roles. Roles control what they can see and do across
+              Guard, playbooks, runs, and settings.
+            </p>
+
+            <SubHeading>Role definitions</SubHeading>
+            <div className="rounded-xl border border-stone-200 divide-y divide-stone-100 text-sm mb-8">
+              {[
+                {
+                  role: "Admin",
+                  color: "bg-purple-50 text-purple-700",
+                  desc: "Full access to everything: Guard, playbooks, runs, members, settings, and spend limits.",
+                },
+                {
+                  role: "Security",
+                  color: "bg-blue-50 text-blue-700",
+                  desc: "Full Guard access — view and create/edit policies. View-only spend and members. Full access to runs and playbooks.",
+                },
+                {
+                  role: "Editor",
+                  color: "bg-green-50 text-green-700",
+                  desc: "View-only Guard (no create/edit). Full access to runs, playbooks, canvas, and the audit log.",
+                },
+                {
+                  role: "Viewer",
+                  color: "bg-stone-100 text-stone-600",
+                  desc: "View-only across all of Guard. View-only runs and audit log. No execution rights.",
+                },
+              ].map(({ role, color, desc }) => (
+                <div key={role} className="flex items-start gap-4 px-4 py-3">
+                  <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0 mt-0.5 ${color}`}>{role}</span>
+                  <span className="text-xs text-stone-500 leading-relaxed">{desc}</span>
+                </div>
+              ))}
+            </div>
+
+            <SubHeading>Guard capability matrix</SubHeading>
+            <div className="rounded-xl border border-stone-200 overflow-hidden mb-4">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-stone-50 border-b border-stone-200">
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Capability</th>
+                    {["Admin", "Security", "Editor", "Viewer"].map(h => (
+                      <th key={h} className="text-center px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider w-20">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100 text-sm">
+                  {[
+                    ["View Guard dashboard",     true,  true,  true,  true ],
+                    ["View activity log",        true,  true,  true,  true ],
+                    ["View policies",            true,  true,  true,  true ],
+                    ["Create / edit policies",   true,  true,  false, false],
+                    ["View spend data",          true,  true,  true,  true ],
+                    ["Set spend limits",         true,  false, false, false],
+                    ["View members",             true,  true,  true,  true ],
+                    ["Invite / remove members",  true,  false, false, false],
+                    ["Configure settings",       true,  false, false, false],
+                    ["Run playbooks / canvas",   true,  true,  true,  false],
+                    ["View runs & audit log",    true,  true,  true,  true ],
+                  ].map(([label, admin, security, editor, viewer]) => (
+                    <tr key={label as string}>
+                      <td className="px-4 py-2.5 text-xs text-stone-700">{label as string}</td>
+                      {[admin, security, editor, viewer].map((allowed, i) => (
+                        <td key={i} className="px-4 py-2.5 text-center text-xs">
+                          {allowed
+                            ? <span className="text-green-600 font-bold">✓</span>
+                            : <span className="text-stone-300 font-medium">—</span>
+                          }
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* ── Team onboarding ── */}
+          <section id="guard-onboarding">
+            <SectionHeading id="guard-onboarding">Team onboarding</SectionHeading>
+            <p className="text-stone-500 text-sm mb-6 leading-relaxed">
+              End-to-end flow for getting a team onto Conduct with Guard enforced on every developer&apos;s machine.
+            </p>
+
+            <div className="space-y-0">
+              {[
+                {
+                  step: "1",
+                  title: "Sign in",
+                  body: "Admin signs in with Google or GitHub. Conduct seeds an \"Engineering\" workspace with Guard enabled and 18 starter policies.",
+                },
+                {
+                  step: "2",
+                  title: "Invite your team",
+                  body: "From Guard → Settings → Members, invite developers (Editor role), security advisors (Security role), and stakeholders (Viewer role). Each receives an email invite.",
+                },
+                {
+                  step: "3",
+                  title: "Team accepts invite",
+                  body: "Members click the invite link, sign in, and land on the Guard dashboard (or Conduct dashboard for editors and viewers).",
+                },
+                {
+                  step: "4",
+                  title: "Generate API keys",
+                  body: "Each member generates a personal API key from Settings → API Keys. The key is tied to their workspace and role.",
+                  code: null,
+                },
+                {
+                  step: "5",
+                  title: "Connect the CLI",
+                  body: "Authenticate the CLI with the API key.",
+                  code: "conduct login --api-key <key>",
+                },
+                {
+                  step: "6",
+                  title: "Install Guard hook",
+                  body: "Pull workspace policies and install the PreToolUse hook locally. This enforces policies on every AI tool call — Claude Code, Cursor, Windsurf, and more.",
+                  code: "conduct guard install",
+                },
+                {
+                  step: "7",
+                  title: "Guard enforces",
+                  body: "From this point, every AI tool call on the developer's machine is checked against the workspace policies in real time.",
+                },
+              ].map(({ step, title, body, code }) => (
+                <div key={step} className="flex gap-6 pb-8 relative">
+                  <div className="flex flex-col items-center">
+                    <div className="w-8 h-8 rounded-full bg-stone-900 text-white text-sm font-bold flex items-center justify-center shrink-0 z-10">
+                      {step}
+                    </div>
+                    {parseInt(step) < 7 && (
+                      <div className="w-px flex-1 bg-stone-200 mt-2" />
+                    )}
+                  </div>
+                  <div className="pt-1 pb-2 flex-1">
+                    <p className="font-semibold text-stone-900 mb-1">{title}</p>
+                    <p className="text-sm text-stone-600 leading-relaxed mb-2">{body}</p>
+                    {code && (
+                      <pre className="bg-stone-900 text-stone-100 rounded-lg px-4 py-3 text-xs font-mono mt-2 overflow-x-auto">{code}</pre>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-xl bg-stone-100 border border-stone-200 px-4 py-3 text-sm text-stone-700">
+              <strong>Walk-up onboarding:</strong> <Code>conduct guard join &lt;token&gt;</Code> is for developers who receive
+              a manager-shared link before they have an account. If you have already accepted an invite and generated an API key,
+              use <Code>conduct guard install</Code> instead.
             </div>
           </section>
 
