@@ -41,5 +41,12 @@ def setup_logging() -> None:
     root.setLevel(level)
 
     # Silence noisy third-party loggers
-    for noisy in ("uvicorn.access", "sqlalchemy.engine"):
+    for noisy in (
+        "uvicorn.access",
+        "sqlalchemy.engine",
+        "httpx",
+        "httpcore",
+        "urllib3",
+        "asyncio",
+    ):
         logging.getLogger(noisy).setLevel(logging.WARNING)
