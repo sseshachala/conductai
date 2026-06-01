@@ -1,6 +1,6 @@
 # conduct-cli
 
-Official CLI for [Conduct AI](https://conductai.ai) — install AI agents, manage projects, and run end-to-end tests from the terminal.
+Official CLI for [Conduct AI](https://conductai.ai) — install AI agents, manage projects, run end-to-end tests, and enforce team AI policies with ConductGuard.
 
 ## Install
 
@@ -76,6 +76,158 @@ conduct test --all
 ```
 
 Exit code is `0` if all pass, `1` if any fail — works in CI.
+
+---
+
+## ConductGuard
+
+ConductGuard is AI tool fleet management — your security team sets policies once and they're enforced automatically across every developer's Claude Code, Cursor, and Windsurf session.
+
+### How it works
+
+```
+Manager installs Guard (conductai.ai/settings/modules)
+    └─ generates an invite code
+
+Developer runs: conduct guard join <invite-code>
+    ├─ downloads team policy to ~/.conductguard/policy.json
+    ├─ writes PreToolUse hook → ~/.claude/settings.json
+    └─ registers conductguard-mcp → ~/.claude/settings.json (mcpServers)
+
+Every Claude Code tool call:
+    ├─ PreToolUse hook fires (hook.py) → checks policy → block / warn / audit
+    └─ Event posted async to ConductGuard API → visible in Activity feed
+```
+
+### Developer setup
+
+```bash
+# Get the invite code from your manager (Settings → Modules → ConductGuard)
+conduct guard join <invite-code>
+
+# Enter your email when prompted — you'll be connected immediately
+```
+
+That's it. Policy enforcement is active from the next tool call.
+
+### Guard commands
+
+| Command | Description |
+|---------|-------------|
+| `conduct guard join <code>` | Join a team, download policy, register hook + MCP |
+| `conduct guard sync` | Pull latest policy from server (run after security team updates rules) |
+| `conduct guard status` | Show today's spend, session count, and violations |
+| `conduct guard audit [--since 7d]` | Print recent guard events in a table |
+
+### How the PreToolUse hook works
+
+When you run `conduct guard join`, the CLI writes a Python script to `~/.conductguard/hook.py` and registers it as a `PreToolUse` hook in `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [{ "type": "command", "command": "python3 ~/.conductguard/hook.py" }]
+      }
+    ]
+  }
+}
+```
+
+Before every tool call, Claude Code runs the hook. The hook:
+
+1. Reads `tool_name` and `tool_input` from stdin (JSON)
+2. Loads `~/.conductguard/policy.json` (the team ruleset)
+3. Matches the call against each rule (`match_tool`, `match_pattern`, `match_path_pattern`)
+4. Takes the rule's action:
+   - `block` — prints the policy message, exits with code `2` (Claude Code aborts the tool call)
+   - `warn` — prints the message, exits `0` (tool call proceeds, developer is notified)
+   - `audit` — posts an event silently, exits `0`
+5. Posts an audit event to `POST /guard/events` asynchronously (fire-and-forget, never slows the tool call)
+
+### How conductguard-mcp works
+
+`conduct guard join` also registers an MCP server entry in `~/.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "conductguard": {
+      "command": "conductguard-mcp",
+      "args": ["--team", "<team-id>", "--token", "<member-token>"]
+    }
+  }
+}
+```
+
+Claude Code starts `conductguard-mcp` as a subprocess on launch and keeps it running. It communicates via JSON-RPC 2.0 over stdin/stdout (MCP stdio transport).
+
+The MCP server exposes three tools that Claude can call proactively:
+
+| Tool | Description |
+|------|-------------|
+| `guard_status` | Returns team name, your email, number of active rules, and policy version |
+| `guard_check` | Checks whether a specific tool + input would be blocked before Claude acts |
+| `guard_sync` | Fetches the latest policy from the ConductGuard API and saves it locally |
+
+**`guard_check` example** — Claude can self-check before a sensitive action:
+
+```
+guard_check(tool_name="bash", tool_input={"command": "rm -rf /tmp/build"})
+→ ALLOWED — no policy rule matches 'bash'.
+
+guard_check(tool_name="bash", tool_input={"command": "curl http://internal-api/secrets"})
+→ BLOCKED — External network calls to internal endpoints are not permitted. [rule: no-internal-curl]
+```
+
+**`guard_sync` example** — after your security team pushes new rules:
+
+```
+guard_sync()
+→ Policy synced — 12 rule(s) active (version: 2026-05-31T14:22:00Z).
+```
+
+### Policy file format
+
+Policy is stored at `~/.conductguard/policy.json` and synced from the server:
+
+```json
+{
+  "team_id": "uuid",
+  "version": "2026-05-31T14:22:00Z",
+  "rules": [
+    {
+      "rule_id": "no-rm-rf",
+      "match_tool": "bash",
+      "match_pattern": "rm\\s+-rf",
+      "match_path_pattern": null,
+      "action": "block",
+      "message": "Recursive deletes are not permitted. Use trash or targeted rm."
+    },
+    {
+      "rule_id": "audit-prod-writes",
+      "match_tool": "edit,write",
+      "match_path_pattern": "/prod/",
+      "match_pattern": null,
+      "action": "warn",
+      "message": "Writing to prod directory — make sure this is intentional."
+    }
+  ]
+}
+```
+
+### Keeping policy up to date
+
+Policy is written to disk at `join` time. Run `conduct guard sync` after your security team updates rules in the ConductGuard dashboard. The sync command also re-registers the MCP entry in any newly detected AI tool configs.
+
+```bash
+# Add to a daily cron or run manually after policy changes
+conduct guard sync
+```
+
+---
 
 ## Links
 
