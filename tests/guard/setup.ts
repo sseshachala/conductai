@@ -76,33 +76,44 @@ async function getConductBearerToken(email: string, password: string): Promise<s
     return process.env.CONDUCT_ADMIN_TOKEN
   }
 
-  const appUrl = process.env.CONDUCT_APP_URL ?? "http://localhost:3000"
+  const appUrl = (process.env.CONDUCT_APP_URL ?? "http://localhost:3000").replace(/\/$/, "")
+  const apiUrl = (process.env.CONDUCT_API_URL ?? "http://localhost:8000").replace(/\/$/, "")
   console.log("  [auth] opening browser to sign in as admin…")
 
   const { stagehand, page } = await createBrowser(true)
+  let capturedToken: string | null = null
+
   try {
-    await signInWithPassword(page, email, password, appUrl)
-
-    // Wait for Clerk to hydrate the session in the browser
-    await page.waitForTimeout(2000)
-
-    // Extract JWT from Clerk's client-side session object
-    const jwt = await page.evaluate(async () => {
-      const win = window as typeof window & {
-        Clerk?: { session?: { getToken: () => Promise<string> } }
+    // Intercept any request to the Conduct API and capture the Authorization header.
+    // This is more reliable than reading Clerk internals from the window object.
+    await page.route(`${apiUrl}/**`, async (route) => {
+      const headers = route.request().headers()
+      const auth = headers["authorization"] ?? headers["Authorization"]
+      if (auth?.startsWith("Bearer ") && !capturedToken) {
+        capturedToken = auth.slice(7)
+        console.log("  [auth] captured Bearer token from API request")
       }
-      return win.Clerk?.session?.getToken?.() ?? null
+      await route.continue()
     })
 
-    if (!jwt) {
+    // Sign in — the app will immediately make API calls with the JWT
+    await signInWithPassword(page, email, password, appUrl)
+
+    // Wait up to 10 s for the app to make an authenticated API call
+    const deadline = Date.now() + 10_000
+    while (!capturedToken && Date.now() < deadline) {
+      await page.waitForTimeout(300)
+    }
+
+    if (!capturedToken) {
       throw new Error(
-        "Could not extract Clerk session JWT from browser. " +
-        "Check that CONDUCT_APP_URL points to the running app and the admin credentials are correct."
+        "No authenticated API request observed after sign-in. " +
+        "Check CONDUCT_APP_URL and CONDUCT_API_URL are correct, and that the app " +
+        "makes API calls on load (it should hit /projects on the Guard dashboard)."
       )
     }
 
-    console.log("  [auth] obtained Bearer token via browser sign-in")
-    return jwt as string
+    return capturedToken
   } finally {
     await stagehand.close()
   }
