@@ -50,7 +50,7 @@ def list_workflows(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
     user_id: str = Depends(get_user_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
     project_id: str | None = None,
 ):
     # Resolve the correct workspace from the project when the active workspace cookie
@@ -437,7 +437,7 @@ def conflict_check(
     trigger_label: str = "",
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
 ):
     """
     Check for conflicts when installing a playbook on a repo.
@@ -596,7 +596,7 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
 
 
 @router.get("/{workflow_id}", response_model=WorkflowDetailOut)
-def get_workflow(workflow_id: UUID, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _role: str = Depends(require_workspace_role("admin", "editor", "viewer"))):
+def get_workflow(workflow_id: UUID, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer"))):
     workflow = db.query(Workflow).filter(
         Workflow.id == workflow_id,
         Workflow.workspace_id == workspace_id,
@@ -1036,7 +1036,7 @@ def validate_workflow(
     workflow_id: UUID,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
 ):
     """
     Pre-flight validation before starting a run.
@@ -1137,7 +1137,7 @@ def estimate_workflow_cost(
     issues: int = 1,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
 ):
     """
     Estimate token usage and cost for this workflow.
@@ -1393,7 +1393,7 @@ def get_workflow_yaml(
     workflow_id: UUID,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
 ):
     """
     Return the YAML source for the workflow's current version.
@@ -1434,7 +1434,7 @@ def get_workflow_yaml_filename(
     workflow_id: UUID,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
 ):
     """
     Return the canonical YAML filename + a suggested ``source_path`` for the

@@ -143,7 +143,7 @@ def list_submissions(
     status: str | None = Query(default=None, description="Filter by status: pending | promoted | needs_work"),
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
 ):
     """Return all playbook submission rows, optionally filtered by status."""
     if status and status not in _VALID_STATUSES:
@@ -162,7 +162,7 @@ def get_playbook_score(
     slug: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
 ):
     """Return the most recent eval score for a playbook slug. 404 if no row exists."""
     row = (
