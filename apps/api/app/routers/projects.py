@@ -393,8 +393,14 @@ def add_member(
         inviter_email = get_clerk_user_email(user_id)
 
         # Include Guard invite command if Guard is installed for this workspace
+        # Check both workspace_id FK (new teams) and conductai_org_id string (legacy teams)
         guard_row = db.execute(
-            text("SELECT invite_code FROM guard_teams WHERE conductai_org_id = :ws LIMIT 1"),
+            text("""
+                SELECT invite_code FROM guard_teams
+                WHERE conductai_org_id = :ws
+                   OR workspace_id::text = :ws
+                LIMIT 1
+            """),
             {"ws": workspace_id},
         ).fetchone()
         guard_invite_cmd = f"conduct guard join {guard_row.invite_code}" if guard_row else ""
