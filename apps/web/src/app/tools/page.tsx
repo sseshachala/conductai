@@ -7,6 +7,7 @@ export default function ToolsPage() {
       <main>
         <HeroSection />
         <ToolsSection />
+        <GuardTogetherSection />
         <FooterCTASection />
       </main>
       <PageFooter />
@@ -188,6 +189,101 @@ function ToolsSection() {
             </div>
           </div>
 
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── Guard + Tools Together ────────────────────────────────────────────── */
+
+function GuardTogetherSection() {
+  return (
+    <section className="bg-stone-900 px-6 py-20">
+      <div className="max-w-5xl mx-auto">
+        <div className="text-center mb-14">
+          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-3">Guard + tools together</p>
+          <h2 className="text-3xl font-bold text-white mb-4">
+            Ship AI at scale — without blowing<br />your budget or hitting rate limits.
+          </h2>
+          <p className="text-stone-400 text-sm max-w-2xl mx-auto leading-relaxed">
+            Guard gives your team lead one place to set the rules — how much any developer can spend,
+            which actions are off limits, which AI tools are approved. These tools make sure every
+            developer runs as efficiently as possible within those rules. The combination means your
+            team can run dozens of AI workflows a day without budget surprises or rate limit failures.
+          </p>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-5 mb-10">
+          {[
+            {
+              guard: "Guard sets a spend limit per developer per day",
+              tool: "Agent Booster cuts per-request cost by up to 15×",
+              outcome: "The same budget covers 10× more workflow runs — every developer stays inside the limit without thinking about it.",
+              color: "border-indigo-500",
+              toolColor: "text-indigo-300",
+            },
+            {
+              guard: "Guard blocks unapproved AI tools team-wide",
+              tool: "Workspace Starter makes approved tools the default for everyone",
+              outcome: "Developers get a ready-to-go setup that already matches Guard's approved tool list — zero friction, zero policy violations.",
+              color: "border-violet-500",
+              toolColor: "text-violet-300",
+            },
+            {
+              guard: "Guard logs every AI action across the whole team",
+              tool: "RTK shrinks what the AI reads — 60–90% fewer tokens per run",
+              outcome: "Fewer tokens means less to log, less rate limit pressure, and a cleaner audit trail — every run is faster and cheaper.",
+              color: "border-amber-500",
+              toolColor: "text-amber-300",
+            },
+            {
+              guard: "Guard pushes approved model tiers to every workflow",
+              tool: "Agent Booster routes each task to the cheapest model that works",
+              outcome: "Guard sets the ceiling. Agent Booster makes sure you never pay for a more expensive model than the task needs.",
+              color: "border-teal-500",
+              toolColor: "text-teal-300",
+            },
+          ].map(({ guard, tool, outcome, color, toolColor }) => (
+            <div key={guard} className={`rounded-2xl border ${color} bg-stone-800 p-6 flex flex-col gap-4`}>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-start gap-2">
+                  <span className="shrink-0 mt-0.5 w-4 h-4 rounded-full bg-red-900 border border-red-600 flex items-center justify-center">
+                    <span className="text-[8px] text-red-300 font-bold">G</span>
+                  </span>
+                  <p className="text-xs text-stone-300 leading-relaxed">{guard}</p>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="shrink-0 mt-0.5 w-4 h-4 rounded-full bg-stone-700 border border-stone-500 flex items-center justify-center">
+                    <span className="text-[8px] text-stone-300 font-bold">T</span>
+                  </span>
+                  <p className={`text-xs leading-relaxed ${toolColor}`}>{tool}</p>
+                </div>
+              </div>
+              <div className="border-t border-stone-700 pt-4">
+                <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-1.5">Result</p>
+                <p className="text-sm text-white leading-relaxed">{outcome}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="rounded-2xl border border-stone-600 bg-stone-800 px-8 py-6 flex flex-col sm:flex-row items-center gap-6 text-center sm:text-left">
+          <div className="flex-1">
+            <p className="text-white font-semibold mb-1">Ready to set this up for your team?</p>
+            <p className="text-stone-400 text-sm">
+              Start with Guard in Conduct — set your team&apos;s policies in minutes.
+              Then give your developers these tools and they&apos;ll stay under budget automatically.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 shrink-0">
+            <a href="/dashboard" className="inline-flex items-center gap-2 rounded-xl bg-white text-stone-900 px-5 py-2.5 text-sm font-semibold hover:bg-stone-100 transition-colors">
+              Set up Guard →
+            </a>
+            <a href="/tools/agent-booster" className="inline-flex items-center gap-2 rounded-xl border border-stone-600 text-stone-300 px-5 py-2.5 text-sm font-semibold hover:border-stone-400 hover:text-white transition-colors">
+              Agent Booster docs →
+            </a>
+          </div>
         </div>
       </div>
     </section>
