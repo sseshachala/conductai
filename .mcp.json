@@ -4,7 +4,10 @@
       "command": "booster",
       "args": [
         "serve"
-      ]
+      ],
+      "env": {
+        "BOOSTER_SECRET": "839cc71c787b5e29ecbaaa99693841582fa945df1cbcbae4120a2462a08f13be"
+      }
     }
   }
 }
