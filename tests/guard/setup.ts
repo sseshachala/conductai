@@ -62,58 +62,100 @@ const WORKSPACE_NAME = "Acme"
 
 type RoleKey = keyof typeof TEST_USERS
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+// ── Browser-based workspace setup ─────────────────────────────────────────
 
 /**
- * Signs into the Conduct app as admin via a real browser (Stagehand/Chromium).
- * Clerk handles all cookie state inside the browser — no manual token needed.
- * Extracts the Clerk session JWT from the browser's window.__clerk_session.
- *
- * Falls back to CONDUCT_ADMIN_TOKEN env var if set (useful in CI).
+ * Signs in as admin in a real browser, then makes all Conduct API calls
+ * from inside page.evaluate() using the live Clerk session.
+ * No JWT extraction — the browser owns the session throughout.
  */
-async function getConductBearerToken(email: string, password: string): Promise<string> {
-  if (process.env.CONDUCT_ADMIN_TOKEN) {
-    return process.env.CONDUCT_ADMIN_TOKEN
-  }
-
+async function setupWorkspaceViaBrowser(
+  clerkIds: Record<RoleKey, string>
+): Promise<string> {
   const appUrl = (process.env.CONDUCT_APP_URL ?? "http://localhost:3000").replace(/\/$/, "")
   const apiUrl = (process.env.CONDUCT_API_URL ?? "http://localhost:8000").replace(/\/$/, "")
-  console.log("  [auth] opening browser to sign in as admin…")
 
+  console.log("  [browser] opening browser, signing in as admin…")
   const { stagehand, page } = await createBrowser(true)
-  let capturedToken: string | null = null
 
   try {
-    // Intercept any request to the Conduct API and capture the Authorization header.
-    // This is more reliable than reading Clerk internals from the window object.
-    await page.route(`${apiUrl}/**`, async (route) => {
-      const headers = route.request().headers()
-      const auth = headers["authorization"] ?? headers["Authorization"]
-      if (auth?.startsWith("Bearer ") && !capturedToken) {
-        capturedToken = auth.slice(7)
-        console.log("  [auth] captured Bearer token from API request")
+    await signInWithPassword(page, TEST_USERS.admin.email, TEST_USERS.admin.password, appUrl)
+
+    // Wait for Clerk to fully hydrate (session + token ready)
+    await page.waitForTimeout(3000)
+
+    // All API calls happen inside page.evaluate() — Clerk session is live here
+    const result = await page.evaluate(
+      async ({ apiUrl, workspaceName, members }) => {
+        const win = window as typeof window & {
+          Clerk?: { session?: { getToken(): Promise<string | null> } }
+        }
+
+        async function authFetch(path: string, opts: RequestInit = {}) {
+          const token = await win.Clerk?.session?.getToken()
+          if (!token) throw new Error("No Clerk session token available")
+          const res = await fetch(`${apiUrl}${path}`, {
+            ...opts,
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+              ...(opts.headers ?? {}),
+            },
+          })
+          const body = await res.json().catch(() => ({}))
+          if (!res.ok) throw new Error(`HTTP ${res.status} ${JSON.stringify(body)}`)
+          return body
+        }
+
+        // Get or create the Acme workspace
+        const projects = await authFetch("/projects")
+        let workspaceId: string | null = null
+        if (Array.isArray(projects)) {
+          const existing = projects.find((p: { name: string }) => p.name === workspaceName)
+          if (existing) workspaceId = existing.id
+        }
+        if (!workspaceId) {
+          const created = await authFetch("/projects", {
+            method: "POST",
+            body: JSON.stringify({ name: workspaceName }),
+          })
+          workspaceId = created.id
+        }
+
+        // Add each member with their role
+        const memberResults: string[] = []
+        for (const { clerkId, role } of members) {
+          try {
+            await authFetch(`/projects/${workspaceId}/members`, {
+              method: "POST",
+              body: JSON.stringify({ clerk_user_id: clerkId, role }),
+            })
+            memberResults.push(`ok:${role}`)
+          } catch (e) {
+            memberResults.push(`warn:${role}:${e instanceof Error ? e.message : String(e)}`)
+          }
+        }
+
+        return { workspaceId, memberResults }
+      },
+      {
+        apiUrl,
+        workspaceName: WORKSPACE_NAME,
+        members: [
+          { clerkId: clerkIds.dev1,     role: "editor" },
+          { clerkId: clerkIds.dev2,     role: "editor" },
+          { clerkId: clerkIds.security, role: "security" },
+          { clerkId: clerkIds.viewer,   role: "viewer" },
+        ],
       }
-      await route.continue()
-    })
+    )
 
-    // Sign in — the app will immediately make API calls with the JWT
-    await signInWithPassword(page, email, password, appUrl)
-
-    // Wait up to 10 s for the app to make an authenticated API call
-    const deadline = Date.now() + 10_000
-    while (!capturedToken && Date.now() < deadline) {
-      await page.waitForTimeout(300)
+    for (const r of result.memberResults) {
+      if (r.startsWith("ok:")) console.log(`  [ok] added ${r.slice(3)}`)
+      else console.warn(`  [warn] ${r.slice(5)}`)
     }
 
-    if (!capturedToken) {
-      throw new Error(
-        "No authenticated API request observed after sign-in. " +
-        "Check CONDUCT_APP_URL and CONDUCT_API_URL are correct, and that the app " +
-        "makes API calls on load (it should hit /projects on the Guard dashboard)."
-      )
-    }
-
-    return capturedToken
+    return result.workspaceId as string
   } finally {
     await stagehand.close()
   }
@@ -132,42 +174,15 @@ async function main() {
     clerkIds[role] = await upsertClerkUser(creds.email, creds.password)
   }
 
-  // Step 2: Obtain an admin Bearer token via browser sign-in
-  console.log("\n2. Obtaining admin Bearer token via browser sign-in…")
-  let adminToken: string
-
+  // Steps 2-4: Sign in as admin in browser, create workspace, assign roles
+  console.log("\n2. Signing in as admin + creating Acme workspace + assigning roles…")
+  let workspaceId: string
   try {
-    adminToken = await getConductBearerToken(TEST_USERS.admin.email, TEST_USERS.admin.password)
+    workspaceId = await setupWorkspaceViaBrowser(clerkIds)
+    console.log(`  [ok] workspace ready: ${workspaceId}`)
   } catch (err) {
-    console.error("  [auth] ERROR:", err instanceof Error ? err.message : err)
-    console.error(
-      "\n  Hint: Set CONDUCT_ADMIN_TOKEN=<jwt> to skip browser sign-in.\n" +
-        "  Get the JWT from browser DevTools → Network → any /projects call → Authorization header.\n"
-    )
+    console.error("  ERROR:", err instanceof Error ? err.message : err)
     process.exit(1)
-  }
-
-  // Step 3: Create or reuse the Acme workspace
-  console.log("\n3. Creating Acme workspace…")
-  const workspaceId = await getOrCreateTestWorkspace(adminToken, WORKSPACE_NAME)
-
-  // Step 4: Add members with their roles
-  console.log("\n4. Assigning roles in workspace…")
-
-  const nonAdminUsers: [Exclude<RoleKey, "admin">, string, string][] = [
-    ["dev1",     clerkIds.dev1,     "editor"],
-    ["dev2",     clerkIds.dev2,     "editor"],
-    ["security", clerkIds.security, "security"],
-    ["viewer",   clerkIds.viewer,   "viewer"],
-  ]
-
-  for (const [key, clerkId, role] of nonAdminUsers) {
-    try {
-      await addMemberWithRole(adminToken, workspaceId, clerkId, role as "editor" | "security" | "viewer")
-      console.log(`  [ok] ${key} added as ${role}`)
-    } catch (err) {
-      console.warn(`  [warn] Could not add ${key}: ${err instanceof Error ? err.message : err}`)
-    }
   }
 
   // Step 5: Write test-state.json
@@ -210,7 +225,7 @@ async function main() {
   }
 
   writeFileSync("test-state.json", JSON.stringify(state, null, 2), "utf8")
-  console.log("\n5. Wrote test-state.json")
+  console.log("\n3. Wrote test-state.json")
   console.log("\n=== Setup complete. Run: npm test ===\n")
 }
 
