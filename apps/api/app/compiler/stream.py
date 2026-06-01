@@ -77,6 +77,6 @@ def stream_compile_block(block: dict[str, Any]) -> Generator[str, None, None]:
         yield "data: [DONE]\n\n"
 
     except Exception as e:
-        log.error("Stream compile error: %s", e)
+        log.error("compiler.stream_error", error=str(e))
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
         yield "data: [DONE]\n\n"

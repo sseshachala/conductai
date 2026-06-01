@@ -48,6 +48,12 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         </div>
         <div className="flex items-center gap-4">
           <a
+            href="/guard"
+            className="flex items-center gap-1.5 text-sm font-medium text-violet-700 hover:text-violet-900 transition-colors font-semibold"
+          >
+            Guard
+          </a>
+          <a
             href="/marketplace"
             className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
           >
@@ -278,6 +284,93 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
             <div className="flex items-center gap-2 text-stone-300"><span className="text-emerald-400">✓</span> Pauses for human approval</div>
             <div className="flex items-center gap-2 text-stone-300"><span className="text-emerald-400">✓</span> Full audit trail, every run</div>
             <div className="flex items-center gap-2 text-stone-300"><span className="text-emerald-400">✓</span> Team policies enforced via Guard</div>
+          </div>
+        </div>
+      </section>
+
+      {/* ConductGuard */}
+      <section className="px-6 py-20 bg-gradient-to-b from-white to-stone-50">
+        <div className="max-w-5xl mx-auto">
+          <div className="flex items-center justify-center gap-2 mb-4">
+            <span className="inline-flex items-center gap-1.5 bg-violet-100 text-violet-700 text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wider">
+              <span className="w-1.5 h-1.5 rounded-full bg-violet-500 inline-block" />
+              ConductGuard
+            </span>
+          </div>
+          <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
+            AI spend control for the whole team.
+          </h2>
+          <p className="text-center text-stone-500 text-sm max-w-xl mx-auto mb-12">
+            Every developer. Every AI tool. One policy. Guard enforces spend caps, blocks dangerous actions, and logs every AI call — before it reaches the model.
+          </p>
+
+          {/* 3-step flow */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-12">
+            {[
+              {
+                step: "1",
+                icon: "🛡️",
+                title: "Set team policy",
+                body: "Define spend caps per developer, block destructive commands, and approve which tools each role can use. One config, applied everywhere.",
+              },
+              {
+                step: "2",
+                icon: "⚡",
+                title: "Devs join in one command",
+                body: "conduct guard join installs the PreToolUse hook on each developer's machine. No IT ticket. Done in 30 seconds.",
+                code: "conduct guard join",
+              },
+              {
+                step: "3",
+                icon: "🔌",
+                title: "MCP plugs into their editor",
+                body: "conductguard-mcp connects Guard to Claude Code, Cursor, Windsurf, and any MCP-compatible AI coding tool automatically.",
+              },
+            ].map(s => (
+              <div key={s.step} className="bg-white rounded-2xl border border-stone-200 p-6 flex flex-col gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="w-7 h-7 rounded-full bg-violet-100 text-violet-700 text-xs font-bold flex items-center justify-center shrink-0">{s.step}</span>
+                  <span className="text-xl">{s.icon}</span>
+                </div>
+                <p className="font-semibold text-stone-900">{s.title}</p>
+                <p className="text-sm text-stone-500 leading-relaxed">{s.body}</p>
+                {s.code && (
+                  <code className="text-xs bg-stone-900 text-emerald-400 px-3 py-2 rounded-lg font-mono mt-auto">{s.code}</code>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Stat cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
+            {[
+              { label: "Spend visibility", value: "Per developer", sub: "Tokens + cost per dev, per tool, per day" },
+              { label: "Policy enforcement", value: "BLOCK / WARN / AUDIT", sub: "Three modes — from hard stop to silent log" },
+              { label: "Audit trail", value: "Every AI call", sub: "Linked to the run that triggered it" },
+            ].map(c => (
+              <div key={c.label} className="rounded-2xl border border-violet-100 bg-violet-50 px-6 py-5">
+                <p className="text-[10px] font-semibold text-violet-400 uppercase tracking-widest mb-1">{c.label}</p>
+                <p className="text-lg font-bold text-violet-900 mb-1">{c.value}</p>
+                <p className="text-xs text-violet-600 leading-relaxed">{c.sub}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Works with row */}
+          <p className="text-center text-xs text-stone-400 font-medium mb-4 uppercase tracking-widest">Works with</p>
+          <div className="flex flex-wrap items-center justify-center gap-3 mb-10">
+            {["Claude Code", "Cursor", "Windsurf", "Aider", "Cline"].map(tool => (
+              <span key={tool} className="text-xs font-medium text-stone-600 bg-white border border-stone-200 px-3 py-1.5 rounded-full">{tool}</span>
+            ))}
+          </div>
+
+          <div className="text-center">
+            <a
+              href="/guard"
+              className="inline-flex items-center gap-2 bg-violet-700 hover:bg-violet-800 text-white font-semibold px-7 py-3.5 rounded-xl text-sm transition-colors shadow-sm"
+            >
+              Set up Guard for your team →
+            </a>
           </div>
         </div>
       </section>

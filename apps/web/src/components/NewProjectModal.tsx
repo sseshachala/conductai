@@ -28,11 +28,16 @@ export default function NewProjectModal({ getToken, onClose, onCreate }: Props) 
         headers,
         body: JSON.stringify({ name: name.trim() }),
       })
-      if (!res.ok) throw new Error("Failed")
+      if (!res.ok) {
+        let msg = "Failed to create project — please try again."
+        try { const b = await res.json(); if (b.detail) msg = b.detail } catch {}
+        setError(msg)
+        return
+      }
       const project = await res.json()
       onCreate(project.id)
     } catch {
-      setError("Failed to create project — please try again")
+      setError("Failed to create project — please try again.")
     } finally {
       setSaving(false)
     }

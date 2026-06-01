@@ -236,7 +236,7 @@ def remote_dispatch(tool_name: str, tool_input: dict, host_config: dict) -> str:
     try:
         client = _open_client(host_config)
     except Exception as e:
-        log.warning("Remote dispatch failed to connect: %s", e)
+        log.warning("remote_sandbox.connect_failed", error=str(e))
         return f"Error connecting to remote host: {e}"
 
     try:

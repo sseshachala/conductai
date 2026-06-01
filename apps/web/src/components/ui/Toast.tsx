@@ -2,7 +2,7 @@
 
 import { useEffect } from "react"
 
-export type ToastType = "error" | "success" | "info"
+export type ToastType = "error" | "success" | "info" | "warning"
 
 export interface ToastData {
   message: string
@@ -17,12 +17,14 @@ const TYPE_STYLES: Record<ToastType, string> = {
   error:   "bg-red-50   border-red-200   text-red-800",
   success: "bg-emerald-50 border-emerald-200 text-emerald-800",
   info:    "bg-stone-50  border-stone-200  text-stone-700",
+  warning: "bg-amber-50  border-amber-200  text-amber-800",
 }
 
 const TYPE_ICONS: Record<ToastType, string> = {
   error:   "✕",
   success: "✓",
   info:    "ℹ",
+  warning: "⚠",
 }
 
 export default function Toast({ message, type = "error", onDismiss }: ToastProps) {

@@ -4,10 +4,13 @@ from typing import Annotated
 from uuid import UUID
 
 import redis
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+
+log = structlog.get_logger(__name__)
 
 
 def _now() -> datetime:
@@ -244,16 +247,13 @@ def create_run(
     try:
         _redis().rpush(QUEUE_KEY, str(run.id))
     except Exception as _enqueue_err:
-        import logging as _logging
-        _logging.getLogger(__name__).error(
-            "create_run.redis_enqueue_failed run_id=%s err=%s — run is pending but not queued",
-            run.id, _enqueue_err,
-        )
+        log.error("run.enqueue_failed", run_id=str(run.id), error=str(_enqueue_err))
         raise HTTPException(
             status_code=503,
             detail="Run created but queue is unavailable. Retry in a moment.",
         )
 
+    log.info("run.created", run_id=str(run.id), workspace_id=workspace_id, workflow_id=str(workflow_id))
     audit(db, workspace_id, "run.triggered",
           resource_type="run", resource_id=str(run.id),
           metadata={"workflow_id": str(workflow_id), "dry_run": body.dry_run})
@@ -277,6 +277,7 @@ def get_run(
         .first()
     )
     if not run:
+        log.warning("run.not_found", run_id=str(run_id), workflow_id=str(workflow_id))
         raise HTTPException(status_code=404, detail="Run not found")
 
     # Verify caller has access to the run's actual workspace (not cookie workspace).
@@ -464,6 +465,7 @@ def cancel_run(
     run.completed_at = _now()
     db.add(RunEvent(run_id=run_id, block_id=None, kind="run_cancelled", payload={"reason": "user_cancelled"}))
     db.commit()
+    log.info("run.cancelled", run_id=str(run_id), workspace_id=workspace_id)
     return {"run_id": str(run_id), "status": "cancelled"}
 
 
@@ -532,14 +534,11 @@ def approve_run(
 
     try:
         _redis().rpush(QUEUE_KEY, str(run_id))
-    except Exception:
-        import logging as _logging
-        _logging.getLogger(__name__).error(
-            "approve_run.redis_enqueue_failed run_id=%s — run is pending in DB but not queued",
-            run_id,
-        )
+    except Exception as _enqueue_err:
+        log.error("run.approve_enqueue_failed", run_id=str(run_id), error=str(_enqueue_err))
         raise HTTPException(status_code=503, detail="Approval recorded but queue unavailable — retry shortly")
 
+    log.info("run.approved", run_id=str(run_id), workspace_id=workspace_id, approved_by=body.approver, decision=body.decision)
     return {"run_id": str(run_id), "decision": body.decision, "status": "queued"}
 
 
@@ -622,6 +621,7 @@ def get_workspace_run(
         .first()
     )
     if not row:
+        log.warning("run.not_found", run_id=str(run_id), workspace_id=workspace_id)
         raise HTTPException(status_code=404, detail="Run not found")
     run, wf_id, wf_name, proj_id, proj_name = row
     return RunWithWorkflowOut(

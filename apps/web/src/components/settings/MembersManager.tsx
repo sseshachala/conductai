@@ -359,6 +359,7 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
                         >
                           <option value="admin">Admin</option>
                           <option value="editor">Editor</option>
+                          <option value="security">Security</option>
                           <option value="viewer">Viewer</option>
                         </select>
                         {m.clerk_user_id !== currentClerkId && (

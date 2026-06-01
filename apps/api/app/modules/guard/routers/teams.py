@@ -127,7 +127,7 @@ def _lookup_team(db: Session, lookup_id: str, fallback_org_id: str | None = None
             if team:
                 return team
         except Exception as e:
-            log.warning("guard_lookup workspace_id query failed: %s\n%s", e, traceback.format_exc())
+            log.warning("guard_lookup.workspace_id_query_failed", lookup_id=lookup_id, error=str(e))
             db.rollback()
 
     # 2. Try conductai_org_id string match
@@ -137,10 +137,10 @@ def _lookup_team(db: Session, lookup_id: str, fallback_org_id: str | None = None
             if team:
                 return team
         except Exception as e:
-            log.warning("guard_lookup conductai_org_id query failed: %s\n%s", e, traceback.format_exc())
+            log.warning("guard_lookup.conductai_org_id_query_failed", candidate=candidate, error=str(e))
             db.rollback()
 
-    log.warning("guard_lookup found nothing: lookup_id=%s fallback=%s", lookup_id, fallback_org_id)
+    log.warning("guard_lookup.not_found", lookup_id=lookup_id, fallback_org_id=fallback_org_id)
     return None
 
 

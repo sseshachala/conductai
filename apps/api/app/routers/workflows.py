@@ -257,7 +257,7 @@ def _register_github_webhook(token: str, repo: str, webhook_url: str, events: li
         )
         if r.status_code == 201:
             return str(r.json()["id"]), None
-        log.warning("GitHub webhook registration failed: %s %s", r.status_code, r.text[:300])
+        log.warning("github_webhook.registration_failed", status_code=r.status_code, response=r.text[:300])
         if r.status_code == 403:
             err = "GitHub rejected the request — your token needs the Administration (read & write) permission. Update your GitHub token in Settings → Environments, then click Register again."
         elif r.status_code == 404:
@@ -268,7 +268,7 @@ def _register_github_webhook(token: str, repo: str, webhook_url: str, events: li
             err = f"GitHub returned an unexpected error (HTTP {r.status_code}). Check your token permissions in Settings → Environments."
         return None, err
     except Exception as e:
-        log.warning("GitHub webhook registration exception: %s", e)
+        log.warning("github_webhook.registration_exception", error=str(e))
         return None, str(e)
 
 
@@ -297,10 +297,10 @@ def _register_gitlab_webhook(token: str, repo: str, webhook_url: str, events: li
         if r.status_code == 201:
             return str(r.json()["id"]), None
         err = f"GitLab returned {r.status_code}: {r.text[:300]}"
-        log.warning("GitLab webhook registration failed: %s", err)
+        log.warning("gitlab_webhook.registration_failed", error=err)
         return None, err
     except Exception as e:
-        log.warning("GitLab webhook registration exception: %s", e)
+        log.warning("gitlab_webhook.registration_exception", error=str(e))
         return None, str(e)
 
 
@@ -333,10 +333,10 @@ def _register_bitbucket_webhook(token: str, repo: str, webhook_url: str, events:
         if r.status_code == 201:
             return str(r.json()["uuid"]), None
         err = f"Bitbucket returned {r.status_code}: {r.text[:300]}"
-        log.warning("Bitbucket webhook registration failed: %s", err)
+        log.warning("bitbucket_webhook.registration_failed", error=err)
         return None, err
     except Exception as e:
-        log.warning("Bitbucket webhook registration exception: %s", e)
+        log.warning("bitbucket_webhook.registration_exception", error=str(e))
         return None, str(e)
 
 
@@ -359,7 +359,7 @@ def _deregister_git_webhook(token: str, repo: str, hook_id: str, provider: str =
                 timeout=10,
             )
     except Exception as e:
-        log.warning("Webhook deregistration failed (%s): %s", provider, e)
+        log.warning("webhook.deregistration_failed", provider=provider, error=str(e))
 
 
 def _deregister_github_webhook(token: str, repo: str, hook_id: str) -> None:
@@ -701,7 +701,7 @@ def delete_workflow(
             else:
                 log.info("webhook.delete_skipped_shared", workflow_id=str(workflow_id), siblings=siblings)
         except Exception as e:
-            log.warning("Webhook deregistration skipped: %s", e)
+            log.warning("webhook.deregistration_skipped", workflow_id=str(workflow_id), error=str(e))
 
     from sqlalchemy import text
     db.execute(text("""
@@ -784,7 +784,7 @@ def register_workflow_webhook(
         try:
             _deregister_git_webhook(token, repo, workflow.github_hook_id, provider=provider)
         except Exception as e:
-            log.warning("Stale webhook deregistration skipped: %s", e)
+            log.warning("webhook.stale_deregistration_skipped", workflow_id=str(workflow_id), error=str(e))
         workflow.github_hook_id = None
         db.commit()
 
@@ -864,7 +864,7 @@ def deregister_workflow_webhook(
         else:
             log.info("webhook.deregister_skipped_shared", workflow_id=str(workflow_id), siblings=siblings)
     except Exception as e:
-        log.warning("Webhook deregistration error: %s", e)
+        log.warning("webhook.deregistration_error", workflow_id=str(workflow_id), error=str(e))
 
     workflow.github_hook_id = None
     db.commit()
