@@ -99,7 +99,8 @@ async function setupWorkspaceViaBrowser(
           Clerk?: { session?: { getToken(): Promise<string | null> } }
         }
 
-        async function authFetch(path: string, opts: RequestInit = {}) {
+        // Arrow function — avoids esbuild __name helper injection into browser context
+        const authFetch = async (path: string, opts: RequestInit = {}) => {
           const token = await win.Clerk?.session?.getToken()
           if (!token) throw new Error("No Clerk session token available")
           const res = await fetch(`${apiUrl}${path}`, {
