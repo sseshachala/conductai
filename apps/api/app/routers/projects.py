@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_user_id, get_workspace_id, require_workspace_role, get_user_workspace_role, get_clerk_user_email, get_clerk_user_info
+from app.core.auth import get_user_id, get_workspace_id, require_workspace_role, get_user_workspace_role, get_clerk_user_email, get_clerk_user_info, find_clerk_user_id_by_email
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.email import send_template_email, _ROLE_DESCRIPTIONS, APP_URL
@@ -70,6 +70,7 @@ class InviteOut(BaseModel):
     role: str
     invited_by: str | None
     created_at: datetime
+    email_sent: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -358,6 +359,17 @@ def add_member(
     # Email invite path — store as pending invite
     if body.email:
         email = body.email.strip().lower()
+
+        # Check if this email already belongs to an existing workspace member
+        existing_clerk_id = find_clerk_user_id_by_email(email)
+        if existing_clerk_id:
+            existing_member = db.execute(text("""
+                SELECT clerk_user_id FROM workspace_users
+                WHERE workspace_id = :ws AND clerk_user_id = :uid
+            """), {"ws": workspace_id, "uid": existing_clerk_id}).fetchone()
+            if existing_member:
+                raise HTTPException(status_code=409, detail="This person is already a member of the workspace")
+
         existing_invite = db.execute(text("""
             SELECT id FROM workspace_invites
             WHERE workspace_id = :ws AND invited_email = :email AND accepted_at IS NULL
@@ -384,7 +396,7 @@ def add_member(
         ).fetchone()
         guard_invite_cmd = f"conduct guard join {guard_row.invite_code}" if guard_row else ""
 
-        send_template_email(
+        email_sent = send_template_email(
             slug="workspace_invite",
             to=email,
             context={
@@ -398,9 +410,11 @@ def add_member(
             workspace_id=workspace_id,
             db=db,
         )
+        if not email_sent:
+            log.warning("Invite created but email not sent to %s — no email credential configured", email)
 
         return InviteOut(id=str(invite_id), invited_email=email, role=body.role,
-                         invited_by=user_id, created_at=now)
+                         invited_by=user_id, created_at=now, email_sent=email_sent)
 
     # Direct add path — clerk_user_id must be provided
     if not body.clerk_user_id:
