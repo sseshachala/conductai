@@ -112,15 +112,13 @@ async function getConductBearerToken(clerkUserId: string): Promise<string> {
   // Create a short-lived sign-in token via Management API
   const signInToken = await createSignInToken(clerkUserId)
 
-  // Redeem the sign-in token using the Clerk Frontend API
-  const redeemRes = await fetch(
-    `${clerkFrontendUrl}/v1/client/sign_ins?__clerk_ticket=${signInToken}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ strategy: "ticket", ticket: signInToken }).toString(),
-    }
-  )
+  // Redeem the sign-in token using the Clerk Frontend API.
+  // The ticket must only be in the request body — NOT as a query param.
+  const redeemRes = await fetch(`${clerkFrontendUrl}/v1/client/sign_ins`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ strategy: "ticket", ticket: signInToken }).toString(),
+  })
 
   if (!redeemRes.ok) {
     const body = await redeemRes.text()
