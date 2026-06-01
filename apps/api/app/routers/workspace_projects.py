@@ -64,7 +64,7 @@ def list_projects(
     workspace_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
     active_workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
     db: Session = Depends(get_db),
 ):
     _enforce_workspace(workspace_id, active_workspace_id)
@@ -264,7 +264,7 @@ class PreferencesUpdate(BaseModel):
 def get_preferences(
     workspace_id: str,
     active_workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
     db: Session = Depends(get_db),
 ):
     _enforce_workspace(workspace_id, active_workspace_id)

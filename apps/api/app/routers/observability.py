@@ -81,7 +81,7 @@ class AgentStatus(BaseModel):
 def get_summary(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
 ):
     cutoff_24h = _now() - timedelta(hours=24)
     stale_cutoff = _stale_cutoff()
@@ -146,7 +146,7 @@ def get_summary(
 def get_agents(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
 ):
     cutoff_24h = _now() - timedelta(hours=24)
     stale_cutoff = _stale_cutoff()
@@ -382,7 +382,7 @@ def _build_summary_payload(workspace_id: str) -> str:
 async def stream_summary(
     request: Request,
     workspace_id: str = Depends(get_workspace_id_sse),
-    _role: str = Depends(require_workspace_role_sse("admin", "editor", "viewer")),
+    _role: str = Depends(require_workspace_role_sse("admin", "editor", "security", "viewer")),
 ):
     """SSE endpoint — pushes a fresh summary snapshot every 10 seconds."""
     PUSH_INTERVAL = 10  # seconds
@@ -427,7 +427,7 @@ class AlertResponse(BaseModel):
 def list_alerts(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
     event_type: str | None = Query(default=None, description="Filter by event_type"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
