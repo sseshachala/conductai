@@ -1,8 +1,8 @@
 # Conduct
 
-**YAML playbooks that turn AI agents into reusable team automations.**
+**YAML playbooks that turn AI agents into reusable team automations — with governance, memory, and a full audit trail.**
 
-Label a GitHub issue `ai-ready` → an agent clones your repo, writes the fix, runs tests, and opens a draft PR. One-click Approve or Reject before anything merges.
+Label a GitHub issue `ai-ready` → an agent clones your repo, writes the fix, runs tests, and opens a draft PR. One-click Approve or Reject before anything merges. ConductGuard enforces your team's spend limits and policies on every run — and on every Claude Code, Cursor, and Copilot call your developers make locally.
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/sseshachala/conductai?style=social)](https://github.com/sseshachala/conductai/stargazers)
@@ -12,19 +12,18 @@ Label a GitHub issue `ai-ready` → an agent clones your repo, writes the fix, r
 
 ---
 
-<!-- Record a 30-second demo and drop it here:
-![Conduct demo](docs/demo.gif)
--->
-
 ## What it does
 
 Conduct runs AI agents on a drag-and-drop canvas (or in YAML). Agents have real tool access — they read code, call APIs, open PRs, post to Slack. You control what they can touch and approve before anything ships.
 
 ```
 GitHub issue labeled "ai-ready"
+  → Memory block recalls what the agent learned on this repo last time
   → Brain block (Claude) reads the issue, clones the repo, writes the fix
+  → Guard block checks team policies — spend limit, blocked actions
   → Tool block opens a draft PR
   → Approval block pauses — Slack DM: [Approve] [Reject]
+  → Memory block records the outcome for next time
   → Output block posts result to #eng channel
 ```
 
@@ -36,31 +35,33 @@ Every step is visible. Every run is logged. Nothing merges without a human in th
 
 | Problem | Conduct's answer |
 |---------|-----------------|
-| Autonomous agents (Devin, Cursor) are black boxes | Live trace, event log, and approval gates on every run |
-| Zapier / n8n have no AI in the middle | Brain blocks are agentic — Claude reads your codebase, iterates, hands off |
+| Autonomous agents are black boxes | Live run trace, three-layer audit log, approval gates on every run |
+| No governance over what AI tools spend | ConductGuard: hard cap per developer, blocks the call before it hits the model |
+| Agents start from scratch every run | Memory blocks: recall past summaries via vector similarity, record outcomes after |
+| Copilot/Cursor PRs need extra scrutiny | AI PR Reviewer playbook with human approval gate before merge |
 | One shared credential set across all agents | Per-agent environments — each agent gets its own scoped credentials |
+| No visibility into what developers' AI tools are doing | Guard audit log: every Claude Code, Cursor, and Copilot call — decision, rule, cost |
 | Hard to move from demo to production | Human-in-the-loop by design — nothing merges without approval |
-| Agent errors disappear into a void | Structured logs + Sentry integration — every failure is captured and triageable |
 
 ---
 
 ## 18 ready-made playbooks
 
-Install any of these in one click, configure credentials, and run. Grouped by the 10 categories you'll see in the Marketplace.
+Install any of these in one click from the [Marketplace](https://conductai.ai/marketplace), configure credentials, and run.
 
 ### Issue → PR
 | Playbook | Trigger | What it does |
 |----------|---------|-------------|
-| **Autopilot Quick** | GitHub issue labeled | Implements fix, opens PR immediately (CI runs tests on the PR) |
+| **Autopilot Quick** | GitHub issue labeled | Implements fix, opens PR immediately |
 | **Autopilot Full** | GitHub issue labeled | Implements fix, runs tests with retry, opens PR |
-| **Autopilot + Approval** | GitHub issue labeled | Implements fix, runs tests, human approves in Slack, then opens PR |
+| **Autopilot + Approval** | GitHub issue labeled | Implements fix, runs tests, human approves in Slack, opens PR |
 
 ### Code Review
 | Playbook | Trigger | What it does |
 |----------|---------|-------------|
-| **PR Reviewer** | PR opened | Reviews the diff for bugs, security, and style; posts a review |
+| **PR Reviewer** | PR opened | Reviews diff for bugs, security, and style; posts a review |
 | **Copilot / AI PR Reviewer** | PR opened by Copilot/Cursor/Claude Code | Extra scrutiny for hallucinated APIs and missing tests; human approves before merge |
-| **Security Scanner** | PR opened | Scans for OWASP Top 10, hardcoded secrets, auth bypasses; posts report, files fix issue for criticals |
+| **Security Scanner** | PR opened | Scans for OWASP Top 10, hardcoded secrets, auth bypasses; posts report |
 
 ### Issue Triage
 | Playbook | Trigger | What it does |
@@ -71,12 +72,12 @@ Install any of these in one click, configure credentials, and run. Grouped by th
 | Playbook | Trigger | What it does |
 |----------|---------|-------------|
 | **CI Failure Alert** | CI build fails | Diagnoses the failed step, posts root cause and suggested fix to Slack |
-| **Flaky Test Detective** | Repeated CI failures | Identifies flaky tests, finds the offending commit, posts a fix recommendation |
+| **Flaky Test Detective** | Repeated CI failures | Identifies flaky tests, finds the offending commit, posts fix recommendation |
 
 ### Release Management
 | Playbook | Trigger | What it does |
 |----------|---------|-------------|
-| **Release Readiness Reviewer** | Release branch cut | Checks open blockers, failed CI, pending reviews; posts a go/no-go summary |
+| **Release Readiness Reviewer** | Release branch cut | Checks open blockers, failed CI, pending reviews; posts go/no-go summary |
 | **Release Notes Drafter** | Git tag pushed | Reads merged PRs, groups by type, writes CHANGELOG, posts to Slack |
 
 ### Incidents & Ops
@@ -113,12 +114,125 @@ Install any of these in one click, configure credentials, and run. Grouped by th
 | Block | What it does |
 |-------|-------------|
 | **Trigger** | Starts a run — webhook, cron, or manual |
-| **Brain** | Agentic Claude step with tool access and bounded autonomy |
+| **Brain** | Agentic Claude step with tool access and bounded autonomy. Auto-routes to Haiku / Sonnet / Opus based on task. |
 | **Tool** | Deterministic API call — GitHub, Slack, Linear, Vercel, Railway |
 | **Logic** | Branch on pass / fail |
 | **Approval** | Pauses the run, sends Slack DM with Approve / Reject |
+| **Memory** | Read past summaries before the brain runs; write the outcome after. Powered by vector similarity search. |
+| **Guard** | Evaluates active team policies mid-run. Blocks, warns, or audits based on enforcement_mode. Emits a `guard_check` event in the run trace. |
 | **Output** | Sends formatted summary via Slack or email |
 | **Cleanup** | Always runs last — tear down resources, close loops |
+
+---
+
+## ConductGuard
+
+ConductGuard is the team policy layer. It enforces spend limits, blocked actions, and custom rules — inside hosted workflows via the Guard block, and on developers' local AI tools via a hook and MCP server.
+
+### For team leads
+
+1. Open Guard in the Conduct dashboard
+2. Set a monthly hard cap per developer and configure policy rules
+3. Invite developers by email — they get a member token
+
+### For developers
+
+```bash
+pip install conduct-cli
+
+# Join the team — installs the PreToolUse hook and pulls policies
+conduct guard join \
+  --team  <team-id> \
+  --token <member-token>
+
+# Check current status and spend
+conduct guard status
+
+# Sync latest policies
+conduct guard sync
+```
+
+The PreToolUse hook runs before every Claude Code call. It checks the monthly hard cap (cached 5 min) and evaluates policy rules. If the cap is hit, the call is blocked before it reaches the model. Slack is notified in real time.
+
+### MCP server (Claude Code / Cursor)
+
+```bash
+# Run the Guard MCP server
+conductguard-mcp \
+  --team  <team-id> \
+  --token <member-token>
+```
+
+Add to `~/.claude/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "conductguard": {
+      "command": "conductguard-mcp",
+      "args": ["--team", "<team-id>", "--token", "<member-token>"]
+    }
+  }
+}
+```
+
+Three tools exposed to the AI: `guard_status`, `guard_check`, `guard_sync`.
+
+### Guard block in YAML
+
+```yaml
+blocks:
+  check_policies:
+    type: guard
+    label: Check team policies
+    enforcement_mode: block   # block | warn | audit
+    next: deploy_fix
+```
+
+---
+
+## Agent Memory
+
+Memory blocks give agents a persistent knowledge store. The agent recalls what it learned last time on this repo before acting — and records the outcome after.
+
+```yaml
+blocks:
+  recall_context:
+    type: memory
+    action: read
+    scope: repo
+    key: "{{_trigger.repo_full_name}}"
+    limit: 5
+    next: fetch_issue
+
+  record_outcome:
+    type: memory
+    action: write
+    scope: repo
+    key: "{{_trigger.repo_full_name}}"
+    summary: |
+      Issue #{{fetch_issue.issue_number}}: {{fetch_issue.title}}
+      Fix: {{implement_fix.approach}}
+    next: notify
+```
+
+Powered by vector similarity search (OpenAI `text-embedding-3-small`). Falls back to recency-based retrieval if no embedding key is configured — memory still works.
+
+**Two scopes:**
+- `repo` — memories isolated per repository (5 repos = 5 independent experts)
+- `workspace` — memories shared across all repos in the workspace (team conventions)
+
+---
+
+## Observability — Three audit layers
+
+| Layer | What it covers | Where |
+|-------|---------------|-------|
+| **Run trace** | Every block state, LLM call, tool call, Guard decision — live SSE stream | `/runs/{id}` |
+| **Workspace audit** | Credential changes, agent installs, member events — immutable, append-only | `/audit` |
+| **Guard audit** | Every developer AI tool call — decision, rule triggered, tokens, cost, Slack alert | `/guard/audit` |
+
+When a Guard block fires inside a workflow, a `guard_check` run event is emitted inline in the run trace — rules evaluated, verdict, warnings — alongside the other block events. The same event is also written to the Guard audit log. Two lenses on the same moment.
 
 ---
 
@@ -127,7 +241,7 @@ Install any of these in one click, configure credentials, and run. Grouped by th
 | Integration | Actions |
 |-------------|---------|
 | **GitHub** | clone repo, push file, create branch, open PR, merge PR, add secret |
-| **Slack** | post message, send DM, handle approval buttons |
+| **Slack** | post message, send DM, handle approval buttons, Guard policy alerts |
 | **Linear** | fetch / create / update issues, add comments |
 | **Vercel** | list / get / wait for deployments |
 | **Railway** | trigger / monitor deployments |
@@ -140,11 +254,14 @@ Install any of these in one click, configure credentials, and run. Grouped by th
 
 ```
 apps/
-  web/          Next.js — canvas UI, run feed, settings
-  api/          FastAPI + SQLAlchemy + Alembic
-  api/worker.py Background run executor (Redis queue)
+  web/                  Next.js — canvas UI, run feed, Guard dashboard, settings
+  api/                  FastAPI + SQLAlchemy + Alembic
+  api/app/runtime/      DAG executor — block dispatch, _emit(), Guard block
+  api/app/modules/guard/ Guard team, policies, spend, audit events, MCP auth
+  api/worker.py         Background run executor (Redis queue)
 packages/
-  conduct-cli/  Python CLI — trigger agents from terminal or CI
+  conduct-cli/          Python CLI — trigger agents, guard join/sync/status
+                        conductguard-mcp binary — MCP server for editors
 ```
 
 ---
@@ -186,39 +303,34 @@ docker compose exec api alembic upgrade head
 ### 4. Create your first agent
 
 1. **Projects** → New project
-2. **Agents** → New agent (or pick a template)
+2. **Marketplace** → Install a playbook in one click
 3. **Settings → Environments** → add GitHub + Slack credentials
 4. Assign the environment to your agent on the canvas
 5. Hit **Run**
 
 ---
 
-## Quick start (CLI)
+## CLI
 
 ```bash
 pip install conduct-cli
 
-conduct --server https://api.conductai.ai \
-        --api-key YOUR_CLI_API_KEY \
-        run autopilot.yaml
-```
+# Authenticate
+conduct login \
+  --server    https://api.conductai.ai \
+  --api-key   cond_live_xxx \
+  --workspace <workspace-id>
 
-```yaml
-# autopilot.yaml
-name: Fix GitHub Issue
-workflow_id: <your-workflow-id>
-workspace_id: <your-workspace-id>
+# Install all playbooks into a project
+conduct install-all --project DevOps --repo myorg/my-repo
 
-trigger:
-  event_type: github_issue_labeled
-  label: ai-ready
-  repo:
-    full_name: your-org/your-repo
+# Test all agents
+conduct test --all --project DevOps
 
-issue:
-  number: 42
-  title: "Button not responding on mobile"
-  body: "Tap on submit — nothing happens on iOS Safari."
+# Guard — join a team and pull policies
+conduct guard join --team <team-id> --token <member-token>
+conduct guard status
+conduct guard sync
 ```
 
 ---
@@ -238,6 +350,7 @@ issue:
 | `SENTRY_DSN` | Optional | Error capture — unhandled exceptions + block failures |
 | `CLERK_SECRET_KEY` | Optional | Enables Clerk authentication |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Optional | Clerk frontend key |
+| `OPENAI_API_KEY` | Optional | Enables vector similarity search for Memory blocks |
 
 ---
 
@@ -265,17 +378,19 @@ issue:
 |----------|---------|--------|
 | `POST /webhooks/vercel` | Vercel | deployment.succeeded / failed |
 | `POST /webhooks/railway` | Railway | DEPLOY_SUCCESS / FAILED / CRASHED |
-| `POST /webhooks/slack/interactions` | Slack | Approval button clicks |
+| `POST /webhooks/slack/interactions` | Slack | Approval button clicks, Guard alerts |
 | `POST /webhooks/inbound/{workflow_id}` | Any | Generic JSON trigger |
 
 ---
 
 ## Security
 
-- All credentials encrypted at rest (AES-256-GCM) — decrypted only at point of use
+- All credentials encrypted at rest (AES-256-GCM + HKDF-SHA256) — decrypted only at point of use, never logged
 - Per-workspace environments — agents only access credentials you assign
-- Audit log — every credential change, workflow create/delete, and run trigger recorded (admin-only)
+- Three-layer audit log — run trace, workspace events, Guard developer tool audit
 - Approval gates — human confirmation before any action ships to production
+- ConductGuard — hard cap enforcement blocks AI calls before they reach the model
+- HMAC-SHA256 webhook signature verification on all inbound webhooks
 - Sentry integration — block failures captured with `run_id`, `block_id`, `workspace_id` tags
 
 ---
