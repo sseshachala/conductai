@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import { useAuth } from "@clerk/nextjs"
+import { getGuardTeamId } from "@/lib/guardStorage"
 import AppShell from "@/components/AppShell"
 import GuardNav from "@/components/guard/GuardNav"
 import { timeAgo } from "@/lib/runUtils"
@@ -141,7 +142,7 @@ export default function GuardPage() {
 
   const buildHeaders = useCallback(async (): Promise<Record<string, string>> => {
     const token = await getToken()
-    const teamId = (typeof window !== "undefined" ? localStorage.getItem("guard_team_id") : null) ?? ""
+    const teamId = getGuardTeamId()
     const h: Record<string, string> = { "Content-Type": "application/json" }
     if (token)  h["Authorization"]  = `Bearer ${token}`
     if (teamId) h["X-Workspace-Id"] = teamId
@@ -150,7 +151,7 @@ export default function GuardPage() {
 
   const loadEvents = useCallback(async () => {
     const headers = await buildHeaders()
-    const teamId  = (typeof window !== "undefined" ? localStorage.getItem("guard_team_id") : null) ?? ""
+    const teamId  = getGuardTeamId()
     const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params  = new URLSearchParams({ limit: "100" })
     if (teamId) params.set("team_id", teamId)
@@ -169,7 +170,7 @@ export default function GuardPage() {
 
   const loadStats = useCallback(async () => {
     const headers = await buildHeaders()
-    const teamId  = (typeof window !== "undefined" ? localStorage.getItem("guard_team_id") : null) ?? ""
+    const teamId  = getGuardTeamId()
     const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params  = new URLSearchParams()
     if (teamId) params.set("team_id", teamId)
@@ -183,7 +184,7 @@ export default function GuardPage() {
 
   const connectSSE = useCallback(async () => {
     const token  = await getToken()
-    const teamId = (typeof window !== "undefined" ? localStorage.getItem("guard_team_id") : null) ?? ""
+    const teamId = getGuardTeamId()
     const base   = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params = new URLSearchParams()
     if (token)  params.set("token",   token)

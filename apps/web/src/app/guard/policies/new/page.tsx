@@ -6,6 +6,7 @@ import Link from "next/link"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import GuardNav from "@/components/guard/GuardNav"
+import { getGuardTeamId } from "@/lib/guardStorage"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,8 +47,7 @@ const TEMPLATES = [
 // ---------------------------------------------------------------------------
 
 function getTeamId(): string {
-  if (typeof window === "undefined") return ""
-  return localStorage.getItem("guard_team_id") ?? ""
+  return getGuardTeamId()
 }
 
 // ---------------------------------------------------------------------------

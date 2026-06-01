@@ -692,8 +692,25 @@ function GuardBlockPanel({
     )
   }
 
+  const spendCap = (getNestedValue(config, "config.spend_cap_usd") as string) || ""
+  const monitoredTools = (getNestedValue(config, "config.monitored_tools") as string[]) || []
+  const AI_TOOLS = [
+    { id: "claude_code", label: "Claude Code" },
+    { id: "cursor",      label: "Cursor"      },
+    { id: "codex",       label: "Codex"       },
+    { id: "windsurf",    label: "Windsurf"    },
+  ]
+
+  function toggleTool(toolId: string) {
+    if (isViewer) return
+    const next = monitoredTools.includes(toolId)
+      ? monitoredTools.filter(t => t !== toolId)
+      : [...monitoredTools, toolId]
+    onChange("config.monitored_tools", next)
+  }
+
   return (
-    <div className="px-4 py-3 space-y-3">
+    <div className="px-4 py-3 space-y-4">
       {/* Enforcement mode */}
       <div>
         <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide block mb-1.5">Enforcement mode</span>
@@ -710,6 +727,54 @@ function GuardBlockPanel({
         <p className={`text-[10px] mt-1 ${modeInfo.color}`}>{modeInfo.sub}</p>
       </div>
 
+      {/* Spend cap */}
+      <div>
+        <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide block mb-1.5">Spend cap (USD)</span>
+        <div className="relative">
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-stone-400">$</span>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="e.g. 5.00"
+            value={spendCap}
+            onChange={e => !isViewer && onChange("config.spend_cap_usd", e.target.value)}
+            disabled={isViewer}
+            className="w-full text-[11px] border border-stone-200 rounded-lg pl-6 pr-2.5 py-1.5 bg-white text-stone-800 focus:outline-none focus:ring-1 focus:ring-stone-300 disabled:opacity-60 disabled:cursor-not-allowed"
+          />
+        </div>
+        <p className="text-[10px] text-stone-400 mt-1">Trigger enforcement when spend exceeds this amount per run.</p>
+      </div>
+
+      {/* AI tools to monitor */}
+      <div>
+        <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide block mb-1.5">Monitor AI tools</span>
+        <div className="grid grid-cols-2 gap-1.5">
+          {AI_TOOLS.map(tool => (
+            <label
+              key={tool.id}
+              className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 cursor-pointer text-[11px] transition-colors ${
+                monitoredTools.includes(tool.id)
+                  ? "border-indigo-300 bg-indigo-50 text-indigo-700"
+                  : "border-stone-200 bg-stone-50 text-stone-500 hover:border-stone-300"
+              } ${isViewer ? "cursor-not-allowed opacity-60" : ""}`}
+            >
+              <input
+                type="checkbox"
+                className="w-3 h-3 rounded accent-indigo-600"
+                checked={monitoredTools.includes(tool.id)}
+                onChange={() => toggleTool(tool.id)}
+                disabled={isViewer}
+              />
+              {tool.label}
+            </label>
+          ))}
+        </div>
+        {monitoredTools.length === 0 && (
+          <p className="text-[10px] text-stone-400 mt-1">No tools selected — Guard will monitor all tools.</p>
+        )}
+      </div>
+
       {/* Policies active for selected mode */}
       <div>
         <div className="flex items-center justify-between mb-1.5">
@@ -717,10 +782,7 @@ function GuardBlockPanel({
             {mode} policies
           </span>
           {isAdmin && (
-            <a
-              href="/guard/policies"
-              className="text-[10px] text-stone-400 hover:text-stone-600 underline"
-            >
+            <a href="/guard/policies" className="text-[10px] text-stone-400 hover:text-stone-600 underline">
               Manage →
             </a>
           )}

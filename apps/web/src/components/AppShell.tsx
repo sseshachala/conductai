@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AuthButton from "@/components/AuthButton"
 import { WorkspaceProvider, useWorkspace } from "@/lib/WorkspaceContext"
+import { setActiveGuardWorkspace } from "@/lib/guardStorage"
 import { PreferencesProvider } from "@/lib/PreferencesContext"
 import Toast, { type ToastData } from "@/components/ui/Toast"
 import ErrorBoundary from "@/components/ui/ErrorBoundary"
@@ -75,6 +76,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
         if (!cancelled && res.ok) {
           const data = await res.json()
           setGuardInstalled(!!data.installed)
+          if (data.installed && wsId) setActiveGuardWorkspace(wsId)
         }
       } catch {
         // Non-fatal: default to hidden
