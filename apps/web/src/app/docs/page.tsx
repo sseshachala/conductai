@@ -109,6 +109,16 @@ export default function DocsPage() {
           <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mt-6 mb-3">Blocks</p>
           <ul className="space-y-1 text-sm text-stone-600">
             <li><a href="#memory-block" className="hover:text-stone-900 transition-colors block py-0.5">Memory block</a></li>
+            <li><a href="#guard-block" className="hover:text-stone-900 transition-colors block py-0.5">Guard block</a></li>
+          </ul>
+
+          <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mt-6 mb-3">ConductGuard</p>
+          <ul className="space-y-1 text-sm text-stone-600">
+            <li><a href="#guard" className="hover:text-stone-900 transition-colors block py-0.5">Overview</a></li>
+            <li><a href="#guard-join" className="hover:text-stone-900 transition-colors block py-0.5">conduct guard join</a></li>
+            <li><a href="#guard-hook" className="hover:text-stone-900 transition-colors block py-0.5">PreToolUse hook</a></li>
+            <li><a href="#guard-mcp" className="hover:text-stone-900 transition-colors block py-0.5">conductguard-mcp</a></li>
+            <li><a href="#guard-spend" className="hover:text-stone-900 transition-colors block py-0.5">Spend controls</a></li>
           </ul>
 
           <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mt-6 mb-3">Integrations</p>
@@ -893,6 +903,312 @@ es.onmessage = (e) => {
       Fix: {{implement_fix.approach}}
       Files: {{implement_fix.files_changed}}
     next: notify`}</Pre>
+          </section>
+
+          {/* ── Guard block ── */}
+          <section id="guard-block">
+            <SectionHeading id="guard-block">Guard block</SectionHeading>
+            <p className="text-stone-500 text-sm mb-6 leading-relaxed">
+              The Guard block evaluates your team&apos;s policies mid-workflow. Place it before sensitive operations
+              (file writes, deployments, external API calls) to enforce spend limits, blocked actions, and custom
+              regex rules. On a policy violation, the block either halts the run (<code className="font-mono text-xs bg-stone-100 px-1 rounded">block</code> mode),
+              adds a warning and continues (<code className="font-mono text-xs bg-stone-100 px-1 rounded">warn</code>), or silently records the event (<code className="font-mono text-xs bg-stone-100 px-1 rounded">audit</code>).
+            </p>
+
+            <SubHeading>YAML reference</SubHeading>
+            <Pre>{`blocks:
+  check_policies:
+    type: guard
+    label: Check team policies
+    enforcement_mode: block    # block | warn | audit (default: block)
+    context_keys:              # optional — subset of state to evaluate
+      - fetch_issue
+      - brain
+    # rule_ids: [uuid1, uuid2]  # optional — evaluate specific rules only
+    next: deploy_fix`}</Pre>
+
+            <SubHeading>Fields</SubHeading>
+            <div className="rounded-xl border border-stone-200 overflow-hidden mb-6">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-stone-50 border-b border-stone-200">
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider w-40">Field</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Description</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100 text-sm">
+                  {[
+                    ["enforcement_mode", "block — halt the run on violation. warn — add to warnings list, continue. audit — record silently, continue. Default: block."],
+                    ["context_keys", "Optional list of block IDs whose state to serialize for policy evaluation. Omit to send the full run state."],
+                    ["rule_ids", "Optional list of policy UUIDs to evaluate. Omit to evaluate all active policies for the team."],
+                  ].map(([field, desc]) => (
+                    <tr key={field}>
+                      <td className="px-4 py-3 font-mono text-xs text-stone-800 align-top">{field}</td>
+                      <td className="px-4 py-3 text-xs text-stone-500 leading-relaxed">{desc}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <SubHeading>Output</SubHeading>
+            <Pre>{`# Available as {{check_policies.*}} in downstream blocks
+{
+  "status": "passed",      # passed | violated
+  "team_id": "uuid",
+  "rules_checked": 4,
+  "violations": 0,
+  "warnings": []           # list of warning messages (warn/audit mode)
+}`}</Pre>
+
+            <div className="mt-3 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+              <strong>Guard block requires Guard to be installed.</strong> If the team has no Guard configured, the block
+              fails with installation instructions. If <code className="font-mono text-xs">enforcement_mode: block</code> is set
+              and Guard is not installed, the run halts. Use <code className="font-mono text-xs">warn</code> or <code className="font-mono text-xs">audit</code> mode
+              if you want the workflow to continue without Guard.
+            </div>
+          </section>
+
+          {/* ── ConductGuard overview ── */}
+          <section id="guard">
+            <SectionHeading id="guard">ConductGuard — Overview</SectionHeading>
+            <p className="text-stone-500 text-sm mb-6 leading-relaxed">
+              ConductGuard is the team policy layer for AI tools. It has two enforcement surfaces:
+            </p>
+            <div className="rounded-xl border border-stone-200 divide-y divide-stone-100 text-sm mb-8">
+              {[
+                {
+                  label: "Workflow enforcement (Guard block)",
+                  detail: "Evaluates policies mid-run inside Conduct workflows. The Guard block checks active team policies against the run state and halts, warns, or audits based on enforcement_mode.",
+                },
+                {
+                  label: "Local enforcement (hook + MCP)",
+                  detail: "Intercepts AI tool calls in Claude Code, Cursor, and other editors before they reach the model. Checks hard caps, evaluates policies, and blocks or warns at call time. No workflow required.",
+                },
+              ].map(({ label, detail }) => (
+                <div key={label} className="px-4 py-3">
+                  <p className="font-medium text-stone-800 mb-0.5">{label}</p>
+                  <p className="text-stone-500 text-xs leading-relaxed">{detail}</p>
+                </div>
+              ))}
+            </div>
+
+            <SubHeading>Policy anatomy</SubHeading>
+            <p className="text-stone-500 text-sm mb-3">Policies are created in Guard → Policies and consist of:</p>
+            <div className="rounded-xl border border-stone-200 overflow-hidden mb-6">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-stone-50 border-b border-stone-200">
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider w-36">Field</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Description</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100 text-sm">
+                  {[
+                    ["match_tool", "Which AI tool triggers this rule (e.g. claude-code, cursor, * for any)."],
+                    ["match_pattern", "Regex matched against the serialized tool call input. Trigger if matched."],
+                    ["match_path_pattern", "Regex matched against file paths in the tool call. Trigger if matched."],
+                    ["enforcement_mode", "block | warn | audit — what happens when the rule triggers."],
+                    ["alert_message", "Message sent to Slack when the rule triggers (if Slack is configured)."],
+                  ].map(([field, desc]) => (
+                    <tr key={field}>
+                      <td className="px-4 py-3 font-mono text-xs text-stone-800 align-top">{field}</td>
+                      <td className="px-4 py-3 text-xs text-stone-500 leading-relaxed">{desc}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* ── conduct guard join ── */}
+          <section id="guard-join">
+            <SectionHeading id="guard-join">conduct guard join</SectionHeading>
+            <p className="text-stone-500 text-sm mb-4 leading-relaxed">
+              Joins a developer to their team&apos;s Guard instance. Downloads active policies, installs the PreToolUse hook,
+              and writes the team token to <Code>~/.guardrc</Code>. Idempotent — safe to run multiple times.
+            </p>
+
+            <Pre>{`# Prerequisites: pip install conduct-cli
+conduct guard join \\
+  --team  <team-id>   \\   # UUID from Guard → Settings
+  --token <member-token>  # from the invite email or Guard → Members
+
+# What it does:
+# 1. Validates token against the Guard API
+# 2. Downloads active policies to ~/.guard/policies.json
+# 3. Installs a Claude Code PreToolUse hook at ~/.claude/hooks/
+# 4. Writes ~/.guardrc with team_id and token
+# 5. Prints confirmation with hard_limit_usd and policy count`}</Pre>
+
+            <SubHeading>Other guard commands</SubHeading>
+            <div className="rounded-xl border border-stone-200 overflow-hidden mb-4">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-stone-50 border-b border-stone-200">
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider w-52">Command</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Description</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100">
+                  {[
+                    ["conduct guard join", "Join a team, install hook, pull policies"],
+                    ["conduct guard sync", "Pull latest policies without reinstalling the hook"],
+                    ["conduct guard status", "Show current team, policy count, and spend this month"],
+                    ["conduct guard uninstall", "Remove the hook and clear ~/.guardrc"],
+                  ].map(([cmd, desc]) => (
+                    <tr key={cmd}>
+                      <td className="px-4 py-3 font-mono text-xs text-stone-800">{cmd}</td>
+                      <td className="px-4 py-3 text-stone-500">{desc}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* ── PreToolUse hook ── */}
+          <section id="guard-hook">
+            <SectionHeading id="guard-hook">PreToolUse hook</SectionHeading>
+            <p className="text-stone-500 text-sm mb-4 leading-relaxed">
+              The hook is a Python script installed at <Code>~/.claude/hooks/guard_hook.py</Code>. Claude Code (and any
+              Claude Code-compatible tool) calls it before every tool use — before the LLM call is made.
+            </p>
+
+            <SubHeading>What the hook does on every call</SubHeading>
+            <div className="rounded-xl border border-stone-200 divide-y divide-stone-100 text-sm mb-6">
+              {[
+                ["1. Budget check (cached 5 min)", "Calls GET /guard/spend/budget-check with the team_id and developer email. If the monthly hard cap is hit, exits with code 2 — Claude Code treats this as a block."],
+                ["2. Policy evaluation", "Loads ~/.guard/policies.json (synced on join). Evaluates match_tool, match_pattern, and match_path_pattern against the current tool call. Violations trigger block/warn based on enforcement_mode."],
+                ["3. Spend recording", "On pass, records the tool call with approximate token count to the spend log for the month."],
+                ["4. Slack alert (async)", "If the block policy has an alert configured, posts to the Guard team's Slack channel via the Guard API in a background thread."],
+              ].map(([step, desc]) => (
+                <div key={step} className="flex gap-4 px-4 py-3">
+                  <span className="font-medium text-stone-700 w-52 shrink-0 text-xs">{step}</span>
+                  <span className="text-stone-500 text-xs leading-relaxed">{desc}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-xl bg-stone-100 border border-stone-200 px-4 py-3 text-sm text-stone-700">
+              <strong>Exit codes:</strong> 0 = pass, 1 = warn (tool call continues), 2 = block (tool call aborted).
+              Claude Code surfaces a message to the developer explaining why the call was blocked.
+            </div>
+          </section>
+
+          {/* ── conductguard-mcp ── */}
+          <section id="guard-mcp">
+            <SectionHeading id="guard-mcp">conductguard-mcp</SectionHeading>
+            <p className="text-stone-500 text-sm mb-4 leading-relaxed">
+              An MCP server that exposes Guard to Claude Code, Cursor, and any MCP-compatible editor.
+              Unlike the hook (which intercepts silently), the MCP server gives the AI direct access to
+              Guard tools — the AI can check its own compliance before acting.
+            </p>
+
+            <SubHeading>Start the server</SubHeading>
+            <Pre>{`# Install (included with conduct-cli >= 0.3.0)
+pip install conduct-cli
+
+# Run the MCP server
+conductguard-mcp \\
+  --team  <team-id>      \\
+  --token <member-token>
+
+# Or add to your Claude Code MCP config (~/.claude/mcp.json):
+{
+  "mcpServers": {
+    "conductguard": {
+      "command": "conductguard-mcp",
+      "args": ["--team", "<team-id>", "--token", "<member-token>"]
+    }
+  }
+}`}</Pre>
+
+            <SubHeading>Tools exposed</SubHeading>
+            <div className="rounded-xl border border-stone-200 divide-y divide-stone-100 text-sm mb-6">
+              {[
+                {
+                  tool: "guard_status",
+                  desc: "Returns team name, policy count, hard limit, monthly spend to date, and whether the developer is currently blocked.",
+                  args: "None",
+                },
+                {
+                  tool: "guard_check",
+                  desc: "Evaluates an action description against active policies. Returns allowed: true/false and matching rules. Use before making a sensitive file edit or API call.",
+                  args: "action (str), path (str, optional)",
+                },
+                {
+                  tool: "guard_sync",
+                  desc: "Pulls the latest policies from the Guard API and writes them to ~/.guard/policies.json. Call after a team lead updates a rule.",
+                  args: "None",
+                },
+              ].map(({ tool, desc, args }) => (
+                <div key={tool} className="px-4 py-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <code className="font-mono text-xs font-semibold text-stone-800 bg-stone-100 px-1.5 py-0.5 rounded">{tool}</code>
+                    <span className="text-[10px] text-stone-400">args: {args}</span>
+                  </div>
+                  <p className="text-xs text-stone-500 leading-relaxed">{desc}</p>
+                </div>
+              ))}
+            </div>
+
+            <SubHeading>Transport</SubHeading>
+            <p className="text-stone-500 text-sm mb-3">
+              JSON-RPC 2.0 over stdio. Protocol version <Code>2024-11-05</Code>. Compatible with any MCP client
+              that supports the stdio transport.
+            </p>
+          </section>
+
+          {/* ── Spend controls ── */}
+          <section id="guard-spend">
+            <SectionHeading id="guard-spend">Spend controls</SectionHeading>
+            <p className="text-stone-500 text-sm mb-6 leading-relaxed">
+              Guard tracks monthly AI spend per developer and per tool. Team leads set budgets in Guard → Spend.
+              When a developer hits their hard cap, the hook blocks their next AI call.
+            </p>
+
+            <SubHeading>Budget hierarchy</SubHeading>
+            <div className="rounded-xl border border-stone-200 divide-y divide-stone-100 text-sm mb-6">
+              {[
+                ["Team hard limit", "Monthly cap for the entire team. Set in Guard → Settings. When the team total hits this limit, all developers are blocked."],
+                ["Per-developer limit", "Monthly cap per developer. Falls back to default_per_developer_usd from team settings if no individual limit is set."],
+                ["Alert threshold", "Optional — a percentage of the budget at which Slack alerts fire (e.g. 80%). Developers continue past the threshold; the hard limit is the actual block."],
+              ].map(([label, desc]) => (
+                <div key={label} className="flex gap-4 px-4 py-3">
+                  <span className="font-medium text-stone-700 w-44 shrink-0 text-xs">{label}</span>
+                  <span className="text-stone-500 text-xs leading-relaxed">{desc}</span>
+                </div>
+              ))}
+            </div>
+
+            <SubHeading>Budget check API</SubHeading>
+            <p className="text-stone-500 text-sm mb-3">
+              The hook calls this endpoint on every tool use (cached for 5 minutes to avoid latency on every call).
+            </p>
+            <Pre>{`GET /guard/spend/budget-check?team_id=<uuid>&email=<developer@example.com>
+
+# No auth header required — uses team_id + email as identifier
+# Response:
+{
+  "hard_blocked": false,
+  "reason": null,
+  "monthly_cost_usd": 12.40,
+  "hard_limit_usd": 50.00
+}
+
+# When blocked:
+{
+  "hard_blocked": true,
+  "reason": "Monthly budget of $50.00 exceeded ($51.20 used)",
+  "monthly_cost_usd": 51.20,
+  "hard_limit_usd": 50.00
+}`}</Pre>
+
+            <div className="mt-3 rounded-xl bg-stone-100 border border-stone-200 px-4 py-3 text-sm text-stone-700">
+              The cache file lives at <Code>~/.guard/budget_cache.json</Code> and has a 5-minute TTL.
+              Delete it to force an immediate re-check.
+            </div>
           </section>
 
           {/* ── GitHub ── */}

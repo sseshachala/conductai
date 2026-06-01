@@ -256,6 +256,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>Human approval on every merge</span>
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>RBAC — admin, editor, viewer</span>
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>Auto model routing — Haiku to Opus</span>
+          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>Hard cap enforcement per developer</span>
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>MIT licensed</span>
         </div>
       </div>
@@ -619,35 +620,29 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
 
             <div className="bg-white rounded-2xl border border-stone-200 p-7 flex flex-col gap-4">
               <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-violet-700 bg-violet-50 border border-violet-100 px-2.5 py-1 rounded-full uppercase tracking-widest">Tools</span>
-                  <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-full uppercase tracking-widest">Coming soon</span>
-                </div>
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-violet-700 bg-violet-50 border border-violet-100 px-2.5 py-1 rounded-full uppercase tracking-widest">MCP server</span>
                 <span className="text-xs font-bold text-stone-300">Step 3</span>
               </div>
               <div>
-                <p className="text-lg font-bold text-stone-900 mb-2">Tools stay in sync</p>
+                <p className="text-lg font-bold text-stone-900 mb-2">Guard in your AI coding tools</p>
                 <p className="text-sm text-stone-500 leading-relaxed">
-                  Agent Booster and other tools will optionally connect to the Guard
-                  policy server. When the team lead updates a rule, it propagates to
-                  every developer&apos;s tools automatically — no manual reconfiguration.
+                  The <code className="font-mono text-xs bg-stone-100 px-1 rounded">conductguard-mcp</code> MCP server connects
+                  Guard to Claude Code, Cursor, and any MCP-compatible editor.
+                  Policies are enforced where AI actually runs — not just in hosted workflows.
                 </p>
               </div>
-              <ul className="space-y-1.5 mt-auto">
-                {[
-                  "Agent Booster respects spend limits automatically",
-                  "Model routing follows Guard's approved tiers",
-                  "Policy updates propagate in under 60 seconds",
-                  "No manual steps for developers",
-                ].map(item => (
-                  <li key={item} className="flex items-start gap-2 text-xs text-stone-400">
-                    <span className="text-stone-300 mt-0.5 shrink-0">◦</span>
-                    {item}
-                  </li>
-                ))}
-              </ul>
+              <div className="mt-auto bg-stone-950 rounded-xl px-4 py-3 font-mono text-xs">
+                <p className="text-stone-500 mb-1"># MCP server — add to your editor config</p>
+                <p className="text-emerald-400">conductguard-mcp \</p>
+                <p className="text-emerald-400 pl-4">--team &lt;team-id&gt; \</p>
+                <p className="text-emerald-400 pl-4">--token &lt;member-token&gt;</p>
+                <p className="text-stone-500 mt-2 mb-1"># Three tools exposed to the AI</p>
+                <p className="text-white">guard_status  guard_check  guard_sync</p>
+              </div>
               <div className="mt-4 pt-4 border-t border-stone-100">
-                <p className="text-xs text-stone-400">Today: join + pull works. Tool sync on the roadmap.</p>
+                <a href="/docs#guard" className="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-700 hover:text-violet-900 transition-colors">
+                  MCP setup docs →
+                </a>
               </div>
             </div>
 
@@ -665,6 +660,69 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
             </div>
             <a href="/tools" className="shrink-0 inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-white px-5 py-2.5 text-sm font-semibold text-indigo-700 hover:border-indigo-300 transition-colors">
               See the tools →
+            </a>
+          </div>
+        </div>
+      </section>
+
+      {/* Guard spend controls + hard cap */}
+      <section className="px-6 py-20 bg-white">
+        <div className="max-w-5xl mx-auto">
+          <p className="text-xs font-semibold text-red-500 uppercase tracking-widest text-center mb-3">ConductGuard — Spend Controls</p>
+          <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
+            Know exactly what your team<br />spends on AI. Hard-stop when they hit the cap.
+          </h2>
+          <p className="text-center text-stone-500 text-sm max-w-2xl mx-auto mb-12 leading-relaxed">
+            Guard tracks every token and dollar spent by every developer, across every AI tool.
+            Set a monthly hard cap — when a developer hits it, their next AI call is blocked at the source before it reaches the model. No surprises on the bill.
+          </p>
+
+          <div className="grid sm:grid-cols-3 gap-5 mb-10">
+            {[
+              {
+                icon: "💸",
+                title: "Real-time spend tracking",
+                body: "Every Claude Code call, every Cursor completion, every Conduct workflow run — all tracked per developer, per tool, per month. Dashboard shows spend vs. budget at a glance.",
+                badge: "Per developer",
+              },
+              {
+                icon: "🚫",
+                title: "Hard cap enforcement",
+                body: "When a developer hits their monthly budget, the PreToolUse hook blocks the next AI call before it reaches the model — not just a warning, a hard stop. The cap resets on the 1st.",
+                badge: "Hard stop",
+              },
+              {
+                icon: "📣",
+                title: "Slack alerts on policy hit",
+                body: "When a policy blocks an action or a budget threshold is crossed, Guard posts to your configured Slack channel immediately — not after the fact, in real time.",
+                badge: "Instant notify",
+              },
+            ].map(({ icon, title, body, badge }) => (
+              <div key={title} className="bg-white rounded-2xl border border-stone-200 p-6 flex flex-col gap-3">
+                <div className="flex items-start justify-between">
+                  <span className="text-2xl">{icon}</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 border border-red-100 px-2 py-0.5 rounded-full">{badge}</span>
+                </div>
+                <div>
+                  <p className="font-semibold text-stone-900 mb-1.5">{title}</p>
+                  <p className="text-xs text-stone-500 leading-relaxed">{body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-2xl bg-stone-900 px-8 py-6 flex flex-col sm:flex-row items-center gap-6">
+            <div className="text-3xl shrink-0">🛡️</div>
+            <div className="flex-1">
+              <p className="text-white font-semibold mb-1">The hook runs before every AI tool call.</p>
+              <p className="text-stone-400 text-sm leading-relaxed">
+                <code className="font-mono text-xs bg-stone-800 px-1 rounded">conduct guard join</code> installs a PreToolUse hook that runs locally every time
+                your AI coding tool is about to make a call. It checks the team&apos;s hard cap, blocks if hit, and records spend.
+                Works with Claude Code, Cursor, and any tool that supports hooks.
+              </p>
+            </div>
+            <a href="/docs#guard-hook" className="shrink-0 inline-flex items-center gap-2 rounded-xl border border-stone-600 px-5 py-2.5 text-sm font-semibold text-stone-300 hover:border-stone-400 hover:text-white transition-colors">
+              Hook docs →
             </a>
           </div>
         </div>
