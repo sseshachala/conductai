@@ -83,6 +83,13 @@ class MemberAdd(BaseModel):
     role: Literal["admin", "editor", "security", "viewer"] = "editor"
 
 
+class MemberWorkspaceOut(BaseModel):
+    id: str
+    name: str
+    role: str
+    joined_at: datetime
+
+
 class InviteOut(BaseModel):
     id: str
     invited_email: str
@@ -359,6 +366,30 @@ def list_members(
             email=info["email"], name=info["name"],
         ))
     return out
+
+
+@router.get("/{project_id}/members/{clerk_user_id}/workspaces", response_model=list[MemberWorkspaceOut])
+def get_member_workspaces(
+    project_id: str,
+    clerk_user_id: str,
+    user_id: Annotated[str, Depends(get_user_id)],
+    workspace_id: Annotated[str, Depends(get_workspace_id)],
+    _role: Annotated[str, Depends(require_workspace_role("admin"))],
+    db: Session = Depends(get_db),
+):
+    if project_id != workspace_id:
+        raise HTTPException(status_code=404, detail="Project not found")
+    rows = db.execute(text("""
+        SELECT w.id, w.name, wu.role, wu.joined_at
+        FROM workspace_users wu
+        JOIN workspaces w ON w.id = wu.workspace_id
+        WHERE wu.clerk_user_id = :uid
+        ORDER BY wu.joined_at
+    """), {"uid": clerk_user_id}).fetchall()
+    return [
+        MemberWorkspaceOut(id=str(r.id), name=r.name, role=r.role, joined_at=r.joined_at)
+        for r in rows
+    ]
 
 
 @router.post("/{project_id}/members", status_code=201)
