@@ -268,11 +268,15 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
             <p className="text-stone-400 text-sm leading-relaxed max-w-md">
               Conduct agents act — they write code, open PRs, post to Slack — but nothing merges without your explicit approval. The agent does the work. You stay in charge.
             </p>
+            <p className="text-stone-500 text-xs leading-relaxed max-w-md mt-3">
+              Your team lead sets spending limits, blocked actions, and approved tools in ConductGuard — one policy for the whole team, automatically applied to every workflow and every developer&apos;s environment.
+            </p>
           </div>
           <div className="flex flex-col gap-2 shrink-0 text-sm">
             <div className="flex items-center gap-2 text-stone-300"><span className="text-emerald-400">✓</span> Executes tasks, not suggestions</div>
             <div className="flex items-center gap-2 text-stone-300"><span className="text-emerald-400">✓</span> Pauses for human approval</div>
             <div className="flex items-center gap-2 text-stone-300"><span className="text-emerald-400">✓</span> Full audit trail, every run</div>
+            <div className="flex items-center gap-2 text-stone-300"><span className="text-emerald-400">✓</span> Team policies enforced via Guard</div>
           </div>
         </div>
       </section>
@@ -485,76 +489,6 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
             Falls back to recency-based retrieval when no embedding key is configured — memory still works.{" "}
             <a href="/docs#memory-block" className="text-amber-600 hover:underline">Full docs →</a>
           </p>
-        </div>
-      </section>
-
-      {/* How it all fits together */}
-      <section className="bg-stone-900 px-6 py-20">
-        <div className="max-w-4xl mx-auto text-center">
-          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-3">The full picture</p>
-          <h2 className="text-3xl font-bold text-white mb-4">
-            Set the rules once. Let your team move fast.
-          </h2>
-          <p className="text-stone-400 text-sm max-w-xl mx-auto mb-12">
-            ConductGuard lets you decide what your team&apos;s AI tools can do.
-            The open-source tools below help everyone work faster — within whatever rules you set.
-          </p>
-
-          <div className="flex flex-col gap-2 text-left mb-4 max-w-2xl mx-auto">
-            <div className="rounded-xl border border-red-400 bg-red-950 px-6 py-4 flex items-center gap-4">
-              <span className="text-xl">🛡️</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-white">ConductGuard — inside Conduct</p>
-                <p className="text-xs text-red-300 mt-0.5">Spending limits, blocked actions, audit log — one policy for the whole team</p>
-              </div>
-              <span className="shrink-0 text-xs font-semibold text-red-300 bg-red-900 border border-red-700 px-2 py-0.5 rounded-full">Rules layer</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 mb-4 max-w-2xl mx-auto px-2">
-            <div className="flex-1 border-t border-stone-700" />
-            <p className="text-xs text-stone-500 whitespace-nowrap">tools work within these rules</p>
-            <div className="flex-1 border-t border-stone-700" />
-          </div>
-
-          <div className="flex flex-col gap-2 text-left max-w-2xl mx-auto mb-10">
-            <div className="rounded-xl border border-indigo-400 bg-indigo-900 px-5 py-3 flex items-center gap-3">
-              <span className="text-lg font-black text-indigo-300">◈</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-white">Agent Booster</p>
-                <p className="text-xs text-indigo-300">sends less code to the AI, picks the cheapest model that works</p>
-              </div>
-              <span className="shrink-0 text-xs font-semibold text-indigo-300 bg-indigo-800 border border-indigo-600 px-2 py-0.5 rounded-full">Layer 3</span>
-            </div>
-            <div className="rounded-xl border border-violet-400 bg-violet-900 px-5 py-3 flex items-center gap-3">
-              <span className="text-lg font-black text-violet-300">⬡</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-white">Workspace Starter</p>
-                <p className="text-xs text-violet-300">shared team setup, shortcuts, and checks — ready in minutes</p>
-              </div>
-              <span className="shrink-0 text-xs font-semibold text-violet-300 bg-violet-800 border border-violet-600 px-2 py-0.5 rounded-full">Layers 1–5</span>
-            </div>
-            <div className="rounded-xl border border-amber-600 bg-amber-950 px-5 py-3 flex items-center gap-3">
-              <span className="text-lg font-black text-amber-400">≋</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-white">RTK — Rust Token Killer</p>
-                <p className="text-xs text-amber-300">shrinks terminal output before the AI reads it, 60–90% less</p>
-              </div>
-              <span className="shrink-0 text-xs font-semibold text-amber-300 bg-amber-900 border border-amber-700 px-2 py-0.5 rounded-full">Layer 2</span>
-            </div>
-            <div className="rounded-xl border border-teal-600 bg-teal-950 px-5 py-3 flex items-center gap-3">
-              <span className="text-lg font-black text-teal-400">⊙</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-white">Prompt Caching</p>
-                <p className="text-xs text-teal-300">reuses what the AI already read — 90% cheaper on repeated questions</p>
-              </div>
-              <span className="shrink-0 text-xs font-semibold text-teal-300 bg-teal-900 border border-teal-700 px-2 py-0.5 rounded-full">Layer 1</span>
-            </div>
-          </div>
-
-          <a href="/tools" className="inline-flex items-center gap-2 rounded-xl border border-stone-600 px-6 py-3 text-sm font-semibold text-stone-300 hover:border-stone-400 hover:text-white transition-colors">
-            See all tools →
-          </a>
         </div>
       </section>
 
