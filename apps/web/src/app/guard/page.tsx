@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import { useAuth } from "@clerk/nextjs"
+import { useRouter } from "next/navigation"
 import { getGuardTeamId } from "@/lib/guardStorage"
 import AppShell from "@/components/AppShell"
 import { timeAgo } from "@/lib/runUtils"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
@@ -123,7 +125,27 @@ function formatTotalTokensSaved(n: number): string {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function GuardPage() {
-  const { getToken } = useAuth()
+  const { getToken, userId } = useAuth()
+  const router = useRouter()
+  const { activeWorkspace } = useWorkspace()
+
+  // Role-based redirect — editor/viewer go to /dashboard
+  useEffect(() => {
+    if (!activeWorkspace || !userId) return
+    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+    getToken().then(token => {
+      const h: Record<string, string> = {}
+      if (token) h["Authorization"] = `Bearer ${token}`
+      h["X-Workspace-ID"] = activeWorkspace.id
+      fetch(`${base}/workspaces/${activeWorkspace.id}/members`, { headers: h })
+        .then(r => r.ok ? r.json() : [])
+        .then((members: { clerk_user_id: string; role: string }[]) => {
+          const role = members.find(m => m.clerk_user_id === userId)?.role
+          if (role === "editor" || role === "viewer") router.replace("/dashboard")
+        })
+        .catch(() => {})
+    })
+  }, [activeWorkspace?.id, userId])
   const [events, setEvents]       = useState<GuardEvent[]>([])
   const [stats, setStats]         = useState<SpendStats | null>(null)
   const [loading, setLoading]     = useState(true)

@@ -74,7 +74,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   if (clerkEnabled) {
     return (
-      <ClerkProvider afterSignInUrl="/dashboard" afterSignUpUrl="/dashboard">
+      <ClerkProvider afterSignInUrl="/guard" afterSignUpUrl="/guard">
         <html lang="en">
           <head>{jsonLd}</head>
           <body>
