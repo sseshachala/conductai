@@ -7,7 +7,7 @@ const TABS = [
   { label: "Activity", href: "/guard" },
   { label: "Policies", href: "/guard/policies" },
   { label: "Spend",    href: "/guard/spend" },
-  { label: "Audit",   href: "/guard/audit" },
+  { label: "Activity log", href: "/guard/activity" },
   { label: "Settings", href: "/guard/settings" },
 ]
 

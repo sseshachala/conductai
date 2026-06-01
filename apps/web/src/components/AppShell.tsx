@@ -297,7 +297,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
                   <NavItem href="/guard" icon="🛡" label="Activity" collapsed={collapsed} pathname={pathname} exact />
                   <NavItem href="/guard/policies" icon="◈" label="Policies" collapsed={collapsed} pathname={pathname} />
                   <NavItem href="/guard/spend" icon="◆" label="Spend" collapsed={collapsed} pathname={pathname} />
-                  <NavItem href="/guard/audit" icon="📋" label="Audit log" collapsed={collapsed} pathname={pathname} />
+                  <NavItem href="/guard/activity" icon="📋" label="Activity log" collapsed={collapsed} pathname={pathname} />
                   <NavItem href="/guard/settings" icon="⚙" label="Members" collapsed={collapsed} pathname={pathname} />
                 </div>
               )}

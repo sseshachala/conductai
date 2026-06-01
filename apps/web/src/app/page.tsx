@@ -1015,8 +1015,8 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
                   "Tokens and cost per call, per developer",
                   "Slack alert posted in real time on block",
                 ],
-                link: "/guard/audit",
-                linkLabel: "View Guard Audit →",
+                link: "/guard/activity",
+                linkLabel: "View Guard Activity →",
               },
             ].map(({ icon, label, tag, accent, iconBg, tagColor, points, link, linkLabel }) => (
               <div key={label} className={`rounded-2xl border bg-gradient-to-br ${accent} p-6 flex flex-col gap-4`}>
