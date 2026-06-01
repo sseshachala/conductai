@@ -247,7 +247,7 @@ def _assert_workspace_member(db: Session, workspace_id: str, user_id: str) -> No
 
 def get_workspace_id(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
-    workspace_id: Annotated[str | None, Query()] = None,
+    ws_id: Annotated[str | None, Query(alias="workspace_id")] = None,
     x_workspace_id: Annotated[str | None, Header()] = None,
     x_api_key: Annotated[str | None, Header()] = None,
     db: Session = Depends(get_db),
@@ -261,7 +261,7 @@ def get_workspace_id(
     3. Clerk JWT org_id or sub (single-workspace-per-user fallback)
     4. Dev workspace (when Clerk is not configured)
     """
-    explicit_ws = workspace_id or x_workspace_id
+    explicit_ws = ws_id or x_workspace_id
     if not _clerk_enabled():
         return explicit_ws or DEV_WORKSPACE_ID
 
