@@ -140,15 +140,15 @@ function ToolsSection() {
             </div>
           </div>
 
-          {/* Workspace Starter */}
+          {/* Claude Code Team Kit */}
           <div className="rounded-2xl border border-stone-200 bg-white px-8 py-8 flex flex-col gap-5 hover:border-violet-200 hover:shadow-sm transition-all">
             <div className="flex items-start justify-between">
               <div>
                 <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-100 px-2.5 py-1 rounded-full mb-3">
                   Free · MIT
                 </span>
-                <h2 className="text-2xl font-bold text-stone-900">Workspace Starter</h2>
-                <p className="text-sm text-stone-500 mt-1">Get your team set up in minutes</p>
+                <h2 className="text-2xl font-bold text-stone-900">Claude Code Team Kit</h2>
+                <p className="text-sm text-stone-500 mt-1">Shared Claude Code setup for your whole team</p>
               </div>
               <span className="text-3xl font-black text-violet-600">⬡</span>
             </div>
@@ -178,7 +178,7 @@ function ToolsSection() {
 
             <div className="mt-auto pt-4 border-t border-stone-100 flex items-center gap-3 flex-wrap">
               <a
-                href="https://github.com/sseshachala/claude-code-workspace-starter"
+                href="https://github.com/sseshachala/claude-code-team-kit"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 transition-colors"
@@ -226,7 +226,7 @@ function GuardTogetherSection() {
             },
             {
               guard: "Guard blocks unapproved AI tools team-wide",
-              tool: "Workspace Starter makes approved tools the default for everyone",
+              tool: "Claude Code Team Kit makes approved tools the default for everyone",
               outcome: "Developers get a ready-to-go setup that already matches Guard's approved tool list — zero friction, zero policy violations.",
               color: "border-violet-500",
               toolColor: "text-violet-300",
@@ -446,13 +446,13 @@ function FooterCTASection() {
           Agent Booster docs →
         </a>
         <a
-          href="https://github.com/sseshachala/claude-code-workspace-starter"
+          href="https://github.com/sseshachala/claude-code-team-kit"
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-6 py-3 text-sm font-semibold text-stone-700 hover:border-stone-300 hover:shadow-sm transition-all"
         >
           <GitHubIcon />
-          Workspace Starter
+          Claude Code Team Kit
         </a>
         <a href="/" className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-6 py-3 text-sm font-semibold text-stone-700 hover:border-stone-300 hover:shadow-sm transition-all">
           Learn about Conduct →
