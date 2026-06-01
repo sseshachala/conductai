@@ -138,11 +138,10 @@ def _accept_pending_invites_bg(user_id: str) -> None:
 @router.get("", response_model=list[ProjectOut])
 def list_projects(
     user_id: Annotated[str, Depends(get_user_id)],
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
-    # Auto-accept pending invites in the background — don't block the response
-    background_tasks.add_task(_accept_pending_invites_bg, user_id)
+    # Accept pending invites synchronously so the workspace appears in this response
+    _accept_pending_invites(user_id, db)
 
     # Query via workspace_users (new) with legacy owner_id fallback (UNION)
     rows = db.execute(text("""
