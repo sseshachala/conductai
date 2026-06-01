@@ -262,29 +262,6 @@ function ConductGuardModule() {
       {/* Installed state */}
       {isInstalled && team && (
         <div className="border-t border-stone-100 pt-4 space-y-4">
-          {/* Invite command */}
-          <div>
-            <p className="text-xs font-medium text-stone-700 mb-2">Invite your developers:</p>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 font-mono text-xs bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 text-stone-700 truncate">
-                conduct guard join {team.invite_code || "…"}
-              </code>
-              <button
-                onClick={handleCopy}
-                className="text-xs font-medium text-stone-600 hover:text-stone-900 border border-stone-200 rounded-lg px-3 py-2 transition-colors whitespace-nowrap"
-              >
-                {copied ? "Copied!" : "Copy"}
-              </button>
-              <button
-                onClick={handleRegenerate}
-                disabled={regenerating}
-                className="text-xs font-medium text-stone-500 hover:text-stone-800 border border-stone-200 rounded-lg px-3 py-2 transition-colors whitespace-nowrap disabled:opacity-50"
-              >
-                {regenerating ? "…" : "Regenerate"}
-              </button>
-            </div>
-          </div>
-
           {/* Stats + dashboard link */}
           <div className="flex items-center justify-between">
             <p className="text-xs text-stone-500">
