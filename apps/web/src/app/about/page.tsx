@@ -81,7 +81,7 @@ export default function AboutPage() {
             <p className="mt-4">
               The tools I&apos;m shipping — Agent Booster, RTK, Conduct — are the infrastructure
               I wish had existed when I was running Xervmon. Context efficiency, smart model routing,
-              YAML-driven agent workflows that a team can actually own and modify. Small, composable,
+              governed agent workflows that a team can actually own and modify as YAML. Small, composable,
               open.
             </p>
           </section>
@@ -126,8 +126,8 @@ export default function AboutPage() {
                   <div>
                     <p className="font-semibold text-stone-900">Conduct</p>
                     <p className="text-sm text-stone-500 mt-1">
-                      YAML playbooks that turn AI agents into reusable team automations. Install a
-                      playbook, configure it, run it. GitHub, Slack, CI/CD, incident response.
+                      Governed AI automations for tickets, PRs, alerts, and incidents. Install a
+                      playbook, connect an environment, and run.
                     </p>
                   </div>
                   <a href="/marketplace" className="shrink-0 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors mt-0.5">

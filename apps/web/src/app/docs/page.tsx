@@ -127,8 +127,8 @@ export default function DocsPage() {
           <section id="how-it-works">
             <h1 className="text-3xl font-bold text-stone-900 mb-3">How Conduct works</h1>
             <p className="text-stone-600 leading-relaxed text-base mb-10">
-              Conduct is a playbook layer for AI agents. You install a YAML playbook, configure it once,
-              and it runs automatically — triggered by a webhook, on a schedule, or on demand.
+              Conduct is a governed automation layer for AI agents. You install a playbook, configure it once,
+              and it turns tickets, PRs, alerts, and incidents into repeatable workflows — triggered by a webhook, on a schedule, or on demand.
               Every run is traced, every outcome is recorded.
             </p>
 
@@ -251,8 +251,8 @@ export default function DocsPage() {
                   detail: "Agents can call any external URL during a run (GitHub, Slack, custom APIs). There is no per-environment allowlist today. A misconfigured or malicious playbook could make arbitrary outbound requests.",
                 },
                 {
-                  label: "Per-run sandbox isolation",
-                  detail: "All runs share the same executor process. A run that crashes or leaks memory affects other concurrent runs. Isolation is at the database/workspace layer, not the OS/process layer.",
+                  label: "Runtime isolation depends on execution backend",
+                  detail: "Some blocks execute in the API worker while sandbox-backed agent execution can run in workspace-scoped Modal or SSH environments. Treat sandbox isolation as a configured runtime property, not a blanket guarantee across every block.",
                 },
                 {
                   label: "Playbook static analysis",
@@ -271,7 +271,7 @@ export default function DocsPage() {
               {[
                 ["Credential proxy", "Agents call a proxy that holds the token — the executor never sees plaintext. Revocation and rate-limiting become centralizable."],
                 ["Egress allowlist per environment", "Each environment declares which hostnames agents are allowed to call. Requests outside the allowlist are rejected before execution."],
-                ["Per-run process isolation", "Each run gets an isolated process or WASM sandbox. A crashing run cannot affect others and cannot access another run's memory."],
+                ["Per-block process isolation", "Every execution path gets isolated at the process or sandbox boundary. A crashing block cannot affect others and cannot access another run's memory."],
                 ["Playbook supply chain analysis", "Static analysis of YAML before install: what tools are called, what data is read, what external endpoints are contacted. Surfaced as a risk summary before you confirm."],
               ].map(([label, detail]) => (
                 <div key={label} className="flex gap-4 px-4 py-3">
@@ -291,7 +291,7 @@ export default function DocsPage() {
           <section id="overview">
             <h1 className="text-3xl font-bold text-stone-900 mb-3">Documentation</h1>
             <p className="text-stone-600 leading-relaxed text-base">
-              Conduct AI lets you build and run AI agents that interact with your tools — GitHub, Slack, Linear, and more.
+              Conduct AI lets you build and run governed AI automations across your tools — GitHub, Slack, Linear, and more.
               Agents are configured on a canvas, scoped to an environment, and triggered on-demand, by webhook, or on a schedule.
             </p>
           </section>

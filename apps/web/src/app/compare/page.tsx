@@ -139,7 +139,7 @@ export default function ComparePage() {
         >
           Get started — it&apos;s free →
         </a>
-        <p className="text-xs text-stone-400 mt-4">No credit card · No setup · Sign in with Google</p>
+        <p className="text-xs text-stone-400 mt-4">No credit card · Connect your existing tools · Sign in with Google</p>
       </section>
 
       <footer className="border-t border-stone-100 py-8 text-center text-xs text-stone-400 space-y-2">

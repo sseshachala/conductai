@@ -4,18 +4,18 @@ import "./globals.css"
 import { ClerkProvider } from "@clerk/nextjs"
 
 export const metadata: Metadata = {
-  title: "Conduct AI — YAML Agent Recipes for Team Automations",
+  title: "Conduct AI — Governed AI Automations for Engineering Teams",
   description:
-    "Conduct turns YAML agent recipes into reusable automations your team can install, configure, and run.",
+    "Conduct turns tickets, PRs, alerts, and incidents into auditable AI agent workflows with human approval before anything ships.",
   icons: {
     icon: "/icon.png",
     shortcut: "/icon.png",
     apple: "/icon.png",
   },
   openGraph: {
-    title: "Conduct AI — YAML Agent Recipes for Team Automations",
+    title: "Conduct AI — Governed AI Automations for Engineering Teams",
     description:
-      "Conduct turns YAML agent recipes into reusable automations your team can install, configure, and run.",
+      "Conduct turns tickets, PRs, alerts, and incidents into auditable AI agent workflows with human approval before anything ships.",
     url: "https://conductai.ai",
     siteName: "Conduct",
     type: "website",
@@ -24,15 +24,15 @@ export const metadata: Metadata = {
         url: "https://conductai.ai/og.png",
         width: 1200,
         height: 630,
-        alt: "Conduct — YAML agent recipes for team automations",
+        alt: "Conduct — governed AI automations for engineering teams",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Conduct AI — YAML Agent Recipes for Team Automations",
+    title: "Conduct AI — Governed AI Automations for Engineering Teams",
     description:
-      "YAML agent recipes your team can install, configure, and run.",
+      "Auditable AI agent workflows for tickets, PRs, alerts, and incidents.",
   },
 }
 
@@ -45,7 +45,7 @@ const softwareAppJsonLd = {
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "Web",
   "url": "https://conductai.ai",
-  "description": "YAML agent recipes for reusable team automations. Install, configure, and run engineering playbooks with human approval before anything merges.",
+  "description": "Governed AI automations for engineering teams. Turn tickets, PRs, alerts, and incidents into auditable workflows with human approval before anything merges.",
   "offers": {
     "@type": "Offer",
     "price": "0",
@@ -60,7 +60,7 @@ const softwareAppJsonLd = {
     "Dependency Updater",
     "Deploy Monitor",
     "Human approval gates via Slack",
-    "Ephemeral sandbox execution",
+    "Workspace-scoped sandbox execution",
   ],
 }
 

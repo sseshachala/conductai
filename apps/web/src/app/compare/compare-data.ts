@@ -8,13 +8,13 @@ export const TOOLS = [
     category: "Orchestration",
     categoryColor: "bg-indigo-100 text-indigo-700",
     url: "https://conductai.ai",
-    oneLiner: "AI agent orchestration that runs around your Git workflow — not instead of it. Install playbooks, add approval gates, ship with confidence.",
-    description: "Conduct is an AI agent orchestration platform for engineering teams. It doesn't replace GitHub, Git, or your IDE — it wraps around your existing Git workflow to automate the repetitive parts: reviewing PRs, fixing labeled issues, triaging incoming bugs, diagnosing CI failures, patching dependencies, and responding to incidents. Every automation is a visual YAML playbook your team can read, fork, and customise. Human-in-the-loop approval gates are first-class blocks — nothing ships without a reviewer unless you explicitly remove the gate. Every run is fully audited with cost visibility. MIT licensed.",
+    oneLiner: "Governed AI automations for engineering teams — turn tickets, PRs, alerts, and incidents into auditable agent workflows.",
+    description: "Conduct is a governed automation layer for engineering teams. It doesn't replace GitHub, Git, or your IDE — it wraps around your existing stack to automate the repetitive parts: reviewing PRs, fixing labeled issues, triaging incoming bugs, diagnosing CI failures, patching dependencies, and responding to incidents. Every automation is a visual YAML playbook your team can read, fork, and customise. Human-in-the-loop approval gates are first-class blocks — nothing ships without a reviewer unless you explicitly remove the gate. Every run is fully audited with cost visibility. MIT licensed.",
     strengths: [
       "Visual canvas — see and edit the entire agent workflow at a glance",
       "Copilot↔autopilot spectrum — tune automation level per workflow",
       "Human-in-the-loop approval gates as first-class blocks",
-      "9 pre-built playbooks installable in one click",
+      "Growing library of pre-built playbooks installable in one click",
       "Full autonomous fix loop: PR review → issue → autopilot → new PR",
       "Per-run cost and audit trail visibility",
       "Multi-model per block — mix Claude, GPT-4, Gemini in one workflow",
@@ -23,12 +23,12 @@ export const TOOLS = [
     ],
     tradeoffs: [
       "Early-stage product — some rough edges and missing integrations",
-      "Requires Modal Labs for production sandbox execution",
+      "Sandbox execution requires configuring a workspace runtime such as Modal or SSH",
       "Smaller community than GitHub Copilot or Amazon Q",
       "No IDE extension — purely web canvas + CLI",
       "Self-hosted option not yet available",
     ],
-    bestFor: "Engineering teams (2–20 people) on GitHub + Slack who want AI automation that works with their existing Git workflow — not a replacement for it. Teams that want to see the agent logic, own the playbook, and put a human in the loop before anything ships.",
+    bestFor: "Engineering teams (2–20 people) using tools like GitHub, Slack, Jira, Linear, and Sentry who want AI automation around the work, not a replacement for their development workflow. Teams that want to see the agent logic, own the playbook, and put a human in the loop before anything ships.",
   },
   {
     id: "copilot",
@@ -267,7 +267,7 @@ export const FEATURE_GROUPS = [
       {
         name: "Pre-built playbooks / agents",
         note: "Install and run without building from scratch",
-        values: { conduct: "✅ 11", copilot: "🟡", devin: "❌", linearb: "🟡", bito: "❌", amazonq: "🟡", coderabbit: "❌", xhawk: "🟡", runtm: "❌" },
+        values: { conduct: "✅", copilot: "🟡", devin: "❌", linearb: "🟡", bito: "❌", amazonq: "🟡", coderabbit: "❌", xhawk: "🟡", runtm: "❌" },
       },
       {
         name: "Custom workflow builder",
@@ -406,7 +406,7 @@ export const FEATURE_GROUPS = [
       },
       {
         name: "Isolated sandbox execution",
-        note: "Code runs in an ephemeral container, not on your machine or cloud",
+        note: "Agent execution runs in a sandbox-backed or configured runtime",
         values: { conduct: "✅ Modal/SSH", copilot: "❌", devin: "✅", linearb: "❌", bito: "❌", amazonq: "❌", coderabbit: "❌", xhawk: "🟡", runtm: "✅" },
       },
       {
@@ -506,7 +506,7 @@ export const DECISION_GUIDE = [
   {
     icon: "🔀",
     situation: "I want event-driven automation (GitHub → agent → PR) with a safe sandbox backend",
-    detail: "GitHub labels an issue → Conduct triggers a playbook → the brain block runs in a Runtm sandbox → PR opened. Orchestration + runtime, working together.",
+    detail: "GitHub labels an issue → Conduct triggers a playbook → the agent runs in the configured workspace runtime → PR opened. Orchestration and runtime, working together.",
     picks: [
       { name: "Conduct AI", highlight: true },
       { name: "Runtm", highlight: false },
