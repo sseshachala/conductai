@@ -137,7 +137,7 @@ export default function GuardPage() {
       const h: Record<string, string> = {}
       if (token) h["Authorization"] = `Bearer ${token}`
       h["X-Workspace-ID"] = activeWorkspace.id
-      fetch(`${base}/workspaces/${activeWorkspace.id}/members`, { headers: h })
+      fetch(`${base}/projects/${activeWorkspace.id}/members`, { headers: h })
         .then(r => r.ok ? r.json() : [])
         .then((members: { clerk_user_id: string; role: string }[]) => {
           const role = members.find(m => m.clerk_user_id === userId)?.role

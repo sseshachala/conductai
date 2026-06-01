@@ -129,7 +129,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
       if (!activeWorkspace || !userId) return
       try {
         const h = await authHeaders()
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${activeWorkspace.id}/members`, { headers: h })
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace.id}/members`, { headers: h })
         if (!res.ok || cancelled) return
         const members: { clerk_user_id: string; role: string }[] = await res.json()
         const myRole = members.find(m => m.clerk_user_id === userId)?.role as UserRole ?? null
