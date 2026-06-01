@@ -133,15 +133,21 @@ def _accept_pending_invites(user_id: str, db: Session) -> None:
                    {"now": now, "id": str(inv.id)})
         # Auto-enroll in Guard if the workspace has Guard installed
         guard_team = db.execute(
-            text("SELECT id FROM guard_teams WHERE conductai_org_id = :ws LIMIT 1"),
+            text("""
+                SELECT id FROM guard_teams
+                WHERE workspace_id::text = :ws OR conductai_org_id = :ws
+                LIMIT 1
+            """),
             {"ws": ws_id},
         ).fetchone()
         if guard_team:
+            import secrets as _secrets
             db.execute(text("""
-                INSERT INTO guard_members (id, team_id, user_id, email, role, active, joined_at)
-                VALUES (gen_random_uuid(), :team_id, :user_id, :email, 'developer', true, :now)
+                INSERT INTO guard_members (id, team_id, user_id, email, role, active, joined_at, member_token)
+                VALUES (gen_random_uuid(), :team_id, :user_id, :email, 'developer', true, :now, :token)
                 ON CONFLICT DO NOTHING
-            """), {"team_id": str(guard_team.id), "user_id": user_id, "email": email, "now": now})
+            """), {"team_id": str(guard_team.id), "user_id": user_id, "email": email, "now": now,
+                   "token": _secrets.token_urlsafe(24)})
     if invites:
         db.commit()
 
