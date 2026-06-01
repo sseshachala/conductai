@@ -125,7 +125,7 @@ if not is_regex and word_count >= 2:
         "Use mcp__agent-booster__search_context instead — it searches by meaning "
         "across all indexed symbols and returns ranked results with far fewer tokens."
     )
-    sys.exit(1)
+    sys.exit(2)
 
 sys.exit(0)
 '''
