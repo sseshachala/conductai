@@ -360,7 +360,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         <div className="max-w-4xl mx-auto text-center">
           <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-4">Works with GitHub Copilot · Cursor · Claude Code</p>
           <h2 className="text-3xl font-bold text-white mb-4">
-            You have AI that writes code.<br />Conduct turns it into a workflow.
+            You have AI that writes code.<br />Conduct turns the surrounding work into a workflow.
           </h2>
           <p className="text-stone-400 text-sm max-w-2xl mx-auto mb-10 leading-relaxed">
             Every engineering team now has an AI writing code. Conduct gives teams governed automations for the work around it:
@@ -684,7 +684,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
             We grade our own agents.<br />In public.
           </h2>
           <p className="text-center text-stone-500 text-sm max-w-2xl mx-auto mb-14">
-            Most AI tools ship a demo and call it a product. We score every playbook against 13 structural criteria and a live LLM judge — then publish the results. No cherry-picking. No hiding the Bs.
+            Most AI tools ship a demo and call it a product. We score every playbook against 13 structural criteria and an LLM judge in controlled eval runs — then publish the results. No cherry-picking. No hiding the Bs.
           </p>
 
           {/* Two product cards */}
@@ -695,19 +695,19 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
               <div className="flex items-start justify-between">
                 <div>
                   <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-violet-700 bg-violet-50 border border-violet-100 rounded-full px-2.5 py-0.5 uppercase tracking-widest mb-2">
-                    Live scoring
+                    Controlled scoring
                   </span>
                   <h3 className="text-lg font-bold text-stone-900">Quality</h3>
-                  <p className="text-xs text-stone-400 mt-0.5">Per-playbook grades updated on every run</p>
+                  <p className="text-xs text-stone-400 mt-0.5">Per-playbook grades from controlled eval runs</p>
                 </div>
                 <span className="text-3xl font-black text-violet-100 select-none">◈</span>
               </div>
               <div className="space-y-2.5 text-xs text-stone-500">
                 {[
                   "Grade A–F per playbook based on 13 structural criteria",
-                  "Live execution scored by Claude Haiku as judge",
+                  "Execution samples scored by Claude Haiku as judge",
                   "Failing criteria listed inline — know exactly what's wrong",
-                  "Re-run any playbook instantly to see the new score",
+                  "Published scores update after reviewed evaluation runs",
                 ].map(t => (
                   <div key={t} className="flex items-start gap-2">
                     <span className="text-violet-400 mt-0.5">✓</span>
@@ -974,7 +974,7 @@ const WHY_DELEGATOR = (count: number) => [
   {
     icon: "🔒",
     title: "Human approval on every merge",
-    body: "Approval gates are first-class blocks, not an afterthought. Every workflow has a Slack checkpoint before anything ships. The thing your CISO will actually sign off on.",
+    body: "Approval gates are first-class blocks, not an afterthought. Add a Slack checkpoint before high-risk actions so agents can do the work while people keep control.",
   },
   {
     icon: "📂",
@@ -999,7 +999,7 @@ const WHY_DELEGATOR = (count: number) => [
   {
     icon: "🧩",
     title: "GitHub, GitLab, or Bitbucket — your choice",
-    body: "Connect any git provider. Webhook registration, signature verification, and repo/branch selection all work across GitHub, GitLab, and Bitbucket with zero extra config. Standardized env vars (GITHUB_TOKEN, GITLAB_TOKEN, BITBUCKET_TOKEN) — paste your .env and go.",
+    body: "Connect the git provider your team already uses. Webhook registration, signature verification, repo selection, and branch targeting are handled through the same playbook model across GitHub, GitLab, and Bitbucket.",
   },
   {
     icon: "👥",
@@ -1033,7 +1033,7 @@ const VAULT_SECURITY = [
   {
     icon: "🚫",
     title: "Never logged, never exposed",
-    body: "Decrypted tokens are injected into the agent sandbox at runtime only. They are never written to logs, run traces, or any persistent store. The API returns only field names — never values.",
+    body: "Decrypted tokens are passed to the runtime only when needed. They are never written to logs, run traces, or any persistent store. The API returns only field names — never values.",
     badge: "Zero token logging",
   },
   {
@@ -1056,9 +1056,9 @@ const VAULT_SECURITY = [
   },
   {
     icon: "📋",
-    title: "Standardized env vars — paste and go",
-    body: "Industry-standard names (GITHUB_TOKEN, SLACK_BOT_TOKEN, ANTHROPIC_API_KEY, MODAL_TOKEN_ID…) are routed to the right integration automatically. Paste your .env file directly — no form fields, no provider-specific UI to maintain.",
-    badge: "Zero-code credentials",
+    title: "Standardized environment names",
+    body: "Industry-standard names like GITHUB_TOKEN, SLACK_BOT_TOKEN, ANTHROPIC_API_KEY, and MODAL_TOKEN_ID map cleanly to integrations, so teams can configure environments without learning a new credential model.",
+    badge: "Standard envs",
   },
   {
     icon: "🏠",
@@ -1143,7 +1143,7 @@ const FAQ = (count: number) => [
   },
   {
     q: "How does Conduct work once it's connected to our stack?",
-    a: "Link GitHub, Slack, and Linear in about five minutes — no migration required. From there, agents run inside your existing workflows. Every workflow includes a Slack approval checkpoint before anything ships — one-click Approve or Reject in a DM.",
+    a: "Link GitHub, Slack, and Linear in about five minutes — no migration required. From there, agents run inside your existing workflows. Add Slack approval checkpoints to high-risk steps so a human can approve or reject before the agent proceeds.",
   },
   {
     q: "Which AI model does Conduct use?",
@@ -1151,7 +1151,7 @@ const FAQ = (count: number) => [
   },
   {
     q: "How is Conduct different from GitHub Copilot or other AI coding assistants?",
-    a: "Copilot and coding assistants help individuals write code. Conduct gives teams reusable agent recipes that run as shared workflows, with project configuration, credentials, run history, and approval gates built in.",
+    a: "Copilot and coding assistants help individuals write code. Conduct gives teams reusable agent workflows for the work around code, with project configuration, credentials, run history, and approval gates built in.",
   },
   {
     q: "What specific agents come included?",
