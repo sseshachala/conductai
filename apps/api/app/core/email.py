@@ -57,14 +57,14 @@ _FALLBACK_TEMPLATES: dict[str, dict] = {
           </table>
           <table cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
             <tr><td style="background:#1c1917;border-radius:10px;">
-              <a href="{{ app_url }}/sign-in"
+              <a href="{{ app_url }}/sign-in?redirect_url={{ app_url }}/accept-invite?workspace_id={{ workspace_id }}"
                  style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:600;color:#fff;text-decoration:none;">
                 Accept invitation →
               </a>
             </td></tr>
           </table>
           <p style="margin:0 0 24px;font-size:12px;color:#a8a29e;">
-            Sign in with <b>this email address</b> and you'll be added to {{ workspace_name }} automatically.
+            Sign in with <b>this email address</b> and you'll be taken directly to <b>{{ workspace_name }}</b>.
           </p>
           {% if guard_invite_cmd %}
           <table cellpadding="0" cellspacing="0" style="width:100%;margin-top:8px;">
