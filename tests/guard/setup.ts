@@ -24,8 +24,9 @@
  */
 
 import { writeFileSync } from "fs"
-import { upsertClerkUser, createSignInToken, findClerkUserByEmail } from "./lib/clerk.js"
+import { upsertClerkUser } from "./lib/clerk.js"
 import { getOrCreateTestWorkspace, addMemberWithRole } from "./lib/conduct.js"
+import { createBrowser, signInWithPassword } from "./lib/stagehand.js"
 
 // ── Test user definitions ──────────────────────────────────────────────────
 
@@ -64,83 +65,47 @@ type RoleKey = keyof typeof TEST_USERS
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 /**
- * Obtains a Bearer JWT from the Conduct API using the Clerk Frontend API.
+ * Signs into the Conduct app as admin via a real browser (Stagehand/Chromium).
+ * Clerk handles all cookie state inside the browser — no manual token needed.
+ * Extracts the Clerk session JWT from the browser's window.__clerk_session.
  *
- * Flow:
- *   1. Use the Clerk Management API to create a sign-in token (backend secret)
- *   2. POST the token to the Clerk Frontend API (/v1/client/sign_ins) to
- *      simulate a "magic link" sign-in and receive a session JWT
- *
- * The session JWT is what the Conduct API accepts as an Authorization header.
- *
- * If CONDUCT_ADMIN_TOKEN is set in the environment, that value is used
- * directly (useful in CI where a long-lived token is available).
+ * Falls back to CONDUCT_ADMIN_TOKEN env var if set (useful in CI).
  */
-async function getConductBearerToken(clerkUserId: string): Promise<string> {
-  // Allow overriding with a pre-baked token in CI
+async function getConductBearerToken(email: string, password: string): Promise<string> {
   if (process.env.CONDUCT_ADMIN_TOKEN) {
     return process.env.CONDUCT_ADMIN_TOKEN
   }
 
-  const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-  const frontendApiHost = process.env.CLERK_FRONTEND_API_URL
+  const appUrl = process.env.CONDUCT_APP_URL ?? "http://localhost:3000"
+  console.log("  [auth] opening browser to sign in as admin…")
 
-  if (!publishableKey && !frontendApiHost) {
-    throw new Error(
-      "Cannot obtain a Conduct Bearer token: set either CONDUCT_ADMIN_TOKEN " +
-        "(pre-baked JWT) or both NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY and " +
-        "CLERK_FRONTEND_API_URL so we can exchange a sign-in token."
-    )
-  }
+  const { stagehand, page } = await createBrowser(true)
+  try {
+    await signInWithPassword(page, email, password, appUrl)
 
-  // Derive the Clerk frontend API URL from the publishable key if not explicit.
-  // The publishable key encodes the instance domain:
-  //   pk_test_<base64(domain)>  →  https://<domain>
-  let clerkFrontendUrl = frontendApiHost
-  if (!clerkFrontendUrl && publishableKey) {
-    const encoded = publishableKey.split("_")[2]?.replace(/\.$/, "") ?? ""
-    try {
-      const decoded = Buffer.from(encoded, "base64").toString("utf8")
-      // decoded is like "clerk.yourapp.com$"
-      const domain = decoded.replace(/\$$/, "")
-      clerkFrontendUrl = `https://${domain}`
-    } catch {
-      throw new Error("Could not decode NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY to derive Clerk frontend URL")
+    // Wait for Clerk to hydrate the session in the browser
+    await page.waitForTimeout(2000)
+
+    // Extract JWT from Clerk's client-side session object
+    const jwt = await page.evaluate(async () => {
+      const win = window as typeof window & {
+        Clerk?: { session?: { getToken: () => Promise<string> } }
+      }
+      return win.Clerk?.session?.getToken?.() ?? null
+    })
+
+    if (!jwt) {
+      throw new Error(
+        "Could not extract Clerk session JWT from browser. " +
+        "Check that CONDUCT_APP_URL points to the running app and the admin credentials are correct."
+      )
     }
+
+    console.log("  [auth] obtained Bearer token via browser sign-in")
+    return jwt as string
+  } finally {
+    await stagehand.close()
   }
-
-  // Create a short-lived sign-in token via Management API
-  const signInToken = await createSignInToken(clerkUserId)
-
-  // Redeem the sign-in token using the Clerk Frontend API.
-  // The ticket must only be in the request body — NOT as a query param.
-  const redeemRes = await fetch(`${clerkFrontendUrl}/v1/client/sign_ins`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ strategy: "ticket", ticket: signInToken }).toString(),
-  })
-
-  if (!redeemRes.ok) {
-    const body = await redeemRes.text()
-    throw new Error(
-      `Failed to redeem Clerk sign-in token: HTTP ${redeemRes.status} — ${body}`
-    )
-  }
-
-  const clerkData = await redeemRes.json()
-  // The JWT is in client.sessions[0].last_active_token.jwt
-  const jwt =
-    clerkData?.client?.sessions?.[0]?.last_active_token?.jwt ??
-    clerkData?.response?.last_active_token?.jwt
-
-  if (!jwt) {
-    throw new Error(
-      "Clerk did not return a session JWT after sign-in token redemption. " +
-        "Check CLERK_FRONTEND_API_URL and that the publishable key matches your instance."
-    )
-  }
-
-  return jwt as string
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
@@ -156,18 +121,17 @@ async function main() {
     clerkIds[role] = await upsertClerkUser(creds.email, creds.password)
   }
 
-  // Step 2: Obtain an admin Bearer token for the Conduct API
-  console.log("\n2. Obtaining admin Bearer token for Conduct API…")
+  // Step 2: Obtain an admin Bearer token via browser sign-in
+  console.log("\n2. Obtaining admin Bearer token via browser sign-in…")
   let adminToken: string
 
   try {
-    adminToken = await getConductBearerToken(clerkIds.admin)
-    console.log("  [auth] obtained Bearer token")
+    adminToken = await getConductBearerToken(TEST_USERS.admin.email, TEST_USERS.admin.password)
   } catch (err) {
     console.error("  [auth] ERROR:", err instanceof Error ? err.message : err)
     console.error(
-      "\n  Hint: If running locally with Clerk disabled (no publishable key),\n" +
-        "  set CONDUCT_ADMIN_TOKEN=<your-dev-token> and re-run setup.\n"
+      "\n  Hint: Set CONDUCT_ADMIN_TOKEN=<jwt> to skip browser sign-in.\n" +
+        "  Get the JWT from browser DevTools → Network → any /projects call → Authorization header.\n"
     )
     process.exit(1)
   }
