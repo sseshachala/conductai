@@ -460,7 +460,7 @@ def add_member(
     """), {"ws": workspace_id, "uid": body.clerk_user_id,
            "role": body.role, "invited_by": user_id, "now": now})
     _audit(db, workspace_id=workspace_id, actor_id=user_id,
-           actor_email=get_clerk_user_email(user_id), actor_role=_role,
+           actor_email=None, actor_role=_role,
            action="member.added", resource_type="member",
            resource_id=body.clerk_user_id, meta={"role": body.role})
     db.commit()
