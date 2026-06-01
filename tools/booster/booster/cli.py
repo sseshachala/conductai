@@ -96,8 +96,8 @@ except Exception:
 if count > 0:
     print(
         f"[booster] \'{rel}\' has {count} indexed symbols. "
-        "Use mcp__agent-booster__smart_read with a task description "
-        "to read only the relevant sections and save tokens."
+        "For exploration or understanding: use mcp__agent-booster__smart_read with a task description — returns only the relevant slice. "
+        "For a pre-edit read: proceed with Read as normal."
     )
 
 sys.exit(0)
@@ -105,7 +105,7 @@ sys.exit(0)
 
 _GREP_NUDGE_SCRIPT = '''\
 #!/usr/bin/env python3
-"""Booster grep nudge — suggests search_context for semantic-looking Grep patterns."""
+"""Booster grep nudge — blocks semantic Grep and redirects to search_context."""
 import json
 import sys
 
@@ -121,10 +121,11 @@ word_count = len(pattern.split())
 
 if not is_regex and word_count >= 2:
     print(
-        f"[booster] \\'{pattern}\\' looks like a semantic search. "
-        "Consider mcp__agent-booster__search_context instead of Grep — "
-        "it searches by meaning across all indexed symbols, not just text match."
+        f"[booster] Grep blocked for semantic pattern \\'{pattern}\\'. "
+        "Use mcp__agent-booster__search_context instead — it searches by meaning "
+        "across all indexed symbols and returns ranked results with far fewer tokens."
     )
+    sys.exit(1)
 
 sys.exit(0)
 '''
