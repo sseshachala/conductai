@@ -1,0 +1,23 @@
+{
+  "name": "conduct-guard-tests",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "setup": "tsx setup.ts",
+    "teardown": "tsx teardown.ts",
+    "test": "tsx runner.ts",
+    "test:admin": "tsx runner.ts --role admin",
+    "test:security": "tsx runner.ts --role security",
+    "test:editor": "tsx runner.ts --role editor",
+    "test:viewer": "tsx runner.ts --role viewer"
+  },
+  "dependencies": {
+    "@browserbasehq/stagehand": "^1.13.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0",
+    "@types/node": "^20.0.0"
+  }
+}
