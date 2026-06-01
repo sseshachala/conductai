@@ -337,7 +337,7 @@ function Methodology() {
           <p className="font-semibold text-stone-700 mb-1">Scoring model</p>
           <p>
             Edition 001 uses two scoring layers: structural scoring (100 pts, offline, static YAML
-            analysis) and quality scoring (70 pts, live execution across Claude Haiku, Sonnet, and
+            analysis) and quality scoring (70 pts, controlled execution across Claude Haiku, Sonnet, and
             Opus with an LLM-as-judge pass for correctness, completeness, and actionability).
             All three models averaged 92.9% across 19 playbooks.
           </p>

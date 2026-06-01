@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
-import { useParams, useRouter } from "next/navigation"
+import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import {
@@ -254,7 +254,7 @@ function ScenarioCoverage({ scenarios }: { scenarios: ScenarioSet }) {
   )
 }
 
-// ─── Criteria breakdown (live) ────────────────────────────────────────────────
+// ─── Criteria breakdown ───────────────────────────────────────────────────────
 
 function CriterionRow({ c }: { c: CriterionResult }) {
   const [open, setOpen] = useState(false)
@@ -298,7 +298,7 @@ function CriteriaSection({ live }: { live: PlaybookLiveDetail }) {
       <div className="flex items-center justify-between mb-3">
         <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-widest">
           Criteria breakdown
-          <span className="ml-2 normal-case font-normal text-stone-300">(live)</span>
+          <span className="ml-2 normal-case font-normal text-stone-300">(current)</span>
         </p>
         <div className="flex items-center gap-3">
           {passing > 0 && (
@@ -313,7 +313,7 @@ function CriteriaSection({ live }: { live: PlaybookLiveDetail }) {
       <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
         {live.criteria.length === 0 ? (
           <div className="px-6 py-8 text-center text-sm text-stone-400">
-            No criteria available. Run an eval to populate this view.
+            No criteria available for this playbook yet.
           </div>
         ) : (
           live.criteria.map((c, i) => <CriterionRow key={`${c.name}-${i}`} c={c} />)
@@ -321,7 +321,7 @@ function CriteriaSection({ live }: { live: PlaybookLiveDetail }) {
       </div>
 
       <p className="text-[10px] text-stone-300 mt-2 text-right">
-        Criteria reflect the most recent eval run, not the frozen edition score.
+        Criteria reflect the latest published quality data, not necessarily the frozen edition score.
       </p>
     </section>
   )
@@ -403,7 +403,7 @@ function DeepDiveContent({
         const workspaceId = getCookie("delegator_project_id")
         if (workspaceId) headers["X-Workspace-Id"] = workspaceId
 
-        // Fetch all three in parallel: edition manifest, scenarios, live detail
+        // Fetch all three in parallel: edition manifest, scenarios, current detail
         const [editionRes, scenariosRes, liveRes] = await Promise.all([
           ed.apiEditionSlug
             ? fetch(`${base}/eval/benchmark/editions/${ed.apiEditionSlug}`, { headers })
@@ -444,7 +444,7 @@ function DeepDiveContent({
           setScenarios(await scenariosRes.json())
         }
 
-        // Live criteria breakdown (optional — show if available)
+        // Current criteria breakdown (optional — show if available)
         if (liveRes?.ok) {
           setLive(await liveRes.json())
         }
@@ -537,7 +537,7 @@ function DeepDiveContent({
               <ScenarioCoverage scenarios={scenarios} />
             )}
 
-            {/* Live criteria breakdown */}
+            {/* Current criteria breakdown */}
             {live && (
               <CriteriaSection live={live} />
             )}
@@ -556,7 +556,7 @@ function DeepDiveContent({
                   href={`/eval/${encodeURIComponent(playbookSlug)}`}
                   className="text-xs text-indigo-600 hover:text-indigo-800 transition-colors font-medium"
                 >
-                  Run live eval →
+                  View quality details →
                 </Link>
               </div>
             </div>

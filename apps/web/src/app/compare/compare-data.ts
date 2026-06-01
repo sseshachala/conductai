@@ -19,7 +19,7 @@ export const TOOLS = [
       "Per-run cost and audit trail visibility",
       "Multi-model per block — mix Claude, GPT-4, Gemini in one workflow",
       "MIT licensed, config-as-code, no vendor lock-in",
-      "Works across verticals — not just SDLC",
+      "Built around engineering-stack events: tickets, PRs, alerts, incidents, and releases",
     ],
     tradeoffs: [
       "Early-stage product — some rough edges and missing integrations",

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { useParams, useRouter } from "next/navigation"
+import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 
@@ -58,17 +58,6 @@ const GRADE_STYLE: Record<string, { bg: string; text: string }> = {
 
 function gradeStyle(grade: string) {
   return GRADE_STYLE[grade] ?? { bg: "bg-stone-100", text: "text-stone-500" }
-}
-
-// ─── Spinner ──────────────────────────────────────────────────────────────────
-
-function Spinner() {
-  return (
-    <span
-      className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin"
-      aria-hidden="true"
-    />
-  )
 }
 
 // ─── Criterion row ────────────────────────────────────────────────────────────
@@ -278,8 +267,6 @@ function EvalDetailContent({
   const [detail, setDetail] = useState<PlaybookEvalDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [running, setRunning] = useState(false)
-  const [runError, setRunError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -324,43 +311,6 @@ function EvalDetailContent({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug])
 
-  async function handleRunEval() {
-    setRunning(true)
-    setRunError(null)
-
-    try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" }
-      if (getToken) {
-        const token = await getToken()
-        if (token) headers["Authorization"] = `Bearer ${token}`
-      }
-      const workspaceId = getCookie("delegator_project_id")
-      if (workspaceId) headers["X-Workspace-Id"] = workspaceId
-
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/eval/run/${encodeURIComponent(slug)}`,
-        { method: "POST", headers }
-      )
-
-      if (!res.ok) {
-        const hint =
-          res.status === 401 ? "Not authorised — check your session." :
-          res.status === 403 ? "Forbidden — workspace role may be insufficient." :
-          res.status === 404 ? `Playbook "${slug}" not found.` :
-          `Run failed with status ${res.status}.`
-        setRunError(hint)
-        return
-      }
-
-      const fresh: PlaybookEvalDetail = await res.json()
-      setDetail(fresh)
-    } catch {
-      setRunError("Network error — could not reach the API.")
-    } finally {
-      setRunning(false)
-    }
-  }
-
   const passing = detail?.criteria.filter(c => c.passed).length ?? 0
   const failing = detail?.criteria.filter(c => !c.passed).length ?? 0
 
@@ -368,7 +318,7 @@ function EvalDetailContent({
     <AppShell>
       <div className="mx-auto max-w-3xl px-6 py-10">
 
-        {/* Header row: back link + run button */}
+        {/* Header row */}
         <div className="flex items-center justify-between mb-6">
           <Link
             href="/eval"
@@ -376,28 +326,7 @@ function EvalDetailContent({
           >
             ← Quality
           </Link>
-
-          {!loading && !error && detail && (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled={running}
-                onClick={handleRunEval}
-                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-stone-900 text-white hover:bg-stone-700 transition-colors disabled:opacity-50"
-              >
-                {running && <Spinner />}
-                {running ? "Running…" : "Run eval"}
-              </button>
-            </div>
-          )}
         </div>
-
-        {/* Inline run error */}
-        {runError && (
-          <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3">
-            <p className="text-xs text-red-600">{runError}</p>
-          </div>
-        )}
 
         {loading ? (
           <div className="space-y-4">
