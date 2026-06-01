@@ -952,6 +952,109 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         </div>
       </section>
 
+      {/* Observability + Audit */}
+      <section className="border-t border-stone-100 px-6 py-20">
+        <div className="max-w-5xl mx-auto">
+          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">Observability</p>
+          <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
+            Three audit layers.<br />Every action accounted for.
+          </h2>
+          <p className="text-center text-stone-500 text-sm max-w-2xl mx-auto mb-12 leading-relaxed">
+            Most AI tools give you a chat history. Conduct gives you an immutable audit trail across three lenses —
+            workflow execution, workspace events, and developer AI tool governance — so you can always answer
+            &ldquo;what did the agent do, who approved it, and what did it cost?&rdquo;
+          </p>
+
+          <div className="grid sm:grid-cols-3 gap-5 mb-10">
+            {[
+              {
+                icon: "🔁",
+                label: "Run trace",
+                tag: "Per workflow run",
+                accent: "from-indigo-50 to-white border-indigo-200",
+                iconBg: "bg-indigo-100 text-indigo-600",
+                tagColor: "text-indigo-600",
+                points: [
+                  "Every block: started → completed → failed",
+                  "Every LLM call and tool call inline",
+                  "Guard policy check result in the trace",
+                  "Live via Server-Sent Events while running",
+                  "Immutable — append-only, never deleted",
+                ],
+                link: "/runs",
+                linkLabel: "View Runs →",
+              },
+              {
+                icon: "🏢",
+                label: "Workspace audit",
+                tag: "Platform events",
+                accent: "from-violet-50 to-white border-violet-200",
+                iconBg: "bg-violet-100 text-violet-600",
+                tagColor: "text-violet-600",
+                points: [
+                  "Credential added, rotated, or removed",
+                  "Agent installed or deleted",
+                  "Member invited or role changed",
+                  "Environment created or reassigned",
+                  "Scoped to workspace — cross-workspace blind",
+                ],
+                link: "/audit",
+                linkLabel: "View Audit Log →",
+              },
+              {
+                icon: "🛡️",
+                label: "Guard audit",
+                tag: "Developer AI governance",
+                accent: "from-red-50 to-white border-red-200",
+                iconBg: "bg-red-100 text-red-600",
+                tagColor: "text-red-600",
+                points: [
+                  "Every Claude Code, Cursor, and AI tool call",
+                  "Decision: allowed / blocked / warned",
+                  "Which policy rule triggered and why",
+                  "Tokens and cost per call, per developer",
+                  "Slack alert posted in real time on block",
+                ],
+                link: "/guard/audit",
+                linkLabel: "View Guard Audit →",
+              },
+            ].map(({ icon, label, tag, accent, iconBg, tagColor, points, link, linkLabel }) => (
+              <div key={label} className={`rounded-2xl border bg-gradient-to-br ${accent} p-6 flex flex-col gap-4`}>
+                <div className="flex items-center justify-between">
+                  <span className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl ${iconBg}`}>{icon}</span>
+                  <span className={`text-[10px] font-semibold uppercase tracking-wider ${tagColor}`}>{tag}</span>
+                </div>
+                <p className="font-bold text-stone-900">{label}</p>
+                <ul className="space-y-1.5 flex-1">
+                  {points.map(p => (
+                    <li key={p} className="flex items-start gap-2 text-xs text-stone-500">
+                      <span className="text-stone-300 mt-0.5 shrink-0">·</span>
+                      {p}
+                    </li>
+                  ))}
+                </ul>
+                <div className="pt-3 border-t border-stone-200">
+                  <a href={link} className="text-xs font-semibold text-stone-600 hover:text-stone-900 transition-colors">{linkLabel}</a>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-2xl bg-stone-50 border border-stone-200 px-8 py-5 flex flex-col sm:flex-row items-center gap-5">
+            <div className="text-2xl shrink-0">🔗</div>
+            <div className="flex-1">
+              <p className="font-semibold text-stone-900 mb-1 text-sm">Guard and workflow runs share a link, not a table.</p>
+              <p className="text-xs text-stone-500 leading-relaxed">
+                When a Guard block fires inside a workflow, the policy decision appears inline in the run trace
+                as a <code className="font-mono bg-stone-100 px-1 rounded">guard_check</code> event — rules evaluated, verdict, warnings — alongside the other block events.
+                The same event is also written to the Guard audit log with full token and cost context.
+                Two lenses on the same moment.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* FAQ */}
       <section className="border-t border-stone-100 py-16 px-6">
         <div className="mx-auto max-w-3xl">

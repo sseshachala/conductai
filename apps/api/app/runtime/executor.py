@@ -1834,6 +1834,14 @@ def _execute_dag(
 
             elif block_type == "guard":
                 result = _execute_guard(block, state, str(workspace_id_str), db)
+                _emit(db, run_id, block_id, "guard_check", {
+                    "status":           result.get("status"),
+                    "rules_checked":    result.get("rules_checked", 0),
+                    "violations":       result.get("violations", 0),
+                    "enforcement_mode": result.get("enforcement_mode"),
+                    "warnings":         result.get("warnings", []),
+                    "team_name":        result.get("team_name"),
+                })
 
             else:
                 result = {"status": "skipped", "type": block_type}
