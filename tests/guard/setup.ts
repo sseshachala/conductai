@@ -25,7 +25,7 @@
 
 import { writeFileSync } from "fs"
 import { chromium } from "playwright"
-import { upsertClerkUser } from "./lib/clerk.js"
+import { upsertClerkUser, createSignInToken } from "./lib/clerk.js"
 
 // ── Test user definitions ──────────────────────────────────────────────────
 
@@ -80,19 +80,16 @@ async function setupWorkspaceViaBrowser(
   const page = await context.newPage()
 
   try {
-    // Navigate to app — Clerk will redirect to sign-in
-    await page.goto(`${appUrl}/sign-in`, { waitUntil: "networkidle" })
+    // Use a Clerk sign-in token — bypasses password form AND 2FA entirely.
+    // Navigate the browser directly to the ticket URL; Clerk auto-signs in
+    // and redirects to the app with a live session.
+    const adminClerkId = clerkIds.admin
+    const { url: ticketUrl } = await createSignInToken(adminClerkId, `${appUrl}/guard`)
+    console.log("  [auth] navigating to Clerk sign-in ticket URL…")
+    await page.goto(ticketUrl, { waitUntil: "networkidle" })
 
-    // Clerk sign-in form: email → Continue → password → Continue
-    // Use .cl-formButtonPrimary (Clerk's visible action button class)
-    await page.fill('input[name="identifier"], input[type="email"]', TEST_USERS.admin.email)
-    await page.locator(".cl-formButtonPrimary").first().click()
-    await page.waitForTimeout(1500)
-    await page.fill('input[type="password"]', TEST_USERS.admin.password)
-    await page.locator(".cl-formButtonPrimary").first().click()
-
-    // Wait for redirect away from /sign-in and Clerk session to hydrate
-    await page.waitForURL((url) => !url.pathname.includes("sign-in"), { timeout: 15000 })
+    // Wait for Clerk session to hydrate after the auto sign-in
+    await page.waitForURL((url) => !url.pathname.includes("sign-in"), { timeout: 20000 })
     await page.waitForTimeout(3000)
 
     // All API calls happen inside page.evaluate() — Clerk session is live here
