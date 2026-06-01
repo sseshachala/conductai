@@ -113,7 +113,7 @@ function ConductGuardModule() {
       const res = await fetch(`${base}/guard/teams`, {
         method: "POST",
         headers: h,
-        body: JSON.stringify({ name: `${org.name} Guard`, org_id: org.id, workspace_id: activeWorkspace?.id }),
+        body: JSON.stringify({ name: `${org.name} Guard`, org_id: org.id, workspace_id: org.id }),
       })
       if (!res.ok) {
         const body = await res.text()
