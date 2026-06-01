@@ -8,6 +8,7 @@ export default function ToolsPage() {
         <HeroSection />
         <ToolsSection />
         <GuardTogetherSection />
+        <OnboardingSection />
         <FooterCTASection />
       </main>
       <PageFooter />
@@ -285,6 +286,147 @@ function GuardTogetherSection() {
             </a>
           </div>
         </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── Onboarding ────────────────────────────────────────────────────────── */
+
+function OnboardingSection() {
+  return (
+    <section className="px-6 py-20 bg-stone-50">
+      <div className="max-w-5xl mx-auto">
+        <div className="text-center mb-14">
+          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-3">How to get started</p>
+          <h2 className="text-3xl font-bold text-stone-900 mb-4">
+            Three steps. Three minutes.<br />Your whole team, in sync.
+          </h2>
+          <p className="text-stone-500 text-sm max-w-xl mx-auto leading-relaxed">
+            One person sets the rules. Everyone else joins with a single command.
+            The tools stay in sync automatically.
+          </p>
+        </div>
+
+        <div className="grid sm:grid-cols-3 gap-6 mb-10">
+
+          {/* Step 1 — Manager */}
+          <div className="relative bg-white rounded-2xl border border-stone-200 p-7 flex flex-col gap-4">
+            <div className="flex items-center justify-between mb-1">
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-red-700 bg-red-50 border border-red-100 px-2.5 py-1 rounded-full uppercase tracking-widest">
+                Team lead
+              </span>
+              <span className="text-xs font-bold text-stone-300">Step 1</span>
+            </div>
+            <div>
+              <p className="text-lg font-bold text-stone-900 mb-2">Set the policies</p>
+              <p className="text-sm text-stone-500 leading-relaxed">
+                Log into Conduct, open Guard, and configure your team&apos;s rules —
+                daily spend limit, approved AI tools, blocked actions.
+                Takes about five minutes. Only needs to happen once.
+              </p>
+            </div>
+            <ul className="space-y-1.5 mt-auto">
+              {[
+                "Set daily spend limit per developer",
+                "Choose approved AI tools for the team",
+                "Block risky actions across all workflows",
+                "Invite team members by email",
+              ].map(item => (
+                <li key={item} className="flex items-start gap-2 text-xs text-stone-500">
+                  <span className="text-red-400 mt-0.5 shrink-0">✓</span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+            <div className="mt-4 pt-4 border-t border-stone-100">
+              <a href="/dashboard" className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-700 hover:text-red-900 transition-colors">
+                Open Conduct → Guard →
+              </a>
+            </div>
+          </div>
+
+          {/* Step 2 — Developer */}
+          <div className="relative bg-white rounded-2xl border border-stone-200 p-7 flex flex-col gap-4">
+            <div className="flex items-center justify-between mb-1">
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-full uppercase tracking-widest">
+                Developer
+              </span>
+              <span className="text-xs font-bold text-stone-300">Step 2</span>
+            </div>
+            <div>
+              <p className="text-lg font-bold text-stone-900 mb-2">Join and pull policies</p>
+              <p className="text-sm text-stone-500 leading-relaxed">
+                Accept the invite, run one command. Conduct downloads
+                your team&apos;s Guard policies and applies them to your local
+                environment automatically. Nothing to configure manually.
+              </p>
+            </div>
+            <div className="mt-auto bg-stone-950 rounded-xl px-4 py-3 font-mono text-xs">
+              <p className="text-stone-500 mb-1"># One command to join</p>
+              <p className="text-emerald-400">conduct guard join</p>
+              <p className="text-stone-500 mt-2 mb-1"># Policies pulled automatically</p>
+              <p className="text-white">✓ spend limit applied</p>
+              <p className="text-white">✓ approved tools configured</p>
+              <p className="text-white">✓ blocked actions enforced</p>
+            </div>
+          </div>
+
+          {/* Step 3 — Tools sync */}
+          <div className="relative bg-white rounded-2xl border border-stone-200 p-7 flex flex-col gap-4">
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-violet-700 bg-violet-50 border border-violet-100 px-2.5 py-1 rounded-full uppercase tracking-widest">
+                  Tools
+                </span>
+                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-full uppercase tracking-widest">
+                  Coming soon
+                </span>
+              </div>
+              <span className="text-xs font-bold text-stone-300">Step 3</span>
+            </div>
+            <div>
+              <p className="text-lg font-bold text-stone-900 mb-2">Tools stay in sync</p>
+              <p className="text-sm text-stone-500 leading-relaxed">
+                Agent Booster and other tools will optionally connect to
+                the Guard policy server. When the team lead updates a rule,
+                it propagates to every developer&apos;s tools automatically —
+                no one needs to reconfigure anything.
+              </p>
+            </div>
+            <ul className="space-y-1.5 mt-auto">
+              {[
+                "Agent Booster respects spend limits automatically",
+                "Model routing follows Guard's approved tiers",
+                "Policy updates propagate in under 60 seconds",
+                "No manual reconfiguration for developers",
+              ].map(item => (
+                <li key={item} className="flex items-start gap-2 text-xs text-stone-400">
+                  <span className="text-stone-300 mt-0.5 shrink-0">◦</span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+            <div className="mt-4 pt-4 border-t border-stone-100">
+              <p className="text-xs text-stone-400">Today: join + pull works. Tool sync on the roadmap.</p>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Change propagation callout */}
+        <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-8 py-6 flex flex-col sm:flex-row items-center gap-6">
+          <div className="text-3xl shrink-0">🔄</div>
+          <div className="flex-1">
+            <p className="font-semibold text-stone-900 mb-1">Change a rule once. It updates everywhere.</p>
+            <p className="text-sm text-stone-500 leading-relaxed">
+              When the team lead lowers the spend limit or adds a new blocked action,
+              every developer gets the update the next time they sync — no Slack messages,
+              no manual steps, no one left on an old policy.
+            </p>
+          </div>
+        </div>
+
       </div>
     </section>
   )
