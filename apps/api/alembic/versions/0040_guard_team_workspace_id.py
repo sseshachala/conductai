@@ -33,6 +33,14 @@ def upgrade() -> None:
         "guard_teams",
         ["workspace_id"],
     )
+    # Backfill: conductai_org_id stores workspace UUID for existing teams
+    op.execute("""
+        UPDATE guard_teams
+        SET workspace_id = conductai_org_id::uuid
+        WHERE workspace_id IS NULL
+          AND conductai_org_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          AND EXISTS (SELECT 1 FROM workspaces WHERE id = conductai_org_id::uuid)
+    """)
 
 
 def downgrade() -> None:
