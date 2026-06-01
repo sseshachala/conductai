@@ -492,6 +492,59 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         </div>
       </section>
 
+      {/* Guard — workflow governance */}
+      <section className="bg-stone-900 px-6 py-20">
+        <div className="max-w-4xl mx-auto text-center">
+          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-3">How it all fits together</p>
+          <h2 className="text-3xl font-bold text-white mb-4">
+            Every AI workflow runs within rules<br />your team sets.
+          </h2>
+          <p className="text-stone-400 text-sm max-w-xl mx-auto mb-12">
+            Every time Conduct runs a playbook — PR review, issue triage, incident response — it checks
+            the policies your team lead configured in Guard. Spending limits, blocked actions, approved tools.
+            Set once. Applied automatically to every run.
+          </p>
+
+          <div className="flex flex-col gap-2 text-left mb-4 max-w-2xl mx-auto">
+            <div className="rounded-xl border border-red-400 bg-red-950 px-6 py-4 flex items-center gap-4">
+              <span className="text-xl">🛡️</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-white">ConductGuard — governs every workflow run</p>
+                <p className="text-xs text-red-300 mt-0.5">Spending limits · blocked actions · audit log — one policy, applied to every playbook automatically</p>
+              </div>
+              <span className="shrink-0 text-xs font-semibold text-red-300 bg-red-900 border border-red-700 px-2 py-0.5 rounded-full">Rules layer</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 mb-4 max-w-2xl mx-auto px-2">
+            <div className="flex-1 border-t border-stone-700" />
+            <p className="text-xs text-stone-500 whitespace-nowrap">every playbook run checks these rules</p>
+            <div className="flex-1 border-t border-stone-700" />
+          </div>
+
+          <div className="flex flex-col gap-2 text-left max-w-2xl mx-auto mb-10">
+            {[
+              { icon: "⚡", title: "Autopilot workflows", body: "Issue labeled → AI implements fix → PR opened — guarded by your spending limit and action policies" },
+              { icon: "🔍", title: "PR review workflows", body: "PR opened → AI reviews the diff → posts findings — within your approved model budget" },
+              { icon: "🔥", title: "Incident response workflows", body: "Alert fires → AI diagnoses root cause → posts to Slack — every action audit logged" },
+              { icon: "🔒", title: "Security & compliance workflows", body: "Dependency alerts, CVE scans, Terraform reviews — all governed by the same policy your team lead set" },
+            ].map(({ icon, title, body }) => (
+              <div key={title} className="rounded-xl border border-stone-600 bg-stone-800 px-5 py-3 flex items-center gap-3">
+                <span className="text-lg shrink-0">{icon}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-white">{title}</p>
+                  <p className="text-xs text-stone-400">{body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <a href="/dashboard" className="inline-flex items-center gap-2 rounded-xl border border-stone-600 px-6 py-3 text-sm font-semibold text-stone-300 hover:border-stone-400 hover:text-white transition-colors">
+            Set up Guard →
+          </a>
+        </div>
+      </section>
+
       {/* Credential Vault Security */}
       <section className="bg-stone-50 px-6 py-20">
         <div className="max-w-5xl mx-auto">
