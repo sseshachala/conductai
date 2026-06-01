@@ -186,7 +186,7 @@ def _modal_dispatch(tool_name: str, tool_input: dict) -> str:
     except Exception as e:
         error_type = type(e).__name__
         msg = f"[Modal error — {error_type}] {e}"
-        log.error("Modal dispatch error for %s: %s", tool_name, e, exc_info=True)
+        log.error("modal.dispatch_error", tool_name=tool_name, error=str(e), exc_info=True)
         raise RuntimeError(msg) from e
     finally:
         try:

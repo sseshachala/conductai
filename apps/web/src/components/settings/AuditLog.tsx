@@ -74,10 +74,14 @@ export default function AuditLog({ workspaceId, getToken }: Props) {
         `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${effectiveWorkspaceId}/audit-log?${params}`,
         { headers: h }
       )
-      if (!res.ok) throw new Error(`${res.status}`)
+      if (!res.ok) throw res
       setEntries(await res.json())
-    } catch {
-      setError("Could not load audit log. Check workspace access or refresh.")
+    } catch (e) {
+      if (e instanceof Response && e.status === 403) {
+        setError("You don't have permission to view the activity log.")
+      } else {
+        setError("Could not load audit log. Check workspace access or refresh.")
+      }
     } finally {
       setLoading(false)
     }

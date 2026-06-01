@@ -44,7 +44,7 @@ def _fetch_jwks() -> dict:
         r.raise_for_status()
         return r.json()
     except Exception as e:
-        log.warning("Could not fetch Clerk JWKS: %s", e)
+        log.warning("clerk.jwks_fetch_failed", error=str(e))
         return {}
 
 
@@ -72,7 +72,7 @@ def _verify_clerk_token(token: str) -> dict | None:
             if key:
                 break
         if not key:
-            log.warning("Clerk JWKS has no key matching kid=%s", key_id)
+            log.warning("clerk.jwks_kid_not_found", kid=key_id)
             return None
 
         public_key = RSAAlgorithm.from_jwk(key)
@@ -99,7 +99,7 @@ def _verify_clerk_token(token: str) -> dict | None:
         )
         return claims
     except Exception as e:
-        log.warning("Clerk token verification failed: %s", e)
+        log.warning("clerk.token_verification_failed", error=str(e))
         return None
 
 
@@ -132,7 +132,7 @@ def get_clerk_user_email(user_id: str) -> str | None:
         emails = data.get("email_addresses", [])
         return emails[0].get("email_address") if emails else None
     except Exception as e:
-        log.warning("Could not fetch Clerk user email for %s: %s", user_id, e)
+        log.warning("clerk.user_email_fetch_failed", user_id=user_id, error=str(e))
         return None
 
 
@@ -152,7 +152,7 @@ def find_clerk_user_id_by_email(email: str) -> str | None:
         users = r.json()
         return users[0]["id"] if users else None
     except Exception as e:
-        log.warning("Could not search Clerk user by email %s: %s", email, e)
+        log.warning("clerk.user_search_by_email_failed", email=email, error=str(e))
         return None
 
 
@@ -183,7 +183,7 @@ def get_clerk_user_info(user_id: str) -> dict:
         name = f"{first} {last}".strip() or None
         return {"email": email, "name": name}
     except Exception as e:
-        log.warning("Could not fetch Clerk user info for %s: %s", user_id, e)
+        log.warning("clerk.user_info_fetch_failed", user_id=user_id, error=str(e))
         return {"email": None, "name": None}
 
 

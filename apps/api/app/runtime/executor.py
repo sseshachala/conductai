@@ -297,7 +297,7 @@ def _enqueue_online_eval(run_id: str) -> None:
             return
         r.rpush(_ONLINE_EVAL_QUEUE, run_id)
     except Exception:
-        log.debug("online_eval.enqueue_failed", run_id=run_id)
+        log.warning("online_eval.enqueue_failed", run_id=run_id)
 
 
 def _resolve_refs(value: Any, state: dict) -> Any:
@@ -978,6 +978,7 @@ def _execute_brain(
             max_tokens=2048,
             system=system_prompt,
             messages=[{"role": "user", "content": user_message}],
+            cache_system=True,
         )
         text = next((b.text for b in response.content if isinstance(b, LLMTextBlock)), "")
         result = {
@@ -1809,7 +1810,7 @@ def _execute_dag(
                 try:
                     result = _execute_output(block, state, credentials, workflow_name=wf_name, trace_url=trace_url, run_id=run_id)
                 except Exception as out_err:
-                    log.warning("block.output_failed", block_id=block_id, error=str(out_err))
+                    log.error("block.output_failed", block_id=block_id, error=str(out_err))
                     result = {"sent": False, "error": str(out_err)}
                     _emit(db, run_id, block_id, "block_completed", {"output": result, "warning": str(out_err)})
                     state[block_id] = result

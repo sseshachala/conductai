@@ -13,7 +13,7 @@ function AcceptInviteInner() {
     if (workspaceId) {
       document.cookie = `delegator_project_id=${workspaceId}; path=/; max-age=31536000; SameSite=Lax`
     }
-    router.replace("/dashboard")
+    router.replace("/guard")
   }, [])
 
   return (

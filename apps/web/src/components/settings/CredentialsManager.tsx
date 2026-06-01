@@ -233,7 +233,12 @@ function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promi
         headers: postHeaders,
         body: JSON.stringify({ service: svc.value, handle: svc.value, credentials: credObj }),
       })
-      if (!res.ok) throw new Error("Save failed")
+      if (!res.ok) {
+        let msg = "Failed to save — check your token and try again."
+        try { const b = await res.json(); if (b.detail) msg = b.detail } catch {}
+        setError(msg)
+        return
+      }
       const listHeaders = await buildHeaders()
       const listRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials`, { headers: listHeaders })
       if (listRes.ok) {
@@ -243,7 +248,7 @@ function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promi
       setOpenService(null)
       setFieldValues({})
     } catch {
-      setError("Failed to save — check your token and try again")
+      setError("Failed to save — check your token and try again.")
     } finally {
       setSaving(false)
     }

@@ -175,6 +175,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
   const [playbookSlug, setPlaybookSlug] = useState<string | null>(null)
   const [projectSlug, setProjectSlug] = useState<string | null>(null)
   const [projectName, setProjectName] = useState<string | null>(null)
+  const [runError, setRunError] = useState<string | null>(null)
 
   const STORAGE_KEY = `marshal:active-run:${workflowId}`
   const TEST_RUN_KEY = `marshal:test-run:${workflowId}`
@@ -732,8 +733,11 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
       } catch { /* preflight is best-effort */ }
 
       await _fireRun(headers, dryRun, initialState, undefined)
-    } catch {
+    } catch (e) {
       setRunning("idle")
+      const msg = e instanceof Error ? e.message : "Failed to start run — check your connection."
+      setRunError(msg)
+      setTimeout(() => setRunError(null), 6000)
     }
   }, [workflowId, getToken, router, nodes, selectedEnvId])
 
@@ -775,8 +779,13 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
       setActiveRunId(run.id)
       setDrawerVisible(true)
       setRunning("idle")
-    } catch {
-      if (isMountedRef.current) setRunning("idle")
+    } catch (e) {
+      if (isMountedRef.current) {
+        setRunning("idle")
+        const msg = e instanceof Error ? e.message : "Failed to start run — check your connection."
+        setRunError(msg)
+        setTimeout(() => setRunError(null), 6000)
+      }
     }
   }, [workflowId, getToken, STORAGE_KEY])
 
@@ -1043,6 +1052,13 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
 
             {/* Center — canvas */}
             <div className="flex-1 relative min-w-0">
+              {runError && (
+                <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-red-50 border border-red-200 text-red-800 text-xs font-medium px-4 py-2.5 rounded-xl shadow-md max-w-sm">
+                  <span className="shrink-0">✕</span>
+                  <span className="flex-1">{runError}</span>
+                  <button onClick={() => setRunError(null)} className="shrink-0 opacity-50 hover:opacity-100 transition-opacity ml-1">✕</button>
+                </div>
+              )}
               {canvasLoading && (
                 <div className="absolute inset-0 z-10 bg-stone-50 flex items-center justify-center">
                   <div className="flex flex-col items-center gap-3">
@@ -1277,7 +1293,12 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                     setRunning(preflight.pendingDryRun ? "dry" : "live")
                     try {
                       await _fireRun(headers, preflight.pendingDryRun, preflight.initialState, preflight.suggestedTurns)
-                    } catch { setRunning("idle") }
+                    } catch (e) {
+                      setRunning("idle")
+                      const msg = e instanceof Error ? e.message : "Failed to start run — check your connection."
+                      setRunError(msg)
+                      setTimeout(() => setRunError(null), 6000)
+                    }
                   }}
                   className="text-xs font-semibold bg-amber-600 text-white px-3 py-1.5 rounded-lg hover:bg-amber-700 transition-colors"
                 >
@@ -1290,7 +1311,12 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                     setRunning(preflight.pendingDryRun ? "dry" : "live")
                     try {
                       await _fireRun(headers, preflight.pendingDryRun, preflight.initialState, undefined)
-                    } catch { setRunning("idle") }
+                    } catch (e) {
+                      setRunning("idle")
+                      const msg = e instanceof Error ? e.message : "Failed to start run — check your connection."
+                      setRunError(msg)
+                      setTimeout(() => setRunError(null), 6000)
+                    }
                   }}
                   className="text-xs text-amber-700 hover:text-amber-900 px-2 py-1.5"
                 >

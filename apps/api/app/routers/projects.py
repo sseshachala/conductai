@@ -530,7 +530,7 @@ def add_member(
             db=db,
         )
         if not email_sent:
-            log.warning("Invite created but email not sent to %s — no email credential configured", email)
+            log.warning("invite.email_not_sent", email=email, reason="no email credential configured")
 
         return InviteOut(id=str(invite_id), invited_email=email, role=body.role,
                          invited_by=user_id, created_at=now, email_sent=email_sent)

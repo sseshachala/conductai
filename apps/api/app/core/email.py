@@ -113,12 +113,12 @@ def render_template(slug: str, context: dict, db=None) -> tuple[str, str] | None
                 subject_tpl = row.subject
                 html_tpl = row.html_body
         except Exception as e:
-            log.warning("Could not load email template '%s' from DB: %s", slug, e)
+            log.warning("email.template_load_failed", slug=slug, error=str(e))
 
     if subject_tpl is None:
         fallback = _FALLBACK_TEMPLATES.get(slug)
         if not fallback:
-            log.warning("Unknown email template slug: %s", slug)
+            log.warning("email.unknown_template_slug", slug=slug)
             return None
         subject_tpl = fallback["subject"]
         html_tpl = fallback["html_body"]
@@ -128,7 +128,7 @@ def render_template(slug: str, context: dict, db=None) -> tuple[str, str] | None
         html = _jinja.from_string(html_tpl).render(**context)
         return subject, html
     except TemplateError as e:
-        log.warning("Jinja2 render error for template '%s': %s", slug, e)
+        log.warning("email.template_render_error", slug=slug, error=str(e))
         return None
 
 
@@ -180,7 +180,7 @@ def _workspace_credential(workspace_id: str, db) -> EmailCredential | None:
             from_email=creds.get("from_email", "").strip() or "notifications@conductai.ai",
         )
     except Exception as e:
-        log.warning("Could not load workspace email credential: %s", e)
+        log.warning("email.workspace_credential_load_failed", workspace_id=workspace_id, error=str(e))
         return None
 
 
@@ -197,10 +197,10 @@ def _send_via_resend(api_key: str, from_addr: str, to: str, subject: str, html: 
             timeout=10,
         )
         if not r.is_success:
-            log.warning("Resend error %s to=%s from=%s body=%s", r.status_code, to, from_addr, r.text[:400])
+            log.warning("email.resend_error", status_code=r.status_code, to=to, from_addr=from_addr, response=r.text[:400])
         return r.is_success
     except Exception as e:
-        log.warning("Resend send failed: %s", e)
+        log.warning("email.resend_send_failed", error=str(e))
         return False
 
 
@@ -218,10 +218,10 @@ def _send_via_sendgrid(api_key: str, from_name: str, from_email: str, to: str, s
             timeout=10,
         )
         if not r.is_success:
-            log.warning("SendGrid error %s: %s", r.status_code, r.text[:200])
+            log.warning("email.sendgrid_error", status_code=r.status_code, response=r.text[:200])
         return r.is_success
     except Exception as e:
-        log.warning("SendGrid send failed: %s", e)
+        log.warning("email.sendgrid_send_failed", error=str(e))
         return False
 
 
@@ -233,7 +233,7 @@ def send_email(*, to: str, subject: str, html: str, workspace_id: str | None = N
     if not cred:
         cred = _platform_credential()
     if not cred:
-        log.info("No email credential configured — skipping send to %s", to)
+        log.info("email.no_credential_configured", to=to)
         return False
 
     from_addr = f"{cred.from_name} <{cred.from_email}>"
