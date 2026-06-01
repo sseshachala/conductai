@@ -279,8 +279,9 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
   const activeProjectId = pathname.match(/\/projects\/([^/]+)/)?.[1]
 
   // Role-based visibility
-  const canSeeGuard = guardInstalled && (userRole === "admin" || userRole === "security" || userRole === null)
-  const canSeeProjects = userRole === "admin" || userRole === "editor" || userRole === "viewer" || userRole === null
+  const canSeeGuard = guardInstalled && (userRole === "admin" || userRole === "security")
+  const canSeeProjects = userRole === "admin" || userRole === "editor" || userRole === "viewer"
+  const canCreateProject = userRole === "admin" || userRole === "editor"
 
   return (
     <PreferencesProvider workspaceId={activeWorkspace?.id ?? ""} getToken={getToken}>
@@ -404,7 +405,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
                     </div>
                   )}
 
-                  {!collapsed && userRole !== "viewer" && (
+                  {!collapsed && canCreateProject && (
                     creatingProject ? (
                       <div className="px-2 py-1">
                         <input
