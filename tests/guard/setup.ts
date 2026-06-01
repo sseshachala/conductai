@@ -84,11 +84,12 @@ async function setupWorkspaceViaBrowser(
     await page.goto(`${appUrl}/sign-in`, { waitUntil: "networkidle" })
 
     // Clerk sign-in form: email → Continue → password → Continue
+    // Use .cl-formButtonPrimary (Clerk's visible action button class)
     await page.fill('input[name="identifier"], input[type="email"]', TEST_USERS.admin.email)
-    await page.click('button[type="submit"]')
+    await page.locator(".cl-formButtonPrimary").first().click()
     await page.waitForTimeout(1500)
     await page.fill('input[type="password"]', TEST_USERS.admin.password)
-    await page.click('button[type="submit"]')
+    await page.locator(".cl-formButtonPrimary").first().click()
 
     // Wait for redirect away from /sign-in and Clerk session to hydrate
     await page.waitForURL((url) => !url.pathname.includes("sign-in"), { timeout: 15000 })
