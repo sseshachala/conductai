@@ -298,7 +298,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
                   <NavItem href="/guard/policies" icon="◈" label="Policies" collapsed={collapsed} pathname={pathname} />
                   <NavItem href="/guard/spend" icon="◆" label="Spend" collapsed={collapsed} pathname={pathname} />
                   <NavItem href="/guard/activity" icon="📋" label="Activity log" collapsed={collapsed} pathname={pathname} />
-                  <NavItem href="/guard/settings" icon="⚙" label="Members" collapsed={collapsed} pathname={pathname} />
+                  <NavItem href="/guard/settings" icon="⚙" label="Settings" collapsed={collapsed} pathname={pathname} />
                 </div>
               )}
             </div>
@@ -406,7 +406,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
             <NavItem href="/eval" icon="◈" label="Quality" collapsed={collapsed} pathname={pathname} />
             <NavItem href="/benchmark" icon="▲" label="Benchmark" collapsed={collapsed} pathname={pathname} />
             <NavItem href="/audit" icon="📋" label="Audit Log" collapsed={collapsed} pathname={pathname} />
-            <NavItem href="/settings" icon="⚙" label="Settings" collapsed={collapsed} pathname={pathname} />
+            <NavItem href="/settings" icon="⚙" label="Team Settings" collapsed={collapsed} pathname={pathname} />
           </div>
         </nav>
 
