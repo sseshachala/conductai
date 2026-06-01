@@ -6,7 +6,7 @@ import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface Member {
   clerk_user_id: string
-  role: "admin" | "editor" | "viewer"
+  role: "admin" | "editor" | "security" | "viewer"
   invited_by: string | null
   joined_at: string
   email: string | null
@@ -22,9 +22,10 @@ interface Invite {
 }
 
 const ROLE_COLORS: Record<string, string> = {
-  admin:  "bg-indigo-50 text-indigo-700",
-  editor: "bg-emerald-50 text-emerald-700",
-  viewer: "bg-stone-100 text-stone-600",
+  admin:    "bg-indigo-50 text-indigo-700",
+  editor:   "bg-emerald-50 text-emerald-700",
+  security: "bg-violet-50 text-violet-700",
+  viewer:   "bg-stone-100 text-stone-600",
 }
 
 function getCookie(name: string): string | null {
@@ -50,7 +51,7 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
   const [loading, setLoading] = useState(true)
   const [addOpen, setAddOpen] = useState(false)
   const [inviteEmail, setInviteEmail] = useState("")
-  const [inviteRole, setInviteRole] = useState<"admin" | "editor" | "viewer">("editor")
+  const [inviteRole, setInviteRole] = useState<"admin" | "editor" | "security" | "viewer">("editor")
   const [saving, setSaving] = useState(false)
   const [removing, setRemoving] = useState<string | null>(null)
   const [cancelling, setCancelling] = useState<string | null>(null)
@@ -223,6 +224,7 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
             >
               <option value="admin">Admin</option>
               <option value="editor">Editor</option>
+              <option value="security">Security</option>
               <option value="viewer">Viewer</option>
             </select>
           </div>
