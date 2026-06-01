@@ -104,13 +104,13 @@ def _send_guard_slack(db: Session, team: GuardTeam, text: str) -> None:
     from app.core.crypto import decrypt
     from app.models.integration import Integration
 
-    if not team.alert_channel or not team.conductai_org_id:
+    if not team.alert_channel or not team.workspace_id:
         return
 
     row = (
         db.query(Integration)
         .filter(
-            Integration.workspace_id == team.conductai_org_id,
+            Integration.workspace_id == team.workspace_id,
             Integration.handle == "slack",
         )
         .first()
