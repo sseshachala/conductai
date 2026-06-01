@@ -5,6 +5,8 @@ import { useAuth } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
 
+type UserRole = "admin" | "security" | "editor" | "viewer" | null
+
 interface TeamPrefs {
   alert_channel: string | null
   notify_on_block: boolean
@@ -12,7 +14,7 @@ interface TeamPrefs {
 }
 
 export default function GuardSettingsPage() {
-  const { getToken } = useAuth()
+  const { getToken, userId } = useAuth()
   const { activeWorkspace } = useWorkspace()
 
   const [prefs, setPrefs] = useState<TeamPrefs>({
@@ -26,9 +28,35 @@ export default function GuardSettingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [channelSaved, setChannelSaved] = useState(false)
   const [savingChannel, setSavingChannel] = useState(false)
+  const [userRole, setUserRole] = useState<UserRole>(null)
 
   const base = process.env.NEXT_PUBLIC_API_URL ?? ""
   const wsId = activeWorkspace?.id ?? null
+
+  // Fetch the current user's role — same pattern as AppShell
+  useEffect(() => {
+    let cancelled = false
+    async function fetchRole() {
+      if (!wsId || !userId) return
+      try {
+        const token = await getToken()
+        const h: Record<string, string> = {}
+        if (token) h["Authorization"] = `Bearer ${token}`
+        h["X-Workspace-ID"] = wsId
+        const res = await fetch(`${base}/projects/${wsId}/members`, { headers: h })
+        if (!res.ok || cancelled) return
+        const members: { clerk_user_id: string; role: string }[] = await res.json()
+        const role = members.find(m => m.clerk_user_id === userId)?.role as UserRole ?? null
+        if (!cancelled) setUserRole(role ?? "admin")
+      } catch {
+        if (!cancelled) setUserRole("admin")
+      }
+    }
+    fetchRole()
+    return () => { cancelled = true }
+  }, [wsId, userId])
+
+  const isAdmin = userRole === "admin"
 
   async function authHeaders(): Promise<Record<string, string>> {
     const token = await getToken()
@@ -119,6 +147,13 @@ export default function GuardSettingsPage() {
           <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">{error}</div>
         ) : (
           <div className="space-y-5">
+            {/* View-only notice for non-admin roles */}
+            {!isAdmin && userRole !== null && (
+              <p className="text-xs text-stone-500 bg-stone-50 border border-stone-200 rounded-lg px-4 py-2.5">
+                View only — contact your admin to make changes.
+              </p>
+            )}
+
             {/* Notifications section */}
             <div className="bg-white rounded-xl border border-stone-200 divide-y divide-stone-100">
               <div className="px-5 py-4">
@@ -137,19 +172,22 @@ export default function GuardSettingsPage() {
                     <input
                       type="text"
                       value={channelInput}
-                      onChange={e => setChannelInput(e.target.value.replace(/^#+/, ""))}
+                      onChange={e => isAdmin && setChannelInput(e.target.value.replace(/^#+/, ""))}
                       placeholder="guard-alerts"
-                      className="flex-1 text-sm px-2 py-1.5 focus:outline-none bg-white"
-                      onKeyDown={e => { if (e.key === "Enter") handleSaveChannel() }}
+                      disabled={!isAdmin}
+                      className="flex-1 text-sm px-2 py-1.5 focus:outline-none bg-white disabled:text-stone-400 disabled:cursor-not-allowed"
+                      onKeyDown={e => { if (e.key === "Enter" && isAdmin) handleSaveChannel() }}
                     />
                   </div>
-                  <button
-                    onClick={handleSaveChannel}
-                    disabled={savingChannel}
-                    className="text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
-                  >
-                    {savingChannel ? "Saving..." : "Save"}
-                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={handleSaveChannel}
+                      disabled={savingChannel}
+                      className="text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
+                    >
+                      {savingChannel ? "Saving..." : "Save"}
+                    </button>
+                  )}
                   {channelSaved && (
                     <span className="text-xs text-emerald-600 font-medium">Saved</span>
                   )}
@@ -162,12 +200,13 @@ export default function GuardSettingsPage() {
                   <p className="text-sm font-medium text-stone-800">Notify on block / warn</p>
                   <p className="text-xs text-stone-500 mt-0.5">Send a Slack message whenever a policy blocks or warns a developer.</p>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer">
+                <label className={`relative inline-flex items-center ${isAdmin ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}>
                   <input
                     type="checkbox"
                     className="sr-only peer"
                     checked={prefs.notify_on_block}
-                    onChange={e => handleToggle("notify_on_block", e.target.checked)}
+                    disabled={!isAdmin}
+                    onChange={e => isAdmin && handleToggle("notify_on_block", e.target.checked)}
                   />
                   <div className="w-10 h-5 bg-stone-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-400 rounded-full peer peer-checked:after:translate-x-5 peer-checked:bg-indigo-600 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all" />
                 </label>
@@ -179,12 +218,13 @@ export default function GuardSettingsPage() {
                   <p className="text-sm font-medium text-stone-800">Notify on budget threshold</p>
                   <p className="text-xs text-stone-500 mt-0.5">Send a Slack message when monthly spend reaches the alert threshold.</p>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer">
+                <label className={`relative inline-flex items-center ${isAdmin ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}>
                   <input
                     type="checkbox"
                     className="sr-only peer"
                     checked={prefs.notify_on_budget}
-                    onChange={e => handleToggle("notify_on_budget", e.target.checked)}
+                    disabled={!isAdmin}
+                    onChange={e => isAdmin && handleToggle("notify_on_budget", e.target.checked)}
                   />
                   <div className="w-10 h-5 bg-stone-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-400 rounded-full peer peer-checked:after:translate-x-5 peer-checked:bg-indigo-600 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all" />
                 </label>

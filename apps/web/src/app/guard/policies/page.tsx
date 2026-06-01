@@ -3,8 +3,11 @@
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { useAuth } from "@clerk/nextjs"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
 import { getGuardTeamId } from "@/lib/guardStorage"
+
+type UserRole = "admin" | "security" | "editor" | "viewer" | null
 
 // ---------------------------------------------------------------------------
 // Types
@@ -344,15 +347,20 @@ function RuleRow({
   policy,
   onToggle,
   onDelete,
+  canWrite,
 }: {
   policy: Policy
   onToggle: (id: string) => void
   onDelete: (id: string) => void
+  canWrite: boolean
 }) {
   return (
     <tr className="group border-b border-stone-100 last:border-b-0">
       <td className="py-3 pl-4 pr-3 w-10">
-        <Toggle enabled={policy.enabled} onChange={() => onToggle(policy.id)} />
+        {canWrite
+          ? <Toggle enabled={policy.enabled} onChange={() => onToggle(policy.id)} />
+          : <span className={`inline-block w-9 h-5 rounded-full ${policy.enabled ? "bg-indigo-600" : "bg-stone-200"} opacity-50 cursor-not-allowed`} />
+        }
       </td>
       <td className="py-3 pr-4 min-w-[160px]">
         <span className="font-mono text-sm text-stone-800">{policy.rule_id}</span>
@@ -370,15 +378,16 @@ function RuleRow({
         {formatLastTriggered(policy.last_triggered)}
       </td>
       <td className="py-3 pr-4 w-8 text-right">
-        {policy.builtin ? (
+        {policy.builtin || !canWrite ? (
           <span
             className="text-stone-300 text-sm select-none"
-            title="Built-in rule — cannot be deleted"
+            title={policy.builtin ? "Built-in rule — cannot be deleted" : undefined}
           >
-            {/* lock icon */}
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 inline-block">
-              <path fillRule="evenodd" d="M8 1a3 3 0 0 0-3 3v1H4a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-1V4a3 3 0 0 0-3-3Zm0 1.5A1.5 1.5 0 0 1 9.5 4v1h-3V4A1.5 1.5 0 0 1 8 2.5Z" clipRule="evenodd" />
-            </svg>
+            {policy.builtin && (
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 inline-block">
+                <path fillRule="evenodd" d="M8 1a3 3 0 0 0-3 3v1H4a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-1V4a3 3 0 0 0-3-3Zm0 1.5A1.5 1.5 0 0 1 9.5 4v1h-3V4A1.5 1.5 0 0 1 8 2.5Z" clipRule="evenodd" />
+              </svg>
+            )}
           </span>
         ) : (
           <button
@@ -408,11 +417,13 @@ function CategorySection({
   policies,
   onToggle,
   onDelete,
+  canWrite,
 }: {
   category: string
   policies: Policy[]
   onToggle: (id: string) => void
   onDelete: (id: string) => void
+  canWrite: boolean
 }) {
   return (
     <div className="mb-6">
@@ -433,7 +444,7 @@ function CategorySection({
           </thead>
           <tbody>
             {policies.map(p => (
-              <RuleRow key={p.id} policy={p} onToggle={onToggle} onDelete={onDelete} />
+              <RuleRow key={p.id} policy={p} onToggle={onToggle} onDelete={onDelete} canWrite={canWrite} />
             ))}
           </tbody>
         </table>
@@ -471,14 +482,41 @@ function getTeamId(): string {
 }
 
 export default function PoliciesPage() {
-  const { getToken } = useAuth()
+  const { getToken, userId } = useAuth()
+  const { activeWorkspace } = useWorkspace()
   const [policies, setPolicies] = useState<Policy[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [userRole, setUserRole] = useState<UserRole>(null)
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ""
+
+  // Fetch the current user's role — same pattern as AppShell
+  useEffect(() => {
+    let cancelled = false
+    async function fetchRole() {
+      if (!activeWorkspace || !userId) return
+      try {
+        const token = await getToken()
+        const h: Record<string, string> = {}
+        if (token) h["Authorization"] = `Bearer ${token}`
+        h["X-Workspace-ID"] = activeWorkspace.id
+        const res = await fetch(`${apiUrl}/projects/${activeWorkspace.id}/members`, { headers: h })
+        if (!res.ok || cancelled) return
+        const members: { clerk_user_id: string; role: string }[] = await res.json()
+        const role = members.find(m => m.clerk_user_id === userId)?.role as UserRole ?? null
+        if (!cancelled) setUserRole(role ?? "admin")
+      } catch {
+        if (!cancelled) setUserRole("admin")
+      }
+    }
+    fetchRole()
+    return () => { cancelled = true }
+  }, [activeWorkspace?.id, userId])
+
+  const canWrite = userRole === "admin" || userRole === "security"
 
   const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
     const headers: Record<string, string> = { "Content-Type": "application/json" }
@@ -631,15 +669,17 @@ export default function PoliciesPage() {
               Set rules that apply to all developer AI tool sessions.
             </p>
           </div>
-          <Link
-            href="/guard/policies/new"
-            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
-              <path d="M8.75 3.75a.75.75 0 0 0-1.5 0v3.5h-3.5a.75.75 0 0 0 0 1.5h3.5v3.5a.75.75 0 0 0 1.5 0v-3.5h3.5a.75.75 0 0 0 0-1.5h-3.5v-3.5Z" />
-            </svg>
-            Add rule
-          </Link>
+          {canWrite && (
+            <Link
+              href="/guard/policies/new"
+              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+                <path d="M8.75 3.75a.75.75 0 0 0-1.5 0v3.5h-3.5a.75.75 0 0 0 0 1.5h3.5v3.5a.75.75 0 0 0 1.5 0v-3.5h3.5a.75.75 0 0 0 0-1.5h-3.5v-3.5Z" />
+              </svg>
+              Add rule
+            </Link>
+          )}
         </div>
 
         {/* Error */}
@@ -676,6 +716,7 @@ export default function PoliciesPage() {
             policies={grouped[cat]}
             onToggle={handleToggle}
             onDelete={handleDelete}
+            canWrite={canWrite}
           />
         ))}
 

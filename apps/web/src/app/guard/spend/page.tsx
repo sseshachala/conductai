@@ -5,6 +5,8 @@ import { useAuth } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
 
+type UserRole = "admin" | "security" | "editor" | "viewer" | null
+
 interface DeveloperSpend {
   email: string
   sessions: number
@@ -185,10 +187,12 @@ function SpendControlsPanel({
   settings,
   onSave,
   currency,
+  readOnly,
 }: {
   settings: TeamBudgetSettings
   onSave: (s: TeamBudgetSettings) => Promise<void>
   currency: Currency
+  readOnly?: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [local, setLocal] = useState(settings)
@@ -229,26 +233,28 @@ function SpendControlsPanel({
             <p className="text-xs text-stone-500">Set limits now — not after the bill arrives.</p>
           </div>
         </div>
-        {!editing ? (
-          <button
-            onClick={() => setEditing(true)}
-            className="text-xs font-medium text-indigo-600 hover:text-indigo-800 border border-indigo-200 rounded-lg px-3 py-1.5 transition-colors"
-          >
-            Configure
-          </button>
-        ) : (
-          <div className="flex gap-2">
-            <button onClick={reset} className="text-xs text-stone-500 hover:text-stone-700 border border-stone-200 rounded-lg px-3 py-1.5 transition-colors">
-              Cancel
-            </button>
+        {!readOnly && (
+          !editing ? (
             <button
-              onClick={handleSave}
-              disabled={saving}
-              className="text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
+              onClick={() => setEditing(true)}
+              className="text-xs font-medium text-indigo-600 hover:text-indigo-800 border border-indigo-200 rounded-lg px-3 py-1.5 transition-colors"
             >
-              {saving ? "Saving…" : "Save"}
+              Configure
             </button>
-          </div>
+          ) : (
+            <div className="flex gap-2">
+              <button onClick={reset} className="text-xs text-stone-500 hover:text-stone-700 border border-stone-200 rounded-lg px-3 py-1.5 transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
+            </div>
+          )
         )}
       </div>
 
@@ -410,7 +416,7 @@ function MonthPicker({ value, onChange }: { value: string; onChange: (v: string)
 }
 
 export default function SpendPage() {
-  const { getToken } = useAuth()
+  const { getToken, userId } = useAuth()
   const { activeWorkspace } = useWorkspace()
   const now = new Date()
   const [month, setMonth] = useState(
@@ -429,6 +435,33 @@ export default function SpendPage() {
     hard_cap_enabled: false,
     default_per_developer_usd: null,
   })
+  const [userRole, setUserRole] = useState<UserRole>(null)
+
+  // Fetch the current user's role — same pattern as AppShell
+  useEffect(() => {
+    let cancelled = false
+    async function fetchRole() {
+      if (!activeWorkspace || !userId) return
+      try {
+        const token = await getToken()
+        const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+        const h: Record<string, string> = {}
+        if (token) h["Authorization"] = `Bearer ${token}`
+        h["X-Workspace-ID"] = activeWorkspace.id
+        const res = await fetch(`${base}/projects/${activeWorkspace.id}/members`, { headers: h })
+        if (!res.ok || cancelled) return
+        const members: { clerk_user_id: string; role: string }[] = await res.json()
+        const role = members.find(m => m.clerk_user_id === userId)?.role as UserRole ?? null
+        if (!cancelled) setUserRole(role ?? "admin")
+      } catch {
+        if (!cancelled) setUserRole("admin")
+      }
+    }
+    fetchRole()
+    return () => { cancelled = true }
+  }, [activeWorkspace?.id, userId])
+
+  const isAdmin = userRole === "admin"
 
   const load = useCallback(async () => {
     if (!activeWorkspace) return
@@ -568,7 +601,7 @@ export default function SpendPage() {
           <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>
         )}
 
-        <SpendControlsPanel settings={teamSettings} onSave={saveTeamSettings} currency={currency} />
+        <SpendControlsPanel settings={teamSettings} onSave={saveTeamSettings} currency={currency} readOnly={!isAdmin} />
 
         {loading ? (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-pulse">
@@ -663,13 +696,16 @@ export default function SpendPage() {
                               <BudgetBar used={dev.cost_usd} limit={budgetLimit} />
                             </div>
                           </td>
-                          <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                            <BudgetInput
-                              email={dev.email}
-                              current={budgetLimit}
-                              onSave={saveBudget}
-                            />
-                          </td>
+                          {isAdmin && (
+                            <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                              <BudgetInput
+                                email={dev.email}
+                                current={budgetLimit}
+                                onSave={saveBudget}
+                              />
+                            </td>
+                          )}
+                          {!isAdmin && <td className="px-4 py-3" />}
                         </tr>
                         {isExpanded && (
                           <tr key={`${dev.email}-expanded`} className="bg-stone-50 border-b border-stone-100">
