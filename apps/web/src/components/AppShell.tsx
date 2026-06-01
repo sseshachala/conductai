@@ -35,6 +35,9 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
   function showError(message: string) { setToast({ message, type: "error" }) }
   function showSuccess(message: string) { setToast({ message, type: "success" }) }
 
+  // Org name (read-only label in header)
+  const [orgName, setOrgName] = useState<string | null>(null)
+
   // Role state
   const [userRole, setUserRole] = useState<UserRole>(null)
 
@@ -138,6 +141,25 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
     fetchRole()
     return () => { cancelled = true }
   }, [activeWorkspace?.id, userId])
+
+  // Fetch org name for header label
+  useEffect(() => {
+    let cancelled = false
+    async function fetchOrgName() {
+      try {
+        const h = await authHeaders()
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/organizations`, { headers: h })
+        if (!res.ok || cancelled) return
+        const data = await res.json()
+        const name = Array.isArray(data) && data.length > 0 ? data[0].name : null
+        if (!cancelled) setOrgName(name)
+      } catch {
+        // Non-fatal: show nothing
+      }
+    }
+    fetchOrgName()
+    return () => { cancelled = true }
+  }, [activeWorkspace?.id])
 
   // Guard install check
   useEffect(() => {
@@ -434,6 +456,9 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
       <div className="flex-1 min-h-0 flex flex-col">
         {/* Top bar */}
         <header className="shrink-0 h-11 bg-white border-b border-stone-200 flex items-center justify-end px-4 gap-3">
+          {/* Org name label */}
+          {orgName && <span className="text-xs text-stone-400 font-medium">{orgName}</span>}
+
           {/* Workspace switcher */}
           <WorkspaceSwitcher
             wsRef={wsRef}
