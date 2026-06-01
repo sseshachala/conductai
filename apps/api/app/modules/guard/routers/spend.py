@@ -3,6 +3,7 @@ GET  /guard/spend                  — spend summary for team (current calendar 
 GET  /guard/spend/sessions         — list sessions with totals
 POST /guard/spend/budgets          — create or update a budget for member or team-wide
 GET  /guard/spend/budgets          — list all budgets with current month usage
+GET  /guard/spend/budget-check     — hard-cap check called by the guard hook (no Clerk auth)
 """
 from datetime import datetime, timezone
 
@@ -375,6 +376,108 @@ def _current_month_cost(db: Session, team_id: str, member_id: str | None) -> flo
             q = q.filter(GuardAuditEvent.user_email == member.email)
 
     return float(q.scalar() or 0.0)
+
+
+# ── GET /guard/spend/budget-check ─────────────────────────────────────────────
+
+class BudgetCheckOut(BaseModel):
+    hard_blocked: bool
+    reason: str | None = None
+    monthly_cost_usd: float
+    hard_limit_usd: float | None
+
+
+@router.get("/budget-check", response_model=BudgetCheckOut)
+def budget_check(
+    team_id: str = Query(...),
+    email: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """Hard-cap check called by the guard hook before each tool use. No Clerk auth —
+    team_id must exist in guard_teams (same trust model as POST /guard/events)."""
+    import uuid as _uuid
+
+    try:
+        team_uuid = _uuid.UUID(team_id)
+    except ValueError:
+        return BudgetCheckOut(hard_blocked=False, monthly_cost_usd=0.0, hard_limit_usd=None)
+
+    period_start = _current_period_start()
+
+    team_budget = (
+        db.query(GuardSpendBudget)
+        .filter(GuardSpendBudget.team_id == team_uuid, GuardSpendBudget.member_id.is_(None))
+        .first()
+    )
+
+    team_cost = float(
+        db.query(func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0))
+        .filter(GuardAuditEvent.team_id == team_uuid, GuardAuditEvent.ts >= period_start)
+        .scalar() or 0.0
+    )
+
+    # Check team-wide hard cap
+    if team_budget and team_budget.hard_limit_usd is not None:
+        if team_cost >= team_budget.hard_limit_usd:
+            return BudgetCheckOut(
+                hard_blocked=True,
+                reason=(
+                    f"Team monthly spend ${team_cost:.2f} has reached the hard cap "
+                    f"of ${team_budget.hard_limit_usd:.2f}. Contact your security team."
+                ),
+                monthly_cost_usd=team_cost,
+                hard_limit_usd=team_budget.hard_limit_usd,
+            )
+
+    # Check per-member hard cap if email provided
+    if email:
+        member = (
+            db.query(GuardMember)
+            .filter(GuardMember.team_id == team_uuid, GuardMember.email == email)
+            .first()
+        )
+        if member:
+            member_budget = (
+                db.query(GuardSpendBudget)
+                .filter(
+                    GuardSpendBudget.team_id == team_uuid,
+                    GuardSpendBudget.member_id == member.id,
+                )
+                .first()
+            )
+            # Fall back to team default_per_developer_usd if no per-member budget
+            hard_limit = None
+            if member_budget and member_budget.hard_limit_usd is not None:
+                hard_limit = member_budget.hard_limit_usd
+            elif team_budget and team_budget.default_per_developer_usd is not None:
+                hard_limit = team_budget.default_per_developer_usd
+
+            if hard_limit is not None:
+                member_cost = float(
+                    db.query(func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0))
+                    .filter(
+                        GuardAuditEvent.team_id == team_uuid,
+                        GuardAuditEvent.user_email == email,
+                        GuardAuditEvent.ts >= period_start,
+                    )
+                    .scalar() or 0.0
+                )
+                if member_cost >= hard_limit:
+                    return BudgetCheckOut(
+                        hard_blocked=True,
+                        reason=(
+                            f"Your monthly spend ${member_cost:.2f} has reached your "
+                            f"hard cap of ${hard_limit:.2f}. Contact your manager."
+                        ),
+                        monthly_cost_usd=member_cost,
+                        hard_limit_usd=hard_limit,
+                    )
+
+    return BudgetCheckOut(
+        hard_blocked=False,
+        monthly_cost_usd=team_cost,
+        hard_limit_usd=team_budget.hard_limit_usd if team_budget else None,
+    )
 
 
 def _budget_out(budget: GuardSpendBudget, current_cost: float) -> BudgetOut:

@@ -27,11 +27,57 @@ import json
 import re
 import subprocess
 import sys
+import time
+import urllib.request
 from pathlib import Path
 
-GUARD_DIR = Path.home() / ".conductguard"
-POLICY_PATH = GUARD_DIR / "policy.json"
-CONFIG_PATH = GUARD_DIR / "config.json"
+GUARD_DIR         = Path.home() / ".conductguard"
+POLICY_PATH       = GUARD_DIR / "policy.json"
+CONFIG_PATH       = GUARD_DIR / "config.json"
+BUDGET_CACHE_PATH = GUARD_DIR / "budget_cache.json"
+BUDGET_CACHE_TTL  = 300  # 5 minutes
+
+
+def _load_budget_cache():
+    """Return (hard_blocked, reason) if cache is fresh, else (None, None)."""
+    if not BUDGET_CACHE_PATH.exists():
+        return None, None
+    try:
+        data = json.loads(BUDGET_CACHE_PATH.read_text())
+        if time.time() - data.get("ts", 0) < BUDGET_CACHE_TTL:
+            return data.get("hard_blocked", False), data.get("reason")
+    except Exception:
+        pass
+    return None, None
+
+
+def _fetch_budget_status():
+    """Call /guard/spend/budget-check and cache result for BUDGET_CACHE_TTL seconds."""
+    try:
+        cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
+    except Exception:
+        return False, None
+    team_id  = cfg.get("team_id")
+    email    = cfg.get("user_email", "")
+    api_url  = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+    if not team_id:
+        return False, None
+    url = f"{api_url}/guard/spend/budget-check?team_id={team_id}"
+    if email:
+        import urllib.parse
+        url += f"&email={urllib.parse.quote(email)}"
+    try:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+        hard_blocked = data.get("hard_blocked", False)
+        reason       = data.get("reason")
+        BUDGET_CACHE_PATH.write_text(json.dumps({
+            "ts": time.time(), "hard_blocked": hard_blocked, "reason": reason,
+        }))
+        return hard_blocked, reason
+    except Exception:
+        return False, None
 
 
 def main():
@@ -39,6 +85,14 @@ def main():
         data = json.load(sys.stdin)
     except Exception:
         sys.exit(0)
+
+    # Check hard budget cap (cached for 5 min to avoid per-call latency)
+    hard_blocked, reason = _load_budget_cache()
+    if hard_blocked is None:
+        hard_blocked, reason = _fetch_budget_status()
+    if hard_blocked:
+        print(f"[ConductGuard] {reason or 'Budget hard cap reached. Contact your manager.'}")
+        sys.exit(2)
 
     tool_name = (data.get("tool_name") or "").lower()
     tool_input = data.get("tool_input") or {}
@@ -392,6 +446,12 @@ def cmd_guard_sync(args):
             print(f"  {label} newly detected -> {GREEN}registered{RESET}")
     else:
         print(f"  {GRAY}No new AI tool configs detected.{RESET}")
+
+    # Refresh hook script (picks up budget check and any other updates)
+    hook_path = GUARD_DIR / "hook.py"
+    hook_path.write_text(_HOOK_SCRIPT)
+    hook_path.chmod(0o755)
+    print(f"  {GREEN}Hook script updated{RESET}")
 
     print(f"\n{BOLD}Policy refreshed ({rule_count} rule(s)).{RESET}")
 
