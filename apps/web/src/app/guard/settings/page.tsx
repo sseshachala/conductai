@@ -29,24 +29,23 @@ export default function GuardSettingsPage() {
   const [savingChannel, setSavingChannel] = useState(false)
 
   const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+  const wsId = activeWorkspace?.id ?? null
 
-  const buildHeaders = useCallback(async (): Promise<Record<string, string>> => {
+  async function authHeaders(): Promise<Record<string, string>> {
     const token = await getToken()
-    const headers: Record<string, string> = { "Content-Type": "application/json" }
-    if (token) headers["Authorization"] = `Bearer ${token}`
-    return headers
-  }, [getToken])
-
-  const workspaceQuery = activeWorkspace ? `?workspace_id=${activeWorkspace.id}` : ""
+    const h: Record<string, string> = { "Content-Type": "application/json" }
+    if (token) h["Authorization"] = `Bearer ${token}`
+    return h
+  }
 
   const load = useCallback(async () => {
-    if (!activeWorkspace) return
+    if (!wsId) return
     setLoading(true)
     setError(null)
     setInstalled(true)
     try {
-      const headers = await buildHeaders()
-      const res = await fetch(`${base}/guard/teams/me?workspace_id=${activeWorkspace.id}`, { headers })
+      const headers = await authHeaders()
+      const res = await fetch(`${base}/guard/teams/me?workspace_id=${wsId}`, { headers })
       if (res.status === 404) { setInstalled(false); setLoading(false); return }
       if (!res.ok) throw new Error(`Failed to load team (${res.status})`)
       const data = await res.json()
@@ -55,22 +54,24 @@ export default function GuardSettingsPage() {
         notify_on_block: data.notify_on_block ?? true,
         notify_on_budget: data.notify_on_budget ?? true,
       })
-      setChannelInput(data.alert_channel ?? "")
+      // Strip leading # if stored with prefix (legacy)
+      setChannelInput((data.alert_channel ?? "").replace(/^#+/, ""))
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load settings")
     } finally {
       setLoading(false)
     }
-  }, [base, buildHeaders, activeWorkspace])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [base, wsId])
 
   useEffect(() => {
     load()
   }, [load])
 
   async function patch(body: Partial<TeamPrefs>) {
-    if (!activeWorkspace) return
-    const headers = await buildHeaders()
-    const res = await fetch(`${base}/guard/teams/me?workspace_id=${activeWorkspace.id}`, {
+    if (!wsId) return
+    const headers = await authHeaders()
+    const res = await fetch(`${base}/guard/teams/me?workspace_id=${wsId}`, {
       method: "PATCH",
       headers,
       body: JSON.stringify(body),
@@ -81,9 +82,11 @@ export default function GuardSettingsPage() {
 
   async function handleSaveChannel() {
     setSavingChannel(true)
+    const stripped = channelInput.replace(/^#+/, "")
     try {
-      await patch({ alert_channel: channelInput || null })
-      setPrefs(p => ({ ...p, alert_channel: channelInput || null }))
+      await patch({ alert_channel: stripped || null })
+      setChannelInput(stripped)
+      setPrefs(p => ({ ...p, alert_channel: stripped || null }))
       setChannelSaved(true)
       setTimeout(() => setChannelSaved(false), 2000)
     } catch (e) {
@@ -133,14 +136,17 @@ export default function GuardSettingsPage() {
               <div className="px-5 py-4 space-y-2">
                 <label className="text-xs font-medium text-stone-700">Slack channel</label>
                 <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={channelInput}
-                    onChange={e => setChannelInput(e.target.value)}
-                    placeholder="#guard-alerts"
-                    className="w-56 text-sm border border-stone-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    onKeyDown={e => { if (e.key === "Enter") handleSaveChannel() }}
-                  />
+                  <div className="flex items-center w-56 border border-stone-300 rounded-lg overflow-hidden focus-within:ring-1 focus-within:ring-indigo-500">
+                    <span className="px-2 py-1.5 text-sm text-stone-400 bg-stone-50 border-r border-stone-200 select-none">#</span>
+                    <input
+                      type="text"
+                      value={channelInput}
+                      onChange={e => setChannelInput(e.target.value.replace(/^#+/, ""))}
+                      placeholder="guard-alerts"
+                      className="flex-1 text-sm px-2 py-1.5 focus:outline-none bg-white"
+                      onKeyDown={e => { if (e.key === "Enter") handleSaveChannel() }}
+                    />
+                  </div>
                   <button
                     onClick={handleSaveChannel}
                     disabled={savingChannel}
