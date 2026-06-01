@@ -30,6 +30,7 @@ SUPPORTED_BLOCK_TYPES = {
     "approval",
     "memory",
     "output",
+    "guard",
     # `trigger` and `cleanup` are special: triggers live under top-level
     # ``on:`` and cleanups under top-level ``cleanup:`` — they do not appear
     # as values of ``blocks:``.
