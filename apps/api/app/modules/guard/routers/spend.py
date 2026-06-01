@@ -32,6 +32,18 @@ def _period_label() -> str:
     return now.strftime("%Y-%m")
 
 
+def _parse_period_start(month: str | None) -> datetime:
+    """Parse 'YYYY-MM' into period start datetime. Falls back to current month."""
+    if month:
+        try:
+            return datetime.strptime(month, "%Y-%m").replace(
+                tzinfo=timezone.utc, day=1, hour=0, minute=0, second=0, microsecond=0
+            )
+        except ValueError:
+            pass
+    return _current_period_start()
+
+
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
 
 class DeveloperSpend(BaseModel):
@@ -104,11 +116,12 @@ class BudgetOut(BaseModel):
 @router.get("", response_model=SpendSummary)
 def get_spend_summary(
     team_id: str = Query(..., description="Team ID"),
+    month: str | None = Query(default=None, description="Period in YYYY-MM format; defaults to current month"),
     db: Session = Depends(get_db),
     _org_id: str = Depends(get_guard_org_id),
 ):
-    """Spend summary for a team for the current calendar month."""
-    period_start = _current_period_start()
+    """Spend summary for a team for the given month (defaults to current calendar month)."""
+    period_start = _parse_period_start(month)
 
     # Aggregate totals
     totals = (
@@ -207,7 +220,7 @@ def get_spend_summary(
 
     return SpendSummary(
         team_id=team_id,
-        period=_period_label(),
+        period=month or _period_label(),
         total_tokens_before=total_tokens_before,
         total_tokens_after=total_tokens_after,
         total_saved_pct=total_saved_pct,
