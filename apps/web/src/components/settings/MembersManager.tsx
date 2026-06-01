@@ -108,7 +108,11 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        setError(body.detail ?? "Failed to send invite")
+        if (res.status >= 500) {
+          setError("Something went wrong on our end. Please try again.")
+        } else {
+          setError(body.detail ?? "Failed to send invite")
+        }
         return
       }
       const data = await res.json().catch(() => ({}))
