@@ -82,8 +82,8 @@ export default function GuardSettingsPage() {
   async function handleSaveChannel() {
     setSavingChannel(true)
     try {
-      const data = await patch({ alert_channel: channelInput || null })
-      setPrefs(p => ({ ...p, alert_channel: data.alert_channel }))
+      await patch({ alert_channel: channelInput || null })
+      setPrefs(p => ({ ...p, alert_channel: channelInput || null }))
       setChannelSaved(true)
       setTimeout(() => setChannelSaved(false), 2000)
     } catch (e) {
