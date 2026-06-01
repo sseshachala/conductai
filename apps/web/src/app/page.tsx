@@ -135,14 +135,14 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
         </div>
 
         <h1 className="text-5xl sm:text-6xl font-bold text-stone-900 leading-[1.1] tracking-tight max-w-3xl">
-          Conduct turns YAML agent recipes<br />
-          <span className="text-indigo-600">into team automations.</span>
+          AI agents for the work<br />
+          <span className="text-indigo-600">around code.</span>
         </h1>
 
         <p className="mt-6 text-xl text-stone-500 max-w-2xl leading-relaxed">
-          Install a playbook into a project, connect the right environment, and run it.
-          Agents can open PRs, review code, triage issues, and post to Slack with
-          human approval before anything merges.
+          Conduct turns tickets, PRs, alerts, and incidents into auditable AI agent workflows.
+          Install a playbook, connect your tools, and let agents triage, review, patch, and
+          notify with human approval before anything ships.
         </p>
 
         <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
@@ -163,7 +163,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
             ) : null
           )}
           {isLoaded && !isSignedIn && clerkEnabled && (
-            <p className="text-xs text-stone-400">No credit card · No setup · Sign in with Google, GitHub, or Microsoft</p>
+            <p className="text-xs text-stone-400">No credit card · Connect your existing tools · Sign in with Google, GitHub, or Microsoft</p>
           )}
         </div>
 
@@ -202,9 +202,9 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
             {[
               {
                 icon: "⚡",
-                label: "Vibe coders",
+                label: "Solo builders",
                 tag: "Solo",
-                desc: "Ship faster without managing infrastructure. Your AI teammate handles the repetitive work.",
+                desc: "Turn repeated engineering chores into reusable playbooks without building agent infrastructure.",
                 accent: "from-amber-50 to-orange-50 border-amber-200",
                 iconBg: "bg-amber-100 text-amber-600",
               },
@@ -252,7 +252,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
       <div className="border-y border-stone-100 bg-stone-50 py-4 px-6">
         <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-center gap-6 text-xs font-medium text-stone-500">
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>{playbookCount} ready-made agents</span>
-          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>Zero prompt engineering</span>
+          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>Verified playbooks</span>
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>Human approval on every merge</span>
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>RBAC — admin, editor, viewer</span>
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>Auto model routing — Haiku to Opus</span>
@@ -363,7 +363,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
             You have AI that writes code.<br />Conduct turns it into a workflow.
           </h2>
           <p className="text-stone-400 text-sm max-w-2xl mx-auto mb-10 leading-relaxed">
-            Every engineering team now has an AI writing code. Conduct gives teams reusable YAML recipes for the work around it:
+            Every engineering team now has an AI writing code. Conduct gives teams governed automations for the work around it:
             catch AI-generated PRs, review the diff, gate on human approval, and post structured findings to Slack before a single
             line hits main.
           </p>
@@ -583,7 +583,7 @@ function LandingPageContent({ isSignedIn, isLoaded }: { isSignedIn: boolean; isL
             ))}
           </div>
           <p className="text-center text-xs text-stone-400">
-            Credentials are decrypted only at runtime, inside an ephemeral sandbox, and never written to logs.
+                  Credentials are decrypted only at runtime, scoped to the workspace environment, and never written to logs.
           </p>
         </div>
       </section>
@@ -979,12 +979,12 @@ const WHY_DELEGATOR = (count: number) => [
   {
     icon: "📂",
     title: "Open source, config-as-code",
-    body: "MIT licensed. The workflow lives as `<project>-delegator.yml` in your repo — diffable, reviewable in PRs, version-controlled like any other config. No black box.",
+    body: "MIT licensed. The workflow lives as YAML your team can read, diff, review in PRs, and version-control like any other engineering config. No black box.",
   },
   {
     icon: "🏠",
-    title: "Isolated sandboxes, every run",
-    body: "Each agent run executes in an ephemeral Modal sandbox — spun up, used, torn down. Your code and credentials never touch shared infrastructure.",
+    title: "Workspace-scoped execution",
+    body: "Agent execution uses the runtime configured for that workspace, such as Modal or SSH. Credentials are injected only for the run and never shared across workspaces.",
   },
   {
     icon: "🔍",
@@ -1019,7 +1019,7 @@ const WHY_DELEGATOR = (count: number) => [
   {
     icon: "🔐",
     title: "AES-256-GCM credential vault",
-    body: "Every API key and token is encrypted at rest with AES-256-GCM + HKDF-SHA256 key derivation. Credentials are decrypted only at runtime inside an ephemeral sandbox — never logged, never shared across workspaces.",
+    body: "Every API key and token is encrypted at rest with AES-256-GCM + HKDF-SHA256 key derivation. Credentials are decrypted only at runtime, never logged, and never shared across workspaces.",
   },
 ]
 
@@ -1039,8 +1039,8 @@ const VAULT_SECURITY = [
   {
     icon: "⏱️",
     title: "Runtime-only, workspace-scoped",
-    body: "Credentials are decrypted once per run, inside an ephemeral Modal sandbox that is torn down immediately after. Each workspace's vault is strictly isolated — no cross-tenant access is possible.",
-    badge: "Ephemeral access",
+    body: "Credentials are decrypted only when a run needs them and are scoped to the workspace and environment assigned to that workflow. Removing a credential immediately locks agents that depend on it.",
+    badge: "Runtime only",
   },
   {
     icon: "🛡️",
@@ -1062,9 +1062,9 @@ const VAULT_SECURITY = [
   },
   {
     icon: "🏠",
-    title: "Isolated sandbox per run",
-    body: "Every agent run executes in a fresh ephemeral container. Your credentials and code never touch shared infrastructure between runs or between workspaces.",
-    badge: "No shared infra",
+    title: "Workspace runtime isolation",
+    body: "Sandbox-backed runs use the runtime configured for that workspace. Conduct keeps credentials workspace-scoped and avoids cross-workspace sharing.",
+    badge: "Workspace scoped",
   },
 ]
 
@@ -1135,7 +1135,7 @@ const INTEGRATIONS: { name: string; color: string; svg: string }[] = [
 const FAQ = (count: number) => [
   {
     q: "What does Conduct actually do?",
-    a: "Conduct turns YAML agent recipes into reusable team automations. Your team installs a playbook into a project, configures the environment and credentials, then runs agents for tasks like issue triage, PR review, incident response, release notes, and security scanning.",
+    a: "Conduct turns tickets, PRs, alerts, and incidents into reusable AI agent workflows. Your team installs a playbook into a project, configures the environment and credentials, then runs agents for tasks like issue triage, PR review, incident response, release notes, and security scanning.",
   },
   {
     q: "Is Conduct a good fit for my engineering team?",
@@ -1163,7 +1163,7 @@ const FAQ = (count: number) => [
   },
   {
     q: "Will our security team approve this?",
-    a: "Conduct is designed for security-first teams. All secrets (API keys, tokens, webhook secrets) are encrypted with AES-256-GCM before they touch the database and decrypted only at runtime inside an ephemeral sandbox — never logged. Webhooks are verified with HMAC-SHA256 signatures. Approval gates are first-class blocks — nothing merges without a human gate via Slack DM. Role-based access (admin / editor / viewer) is enforced at the API level. Every action is event-sourced and audit-logged.",
+    a: "Conduct is designed for security-first teams. All secrets (API keys, tokens, webhook secrets) are encrypted with AES-256-GCM before they touch the database and decrypted only at runtime — never logged. Webhooks are verified with HMAC-SHA256 signatures. Approval gates are first-class blocks — nothing merges without a human gate via Slack DM. Role-based access (admin / editor / viewer) is enforced at the API level. Every action is event-sourced and audit-logged.",
   },
 ]
 
