@@ -158,6 +158,46 @@ def _accept_pending_invites_bg(user_id: str) -> None:
         db.close()
 
 
+def _seed_starter_policies(db, team_id: uuid.UUID, now) -> None:
+    from app.modules.guard.models import GuardPolicy
+    policies = [
+        # Destructive Operations
+        {"rule_id": "no-rm-rf",                "description": "Block recursive deletes",                         "action": "BLOCK", "match_pattern": r"rm\s+-rf"},
+        {"rule_id": "no-git-reset-hard",        "description": "Block hard resets",                              "action": "BLOCK", "match_pattern": r"git\s+reset\s+--hard"},
+        {"rule_id": "no-force-push",            "description": "Block force pushes",                             "action": "BLOCK", "match_pattern": r"git\s+push\s+(--force|-f)\b"},
+        {"rule_id": "no-drop-table",            "description": "Block DROP TABLE statements",                    "action": "BLOCK", "match_pattern": r"DROP\s+TABLE"},
+        {"rule_id": "no-truncate-table",        "description": "Block TRUNCATE TABLE statements",               "action": "BLOCK", "match_pattern": r"TRUNCATE\s+TABLE"},
+        {"rule_id": "no-delete-without-where",  "description": "Block DELETE statements without a WHERE clause", "action": "BLOCK", "match_pattern": r"DELETE\s+FROM\s+\w+\s*;"},
+        # Secrets & Credentials
+        {"rule_id": "no-env-commits",           "description": "Block committing .env files",                   "action": "BLOCK", "match_pattern": r"git (add|commit).+\.env"},
+        {"rule_id": "no-hardcoded-secrets",     "description": "Warn on possible hardcoded secrets",            "action": "WARN",  "match_pattern": r"(API_KEY|SECRET|PASSWORD|TOKEN)\s*=\s*['\"][A-Za-z0-9+/]{16,}"},
+        {"rule_id": "no-aws-keys",              "description": "Warn on hardcoded AWS access keys",             "action": "WARN",  "match_pattern": r"AKIA[0-9A-Z]{16}"},
+        {"rule_id": "no-private-key-files",     "description": "Block writing private key files",               "action": "BLOCK", "match_pattern": r"-----BEGIN (RSA |EC )?PRIVATE KEY-----"},
+        # Production Gates
+        {"rule_id": "approve-prod-deploy",          "description": "Require approval for production deploys",           "action": "APPROVAL", "match_pattern": r"deploy.*(prod|production)|vercel.*--prod|railway.*prod"},
+        {"rule_id": "approve-db-migration-prod",    "description": "Require approval for production DB migrations",     "action": "APPROVAL", "match_pattern": r"alembic upgrade|prisma migrate deploy"},
+        {"rule_id": "approve-terraform-destroy",    "description": "Require approval for terraform destroy",            "action": "APPROVAL", "match_pattern": r"terraform\s+destroy"},
+        {"rule_id": "approve-kubectl-delete",       "description": "Require approval for kubectl delete",               "action": "APPROVAL", "match_pattern": r"kubectl\s+delete"},
+        {"rule_id": "approve-prod-env-edit",        "description": "Require approval when editing production env files", "action": "APPROVAL", "match_pattern": r"\.env\.prod(uction)?"},
+        # Audit
+        {"rule_id": "audit-migrations",   "description": "Audit migration file modifications", "action": "AUDIT", "match_pattern": r"alembic/versions/.*\.py|migrations/.*\.sql"},
+        {"rule_id": "audit-ci-config",    "description": "Audit CI config modifications",       "action": "AUDIT", "match_pattern": r"\.(github|gitlab)/workflows/.*\.ya?ml|\.circleci/"},
+        {"rule_id": "audit-dockerfile",   "description": "Audit Dockerfile modifications",      "action": "AUDIT", "match_pattern": r"Dockerfile"},
+    ]
+    for p in policies:
+        db.add(GuardPolicy(
+            team_id=team_id,
+            rule_id=p["rule_id"],
+            description=p["description"],
+            action=p["action"],
+            match_pattern=p["match_pattern"],
+            enabled=True,
+            builtin=True,
+            created_at=now,
+            updated_at=now,
+        ))
+
+
 @router.get("", response_model=list[ProjectOut])
 def list_projects(
     user_id: Annotated[str, Depends(get_user_id)],
@@ -183,18 +223,37 @@ def list_projects(
 
     # Auto-register new users — create a default workspace + membership
     if not rows:
-        project_id, now = uuid.uuid4(), datetime.now(timezone.utc)
+        project_id = uuid.uuid4()
+        guard_team_id = uuid.uuid4()
+        invite_code = uuid.uuid4().hex[:16]
+        now = datetime.now(timezone.utc)
+        slug = f"engineering-{str(project_id)[:8]}"
+
+        # 1. Create "Engineering" workspace
         db.execute(text("""
             INSERT INTO workspaces (id, name, owner_id, plan, is_approved, created_at, updated_at)
-            VALUES (:id, 'My Workspace', :owner_id, 'free', true, :now, :now)
+            VALUES (:id, 'Engineering', :owner_id, 'free', true, :now, :now)
         """), {"id": str(project_id), "owner_id": user_id, "now": now})
+
+        # 2. Add owner as admin member
         db.execute(text("""
             INSERT INTO workspace_users (workspace_id, clerk_user_id, role, joined_at)
             VALUES (:ws, :uid, 'admin', :now)
             ON CONFLICT DO NOTHING
         """), {"ws": str(project_id), "uid": user_id, "now": now})
+
+        # 3. Install Guard — create guard_teams row
+        db.execute(text("""
+            INSERT INTO guard_teams (id, name, slug, invite_code, workspace_id, created_at, updated_at)
+            VALUES (:id, 'Engineering', :slug, :invite_code, :ws, :now, :now)
+        """), {"id": str(guard_team_id), "slug": slug, "invite_code": invite_code,
+               "ws": str(project_id), "now": now})
+
+        # 4. Seed starter policies
+        _seed_starter_policies(db, guard_team_id, now)
+
         db.commit()
-        return [ProjectOut(id=str(project_id), name="My Workspace", owner_id=user_id,
+        return [ProjectOut(id=str(project_id), name="Engineering", owner_id=user_id,
                            is_approved=True, created_at=now, workflow_count=0)]
 
     return [
