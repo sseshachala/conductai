@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { setGuardTeamId, removeGuardTeamId } from "@/lib/guardStorage"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -70,11 +71,11 @@ function ConductGuardModule() {
       if (res.ok) {
         const data = await res.json()
         if (data.installed) {
-          if (data.team_id && typeof window !== "undefined") localStorage.setItem("guard_team_id", data.team_id)
+          if (data.team_id && guardWsId && typeof window !== "undefined") setGuardTeamId(guardWsId, data.team_id)
           const teamRes = await fetch(`${base}/guard/teams/me${guardWsId ? `?workspace_id=${guardWsId}` : ""}`, { headers: h })
           if (teamRes.ok) {
             const t = await teamRes.json()
-            if (t.id && typeof window !== "undefined") localStorage.setItem("guard_team_id", t.id)
+            if (t.id && guardWsId && typeof window !== "undefined") setGuardTeamId(guardWsId, t.id)
             setTeam(t)
           } else {
             setTeam({ id: data.team_id, name: data.team_name ?? "", invite_code: data.invite_code ?? "", developer_count: 0, policy_count: 0 })
@@ -121,7 +122,6 @@ function ConductGuardModule() {
         return
       }
       if (typeof window !== "undefined") {
-        localStorage.setItem("guard_workspace_id", org.id)
         window.dispatchEvent(new CustomEvent("guard-install-changed", { detail: { installed: true } }))
       }
       await fetchInstallStatus(org.id)
@@ -145,8 +145,7 @@ function ConductGuardModule() {
       // Non-fatal — clear local state regardless
     } finally {
       if (typeof window !== "undefined") {
-        localStorage.removeItem("guard_team_id")
-        localStorage.removeItem("guard_workspace_id")
+        if (activeWorkspace?.id) removeGuardTeamId(activeWorkspace.id)
         window.dispatchEvent(new CustomEvent("guard-install-changed", { detail: { installed: false } }))
       }
       setTeam(null)

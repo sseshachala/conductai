@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
 import GuardNav from "@/components/guard/GuardNav"
+import { getGuardTeamId } from "@/lib/guardStorage"
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
@@ -97,7 +98,7 @@ export default function AuditPage() {
   const tools = Array.from(new Set(events.map((e) => e.ai_tool))).sort()
 
   function buildParams(offset: number) {
-    const teamId = (typeof window !== "undefined" ? localStorage.getItem("guard_team_id") : null) ?? ""
+    const teamId = getGuardTeamId()
     const p = new URLSearchParams({ team_id: teamId, limit: String(PAGE_SIZE), offset: String(offset) })
     if (filterDeveloper) p.set("user_email", filterDeveloper)
     if (filterTool) p.set("ai_tool", filterTool)

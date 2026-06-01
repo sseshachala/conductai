@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import GuardNav from "@/components/guard/GuardNav"
+import { getGuardTeamId } from "@/lib/guardStorage"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -467,8 +468,7 @@ function formatUpdatedAt(iso: string | undefined): string {
 // ---------------------------------------------------------------------------
 
 function getTeamId(): string {
-  if (typeof window === "undefined") return ""
-  return localStorage.getItem("guard_team_id") ?? ""
+  return getGuardTeamId()
 }
 
 export default function PoliciesPage() {

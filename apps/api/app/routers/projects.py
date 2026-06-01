@@ -95,14 +95,26 @@ def _accept_pending_invites(user_id: str, db: Session) -> None:
         WHERE invited_email = :email AND accepted_at IS NULL
     """), {"email": email}).fetchall()
     for inv in invites:
+        ws_id = str(inv.workspace_id)
         db.execute(text("""
             INSERT INTO workspace_users (workspace_id, clerk_user_id, role, invited_by, joined_at)
             VALUES (:ws, :uid, :role, :invited_by, :now)
             ON CONFLICT DO NOTHING
-        """), {"ws": str(inv.workspace_id), "uid": user_id,
+        """), {"ws": ws_id, "uid": user_id,
                "role": inv.role, "invited_by": inv.invited_by, "now": now})
         db.execute(text("UPDATE workspace_invites SET accepted_at = :now WHERE id = :id"),
                    {"now": now, "id": str(inv.id)})
+        # Auto-enroll in Guard if the workspace has Guard installed
+        guard_team = db.execute(
+            text("SELECT id FROM guard_teams WHERE conductai_org_id = :ws LIMIT 1"),
+            {"ws": ws_id},
+        ).fetchone()
+        if guard_team:
+            db.execute(text("""
+                INSERT INTO guard_members (id, team_id, user_id, email, role, active, joined_at)
+                VALUES (gen_random_uuid(), :team_id, :user_id, :email, 'developer', true, :now)
+                ON CONFLICT DO NOTHING
+            """), {"team_id": str(guard_team.id), "user_id": user_id, "email": email, "now": now})
     if invites:
         db.commit()
 
