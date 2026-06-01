@@ -5,27 +5,19 @@
  *   npm run setup
  *
  * What it does:
- *   1. Creates 4 Clerk test users (upserts — safe to run again)
- *   2. Obtains a Clerk sign-in token for the admin user
- *   3. Exchanges the token for a Conduct API Bearer token by signing in via
- *      a lightweight fetch to the Clerk frontend API (simulates browser sign-in)
- *   4. Creates (or reuses) a "Guard Test Workspace" via the Conduct API
- *   5. Adds the editor, security, and viewer users as members of that workspace
- *   6. Writes test-state.json with all IDs and credentials for the runner
+ *   1. Creates 5 Clerk test users (upserts — safe to run again)
+ *   2. Creates (or reuses) the Acme workspace and assigns roles via the
+ *      test-only /test/workspace-setup endpoint (no browser auth required)
+ *   3. Writes test-state.json with all IDs and credentials for the runner
  *
  * Environment variables required:
  *   CLERK_SECRET_KEY    — Clerk dashboard → API Keys → Secret key
  *   CONDUCT_API_URL     — e.g. http://localhost:8000
- *   CONDUCT_APP_URL     — e.g. http://localhost:3000
- *
- * Note: Conduct API auth requires a Clerk session JWT. The setup script uses
- * the Clerk Management API to create a sign-in token, then redeems it via
- * the Clerk Frontend API to obtain a session JWT usable as a Bearer token.
+ *   TEST_SECRET         — shared secret configured on the API server
  */
 
 import { writeFileSync } from "fs"
-import { chromium } from "playwright"
-import { upsertClerkUser, createSignInToken } from "./lib/clerk.js"
+import { upsertClerkUser } from "./lib/clerk.js"
 
 // ── Test user definitions ──────────────────────────────────────────────────
 
@@ -61,111 +53,39 @@ const WORKSPACE_NAME = "Acme"
 
 type RoleKey = keyof typeof TEST_USERS
 
-// ── Browser-based workspace setup ─────────────────────────────────────────
+// ── Test API workspace setup ───────────────────────────────────────────────
 
-/**
- * Signs in as admin via Clerk sign-in token (bypasses 2FA), captures the
- * Bearer JWT from the first API request the Guard page makes, then uses
- * that token in plain Node.js fetch calls to create the workspace and members.
- * No page.evaluate() — avoids all TypeScript/esbuild browser injection issues.
- */
-async function setupWorkspaceViaBrowser(
-  clerkIds: Record<RoleKey, string>
-): Promise<string> {
-  const appUrl = (process.env.CONDUCT_APP_URL ?? "http://localhost:3000").replace(/\/$/, "")
+async function setupWorkspace(clerkIds: Record<RoleKey, string>): Promise<string> {
   const apiUrl = (process.env.CONDUCT_API_URL ?? "http://localhost:8000").replace(/\/$/, "")
+  const testSecret = process.env.TEST_SECRET
+  if (!testSecret) throw new Error("TEST_SECRET env var is required for test setup")
 
-  console.log("  [browser] opening browser to capture auth token…")
-  const browser = await chromium.launch({ headless: true })
-  const context = await browser.newContext()
-  const page = await context.newPage()
-  let capturedToken: string | null = null
+  const res = await fetch(`${apiUrl}/test/workspace-setup`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Test-Secret": testSecret,
+    },
+    body: JSON.stringify({
+      workspace_name: WORKSPACE_NAME,
+      admin_clerk_user_id: clerkIds.admin,
+      members: [
+        { clerk_user_id: clerkIds.dev1,      role: "editor" },
+        { clerk_user_id: clerkIds.dev2,      role: "editor" },
+        { clerk_user_id: clerkIds.security,  role: "security" },
+        { clerk_user_id: clerkIds.viewer,    role: "viewer" },
+      ],
+    }),
+  })
 
-  try {
-    // Intercept ALL outgoing requests and grab the first Bearer token we see
-    await page.route("**/*", async (route) => {
-      const auth = route.request().headers()["authorization"] ?? ""
-      if (auth.startsWith("Bearer ") && !capturedToken) {
-        capturedToken = auth.slice(7)
-        console.log("  [auth] Bearer token captured from network request")
-      }
-      await route.continue()
-    })
-
-    // Clerk sign-in token bypasses 2FA — navigate browser to the ticket URL
-    const { url: ticketUrl } = await createSignInToken(clerkIds.admin, `${appUrl}/guard`)
-    console.log("  [auth] navigating to Clerk ticket URL (bypasses 2FA)…")
-    await page.goto(ticketUrl, { waitUntil: "networkidle" })
-
-    // Wait up to 15 s for the Guard page to make an authenticated API call
-    const deadline = Date.now() + 15_000
-    while (!capturedToken && Date.now() < deadline) {
-      await page.waitForTimeout(300)
-    }
-    if (!capturedToken) throw new Error(
-      "No Bearer token observed after sign-in. " +
-      "Check CONDUCT_APP_URL and that the Guard page makes API calls on load."
-    )
-  } finally {
-    await browser.close()
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`Workspace setup failed: HTTP ${res.status} — ${body}`)
   }
 
-  // ── All remaining steps use plain Node.js fetch with the captured token ──
-
-  async function apiFetch(path: string, opts: RequestInit = {}): Promise<unknown> {
-    const res = await fetch(`${apiUrl}${path}`, {
-      ...opts,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${capturedToken}`,
-        ...(opts.headers ?? {}),
-      },
-    })
-    const body = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(`HTTP ${res.status} on ${path}: ${JSON.stringify(body)}`)
-    return body
-  }
-
-  // Create or reuse the Acme workspace
-  console.log("\n3. Creating Acme workspace…")
-  const projects = await apiFetch("/projects") as Array<{ id: string; name: string }>
-  let workspaceId: string | null = null
-  if (Array.isArray(projects)) {
-    const existing = projects.find((p) => p.name === WORKSPACE_NAME)
-    if (existing) {
-      workspaceId = existing.id
-      console.log(`  [ok] reusing existing workspace: ${workspaceId}`)
-    }
-  }
-  if (!workspaceId) {
-    const created = await apiFetch("/projects", {
-      method: "POST",
-      body: JSON.stringify({ name: WORKSPACE_NAME }),
-    }) as { id: string }
-    workspaceId = created.id
-    console.log(`  [ok] created workspace: ${workspaceId}`)
-  }
-
-  // Add members
-  console.log("\n4. Assigning roles…")
-  for (const [key, clerkId, role] of [
-    ["dev1",     clerkIds.dev1,     "editor"],
-    ["dev2",     clerkIds.dev2,     "editor"],
-    ["security", clerkIds.security, "security"],
-    ["viewer",   clerkIds.viewer,   "viewer"],
-  ] as [string, string, string][]) {
-    try {
-      await apiFetch(`/projects/${workspaceId}/members`, {
-        method: "POST",
-        body: JSON.stringify({ clerk_user_id: clerkId, role }),
-      })
-      console.log(`  [ok] ${key} → ${role}`)
-    } catch (err) {
-      console.warn(`  [warn] ${key}: ${err instanceof Error ? err.message : err}`)
-    }
-  }
-
-  return workspaceId
+  const data = await res.json() as { workspace_id: string; created: boolean }
+  console.log(`  [ok] workspace ${data.created ? "created" : "reused"}: ${data.workspace_id}`)
+  return data.workspace_id
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
@@ -181,18 +101,17 @@ async function main() {
     clerkIds[role] = await upsertClerkUser(creds.email, creds.password)
   }
 
-  // Steps 2-4: Sign in as admin in browser, create workspace, assign roles
-  console.log("\n2. Signing in as admin + creating Acme workspace + assigning roles…")
+  // Step 2: Create workspace and assign roles via test API
+  console.log("\n2. Creating Acme workspace via test API…")
   let workspaceId: string
   try {
-    workspaceId = await setupWorkspaceViaBrowser(clerkIds)
-    console.log(`  [ok] workspace ready: ${workspaceId}`)
+    workspaceId = await setupWorkspace(clerkIds)
   } catch (err) {
     console.error("  ERROR:", err instanceof Error ? err.message : err)
     process.exit(1)
   }
 
-  // Step 5: Write test-state.json
+  // Step 3: Write test-state.json
   const state = {
     workspaceId,
     org: WORKSPACE_NAME,
