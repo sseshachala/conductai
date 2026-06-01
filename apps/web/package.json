@@ -7,7 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
     "next": "15.5.18",
@@ -33,7 +37,9 @@
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@playwright/test": "^1.48.0",
     "autoprefixer": "^10.4.20",
+    "dotenv": "^16.4.5",
     "eslint": "^8",
     "eslint-config-next": "15.5.18",
     "postcss": "^8.4.47",
