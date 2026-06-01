@@ -14,6 +14,9 @@ import uuid
 from datetime import datetime, timezone
 from typing import Annotated
 
+import structlog
+log = structlog.get_logger(__name__)
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import or_
@@ -115,24 +118,29 @@ def _is_valid_uuid(val: str) -> bool:
 
 def _lookup_team(db: Session, lookup_id: str, fallback_org_id: str | None = None):
     """Look up a GuardTeam by workspace_id FK (new teams) or conductai_org_id string (existing teams)."""
-    # 1. Try workspace_id FK (new teams post-migration)
+    import traceback
+
+    # 1. Try workspace_id FK
     if _is_valid_uuid(lookup_id):
         try:
             team = db.query(GuardTeam).filter(GuardTeam.workspace_id == uuid.UUID(lookup_id)).first()
             if team:
                 return team
-        except Exception:
+        except Exception as e:
+            log.warning("guard_lookup workspace_id query failed: %s\n%s", e, traceback.format_exc())
             db.rollback()
 
-    # 2. Try conductai_org_id string match (existing teams store workspace UUID here)
+    # 2. Try conductai_org_id string match
     for candidate in filter(None, dict.fromkeys([lookup_id, fallback_org_id])):
         try:
             team = db.query(GuardTeam).filter(GuardTeam.conductai_org_id == candidate).first()
             if team:
                 return team
-        except Exception:
+        except Exception as e:
+            log.warning("guard_lookup conductai_org_id query failed: %s\n%s", e, traceback.format_exc())
             db.rollback()
 
+    log.warning("guard_lookup found nothing: lookup_id=%s fallback=%s", lookup_id, fallback_org_id)
     return None
 
 
