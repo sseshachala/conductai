@@ -1335,6 +1335,30 @@ const FAQ = (count: number) => [
     q: "Will our security team approve this?",
     a: "Conduct is designed for security-first teams. All secrets (API keys, tokens, webhook secrets) are encrypted with AES-256-GCM before they touch the database and decrypted only at runtime — never logged. Webhooks are verified with HMAC-SHA256 signatures. Approval gates are first-class blocks — nothing merges without a human gate via Slack DM. Role-based access (admin / editor / viewer) is enforced at the API level. Every action is event-sourced and audit-logged.",
   },
+  {
+    q: "What is ConductGuard and do I need it?",
+    a: "ConductGuard is the team policy layer that sits on top of Conduct workflows and your developers' local AI tools. It's optional — Conduct works without it. You need Guard when you want to enforce spend limits, block risky actions, or get an audit trail of what every developer's AI tools are doing. Think of Conduct as the automation layer and Guard as the governance layer. Most teams start with Conduct playbooks and add Guard when they're ready to set team-wide policies.",
+  },
+  {
+    q: "Does Guard only work with Conduct workflows, or does it cover local AI tools like Claude Code and Cursor?",
+    a: "Both. Guard has two enforcement surfaces. Inside Conduct workflows, a Guard block evaluates policies mid-run and can halt a run before a sensitive action executes. Outside workflows, the PreToolUse hook (installed via 'conduct guard join') intercepts every Claude Code, Cursor, or compatible AI tool call on a developer's machine — before the call reaches the model. The same policies apply in both places.",
+  },
+  {
+    q: "How does the spend cap work? Will it surprise developers?",
+    a: "The team lead sets a monthly hard cap per developer in Guard → Settings. When a developer hits their cap, the next AI call is blocked at the hook level — the call never reaches the model. Guard posts a Slack alert when the block fires. The cap resets on the 1st of each month. The budget check is cached for 5 minutes locally, so there's no latency added to normal tool calls. Developers can see their current spend at any time by running 'conduct guard status'.",
+  },
+  {
+    q: "If I add a Guard block to a workflow and a developer hasn't installed Guard, what happens?",
+    a: "It depends on the enforcement_mode you set. With enforcement_mode: block (the default), the run halts and logs instructions telling the developer to run 'conduct guard join'. With enforcement_mode: warn or audit, the block logs a warning but the workflow continues — useful if you want to roll Guard out gradually without breaking existing workflows.",
+  },
+  {
+    q: "Can Guard policies be different per project or per workflow?",
+    a: "Policies are set at the team level and apply uniformly to all workflows and all developers on that team. You can target specific policies to specific tools using the match_tool field (e.g. only apply a rule when Claude Code is making a file write). Within a workflow, you can use the rule_ids field on a Guard block to evaluate only specific rules rather than all active policies.",
+  },
+  {
+    q: "How does Guard fit into the approval gate model?",
+    a: "They're complementary. Approval gates (the approval block in a workflow) pause execution and wait for a human to explicitly approve or reject via Slack. Guard blocks evaluate policies automatically without human input — they either pass or fail based on rules. A typical high-stakes workflow might have a Guard block check policies first, and then an approval block require a human sign-off before the final action runs.",
+  },
 ]
 
 function GitHubIcon() {
