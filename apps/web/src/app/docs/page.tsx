@@ -115,7 +115,7 @@ export default function DocsPage() {
           <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mt-6 mb-3">ConductGuard</p>
           <ul className="space-y-1 text-sm text-stone-600">
             <li><a href="#guard" className="hover:text-stone-900 transition-colors block py-0.5">Overview</a></li>
-            <li><a href="#guard-join" className="hover:text-stone-900 transition-colors block py-0.5">conduct guard join</a></li>
+            <li><a href="#guard-user-flow" className="hover:text-stone-900 transition-colors block py-0.5">Guard user flow</a></li>
             <li><a href="#guard-hook" className="hover:text-stone-900 transition-colors block py-0.5">PreToolUse hook</a></li>
             <li><a href="#guard-mcp" className="hover:text-stone-900 transition-colors block py-0.5">conductguard-mcp</a></li>
             <li><a href="#guard-spend" className="hover:text-stone-900 transition-colors block py-0.5">Spend controls</a></li>
@@ -1023,27 +1023,44 @@ es.onmessage = (e) => {
             </div>
           </section>
 
-          {/* ── conduct guard join ── */}
-          <section id="guard-join">
-            <SectionHeading id="guard-join">conduct guard join</SectionHeading>
-            <p className="text-stone-500 text-sm mb-4 leading-relaxed">
-              Joins a developer to their team&apos;s Guard instance. Downloads active policies, installs the PreToolUse hook,
-              and writes the team token to <Code>~/.guardrc</Code>. Idempotent — safe to run multiple times.
+          {/* ── Guard user flow ── */}
+          <section id="guard-user-flow">
+            <SectionHeading id="guard-user-flow">Guard user flow</SectionHeading>
+            <p className="text-stone-500 text-sm mb-6 leading-relaxed">
+              Guard is set up entirely through the Conduct UI. No tokens to share, no CLI commands to distribute manually —
+              the admin invites team members by email, they accept, and each developer runs one CLI command to wire up their machine.
             </p>
 
-            <Pre>{`# Prerequisites: pip install conduct-cli
-conduct guard join \\
-  --team  <team-id>   \\   # UUID from Guard → Settings
-  --token <member-token>  # from the invite email or Guard → Members
+            {/* Flow diagram */}
+            <div className="rounded-xl border border-stone-200 overflow-hidden mb-6">
+              {[
+                { actor: "Admin", step: "Sign in", detail: "Conduct seeds an "Engineering" workspace with Guard enabled and 18 starter policies automatically." },
+                { actor: "Admin", step: "Invite team members", detail: "Guard → Members → Invite. Enter email and assign a role (Editor, Security, or Viewer). An invite email is sent." },
+                { actor: "Member", step: "Accept invite", detail: "Member clicks the link in the email, signs in, and lands on the Guard dashboard. Their role is applied immediately." },
+                { actor: "Member", step: "Generate API key", detail: "Settings → API Keys → New key. The key is scoped to their workspace and role." },
+                { actor: "Member", step: "Install Guard locally", detail: "Run once on their machine. Downloads active policies and installs the PreToolUse hook." },
+                { actor: "Guard", step: "Enforces on every call", detail: "Every Claude Code, Cursor, or Windsurf tool call is checked against workspace policies in real time." },
+              ].map(({ actor, step, detail }, i) => (
+                <div key={i} className={`flex gap-4 px-4 py-3 ${i < 5 ? "border-b border-stone-100" : ""}`}>
+                  <span className={`shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full h-fit mt-0.5 ${
+                    actor === "Admin" ? "bg-violet-50 text-violet-700 border border-violet-200" :
+                    actor === "Member" ? "bg-blue-50 text-blue-700 border border-blue-200" :
+                    "bg-green-50 text-green-700 border border-green-200"
+                  }`}>{actor}</span>
+                  <div>
+                    <p className="text-sm font-medium text-stone-800 mb-0.5">{step}</p>
+                    <p className="text-xs text-stone-500 leading-relaxed">{detail}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
 
-# What it does:
-# 1. Validates token against the Guard API
-# 2. Downloads active policies to ~/.guard/policies.json
-# 3. Installs a Claude Code PreToolUse hook at ~/.claude/hooks/
-# 4. Writes ~/.guardrc with team_id and token
-# 5. Prints confirmation with hard_limit_usd and policy count`}</Pre>
+            <Pre>{`# Step 5 — each developer runs once
+pip install conduct-cli
+conduct login --api-key <your-api-key>
+conduct guard install`}</Pre>
 
-            <SubHeading>Other guard commands</SubHeading>
+            <SubHeading>Guard CLI commands</SubHeading>
             <div className="rounded-xl border border-stone-200 overflow-hidden mb-4">
               <table className="w-full text-sm">
                 <thead>
@@ -1054,10 +1071,10 @@ conduct guard join \\
                 </thead>
                 <tbody className="divide-y divide-stone-100">
                   {[
-                    ["conduct guard join", "Join a team, install hook, pull policies"],
+                    ["conduct guard install", "Install the PreToolUse hook and pull active policies"],
                     ["conduct guard sync", "Pull latest policies without reinstalling the hook"],
-                    ["conduct guard status", "Show current team, policy count, and spend this month"],
-                    ["conduct guard uninstall", "Remove the hook and clear ~/.guardrc"],
+                    ["conduct guard status", "Show current workspace, policy count, and spend this month"],
+                    ["conduct guard uninstall", "Remove the hook and clear local Guard config"],
                   ].map(([cmd, desc]) => (
                     <tr key={cmd}>
                       <td className="px-4 py-3 font-mono text-xs text-stone-800">{cmd}</td>
@@ -1311,7 +1328,7 @@ conductguard-mcp \\
                 {
                   step: "2",
                   title: "Invite your team",
-                  body: "From Guard → Settings → Members, invite developers (Editor role), security advisors (Security role), and stakeholders (Viewer role). Each receives an email invite.",
+                  body: "From Guard → Members, invite developers (Editor role), security advisors (Security role), and stakeholders (Viewer role). Each receives an email invite.",
                 },
                 {
                   step: "3",
@@ -1363,9 +1380,8 @@ conductguard-mcp \\
             </div>
 
             <div className="rounded-xl bg-stone-100 border border-stone-200 px-4 py-3 text-sm text-stone-700">
-              <strong>Walk-up onboarding:</strong> <Code>conduct guard join &lt;token&gt;</Code> is for developers who receive
-              a manager-shared link before they have an account. If you have already accepted an invite and generated an API key,
-              use <Code>conduct guard install</Code> instead.
+              <strong>Already a workspace member?</strong> If you&apos;re joining a second workspace (e.g. a contractor added to a client team),
+              use <strong>Guard → Members</strong> in the UI — an admin can add you directly. Run <Code>conduct guard install</Code> again after accepting.
             </div>
           </section>
 
