@@ -84,12 +84,6 @@ app.include_router(guard_policies.router)
 app.include_router(guard_events.router)
 app.include_router(guard_spend.router)
 
-# Test-only router — mounted only when TEST_SECRET is configured
-import os as _os
-if _os.environ.get("TEST_SECRET"):
-    from app.routers import test_setup as _test_setup
-    app.include_router(_test_setup.router)
-
 
 @app.on_event("startup")
 def _warm_eval_cache() -> None:
