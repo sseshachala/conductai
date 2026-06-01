@@ -23,6 +23,7 @@ export default function GuardSettingsPage() {
   })
   const [channelInput, setChannelInput] = useState("")
   const [loading, setLoading] = useState(true)
+  const [installed, setInstalled] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [channelSaved, setChannelSaved] = useState(false)
   const [savingChannel, setSavingChannel] = useState(false)
@@ -39,12 +40,14 @@ export default function GuardSettingsPage() {
   const workspaceQuery = activeWorkspace ? `?workspace_id=${activeWorkspace.id}` : ""
 
   const load = useCallback(async () => {
+    if (!activeWorkspace) return
     setLoading(true)
     setError(null)
+    setInstalled(true)
     try {
       const headers = await buildHeaders()
-      const res = await fetch(`${base}/guard/teams/me${workspaceQuery}`, { headers })
-      if (res.status === 404) { setLoading(false); return }
+      const res = await fetch(`${base}/guard/teams/me?workspace_id=${activeWorkspace.id}`, { headers })
+      if (res.status === 404) { setInstalled(false); setLoading(false); return }
       if (!res.ok) throw new Error(`Failed to load team (${res.status})`)
       const data = await res.json()
       setPrefs({
@@ -58,16 +61,16 @@ export default function GuardSettingsPage() {
     } finally {
       setLoading(false)
     }
-  }, [base, buildHeaders, workspaceQuery])
+  }, [base, buildHeaders, activeWorkspace])
 
   useEffect(() => {
     load()
   }, [load])
 
   async function patch(body: Partial<TeamPrefs>) {
+    if (!activeWorkspace) return
     const headers = await buildHeaders()
-    const qs = activeWorkspace ? `?workspace_id=${activeWorkspace.id}` : ""
-    const res = await fetch(`${base}/guard/teams/me${qs}`, {
+    const res = await fetch(`${base}/guard/teams/me?workspace_id=${activeWorkspace.id}`, {
       method: "PATCH",
       headers,
       body: JSON.stringify(body),
