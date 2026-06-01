@@ -17,7 +17,7 @@ from functools import lru_cache
 from typing import Annotated
 
 import httpx
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -247,6 +247,7 @@ def _assert_workspace_member(db: Session, workspace_id: str, user_id: str) -> No
 
 def get_workspace_id(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
+    workspace_id: Annotated[str | None, Query()] = None,
     x_workspace_id: Annotated[str | None, Header()] = None,
     x_api_key: Annotated[str | None, Header()] = None,
     db: Session = Depends(get_db),
@@ -255,12 +256,14 @@ def get_workspace_id(
     Returns the active workspace/project ID for the request.
 
     Resolution order:
-    1. X-Workspace-ID header (explicit project selection) — membership validated against DB
-    2. Clerk JWT org_id or sub (single-workspace-per-user fallback)
-    3. Dev workspace (when Clerk is not configured)
+    1. ?workspace_id= query param (explicit — preferred)
+    2. X-Workspace-Id header (backward compat)
+    3. Clerk JWT org_id or sub (single-workspace-per-user fallback)
+    4. Dev workspace (when Clerk is not configured)
     """
+    explicit_ws = workspace_id or x_workspace_id
     if not _clerk_enabled():
-        return x_workspace_id or DEV_WORKSPACE_ID
+        return explicit_ws or DEV_WORKSPACE_ID
 
     # Master server-to-server key (env var) — unchanged
     if x_api_key and settings.cli_api_key and x_api_key == settings.cli_api_key:
@@ -296,10 +299,10 @@ def get_workspace_id(
 
     user_id = claims.get("sub")
 
-    if x_workspace_id:
+    if explicit_ws:
         # Validate the user actually belongs to the requested workspace
-        _assert_workspace_member(db, x_workspace_id, user_id)
-        return x_workspace_id
+        _assert_workspace_member(db, explicit_ws, user_id)
+        return explicit_ws
 
     workspace_id = claims.get("org_id") or claims.get("sub")
     if not workspace_id:
