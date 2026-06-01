@@ -18,12 +18,28 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_user_id, get_workspace_id, require_workspace_role, get_user_workspace_role, get_clerk_user_email, get_clerk_user_info, find_clerk_user_id_by_email
+from app.core.auth import get_user_id, get_workspace_id, require_workspace_role, get_clerk_user_email, get_clerk_user_info, find_clerk_user_id_by_email
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.email import send_template_email, _ROLE_DESCRIPTIONS, APP_URL
+from app.models.audit_log import AuditLog
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+
+
+def _audit(db, *, workspace_id: str, actor_id: str, actor_email: str | None,
+           actor_role: str | None, action: str, resource_type: str,
+           resource_id: str | None = None, meta: dict | None = None) -> None:
+    db.add(AuditLog(
+        workspace_id=workspace_id,
+        actor_id=actor_id,
+        actor_email=actor_email,
+        actor_role=actor_role,
+        action=action,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        meta=meta,
+    ))
 
 
 # ---------------------------------------------------------------------------
@@ -384,12 +400,16 @@ def add_member(
             RETURNING id
         """), {"ws": workspace_id, "email": email, "role": body.role,
                "invited_by": user_id, "now": now}).fetchone()[0]
+        inviter_email = get_clerk_user_email(user_id)
+        _audit(db, workspace_id=workspace_id, actor_id=user_id,
+               actor_email=inviter_email, actor_role=_role,
+               action="member.invited", resource_type="invite",
+               resource_id=email, meta={"role": body.role, "invite_id": str(invite_id)})
         db.commit()
 
-        # Resolve workspace name and inviter email for the notification
+        # Resolve workspace name for the notification
         ws_row = db.execute(text("SELECT name FROM workspaces WHERE id = :id"), {"id": workspace_id}).fetchone()
         workspace_name = ws_row.name if ws_row else "your workspace"
-        inviter_email = get_clerk_user_email(user_id)
 
         # Include Guard invite command if Guard is installed for this workspace
         # Check both workspace_id FK (new teams) and conductai_org_id string (legacy teams)
@@ -439,6 +459,10 @@ def add_member(
         VALUES (:ws, :uid, :role, :invited_by, :now)
     """), {"ws": workspace_id, "uid": body.clerk_user_id,
            "role": body.role, "invited_by": user_id, "now": now})
+    _audit(db, workspace_id=workspace_id, actor_id=user_id,
+           actor_email=get_clerk_user_email(user_id), actor_role=_role,
+           action="member.added", resource_type="member",
+           resource_id=body.clerk_user_id, meta={"role": body.role})
     db.commit()
     return MemberOut(clerk_user_id=body.clerk_user_id, role=body.role,
                      invited_by=user_id, joined_at=now)
@@ -478,10 +502,15 @@ def cancel_invite(
     result = db.execute(text("""
         DELETE FROM workspace_invites
         WHERE id = :id AND workspace_id = :ws AND accepted_at IS NULL
-        RETURNING id
+        RETURNING id, invited_email, role
     """), {"id": invite_id, "ws": workspace_id})
-    if not result.fetchone():
+    row = result.fetchone()
+    if not row:
         raise HTTPException(status_code=404, detail="Invite not found or already accepted")
+    _audit(db, workspace_id=workspace_id, actor_id=user_id,
+           actor_email=None, actor_role=_role,
+           action="invite.cancelled", resource_type="invite",
+           resource_id=invite_id, meta={"invited_email": row.invited_email, "role": row.role})
     db.commit()
 
 
@@ -502,13 +531,20 @@ def update_member_role(
         raise HTTPException(status_code=422, detail="Role must be admin, editor, or viewer")
     if clerk_user_id == user_id:
         raise HTTPException(status_code=400, detail="Cannot change your own role")
-    result = db.execute(text("""
+    old_row = db.execute(text("""
+        SELECT role FROM workspace_users WHERE workspace_id = :ws AND clerk_user_id = :uid
+    """), {"ws": workspace_id, "uid": clerk_user_id}).fetchone()
+    if not old_row:
+        raise HTTPException(status_code=404, detail="Member not found")
+    old_role = old_row.role
+    db.execute(text("""
         UPDATE workspace_users SET role = :role
         WHERE workspace_id = :ws AND clerk_user_id = :uid
-        RETURNING clerk_user_id
     """), {"role": new_role, "ws": workspace_id, "uid": clerk_user_id})
-    if not result.fetchone():
-        raise HTTPException(status_code=404, detail="Member not found")
+    _audit(db, workspace_id=workspace_id, actor_id=user_id,
+           actor_email=None, actor_role=_role,
+           action="member.role_changed", resource_type="member",
+           resource_id=clerk_user_id, meta={"from_role": old_role, "to_role": new_role})
     db.commit()
     return {"clerk_user_id": clerk_user_id, "role": new_role}
 
@@ -526,9 +562,16 @@ def remove_member(
         raise HTTPException(status_code=404, detail="Project not found")
     if clerk_user_id == user_id:
         raise HTTPException(status_code=400, detail="Cannot remove yourself")
-    db.execute(text("""
+    removed = db.execute(text("""
         DELETE FROM workspace_users WHERE workspace_id = :ws AND clerk_user_id = :uid
-    """), {"ws": workspace_id, "uid": clerk_user_id})
+        RETURNING role
+    """), {"ws": workspace_id, "uid": clerk_user_id}).fetchone()
+    if not removed:
+        raise HTTPException(status_code=404, detail="Member not found")
+    _audit(db, workspace_id=workspace_id, actor_id=user_id,
+           actor_email=None, actor_role=_role,
+           action="member.removed", resource_type="member",
+           resource_id=clerk_user_id, meta={"role": removed.role})
     db.commit()
 
 
