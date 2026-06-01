@@ -408,6 +408,39 @@ def get_guard_org_id(
     return org_id
 
 
+def get_guard_hook_auth(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
+    db: Session = Depends(get_db),
+) -> str:
+    """Auth for hook/CLI endpoints that accept EITHER a Clerk JWT OR a member token.
+
+    Returns org_id (from Clerk) or team_id string (from member token lookup).
+    This allows `conduct guard sync` and the MCP server to call protected endpoints
+    using the member_token issued at join time.
+    """
+    if not _clerk_enabled():
+        return "dev-org"
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    token = credentials.credentials
+
+    # Try Clerk JWT first
+    claims = _verify_clerk_token(token)
+    if claims:
+        org_id = claims.get("org_id") or claims.get("sub")
+        if org_id:
+            return org_id
+
+    # Fall back to member token lookup
+    from app.modules.guard.models import GuardMember
+    member = db.query(GuardMember).filter(GuardMember.member_token == token).first()
+    if member:
+        return str(member.team_id)
+
+    raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+
 def require_workspace_role(*allowed_roles: str):
     """
     Dependency factory that enforces minimum role for an endpoint.

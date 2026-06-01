@@ -31,7 +31,8 @@ Repository  = "https://github.com/sseshachala/conductai"
 "Bug Tracker" = "https://github.com/sseshachala/conductai/issues"
 
 [project.scripts]
-conduct = "conduct_cli.main:main"
+conduct          = "conduct_cli.main:main"
+conductguard-mcp = "conduct_cli.guardmcp:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
