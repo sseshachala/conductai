@@ -70,14 +70,14 @@ function exportCsv(events: AuditEvent[]) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement("a")
   a.href = url
-  a.download = `conduct-guard-audit-${new Date().toISOString().slice(0, 10)}.csv`
+  a.download = `conduct-guard-activity-${new Date().toISOString().slice(0, 10)}.csv`
   a.click()
   URL.revokeObjectURL(url)
 }
 
 const PAGE_SIZE = 100
 
-export default function AuditPage() {
+export default function ActivityPage() {
   const { getToken } = useAuth()
   const [events, setEvents] = useState<AuditEvent[]>([])
   const [loading, setLoading] = useState(true)
@@ -119,7 +119,7 @@ export default function AuditPage() {
 
     try {
       const res = await fetch(`${base}/guard/events?${buildParams(0)}`, { headers })
-      if (!res.ok) throw new Error("Failed to load audit events")
+      if (!res.ok) throw new Error("Failed to load activity events")
       const rows: AuditEvent[] = await res.json()
       setEvents(rows)
       setHasMore(rows.length === PAGE_SIZE)
@@ -262,7 +262,7 @@ export default function AuditPage() {
           </div>
         ) : events.length === 0 ? (
           <div className="rounded-xl border border-stone-200 bg-white px-6 py-16 text-center text-sm text-stone-400">
-            No audit events found for the selected filters.
+            No activity events found for the selected filters.
           </div>
         ) : (
           <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">

@@ -677,13 +677,13 @@ export default function SpendPage() {
                           <tr key={`${dev.email}-expanded`} className="bg-stone-50 border-b border-stone-100">
                             <td colSpan={7} className="px-6 py-4">
                               <p className="text-xs text-stone-500">
-                                Session breakdown for <span className="font-medium text-stone-700">{dev.email}</span> is available in the Audit Trail.
+                                Session breakdown for <span className="font-medium text-stone-700">{dev.email}</span> is available in the Activity log.
                               </p>
                               <a
-                                href={`/guard/audit?developer=${encodeURIComponent(dev.email)}`}
+                                href={`/guard/activity?developer=${encodeURIComponent(dev.email)}`}
                                 className="mt-1 inline-block text-xs text-indigo-600 hover:underline"
                               >
-                                View audit trail for this developer &rarr;
+                                View activity log for this developer &rarr;
                               </a>
                             </td>
                           </tr>
