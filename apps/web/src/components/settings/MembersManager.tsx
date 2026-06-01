@@ -120,7 +120,7 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
       setInviteRole("editor")
       setAddOpen(false)
       if (data.email_sent === false) {
-        setEmailWarning(`Invite created but the email couldn't be sent — no email provider is configured. Ask ${email} to sign in at conductai.ai and they'll be added automatically.`)
+        setEmailWarning(`Invite created but the notification email couldn't be delivered to ${email}. Ask them to sign in at conductai.ai and they'll be added automatically.`)
       }
       await loadData()
     } finally {
