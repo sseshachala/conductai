@@ -55,6 +55,7 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
   const [removing, setRemoving] = useState<string | null>(null)
   const [cancelling, setCancelling] = useState<string | null>(null)
   const [error, setError] = useState("")
+  const [emailWarning, setEmailWarning] = useState("")
 
   async function buildHeaders(contentType = false): Promise<Record<string, string>> {
     const headers: Record<string, string> = {}
@@ -97,6 +98,7 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
     if (!email || !email.includes("@")) { setError("Enter a valid email address"); return }
     setSaving(true)
     setError("")
+    setEmailWarning("")
     try {
       const headers = await buildHeaders(true)
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace!.id}/members`, {
@@ -109,9 +111,13 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
         setError(body.detail ?? "Failed to send invite")
         return
       }
+      const data = await res.json().catch(() => ({}))
       setInviteEmail("")
       setInviteRole("editor")
       setAddOpen(false)
+      if (data.email_sent === false) {
+        setEmailWarning(`Invite created but the email couldn't be sent — no email provider is configured. Ask ${email} to sign in at conductai.ai and they'll be added automatically.`)
+      }
       await loadData()
     } finally {
       setSaving(false)
@@ -235,6 +241,12 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
               Cancel
             </button>
           </div>
+        </div>
+      )}
+
+      {emailWarning && (
+        <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-xs text-amber-800">
+          {emailWarning}
         </div>
       )}
 

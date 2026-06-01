@@ -136,6 +136,26 @@ def get_clerk_user_email(user_id: str) -> str | None:
         return None
 
 
+def find_clerk_user_id_by_email(email: str) -> str | None:
+    """Return the Clerk user_id for the given email, or None if not found."""
+    if not settings.clerk_secret_key or not email:
+        return None
+    try:
+        r = httpx.get(
+            "https://api.clerk.com/v1/users",
+            params={"email_address": email, "limit": 1},
+            headers={"Authorization": f"Bearer {settings.clerk_secret_key}"},
+            timeout=5,
+        )
+        if not r.is_success:
+            return None
+        users = r.json()
+        return users[0]["id"] if users else None
+    except Exception as e:
+        log.warning("Could not search Clerk user by email %s: %s", email, e)
+        return None
+
+
 def get_clerk_user_info(user_id: str) -> dict:
     """Return {email, name} for a Clerk user. Falls back to empty strings on failure."""
     if not settings.clerk_secret_key or not user_id:
