@@ -22,7 +22,7 @@ export default function GuardSettingsPage() {
     notify_on_budget: true,
   })
   const [channelInput, setChannelInput] = useState("")
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [installed, setInstalled] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [channelSaved, setChannelSaved] = useState(false)
