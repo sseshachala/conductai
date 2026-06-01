@@ -1034,7 +1034,7 @@ es.onmessage = (e) => {
             {/* Flow diagram */}
             <div className="rounded-xl border border-stone-200 overflow-hidden mb-6">
               {[
-                { actor: "Admin", step: "Sign in", detail: "Conduct seeds an "Engineering" workspace with Guard enabled and 18 starter policies automatically." },
+                { actor: "Admin", step: "Sign in", detail: "Conduct seeds an \u201cEngineering\u201d workspace with Guard enabled and 18 starter policies automatically." },
                 { actor: "Admin", step: "Invite team members", detail: "Guard → Members → Invite. Enter email and assign a role (Editor, Security, or Viewer). An invite email is sent." },
                 { actor: "Member", step: "Accept invite", detail: "Member clicks the link in the email, signs in, and lands on the Guard dashboard. Their role is applied immediately." },
                 { actor: "Member", step: "Generate API key", detail: "Settings → API Keys → New key. The key is scoped to their workspace and role." },
