@@ -197,7 +197,7 @@ def _send_via_resend(api_key: str, from_addr: str, to: str, subject: str, html: 
             timeout=10,
         )
         if not r.is_success:
-            log.warning("Resend error %s: %s", r.status_code, r.text[:200])
+            log.warning("Resend error %s to=%s from=%s body=%s", r.status_code, to, from_addr, r.text[:400])
         return r.is_success
     except Exception as e:
         log.warning("Resend send failed: %s", e)
