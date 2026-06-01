@@ -4,7 +4,10 @@
       "command": "booster",
       "args": [
         "serve"
-      ]
+      ],
+      "env": {
+        "BOOSTER_SECRET": "REDACTED"
+      }
     }
   }
 }

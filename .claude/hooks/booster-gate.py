@@ -31,8 +31,8 @@ except Exception:
 if count > 0:
     print(
         f"[booster] '{rel}' has {count} indexed symbols. "
-        "Use mcp__agent-booster__smart_read with a task description "
-        "to read only the relevant sections and save tokens."
+        "For exploration or understanding: use mcp__agent-booster__smart_read with a task description — returns only the relevant slice. "
+        "For a pre-edit read: proceed with Read as normal."
     )
 
 sys.exit(0)
