@@ -143,11 +143,15 @@ function GuardDashboard() {
   const { activeWorkspace } = useWorkspace()
   const { permissions, loading: permissionsLoading } = useGuardRole(teamId, activeWorkspace?.id ?? null)
 
-  const [events, setEvents]       = useState<GuardEvent[]>([])
-  const [stats, setStats]         = useState<SpendStats | null>(null)
-  const [loading, setLoading]     = useState(true)
-  const [live, setLive]           = useState(false)
+  const [events, setEvents]           = useState<GuardEvent[]>([])
+  const [stats, setStats]             = useState<SpendStats | null>(null)
+  const [loading, setLoading]         = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore]         = useState(true)
+  const [live, setLive]               = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+
+  const PAGE_SIZE = 100
 
   // Filters
   const [filterTool, setFilterTool]       = useState("all")
@@ -174,13 +178,14 @@ function GuardDashboard() {
     if (!teamId) return
     const headers = await buildHeaders()
     const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
-    const params  = new URLSearchParams({ limit: "100" })
+    const params  = new URLSearchParams({ limit: String(PAGE_SIZE), offset: "0" })
     params.set("workspace_id", teamId)
     try {
       const res = await fetch(`${base}/guard/events?${params}`, { headers })
       if (res.ok) {
         const data: GuardEvent[] = await res.json()
         setEvents(data)
+        setHasMore(data.length === PAGE_SIZE)
         setLastUpdated(new Date())
       }
     } catch {
@@ -188,7 +193,28 @@ function GuardDashboard() {
     } finally {
       setLoading(false)
     }
-  }, [buildHeaders, teamId])
+  }, [buildHeaders, teamId, PAGE_SIZE])
+
+  const loadMore = useCallback(async () => {
+    if (!teamId || loadingMore) return
+    setLoadingMore(true)
+    const headers = await buildHeaders()
+    const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
+    const params  = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(events.length) })
+    params.set("workspace_id", teamId)
+    try {
+      const res = await fetch(`${base}/guard/events?${params}`, { headers })
+      if (res.ok) {
+        const data: GuardEvent[] = await res.json()
+        setEvents(prev => [...prev, ...data])
+        setHasMore(data.length === PAGE_SIZE)
+      }
+    } catch {
+      // non-fatal
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [buildHeaders, teamId, events.length, loadingMore, PAGE_SIZE])
 
   const loadStats = useCallback(async () => {
     if (!teamId) return
@@ -405,6 +431,7 @@ function GuardDashboard() {
               No events match the current filters.
             </div>
           ) : (
+            <>
             <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
@@ -484,6 +511,18 @@ function GuardDashboard() {
                 </tbody>
               </table>
             </div>
+            {hasMore && (
+              <div className="flex justify-center pt-4 pb-2">
+                <button
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  className="text-sm text-indigo-600 hover:text-indigo-800 disabled:text-stone-400 font-medium"
+                >
+                  {loadingMore ? "Loading…" : "Load more"}
+                </button>
+              </div>
+            )}
+            </>
           )}
         </div>
 
