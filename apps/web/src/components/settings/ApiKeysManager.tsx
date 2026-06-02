@@ -22,6 +22,7 @@ export default function ApiKeysManager() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL
   const { role } = useGuardRole(null, workspaceId || null)
   const isAdmin = role === "admin"
+  const canGenerateKey = role === "admin" || role === "developer"
 
   const [keys, setKeys] = useState<ApiKey[]>([])
   const [loading, setLoading] = useState(true)
@@ -146,8 +147,8 @@ export default function ApiKeysManager() {
         </div>
       )}
 
-      {/* Create form — admin only */}
-      {isAdmin && (
+      {/* Create form — admin + developer */}
+      {canGenerateKey && (
         <div className="flex gap-2">
           <input
             type="text"
@@ -228,7 +229,7 @@ export default function ApiKeysManager() {
 
       <p className="text-xs text-stone-400">
         Keys are stored as SHA-256 hashes — Conduct never sees your key again after generation.
-        Admin only can create or revoke keys.
+        Admins and developers can generate keys. Only admins can revoke keys.
       </p>
     </div>
   )
