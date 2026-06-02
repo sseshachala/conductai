@@ -529,6 +529,22 @@ def cmd_guard_status(args):
     api_key      = cfg.get("api_key", "")
     base_url     = _api_url(cfg)
 
+    # Auto-refresh user_email into config if it was installed before this was wired up
+    if not user_email and api_key:
+        try:
+            installed = _req("GET", f"{base_url}/guard/config/installed", api_key=api_key)
+            fetched_email = installed.get("user_email") or ""
+            if fetched_email:
+                cfg["user_email"] = fetched_email
+                _save_guard_config(cfg)
+                # Rewrite hook script so future events carry the email
+                hook_path = GUARD_DIR / "hook.py"
+                hook_path.write_text(_HOOK_SCRIPT)
+                hook_path.chmod(0o755)
+                user_email = fetched_email
+        except Exception:
+            pass
+
     # Load local policy for rule count
     rule_count = 0
     if POLICY_PATH.exists():
