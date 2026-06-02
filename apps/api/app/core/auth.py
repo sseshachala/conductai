@@ -474,10 +474,13 @@ def get_guard_hook_auth(
             return org_id
 
     # Fall back to member token lookup
-    from app.modules.guard.models import GuardMember
-    member = db.query(GuardMember).filter(GuardMember.member_token == token).first()
-    if member:
-        return str(member.team_id)
+    from sqlalchemy import text as _text
+    row = db.execute(
+        _text("SELECT workspace_id FROM guard_member_config WHERE member_token = :t LIMIT 1"),
+        {"t": token},
+    ).fetchone()
+    if row:
+        return str(row.workspace_id)
 
     raise HTTPException(status_code=401, detail="Invalid or expired token")
 

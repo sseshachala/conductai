@@ -9,7 +9,8 @@ from app.routers import credentials, dashboard, email_templates, environments, p
 from app.routers.eval import router as eval_router
 from app.routers.observability import router as observability_router
 from app.routers.analytics import router as analytics_router
-from app.modules.guard.routers import teams as guard_teams
+from app.modules.guard.routers import config as guard_config
+from app.modules.guard.routers import members as guard_members
 from app.modules.guard.routers import policies as guard_policies
 from app.modules.guard.routers import events as guard_events
 from app.modules.guard.routers import spend as guard_spend
@@ -80,7 +81,8 @@ app.include_router(webhooks.router)
 app.include_router(eval_router)
 app.include_router(observability_router)
 app.include_router(analytics_router)
-app.include_router(guard_teams.router)
+app.include_router(guard_config.router)
+app.include_router(guard_members.router)
 app.include_router(guard_policies.router)
 app.include_router(guard_events.router)
 app.include_router(guard_spend.router)
