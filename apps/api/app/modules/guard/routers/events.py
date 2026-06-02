@@ -327,18 +327,31 @@ def update_usage(
     if not config:
         raise HTTPException(status_code=404, detail="workspace_id not found in guard_config")
 
-    q = (
-        db.query(GuardAuditEvent)
-        .filter(
-            GuardAuditEvent.workspace_id == ws_uuid,
-            GuardAuditEvent.hook_session_id == body.hook_session_id,
-            GuardAuditEvent.tokens_before.is_(None),
+    try:
+        q = (
+            db.query(GuardAuditEvent)
+            .filter(
+                GuardAuditEvent.workspace_id == ws_uuid,
+                GuardAuditEvent.hook_session_id == body.hook_session_id,
+                GuardAuditEvent.tokens_before.is_(None),
+            )
         )
-    )
-    if body.tool_name:
-        q = q.filter(GuardAuditEvent.tool_call == body.tool_name)
-    event = q.order_by(GuardAuditEvent.ts.desc()).first()
+        if body.tool_name:
+            q = q.filter(GuardAuditEvent.tool_call == body.tool_name)
+        event = q.order_by(GuardAuditEvent.ts.desc()).first()
+    except Exception as exc:
+        log.error("guard.usage_lookup_error",
+                  hook_session_id=body.hook_session_id,
+                  tool_name=body.tool_name,
+                  workspace_id=body.workspace_id,
+                  exc=str(exc))
+        return UsageOut(updated=False)
+
     if not event:
+        log.info("guard.usage_no_event",
+                 hook_session_id=body.hook_session_id,
+                 tool_name=body.tool_name,
+                 tokens_input=body.tokens_input)
         return UsageOut(updated=False)
 
     tool_key = (body.ai_tool or "unknown").lower()
