@@ -3,9 +3,9 @@
 import { useEffect, useState, useCallback } from "react"
 import { useAuth } from "@clerk/nextjs"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
+import { useGuardRole } from "@/hooks/useGuardRole"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
-
-type UserRole = "admin" | "security" | "editor" | "viewer" | null
 
 interface DeveloperSpend {
   email: string
@@ -416,8 +416,10 @@ function MonthPicker({ value, onChange }: { value: string; onChange: (v: string)
 }
 
 export default function SpendPage() {
-  const { getToken, userId } = useAuth()
+  const { getToken } = useAuth()
   const { teamId, loading: teamLoading, error: teamError } = useGuardTeam()
+  const { activeWorkspace } = useWorkspace()
+  const { permissions } = useGuardRole(teamId, activeWorkspace?.id ?? null)
   const now = new Date()
   const [month, setMonth] = useState(
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
@@ -434,32 +436,9 @@ export default function SpendPage() {
     hard_cap_enabled: false,
     default_per_developer_usd: null,
   })
-  const [userRole, setUserRole] = useState<UserRole>(null)
 
-  // Fetch the current user's role
-  useEffect(() => {
-    let cancelled = false
-    async function fetchRole() {
-      if (!teamId || !userId) return
-      try {
-        const token = await getToken()
-        const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-        const h: Record<string, string> = {}
-        if (token) h["Authorization"] = `Bearer ${token}`
-        const res = await fetch(`${base}/guard/teams/${teamId}/members`, { headers: h })
-        if (!res.ok || cancelled) return
-        const members: { user_id: string; role: string }[] = await res.json()
-        const role = members.find(m => m.user_id === userId)?.role as UserRole ?? null
-        if (!cancelled) setUserRole(role ?? "viewer")
-      } catch {
-        if (!cancelled) setUserRole("viewer")
-      }
-    }
-    fetchRole()
-    return () => { cancelled = true }
-  }, [teamId, userId])
-
-  const isAdmin = userRole === "admin"
+  const isAdmin = permissions.canEditBudgets
+  const canViewSpend = permissions.canViewAllSpend || permissions.canViewOwnSpend
 
   const load = useCallback(async () => {
     if (!teamId) return
@@ -566,6 +545,18 @@ export default function SpendPage() {
     const [y, m] = month.split("-").map(Number)
     return `${MONTHS[m - 1]} ${y}`
   })()
+
+  if (!canViewSpend) {
+    return (
+      <AppShell>
+        <div className="max-w-6xl mx-auto px-6 py-8">
+          <div className="rounded-xl border border-stone-200 bg-white px-6 py-16 text-center text-sm text-stone-400">
+            You don&apos;t have access to spend data. Contact your admin.
+          </div>
+        </div>
+      </AppShell>
+    )
+  }
 
   return (
     <AppShell>

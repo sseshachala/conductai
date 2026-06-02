@@ -1,10 +1,12 @@
 "use client"
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth, useUser } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { timeAgo } from "@/lib/runUtils"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
+import { useGuardRole } from "@/hooks/useGuardRole"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
@@ -124,7 +126,10 @@ function formatTotalTokensSaved(n: number): string {
 
 export default function GuardPage() {
   const { getToken } = useAuth()
+  const { user } = useUser()
   const { teamId, loading: teamLoading } = useGuardTeam()
+  const { activeWorkspace } = useWorkspace()
+  const { permissions } = useGuardRole(teamId, activeWorkspace?.id ?? null)
 
   const [events, setEvents]       = useState<GuardEvent[]>([])
   const [stats, setStats]         = useState<SpendStats | null>(null)
@@ -238,14 +243,18 @@ export default function GuardPage() {
     [events]
   )
 
+  const currentUserEmail = user?.primaryEmailAddress?.emailAddress ?? null
+
   const filteredEvents = useMemo(() => {
     return events.filter(ev => {
+      // Viewers can only see their own events
+      if (!permissions.canViewAllActivity && ev.user_email !== currentUserEmail) return false
       if (filterTool !== "all"     && ev.ai_tool    !== filterTool)     return false
       if (filterDecision !== "all" && ev.decision   !== filterDecision) return false
       if (filterDev !== "all"      && ev.user_email !== filterDev)      return false
       return true
     })
-  }, [events, filterTool, filterDecision, filterDev])
+  }, [events, filterTool, filterDecision, filterDev, permissions.canViewAllActivity, currentUserEmail])
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -272,6 +281,13 @@ export default function GuardPage() {
             }
           </div>
         </div>
+
+        {/* Viewer-scoped notice */}
+        {!permissions.canViewAllActivity && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
+            You can view your own activity only. Contact your admin to request broader access.
+          </div>
+        )}
 
         {/* Stats cards */}
         {loading ? (
