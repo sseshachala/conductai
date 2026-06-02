@@ -59,16 +59,18 @@ export function WorkspaceProvider({ children, clerkEnabled }: Props) {
 }
 
 function WorkspaceProviderWithAuth({ children }: { children: ReactNode }) {
-  const { getToken } = useAuth()
-  return <WorkspaceProviderInner getToken={getToken}>{children}</WorkspaceProviderInner>
+  const { getToken, isLoaded, isSignedIn } = useAuth()
+  return <WorkspaceProviderInner getToken={getToken} clerkReady={isLoaded && !!isSignedIn}>{children}</WorkspaceProviderInner>
 }
 
 function WorkspaceProviderInner({
   children,
   getToken,
+  clerkReady = true,
 }: {
   children: ReactNode
   getToken: (() => Promise<string | null>) | null
+  clerkReady?: boolean
 }) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [activeWorkspace, setActiveWorkspaceState] = useState<Workspace | null>(null)
@@ -114,14 +116,14 @@ function WorkspaceProviderInner({
   useEffect(() => { refresh() }, [refresh])
 
   useEffect(() => {
-    if (!activeWorkspace) return
+    if (!activeWorkspace || !clerkReady) return
     let cancelled = false
     setPermissionsLoading(true)
     async function fetchPerms() {
       try {
         const token = getToken ? await getToken() : null
-        const headers: Record<string, string> = {}
-        if (token) headers["Authorization"] = `Bearer ${token}`
+        if (!token) { if (!cancelled) setPermissionsLoading(false); return }
+        const headers = { "Authorization": `Bearer ${token}` }
         const res = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL}/me/permissions?workspace_id=${activeWorkspace!.id}`,
           { headers }
@@ -138,7 +140,7 @@ function WorkspaceProviderInner({
     }
     fetchPerms()
     return () => { cancelled = true }
-  }, [activeWorkspace?.id])
+  }, [activeWorkspace?.id, clerkReady, getToken])
 
   function setActiveWorkspace(ws: Workspace) {
     setActiveWorkspaceState(ws)
