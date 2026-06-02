@@ -204,6 +204,12 @@ def post_usage_main():
         data = json.load(sys.stdin)
     except Exception:
         sys.exit(0)
+    # Write full payload to debug file so we can inspect what Claude Code sends
+    try:
+        debug_path = GUARD_DIR / "debug_post.json"
+        debug_path.write_text(json.dumps(data, indent=2))
+    except Exception:
+        pass
     session_id = data.get("session_id")
     tool_name  = (data.get("tool_name") or "").lower()
     usage = data.get("usage") or {}
