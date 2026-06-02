@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react"
 import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
-import { getGuardTeamId } from "@/lib/guardStorage"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
@@ -78,6 +78,7 @@ const PAGE_SIZE = 100
 
 export default function ActivityPage() {
   const { getToken } = useAuth()
+  const { activeWorkspace } = useWorkspace()
   const [events, setEvents] = useState<AuditEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -97,8 +98,8 @@ export default function ActivityPage() {
   const tools = Array.from(new Set(events.map((e) => e.ai_tool))).sort()
 
   function buildParams(offset: number) {
-    const teamId = getGuardTeamId()
-    const p = new URLSearchParams({ team_id: teamId, limit: String(PAGE_SIZE), offset: String(offset) })
+    const wsId = activeWorkspace?.id ?? ""
+    const p = new URLSearchParams({ workspace_id: wsId, limit: String(PAGE_SIZE), offset: String(offset) })
     if (filterDeveloper) p.set("user_email", filterDeveloper)
     if (filterTool) p.set("ai_tool", filterTool)
     if (filterDecision) p.set("decision", filterDecision)
@@ -129,7 +130,7 @@ export default function ActivityPage() {
       setLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getToken, filterDeveloper, filterTool, filterDecision, filterSince, filterUntil])
+  }, [getToken, activeWorkspace?.id, filterDeveloper, filterTool, filterDecision, filterSince, filterUntil])
 
   useEffect(() => { load() }, [load])
 

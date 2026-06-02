@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from fastapi import HTTPException
 from app.core.auth import get_guard_org_id
 from app.core.database import get_db
 from app.modules.guard.models import GuardAuditEvent, GuardSession, GuardSpendBudget, GuardTeam, GuardMember
@@ -112,16 +113,32 @@ class BudgetOut(BaseModel):
     updated_at: str
 
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _resolve_team_id(db: Session, team_id: str | None, workspace_id: str | None) -> str:
+    """Return a concrete team_id string, or raise 422 if neither param resolves."""
+    if team_id:
+        return team_id
+    if workspace_id:
+        from app.modules.guard.routers.teams import _lookup_team
+        team = _lookup_team(db, workspace_id)
+        if team:
+            return str(team.id)
+    raise HTTPException(status_code=422, detail="Provide team_id or workspace_id")
+
+
 # ── GET /guard/spend ──────────────────────────────────────────────────────────
 
 @router.get("", response_model=SpendSummary)
 def get_spend_summary(
-    team_id: str = Query(..., description="Team ID"),
-    month: str | None = Query(default=None, description="Period in YYYY-MM format; defaults to current month"),
     db: Session = Depends(get_db),
     _org_id: str = Depends(get_guard_org_id),
+    team_id: str | None = Query(default=None, description="Team ID"),
+    workspace_id: str | None = Query(default=None, description="Workspace ID (alternative to team_id)"),
+    month: str | None = Query(default=None, description="Period in YYYY-MM format; defaults to current month"),
 ):
     """Spend summary for a team for the given month (defaults to current calendar month)."""
+    team_id = _resolve_team_id(db, team_id, workspace_id)
     period_start = _parse_period_start(month)
 
     # Aggregate totals
@@ -339,11 +356,13 @@ def upsert_budget(
 
 @router.get("/budgets", response_model=list[BudgetOut])
 def list_budgets(
-    team_id: str = Query(..., description="Team ID"),
     db: Session = Depends(get_db),
     _org_id: str = Depends(get_guard_org_id),
+    team_id: str | None = Query(default=None, description="Team ID"),
+    workspace_id: str | None = Query(default=None, description="Workspace ID (alternative to team_id)"),
 ):
     """List all budgets for a team, each annotated with current month usage."""
+    team_id = _resolve_team_id(db, team_id, workspace_id)
     budgets = (
         db.query(GuardSpendBudget)
         .filter(GuardSpendBudget.team_id == team_id)

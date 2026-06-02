@@ -143,6 +143,18 @@ class PolicySyncOut(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
+def _resolve_team_id(db: Session, team_id: str | None, workspace_id: str | None) -> str:
+    """Return a concrete team_id string, or raise 422 if neither param resolves."""
+    if team_id:
+        return team_id
+    if workspace_id:
+        from app.modules.guard.routers.teams import _lookup_team
+        team = _lookup_team(db, workspace_id)
+        if team:
+            return str(team.id)
+    raise HTTPException(status_code=422, detail="Provide team_id or workspace_id")
+
+
 def _resolve_team(db: Session, team_id: str) -> GuardTeam:
     """Return GuardTeam by id, 404 if not found."""
     try:
@@ -329,12 +341,14 @@ def sync_policies(
 
 @router.get("", response_model=list[PolicyOut])
 def list_policies(
-    team_id: str = Query(...),
     db: Session = Depends(get_db),
     _org_id: str = Depends(get_guard_org_id),
+    team_id: str | None = Query(default=None),
+    workspace_id: str | None = Query(default=None),
 ):
     """Return all team policies."""
-    team = _resolve_team(db, team_id)
+    resolved_team_id = _resolve_team_id(db, team_id, workspace_id)
+    team = _resolve_team(db, resolved_team_id)
 
     policies = (
         db.query(GuardPolicy)
