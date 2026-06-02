@@ -203,6 +203,9 @@ def _require_guard_config() -> dict:
     if not cfg or not ws:
         print(f"{RED}Guard not connected. Run: conduct login --api-key <key>{RESET}")
         sys.exit(1)
+    if not cfg.get("api_key"):
+        print(f"{RED}Guard config is missing API key. Re-run: conduct login --api-key <key>{RESET}")
+        sys.exit(1)
     return cfg
 
 
