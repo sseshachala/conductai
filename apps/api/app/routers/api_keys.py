@@ -75,7 +75,7 @@ def create_api_key(
     workspace_id: str,
     body:         ApiKeyCreate,
     user_id:      Annotated[str, Depends(get_user_id)],
-    role:         str = Depends(require_workspace_role("admin")),
+    role:         str = Depends(require_workspace_role("admin", "developer")),
     db:           Session = Depends(get_db),
 ):
     if not body.name.strip():
@@ -90,7 +90,7 @@ def create_api_key(
         name=body.name.strip(),
         key_prefix=prefix,
         key_hash=key_hash,
-        role="admin",
+        role=role,
         created_at=datetime.now(timezone.utc),
         expires_at=body.expires_at,
     )
