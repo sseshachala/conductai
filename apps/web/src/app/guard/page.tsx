@@ -99,11 +99,12 @@ function DecisionBadge({ decision }: { decision: string }) {
   )
 }
 
-function StatCard({ label, value, accent }: { label: string; value: number | string; accent?: string }) {
+function StatCard({ label, value, accent, sub }: { label: string; value: number | string; accent?: string; sub?: React.ReactNode }) {
   return (
     <div className="bg-white rounded-xl border border-stone-200 px-5 py-4 flex flex-col gap-1">
       <div className={`text-2xl font-bold ${accent ?? "text-stone-900"}`}>{value}</div>
       <div className="text-xs font-medium text-stone-500 uppercase tracking-wide">{label}</div>
+      {sub && <div className="text-xs text-stone-400 mt-0.5">{sub}</div>}
     </div>
   )
 }
@@ -314,6 +315,8 @@ function GuardDashboard() {
       blocked_today: todayEvents.filter(e => e.decision === "blocked").length,
       tokens_saved_today: todayEvents.reduce((s, e) => s + (e.tokens_before ?? 0) + (e.tokens_after ?? 0), 0),
       est_cost_today: todayEvents.reduce((s, e) => s + (e.cost_usd_after ?? 0), 0),
+      claude_cost_today: todayEvents.filter(e => normTool(e.ai_tool).includes("claude")).reduce((s, e) => s + (e.cost_usd_after ?? 0), 0),
+      codex_cost_today: todayEvents.filter(e => normTool(e.ai_tool).includes("codex")).reduce((s, e) => s + (e.cost_usd_after ?? 0), 0),
     }
   }, [events])
 
@@ -394,6 +397,7 @@ function GuardDashboard() {
               label="Est. cost today"
               value={`$${derivedStats.est_cost_today.toFixed(2)}`}
               accent="text-stone-700"
+              sub={<>Claude ${derivedStats.claude_cost_today.toFixed(2)} · Codex ${derivedStats.codex_cost_today.toFixed(2)}</>}
             />
           </div>
         )}
