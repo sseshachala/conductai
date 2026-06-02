@@ -175,3 +175,38 @@ def patch_config(
     db.commit()
     db.refresh(config)
     return _config_to_out(config)
+
+
+@router.delete("", status_code=204)
+def delete_config(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    """Uninstall Guard for the workspace — removes guard_config and all guard_member_config rows."""
+    import uuid
+    try:
+        ws_uuid = uuid.UUID(workspace_id)
+    except ValueError:
+        return
+    db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).delete()
+    db.query(GuardMemberConfig).filter(GuardMemberConfig.workspace_id == ws_uuid).delete()
+    db.commit()
+    log.info("guard.config_deleted", workspace_id=workspace_id)
+
+
+class InviteRegenOut(BaseModel):
+    invite_code: str
+
+
+@router.post("/invite/regenerate", response_model=InviteRegenOut)
+def regenerate_invite(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    """Generate a new invite code for the workspace Guard config."""
+    config = _get_or_create_config(db, workspace_id)
+    config.invite_code = secrets.token_hex(16)
+    config.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    log.info("guard.invite_regenerated", workspace_id=workspace_id)
+    return InviteRegenOut(invite_code=config.invite_code)
