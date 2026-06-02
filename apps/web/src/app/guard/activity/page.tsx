@@ -177,8 +177,7 @@ function ActivityContent() {
   }
 
   return (
-    <AppShell>
-      <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
+    <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
 
         {/* Header */}
         <div className="flex items-start justify-between gap-4">

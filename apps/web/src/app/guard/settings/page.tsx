@@ -116,8 +116,7 @@ function SettingsContent() {
   }
 
   return (
-    <AppShell>
-      <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
+    <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
         <div>
           <h1 className="text-xl font-semibold text-stone-900">Settings</h1>
           <p className="text-sm text-stone-500 mt-0.5">Policy enforcement and spend controls for your team.</p>
