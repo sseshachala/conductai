@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import func
+from sqlalchemy import func, distinct, or_, text
 from sqlalchemy.orm import Session
 
 from fastapi import HTTPException
@@ -254,29 +254,23 @@ def get_spend_summary(
         .scalar() or 0
     )
 
-    # Count distinct active devs — use COALESCE so partial data (email OR clerk_id) still counts
-    from sqlalchemy import or_, case, literal
-    active_developers = int(
-        db.query(func.count(func.distinct(
-            func.coalesce(GuardAuditEvent.user_email, GuardAuditEvent.clerk_user_id)
-        )))
-        .filter(
-            GuardAuditEvent.workspace_id == ws_uuid,
-            GuardAuditEvent.ts >= period_start,
-            or_(
-                GuardAuditEvent.user_email.isnot(None),
-                GuardAuditEvent.clerk_user_id.isnot(None),
-            ),
-        )
-        .scalar() or 0
-    )
-    # If all events are anonymous (both null) but events DO exist, show 1 as minimum
+    # Count distinct active devs via raw SQL (avoids SQLAlchemy DISTINCT-expression quirks)
+    active_developers = int(db.execute(
+        text("""
+            SELECT COUNT(DISTINCT COALESCE(user_email, clerk_user_id))
+            FROM guard_audit_events
+            WHERE workspace_id = :ws
+              AND ts >= :since
+              AND (user_email IS NOT NULL OR clerk_user_id IS NOT NULL)
+        """),
+        {"ws": str(ws_uuid), "since": period_start},
+    ).scalar() or 0)
+    # Fallback: if all events are fully anonymous, show 1 whenever any events exist this period
     if active_developers == 0:
-        has_events = int(
-            db.query(func.count(GuardAuditEvent.id))
-            .filter(GuardAuditEvent.workspace_id == ws_uuid, GuardAuditEvent.ts >= period_start)
-            .scalar() or 0
-        )
+        has_events = int(db.execute(
+            text("SELECT COUNT(*) FROM guard_audit_events WHERE workspace_id = :ws AND ts >= :since"),
+            {"ws": str(ws_uuid), "since": period_start},
+        ).scalar() or 0)
         if has_events > 0:
             active_developers = 1
 
