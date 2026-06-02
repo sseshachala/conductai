@@ -1,10 +1,11 @@
 """
-GET  /guard/spend                  — spend summary for team (current calendar month)
+GET  /guard/spend                  — spend summary for workspace (current calendar month)
 GET  /guard/spend/sessions         — list sessions with totals
-POST /guard/spend/budgets          — create or update a budget for member or team-wide
+POST /guard/spend/budgets          — create or update a budget for user or workspace-wide
 GET  /guard/spend/budgets          — list all budgets with current month usage
 GET  /guard/spend/budget-check     — hard-cap check called by the guard hook (no Clerk auth)
 """
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query
@@ -13,9 +14,9 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from fastapi import HTTPException
-from app.core.auth import get_guard_org_id
+from app.core.auth import get_workspace_id
 from app.core.database import get_db
-from app.modules.guard.models import GuardAuditEvent, GuardSession, GuardSpendBudget, GuardTeam, GuardMember
+from app.modules.guard.models import GuardAuditEvent, GuardConfig, GuardSession, GuardSpendBudget
 
 router = APIRouter(prefix="/guard/spend", tags=["guard"])
 
@@ -63,7 +64,7 @@ class ToolSpend(BaseModel):
 
 
 class SpendSummary(BaseModel):
-    team_id: str
+    workspace_id: str
     period: str
     total_tokens_before: int
     total_tokens_after: int
@@ -76,8 +77,8 @@ class SpendSummary(BaseModel):
 
 class SessionOut(BaseModel):
     id: str
-    team_id: str
-    member_id: str | None
+    workspace_id: str
+    clerk_user_id: str | None
     user_email: str | None
     ai_tool: str
     started_at: str | None
@@ -91,19 +92,18 @@ class SessionOut(BaseModel):
 
 
 class BudgetCreate(BaseModel):
-    team_id: str
-    member_id: str | None = None   # null = team-wide
-    email: str | None = None       # alternative to member_id for per-dev budgets
+    workspace_id: str
+    clerk_user_id: str | None = None    # null = workspace-wide
     monthly_limit_usd: float
     alert_threshold_pct: int = 80
     hard_limit_usd: float | None = None
-    default_per_developer_usd: float | None = None  # team-wide record only
+    default_per_developer_usd: float | None = None  # workspace-wide record only
 
 
 class BudgetOut(BaseModel):
     id: str
-    team_id: str
-    member_id: str | None
+    workspace_id: str
+    clerk_user_id: str | None
     monthly_limit_usd: float
     alert_threshold_pct: int
     hard_limit_usd: float | None
@@ -113,32 +113,16 @@ class BudgetOut(BaseModel):
     updated_at: str
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _resolve_team_id(db: Session, team_id: str | None, workspace_id: str | None) -> str:
-    """Return a concrete team_id string, or raise 422 if neither param resolves."""
-    if team_id:
-        return team_id
-    if workspace_id:
-        from app.modules.guard.routers.teams import _lookup_team
-        team = _lookup_team(db, workspace_id)
-        if team:
-            return str(team.id)
-    raise HTTPException(status_code=422, detail="Provide team_id or workspace_id")
-
-
 # ── GET /guard/spend ──────────────────────────────────────────────────────────
 
 @router.get("", response_model=SpendSummary)
 def get_spend_summary(
     db: Session = Depends(get_db),
-    _org_id: str = Depends(get_guard_org_id),
-    team_id: str | None = Query(default=None, description="Team ID"),
-    workspace_id: str | None = Query(default=None, description="Workspace ID (alternative to team_id)"),
+    workspace_id: str = Depends(get_workspace_id),
     month: str | None = Query(default=None, description="Period in YYYY-MM format; defaults to current month"),
 ):
-    """Spend summary for a team for the given month (defaults to current calendar month)."""
-    team_id = _resolve_team_id(db, team_id, workspace_id)
+    """Spend summary for a workspace for the given month (defaults to current calendar month)."""
+    ws_uuid = uuid.UUID(workspace_id)
     period_start = _parse_period_start(month)
 
     # Aggregate totals
@@ -150,7 +134,7 @@ def get_spend_summary(
             func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0).label("cost_after"),
         )
         .filter(
-            GuardAuditEvent.team_id == team_id,
+            GuardAuditEvent.workspace_id == ws_uuid,
             GuardAuditEvent.ts >= period_start,
         )
         .one()
@@ -175,7 +159,7 @@ def get_spend_summary(
             func.coalesce(func.sum(GuardAuditEvent.cost_usd_before) - func.sum(GuardAuditEvent.cost_usd_after), 0.0).label("saved_usd"),
         )
         .filter(
-            GuardAuditEvent.team_id == team_id,
+            GuardAuditEvent.workspace_id == ws_uuid,
             GuardAuditEvent.ts >= period_start,
             GuardAuditEvent.user_email.isnot(None),
         )
@@ -189,7 +173,7 @@ def get_spend_summary(
     session_rows = (
         db.query(GuardSession.user_email, func.count(GuardSession.id))
         .filter(
-            GuardSession.team_id == team_id,
+            GuardSession.workspace_id == ws_uuid,
             GuardSession.started_at >= period_start,
             GuardSession.user_email.isnot(None),
         )
@@ -219,7 +203,7 @@ def get_spend_summary(
             func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0).label("cost_usd"),
         )
         .filter(
-            GuardAuditEvent.team_id == team_id,
+            GuardAuditEvent.workspace_id == ws_uuid,
             GuardAuditEvent.ts >= period_start,
         )
         .group_by(GuardAuditEvent.ai_tool)
@@ -237,7 +221,7 @@ def get_spend_summary(
     ]
 
     return SpendSummary(
-        team_id=team_id,
+        workspace_id=workspace_id,
         period=month or _period_label(),
         total_tokens_before=total_tokens_before,
         total_tokens_after=total_tokens_after,
@@ -253,16 +237,16 @@ def get_spend_summary(
 
 @router.get("/sessions", response_model=list[SessionOut])
 def list_sessions(
-    team_id: str = Query(..., description="Team ID"),
+    workspace_id: str = Depends(get_workspace_id),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    _org_id: str = Depends(get_guard_org_id),
 ):
     """List sessions with cumulative spend totals."""
+    ws_uuid = uuid.UUID(workspace_id)
     rows = (
         db.query(GuardSession)
-        .filter(GuardSession.team_id == team_id)
+        .filter(GuardSession.workspace_id == ws_uuid)
         .order_by(GuardSession.started_at.desc())
         .offset(offset)
         .limit(limit)
@@ -271,8 +255,8 @@ def list_sessions(
     return [
         SessionOut(
             id=str(s.id),
-            team_id=str(s.team_id),
-            member_id=str(s.member_id) if s.member_id else None,
+            workspace_id=str(s.workspace_id),
+            clerk_user_id=s.clerk_user_id,
             user_email=s.user_email,
             ai_tool=s.ai_tool,
             started_at=s.started_at.isoformat() if s.started_at else None,
@@ -294,32 +278,21 @@ def list_sessions(
 def upsert_budget(
     body: BudgetCreate,
     db: Session = Depends(get_db),
-    _org_id: str = Depends(get_guard_org_id),
+    workspace_id: str = Depends(get_workspace_id),
 ):
-    """Create or update a spend budget for a member or the whole team."""
-    import uuid as _uuid
-    from fastapi import HTTPException as _HTTPException
-
-    # Resolve email → member_id if provided
-    resolved_member_id = body.member_id
-    if resolved_member_id is None and body.email:
-        member = db.query(GuardMember).filter(GuardMember.email == body.email).first()
-        if not member:
-            raise _HTTPException(status_code=404, detail=f"Member with email {body.email!r} not found")
-        resolved_member_id = str(member.id)
-
-    # Upsert: one budget per (team_id, member_id) pair
+    """Create or update a spend budget for a user or the whole workspace."""
     try:
-        team_uuid = _uuid.UUID(body.team_id)
-        member_uuid = _uuid.UUID(resolved_member_id) if resolved_member_id else None
+        ws_uuid = uuid.UUID(body.workspace_id)
     except ValueError:
-        raise _HTTPException(status_code=422, detail="Invalid team_id or member_id")
+        raise HTTPException(status_code=422, detail="Invalid workspace_id")
+
+    clerk_user_id = body.clerk_user_id  # None = workspace-wide
 
     existing = (
         db.query(GuardSpendBudget)
         .filter(
-            GuardSpendBudget.team_id == team_uuid,
-            GuardSpendBudget.member_id == member_uuid,
+            GuardSpendBudget.workspace_id == ws_uuid,
+            GuardSpendBudget.clerk_user_id == clerk_user_id,
         )
         .first()
     )
@@ -329,7 +302,7 @@ def upsert_budget(
         existing.monthly_limit_usd = body.monthly_limit_usd
         existing.alert_threshold_pct = body.alert_threshold_pct
         existing.hard_limit_usd = body.hard_limit_usd
-        if body.default_per_developer_usd is not None or member_uuid is None:
+        if body.default_per_developer_usd is not None or clerk_user_id is None:
             existing.default_per_developer_usd = body.default_per_developer_usd
         existing.updated_at = now
         db.commit()
@@ -337,8 +310,8 @@ def upsert_budget(
         budget = existing
     else:
         budget = GuardSpendBudget(
-            team_id=team_uuid,
-            member_id=member_uuid,
+            workspace_id=ws_uuid,
+            clerk_user_id=clerk_user_id,
             monthly_limit_usd=body.monthly_limit_usd,
             alert_threshold_pct=body.alert_threshold_pct,
             hard_limit_usd=body.hard_limit_usd,
@@ -348,7 +321,7 @@ def upsert_budget(
         db.commit()
         db.refresh(budget)
 
-    current_cost = _current_month_cost(db, body.team_id, resolved_member_id)
+    current_cost = _current_month_cost(db, ws_uuid, clerk_user_id)
     return _budget_out(budget, current_cost)
 
 
@@ -357,43 +330,36 @@ def upsert_budget(
 @router.get("/budgets", response_model=list[BudgetOut])
 def list_budgets(
     db: Session = Depends(get_db),
-    _org_id: str = Depends(get_guard_org_id),
-    team_id: str | None = Query(default=None, description="Team ID"),
-    workspace_id: str | None = Query(default=None, description="Workspace ID (alternative to team_id)"),
+    workspace_id: str = Depends(get_workspace_id),
 ):
-    """List all budgets for a team, each annotated with current month usage."""
-    team_id = _resolve_team_id(db, team_id, workspace_id)
+    """List all budgets for a workspace, each annotated with current month usage."""
+    ws_uuid = uuid.UUID(workspace_id)
     budgets = (
         db.query(GuardSpendBudget)
-        .filter(GuardSpendBudget.team_id == team_id)
+        .filter(GuardSpendBudget.workspace_id == ws_uuid)
         .order_by(GuardSpendBudget.created_at.asc())
         .all()
     )
     return [
-        _budget_out(b, _current_month_cost(db, team_id, b.member_id))
+        _budget_out(b, _current_month_cost(db, ws_uuid, b.clerk_user_id))
         for b in budgets
     ]
 
 
 # ── Private helpers ───────────────────────────────────────────────────────────
 
-def _current_month_cost(db: Session, team_id: str, member_id: str | None) -> float:
-    """Sum cost_usd_after for the current calendar month, scoped to team (and
-    optionally a specific member via their email lookup)."""
+def _current_month_cost(db: Session, ws_uuid: uuid.UUID, clerk_user_id: str | None) -> float:
+    """Sum cost_usd_after for the current calendar month, scoped to workspace
+    (and optionally to a specific clerk_user_id)."""
     period_start = _current_period_start()
     q = db.query(
         func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0)
     ).filter(
-        GuardAuditEvent.team_id == team_id,
+        GuardAuditEvent.workspace_id == ws_uuid,
         GuardAuditEvent.ts >= period_start,
     )
-
-    if member_id is not None:
-        # Resolve member_id -> email for the join
-        member = db.query(GuardMember).filter(GuardMember.id == member_id).first()
-        if member:
-            q = q.filter(GuardAuditEvent.user_email == member.email)
-
+    if clerk_user_id is not None:
+        q = q.filter(GuardAuditEvent.clerk_user_id == clerk_user_id)
     return float(q.scalar() or 0.0)
 
 
@@ -408,102 +374,93 @@ class BudgetCheckOut(BaseModel):
 
 @router.get("/budget-check", response_model=BudgetCheckOut)
 def budget_check(
-    team_id: str = Query(...),
-    email: str | None = Query(default=None),
+    workspace_id: str = Query(...),
+    clerk_user_id: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
     """Hard-cap check called by the guard hook before each tool use. No Clerk auth —
-    team_id must exist in guard_teams (same trust model as POST /guard/events)."""
-    import uuid as _uuid
-
+    workspace_id must exist in guard_config (same trust model as POST /guard/events)."""
     try:
-        team_uuid = _uuid.UUID(team_id)
+        ws_uuid = uuid.UUID(workspace_id)
     except ValueError:
         return BudgetCheckOut(hard_blocked=False, monthly_cost_usd=0.0, hard_limit_usd=None)
 
     period_start = _current_period_start()
 
-    team_budget = (
+    workspace_budget = (
         db.query(GuardSpendBudget)
-        .filter(GuardSpendBudget.team_id == team_uuid, GuardSpendBudget.member_id.is_(None))
+        .filter(GuardSpendBudget.workspace_id == ws_uuid, GuardSpendBudget.clerk_user_id.is_(None))
         .first()
     )
 
-    team_cost = float(
+    workspace_cost = float(
         db.query(func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0))
-        .filter(GuardAuditEvent.team_id == team_uuid, GuardAuditEvent.ts >= period_start)
+        .filter(GuardAuditEvent.workspace_id == ws_uuid, GuardAuditEvent.ts >= period_start)
         .scalar() or 0.0
     )
 
-    # Check team-wide hard cap
-    if team_budget and team_budget.hard_limit_usd is not None:
-        if team_cost >= team_budget.hard_limit_usd:
+    # Check workspace-wide hard cap
+    if workspace_budget and workspace_budget.hard_limit_usd is not None:
+        if workspace_cost >= workspace_budget.hard_limit_usd:
             return BudgetCheckOut(
                 hard_blocked=True,
                 reason=(
-                    f"Team monthly spend ${team_cost:.2f} has reached the hard cap "
-                    f"of ${team_budget.hard_limit_usd:.2f}. Contact your security team."
+                    f"Workspace monthly spend ${workspace_cost:.2f} has reached the hard cap "
+                    f"of ${workspace_budget.hard_limit_usd:.2f}. Contact your security team."
                 ),
-                monthly_cost_usd=team_cost,
-                hard_limit_usd=team_budget.hard_limit_usd,
+                monthly_cost_usd=workspace_cost,
+                hard_limit_usd=workspace_budget.hard_limit_usd,
             )
 
-    # Check per-member hard cap if email provided
-    if email:
-        member = (
-            db.query(GuardMember)
-            .filter(GuardMember.team_id == team_uuid, GuardMember.email == email)
+    # Check per-user hard cap if clerk_user_id provided
+    if clerk_user_id:
+        user_budget = (
+            db.query(GuardSpendBudget)
+            .filter(
+                GuardSpendBudget.workspace_id == ws_uuid,
+                GuardSpendBudget.clerk_user_id == clerk_user_id,
+            )
             .first()
         )
-        if member:
-            member_budget = (
-                db.query(GuardSpendBudget)
-                .filter(
-                    GuardSpendBudget.team_id == team_uuid,
-                    GuardSpendBudget.member_id == member.id,
-                )
-                .first()
-            )
-            # Fall back to team default_per_developer_usd if no per-member budget
-            hard_limit = None
-            if member_budget and member_budget.hard_limit_usd is not None:
-                hard_limit = member_budget.hard_limit_usd
-            elif team_budget and team_budget.default_per_developer_usd is not None:
-                hard_limit = team_budget.default_per_developer_usd
+        hard_limit = None
+        if user_budget and user_budget.hard_limit_usd is not None:
+            hard_limit = user_budget.hard_limit_usd
+        elif workspace_budget and workspace_budget.default_per_developer_usd is not None:
+            hard_limit = workspace_budget.default_per_developer_usd
 
-            if hard_limit is not None:
-                member_cost = float(
-                    db.query(func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0))
-                    .filter(
-                        GuardAuditEvent.team_id == team_uuid,
-                        GuardAuditEvent.user_email == email,
-                        GuardAuditEvent.ts >= period_start,
-                    )
-                    .scalar() or 0.0
+        if hard_limit is not None:
+            user_cost = float(
+                db.query(func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0))
+                .filter(
+                    GuardAuditEvent.workspace_id == ws_uuid,
+                    GuardAuditEvent.clerk_user_id == clerk_user_id,
+                    GuardAuditEvent.ts >= period_start,
                 )
-                if member_cost >= hard_limit:
-                    return BudgetCheckOut(
-                        hard_blocked=True,
-                        reason=(
-                            f"Your monthly spend ${member_cost:.2f} has reached your "
-                            f"hard cap of ${hard_limit:.2f}. Contact your manager."
-                        ),
-                        monthly_cost_usd=member_cost,
-                        hard_limit_usd=hard_limit,
-                    )
+                .scalar() or 0.0
+            )
+            if user_cost >= hard_limit:
+                return BudgetCheckOut(
+                    hard_blocked=True,
+                    reason=(
+                        f"Your monthly spend ${user_cost:.2f} has reached your "
+                        f"hard cap of ${hard_limit:.2f}. Contact your manager."
+                    ),
+                    monthly_cost_usd=user_cost,
+                    hard_limit_usd=hard_limit,
+                )
 
     return BudgetCheckOut(
         hard_blocked=False,
-        monthly_cost_usd=team_cost,
-        hard_limit_usd=team_budget.hard_limit_usd if team_budget else None,
+        monthly_cost_usd=workspace_cost,
+        hard_limit_usd=workspace_budget.hard_limit_usd if workspace_budget else None,
     )
 
 
 def _budget_out(budget: GuardSpendBudget, current_cost: float) -> BudgetOut:
     return BudgetOut(
         id=str(budget.id),
-        team_id=str(budget.team_id),
-        member_id=str(budget.member_id) if budget.member_id else None,
+        workspace_id=str(budget.workspace_id),
+        clerk_user_id=budget.clerk_user_id,
         monthly_limit_usd=budget.monthly_limit_usd,
         alert_threshold_pct=budget.alert_threshold_pct,
         hard_limit_usd=budget.hard_limit_usd,

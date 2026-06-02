@@ -1,7 +1,7 @@
 """
 ConductGuard — policy engine endpoints.
 
-GET    /guard/policies          — list all team policies (enabled + disabled)
+GET    /guard/policies          — list all workspace policies (enabled + disabled)
 POST   /guard/policies          — create custom rule
 PATCH  /guard/policies/{id}     — update rule (enable/disable/edit)
 DELETE /guard/policies/{id}     — delete custom rule (builtin=True rules cannot be deleted)
@@ -17,9 +17,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_guard_org_id, get_guard_hook_auth
+from app.core.auth import get_workspace_id, get_guard_hook_auth
 from app.core.database import get_db
-from app.modules.guard.models import GuardPolicy, GuardTeam
+from app.modules.guard.models import GuardPolicy
 
 router = APIRouter(prefix="/guard/policies", tags=["guard-policies"])
 
@@ -33,7 +33,6 @@ _POLICIES_FILE = Path(__file__).parent.parent / "builtin_policies.yaml"
 def _load_builtin_rules() -> list[dict]:
     with _POLICIES_FILE.open() as f:
         rules = yaml.safe_load(f) or []
-    # Normalise: ensure match_pattern and match_path_pattern are present
     for r in rules:
         r.setdefault("match_pattern", None)
         r.setdefault("match_path_pattern", None)
@@ -43,19 +42,20 @@ def _load_builtin_rules() -> list[dict]:
 _BUILTIN_RULES: list[dict] = _load_builtin_rules()
 
 
-def seed_builtin_policies(db: Session, team_id) -> None:
-    """Insert built-in policies for a team if they do not already exist."""
+def seed_builtin_policies(db: Session, workspace_id) -> None:
+    """Insert built-in policies for a workspace if they do not already exist."""
+    ws_uuid = uuid.UUID(str(workspace_id))
     for rule in _BUILTIN_RULES:
         exists = (
             db.query(GuardPolicy)
-            .filter(GuardPolicy.team_id == team_id, GuardPolicy.rule_id == rule["rule_id"])
+            .filter(GuardPolicy.workspace_id == ws_uuid, GuardPolicy.rule_id == rule["rule_id"])
             .first()
         )
         if exists:
             continue
         db.add(
             GuardPolicy(
-                team_id=team_id,
+                workspace_id=ws_uuid,
                 builtin=True,
                 enabled=True,
                 **rule,
@@ -68,7 +68,7 @@ def seed_builtin_policies(db: Session, team_id) -> None:
 
 
 class PolicyCreate(BaseModel):
-    team_id: Optional[str] = None
+    workspace_id: Optional[str] = None
     rule_id: str
     description: Optional[str] = None
     match_tool: Optional[str] = None
@@ -89,7 +89,7 @@ class PolicyPatch(BaseModel):
 
 class PolicyOut(BaseModel):
     id: str
-    team_id: str
+    workspace_id: str
     rule_id: str
     description: Optional[str] = None
     match_tool: Optional[str] = None
@@ -105,25 +105,6 @@ class PolicyOut(BaseModel):
     class Config:
         from_attributes = True
 
-    @classmethod
-    def model_validate(cls, obj, **kwargs):
-        data = {
-            "id": str(obj.id),
-            "team_id": str(obj.team_id),
-            "rule_id": obj.rule_id,
-            "description": obj.description,
-            "match_tool": obj.match_tool,
-            "match_pattern": obj.match_pattern,
-            "match_path_pattern": obj.match_path_pattern,
-            "action": obj.action,
-            "message": obj.message,
-            "enabled": obj.enabled,
-            "builtin": obj.builtin,
-            "created_at": obj.created_at,
-            "updated_at": obj.updated_at,
-        }
-        return cls(**data)
-
 
 class PolicySyncRule(BaseModel):
     rule_id: str
@@ -135,36 +116,12 @@ class PolicySyncRule(BaseModel):
 
 
 class PolicySyncOut(BaseModel):
-    team_id: str
+    workspace_id: str
     version: str
     rules: list[PolicySyncRule]
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-
-
-def _resolve_team_id(db: Session, team_id: str | None, workspace_id: str | None) -> str:
-    """Return a concrete team_id string, or raise 422 if neither param resolves."""
-    if team_id:
-        return team_id
-    if workspace_id:
-        from app.modules.guard.routers.teams import _lookup_team
-        team = _lookup_team(db, workspace_id)
-        if team:
-            return str(team.id)
-    raise HTTPException(status_code=422, detail="Provide team_id or workspace_id")
-
-
-def _resolve_team(db: Session, team_id: str) -> GuardTeam:
-    """Return GuardTeam by id, 404 if not found."""
-    try:
-        tid = uuid.UUID(team_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Team not found")
-    team = db.query(GuardTeam).filter(GuardTeam.id == tid).first()
-    if not team:
-        raise HTTPException(status_code=404, detail="No ConductGuard team found")
-    return team
 
 
 def _get_policy_or_404(db: Session, policy_id: str) -> GuardPolicy:
@@ -181,7 +138,7 @@ def _get_policy_or_404(db: Session, policy_id: str) -> GuardPolicy:
 def _policy_to_out(p: GuardPolicy) -> PolicyOut:
     return PolicyOut(
         id=str(p.id),
-        team_id=str(p.team_id),
+        workspace_id=str(p.workspace_id),
         rule_id=p.rule_id,
         description=p.description,
         match_tool=p.match_tool,
@@ -198,14 +155,13 @@ def _policy_to_out(p: GuardPolicy) -> PolicyOut:
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 _GENERATE_SYSTEM = (_PROMPTS_DIR / "policy_generate_system.txt").read_text()
 
 
 class PolicyGenerateRequest(BaseModel):
     prompt: str
-    team_id: Optional[str] = None
+    workspace_id: Optional[str] = None
 
 
 class PolicyGenerateOut(BaseModel):
@@ -218,27 +174,22 @@ class PolicyGenerateOut(BaseModel):
     message: str
 
 
-# Static routes must come before /{id} to avoid path collision.
-
-def _get_anthropic_key(db: Session, team_id: str | None) -> str:
+def _get_anthropic_key(db: Session, workspace_id: str | None) -> str:
     """Resolve Anthropic API key from the workspace credential vault."""
-    import uuid as _uuid
     from app.core.crypto import decrypt
     from app.models.integration import Integration
 
-    if team_id:
+    if workspace_id:
         try:
-            tid = _uuid.UUID(team_id)
-            team = db.query(GuardTeam).filter(GuardTeam.id == tid).first()
-            workspace_id = team.conductai_org_id if team else None
-        except (ValueError, AttributeError):
-            workspace_id = None
+            ws_uuid = uuid.UUID(workspace_id)
+        except ValueError:
+            ws_uuid = None
 
-        if workspace_id:
+        if ws_uuid:
             row = (
                 db.query(Integration)
                 .filter(
-                    Integration.workspace_id == workspace_id,
+                    Integration.workspace_id == ws_uuid,
                     Integration.handle == "anthropic",
                 )
                 .first()
@@ -257,13 +208,14 @@ def _get_anthropic_key(db: Session, team_id: str | None) -> str:
 def generate_policy(
     body: PolicyGenerateRequest,
     db: Session = Depends(get_db),
-    _org_id: str = Depends(get_guard_org_id),
+    workspace_id: str = Depends(get_workspace_id),
 ):
     """Use Claude to generate a policy rule from a plain-English description."""
     import json
     import anthropic
 
-    api_key = _get_anthropic_key(db, body.team_id)
+    resolved_ws = body.workspace_id or workspace_id
+    api_key = _get_anthropic_key(db, resolved_ws)
     if not api_key:
         raise HTTPException(status_code=503, detail="Anthropic API key not configured — add it in Settings → Environments")
 
@@ -276,7 +228,6 @@ def generate_policy(
             messages=[{"role": "user", "content": body.prompt}],
         )
         raw = response.content[0].text.strip()
-        # Strip markdown fences if the model wrapped the JSON
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
@@ -284,9 +235,15 @@ def generate_policy(
             raw = raw.strip()
         data = json.loads(raw)
     except json.JSONDecodeError:
-        raise HTTPException(status_code=422, detail="Couldn't generate a rule from that description — try being more specific, e.g. 'block rm -rf in bash' or 'require approval before prod deploys'.")
-    except Exception as e:
-        raise HTTPException(status_code=502, detail="Rule generation failed — check that your Anthropic API key is valid in Settings → Environments.")
+        raise HTTPException(
+            status_code=422,
+            detail="Couldn't generate a rule from that description — try being more specific.",
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=502,
+            detail="Rule generation failed — check that your Anthropic API key is valid in Settings → Environments.",
+        )
 
     action = data.get("action", "block")
     if action not in _VALID_ACTIONS:
@@ -305,15 +262,19 @@ def generate_policy(
 
 @router.get("/sync", response_model=PolicySyncOut)
 def sync_policies(
-    team_id: str = Query(...),
+    workspace_id: str = Query(...),
     db: Session = Depends(get_db),
     _auth: str = Depends(get_guard_hook_auth),
 ):
     """Return the current active ruleset for the hook binary or MCP server."""
-    team = _resolve_team(db, team_id)
+    try:
+        ws_uuid = uuid.UUID(workspace_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid workspace_id")
+
     active_policies = (
         db.query(GuardPolicy)
-        .filter(GuardPolicy.team_id == team.id, GuardPolicy.enabled.is_(True))
+        .filter(GuardPolicy.workspace_id == ws_uuid, GuardPolicy.enabled.is_(True))
         .order_by(GuardPolicy.updated_at.desc())
         .all()
     )
@@ -336,23 +297,23 @@ def sync_policies(
         for p in active_policies
     ]
 
-    return PolicySyncOut(team_id=str(team.id), version=version, rules=rules)
+    return PolicySyncOut(workspace_id=workspace_id, version=version, rules=rules)
 
 
 @router.get("", response_model=list[PolicyOut])
 def list_policies(
     db: Session = Depends(get_db),
-    _org_id: str = Depends(get_guard_org_id),
-    team_id: str | None = Query(default=None),
-    workspace_id: str | None = Query(default=None),
+    workspace_id: str = Depends(get_workspace_id),
 ):
-    """Return all team policies."""
-    resolved_team_id = _resolve_team_id(db, team_id, workspace_id)
-    team = _resolve_team(db, resolved_team_id)
+    """Return all workspace policies."""
+    try:
+        ws_uuid = uuid.UUID(workspace_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid workspace_id")
 
     policies = (
         db.query(GuardPolicy)
-        .filter(GuardPolicy.team_id == team.id)
+        .filter(GuardPolicy.workspace_id == ws_uuid)
         .order_by(GuardPolicy.builtin.desc(), GuardPolicy.created_at.asc())
         .all()
     )
@@ -363,7 +324,7 @@ def list_policies(
 def create_policy(
     body: PolicyCreate,
     db: Session = Depends(get_db),
-    _org_id: str = Depends(get_guard_org_id),
+    workspace_id: str = Depends(get_workspace_id),
 ):
     """Create a custom (non-builtin) policy rule."""
     if body.action not in _VALID_ACTIONS:
@@ -371,12 +332,15 @@ def create_policy(
             status_code=422,
             detail=f"Invalid action '{body.action}'. Must be one of: {sorted(_VALID_ACTIONS)}",
         )
-    if not body.team_id:
-        raise HTTPException(status_code=422, detail="team_id is required")
-    team = _resolve_team(db, body.team_id)
+
+    resolved_ws = body.workspace_id or workspace_id
+    try:
+        ws_uuid = uuid.UUID(resolved_ws)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid workspace_id")
 
     policy = GuardPolicy(
-        team_id=team.id,
+        workspace_id=ws_uuid,
         rule_id=body.rule_id,
         description=body.description,
         match_tool=body.match_tool,
@@ -398,7 +362,7 @@ def patch_policy(
     policy_id: str,
     body: PolicyPatch,
     db: Session = Depends(get_db),
-    _org_id: str = Depends(get_guard_org_id),
+    workspace_id: str = Depends(get_workspace_id),
 ):
     """Update a policy rule (enable/disable/edit). Works on both builtin and custom rules."""
     if body.action is not None and body.action not in _VALID_ACTIONS:
@@ -431,7 +395,7 @@ def patch_policy(
 def delete_policy(
     policy_id: str,
     db: Session = Depends(get_db),
-    _org_id: str = Depends(get_guard_org_id),
+    workspace_id: str = Depends(get_workspace_id),
 ):
     """Delete a custom policy rule. Built-in rules cannot be deleted."""
     policy = _get_policy_or_404(db, policy_id)
