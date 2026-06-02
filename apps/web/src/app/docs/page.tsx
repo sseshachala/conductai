@@ -115,8 +115,8 @@ export default function DocsPage() {
           <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mt-6 mb-3">ConductGuard</p>
           <ul className="space-y-1 text-sm text-stone-600">
             <li><a href="#guard" className="hover:text-stone-900 transition-colors block py-0.5">Overview</a></li>
-            <li><a href="#guard-user-flow" className="hover:text-stone-900 transition-colors block py-0.5">Guard user flow</a></li>
-            <li><a href="#guard-hook" className="hover:text-stone-900 transition-colors block py-0.5">PreToolUse hook</a></li>
+            <li><a href="#guard-user-flow" className="hover:text-stone-900 transition-colors block py-0.5">Developer setup</a></li>
+            <li><a href="#guard-hook" className="hover:text-stone-900 transition-colors block py-0.5">Hook & tool coverage</a></li>
             <li><a href="#guard-mcp" className="hover:text-stone-900 transition-colors block py-0.5">conductguard-mcp</a></li>
             <li><a href="#guard-spend" className="hover:text-stone-900 transition-colors block py-0.5">Spend controls</a></li>
             <li><a href="#guard-roles" className="hover:text-stone-900 transition-colors block py-0.5">Roles & permissions</a></li>
@@ -1023,84 +1023,103 @@ es.onmessage = (e) => {
             </div>
           </section>
 
-          {/* ── Guard user flow ── */}
+          {/* ── Developer setup ── */}
           <section id="guard-user-flow">
-            <SectionHeading id="guard-user-flow">Guard user flow</SectionHeading>
-            <p className="text-stone-500 text-sm mb-6 leading-relaxed">
-              Guard is set up entirely through the Conduct UI. No tokens to share, no CLI commands to distribute manually —
-              the admin invites team members by email, they accept, and each developer runs one CLI command to wire up their machine.
+            <SectionHeading id="guard-user-flow">Developer setup</SectionHeading>
+            <p className="text-stone-500 text-sm mb-4 leading-relaxed">
+              Guard is provisioned automatically at login — no separate install step. One command wires up the hook,
+              registers the MCP server, and downloads active policies.
             </p>
 
-            {/* Flow diagram */}
-            <div className="rounded-xl border border-stone-200 overflow-hidden mb-6">
-              {[
-                { actor: "Admin", step: "Sign in", detail: "Conduct seeds an \u201cEngineering\u201d workspace with Guard enabled and 18 starter policies automatically." },
-                { actor: "Admin", step: "Invite team members", detail: "Guard → Members → Invite. Enter email and assign a role (Editor, Security, or Viewer). An invite email is sent." },
-                { actor: "Member", step: "Accept invite", detail: "Member clicks the link in the email, signs in, and lands on the Guard dashboard. Their role is applied immediately." },
-                { actor: "Member", step: "Generate API key", detail: "Settings → API Keys → New key. The key is scoped to their workspace and role." },
-                { actor: "Member", step: "Install Guard locally", detail: "Run once on their machine. Downloads active policies and installs the PreToolUse hook." },
-                { actor: "Guard", step: "Enforces on every call", detail: "Every Claude Code, Cursor, or Windsurf tool call is checked against workspace policies in real time." },
-              ].map(({ actor, step, detail }, i) => (
-                <div key={i} className={`flex gap-4 px-4 py-3 ${i < 5 ? "border-b border-stone-100" : ""}`}>
-                  <span className={`shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full h-fit mt-0.5 ${
-                    actor === "Admin" ? "bg-violet-50 text-violet-700 border border-violet-200" :
-                    actor === "Member" ? "bg-blue-50 text-blue-700 border border-blue-200" :
-                    "bg-green-50 text-green-700 border border-green-200"
-                  }`}>{actor}</span>
-                  <div>
-                    <p className="text-sm font-medium text-stone-800 mb-0.5">{step}</p>
-                    <p className="text-xs text-stone-500 leading-relaxed">{detail}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <Pre>{`# Step 5 — each developer runs once
+            <Pre>{`# 1. Install the CLI (once)
 pip install conduct-cli
-conduct login --api-key <your-api-key>
-conduct guard install`}</Pre>
+
+# 2. Generate an API key — Settings → API Keys (admin or developer role)
+# 3. Login — Guard sets itself up automatically
+conduct login --server https://api.conductai.ai --api-key cond_live_xxxx
+
+# That's it. Guard is now active. Verify:
+conduct guard status`}</Pre>
+
+            <p className="text-stone-500 text-sm mt-4 mb-3">
+              Login auto-provisions Guard by calling <Code>GET /guard/config/installed</Code>, downloading the workspace
+              policy file to <Code>~/.conductguard/policy.json</Code>, writing the hook script to{" "}
+              <Code>~/.conductguard/hook.py</Code>, and registering it in every AI tool config found on the machine.
+            </p>
 
             <SubHeading>Guard CLI commands</SubHeading>
-            <div className="rounded-xl border border-stone-200 overflow-hidden mb-4">
+            <div className="rounded-xl border border-stone-200 overflow-hidden mb-6">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-stone-50 border-b border-stone-200">
-                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider w-52">Command</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider w-56">Command</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Description</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100">
                   {[
-                    ["conduct guard install", "Install the PreToolUse hook and pull active policies"],
-                    ["conduct guard sync", "Pull latest policies without reinstalling the hook"],
-                    ["conduct guard status", "Show current workspace, policy count, and spend this month"],
-                    ["conduct guard uninstall", "Remove the hook and clear local Guard config"],
+                    ["conduct guard status", "Show policy count, today's spend, violations, and active developer info"],
+                    ["conduct guard sync",   "Pull latest policies from the server and refresh the hook script in all tools"],
+                    ["conduct guard audit",  "Show recent activity log (last 24 h by default, --since 7d for a week)"],
                   ].map(([cmd, desc]) => (
                     <tr key={cmd}>
                       <td className="px-4 py-3 font-mono text-xs text-stone-800">{cmd}</td>
-                      <td className="px-4 py-3 text-stone-500">{desc}</td>
+                      <td className="px-4 py-3 text-xs text-stone-500">{desc}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+
+            <SubHeading>Auto-update</SubHeading>
+            <p className="text-stone-500 text-sm mb-3">
+              The CLI checks PyPI for a newer version on every command (cached 24 h). If one is found it upgrades
+              itself and re-runs the original command — the developer never needs to manually update.
+              Set <Code>CONDUCT_NO_AUTOUPDATE=1</Code> to disable (useful in CI).
+            </p>
           </section>
 
-          {/* ── PreToolUse hook ── */}
+          {/* ── Hook & tool coverage ── */}
           <section id="guard-hook">
-            <SectionHeading id="guard-hook">PreToolUse hook</SectionHeading>
+            <SectionHeading id="guard-hook">Hook & tool coverage</SectionHeading>
             <p className="text-stone-500 text-sm mb-4 leading-relaxed">
-              The hook is a Python script installed at <Code>~/.claude/hooks/guard_hook.py</Code>. Claude Code (and any
-              Claude Code-compatible tool) calls it before every tool use — before the LLM call is made.
+              Guard uses two enforcement surfaces depending on the AI tool. Both are registered automatically at login.
             </p>
+
+            <SubHeading>Coverage by tool</SubHeading>
+            <div className="rounded-xl border border-stone-200 overflow-hidden mb-6">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-stone-50 border-b border-stone-200">
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Tool</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Mechanism</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Enforcement</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100">
+                  {[
+                    ["Claude Code", "PreToolUse hook (~/.claude/settings.json)", "Hard block — every tool call intercepted before execution"],
+                    ["Codex CLI",   "PreToolUse hook (~/.codex/hooks.json)",      "Hard block — same script, same exit-code-2 protocol"],
+                    ["Cursor",      "MCP server (conductguard-mcp)",              "Advisory — AI sees Guard tools, can self-enforce"],
+                    ["Windsurf",    "MCP server (conductguard-mcp)",              "Advisory — AI sees Guard tools, can self-enforce"],
+                  ].map(([tool, mech, enf]) => (
+                    <tr key={tool}>
+                      <td className="px-4 py-3 text-xs font-medium text-stone-800">{tool}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-stone-500">{mech}</td>
+                      <td className="px-4 py-3 text-xs text-stone-500">{enf}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
             <SubHeading>What the hook does on every call</SubHeading>
             <div className="rounded-xl border border-stone-200 divide-y divide-stone-100 text-sm mb-6">
               {[
-                ["1. Budget check (cached 5 min)", "Calls GET /guard/spend/budget-check with the team_id and developer email. If the monthly hard cap is hit, exits with code 2 — Claude Code treats this as a block."],
-                ["2. Policy evaluation", "Loads ~/.guard/policies.json (synced on join). Evaluates match_tool, match_pattern, and match_path_pattern against the current tool call. Violations trigger block/warn based on enforcement_mode."],
-                ["3. Spend recording", "On pass, records the tool call with approximate token count to the spend log for the month."],
-                ["4. Slack alert (async)", "If the block policy has an alert configured, posts to the Guard team's Slack channel via the Guard API in a background thread."],
+                ["1. Budget check (cached 5 min)", "Calls GET /guard/spend/budget-check with workspace_id. If the hard cap is hit, exits with code 2 — the tool treats this as a block."],
+                ["2. Policy evaluation", "Loads ~/.conductguard/policy.json. Evaluates match_tool, match_pattern, and match_path_pattern. If a rule fires: block exits 2, warn prints a message, audit falls through silently."],
+                ["3. Event posted (async)", "Every tool call — allowed or blocked — is posted to /guard/events in a background subprocess. This powers the Activity log and Active developers metrics on the dashboard."],
+                ["4. Slack alert", "If a block or warn rule has an alert configured, the Guard API notifies the workspace's Slack channel."],
               ].map(([step, desc]) => (
                 <div key={step} className="flex gap-4 px-4 py-3">
                   <span className="font-medium text-stone-700 w-52 shrink-0 text-xs">{step}</span>
@@ -1110,8 +1129,8 @@ conduct guard install`}</Pre>
             </div>
 
             <div className="rounded-xl bg-stone-100 border border-stone-200 px-4 py-3 text-sm text-stone-700">
-              <strong>Exit codes:</strong> 0 = pass, 1 = warn (tool call continues), 2 = block (tool call aborted).
-              Claude Code surfaces a message to the developer explaining why the call was blocked.
+              <strong>Exit codes:</strong> 0 = pass (tool runs), 2 = block (tool aborted).
+              The tool surfaces the rule message to the developer so they know why the call was blocked.
             </div>
           </section>
 
@@ -1119,26 +1138,19 @@ conduct guard install`}</Pre>
           <section id="guard-mcp">
             <SectionHeading id="guard-mcp">conductguard-mcp</SectionHeading>
             <p className="text-stone-500 text-sm mb-4 leading-relaxed">
-              An MCP server that exposes Guard to Claude Code, Cursor, and any MCP-compatible editor.
-              Unlike the hook (which intercepts silently), the MCP server gives the AI direct access to
-              Guard tools — the AI can check its own compliance before acting.
+              An MCP server that gives Cursor, Windsurf, and any MCP-compatible editor direct access to Guard.
+              Registered automatically at login — no manual config needed. The AI can query its own policies
+              before taking sensitive actions.
             </p>
 
-            <SubHeading>Start the server</SubHeading>
-            <Pre>{`# Install (included with conduct-cli >= 0.3.0)
-pip install conduct-cli
-
-# Run the MCP server
-conductguard-mcp \\
-  --team  <team-id>      \\
-  --token <member-token>
-
-# Or add to your Claude Code MCP config (~/.claude/mcp.json):
+            <SubHeading>Auto-registered config (written by conduct login)</SubHeading>
+            <Pre>{`# Written to ~/.cursor/mcp.json, ~/.windsurf/mcp.json, ~/.codex/mcp.json
+# and ~/.claude/settings.json — whichever exist on the machine.
 {
   "mcpServers": {
     "conductguard": {
       "command": "conductguard-mcp",
-      "args": ["--team", "<team-id>", "--token", "<member-token>"]
+      "args": ["--workspace", "<workspace-id>", "--token", "<member-token>", "--api-url", "https://api.conductai.ai"]
     }
   }
 }`}</Pre>
@@ -1148,17 +1160,17 @@ conductguard-mcp \\
               {[
                 {
                   tool: "guard_status",
-                  desc: "Returns team name, policy count, hard limit, monthly spend to date, and whether the developer is currently blocked.",
+                  desc: "Returns workspace ID, policy count, policy version, and developer email. Useful for confirming Guard is active.",
                   args: "None",
                 },
                 {
                   tool: "guard_check",
-                  desc: "Evaluates an action description against active policies. Returns allowed: true/false and matching rules. Use before making a sensitive file edit or API call.",
-                  args: "action (str), path (str, optional)",
+                  desc: "Evaluates a tool call against active policies. Returns ALLOWED, BLOCKED, or WARNING with the matching rule. Use before sensitive file edits or API calls.",
+                  args: "tool_name (str), tool_input (object, optional)",
                 },
                 {
                   tool: "guard_sync",
-                  desc: "Pulls the latest policies from the Guard API and writes them to ~/.guard/policies.json. Call after a team lead updates a rule.",
+                  desc: "Pulls the latest policies from the server and writes them to ~/.conductguard/policy.json. Call after an admin updates a rule.",
                   args: "None",
                 },
               ].map(({ tool, desc, args }) => (
@@ -1172,10 +1184,8 @@ conductguard-mcp \\
               ))}
             </div>
 
-            <SubHeading>Transport</SubHeading>
-            <p className="text-stone-500 text-sm mb-3">
-              JSON-RPC 2.0 over stdio. Protocol version <Code>2024-11-05</Code>. Compatible with any MCP client
-              that supports the stdio transport.
+            <p className="text-stone-500 text-sm">
+              JSON-RPC 2.0 over stdio. Protocol version <Code>2024-11-05</Code>.
             </p>
           </section>
 
@@ -1183,16 +1193,16 @@ conductguard-mcp \\
           <section id="guard-spend">
             <SectionHeading id="guard-spend">Spend controls</SectionHeading>
             <p className="text-stone-500 text-sm mb-6 leading-relaxed">
-              Guard tracks monthly AI spend per developer and per tool. Team leads set budgets in Guard → Spend.
-              When a developer hits their hard cap, the hook blocks their next AI call.
+              Guard tracks AI spend per developer. Admins set budgets in Guard → Spend.
+              When a developer hits their hard cap, the hook blocks their next tool call.
             </p>
 
             <SubHeading>Budget hierarchy</SubHeading>
             <div className="rounded-xl border border-stone-200 divide-y divide-stone-100 text-sm mb-6">
               {[
-                ["Team hard limit", "Monthly cap for the entire team. Set in Guard → Settings. When the team total hits this limit, all developers are blocked."],
-                ["Per-developer limit", "Monthly cap per developer. Falls back to default_per_developer_usd from team settings if no individual limit is set."],
-                ["Alert threshold", "Optional — a percentage of the budget at which Slack alerts fire (e.g. 80%). Developers continue past the threshold; the hard limit is the actual block."],
+                ["Workspace hard limit", "Monthly cap for the entire workspace. When the total hits this limit, all developers are blocked."],
+                ["Per-developer limit",  "Monthly cap per developer. Set in Guard → Spend → Budgets."],
+                ["Alert threshold",      "Optional — percentage of budget at which Slack alerts fire (e.g. 80%). Developers continue past the threshold; the hard limit is the actual block."],
               ].map(([label, desc]) => (
                 <div key={label} className="flex gap-4 px-4 py-3">
                   <span className="font-medium text-stone-700 w-44 shrink-0 text-xs">{label}</span>
@@ -1202,12 +1212,9 @@ conductguard-mcp \\
             </div>
 
             <SubHeading>Budget check API</SubHeading>
-            <p className="text-stone-500 text-sm mb-3">
-              The hook calls this endpoint on every tool use (cached for 5 minutes to avoid latency on every call).
-            </p>
-            <Pre>{`GET /guard/spend/budget-check?team_id=<uuid>&email=<developer@example.com>
+            <Pre>{`GET /guard/spend/budget-check?workspace_id=<uuid>
 
-# No auth header required — uses team_id + email as identifier
+# No auth required — open endpoint for hook use
 # Response:
 {
   "hard_blocked": false,
@@ -1225,7 +1232,7 @@ conductguard-mcp \\
 }`}</Pre>
 
             <div className="mt-3 rounded-xl bg-stone-100 border border-stone-200 px-4 py-3 text-sm text-stone-700">
-              The cache file lives at <Code>~/.guard/budget_cache.json</Code> and has a 5-minute TTL.
+              The hook caches the response at <Code>~/.conductguard/budget_cache.json</Code> for 5 minutes.
               Delete it to force an immediate re-check.
             </div>
           </section>
@@ -1234,8 +1241,8 @@ conductguard-mcp \\
           <section id="guard-roles">
             <SectionHeading id="guard-roles">Roles & permissions</SectionHeading>
             <p className="text-stone-500 text-sm mb-6 leading-relaxed">
-              Every workspace member is assigned one of four roles. Roles control what they can see and do across
-              Guard, playbooks, runs, and settings.
+              Every workspace member has one of four roles. Roles are the single source of truth — set in workspace
+              settings, enforced across Guard, API keys, and the CLI.
             </p>
 
             <SubHeading>Role definitions</SubHeading>
@@ -1244,22 +1251,22 @@ conductguard-mcp \\
                 {
                   role: "Admin",
                   color: "bg-purple-50 text-purple-700",
-                  desc: "Full access to everything: Guard, playbooks, runs, members, settings, and spend limits.",
+                  desc: "Full access: Guard policies, spend limits, members, settings, API key revoke, and all playbooks.",
                 },
                 {
                   role: "Security",
                   color: "bg-blue-50 text-blue-700",
-                  desc: "Full Guard access — view and create/edit policies. View-only spend and members. Full access to runs and playbooks.",
+                  desc: "Full Guard access — create/edit policies and view all activity. View-only spend. Cannot manage members or revoke API keys.",
                 },
                 {
-                  role: "Editor",
+                  role: "Developer",
                   color: "bg-green-50 text-green-700",
-                  desc: "View-only Guard (no create/edit). Full access to runs, playbooks, canvas, and the audit log.",
+                  desc: "View-only Guard (no create/edit). Can generate their own API key. Full access to runs, playbooks, and canvas.",
                 },
                 {
                   role: "Viewer",
                   color: "bg-stone-100 text-stone-600",
-                  desc: "View-only across all of Guard. View-only runs and audit log. No execution rights.",
+                  desc: "View-only across all of Guard, runs, and audit log. No execution or edit rights.",
                 },
               ].map(({ role, color, desc }) => (
                 <div key={role} className="flex items-start gap-4 px-4 py-3">
@@ -1275,28 +1282,29 @@ conductguard-mcp \\
                 <thead>
                   <tr className="bg-stone-50 border-b border-stone-200">
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Capability</th>
-                    {["Admin", "Security", "Editor", "Viewer"].map(h => (
+                    {["Admin", "Security", "Developer", "Viewer"].map(h => (
                       <th key={h} className="text-center px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider w-20">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100 text-sm">
                   {[
-                    ["View Guard dashboard",     true,  true,  true,  true ],
-                    ["View activity log",        true,  true,  true,  true ],
-                    ["View policies",            true,  true,  true,  true ],
-                    ["Create / edit policies",   true,  true,  false, false],
-                    ["View spend data",          true,  true,  true,  true ],
-                    ["Set spend limits",         true,  false, false, false],
-                    ["View members",             true,  true,  true,  true ],
-                    ["Invite / remove members",  true,  false, false, false],
-                    ["Configure settings",       true,  false, false, false],
-                    ["Run playbooks / canvas",   true,  true,  true,  false],
-                    ["View runs & audit log",    true,  true,  true,  true ],
-                  ].map(([label, admin, security, editor, viewer]) => (
+                    ["View Guard dashboard",      true,  true,  true,  true ],
+                    ["View activity log",         true,  true,  true,  true ],
+                    ["View policies",             true,  true,  true,  true ],
+                    ["Create / edit policies",    true,  true,  false, false],
+                    ["View spend data",           true,  true,  true,  true ],
+                    ["Set spend limits",          true,  false, false, false],
+                    ["View members",              true,  true,  true,  true ],
+                    ["Invite / remove members",   true,  false, false, false],
+                    ["Configure Guard settings",  true,  false, false, false],
+                    ["Generate API key",          true,  false, true,  false],
+                    ["Revoke API key",            true,  false, false, false],
+                    ["Run playbooks / canvas",    true,  true,  true,  false],
+                  ].map(([label, admin, security, developer, viewer]) => (
                     <tr key={label as string}>
                       <td className="px-4 py-2.5 text-xs text-stone-700">{label as string}</td>
-                      {[admin, security, editor, viewer].map((allowed, i) => (
+                      {[admin, security, developer, viewer].map((allowed, i) => (
                         <td key={i} className="px-4 py-2.5 text-center text-xs">
                           {allowed
                             ? <span className="text-green-600 font-bold">✓</span>
@@ -1315,48 +1323,36 @@ conductguard-mcp \\
           <section id="guard-onboarding">
             <SectionHeading id="guard-onboarding">Team onboarding</SectionHeading>
             <p className="text-stone-500 text-sm mb-6 leading-relaxed">
-              End-to-end flow for getting a team onto Conduct with Guard enforced on every developer&apos;s machine.
+              End-to-end flow for getting a team onto Guard. Each developer runs two commands — everything else is automatic.
             </p>
 
             <div className="space-y-0">
               {[
                 {
                   step: "1",
-                  title: "Sign in",
-                  body: "Admin signs in with Google or GitHub. Conduct seeds an \"Engineering\" workspace with Guard enabled and 18 starter policies.",
+                  title: "Admin installs Guard",
+                  body: "Settings → Modules → ConductGuard → Install. Guard is provisioned with 18 starter policies. The admin shares the invite code or adds team members directly.",
                 },
                 {
                   step: "2",
                   title: "Invite your team",
-                  body: "From Guard → Members, invite developers (Editor role), security advisors (Security role), and stakeholders (Viewer role). Each receives an email invite.",
+                  body: "Guard → Members → Invite. Assign roles: Developer for engineers, Security for security team, Viewer for stakeholders. Members are added to the workspace.",
                 },
                 {
                   step: "3",
-                  title: "Team accepts invite",
-                  body: "Members click the invite link, sign in, and land on the Guard dashboard (or Conduct dashboard for editors and viewers).",
+                  title: "Developer generates an API key",
+                  body: "Settings → API Keys → Generate key. Admin and Developer roles can generate keys. The key is tied to their workspace and role.",
                 },
                 {
                   step: "4",
-                  title: "Generate API keys",
-                  body: "Each member generates a personal API key from Settings → API Keys. The key is tied to their workspace and role.",
-                  code: null,
+                  title: "Developer logs in",
+                  body: "One command installs Guard, downloads policies, registers the hook in Claude Code and Codex, and registers the MCP server in Cursor and Windsurf — all automatically.",
+                  code: "pip install conduct-cli\nconduct login --server https://api.conductai.ai --api-key cond_live_xxxx",
                 },
                 {
                   step: "5",
-                  title: "Connect the CLI",
-                  body: "Authenticate the CLI with the API key.",
-                  code: "conduct login --api-key <key>",
-                },
-                {
-                  step: "6",
-                  title: "Install Guard hook",
-                  body: "Pull workspace policies and install the PreToolUse hook locally. This enforces policies on every AI tool call — Claude Code, Cursor, Windsurf, and more.",
-                  code: "conduct guard install",
-                },
-                {
-                  step: "7",
-                  title: "Guard enforces",
-                  body: "From this point, every AI tool call on the developer's machine is checked against the workspace policies in real time.",
+                  title: "Guard enforces from this moment",
+                  body: "Every AI tool call on the developer's machine is intercepted and checked against workspace policies. All activity — allowed and blocked — appears in the Guard dashboard.",
                 },
               ].map(({ step, title, body, code }) => (
                 <div key={step} className="flex gap-6 pb-8 relative">
@@ -1364,7 +1360,7 @@ conductguard-mcp \\
                     <div className="w-8 h-8 rounded-full bg-stone-900 text-white text-sm font-bold flex items-center justify-center shrink-0 z-10">
                       {step}
                     </div>
-                    {parseInt(step) < 7 && (
+                    {parseInt(step) < 5 && (
                       <div className="w-px flex-1 bg-stone-200 mt-2" />
                     )}
                   </div>
@@ -1379,9 +1375,19 @@ conductguard-mcp \\
               ))}
             </div>
 
-            <div className="rounded-xl bg-stone-100 border border-stone-200 px-4 py-3 text-sm text-stone-700">
-              <strong>Already a workspace member?</strong> If you&apos;re joining a second workspace (e.g. a contractor added to a client team),
-              use <strong>Guard → Members</strong> in the UI — an admin can add you directly. Run <Code>conduct guard install</Code> again after accepting.
+            <SubHeading>Keeping Guard current</SubHeading>
+            <Pre>{`# After an admin updates policies:
+conduct guard sync
+
+# Check what's enforced right now:
+conduct guard status
+
+# See recent activity:
+conduct guard audit --since 7d`}</Pre>
+
+            <div className="mt-4 rounded-xl bg-stone-100 border border-stone-200 px-4 py-3 text-sm text-stone-700">
+              <strong>CLI auto-updates.</strong> Developers never need to manually upgrade — the CLI checks PyPI on
+              every run and upgrades itself if a newer version is available.
             </div>
           </section>
 
