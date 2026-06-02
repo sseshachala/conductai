@@ -249,54 +249,111 @@ def _read_tokens_from_transcript(transcript_path, tool_use_id):
     return 0, 0
 
 
-def _read_codex_tokens_from_transcript(transcript_path):
-    """Read last_token_usage from a Codex session JSONL (event_msg/token_count entries)."""
+def _scan_codex_tokens(transcript_path):
+    """Robustly scan a Codex transcript for the last token_count event.
+
+    Reads in 512 KB chunks from the end so it handles arbitrarily large
+    tool-output lines without a fixed cutoff.
+    """
     try:
         path = Path(transcript_path)
         if not path.exists():
             return 0, 0
-        lines = _tail_lines(path)
-        for line in reversed(lines):
-            if "token_count" not in line:
-                continue
-            try:
-                entry = json.loads(line)
-                if entry.get("type") == "event_msg":
-                    info = entry.get("payload", {}).get("info", {})
-                    usage = info.get("last_token_usage", {})
-                    if usage:
-                        total_in  = usage.get("input_tokens", 0)
-                        total_out = usage.get("output_tokens", 0) + usage.get("reasoning_output_tokens", 0)
-                        return total_in, total_out
-            except Exception:
-                continue
+        size = path.stat().st_size
+        chunk_size = 524288  # 512 KB
+        buf = b""
+        pos = size
+        while pos >= 0:
+            read_size = min(chunk_size, pos)
+            pos -= read_size
+            with open(path, "rb") as f:
+                f.seek(pos)
+                buf = f.read(read_size) + buf
+            text = buf.decode("utf-8", errors="ignore")
+            # Split; if we haven't reached the start the first fragment may be partial
+            parts = text.split("\n")
+            start = 1 if pos > 0 else 0
+            for line in reversed(parts[start:]):
+                if "token_count" not in line or not line.strip():
+                    continue
+                try:
+                    entry = json.loads(line)
+                    if entry.get("type") == "event_msg":
+                        info = entry.get("payload", {}).get("info", {})
+                        usage = info.get("last_token_usage", {})
+                        if usage:
+                            total_in  = usage.get("input_tokens", 0)
+                            total_out = (usage.get("output_tokens", 0)
+                                         + usage.get("reasoning_output_tokens", 0))
+                            return total_in, total_out
+                except Exception:
+                    continue
+            if pos == 0:
+                break
     except Exception:
         pass
     return 0, 0
 
 
+def post_codex_main():
+    """Delayed Codex token reader — spawned as background by post_usage_main.
+
+    Reads args from a pending JSON file, sleeps 2 s to let Codex flush the
+    token_count event, then scans the transcript and POSTs to the API.
+    """
+    import time
+    if len(sys.argv) < 3:
+        sys.exit(0)
+    pending_path = Path(sys.argv[2])
+    try:
+        args = json.loads(pending_path.read_text())
+        pending_path.unlink(missing_ok=True)
+    except Exception:
+        sys.exit(0)
+    time.sleep(2)
+    transcript_path = args.get("transcript_path", "")
+    tokens_in, tokens_out = _scan_codex_tokens(transcript_path)
+    if tokens_in or tokens_out:
+        _post_usage(args.get("session_id"), args.get("tool_name"),
+                    tokens_in, tokens_out, None)
+    sys.exit(0)
+
+
 def post_usage_main():
-    """PostToolUse hook entrypoint — captures token usage and duration."""
+    """PostToolUse hook entrypoint — exits immediately; heavy work is async."""
     try:
         data = json.load(sys.stdin)
     except Exception:
         sys.exit(0)
-    try:
-        (GUARD_DIR / "debug_post.json").write_text(json.dumps(data, indent=2))
-    except Exception:
-        pass
     session_id      = data.get("session_id")
     tool_name       = (data.get("tool_name") or "").lower()
     tool_use_id     = data.get("tool_use_id")
     transcript_path = data.get("transcript_path")
     is_codex = (tool_use_id or "").startswith("call_")
-    if transcript_path and is_codex:
-        tokens_input, tokens_output = _read_codex_tokens_from_transcript(transcript_path)
+
+    if is_codex and transcript_path:
+        # Write pending args; spawn delayed background reader so hook exits instantly
+        import uuid as _uuid
+        pending = GUARD_DIR / f"codex_pending_{_uuid.uuid4().hex[:8]}.json"
+        try:
+            pending.write_text(json.dumps({
+                "session_id": session_id,
+                "tool_name": tool_name,
+                "transcript_path": transcript_path,
+            }))
+            hook_path = Path(__file__).resolve()
+            subprocess.Popen(
+                [sys.executable, str(hook_path), "post-codex", str(pending)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except Exception:
+            pass
     elif transcript_path:
         tokens_input, tokens_output = _read_tokens_from_transcript(transcript_path, tool_use_id)
-    else:
-        tokens_input, tokens_output = 0, 0
-    _post_usage(session_id, tool_name, tokens_input, tokens_output, None)
+        _post_usage(session_id, tool_name, tokens_input, tokens_output, None)
+
     sys.exit(0)
 
 
@@ -336,6 +393,8 @@ def main():
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "post":
         post_usage_main()
+    elif len(sys.argv) > 1 and sys.argv[1] == "post-codex":
+        post_codex_main()
     else:
         main()
 '''
