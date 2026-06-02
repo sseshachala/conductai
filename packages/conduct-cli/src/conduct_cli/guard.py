@@ -198,13 +198,30 @@ def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms)
     )
 
 
+def _tail_lines(path, n=200):
+    """Read last n lines of a file efficiently without loading the whole file."""
+    size = path.stat().st_size
+    if size == 0:
+        return []
+    chunk = min(size, n * 300)  # ~300 bytes per line estimate
+    with open(path, "rb") as f:
+        f.seek(max(0, size - chunk))
+        raw = f.read()
+    text = raw.decode("utf-8", errors="ignore")
+    lines = text.splitlines()
+    # If we didn't seek to start, first line may be partial — drop it
+    if size > chunk:
+        lines = lines[1:]
+    return lines
+
+
 def _read_tokens_from_transcript(transcript_path, tool_use_id):
     """Read token counts from Claude Code transcript (matched by tool_use_id)."""
     try:
         path = Path(transcript_path)
         if not path.exists() or not tool_use_id:
             return 0, 0
-        lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        lines = _tail_lines(path)
         for line in reversed(lines):
             if not line.strip() or "tool_use" not in line:
                 continue
@@ -241,7 +258,7 @@ def _read_codex_tokens():
         files = sorted(sessions_dir.rglob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
         if not files:
             return 0, 0
-        lines = files[0].read_text(encoding="utf-8", errors="ignore").splitlines()
+        lines = _tail_lines(files[0])
         for line in reversed(lines):
             if "token_count" not in line:
                 continue
