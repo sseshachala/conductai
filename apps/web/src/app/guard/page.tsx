@@ -62,8 +62,10 @@ const ALL_DECISIONS = ["allowed", "blocked", "warned", "approval"]
 
 // ─── Helper components ────────────────────────────────────────────────────────
 
+const normTool = (t: string) => t.replace(/-/g, "_")
+
 function AiToolBadge({ tool }: { tool: string }) {
-  const cfg = AI_TOOL_BADGES[tool]
+  const cfg = AI_TOOL_BADGES[normTool(tool)]
   if (!cfg) {
     return (
       <span className="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full bg-stone-100 text-stone-600">
@@ -271,7 +273,7 @@ function GuardDashboard() {
     return events.filter(ev => {
       // Viewers can only see their own events
       if (!permissions.canViewAllActivity && ev.user_email !== currentUserEmail) return false
-      if (filterTool !== "all"     && ev.ai_tool    !== filterTool)     return false
+      if (filterTool !== "all"     && normTool(ev.ai_tool) !== filterTool) return false
       if (filterDecision !== "all" && ev.decision   !== filterDecision) return false
       if (filterDev !== "all"      && ev.user_email !== filterDev)      return false
       return true
