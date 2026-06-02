@@ -1,8 +1,12 @@
 import argparse
+import importlib.metadata
 import json
+import os
+import subprocess
 import sys
 import time
 import urllib.parse
+import urllib.request
 from pathlib import Path
 
 import yaml
@@ -19,7 +23,66 @@ GRAY   = "\033[90m"
 CYAN   = "\033[36m"
 YELLOW = "\033[33m"
 
-CONFIG_PATH = Path.home() / ".conduct" / "config.json"
+CONFIG_PATH  = Path.home() / ".conduct" / "config.json"
+_UPDATE_CACHE = Path.home() / ".conduct" / "update_check.json"
+_UPDATE_TTL   = 86400  # check PyPI at most once per 24 hours
+
+
+def _auto_update() -> None:
+    """Check PyPI for a newer conduct-cli version and upgrade + re-exec if found."""
+    # Skip inside CI or if explicitly disabled
+    if os.environ.get("CONDUCT_NO_AUTOUPDATE") or os.environ.get("CI"):
+        return
+
+    now = time.time()
+
+    # Respect the 24-hour cache
+    if _UPDATE_CACHE.exists():
+        try:
+            cached = json.loads(_UPDATE_CACHE.read_text())
+            if now - cached.get("ts", 0) < _UPDATE_TTL:
+                return
+        except Exception:
+            pass
+
+    # Get installed version
+    try:
+        current = importlib.metadata.version("conduct-cli")
+    except Exception:
+        return
+
+    # Fetch latest from PyPI (short timeout — never block the user)
+    try:
+        req = urllib.request.Request(
+            "https://pypi.org/pypi/conduct-cli/json",
+            headers={"Accept": "application/json", "User-Agent": f"conduct-cli/{current}"},
+        )
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            latest = json.loads(resp.read())["info"]["version"]
+    except Exception:
+        return
+
+    # Save check timestamp regardless of result
+    try:
+        _UPDATE_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        _UPDATE_CACHE.write_text(json.dumps({"ts": now, "latest": latest, "current": current}))
+    except Exception:
+        pass
+
+    if latest == current:
+        return
+
+    print(f"{YELLOW}conduct-cli {current} → {latest} available. Updating…{RESET}")
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--upgrade", "conduct-cli", "-q"],
+        capture_output=True,
+    )
+    if result.returncode == 0:
+        print(f"{GREEN}✓ Updated to {latest}.{RESET}\n")
+        # Re-exec so the new version handles this command
+        os.execv(sys.executable, [sys.executable, "-m", "conduct_cli.main"] + sys.argv[1:])
+    else:
+        print(f"{YELLOW}Auto-update failed — run: pip install --upgrade conduct-cli{RESET}\n")
 
 
 # ── Config helpers ────────────────────────────────────────────────────────────
@@ -1013,6 +1076,8 @@ def cmd_run(args):
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
+    _auto_update()
+
     parser = argparse.ArgumentParser(
         prog="conduct",
         description="Conduct AI — agent CLI",
