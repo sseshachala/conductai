@@ -345,15 +345,28 @@ async def stream_events(
     request: Request,
     workspace_id: str | None = Query(default=None, description="Workspace ID"),
     token: str | None = Query(default=None, description="Bearer token (SSE can't set headers)"),
+    db: Session = Depends(get_db),
 ):
-    if _clerk_enabled():
-        if not token or not _verify_clerk_token(token):
-            from fastapi.responses import Response
-            return Response(status_code=403, content="Invalid or missing token")
-
+    from fastapi.responses import Response as _Resp
     if not workspace_id:
-        from fastapi.responses import Response
-        return Response(status_code=422, content="Provide workspace_id")
+        return _Resp(status_code=422, content="Provide workspace_id")
+
+    if _clerk_enabled():
+        if not token:
+            return _Resp(status_code=403, content="Invalid or missing token")
+        claims = _verify_clerk_token(token)
+        if not claims:
+            return _Resp(status_code=403, content="Invalid or missing token")
+        # Verify caller is a member of the requested workspace
+        user_id = claims.get("sub")
+        if user_id:
+            from sqlalchemy import text as _text
+            is_member = db.execute(
+                _text("SELECT 1 FROM workspace_users WHERE workspace_id = :ws AND clerk_user_id = :uid LIMIT 1"),
+                {"ws": workspace_id, "uid": user_id},
+            ).fetchone()
+            if not is_member:
+                return _Resp(status_code=403, content="Not a member of this workspace")
 
     async def event_generator():
         cursor = _now()

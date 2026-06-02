@@ -385,6 +385,10 @@ def budget_check(
     except ValueError:
         return BudgetCheckOut(hard_blocked=False, monthly_cost_usd=0.0, hard_limit_usd=None)
 
+    # Guard installed check — prevents enumeration of arbitrary workspace IDs
+    if not db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first():
+        return BudgetCheckOut(hard_blocked=False, monthly_cost_usd=0.0, hard_limit_usd=None)
+
     period_start = _current_period_start()
 
     workspace_budget = (
