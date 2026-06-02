@@ -247,6 +247,18 @@ function GuardDashboard() {
     [events]
   )
 
+  const derivedStats = useMemo(() => {
+    const todayStr = new Date().toISOString().slice(0, 10) // "YYYY-MM-DD"
+    const todayEvents = events.filter(e => e.ts.slice(0, 10) === todayStr)
+    const distinctDevs = new Set(events.map(e => e.user_email).filter(Boolean)).size
+    return {
+      active_developers: distinctDevs > 0 ? distinctDevs : events.length > 0 ? 1 : 0,
+      events_today: todayEvents.length,
+      blocked_today: todayEvents.filter(e => e.decision === "blocked").length,
+      tokens_saved_today: todayEvents.reduce((s, e) => s + (e.tokens_saved ?? 0), 0),
+    }
+  }, [events])
+
   const currentUserEmail = user?.primaryEmailAddress?.emailAddress ?? null
 
   const filteredEvents = useMemo(() => {
@@ -303,37 +315,21 @@ function GuardDashboard() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatCard
               label="Active developers"
-              value={(() => {
-                const fromStats = stats?.active_developers ?? 0
-                if (fromStats > 0) return fromStats
-                const fromEmails = new Set(events.map(e => e.user_email).filter(Boolean)).size
-                if (fromEmails > 0) return fromEmails
-                return events.length > 0 ? 1 : 0
-              })()}
+              value={stats?.active_developers || derivedStats.active_developers}
               accent="text-indigo-700"
             />
             <StatCard
               label="Events today"
-              value={stats?.events_today ?? events.length}
+              value={stats?.events_today || derivedStats.events_today}
             />
             <StatCard
               label="Blocked today"
-              value={stats?.blocked_today ?? events.filter(e => e.decision === "blocked").length}
-              accent={
-                (stats?.blocked_today ?? events.filter(e => e.decision === "blocked").length) > 0
-                  ? "text-red-600"
-                  : undefined
-              }
+              value={stats?.blocked_today || derivedStats.blocked_today}
+              accent={(stats?.blocked_today || derivedStats.blocked_today) > 0 ? "text-red-600" : undefined}
             />
             <StatCard
               label="Tokens saved today"
-              value={
-                stats?.tokens_saved_today != null
-                  ? formatTotalTokensSaved(stats.tokens_saved_today)
-                  : formatTotalTokensSaved(
-                      events.reduce((sum, e) => sum + (e.tokens_saved ?? 0), 0)
-                    )
-              }
+              value={formatTotalTokensSaved(stats?.tokens_saved_today || derivedStats.tokens_saved_today)}
               accent="text-green-700"
             />
           </div>
