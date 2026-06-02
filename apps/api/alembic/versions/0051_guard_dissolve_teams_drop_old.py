@@ -28,10 +28,11 @@ def upgrade() -> None:
             DECLARE
                 _c TEXT;
             BEGIN
-                SELECT constraint_name INTO _c
+                SELECT tc.constraint_name INTO _c
                 FROM information_schema.table_constraints tc
                 JOIN information_schema.key_column_usage kcu
                   ON kcu.constraint_name = tc.constraint_name
+                 AND kcu.table_name = tc.table_name
                 WHERE tc.table_name = '{table}'
                   AND tc.constraint_type = 'FOREIGN KEY'
                   AND kcu.column_name = 'team_id'
@@ -51,10 +52,11 @@ def upgrade() -> None:
             DECLARE
                 _c TEXT;
             BEGIN
-                SELECT constraint_name INTO _c
+                SELECT tc.constraint_name INTO _c
                 FROM information_schema.table_constraints tc
                 JOIN information_schema.key_column_usage kcu
                   ON kcu.constraint_name = tc.constraint_name
+                 AND kcu.table_name = tc.table_name
                 WHERE tc.table_name = '{table}'
                   AND tc.constraint_type = 'FOREIGN KEY'
                   AND kcu.column_name = 'member_id'
