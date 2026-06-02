@@ -280,7 +280,7 @@ export default function NewPolicyPage() {
       const res = await fetch(`${apiUrl}/guard/policies/generate`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ prompt: text, team_id: teamId }),
+        body: JSON.stringify({ prompt: text, workspace_id: teamId }),
       })
       if (!res.ok) {
         const detail = await res.text().catch(() => "")
@@ -332,7 +332,7 @@ export default function NewPolicyPage() {
       if (generatedPolicy.match_path_pattern.trim()) {
         body.match_path_pattern = generatedPolicy.match_path_pattern.trim()
       }
-      if (teamId) body.team_id = teamId
+      if (teamId) body.workspace_id = teamId
 
       const res = await fetch(`${apiUrl}/guard/policies`, {
         method: "POST",

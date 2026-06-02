@@ -48,8 +48,8 @@ function fromUsd(amount: number, currency: Currency): number {
 
 interface BudgetOut {
   id: string
-  team_id: string
-  member_id: string | null
+  workspace_id: string
+  clerk_user_id: string | null
   monthly_limit_usd: number
   alert_threshold_pct: number
   hard_limit_usd: number | null
@@ -457,8 +457,8 @@ function SpendContent() {
 
     try {
       const [spendRes, budgetRes] = await Promise.all([
-        fetch(`${base}/guard/spend?team_id=${teamId}&month=${month}`, { headers }),
-        fetch(`${base}/guard/spend/budgets?team_id=${teamId}`, { headers }),
+        fetch(`${base}/guard/spend?workspace_id=${teamId}&month=${month}`, { headers }),
+        fetch(`${base}/guard/spend/budgets?workspace_id=${teamId}`, { headers }),
       ])
       if (!spendRes.ok) throw new Error("Failed to load spend data")
       const spendJson: SpendData = await spendRes.json()
@@ -466,7 +466,7 @@ function SpendContent() {
 
       if (budgetRes.ok) {
         const budgetList: BudgetOut[] = await budgetRes.json()
-        const teamBudget = budgetList.find(b => b.member_id === null)
+        const teamBudget = budgetList.find(b => b.clerk_user_id === null)
         if (teamBudget) {
           setTeamSettings({
             team_monthly_limit_usd: teamBudget.monthly_limit_usd,
@@ -477,8 +477,8 @@ function SpendContent() {
         }
         const map: Record<string, number | null> = {}
         for (const b of budgetList) {
-          if (b.member_id != null && b.member_id) {
-            map[b.member_id] = b.monthly_limit_usd
+          if (b.clerk_user_id != null && b.clerk_user_id) {
+            map[b.clerk_user_id] = b.monthly_limit_usd
           }
         }
         setBudgets(map)
@@ -509,8 +509,8 @@ function SpendContent() {
       method: "POST",
       headers,
       body: JSON.stringify({
-        team_id: teamId,
-        member_id: null,
+        workspace_id: teamId,
+        clerk_user_id: null,
         monthly_limit_usd: s.team_monthly_limit_usd ?? 0,
         alert_threshold_pct: s.alert_threshold_pct,
         hard_limit_usd: s.hard_cap_enabled ? (s.team_monthly_limit_usd ?? 0) : null,
@@ -532,7 +532,7 @@ function SpendContent() {
     const res = await fetch(`${base}/guard/spend/budgets`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ team_id: teamId, email, monthly_limit_usd: limit }),
+      body: JSON.stringify({ workspace_id: teamId, email, monthly_limit_usd: limit }),
     })
     if (!res.ok) throw new Error("Failed to save budget")
     setBudgets((prev) => ({ ...prev, [email]: limit }))
