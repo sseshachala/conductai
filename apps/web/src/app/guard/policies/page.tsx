@@ -500,8 +500,8 @@ export default function PoliciesPage() {
         if (token) h["Authorization"] = `Bearer ${token}`
         const res = await fetch(`${apiUrl}/guard/teams/${teamId}/members`, { headers: h })
         if (!res.ok || cancelled) return
-        const members: { clerk_user_id: string; role: string }[] = await res.json()
-        const role = members.find(m => m.clerk_user_id === userId)?.role as UserRole ?? null
+        const members: { user_id: string; role: string }[] = await res.json()
+        const role = members.find(m => m.user_id === userId)?.role as UserRole ?? null
         if (!cancelled) setUserRole(role ?? "admin")
       } catch {
         if (!cancelled) setUserRole("admin")
