@@ -199,7 +199,7 @@ def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms)
 
 
 def _read_tokens_from_transcript(transcript_path, tool_use_id):
-    """Scan transcript JSONL backwards for the message that produced tool_use_id."""
+    """Read token counts from Claude Code transcript (matched by tool_use_id)."""
     try:
         path = Path(transcript_path)
         if not path.exists() or not tool_use_id:
@@ -232,6 +232,35 @@ def _read_tokens_from_transcript(transcript_path, tool_use_id):
     return 0, 0
 
 
+def _read_codex_tokens():
+    """Read last_token_usage from the most recently modified Codex session file."""
+    try:
+        sessions_dir = Path.home() / ".codex" / "sessions"
+        if not sessions_dir.exists():
+            return 0, 0
+        files = sorted(sessions_dir.rglob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if not files:
+            return 0, 0
+        lines = files[0].read_text(encoding="utf-8", errors="ignore").splitlines()
+        for line in reversed(lines):
+            if "token_count" not in line:
+                continue
+            try:
+                entry = json.loads(line)
+                if entry.get("type") == "event_msg":
+                    info = entry.get("payload", {}).get("info", {})
+                    usage = info.get("last_token_usage", {})
+                    if usage:
+                        total_in  = usage.get("input_tokens", 0)
+                        total_out = usage.get("output_tokens", 0) + usage.get("reasoning_output_tokens", 0)
+                        return total_in, total_out
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return 0, 0
+
+
 def post_usage_main():
     """PostToolUse hook entrypoint — captures token usage and duration."""
     try:
@@ -242,7 +271,10 @@ def post_usage_main():
     tool_name       = (data.get("tool_name") or "").lower()
     tool_use_id     = data.get("tool_use_id")
     transcript_path = data.get("transcript_path")
-    tokens_input, tokens_output = _read_tokens_from_transcript(transcript_path, tool_use_id)
+    if transcript_path:
+        tokens_input, tokens_output = _read_tokens_from_transcript(transcript_path, tool_use_id)
+    else:
+        tokens_input, tokens_output = _read_codex_tokens()
     _post_usage(session_id, tool_name, tokens_input, tokens_output, None)
     sys.exit(0)
 
