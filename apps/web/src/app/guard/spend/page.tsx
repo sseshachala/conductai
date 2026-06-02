@@ -559,7 +559,7 @@ function SpendContent() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold text-stone-900 mb-1">Spend</h1>
-            <p className="text-sm text-stone-500">Token usage and cost tracking for your team.</p>
+            <p className="text-sm text-stone-500">Token usage and estimated cost for your team.</p>
           </div>
           <div className="flex items-center gap-2">
             <select
@@ -594,23 +594,22 @@ function SpendContent() {
             </p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <StatCard
-                label="Total cost this month"
+                label="Est. cost this month"
                 value={`${CURRENCY_SYMBOLS[currency]}${fromUsd(data.total_cost_usd, currency).toFixed(2)}`}
                 accent="text-stone-900"
               />
               <StatCard
-                label="Tokens saved"
-                value={formatTokens(data.total_tokens_before - data.total_tokens_after)}
-                sub={`${Math.round(data.total_saved_pct)}% reduction`}
+                label="Tokens used"
+                value={formatTokens(data.total_tokens_after)}
                 accent="text-green-700"
               />
               <StatCard
-                label="Cost without optimisation"
+                label="Est. cost without Guard"
                 value={`${CURRENCY_SYMBOLS[currency]}${fromUsd(data.total_cost_usd + data.total_saved_usd, currency).toFixed(0)}`}
                 accent="text-stone-500"
               />
               <StatCard
-                label="Money saved"
+                label="Est. savings"
                 value={`${CURRENCY_SYMBOLS[currency]}${fromUsd(data.total_saved_usd, currency).toFixed(0)}`}
                 accent="text-indigo-700"
               />
@@ -638,8 +637,8 @@ function SpendContent() {
                     <th className="px-4 py-3 text-left font-medium">Developer</th>
                     <th className="px-4 py-3 text-right font-medium">Sessions</th>
                     <th className="px-4 py-3 text-right font-medium">Tokens used</th>
-                    <th className="px-4 py-3 text-right font-medium">Cost</th>
-                    <th className="px-4 py-3 text-right font-medium">Saved</th>
+                    <th className="px-4 py-3 text-right font-medium">Est. cost</th>
+                    <th className="px-4 py-3 text-right font-medium">Est. saved</th>
                     <th className="px-4 py-3 text-left font-medium">Budget</th>
                     <th className="px-4 py-3 text-left font-medium w-6" />
                   </tr>
@@ -718,7 +717,7 @@ function SpendContent() {
                   <tr className="border-b border-stone-100 text-xs text-stone-400 uppercase tracking-wide">
                     <th className="px-4 py-3 text-left font-medium">Tool</th>
                     <th className="px-4 py-3 text-right font-medium">Tokens used</th>
-                    <th className="px-4 py-3 text-right font-medium">Cost</th>
+                    <th className="px-4 py-3 text-right font-medium">Est. cost</th>
                     <th className="px-4 py-3 text-right font-medium">% of total</th>
                   </tr>
                 </thead>
