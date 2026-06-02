@@ -72,18 +72,31 @@ def _resolve_and_provision(db: Session, workspace_id: str, user_id: str, user_em
     2. workspace_users — first login; auto-upsert into guard_members
     3. Default: "viewer" (no auto-provision — user has no platform membership)
     """
+    # Resolve team — workspace_id FK first, conductai_org_id fallback for old teams
+    team_row = db.execute(
+        text("""
+            SELECT id FROM guard_teams
+            WHERE workspace_id = :ws
+            UNION
+            SELECT gt.id FROM guard_teams gt
+            JOIN workspaces w ON w.owner_id = gt.conductai_org_id
+            WHERE w.id = :ws AND gt.workspace_id IS NULL
+            LIMIT 1
+        """),
+        {"ws": workspace_id},
+    ).fetchone()
+    if not team_row:
+        return "viewer"
+    team_id = str(team_row.id)
+
     # 1. Already a Guard member
     guard_row = db.execute(
         text("""
-            SELECT gm.role, gm.id
-            FROM guard_members gm
-            JOIN guard_teams gt ON gt.id = gm.team_id
-            WHERE gt.workspace_id = :ws
-              AND gm.user_id = :uid
-              AND gm.active = true
+            SELECT role FROM guard_members
+            WHERE team_id = :tid AND user_id = :uid AND active = true
             LIMIT 1
         """),
-        {"ws": workspace_id, "uid": user_id},
+        {"tid": team_id, "uid": user_id},
     ).fetchone()
     if guard_row:
         return guard_row.role
@@ -91,10 +104,8 @@ def _resolve_and_provision(db: Session, workspace_id: str, user_id: str, user_em
     # 2. Platform member — auto-provision into guard_members
     ws_row = db.execute(
         text("""
-            SELECT wu.role, wu.email, gt.id as team_id
-            FROM workspace_users wu
-            JOIN guard_teams gt ON gt.workspace_id = wu.workspace_id
-            WHERE wu.workspace_id = :ws AND wu.clerk_user_id = :uid
+            SELECT role, email FROM workspace_users
+            WHERE workspace_id = :ws AND clerk_user_id = :uid
             LIMIT 1
         """),
         {"ws": workspace_id, "uid": user_id},
@@ -105,17 +116,17 @@ def _resolve_and_provision(db: Session, workspace_id: str, user_id: str, user_em
         email = user_email or ws_row.email or f"{user_id}@unknown"
         existing = db.execute(
             text("SELECT id FROM guard_members WHERE team_id = :tid AND email = :email LIMIT 1"),
-            {"tid": str(ws_row.team_id), "email": email},
+            {"tid": team_id, "email": email},
         ).fetchone()
         if not existing:
             db.execute(
                 text("""
                     INSERT INTO guard_members (id, team_id, user_id, email, role, active, joined_at, member_token)
-                    VALUES (:id, :team_id, :uid, :email, :role, true, :now, :token)
+                    VALUES (:id, :tid, :uid, :email, :role, true, :now, :token)
                 """),
                 {
                     "id": str(uuid.uuid4()),
-                    "team_id": str(ws_row.team_id),
+                    "tid": team_id,
                     "uid": user_id,
                     "email": email,
                     "role": role,
