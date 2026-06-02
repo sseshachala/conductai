@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useAuth } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { useGuardRole } from "@/hooks/useGuardRole"
 
 interface ApiKey {
   id: string
@@ -19,6 +20,8 @@ export default function ApiKeysManager() {
   const { activeWorkspace } = useWorkspace()
   const workspaceId = activeWorkspace?.id ?? ""
   const apiUrl = process.env.NEXT_PUBLIC_API_URL
+  const { role } = useGuardRole(null, workspaceId || null)
+  const isAdmin = role === "admin"
 
   const [keys, setKeys] = useState<ApiKey[]>([])
   const [loading, setLoading] = useState(true)
@@ -143,24 +146,26 @@ export default function ApiKeysManager() {
         </div>
       )}
 
-      {/* Create form */}
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={newName}
-          onChange={e => setNewName(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && create()}
-          placeholder="Key name (e.g. My laptop, CI pipeline)"
-          className="flex-1 border border-stone-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300"
-        />
-        <button
-          onClick={create}
-          disabled={creating || !newName.trim()}
-          className="px-4 py-2 bg-stone-900 text-white text-sm rounded-lg hover:bg-stone-700 disabled:opacity-40 transition-colors"
-        >
-          {creating ? "Generating…" : "Generate key"}
-        </button>
-      </div>
+      {/* Create form — admin only */}
+      {isAdmin && (
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && create()}
+            placeholder="Key name (e.g. My laptop, CI pipeline)"
+            className="flex-1 border border-stone-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300"
+          />
+          <button
+            onClick={create}
+            disabled={creating || !newName.trim()}
+            className="px-4 py-2 bg-stone-900 text-white text-sm rounded-lg hover:bg-stone-700 disabled:opacity-40 transition-colors"
+          >
+            {creating ? "Generating…" : "Generate key"}
+          </button>
+        </div>
+      )}
 
       {/* Keys table */}
       {loading ? (
@@ -187,7 +192,7 @@ export default function ApiKeysManager() {
                   <td className="px-4 py-3 text-stone-500">{fmt(k.created_at)}</td>
                   <td className="px-4 py-3 text-stone-500">{fmt(k.last_used_at)}</td>
                   <td className="px-4 py-3 text-right">
-                    {revokeConfirm === k.id ? (
+                    {isAdmin && (revokeConfirm === k.id ? (
                       <span className="inline-flex items-center gap-2">
                         <span className="text-xs text-stone-500">Revoke?</span>
                         <button
@@ -212,7 +217,7 @@ export default function ApiKeysManager() {
                       >
                         Revoke
                       </button>
-                    )}
+                    ))}
                   </td>
                 </tr>
               ))}
