@@ -22,7 +22,7 @@ POLICY_PATH  = GUARD_DIR / "policy.json"
 
 _HOOK_SCRIPT = '''\
 #!/usr/bin/env python3
-"""ConductGuard PreToolUse hook — enforces team policies locally."""
+"""ConductGuard PreToolUse hook — enforces team policies, tracks all tool calls."""
 import json
 import re
 import subprocess
@@ -39,7 +39,6 @@ BUDGET_CACHE_TTL  = 300  # 5 minutes
 
 
 def _load_budget_cache():
-    """Return (hard_blocked, reason) if cache is fresh, else (None, None)."""
     if not BUDGET_CACHE_PATH.exists():
         return None, None
     try:
@@ -52,73 +51,44 @@ def _load_budget_cache():
 
 
 def _fetch_budget_status():
-    """Call /guard/spend/budget-check and cache result for BUDGET_CACHE_TTL seconds."""
     try:
         cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
     except Exception:
         return False, None
     workspace_id = cfg.get("workspace_id")
-    email        = cfg.get("user_email", "")
     api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
     if not workspace_id:
         return False, None
     url = f"{api_url}/guard/spend/budget-check?workspace_id={workspace_id}"
-    if email:
-        import urllib.parse
-        url += f"&email={urllib.parse.quote(email)}"
     try:
-        req = urllib.request.Request(url)
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(urllib.request.Request(url), timeout=5) as resp:
             data = json.loads(resp.read())
         hard_blocked = data.get("hard_blocked", False)
         reason       = data.get("reason")
-        BUDGET_CACHE_PATH.write_text(json.dumps({
-            "ts": time.time(), "hard_blocked": hard_blocked, "reason": reason,
-        }))
+        BUDGET_CACHE_PATH.write_text(json.dumps({"ts": time.time(), "hard_blocked": hard_blocked, "reason": reason}))
         return hard_blocked, reason
     except Exception:
         return False, None
 
 
-def main():
-    try:
-        data = json.load(sys.stdin)
-    except Exception:
-        sys.exit(0)
-
-    # Check hard budget cap (cached for 5 min to avoid per-call latency)
-    hard_blocked, reason = _load_budget_cache()
-    if hard_blocked is None:
-        hard_blocked, reason = _fetch_budget_status()
-    if hard_blocked:
-        print(f"[ConductGuard] {reason or 'Budget hard cap reached. Contact your manager.'}")
-        sys.exit(2)
-
-    tool_name = (data.get("tool_name") or "").lower()
-    tool_input = data.get("tool_input") or {}
-
+def _check_policy(tool_name, tool_input):
+    """Return (matched_rule, action, rule_id, message) or (None, 'allow', None, None)."""
     if not POLICY_PATH.exists():
-        sys.exit(0)
+        return None, "allow", None, None
     try:
         policy = json.loads(POLICY_PATH.read_text())
     except Exception:
-        sys.exit(0)
+        return None, "allow", None, None
 
-    rules = policy.get("rules", [])
-    if not rules:
-        sys.exit(0)
-
+    rules      = policy.get("rules", [])
     input_text = json.dumps(tool_input)
-    path_fields = ["file_path", "path", "command"]
-    path_text = " ".join(str(tool_input.get(f, "")) for f in path_fields)
+    path_text  = " ".join(str(tool_input.get(f, "")) for f in ["file_path", "path", "command"])
 
     for rule in rules:
         match_tool = (rule.get("match_tool") or "*").lower()
         if match_tool != "*":
-            allowed = [t.strip() for t in match_tool.split(",")]
-            if tool_name not in allowed:
+            if tool_name not in [t.strip() for t in match_tool.split(",")]:
                 continue
-
         pattern = rule.get("match_pattern")
         if pattern:
             try:
@@ -126,7 +96,6 @@ def main():
                     continue
             except re.error:
                 continue
-
         path_pattern = rule.get("match_path_pattern")
         if path_pattern:
             try:
@@ -134,48 +103,34 @@ def main():
                     continue
             except re.error:
                 continue
-
-        action = rule.get("action", "audit")
-        message = rule.get("message") or f"Policy violation: {rule.get(\'rule_id\', \'unknown\')}"
+        action  = rule.get("action", "audit")
         rule_id = rule.get("rule_id", "unknown")
+        message = rule.get("message") or f"Policy violation: {rule_id}"
+        return rule, action, rule_id, message
 
-        _post_event(tool_name, tool_input, rule_id, action, message)
-
-        if action == "block":
-            print(f"[ConductGuard] {message}")
-            sys.exit(2)
-        elif action in ("warn", "approval"):
-            print(f"[ConductGuard] {message}")
-            sys.exit(0)
-        # audit: silent, fall through
-
-    sys.exit(0)
+    return None, "allow", None, None
 
 
-def _post_event(tool_name, tool_input, rule_id, action, message):
+def _post_event(tool_name, tool_input, decision, rule_id=None, message=None):
     try:
         cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
     except Exception:
         return
-
     workspace_id = cfg.get("workspace_id")
     if not workspace_id:
         return
 
-    input_text = json.dumps(tool_input)
-    decision = {"block": "blocked", "warn": "warned", "approval": "blocked"}.get(action, "audited")
     payload = json.dumps({
-        "workspace_id": workspace_id,
+        "workspace_id":  workspace_id,
         "clerk_user_id": cfg.get("user_email"),
-        "user_email": cfg.get("user_email"),
-        "ai_tool": "claude-code",
-        "tool_call": tool_name,
-        "input_summary": input_text[:200],
-        "decision": decision,
-        "rule_id": rule_id,
-        "rule_message": message,
+        "user_email":    cfg.get("user_email"),
+        "ai_tool":       "claude-code",
+        "tool_call":     tool_name,
+        "input_summary": json.dumps(tool_input)[:200],
+        "decision":      decision,
+        "rule_id":       rule_id,
+        "rule_message":  message,
     })
-
     api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
     script = (
         "import urllib.request\\n"
@@ -191,6 +146,38 @@ def _post_event(tool_name, tool_input, rule_id, action, message):
         stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
+
+
+def main():
+    try:
+        data = json.load(sys.stdin)
+    except Exception:
+        sys.exit(0)
+
+    # Hard budget cap (cached 5 min)
+    hard_blocked, reason = _load_budget_cache()
+    if hard_blocked is None:
+        hard_blocked, reason = _fetch_budget_status()
+    if hard_blocked:
+        print(f"[ConductGuard] {reason or 'Budget hard cap reached. Contact your manager.'}")
+        sys.exit(2)
+
+    tool_name  = (data.get("tool_name") or "").lower()
+    tool_input = data.get("tool_input") or {}
+
+    _, action, rule_id, message = _check_policy(tool_name, tool_input)
+
+    # Always post an event — "allowed" for normal calls, "blocked"/"warned" for violations
+    decision = {"block": "blocked", "warn": "warned", "approval": "blocked"}.get(action, "allowed")
+    _post_event(tool_name, tool_input, decision, rule_id, message)
+
+    if action == "block":
+        print(f"[ConductGuard] {message}")
+        sys.exit(2)
+    if action in ("warn", "approval"):
+        print(f"[ConductGuard] {message}")
+
+    sys.exit(0)
 
 
 if __name__ == "__main__":
