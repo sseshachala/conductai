@@ -16,10 +16,9 @@ GRAY   = "\033[90m"
 CYAN   = "\033[36m"
 YELLOW = "\033[33m"
 
-GUARD_DIR      = Path.home() / ".conductguard"
-CONFIG_PATH    = GUARD_DIR / "config.json"
-POLICY_PATH    = GUARD_DIR / "policy.json"
-CONDUCT_CONFIG = Path.home() / ".conduct" / "config.json"
+GUARD_DIR    = Path.home() / ".conductguard"
+CONFIG_PATH  = GUARD_DIR / "config.json"
+POLICY_PATH  = GUARD_DIR / "policy.json"
 
 _HOOK_SCRIPT = '''\
 #!/usr/bin/env python3
@@ -58,15 +57,15 @@ def _fetch_budget_status():
         cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
     except Exception:
         return False, None
-    workspace_id = cfg.get("workspace_id")
-    email        = cfg.get("user_email", "")
-    api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
-    if not workspace_id:
+    team_id  = cfg.get("team_id")
+    email    = cfg.get("user_email", "")
+    api_url  = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+    if not team_id:
         return False, None
-    url = f"{api_url}/guard/spend/budget-check?workspace_id={workspace_id}"
+    url = f"{api_url}/guard/spend/budget-check?team_id={team_id}"
     if email:
         import urllib.parse
-        url += f"&clerk_user_id={urllib.parse.quote(email)}"
+        url += f"&email={urllib.parse.quote(email)}"
     try:
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req, timeout=5) as resp:
@@ -159,15 +158,15 @@ def _post_event(tool_name, tool_input, rule_id, action, message):
     except Exception:
         return
 
-    workspace_id = cfg.get("workspace_id")
-    if not workspace_id:
+    team_id = cfg.get("team_id")
+    if not team_id:
         return
 
     input_text = json.dumps(tool_input)
     decision = {"block": "blocked", "warn": "warned", "approval": "blocked"}.get(action, "audited")
     payload = json.dumps({
-        "workspace_id": workspace_id,
-        "clerk_user_id": cfg.get("clerk_user_id"),
+        "team_id": team_id,
+        "member_id": cfg.get("member_id"),
         "user_email": cfg.get("user_email"),
         "ai_tool": "claude-code",
         "tool_call": tool_name,
@@ -178,14 +177,11 @@ def _post_event(tool_name, tool_input, rule_id, action, message):
     })
 
     api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
-    api_key = cfg.get("api_key", "")
-    member_token = cfg.get("member_token", "")
-    auth_header = f'"X-Api-Key": "{api_key}"' if api_key else f'"Authorization": "Bearer {member_token}"'
     script = (
         "import urllib.request\\n"
         "try:\\n"
         f"    req = urllib.request.Request(\\"{api_url}/guard/events\\","
-        f" data={repr(payload.encode())}, headers={{\\\"Content-Type\\\": \\\"application/json\\\", {auth_header}}}, method=\\"POST\\")\\n"
+        f" data={repr(payload.encode())}, headers={{\\\"Content-Type\\\": \\\"application/json\\\"}}, method=\\"POST\\")\\n"
         "    urllib.request.urlopen(req, timeout=5)\\n"
         "except: pass\\n"
     )
@@ -200,6 +196,15 @@ def _post_event(tool_name, tool_input, rule_id, action, message):
 if __name__ == "__main__":
     main()
 '''
+
+# AI tool config files and the label to show the user
+_MCP_TARGETS = [
+    (Path.home() / ".claude"    / "settings.json", "Claude Code"),
+    (Path.home() / ".cursor"    / "mcp.json",      "Cursor"),
+    (Path.home() / ".windsurf"  / "mcp.json",      "Windsurf"),
+    (Path.home() / ".codex"     / "mcp.json",      "Codex"),
+]
+
 
 # ── Guard config helpers ──────────────────────────────────────────────────────
 
@@ -216,17 +221,10 @@ def _save_guard_config(data: dict):
 
 def _require_guard_config() -> dict:
     cfg = _load_guard_config()
-    if not cfg or not (cfg.get("workspace_id") or cfg.get("team_id")):
-        print(f"{RED}Not connected. Run: conduct guard install{RESET}")
+    if not cfg or not cfg.get("team_id"):
+        print(f"{RED}Not connected. Run: conduct guard join <invite-code>{RESET}")
         sys.exit(1)
     return cfg
-
-
-def _auth_kwargs(cfg: dict) -> dict:
-    """Return kwargs for _req: prefer api_key over member_token."""
-    if cfg.get("api_key"):
-        return {"api_key": cfg["api_key"]}
-    return {"token": cfg.get("member_token", "")}
 
 
 def _api_url(cfg: dict) -> str:
@@ -235,11 +233,9 @@ def _api_url(cfg: dict) -> str:
 
 # ── HTTP helpers (no third-party deps — mirrors api.py style) ─────────────────
 
-def _req(method: str, url: str, body=None, token: str = None, api_key: str = None, timeout: int = 20) -> dict:
+def _req(method: str, url: str, body=None, token: str = None, timeout: int = 20) -> dict:
     headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["X-Api-Key"] = api_key
-    elif token:
+    if token:
         headers["Authorization"] = f"Bearer {token}"
     data = json.dumps(body).encode() if body is not None else None
     r = urllib.request.Request(url, data=data, headers=headers, method=method)
@@ -258,6 +254,51 @@ def _req(method: str, url: str, body=None, token: str = None, api_key: str = Non
     except Exception:
         print(f"{RED}Could not reach ConductAI API. Check your connection.{RESET}")
         sys.exit(1)
+
+
+# ── MCP registration helpers ──────────────────────────────────────────────────
+
+def _mcp_entry(team_id: str, member_token: str) -> dict:
+    return {
+        "command": "conductguard-mcp",
+        "args": ["--team", team_id, "--token", member_token],
+    }
+
+
+def _register_mcp(team_id: str, member_token: str) -> list[tuple[str, bool]]:
+    """Write MCP entry into every found AI tool config. Returns list of (label, registered_now)."""
+    entry   = _mcp_entry(team_id, member_token)
+    results = []
+
+    for cfg_path, label in _MCP_TARGETS:
+        if not cfg_path.exists():
+            continue
+
+        try:
+            existing = json.loads(cfg_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            existing = {}
+
+        mcp_servers = existing.get("mcpServers", {})
+        current     = mcp_servers.get("conductguard", {})
+
+        # Idempotent: only write if missing or token changed
+        if (current.get("command") == entry["command"]
+                and current.get("args") == entry["args"]):
+            results.append((label, False))
+            continue
+
+        mcp_servers["conductguard"] = entry
+        existing["mcpServers"]      = mcp_servers
+
+        try:
+            cfg_path.write_text(json.dumps(existing, indent=2))
+            results.append((label, True))
+        except OSError:
+            print(f"{YELLOW}Warning: could not write to {cfg_path} — skipping.{RESET}")
+            results.append((label, False))
+
+    return results
 
 
 def _save_policy(policy: dict):
@@ -310,90 +351,101 @@ def _install_claude_hook(hook_path: Path) -> None:
 
 # ── Commands ──────────────────────────────────────────────────────────────────
 
-def cmd_guard_install(args):
-    """conduct guard install — wire up Guard using the logged-in API key."""
-    # Read API key + server from conduct login config
-    conduct_cfg: dict = {}
-    if CONDUCT_CONFIG.exists():
-        try:
-            conduct_cfg = json.loads(CONDUCT_CONFIG.read_text())
-        except Exception:
-            pass
+def cmd_guard_join(args):
+    invite_code = args.invite_code
 
-    api_key  = getattr(args, "api_key", None) or conduct_cfg.get("api_key") or ""
-    base_url = getattr(args, "server", None) or conduct_cfg.get("server", "https://api.conductai.ai")
-    base_url = base_url.rstrip("/")
-
-    if not api_key:
-        print(f"{RED}No API key found. Run: conduct login --api-key <key>{RESET}")
+    # Prompt for email if not supplied
+    email = getattr(args, "email", None) or input("Email address: ").strip()
+    if not email:
+        print(f"{RED}Email is required.{RESET}")
         sys.exit(1)
 
-    print(f"\nConnecting to Guard at {CYAN}{base_url}{RESET}…")
+    # Use configured API URL or default
+    existing_cfg = _load_guard_config()
+    base_url     = existing_cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
 
-    # Resolve Guard config for this workspace
-    status = _req("GET", f"{base_url}/guard/config/installed", api_key=api_key)
-    if not status.get("installed"):
-        print(f"{RED}Guard is not installed for this workspace. Ask your admin to enable it.{RESET}")
-        sys.exit(1)
+    print(f"\nJoining team with invite code {CYAN}{invite_code}{RESET}…")
 
-    workspace_id = status["workspace_id"]
-    print(f"  {GREEN}Guard workspace:{RESET} {workspace_id}")
+    payload = {
+        "invite_code": invite_code,
+        "email":       email,
+    }
+    result = _req("POST", f"{base_url}/guard/teams/join", body=payload)
 
-    # Pull active policies
-    policy = _req("GET", f"{base_url}/guard/policies/sync?workspace_id={workspace_id}", api_key=api_key)
+    team_id      = result["team_id"]
+    team_name    = result.get("team_name", team_id)
+    member_id    = result["member_id"]
+    member_token = result.get("member_token", "")
+    policy       = result.get("policy", {"team_id": team_id, "version": "", "rules": []})
+
+    # Download and persist policy
     _save_policy(policy)
     rule_count = len(policy.get("rules", []))
-    print(f"  {GREEN}Policies downloaded:{RESET} {rule_count} rule(s)")
+    print(f"  {GREEN}Policy downloaded:{RESET} {rule_count} rule(s)")
 
-    # Fetch user email from /me for spend tracking
-    user_email = ""
-    try:
-        me = _req("GET", f"{base_url}/me", api_key=api_key)
-        user_email = me.get("email") or ""
-    except SystemExit:
-        pass
+    # Register MCP in all found tool configs
+    registered = _register_mcp(team_id, member_token)
+    new_tools   = [label for label, is_new in registered if is_new]
+    all_tools   = [label for label, _ in registered]
 
-    # Persist guard config (api_key-based, no member_token needed)
+    for label, is_new in registered:
+        icon = f"{GREEN}registered{RESET}" if is_new else f"{GRAY}already registered{RESET}"
+        print(f"  {label} -> {icon}")
+
+    # Persist guard config
     cfg = {
-        "workspace_id": workspace_id,
-        "user_email":   user_email,
-        "api_key":      api_key,
-        "api_url":      base_url,
+        "team_id":    team_id,
+        "team_name":  team_name,
+        "member_id":  member_id,
+        "user_email": email,
+        "api_url":    base_url,
     }
+    if member_token:
+        cfg["member_token"] = member_token
     _save_guard_config(cfg)
 
-    # Write hook script and install
+    # Write hook script
     hook_path = GUARD_DIR / "hook.py"
     hook_path.write_text(_HOOK_SCRIPT)
     hook_path.chmod(0o755)
+    print(f"  {GREEN}Hook script written:{RESET} {hook_path}")
+
+    # Install PreToolUse hook in ~/.claude/settings.json
     _install_claude_hook(hook_path)
 
     print(
-        f"\n{BOLD}{GREEN}Guard active.{RESET} "
-        f"{rule_count} polic{'y' if rule_count == 1 else 'ies'} enforced. "
-        f"Every Claude Code tool call is now checked."
+        f"\n{BOLD}{GREEN}Connected to {team_name}.{RESET} "
+        f"{len(all_tools)} AI tool(s) registered. "
+        f"{rule_count} polic{'y' if rule_count == 1 else 'ies'} active."
     )
-
-
-def cmd_guard_join(args):
-    print("conduct guard join is no longer needed.")
-    print("Ask your admin to invite you to the workspace at conductai.ai")
-    print("Once you accept the invite and sign in, run: conduct guard install")
-    sys.exit(0)
 
 
 def cmd_guard_sync(args):
     cfg          = _require_guard_config()
-    workspace_id = cfg.get("workspace_id") or cfg.get("team_id", "")
+    team_id      = cfg["team_id"]
+    member_token = cfg.get("member_token", "")
     base_url     = _api_url(cfg)
-    auth         = _auth_kwargs(cfg)
 
-    print(f"Syncing policy for workspace {CYAN}{workspace_id}{RESET}…")
+    print(f"Syncing policy for team {CYAN}{cfg.get('team_name', team_id)}{RESET}…")
 
-    policy = _req("GET", f"{base_url}/guard/policies/sync?workspace_id={workspace_id}", **auth)
+    policy = _req(
+        "GET",
+        f"{base_url}/guard/policies/sync?team_id={team_id}",
+        token=member_token,
+    )
     _save_policy(policy)
     rule_count = len(policy.get("rules", []))
     print(f"  {GREEN}Policy refreshed:{RESET} {rule_count} rule(s)")
+
+    # Re-scan and register any newly found tool configs
+    registered = _register_mcp(team_id, member_token)
+    new_tools  = [(label, is_new) for label, is_new in registered if is_new]
+
+    if new_tools:
+        for label, _ in new_tools:
+            print(f"  {label} newly detected -> {GREEN}registered{RESET}")
+    else:
+        print(f"  {GRAY}No new AI tool configs detected.{RESET}")
 
     # Refresh hook script (picks up budget check and any other updates)
     hook_path = GUARD_DIR / "hook.py"
@@ -406,10 +458,11 @@ def cmd_guard_sync(args):
 
 def cmd_guard_status(args):
     cfg          = _require_guard_config()
-    workspace_id = cfg.get("workspace_id") or cfg.get("team_id", "")
+    team_id      = cfg["team_id"]
     user_email   = cfg.get("user_email", "")
+    team_name    = cfg.get("team_name", team_id)
+    member_token = cfg.get("member_token", "")
     base_url     = _api_url(cfg)
-    auth         = _auth_kwargs(cfg)
 
     # Load local policy for rule count
     rule_count = 0
@@ -423,7 +476,11 @@ def cmd_guard_status(args):
     # Fetch today's spend
     spend = {}
     try:
-        spend = _req("GET", f"{base_url}/guard/spend?workspace_id={workspace_id}", **auth)
+        spend = _req(
+            "GET",
+            f"{base_url}/guard/spend?team_id={team_id}",
+            token=member_token,
+        )
     except SystemExit:
         pass
 
@@ -435,8 +492,14 @@ def cmd_guard_status(args):
     try:
         events = _req(
             "GET",
-            f"{base_url}/guard/events?workspace_id={workspace_id}&user_email={user_email}&since={today_iso}&limit=20",
-            **auth,
+            (
+                f"{base_url}/guard/events"
+                f"?team_id={team_id}"
+                f"&user_email={user_email}"
+                f"&since={today_iso}"
+                f"&limit=20"
+            ),
+            token=member_token,
         )
         if not isinstance(events, list):
             events = events.get("events", [])
@@ -446,11 +509,11 @@ def cmd_guard_status(args):
     violations = [e for e in events if e.get("decision") == "blocked"]
 
     # Format spend figures
-    sessions        = spend.get("sessions", 0)
-    tokens_used     = spend.get("tokens_used", 0)
+    sessions     = spend.get("sessions", 0)
+    tokens_used  = spend.get("tokens_used", 0)
     token_saved_pct = spend.get("token_saved_pct", 0)
-    cost            = spend.get("cost_usd", 0.0)
-    cost_saved      = spend.get("cost_saved_usd", 0.0)
+    cost         = spend.get("cost_usd", 0.0)
+    cost_saved   = spend.get("cost_saved_usd", 0.0)
 
     viol_summary = ""
     if violations:
@@ -460,7 +523,7 @@ def cmd_guard_status(args):
         viol_summary = f"  ({rule_names} — blocked)"
 
     print(f"\n{BOLD}Guard status{RESET} — {user_email}")
-    print(f"Workspace: {workspace_id} · {rule_count} polic{'y' if rule_count == 1 else 'ies'} active")
+    print(f"Team: {team_name} · {rule_count} polic{'y' if rule_count == 1 else 'ies'} active")
     print()
     print(f"Today:")
     print(f"  Sessions: {sessions}")
@@ -472,18 +535,24 @@ def cmd_guard_status(args):
 
 def cmd_guard_audit(args):
     cfg          = _require_guard_config()
-    workspace_id = cfg.get("workspace_id") or cfg.get("team_id", "")
+    team_id      = cfg["team_id"]
     user_email   = cfg.get("user_email", "")
+    member_token = cfg.get("member_token", "")
     base_url     = _api_url(cfg)
-    auth         = _auth_kwargs(cfg)
 
     since_str = getattr(args, "since", None) or "24h"
     since_iso = _parse_since(since_str)
 
     events_resp = _req(
         "GET",
-        f"{base_url}/guard/events?workspace_id={workspace_id}&user_email={user_email}&since={since_iso}&limit=50",
-        **auth,
+        (
+            f"{base_url}/guard/events"
+            f"?team_id={team_id}"
+            f"&user_email={user_email}"
+            f"&since={since_iso}"
+            f"&limit=50"
+        ),
+        token=member_token,
     )
     events = events_resp if isinstance(events_resp, list) else events_resp.get("events", [])
 
@@ -535,13 +604,8 @@ def register_guard_parser(sub):
     guard_p = sub.add_parser("guard", help="Guard — team policies and MCP registration")
     guard_sub = guard_p.add_subparsers(dest="guard_command")
 
-    # conduct guard install
-    install_p = guard_sub.add_parser("install", help="Install Guard using your API key (conduct login first)")
-    install_p.add_argument("--api-key", dest="api_key", help="Override API key (default: from conduct login)")
-    install_p.add_argument("--server",  help="Override API server URL")
-
     # conduct guard join <invite-code>
-    join_p = guard_sub.add_parser("join", help="Join a second workspace via invite token (on-demand)")
+    join_p = guard_sub.add_parser("join", help="Join a team with an invite code")
     join_p.add_argument("invite_code", help="Team invite code")
     join_p.add_argument("--email", help="Your email address (prompted if omitted)")
 
@@ -566,9 +630,7 @@ def register_guard_parser(sub):
 def dispatch_guard(args, guard_p):
     """Dispatch to the correct guard handler. Called from main()."""
     guard_command = getattr(args, "guard_command", None)
-    if guard_command == "install":
-        cmd_guard_install(args)
-    elif guard_command == "join":
+    if guard_command == "join":
         cmd_guard_join(args)
     elif guard_command == "sync":
         cmd_guard_sync(args)
