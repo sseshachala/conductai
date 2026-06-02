@@ -263,16 +263,38 @@ function GuardDashboard() {
     }
   }, [getToken, teamId])
 
+  // Periodic merge of recent events — picks up PostToolUse token backfills
+  const refreshRecent = useCallback(async () => {
+    if (!teamId) return
+    const headers = await buildHeaders()
+    const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
+    const params  = new URLSearchParams({ limit: "20", offset: "0" })
+    params.set("workspace_id", teamId)
+    try {
+      const res = await fetch(`${base}/guard/events?${params}`, { headers })
+      if (!res.ok) return
+      const fresh: GuardEvent[] = await res.json()
+      setEvents(prev => {
+        const byId = new Map(prev.map(e => [e.id, e]))
+        fresh.forEach(e => byId.set(e.id, e))
+        const freshIds = new Set(fresh.map(e => e.id))
+        return [...fresh, ...prev.filter(e => !freshIds.has(e.id))]
+      })
+    } catch { /* non-fatal */ }
+  }, [buildHeaders, teamId])
+
   useEffect(() => {
     connectSSE()
     loadEvents()
     loadStats()
-    const interval = setInterval(() => { loadStats() }, 60_000)
+    const statsInterval  = setInterval(() => { loadStats() }, 60_000)
+    const refreshInterval = setInterval(() => { refreshRecent() }, 10_000)
     return () => {
-      clearInterval(interval)
+      clearInterval(statsInterval)
+      clearInterval(refreshInterval)
       esRef.current?.close()
     }
-  }, [connectSSE, loadEvents, loadStats])
+  }, [connectSSE, loadEvents, loadStats, refreshRecent])
 
   // ── Derived data ─────────────────────────────────────────────────────────────
 
