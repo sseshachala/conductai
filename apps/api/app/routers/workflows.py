@@ -410,10 +410,37 @@ def get_playbook(slug: str):
     inputs: dict = {}
     yaml_source: str = ""
     playbook_path = pathlib.Path(__file__).parent.parent.parent / "playbooks" / _TEMPLATE_PLAYBOOKS[slug]
+    blocks: list = []
     if playbook_path.exists():
         yaml_source = playbook_path.read_text()
         raw = _yaml.safe_load(yaml_source) or {}
         inputs = raw.get("inputs", {})
+        # Trigger block from the `on:` key (PyYAML parses `on` as True)
+        trigger_raw = raw.get(True, {}) or {}
+        if trigger_raw:
+            event = next(iter(trigger_raw), None)
+            blocks.append({
+                "id": "_trigger",
+                "type": "trigger",
+                "label": (event or "trigger").replace(".", " ").replace("_", " ").title(),
+                "description": None,
+                "integration": (trigger_raw.get(event) or {}).get("integration"),
+                "model": None,
+            })
+        for block_id, block_data in (raw.get("blocks") or {}).items():
+            if not isinstance(block_data, dict):
+                continue
+            desc = block_data.get("description") or ""
+            # Trim long descriptions to first non-empty line
+            first_line = next((l.strip() for l in desc.splitlines() if l.strip()), None)
+            blocks.append({
+                "id": block_id,
+                "type": block_data.get("type", "tool"),
+                "label": block_data.get("label", block_id.replace("_", " ").title()),
+                "description": first_line,
+                "integration": block_data.get("integration"),
+                "model": block_data.get("model"),
+            })
     github_webhook = slug in _GITHUB_WEBHOOK_EVENTS
     return {
         "slug": slug,
@@ -422,11 +449,10 @@ def get_playbook(slug: str):
         "description": meta["description"],
         "tags": meta["tags"],
         "featured": meta["featured"],
+        "category": meta.get("category", "Other"),
         "inputs": inputs,
+        "blocks": blocks,
         "yaml_source": yaml_source,
-        # All agents operate on a repo — requires_repo is always True.
-        # github_webhook: True → Conduct registers a GitHub webhook automatically.
-        # False → caller POSTs to the inbound URL (cron, PagerDuty, etc.) — repo is still needed.
         "requires_repo": True,
         "github_webhook": github_webhook,
         "github_events": _GITHUB_WEBHOOK_EVENTS.get(slug, []),
