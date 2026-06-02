@@ -1,0 +1,177 @@
+"""
+Guard workspace config endpoints.
+
+GET   /guard/config?workspace_id          — get config (creates if not exists)
+PATCH /guard/config?workspace_id          — update alert_channel, notify_on_block, notify_on_budget
+GET   /guard/config/installed?workspace_id — returns {installed, workspace_id, invite_code}
+"""
+import secrets
+from datetime import datetime, timezone
+
+import structlog
+
+log = structlog.get_logger(__name__)
+
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from app.core.auth import get_workspace_id, get_user_id
+from app.core.database import get_db
+from app.modules.guard.models import GuardConfig, GuardMemberConfig
+from app.modules.guard.routers.policies import seed_builtin_policies
+
+router = APIRouter(prefix="/guard/config", tags=["guard-config"])
+
+
+# ── Pydantic models ────────────────────────────────────────────────────────────
+
+class ConfigOut(BaseModel):
+    workspace_id: str
+    invite_code: str
+    slug: str | None
+    alert_channel: str | None
+    notify_on_block: bool
+    notify_on_budget: bool
+    created_at: datetime
+    updated_at: datetime | None
+
+    class Config:
+        from_attributes = True
+
+
+class ConfigPatch(BaseModel):
+    alert_channel: str | None = None
+    notify_on_block: bool | None = None
+    notify_on_budget: bool | None = None
+
+
+class InstallStatusOut(BaseModel):
+    installed: bool
+    workspace_id: str | None = None
+    invite_code: str | None = None
+
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _get_or_create_config(db: Session, workspace_id: str) -> GuardConfig:
+    """Return existing GuardConfig or create one (with seeded policies)."""
+    import uuid
+    ws_uuid = uuid.UUID(workspace_id)
+    config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
+    if config:
+        return config
+
+    config = GuardConfig(
+        workspace_id=ws_uuid,
+        invite_code=secrets.token_hex(16),
+    )
+    db.add(config)
+    db.flush()  # get workspace_id before seeding
+    seed_builtin_policies(db, workspace_id)
+    db.commit()
+    db.refresh(config)
+    log.info("guard.config_created", workspace_id=workspace_id)
+    return config
+
+
+def _config_to_out(cfg: GuardConfig) -> ConfigOut:
+    return ConfigOut(
+        workspace_id=str(cfg.workspace_id),
+        invite_code=cfg.invite_code,
+        slug=cfg.slug,
+        alert_channel=cfg.alert_channel,
+        notify_on_block=cfg.notify_on_block,
+        notify_on_budget=cfg.notify_on_budget,
+        created_at=cfg.created_at,
+        updated_at=cfg.updated_at,
+    )
+
+
+# ── Endpoints ──────────────────────────────────────────────────────────────────
+
+@router.get("/installed", response_model=InstallStatusOut)
+def get_install_status(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    user_id: str = Depends(get_user_id),
+):
+    """Return whether Guard is installed for the workspace.
+    Auto-provisions a guard_member_config entry for the calling user if they are
+    a workspace member (idempotent).
+    """
+    import uuid
+    try:
+        ws_uuid = uuid.UUID(workspace_id)
+    except ValueError:
+        return InstallStatusOut(installed=False)
+
+    config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
+    if not config:
+        return InstallStatusOut(installed=False)
+
+    # Idempotent member provisioning — never blocks the response
+    try:
+        from sqlalchemy import text
+        existing = db.execute(
+            text("""
+                SELECT 1 FROM guard_member_config
+                WHERE workspace_id = :ws AND clerk_user_id = :uid
+                LIMIT 1
+            """),
+            {"ws": workspace_id, "uid": user_id},
+        ).fetchone()
+        if not existing:
+            db.execute(
+                text("""
+                    INSERT INTO guard_member_config (workspace_id, clerk_user_id, member_token, active, joined_at)
+                    VALUES (:ws, :uid, :token, true, :now)
+                    ON CONFLICT (workspace_id, clerk_user_id) DO NOTHING
+                """),
+                {
+                    "ws": workspace_id,
+                    "uid": user_id,
+                    "token": secrets.token_hex(32),
+                    "now": datetime.now(timezone.utc),
+                },
+            )
+            db.commit()
+            log.info("guard.member_provisioned", workspace_id=workspace_id, user_id=user_id)
+    except Exception:
+        db.rollback()  # non-fatal
+
+    return InstallStatusOut(
+        installed=True,
+        workspace_id=workspace_id,
+        invite_code=config.invite_code,
+    )
+
+
+@router.get("", response_model=ConfigOut)
+def get_config(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    """Return Guard config for the workspace, creating it if it does not yet exist."""
+    config = _get_or_create_config(db, workspace_id)
+    return _config_to_out(config)
+
+
+@router.patch("", response_model=ConfigOut)
+def patch_config(
+    body: ConfigPatch,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    """Update Guard notification/channel settings for the workspace."""
+    config = _get_or_create_config(db, workspace_id)
+    if body.alert_channel is not None:
+        config.alert_channel = body.alert_channel
+    if body.notify_on_block is not None:
+        config.notify_on_block = body.notify_on_block
+    if body.notify_on_budget is not None:
+        config.notify_on_budget = body.notify_on_budget
+    config.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(config)
+    return _config_to_out(config)

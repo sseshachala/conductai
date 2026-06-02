@@ -12,8 +12,8 @@ from app.models.audit_log import AuditLog
 from app.models.email_template import EmailTemplate
 from app.models.playbook_submission import PlaybookSubmission
 from app.modules.guard.models import (
-    GuardTeam,
-    GuardMember,
+    GuardConfig,
+    GuardMemberConfig,
     GuardPolicy,
     GuardSession,
     GuardAuditEvent,
@@ -25,6 +25,6 @@ __all__ = [
     "Workflow", "WorkflowVersion", "Integration", "Run", "RunEvent",
     "RunAnalyticsEvent", "RunTrace", "AuditLog", "EmailTemplate",
     "PlaybookSubmission",
-    "GuardTeam", "GuardMember", "GuardPolicy", "GuardSession",
+    "GuardConfig", "GuardMemberConfig", "GuardPolicy", "GuardSession",
     "GuardAuditEvent", "GuardSpendBudget",
 ]
