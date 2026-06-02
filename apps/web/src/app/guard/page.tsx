@@ -334,7 +334,7 @@ function GuardDashboard() {
               accent={(stats?.blocked_today || derivedStats.blocked_today) > 0 ? "text-red-600" : undefined}
             />
             <StatCard
-              label="Tokens saved today"
+              label="Tokens used today (est.)"
               value={formatTotalTokensSaved(stats?.tokens_saved_today || derivedStats.tokens_saved_today)}
               accent="text-green-700"
             />
