@@ -22,7 +22,8 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_guard_org_id
+from app.core.auth import get_guard_org_id, get_user_id
+from sqlalchemy import text
 from app.core.database import get_db
 from app.modules.guard.models import (
     GuardAuditEvent,
@@ -214,19 +215,56 @@ def create_team(
 def get_install_status(
     db: Session = Depends(get_db),
     token_org_id: str = Depends(get_guard_org_id),
+    user_id: str = Depends(get_user_id),
     workspace_id: str | None = Query(default=None),
 ):
-    """Return whether a Guard team is installed for the given workspace or caller's org."""
+    """Return whether a Guard team is installed for the given workspace or caller's org.
+    Also upserts a guard_member for the calling user so CLI installs show up in the dashboard.
+    """
     lookup_id = workspace_id or token_org_id
     team = _lookup_team(db, lookup_id, fallback_org_id=token_org_id)
-    if team:
-        return InstallStatusOut(
-            installed=True,
-            team_id=str(team.id),
-            team_name=team.name,
-            invite_code=team.invite_code,
-        )
-    return InstallStatusOut(installed=False)
+    if not team:
+        return InstallStatusOut(installed=False)
+
+    # Auto-provision the calling user into guard_members (idempotent)
+    try:
+        ws_id = str(team.workspace_id) if team.workspace_id else lookup_id
+        row = db.execute(
+            text("SELECT email, role FROM workspace_users WHERE clerk_user_id = :uid AND workspace_id = :ws LIMIT 1"),
+            {"uid": user_id, "ws": ws_id},
+        ).fetchone()
+        if row:
+            existing = db.execute(
+                text("SELECT id FROM guard_members WHERE team_id = :tid AND user_id = :uid LIMIT 1"),
+                {"tid": str(team.id), "uid": user_id},
+            ).fetchone()
+            if not existing:
+                db.execute(
+                    text("""
+                        INSERT INTO guard_members (id, team_id, user_id, email, role, active, joined_at, member_token)
+                        VALUES (:id, :tid, :uid, :email, :role, true, :now, :token)
+                    """),
+                    {
+                        "id": str(uuid.uuid4()),
+                        "tid": str(team.id),
+                        "uid": user_id,
+                        "email": row.email,
+                        "role": row.role,
+                        "now": datetime.now(timezone.utc),
+                        "token": secrets.token_urlsafe(32),
+                    },
+                )
+                db.commit()
+                log.info("guard.member_provisioned_via_cli", team_id=str(team.id), user_id=user_id)
+    except Exception:
+        db.rollback()  # non-fatal — never block CLI install on this
+
+    return InstallStatusOut(
+        installed=True,
+        team_id=str(team.id),
+        team_name=team.name,
+        invite_code=team.invite_code,
+    )
 
 
 @router.get("/me", response_model=TeamOut)
