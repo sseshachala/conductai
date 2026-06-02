@@ -1,5 +1,7 @@
 """RBAC router — roles, permissions, and per-user permission resolution."""
+import secrets
 import uuid
+from datetime import datetime, timezone
 from typing import Annotated
 
 import structlog
@@ -62,18 +64,18 @@ def list_permissions(db: Session = Depends(get_db)) -> list[Permission]:
 # /me/permissions
 # ---------------------------------------------------------------------------
 
-def _resolve_guard_role(db: Session, workspace_id: str, user_id: str) -> str:
-    """Resolve the effective role for user_id within workspace_id.
+def _resolve_and_provision(db: Session, workspace_id: str, user_id: str, user_email: str | None) -> str:
+    """Resolve effective role and auto-provision guard_members on first login.
 
     Resolution order:
-    1. guard_members JOIN guard_teams WHERE workspace_id matches and member is active
-    2. workspace_users WHERE workspace_id and clerk_user_id match
-    3. Default: "viewer"
+    1. guard_members — already provisioned
+    2. workspace_users — first login; auto-upsert into guard_members
+    3. Default: "viewer" (no auto-provision — user has no platform membership)
     """
-    # 1. Guard team membership
+    # 1. Already a Guard member
     guard_row = db.execute(
         text("""
-            SELECT gm.role
+            SELECT gm.role, gm.id
             FROM guard_members gm
             JOIN guard_teams gt ON gt.id = gm.team_id
             WHERE gt.workspace_id = :ws
@@ -86,19 +88,46 @@ def _resolve_guard_role(db: Session, workspace_id: str, user_id: str) -> str:
     if guard_row:
         return guard_row.role
 
-    # 2. Workspace membership
+    # 2. Platform member — auto-provision into guard_members
     ws_row = db.execute(
         text("""
-            SELECT role FROM workspace_users
-            WHERE workspace_id = :ws AND clerk_user_id = :uid
+            SELECT wu.role, wu.email, gt.id as team_id
+            FROM workspace_users wu
+            JOIN guard_teams gt ON gt.workspace_id = wu.workspace_id
+            WHERE wu.workspace_id = :ws AND wu.clerk_user_id = :uid
             LIMIT 1
         """),
         {"ws": workspace_id, "uid": user_id},
     ).fetchone()
-    if ws_row:
-        return ws_row.role
 
-    # 3. Default
+    if ws_row:
+        role = ws_row.role
+        email = user_email or ws_row.email or f"{user_id}@unknown"
+        existing = db.execute(
+            text("SELECT id FROM guard_members WHERE team_id = :tid AND email = :email LIMIT 1"),
+            {"tid": str(ws_row.team_id), "email": email},
+        ).fetchone()
+        if not existing:
+            db.execute(
+                text("""
+                    INSERT INTO guard_members (id, team_id, user_id, email, role, active, joined_at, member_token)
+                    VALUES (:id, :team_id, :uid, :email, :role, true, :now, :token)
+                """),
+                {
+                    "id": str(uuid.uuid4()),
+                    "team_id": str(ws_row.team_id),
+                    "uid": user_id,
+                    "email": email,
+                    "role": role,
+                    "now": datetime.now(timezone.utc),
+                    "token": secrets.token_urlsafe(32),
+                },
+            )
+            db.commit()
+            log.info("rbac.guard_member_provisioned", workspace_id=workspace_id, user_id=user_id, role=role)
+        return role
+
+    # 3. No platform membership
     return "viewer"
 
 
@@ -107,9 +136,12 @@ def get_my_permissions(
     workspace_id: Annotated[str, Query()],
     user_id: Annotated[str, Depends(get_user_id)],
     db: Session = Depends(get_db),
+    email: str | None = Query(default=None),
 ) -> PermissionSet:
-    """Return the calling user's resolved role and permission names for a workspace."""
-    role = _resolve_guard_role(db, workspace_id, user_id)
+    """Return the calling user's resolved role and permission names for a workspace.
+    Auto-provisions guard_members on first visit if the user is a workspace member.
+    """
+    role = _resolve_and_provision(db, workspace_id, user_id, user_email=email)
 
     rows = db.execute(
         text("""
