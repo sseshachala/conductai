@@ -7,17 +7,14 @@ from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
 
 
-class GuardTeam(Base):
-    """One Guard team per Clerk org — spans all projects in the org."""
+class GuardConfig(Base):
+    """One Guard config per workspace — workspace IS the Guard team."""
 
-    __tablename__ = "guard_teams"
+    __tablename__ = "guard_config"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String(255), nullable=False)
-    slug = Column(String(100), nullable=False, unique=True)
-    invite_code = Column(String(32), nullable=False, unique=True)
-    conductai_org_id = Column(String(255), nullable=True)
-    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="SET NULL"), nullable=True, index=True)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True)
+    invite_code = Column(Text, nullable=False)
+    slug = Column(Text, nullable=True)
     alert_channel = Column(String(100), nullable=True)
     notify_on_block = Column(Boolean, nullable=False, default=True)
     notify_on_budget = Column(Boolean, nullable=False, default=True)
@@ -26,32 +23,30 @@ class GuardTeam(Base):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
-    updated_at = Column(
+    updated_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class GuardMemberConfig(Base):
+    """Per-workspace CLI token for a Clerk user. Role is always read from workspace_users."""
+
+    __tablename__ = "guard_member_config"
+
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True)
+    clerk_user_id = Column(Text, nullable=False, primary_key=True)
+    member_token = Column(Text, nullable=False)
+    active = Column(Boolean, nullable=False, default=True)
+    joined_at = Column(
         DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
     )
-
-
-class GuardMember(Base):
-    __tablename__ = "guard_members"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    team_id = Column(UUID(as_uuid=True), ForeignKey("guard_teams.id"), nullable=False)
-    user_id = Column(String(255), nullable=False)
-    email = Column(String(255), nullable=False)
-    role = Column(String(20), nullable=False, default="developer")
-    active = Column(Boolean, nullable=False, default=True)
-    joined_at = Column(DateTime(timezone=True), nullable=True)
-    member_token = Column(String(64), nullable=True, unique=True)
 
 
 class GuardPolicy(Base):
     __tablename__ = "guard_policies"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    team_id = Column(UUID(as_uuid=True), ForeignKey("guard_teams.id"), nullable=False)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
     rule_id = Column(String(100), nullable=False)
     description = Column(String(255), nullable=True)
     match_tool = Column(String(255), nullable=True)
@@ -78,8 +73,8 @@ class GuardSession(Base):
     __tablename__ = "guard_sessions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    team_id = Column(UUID(as_uuid=True), ForeignKey("guard_teams.id"), nullable=False)
-    member_id = Column(UUID(as_uuid=True), ForeignKey("guard_members.id"), nullable=True)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    clerk_user_id = Column(Text, nullable=True)
     user_email = Column(String(255), nullable=True)
     ai_tool = Column(String(50), nullable=False)
     started_at = Column(DateTime(timezone=True), nullable=True)
@@ -96,8 +91,8 @@ class GuardAuditEvent(Base):
     __tablename__ = "guard_audit_events"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    team_id = Column(UUID(as_uuid=True), ForeignKey("guard_teams.id"), nullable=False)
-    member_id = Column(UUID(as_uuid=True), ForeignKey("guard_members.id"), nullable=True)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    clerk_user_id = Column(Text, nullable=True)
     session_id = Column(UUID(as_uuid=True), ForeignKey("guard_sessions.id"), nullable=True)
     user_email = Column(String(255), nullable=True)
     ai_tool = Column(String(50), nullable=False)
@@ -125,8 +120,8 @@ class GuardSpendBudget(Base):
     __tablename__ = "guard_spend_budgets"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    team_id = Column(UUID(as_uuid=True), ForeignKey("guard_teams.id"), nullable=False)
-    member_id = Column(UUID(as_uuid=True), ForeignKey("guard_members.id"), nullable=True)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    clerk_user_id = Column(Text, nullable=True)
     monthly_limit_usd = Column(Float, nullable=False)
     alert_threshold_pct = Column(Integer, nullable=False, default=80)
     hard_limit_usd = Column(Float, nullable=True)

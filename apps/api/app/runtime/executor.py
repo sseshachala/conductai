@@ -1411,24 +1411,28 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db) -> dict:
     import re as _re
     import uuid as _uuid
     from datetime import datetime, timezone
-    from app.modules.guard.models import GuardAuditEvent, GuardPolicy, GuardTeam
+    from app.modules.guard.models import GuardAuditEvent, GuardPolicy
 
     config           = block.get("config") or {}
     enforcement_mode = config.get("enforcement_mode", "block")
     context_keys     = config.get("context_keys") or []
     rule_ids_filter  = set(config.get("rule_ids") or [])
 
-    # ── 1. Resolve Guard team by workspace_id FK ──────────────────────────────
-    team = None
+    # ── 1. Verify Guard is installed for this workspace ───────────────────────
     try:
         ws_uuid = _uuid.UUID(workspace_id)
-        team = db.query(GuardTeam).filter(GuardTeam.workspace_id == ws_uuid).first()
-    except (ValueError, Exception):
-        pass
-    if not team:
-        team = db.query(GuardTeam).filter(GuardTeam.conductai_org_id == workspace_id).first()
+    except ValueError:
+        ws_uuid = None
 
-    if not team:
+    guard_installed = False
+    if ws_uuid:
+        from sqlalchemy import text as _text
+        guard_installed = db.execute(
+            _text("SELECT 1 FROM guard_config WHERE workspace_id = :ws LIMIT 1"),
+            {"ws": str(ws_uuid)},
+        ).fetchone() is not None
+
+    if not guard_installed:
         if enforcement_mode == "block":
             raise RuntimeError(
                 "Guard block: ConductGuard is not installed for this workspace. "
@@ -1465,7 +1469,7 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db) -> dict:
 
     # ── 3. Load active policies ───────────────────────────────────────────────
     policy_q = db.query(GuardPolicy).filter(
-        GuardPolicy.team_id == team.id,
+        GuardPolicy.workspace_id == ws_uuid,
         GuardPolicy.enabled.is_(True),
     )
     if rule_ids_filter:
@@ -1508,7 +1512,7 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db) -> dict:
     def _record_event(policy: GuardPolicy, decision: str):
         try:
             db.add(GuardAuditEvent(
-                team_id=team.id,
+                workspace_id=ws_uuid,
                 ai_tool="workflow",
                 tool_call=block_id,
                 input_summary=context_json[:500],
@@ -1542,8 +1546,7 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db) -> dict:
 
     return {
         "status": "passed",
-        "team_id": str(team.id),
-        "team_name": team.name,
+        "workspace_id": str(ws_uuid),
         "enforcement_mode": enforcement_mode,
         "rules_checked": len(policies),
         "violations": len(violations),

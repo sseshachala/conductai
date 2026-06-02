@@ -132,22 +132,17 @@ def _accept_pending_invites(user_id: str, db: Session) -> None:
         db.execute(text("UPDATE workspace_invites SET accepted_at = :now WHERE id = :id"),
                    {"now": now, "id": str(inv.id)})
         # Auto-enroll in Guard if the workspace has Guard installed
-        guard_team = db.execute(
-            text("""
-                SELECT id FROM guard_teams
-                WHERE workspace_id::text = :ws OR conductai_org_id = :ws
-                LIMIT 1
-            """),
+        guard_installed = db.execute(
+            text("SELECT 1 FROM guard_config WHERE workspace_id::text = :ws LIMIT 1"),
             {"ws": ws_id},
         ).fetchone()
-        if guard_team:
+        if guard_installed:
             import secrets as _secrets
             db.execute(text("""
-                INSERT INTO guard_members (id, team_id, user_id, email, role, active, joined_at, member_token)
-                VALUES (gen_random_uuid(), :team_id, :user_id, :email, 'developer', true, :now, :token)
-                ON CONFLICT DO NOTHING
-            """), {"team_id": str(guard_team.id), "user_id": user_id, "email": email, "now": now,
-                   "token": _secrets.token_urlsafe(24)})
+                INSERT INTO guard_member_config (workspace_id, clerk_user_id, member_token, active, joined_at)
+                VALUES (:ws, :user_id, :token, true, :now)
+                ON CONFLICT (workspace_id, clerk_user_id) DO NOTHING
+            """), {"ws": ws_id, "user_id": user_id, "token": _secrets.token_urlsafe(24), "now": now})
     if invites:
         db.commit()
 
@@ -164,7 +159,7 @@ def _accept_pending_invites_bg(user_id: str) -> None:
         db.close()
 
 
-def _seed_starter_policies(db, team_id: uuid.UUID, now) -> None:
+def _seed_starter_policies(db, workspace_id: uuid.UUID, now) -> None:
     from app.modules.guard.models import GuardPolicy
     policies = [
         # Destructive Operations
@@ -192,7 +187,7 @@ def _seed_starter_policies(db, team_id: uuid.UUID, now) -> None:
     ]
     for p in policies:
         db.add(GuardPolicy(
-            team_id=team_id,
+            workspace_id=workspace_id,
             rule_id=p["rule_id"],
             description=p["description"],
             action=p["action"],
@@ -230,10 +225,9 @@ def list_projects(
     # Auto-register new users — create a default workspace + membership
     if not rows:
         project_id = uuid.uuid4()
-        guard_team_id = uuid.uuid4()
         invite_code = uuid.uuid4().hex[:16]
         now = datetime.now(timezone.utc)
-        slug = f"engineering-{str(project_id)[:8]}"
+        import secrets as _secrets
 
         # 1. Create "Engineering" workspace
         db.execute(text("""
@@ -248,15 +242,22 @@ def list_projects(
             ON CONFLICT DO NOTHING
         """), {"ws": str(project_id), "uid": user_id, "now": now})
 
-        # 3. Install Guard — create guard_teams row
+        # 3. Install Guard — create guard_config row
         db.execute(text("""
-            INSERT INTO guard_teams (id, name, slug, invite_code, workspace_id, created_at, updated_at)
-            VALUES (:id, 'Engineering', :slug, :invite_code, :ws, :now, :now)
-        """), {"id": str(guard_team_id), "slug": slug, "invite_code": invite_code,
-               "ws": str(project_id), "now": now})
+            INSERT INTO guard_config (workspace_id, invite_code, created_at)
+            VALUES (:ws, :invite_code, :now)
+            ON CONFLICT (workspace_id) DO NOTHING
+        """), {"ws": str(project_id), "invite_code": invite_code, "now": now})
 
         # 4. Seed starter policies
-        _seed_starter_policies(db, guard_team_id, now)
+        _seed_starter_policies(db, project_id, now)
+
+        # 5. Add creator to guard_member_config
+        db.execute(text("""
+            INSERT INTO guard_member_config (workspace_id, clerk_user_id, member_token, active, joined_at)
+            VALUES (:ws, :uid, :token, true, :now)
+            ON CONFLICT (workspace_id, clerk_user_id) DO NOTHING
+        """), {"ws": str(project_id), "uid": user_id, "token": _secrets.token_urlsafe(24), "now": now})
 
         # 5. Add creator to guard_members as admin
         creator_email = get_clerk_user_email(user_id) or f"{user_id}@unknown"
@@ -523,14 +524,8 @@ def add_member(
         workspace_name = ws_row.name if ws_row else "your workspace"
 
         # Include Guard invite command if Guard is installed for this workspace
-        # Check both workspace_id FK (new teams) and conductai_org_id string (legacy teams)
         guard_row = db.execute(
-            text("""
-                SELECT invite_code FROM guard_teams
-                WHERE conductai_org_id = :ws
-                   OR workspace_id::text = :ws
-                LIMIT 1
-            """),
+            text("SELECT invite_code FROM guard_config WHERE workspace_id::text = :ws LIMIT 1"),
             {"ws": workspace_id},
         ).fetchone()
         guard_invite_cmd = f"conduct guard join {guard_row.invite_code}" if guard_row else ""

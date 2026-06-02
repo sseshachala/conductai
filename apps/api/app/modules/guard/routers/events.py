@@ -16,13 +16,13 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_guard_org_id, _clerk_enabled, _verify_clerk_token
+from app.core.auth import get_workspace_id, _clerk_enabled, _verify_clerk_token
 from app.core.database import SessionLocal, get_db
-from app.modules.guard.models import GuardAuditEvent, GuardSession, GuardSpendBudget, GuardTeam, GuardMember
+from app.modules.guard.models import GuardAuditEvent, GuardConfig, GuardSession, GuardSpendBudget
 
 router = APIRouter(prefix="/guard/events", tags=["guard"])
 
-SSE_POLL_INTERVAL = 2   # seconds between DB polls
+SSE_POLL_INTERVAL = 2    # seconds between DB polls
 SSE_MAX_DURATION  = 300  # reconnect after 5 min
 
 
@@ -33,14 +33,14 @@ def _now() -> datetime:
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
 
 class HookEvent(BaseModel):
-    team_id: str
-    member_id: str | None = None
+    workspace_id: str
+    clerk_user_id: str | None = None
     session_id: str | None = None
     user_email: str | None = None
-    ai_tool: str                     # claude_code | codex | cursor | copilot | windsurf | gemini
-    tool_call: str                   # bash | edit | write | read
+    ai_tool: str                      # claude_code | codex | cursor | copilot | windsurf | gemini
+    tool_call: str                    # bash | edit | write | read
     input_summary: str | None = None
-    decision: str                    # allowed | blocked | warned | approval
+    decision: str                     # allowed | blocked | warned | approval
     rule_id: str | None = None
     rule_message: str | None = None
     tokens_before: int | None = None
@@ -55,8 +55,8 @@ class HookEvent(BaseModel):
 
 class EventOut(BaseModel):
     id: str
-    team_id: str
-    member_id: str | None
+    workspace_id: str
+    clerk_user_id: str | None
     session_id: str | None
     user_email: str | None
     ai_tool: str
@@ -78,23 +78,11 @@ class EventOut(BaseModel):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _resolve_team_id(db: Session, team_id: str | None, workspace_id: str | None) -> str:
-    """Return a concrete team_id string, or raise 422 if neither param resolves."""
-    if team_id:
-        return team_id
-    if workspace_id:
-        from app.modules.guard.routers.teams import _lookup_team
-        team = _lookup_team(db, workspace_id)
-        if team:
-            return str(team.id)
-    raise HTTPException(status_code=422, detail="Provide team_id or workspace_id")
-
-
 def _event_to_dict(e: GuardAuditEvent) -> dict:
     return {
         "id": str(e.id),
-        "team_id": str(e.team_id),
-        "member_id": str(e.member_id) if e.member_id else None,
+        "workspace_id": str(e.workspace_id),
+        "clerk_user_id": e.clerk_user_id,
         "session_id": str(e.session_id) if e.session_id else None,
         "user_email": e.user_email,
         "ai_tool": e.ai_tool,
@@ -115,18 +103,18 @@ def _event_to_dict(e: GuardAuditEvent) -> dict:
     }
 
 
-def _send_guard_slack(db: Session, team: GuardTeam, text: str) -> None:
+def _send_guard_slack(db: Session, config: GuardConfig, text_msg: str) -> None:
     """Fire-and-forget Slack notification. Silently skips if not configured."""
     from app.core.crypto import decrypt
     from app.models.integration import Integration
 
-    if not team.alert_channel or not team.workspace_id:
+    if not config.alert_channel:
         return
 
     row = (
         db.query(Integration)
         .filter(
-            Integration.workspace_id == team.workspace_id,
+            Integration.workspace_id == config.workspace_id,
             Integration.handle == "slack",
         )
         .first()
@@ -140,53 +128,65 @@ def _send_guard_slack(db: Session, team: GuardTeam, text: str) -> None:
         if not token:
             return
         from app.runtime.integrations.slack import post_message
-        post_message(token=token, channel=team.alert_channel, text=text)
+        post_message(token=token, channel=config.alert_channel, text=text_msg)
     except Exception:
         pass  # never crash ingest on Slack failure
 
 
-def _check_spend_budget(db: Session, team_id: str, team_obj: GuardTeam | None = None) -> None:
+def _check_spend_budget(db: Session, workspace_id: str, config: GuardConfig | None = None) -> None:
     """Log a warning (and send Slack alert) if any active budget has exceeded alert_threshold_pct."""
+    import uuid
+    from sqlalchemy import func
+
     now = _now()
     period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
+    try:
+        ws_uuid = uuid.UUID(workspace_id)
+    except ValueError:
+        return
+
     budgets = (
         db.query(GuardSpendBudget)
-        .filter(GuardSpendBudget.team_id == team_id)
+        .filter(GuardSpendBudget.workspace_id == ws_uuid)
         .all()
     )
     if not budgets:
         return
 
-    # Sum monthly cost for the team so far
-    from sqlalchemy import func
     monthly_cost = (
         db.query(func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0))
         .filter(
-            GuardAuditEvent.team_id == team_id,
+            GuardAuditEvent.workspace_id == ws_uuid,
             GuardAuditEvent.ts >= period_start,
         )
         .scalar()
     ) or 0.0
 
-    team = team_obj or db.query(GuardTeam).filter(GuardTeam.id == team_id).first()
+    cfg = config or db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
 
     for budget in budgets:
         threshold_usd = budget.monthly_limit_usd * (budget.alert_threshold_pct / 100.0)
         if monthly_cost >= threshold_usd:
-            scope = f"member={budget.member_id}" if budget.member_id else "team-wide"
-            log.info("guard.spend_alert", team_id=team_id, scope=scope,
-                     monthly_cost_usd=round(monthly_cost, 4), threshold_usd=round(threshold_usd, 4),
-                     alert_threshold_pct=budget.alert_threshold_pct, budget_usd=budget.monthly_limit_usd)
-            if team and budget.monthly_limit_usd > 0 and team.notify_on_budget:
+            scope = f"user={budget.clerk_user_id}" if budget.clerk_user_id else "workspace-wide"
+            log.info(
+                "guard.spend_alert",
+                workspace_id=workspace_id,
+                scope=scope,
+                monthly_cost_usd=round(monthly_cost, 4),
+                threshold_usd=round(threshold_usd, 4),
+                alert_threshold_pct=budget.alert_threshold_pct,
+                budget_usd=budget.monthly_limit_usd,
+            )
+            if cfg and budget.monthly_limit_usd > 0 and cfg.notify_on_budget:
                 pct_used = round((monthly_cost / budget.monthly_limit_usd) * 100)
-                who = f"member={budget.member_id}" if budget.member_id else "team-wide"
+                who = f"user={budget.clerk_user_id}" if budget.clerk_user_id else "workspace-wide"
                 msg = (
                     f"\u26a0\ufe0f *Guard spend alert* ({who}): "
                     f"${monthly_cost:.2f} of ${budget.monthly_limit_usd:.2f} used ({pct_used}%) \u2014 "
                     f"alert threshold {budget.alert_threshold_pct}% reached"
                 )
-                _send_guard_slack(db, team, msg)
+                _send_guard_slack(db, cfg, msg)
 
 
 # ── POST /guard/events — ingest ───────────────────────────────────────────────
@@ -196,19 +196,26 @@ def ingest_event(
     body: HookEvent,
     db: Session = Depends(get_db),
 ):
-    """Ingest a hook event from the guardctl binary. No workspace auth — teams
-    authenticate via team_id embedded in the hook payload."""
-    # Validate team exists
-    team = db.query(GuardTeam).filter(GuardTeam.id == body.team_id).first()
-    if not team:
-        raise HTTPException(status_code=404, detail="team_id not found")
+    """Ingest a hook event from the guardctl binary. No workspace auth —
+    workspace_id in the payload is validated against guard_config (same trust
+    model as before: possession of the workspace_id is the trust anchor)."""
+    import uuid
+
+    try:
+        ws_uuid = uuid.UUID(body.workspace_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid workspace_id")
+
+    config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="workspace_id not found in guard_config")
 
     now = _now()
 
     # 1. Write the audit event
     event = GuardAuditEvent(
-        team_id=body.team_id,
-        member_id=body.member_id,
+        workspace_id=ws_uuid,
+        clerk_user_id=body.clerk_user_id,
         session_id=body.session_id,
         user_email=body.user_email,
         ai_tool=body.ai_tool,
@@ -253,20 +260,20 @@ def ingest_event(
 
     # 3. Send Slack block/warn notification (non-fatal)
     try:
-        if body.decision in ("blocked", "warned") and team.notify_on_block:
-            who = body.user_email or body.member_id or "unknown"
+        if body.decision in ("blocked", "warned") and config.notify_on_block:
+            who = body.user_email or body.clerk_user_id or "unknown"
             emoji = "\U0001f6ab" if body.decision == "blocked" else "\u26a0\ufe0f"
             rule_label = f"`{body.rule_id}`" if body.rule_id else "a policy"
             msg = f"{emoji} *{who}* {body.decision} by {rule_label} in {body.ai_tool or 'Claude Code'}"
             if body.rule_message:
                 msg += f"\n> {body.rule_message}"
-            _send_guard_slack(db, team, msg)
+            _send_guard_slack(db, config, msg)
     except Exception as exc:
         log.warning("guard.slack_notification_failed", exc=str(exc))
 
     # 4. Check spend budget (non-fatal — log + Slack)
     try:
-        _check_spend_budget(db, body.team_id, team_obj=team)
+        _check_spend_budget(db, body.workspace_id, config=config)
     except Exception as exc:
         log.warning("guard.spend_budget_check_failed", exc=str(exc))
 
@@ -278,9 +285,7 @@ def ingest_event(
 @router.get("", response_model=list[EventOut])
 def list_events(
     db: Session = Depends(get_db),
-    _org_id: str = Depends(get_guard_org_id),
-    team_id: str | None = Query(default=None, description="Team ID to filter by"),
-    workspace_id: str | None = Query(default=None, description="Workspace ID (alternative to team_id)"),
+    workspace_id: str = Depends(get_workspace_id),
     decision: str | None = Query(default=None, description="allowed|blocked|warned|approval"),
     ai_tool: str | None = Query(default=None, description="claude_code|codex|cursor|copilot|windsurf|gemini"),
     user_email: str | None = Query(default=None),
@@ -288,12 +293,11 @@ def list_events(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ):
-    """Paginated, filterable audit event list for a team."""
-    resolved = _resolve_team_id(db, team_id, workspace_id)
-    q = (
-        db.query(GuardAuditEvent)
-        .filter(GuardAuditEvent.team_id == resolved)
-    )
+    """Paginated, filterable audit event list for a workspace."""
+    import uuid
+    ws_uuid = uuid.UUID(workspace_id)
+
+    q = db.query(GuardAuditEvent).filter(GuardAuditEvent.workspace_id == ws_uuid)
     if decision:
         q = q.filter(GuardAuditEvent.decision == decision)
     if ai_tool:
@@ -314,14 +318,16 @@ def list_events(
 
 # ── GET /guard/events/stream — SSE real-time feed ─────────────────────────────
 
-def _fetch_new_events(team_id: str, since: datetime) -> tuple[list[dict], datetime]:
+def _fetch_new_events(workspace_id: str, since: datetime) -> tuple[list[dict], datetime]:
     """Query DB for events newer than `since`. Returns (events, new_cursor)."""
+    import uuid
+    ws_uuid = uuid.UUID(workspace_id)
     db = SessionLocal()
     try:
         rows = (
             db.query(GuardAuditEvent)
             .filter(
-                GuardAuditEvent.team_id == team_id,
+                GuardAuditEvent.workspace_id == ws_uuid,
                 GuardAuditEvent.ts > since,
             )
             .order_by(GuardAuditEvent.ts.asc())
@@ -337,27 +343,30 @@ def _fetch_new_events(team_id: str, since: datetime) -> tuple[list[dict], dateti
 @router.get("/stream")
 async def stream_events(
     request: Request,
-    team_id: str | None = Query(default=None, description="Team ID"),
-    workspace_id: str | None = Query(default=None, description="Workspace ID (alternative to team_id)"),
+    workspace_id: str | None = Query(default=None, description="Workspace ID"),
     token: str | None = Query(default=None, description="Bearer token (SSE can't set headers)"),
+    db: Session = Depends(get_db),
 ):
+    from fastapi.responses import Response as _Resp
+    if not workspace_id:
+        return _Resp(status_code=422, content="Provide workspace_id")
+
     if _clerk_enabled():
-        if not token or not _verify_clerk_token(token):
-            from fastapi.responses import Response
-            return Response(status_code=403, content="Invalid or missing token")
-    # Resolve team_id from workspace_id if needed
-    if not team_id and workspace_id:
-        db_sess = SessionLocal()
-        try:
-            from app.modules.guard.routers.teams import _lookup_team
-            team = _lookup_team(db_sess, workspace_id)
-            if team:
-                team_id = str(team.id)
-        finally:
-            db_sess.close()
-    if not team_id:
-        from fastapi.responses import Response
-        return Response(status_code=422, content="Provide team_id or workspace_id")
+        if not token:
+            return _Resp(status_code=403, content="Invalid or missing token")
+        claims = _verify_clerk_token(token)
+        if not claims:
+            return _Resp(status_code=403, content="Invalid or missing token")
+        # Verify caller is a member of the requested workspace
+        user_id = claims.get("sub")
+        if user_id:
+            from sqlalchemy import text as _text
+            is_member = db.execute(
+                _text("SELECT 1 FROM workspace_users WHERE workspace_id = :ws AND clerk_user_id = :uid LIMIT 1"),
+                {"ws": workspace_id, "uid": user_id},
+            ).fetchone()
+            if not is_member:
+                return _Resp(status_code=403, content="Not a member of this workspace")
 
     async def event_generator():
         cursor = _now()
@@ -368,7 +377,7 @@ async def stream_events(
                 break
             try:
                 events, cursor = await asyncio.get_event_loop().run_in_executor(
-                    None, _fetch_new_events, team_id, cursor
+                    None, _fetch_new_events, workspace_id, cursor
                 )
                 if events:
                     yield f"data: {json.dumps({'events': events})}\n\n"
