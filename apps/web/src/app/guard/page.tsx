@@ -129,7 +129,7 @@ export default function GuardPage() {
   const { user } = useUser()
   const { teamId, loading: teamLoading } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
-  const { permissions } = useGuardRole(teamId, activeWorkspace?.id ?? null)
+  const { permissions, role: guardRole, loading: permissionsLoading } = useGuardRole(teamId, activeWorkspace?.id ?? null)
 
   const [events, setEvents]       = useState<GuardEvent[]>([])
   const [stats, setStats]         = useState<SpendStats | null>(null)
@@ -282,8 +282,13 @@ export default function GuardPage() {
           </div>
         </div>
 
+        {/* Temporary debug — remove after fix confirmed */}
+        <div className="text-xs text-stone-400 font-mono">
+          role: {guardRole ?? (permissionsLoading ? "loading…" : "null")} | ws: {activeWorkspace?.id?.slice(0,8) ?? "none"}
+        </div>
+
         {/* Viewer-scoped notice */}
-        {!permissions.canViewAllActivity && (
+        {!permissionsLoading && !permissions.canViewAllActivity && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
             You can view your own activity only. Contact your admin to request broader access.
           </div>
