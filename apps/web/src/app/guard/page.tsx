@@ -407,8 +407,8 @@ export default function GuardPage() {
                       <td className="px-4 py-3 font-mono text-xs text-stone-600 whitespace-nowrap">
                         {ev.tool_call}
                       </td>
-                      <td className="px-4 py-3 text-xs text-stone-500 max-w-[200px] truncate" title={ev.input_summary}>
-                        {ev.input_summary}
+                      <td className="px-4 py-3 text-xs text-stone-500 max-w-[200px] truncate" title={ev.input_summary ?? undefined}>
+                        {ev.input_summary ?? "—"}
                       </td>
                       <td className="px-4 py-3">
                         <DecisionBadge decision={ev.decision} />
