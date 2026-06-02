@@ -214,7 +214,7 @@ def _require_guard_config() -> dict:
     cfg = _load_guard_config()
     ws = cfg.get("workspace_id")
     if not cfg or not ws:
-        print(f"{RED}Not connected. Run: conduct guard join <invite-code>{RESET}")
+        print(f"{RED}Guard not connected. Run: conduct login --api-key <key>{RESET}")
         sys.exit(1)
     return cfg
 
@@ -223,12 +223,41 @@ def _api_url(cfg: dict) -> str:
     return cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
 
 
+# ── MCP registration ──────────────────────────────────────────────────────────
+
+def _register_mcp(workspace_id: str, member_token: str, api_url: str) -> None:
+    """Write conductguard MCP entry into ~/.claude/settings.json."""
+    claude_settings = Path.home() / ".claude" / "settings.json"
+    settings: dict = {}
+    if claude_settings.exists():
+        try:
+            settings = json.loads(claude_settings.read_text())
+        except json.JSONDecodeError:
+            settings = {}
+
+    entry = {
+        "command": "conductguard-mcp",
+        "args": ["--workspace", workspace_id, "--token", member_token, "--api-url", api_url],
+    }
+    mcp = settings.setdefault("mcpServers", {})
+    current = mcp.get("conductguard", {})
+    if current.get("args") == entry["args"]:
+        print(f"  {GRAY}Guard MCP already registered{RESET}")
+        return
+    mcp["conductguard"] = entry
+    claude_settings.parent.mkdir(parents=True, exist_ok=True)
+    claude_settings.write_text(json.dumps(settings, indent=2))
+    print(f"  {GREEN}Guard MCP registered in Claude Code{RESET}")
+
+
 # ── HTTP helpers (no third-party deps — mirrors api.py style) ─────────────────
 
-def _req(method: str, url: str, body=None, token: str = None, timeout: int = 20) -> dict:
+def _req(method: str, url: str, body=None, token: str = None, api_key: str = None, timeout: int = 20) -> dict:
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    if api_key:
+        headers["X-Api-Key"] = api_key
     data = json.dumps(body).encode() if body is not None else None
     r = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
@@ -298,6 +327,71 @@ def _install_claude_hook(hook_path: Path) -> None:
 
 
 # ── Commands ──────────────────────────────────────────────────────────────────
+
+def cmd_guard_install(args):
+    """Called automatically from `conduct login`. Sets up Guard: downloads policies, installs hook + MCP."""
+    api_key = getattr(args, "api_key", None)
+    server  = getattr(args, "server", "https://api.conductai.ai").rstrip("/")
+
+    # Load workspace_id from ~/.conduct/config.json
+    conduct_cfg_path = Path.home() / ".conduct" / "config.json"
+    conduct_cfg: dict = {}
+    if conduct_cfg_path.exists():
+        try:
+            conduct_cfg = json.loads(conduct_cfg_path.read_text())
+        except Exception:
+            pass
+
+    workspace_id = conduct_cfg.get("workspace")
+    if not workspace_id or not api_key:
+        return  # nothing to do
+
+    print(f"  Setting up Guard…")
+
+    result = _req(
+        "GET",
+        f"{server}/guard/config/installed?workspace_id={workspace_id}",
+        api_key=api_key,
+    )
+
+    if not result.get("installed"):
+        print(f"  {GRAY}Guard not installed for this workspace — skipping{RESET}")
+        return
+
+    member_token = result.get("member_token") or ""
+
+    # Persist guard config
+    _save_guard_config({
+        "workspace_id": workspace_id,
+        "member_token": member_token,
+        "api_url":      server,
+    })
+
+    # Download policies
+    try:
+        policy = _req(
+            "GET",
+            f"{server}/guard/policies/sync?workspace_id={workspace_id}",
+            token=member_token,
+        )
+        _save_policy(policy)
+        rule_count = len(policy.get("rules", []))
+        print(f"  {GREEN}Guard policies:{RESET} {rule_count} rule(s) active")
+    except SystemExit:
+        rule_count = 0
+
+    # Write hook script
+    hook_path = GUARD_DIR / "hook.py"
+    hook_path.write_text(_HOOK_SCRIPT)
+    hook_path.chmod(0o755)
+
+    # Install PreToolUse hook
+    _install_claude_hook(hook_path)
+
+    # Register MCP server
+    if member_token:
+        _register_mcp(workspace_id, member_token, server)
+
 
 def cmd_guard_join(args):
     invite_code = args.invite_code
@@ -523,11 +617,6 @@ def register_guard_parser(sub):
     guard_p = sub.add_parser("guard", help="Guard — team policies and MCP registration")
     guard_sub = guard_p.add_subparsers(dest="guard_command")
 
-    # conduct guard join <invite-code>
-    join_p = guard_sub.add_parser("join", help="Join a team with an invite code")
-    join_p.add_argument("invite_code", help="Team invite code")
-    join_p.add_argument("--email", help="Your email address (prompted if omitted)")
-
     # conduct guard sync
     guard_sub.add_parser("sync", help="Refresh policy and re-scan for AI tools")
 
@@ -549,9 +638,7 @@ def register_guard_parser(sub):
 def dispatch_guard(args, guard_p):
     """Dispatch to the correct guard handler. Called from main()."""
     guard_command = getattr(args, "guard_command", None)
-    if guard_command == "join":
-        cmd_guard_join(args)
-    elif guard_command == "sync":
+    if guard_command == "sync":
         cmd_guard_sync(args)
     elif guard_command == "status":
         cmd_guard_status(args)

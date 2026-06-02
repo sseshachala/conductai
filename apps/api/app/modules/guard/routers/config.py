@@ -50,6 +50,7 @@ class InstallStatusOut(BaseModel):
     installed: bool
     workspace_id: str | None = None
     invite_code: str | None = None
+    member_token: str | None = None
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -140,10 +141,17 @@ def get_install_status(
     except Exception:
         db.rollback()  # non-fatal
 
+    # Fetch member_token for the calling user so CLI can use it
+    token_row = db.execute(
+        text("SELECT member_token FROM guard_member_config WHERE workspace_id = :ws AND clerk_user_id = :uid LIMIT 1"),
+        {"ws": workspace_id, "uid": user_id},
+    ).fetchone()
+
     return InstallStatusOut(
         installed=True,
         workspace_id=workspace_id,
         invite_code=config.invite_code,
+        member_token=token_row.member_token if token_row else None,
     )
 
 

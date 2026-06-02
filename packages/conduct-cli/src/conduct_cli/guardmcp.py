@@ -125,11 +125,11 @@ def _match_policy(tool_name: str, tool_input: dict) -> dict | None:
 
 # ── Tool handlers ─────────────────────────────────────────────────────────────
 
-def _handle_guard_status(team_id: str) -> str:
+def _handle_guard_status(workspace_id: str) -> str:
     cfg    = _load_config()
     policy = _load_policy()
     return json.dumps({
-        "team":           cfg.get("team_name", team_id),
+        "workspace_id":   workspace_id,
         "email":          cfg.get("user_email", ""),
         "rules_active":   len(policy.get("rules", [])),
         "policy_version": policy.get("version", ""),
@@ -155,10 +155,10 @@ def _handle_guard_check(arguments: dict) -> str:
     return f"AUDITED — {message}  [rule: {rule_id}]"
 
 
-def _handle_guard_sync(team_id: str, token: str) -> str:
+def _handle_guard_sync(workspace_id: str, token: str) -> str:
     cfg     = _load_config()
     api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
-    url     = f"{api_url}/guard/policies/sync?team_id={team_id}"
+    url     = f"{api_url}/guard/policies/sync?workspace_id={workspace_id}"
 
     try:
         req = urllib.request.Request(
@@ -180,13 +180,13 @@ def _handle_guard_sync(team_id: str, token: str) -> str:
         return f"Sync failed — {e}"
 
 
-def _dispatch_tool(name: str, arguments: dict, team_id: str, token: str) -> str:
+def _dispatch_tool(name: str, arguments: dict, workspace_id: str, token: str) -> str:
     if name == "guard_status":
-        return _handle_guard_status(team_id)
+        return _handle_guard_status(workspace_id)
     if name == "guard_check":
         return _handle_guard_check(arguments)
     if name == "guard_sync":
-        return _handle_guard_sync(team_id, token)
+        return _handle_guard_sync(workspace_id, token)
     return f"Unknown tool: {name}"
 
 
@@ -208,12 +208,13 @@ def _err(msg_id, code: int, message: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="conductguard-mcp")
-    parser.add_argument("--team",  required=True, help="Guard team ID")
-    parser.add_argument("--token", required=True, help="Member token")
+    parser.add_argument("--workspace", required=True, help="Guard workspace ID")
+    parser.add_argument("--token",     required=True, help="Member token")
+    parser.add_argument("--api-url",   default="https://api.conductai.ai", help=argparse.SUPPRESS)
     args = parser.parse_args()
 
-    team_id = args.team
-    token   = args.token
+    workspace_id = args.workspace
+    token        = args.token
 
     for raw in sys.stdin:
         raw = raw.strip()
@@ -245,7 +246,7 @@ def main() -> None:
         elif method == "tools/call":
             tool_name  = params.get("name", "")
             arguments  = params.get("arguments") or {}
-            text       = _dispatch_tool(tool_name, arguments, team_id, token)
+            text       = _dispatch_tool(tool_name, arguments, workspace_id, token)
             _ok(msg_id, {"content": [{"type": "text", "text": text}]})
 
         elif method == "ping":
