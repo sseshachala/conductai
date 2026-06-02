@@ -254,10 +254,36 @@ def get_spend_summary(
         .scalar() or 0
     )
 
+    # Count distinct active devs — use COALESCE so partial data (email OR clerk_id) still counts
+    from sqlalchemy import or_, case, literal
+    active_developers = int(
+        db.query(func.count(func.distinct(
+            func.coalesce(GuardAuditEvent.user_email, GuardAuditEvent.clerk_user_id)
+        )))
+        .filter(
+            GuardAuditEvent.workspace_id == ws_uuid,
+            GuardAuditEvent.ts >= period_start,
+            or_(
+                GuardAuditEvent.user_email.isnot(None),
+                GuardAuditEvent.clerk_user_id.isnot(None),
+            ),
+        )
+        .scalar() or 0
+    )
+    # If all events are anonymous (both null) but events DO exist, show 1 as minimum
+    if active_developers == 0:
+        has_events = int(
+            db.query(func.count(GuardAuditEvent.id))
+            .filter(GuardAuditEvent.workspace_id == ws_uuid, GuardAuditEvent.ts >= period_start)
+            .scalar() or 0
+        )
+        if has_events > 0:
+            active_developers = 1
+
     return SpendSummary(
         workspace_id=workspace_id,
         period=month or _period_label(),
-        active_developers=len(by_developer),
+        active_developers=active_developers,
         events_today=events_today,
         blocked_today=blocked_today,
         tokens_saved_today=tokens_saved_today,
