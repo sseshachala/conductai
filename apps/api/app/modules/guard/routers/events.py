@@ -51,6 +51,20 @@ class HookEvent(BaseModel):
     conductai_run_id: str | None = None
     conductai_workflow: str | None = None
     duration_ms: int | None = None
+    tool_use_id: str | None = None
+
+
+class UsageUpdate(BaseModel):
+    workspace_id: str
+    tool_use_id: str
+    tokens_input: int
+    tokens_output: int
+    duration_ms: int | None = None
+    ai_tool: str | None = None   # for pricing
+
+
+class UsageOut(BaseModel):
+    updated: bool
 
 
 class EventOut(BaseModel):
@@ -232,6 +246,7 @@ def ingest_event(
         conductai_run_id=body.conductai_run_id,
         conductai_workflow=body.conductai_workflow,
         duration_ms=body.duration_ms,
+        tool_use_id=body.tool_use_id,
         ts=now,
     )
     db.add(event)
@@ -278,6 +293,71 @@ def ingest_event(
         log.warning("guard.spend_budget_check_failed", exc=str(exc))
 
     return EventOut(**_event_to_dict(event))
+
+
+# ── POST /guard/events/usage — PostToolUse token backfill ────────────────────
+
+TOOL_PRICING = {
+    "claude-code": {"input": 3.0,  "output": 15.0},
+    "codex":       {"input": 2.5,  "output": 10.0},
+    "cursor":      {"input": 3.0,  "output": 15.0},
+    "windsurf":    {"input": 3.0,  "output": 15.0},
+    "unknown":     {"input": 3.0,  "output": 15.0},
+}
+
+
+@router.post("/usage", response_model=UsageOut, status_code=200)
+def update_usage(
+    body: UsageUpdate,
+    db: Session = Depends(get_db),
+):
+    """Backfill real token counts from the PostToolUse hook. No Clerk auth —
+    workspace_id validated against guard_config (same trust model as ingest_event)."""
+    import uuid
+
+    try:
+        ws_uuid = uuid.UUID(body.workspace_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid workspace_id")
+
+    config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="workspace_id not found in guard_config")
+
+    event = (
+        db.query(GuardAuditEvent)
+        .filter(
+            GuardAuditEvent.workspace_id == ws_uuid,
+            GuardAuditEvent.tool_use_id == body.tool_use_id,
+        )
+        .first()
+    )
+    if not event:
+        return UsageOut(updated=False)
+
+    tool_key = (body.ai_tool or "unknown").lower()
+    pricing = TOOL_PRICING.get(tool_key, TOOL_PRICING["unknown"])
+    input_price  = pricing["input"]
+    output_price = pricing["output"]
+
+    cost_before = (
+        body.tokens_input  / 1_000_000 * input_price
+        + body.tokens_output / 1_000_000 * output_price
+    )
+    cost_after = 0.0 if event.decision == "blocked" else cost_before
+    tokens_saved = body.tokens_input if event.decision == "blocked" else 0
+
+    event.tokens_before   = body.tokens_input
+    event.tokens_after    = body.tokens_output
+    event.tokens_saved    = tokens_saved
+    event.cost_usd_before = cost_before
+    event.cost_usd_after  = cost_after
+    if body.duration_ms is not None:
+        event.duration_ms = body.duration_ms
+
+    db.commit()
+
+    return UsageOut(updated=True)
 
 
 # ── GET /guard/events — paginated list ────────────────────────────────────────
