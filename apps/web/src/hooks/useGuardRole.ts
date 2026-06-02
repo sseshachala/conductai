@@ -7,14 +7,16 @@ import { useAuth } from "@clerk/nextjs"
 // Types
 // ---------------------------------------------------------------------------
 
-export type GuardRole = "admin" | "security" | "editor" | "viewer"
+export type GuardRole = "admin" | "security" | "developer" | "viewer"
 
 export interface GuardPermissions {
-  canEditPolicies: boolean      // toggle enable/disable, add, delete rules
-  canEditSettings: boolean      // change Slack channel, notification toggles
-  canEditBudgets: boolean       // set team or per-developer budget limits
-  canViewAllActivity: boolean   // see all developers' events (not just own)
-  canViewAllSpend: boolean      // see all developers' spend breakdown
+  canEditPolicies: boolean
+  canEditSettings: boolean
+  canEditBudgets: boolean
+  canViewAllActivity: boolean    // true = see all devs; false = own only
+  canViewAllSpend: boolean       // true = see all devs; false = own only (viewer = hide entirely, use canViewOwnSpend)
+  canViewOwnSpend: boolean       // developer sees own spend; viewer sees nothing
+  canExportActivity: boolean     // CSV export — admin + security only
 }
 
 // ---------------------------------------------------------------------------
@@ -22,10 +24,10 @@ export interface GuardPermissions {
 // ---------------------------------------------------------------------------
 
 export const ROLE_PERMISSIONS: Record<GuardRole, GuardPermissions> = {
-  admin:    { canEditPolicies: true,  canEditSettings: true,  canEditBudgets: true,  canViewAllActivity: true,  canViewAllSpend: true  },
-  security: { canEditPolicies: true,  canEditSettings: false, canEditBudgets: false, canViewAllActivity: true,  canViewAllSpend: true  },
-  editor:   { canEditPolicies: false, canEditSettings: false, canEditBudgets: false, canViewAllActivity: true,  canViewAllSpend: true  },
-  viewer:   { canEditPolicies: false, canEditSettings: false, canEditBudgets: false, canViewAllActivity: false, canViewAllSpend: false  },
+  admin:     { canEditPolicies: true,  canEditSettings: true,  canEditBudgets: true,  canViewAllActivity: true,  canViewAllSpend: true,  canViewOwnSpend: true,  canExportActivity: true  },
+  security:  { canEditPolicies: true,  canEditSettings: false, canEditBudgets: false, canViewAllActivity: true,  canViewAllSpend: true,  canViewOwnSpend: true,  canExportActivity: true  },
+  developer: { canEditPolicies: false, canEditSettings: false, canEditBudgets: false, canViewAllActivity: false, canViewAllSpend: false, canViewOwnSpend: true,  canExportActivity: false },
+  viewer:    { canEditPolicies: false, canEditSettings: false, canEditBudgets: false, canViewAllActivity: false, canViewAllSpend: false, canViewOwnSpend: false, canExportActivity: false },
 }
 
 const VIEWER_PERMISSIONS = ROLE_PERMISSIONS["viewer"]
@@ -37,7 +39,7 @@ const VIEWER_PERMISSIONS = ROLE_PERMISSIONS["viewer"]
 function mapGuardRole(apiRole: string): GuardRole {
   if (apiRole === "owner" || apiRole === "admin") return "admin"
   if (apiRole === "security") return "security"
-  // "developer" and anything else → viewer
+  if (apiRole === "developer") return "developer"
   return "viewer"
 }
 
@@ -47,7 +49,7 @@ function mapGuardRole(apiRole: string): GuardRole {
 
 function mapPlatformRole(apiRole: string): GuardRole {
   if (apiRole === "admin") return "admin"
-  if (apiRole === "editor") return "editor"
+  if (apiRole === "editor" || apiRole === "developer") return "developer"
   return "viewer"
 }
 
@@ -55,16 +57,10 @@ function mapPlatformRole(apiRole: string): GuardRole {
 // Hook
 // ---------------------------------------------------------------------------
 
-interface UseGuardRoleResult {
-  role: GuardRole | null   // null while loading
-  permissions: GuardPermissions
-  loading: boolean
-}
-
 export function useGuardRole(
   teamId: string | null,
   workspaceId: string | null,
-): UseGuardRoleResult {
+): { role: GuardRole | null; permissions: GuardPermissions; loading: boolean } {
   const { getToken, userId } = useAuth()
   const [role, setRole] = useState<GuardRole | null>(null)
   const [loading, setLoading] = useState(true)
@@ -74,9 +70,7 @@ export function useGuardRole(
     const base = process.env.NEXT_PUBLIC_API_URL ?? ""
 
     async function resolve() {
-      // Wait until both teamId and workspaceId have been determined
       if (teamId === null && workspaceId === null) {
-        // Still waiting on upstream resolution — keep loading
         return
       }
       if (!userId) {

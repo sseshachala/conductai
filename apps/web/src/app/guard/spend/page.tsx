@@ -438,6 +438,7 @@ export default function SpendPage() {
   })
 
   const isAdmin = permissions.canEditBudgets
+  const canViewSpend = permissions.canViewAllSpend || permissions.canViewOwnSpend
 
   const load = useCallback(async () => {
     if (!teamId) return
@@ -544,6 +545,18 @@ export default function SpendPage() {
     const [y, m] = month.split("-").map(Number)
     return `${MONTHS[m - 1]} ${y}`
   })()
+
+  if (!canViewSpend) {
+    return (
+      <AppShell>
+        <div className="max-w-6xl mx-auto px-6 py-8">
+          <div className="rounded-xl border border-stone-200 bg-white px-6 py-16 text-center text-sm text-stone-400">
+            You don&apos;t have access to spend data. Contact your admin.
+          </div>
+        </div>
+      </AppShell>
+    )
+  }
 
   return (
     <AppShell>
