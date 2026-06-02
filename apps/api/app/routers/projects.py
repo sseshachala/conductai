@@ -493,6 +493,11 @@ def add_member(
         invite_id = db.execute(text("""
             INSERT INTO workspace_invites (workspace_id, invited_email, role, invited_by, created_at)
             VALUES (:ws, :email, :role, :invited_by, :now)
+            ON CONFLICT (workspace_id, invited_email)
+            DO UPDATE SET role = EXCLUDED.role,
+                          invited_by = EXCLUDED.invited_by,
+                          created_at = EXCLUDED.created_at,
+                          accepted_at = NULL
             RETURNING id
         """), {"ws": workspace_id, "email": email, "role": body.role,
                "invited_by": user_id, "now": now}).fetchone()[0]
