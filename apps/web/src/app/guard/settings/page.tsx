@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useState } from "react"
 import { useAuth } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { useGuardTeam } from "@/hooks/useGuardTeam"
+import { useGuardRole } from "@/hooks/useGuardRole"
 import AppShell from "@/components/AppShell"
-
-type UserRole = "admin" | "security" | "editor" | "viewer" | null
 
 interface TeamPrefs {
   alert_channel: string | null
@@ -14,8 +14,10 @@ interface TeamPrefs {
 }
 
 export default function GuardSettingsPage() {
-  const { getToken, userId } = useAuth()
+  const { getToken } = useAuth()
   const { activeWorkspace } = useWorkspace()
+  const { teamId } = useGuardTeam()
+  const { permissions, role: resolvedRole } = useGuardRole(teamId, activeWorkspace?.id ?? null)
 
   const [prefs, setPrefs] = useState<TeamPrefs>({
     alert_channel: null,
@@ -28,35 +30,11 @@ export default function GuardSettingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [channelSaved, setChannelSaved] = useState(false)
   const [savingChannel, setSavingChannel] = useState(false)
-  const [userRole, setUserRole] = useState<UserRole>(null)
 
   const base = process.env.NEXT_PUBLIC_API_URL ?? ""
   const wsId = activeWorkspace?.id ?? null
 
-  // Fetch the current user's role — same pattern as AppShell
-  useEffect(() => {
-    let cancelled = false
-    async function fetchRole() {
-      if (!wsId || !userId) return
-      try {
-        const token = await getToken()
-        const h: Record<string, string> = {}
-        if (token) h["Authorization"] = `Bearer ${token}`
-        h["X-Workspace-ID"] = wsId
-        const res = await fetch(`${base}/projects/${wsId}/members`, { headers: h })
-        if (!res.ok || cancelled) return
-        const members: { clerk_user_id: string; role: string }[] = await res.json()
-        const role = members.find(m => m.clerk_user_id === userId)?.role as UserRole ?? null
-        if (!cancelled) setUserRole(role ?? "viewer")
-      } catch {
-        if (!cancelled) setUserRole("viewer")
-      }
-    }
-    fetchRole()
-    return () => { cancelled = true }
-  }, [wsId, userId])
-
-  const isAdmin = userRole === "admin"
+  const isAdmin = permissions.canEditSettings
 
   async function authHeaders(): Promise<Record<string, string>> {
     const token = await getToken()
@@ -148,7 +126,7 @@ export default function GuardSettingsPage() {
         ) : (
           <div className="space-y-5">
             {/* View-only notice for non-admin roles */}
-            {!isAdmin && userRole !== null && (
+            {!isAdmin && resolvedRole !== null && (
               <p className="text-xs text-stone-500 bg-stone-50 border border-stone-200 rounded-lg px-4 py-2.5">
                 View only — contact your admin to make changes.
               </p>
