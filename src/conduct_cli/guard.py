@@ -125,7 +125,7 @@ def _detect_ai_tool():
     return "unknown"
 
 
-def _post_event(tool_name, tool_input, decision, rule_id=None, message=None, tool_use_id=None):
+def _post_event(tool_name, tool_input, decision, rule_id=None, message=None, session_id=None):
     try:
         cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
     except Exception:
@@ -144,7 +144,7 @@ def _post_event(tool_name, tool_input, decision, rule_id=None, message=None, too
         "decision":      decision,
         "rule_id":       rule_id,
         "rule_message":  message,
-        "tool_use_id":   tool_use_id,
+        "session_id":    session_id,
     })
     api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
     script = (
@@ -163,18 +163,19 @@ def _post_event(tool_name, tool_input, decision, rule_id=None, message=None, too
     )
 
 
-def _post_usage(tool_use_id, tokens_input, tokens_output, duration_ms, ai_tool):
+def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms):
     """Fire-and-forget POST to /guard/events/usage"""
     try:
         cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
     except Exception:
         return
     workspace_id = cfg.get("workspace_id")
-    if not workspace_id or not tool_use_id:
+    if not workspace_id or not session_id:
         return
     payload = json.dumps({
         "workspace_id": workspace_id,
-        "tool_use_id": tool_use_id,
+        "session_id":   session_id,
+        "tool_name":    tool_name,
         "tokens_input": tokens_input,
         "tokens_output": tokens_output,
         "duration_ms": duration_ms,
@@ -203,12 +204,13 @@ def post_usage_main():
         data = json.load(sys.stdin)
     except Exception:
         sys.exit(0)
-    tool_use_id = data.get("tool_use_id")
+    session_id = data.get("session_id")
+    tool_name  = (data.get("tool_name") or "").lower()
     usage = data.get("usage") or {}
     tokens_input  = usage.get("input_tokens", 0)
     tokens_output = usage.get("output_tokens", 0)
     duration_ms = data.get("duration_ms")
-    _post_usage(tool_use_id, tokens_input, tokens_output, duration_ms, _detect_ai_tool())
+    _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms)
     sys.exit(0)
 
 
@@ -226,15 +228,15 @@ def main():
         print(f"[ConductGuard] {reason or 'Budget hard cap reached. Contact your manager.'}")
         sys.exit(2)
 
+    session_id = data.get("session_id")
     tool_name  = (data.get("tool_name") or "").lower()
     tool_input = data.get("tool_input") or {}
-    tool_use_id = data.get("tool_use_id")
 
     _, action, rule_id, message = _check_policy(tool_name, tool_input)
 
     # Always post an event — "allowed" for normal calls, "blocked"/"warned" for violations
     decision = {"block": "blocked", "warn": "warned", "approval": "blocked"}.get(action, "allowed")
-    _post_event(tool_name, tool_input, decision, rule_id, message, tool_use_id=tool_use_id)
+    _post_event(tool_name, tool_input, decision, rule_id, message, session_id=session_id)
 
     if action == "block":
         print(f"[ConductGuard] {message}")
