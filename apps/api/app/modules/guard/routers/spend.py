@@ -119,6 +119,10 @@ class BudgetOut(BaseModel):
 
 # ── GET /guard/spend ──────────────────────────────────────────────────────────
 
+import structlog as _structlog
+_log = _structlog.get_logger(__name__)
+
+
 @router.get("", response_model=SpendSummary)
 def get_spend_summary(
     db: Session = Depends(get_db),
@@ -126,6 +130,28 @@ def get_spend_summary(
     month: str | None = Query(default=None, description="Period in YYYY-MM format; defaults to current month"),
 ):
     """Spend summary for a workspace for the given month (defaults to current calendar month)."""
+    try:
+        return _get_spend_summary_inner(db, workspace_id, month)
+    except Exception as exc:
+        _log.error("guard.spend_summary_error", workspace_id=workspace_id, exc=str(exc), exc_info=True)
+        return SpendSummary(
+            workspace_id=workspace_id,
+            period=month or _period_label(),
+            active_developers=0,
+            events_today=0,
+            blocked_today=0,
+            tokens_saved_today=0,
+            total_tokens_before=0,
+            total_tokens_after=0,
+            total_saved_pct=0,
+            total_cost_usd=0.0,
+            total_saved_usd=0.0,
+            by_developer=[],
+            by_ai_tool=[],
+        )
+
+
+def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) -> "SpendSummary":
     ws_uuid = uuid.UUID(workspace_id)
     period_start = _parse_period_start(month)
 
