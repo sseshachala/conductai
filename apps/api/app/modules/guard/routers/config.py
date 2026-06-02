@@ -51,6 +51,7 @@ class InstallStatusOut(BaseModel):
     workspace_id: str | None = None
     invite_code: str | None = None
     member_token: str | None = None
+    user_email: str | None = None
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -147,11 +148,15 @@ def get_install_status(
         {"ws": workspace_id, "uid": user_id},
     ).fetchone()
 
+    from app.core.auth import get_clerk_user_email as _get_email
+    user_email = _get_email(user_id)
+
     return InstallStatusOut(
         installed=True,
         workspace_id=workspace_id,
         invite_code=config.invite_code,
         member_token=token_row.member_token if token_row else None,
+        user_email=user_email,
     )
 
 
