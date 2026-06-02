@@ -402,7 +402,7 @@ function GuardDashboard() {
                 <thead>
                   <tr className="border-b border-stone-100 text-xs text-stone-400 uppercase tracking-wide">
                     <th className="px-4 py-3 text-left font-medium w-20">Time</th>
-                    <th className="px-4 py-3 text-left font-medium">Developer</th>
+                    <th className="px-4 py-3 text-left font-medium">User</th>
                     <th className="px-4 py-3 text-left font-medium">AI tool</th>
                     <th className="px-4 py-3 text-left font-medium">Call</th>
                     <th className="px-4 py-3 text-left font-medium">Input</th>
@@ -419,8 +419,19 @@ function GuardDashboard() {
                       <td className="px-4 py-3 text-stone-400 text-xs tabular-nums whitespace-nowrap">
                         {timeAgo(ev.ts)}
                       </td>
-                      <td className="px-4 py-3 text-stone-700 text-xs truncate max-w-[140px]" title={ev.user_email ?? undefined}>
-                        {ev.user_email ?? "—"}
+                      <td className="px-4 py-3 max-w-[160px]">
+                        {ev.user_email ? (
+                          <>
+                            <div className="text-xs font-medium text-stone-700 truncate">
+                              {ev.user_email.split("@")[0]}
+                            </div>
+                            <div className="text-[11px] text-stone-400 truncate" title={ev.user_email}>
+                              {ev.user_email}
+                            </div>
+                          </>
+                        ) : (
+                          <span className="text-xs text-stone-400">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <AiToolBadge tool={ev.ai_tool} />
