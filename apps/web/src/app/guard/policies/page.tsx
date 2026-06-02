@@ -518,7 +518,7 @@ function PoliciesContent() {
       setError(null)
       try {
         const headers = await authHeaders()
-        const qs = `?team_id=${encodeURIComponent(teamId)}`
+        const qs = `?workspace_id=${encodeURIComponent(teamId)}`
         const res = await fetch(`${apiUrl}/guard/policies${qs}`, { headers })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data: Policy[] = await res.json()
@@ -599,7 +599,7 @@ function PoliciesContent() {
         builtin: false,
       }
       if (formData.match_path_pattern.trim()) body.match_path_pattern = formData.match_path_pattern.trim()
-      if (teamId) body.team_id = teamId
+      if (teamId) body.workspace_id = teamId
 
       const res = await fetch(`${apiUrl}/guard/policies`, {
         method: "POST",

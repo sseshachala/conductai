@@ -115,7 +115,7 @@ function ActivityContent() {
 
   function buildParams(offset: number) {
     const p = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) })
-    if (teamId) p.set("team_id", teamId)
+    if (teamId) p.set("workspace_id", teamId)
     if (effectiveDeveloperFilter) p.set("user_email", effectiveDeveloperFilter)
     if (filterTool) p.set("ai_tool", filterTool)
     if (filterDecision) p.set("decision", filterDecision)
