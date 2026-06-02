@@ -194,6 +194,86 @@ def delete_config(
     log.info("guard.config_deleted", workspace_id=workspace_id)
 
 
+class JoinIn(BaseModel):
+    invite_code: str
+    email: str
+
+
+class JoinOut(BaseModel):
+    workspace_id: str
+    member_token: str
+    policy: dict
+
+
+# Standalone router so this doesn't need /guard/config prefix
+join_router = APIRouter(prefix="/guard", tags=["guard-config"])
+
+
+@join_router.post("/join", response_model=JoinOut)
+def join_guard(body: JoinIn, db: Session = Depends(get_db)):
+    """Developer joins Guard via invite code. Returns workspace_id + member_token + policy."""
+    import uuid
+    config = db.query(GuardConfig).filter(GuardConfig.invite_code == body.invite_code).first()
+    if not config:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Invalid invite code")
+
+    workspace_id = str(config.workspace_id)
+
+    # Upsert guard_member_config keyed on (workspace_id, email)
+    from sqlalchemy import text
+    existing = db.execute(
+        text("""
+            SELECT member_token FROM guard_member_config
+            WHERE workspace_id = :ws AND clerk_user_id = :email
+            LIMIT 1
+        """),
+        {"ws": workspace_id, "email": body.email},
+    ).fetchone()
+
+    if existing:
+        member_token = existing.member_token
+    else:
+        member_token = secrets.token_hex(32)
+        db.execute(
+            text("""
+                INSERT INTO guard_member_config (workspace_id, clerk_user_id, member_token, active, joined_at)
+                VALUES (:ws, :email, :token, true, :now)
+                ON CONFLICT (workspace_id, clerk_user_id) DO NOTHING
+            """),
+            {
+                "ws": workspace_id,
+                "email": body.email,
+                "token": member_token,
+                "now": datetime.now(timezone.utc),
+            },
+        )
+        db.commit()
+        log.info("guard.developer_joined", workspace_id=workspace_id, email=body.email)
+
+    # Fetch policies for this workspace
+    from app.modules.guard.models import GuardPolicy
+    policies_rows = db.query(GuardPolicy).filter(
+        GuardPolicy.workspace_id == config.workspace_id,
+        GuardPolicy.active == True,
+    ).all()
+
+    rules = [
+        {
+            "rule_id":           str(p.id),
+            "match_tool":        p.match_tool or "*",
+            "match_pattern":     p.match_pattern,
+            "match_path_pattern": p.match_path_pattern,
+            "action":            p.action,
+            "message":           p.rule_message,
+        }
+        for p in policies_rows
+    ]
+    policy = {"workspace_id": workspace_id, "version": "1", "rules": rules}
+
+    return JoinOut(workspace_id=workspace_id, member_token=member_token, policy=policy)
+
+
 class InviteRegenOut(BaseModel):
     invite_code: str
 

@@ -57,12 +57,12 @@ def _fetch_budget_status():
         cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
     except Exception:
         return False, None
-    team_id  = cfg.get("team_id")
-    email    = cfg.get("user_email", "")
-    api_url  = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
-    if not team_id:
+    workspace_id = cfg.get("workspace_id")
+    email        = cfg.get("user_email", "")
+    api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+    if not workspace_id:
         return False, None
-    url = f"{api_url}/guard/spend/budget-check?team_id={team_id}"
+    url = f"{api_url}/guard/spend/budget-check?workspace_id={workspace_id}"
     if email:
         import urllib.parse
         url += f"&email={urllib.parse.quote(email)}"
@@ -158,15 +158,15 @@ def _post_event(tool_name, tool_input, rule_id, action, message):
     except Exception:
         return
 
-    team_id = cfg.get("team_id")
-    if not team_id:
+    workspace_id = cfg.get("workspace_id")
+    if not workspace_id:
         return
 
     input_text = json.dumps(tool_input)
     decision = {"block": "blocked", "warn": "warned", "approval": "blocked"}.get(action, "audited")
     payload = json.dumps({
-        "team_id": team_id,
-        "member_id": cfg.get("member_id"),
+        "workspace_id": workspace_id,
+        "clerk_user_id": cfg.get("user_email"),
         "user_email": cfg.get("user_email"),
         "ai_tool": "claude-code",
         "tool_call": tool_name,
@@ -197,15 +197,6 @@ if __name__ == "__main__":
     main()
 '''
 
-# AI tool config files and the label to show the user
-_MCP_TARGETS = [
-    (Path.home() / ".claude"    / "settings.json", "Claude Code"),
-    (Path.home() / ".cursor"    / "mcp.json",      "Cursor"),
-    (Path.home() / ".windsurf"  / "mcp.json",      "Windsurf"),
-    (Path.home() / ".codex"     / "mcp.json",      "Codex"),
-]
-
-
 # ── Guard config helpers ──────────────────────────────────────────────────────
 
 def _load_guard_config() -> dict:
@@ -221,7 +212,8 @@ def _save_guard_config(data: dict):
 
 def _require_guard_config() -> dict:
     cfg = _load_guard_config()
-    if not cfg or not cfg.get("team_id"):
+    ws = cfg.get("workspace_id")
+    if not cfg or not ws:
         print(f"{RED}Not connected. Run: conduct guard join <invite-code>{RESET}")
         sys.exit(1)
     return cfg
@@ -255,50 +247,6 @@ def _req(method: str, url: str, body=None, token: str = None, timeout: int = 20)
         print(f"{RED}Could not reach ConductAI API. Check your connection.{RESET}")
         sys.exit(1)
 
-
-# ── MCP registration helpers ──────────────────────────────────────────────────
-
-def _mcp_entry(team_id: str, member_token: str) -> dict:
-    return {
-        "command": "conductguard-mcp",
-        "args": ["--team", team_id, "--token", member_token],
-    }
-
-
-def _register_mcp(team_id: str, member_token: str) -> list[tuple[str, bool]]:
-    """Write MCP entry into every found AI tool config. Returns list of (label, registered_now)."""
-    entry   = _mcp_entry(team_id, member_token)
-    results = []
-
-    for cfg_path, label in _MCP_TARGETS:
-        if not cfg_path.exists():
-            continue
-
-        try:
-            existing = json.loads(cfg_path.read_text())
-        except (json.JSONDecodeError, OSError):
-            existing = {}
-
-        mcp_servers = existing.get("mcpServers", {})
-        current     = mcp_servers.get("conductguard", {})
-
-        # Idempotent: only write if missing or token changed
-        if (current.get("command") == entry["command"]
-                and current.get("args") == entry["args"]):
-            results.append((label, False))
-            continue
-
-        mcp_servers["conductguard"] = entry
-        existing["mcpServers"]      = mcp_servers
-
-        try:
-            cfg_path.write_text(json.dumps(existing, indent=2))
-            results.append((label, True))
-        except OSError:
-            print(f"{YELLOW}Warning: could not write to {cfg_path} — skipping.{RESET}")
-            results.append((label, False))
-
-    return results
 
 
 def _save_policy(policy: dict):
@@ -364,41 +312,25 @@ def cmd_guard_join(args):
     existing_cfg = _load_guard_config()
     base_url     = existing_cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
 
-    print(f"\nJoining team with invite code {CYAN}{invite_code}{RESET}…")
+    print(f"\nJoining workspace with invite code {CYAN}{invite_code}{RESET}…")
 
-    payload = {
-        "invite_code": invite_code,
-        "email":       email,
-    }
-    result = _req("POST", f"{base_url}/guard/teams/join", body=payload)
+    payload = {"invite_code": invite_code, "email": email}
+    result = _req("POST", f"{base_url}/guard/join", body=payload)
 
-    team_id      = result["team_id"]
-    team_name    = result.get("team_name", team_id)
-    member_id    = result["member_id"]
+    workspace_id = result["workspace_id"]
     member_token = result.get("member_token", "")
-    policy       = result.get("policy", {"team_id": team_id, "version": "", "rules": []})
+    policy       = result.get("policy", {"workspace_id": workspace_id, "version": "1", "rules": []})
 
     # Download and persist policy
     _save_policy(policy)
     rule_count = len(policy.get("rules", []))
     print(f"  {GREEN}Policy downloaded:{RESET} {rule_count} rule(s)")
 
-    # Register MCP in all found tool configs
-    registered = _register_mcp(team_id, member_token)
-    new_tools   = [label for label, is_new in registered if is_new]
-    all_tools   = [label for label, _ in registered]
-
-    for label, is_new in registered:
-        icon = f"{GREEN}registered{RESET}" if is_new else f"{GRAY}already registered{RESET}"
-        print(f"  {label} -> {icon}")
-
     # Persist guard config
     cfg = {
-        "team_id":    team_id,
-        "team_name":  team_name,
-        "member_id":  member_id,
-        "user_email": email,
-        "api_url":    base_url,
+        "workspace_id": workspace_id,
+        "user_email":   email,
+        "api_url":      base_url,
     }
     if member_token:
         cfg["member_token"] = member_token
@@ -414,38 +346,28 @@ def cmd_guard_join(args):
     _install_claude_hook(hook_path)
 
     print(
-        f"\n{BOLD}{GREEN}Connected to {team_name}.{RESET} "
-        f"{len(all_tools)} AI tool(s) registered. "
-        f"{rule_count} polic{'y' if rule_count == 1 else 'ies'} active."
+        f"\n{BOLD}{GREEN}Guard connected.{RESET} "
+        f"{rule_count} polic{'y' if rule_count == 1 else 'ies'} active.\n"
+        f"Your AI tool calls will now be checked against team policies."
     )
 
 
 def cmd_guard_sync(args):
     cfg          = _require_guard_config()
-    team_id      = cfg["team_id"]
+    workspace_id = cfg.get("workspace_id")
     member_token = cfg.get("member_token", "")
     base_url     = _api_url(cfg)
 
-    print(f"Syncing policy for team {CYAN}{cfg.get('team_name', team_id)}{RESET}…")
+    print(f"Syncing policy…")
 
     policy = _req(
         "GET",
-        f"{base_url}/guard/policies/sync?team_id={team_id}",
+        f"{base_url}/guard/policies/sync?workspace_id={workspace_id}",
         token=member_token,
     )
     _save_policy(policy)
     rule_count = len(policy.get("rules", []))
     print(f"  {GREEN}Policy refreshed:{RESET} {rule_count} rule(s)")
-
-    # Re-scan and register any newly found tool configs
-    registered = _register_mcp(team_id, member_token)
-    new_tools  = [(label, is_new) for label, is_new in registered if is_new]
-
-    if new_tools:
-        for label, _ in new_tools:
-            print(f"  {label} newly detected -> {GREEN}registered{RESET}")
-    else:
-        print(f"  {GRAY}No new AI tool configs detected.{RESET}")
 
     # Refresh hook script (picks up budget check and any other updates)
     hook_path = GUARD_DIR / "hook.py"
@@ -458,9 +380,8 @@ def cmd_guard_sync(args):
 
 def cmd_guard_status(args):
     cfg          = _require_guard_config()
-    team_id      = cfg["team_id"]
+    workspace_id = cfg.get("workspace_id")
     user_email   = cfg.get("user_email", "")
-    team_name    = cfg.get("team_name", team_id)
     member_token = cfg.get("member_token", "")
     base_url     = _api_url(cfg)
 
@@ -478,7 +399,7 @@ def cmd_guard_status(args):
     try:
         spend = _req(
             "GET",
-            f"{base_url}/guard/spend?team_id={team_id}",
+            f"{base_url}/guard/spend?workspace_id={workspace_id}",
             token=member_token,
         )
     except SystemExit:
@@ -494,7 +415,7 @@ def cmd_guard_status(args):
             "GET",
             (
                 f"{base_url}/guard/events"
-                f"?team_id={team_id}"
+                f"?workspace_id={workspace_id}"
                 f"&user_email={user_email}"
                 f"&since={today_iso}"
                 f"&limit=20"
@@ -509,21 +430,19 @@ def cmd_guard_status(args):
     violations = [e for e in events if e.get("decision") == "blocked"]
 
     # Format spend figures
-    sessions     = spend.get("sessions", 0)
-    tokens_used  = spend.get("tokens_used", 0)
+    sessions        = spend.get("sessions", 0)
+    tokens_used     = spend.get("tokens_used", 0)
     token_saved_pct = spend.get("token_saved_pct", 0)
-    cost         = spend.get("cost_usd", 0.0)
-    cost_saved   = spend.get("cost_saved_usd", 0.0)
+    cost            = spend.get("cost_usd", 0.0)
+    cost_saved      = spend.get("cost_saved_usd", 0.0)
 
     viol_summary = ""
     if violations:
-        rule_names = ", ".join(
-            v.get("rule", "unknown") for v in violations[:3]
-        )
+        rule_names = ", ".join(v.get("rule", "unknown") for v in violations[:3])
         viol_summary = f"  ({rule_names} — blocked)"
 
     print(f"\n{BOLD}Guard status{RESET} — {user_email}")
-    print(f"Team: {team_name} · {rule_count} polic{'y' if rule_count == 1 else 'ies'} active")
+    print(f"{rule_count} polic{'y' if rule_count == 1 else 'ies'} active")
     print()
     print(f"Today:")
     print(f"  Sessions: {sessions}")
@@ -535,7 +454,7 @@ def cmd_guard_status(args):
 
 def cmd_guard_audit(args):
     cfg          = _require_guard_config()
-    team_id      = cfg["team_id"]
+    workspace_id = cfg.get("workspace_id")
     user_email   = cfg.get("user_email", "")
     member_token = cfg.get("member_token", "")
     base_url     = _api_url(cfg)
@@ -547,7 +466,7 @@ def cmd_guard_audit(args):
         "GET",
         (
             f"{base_url}/guard/events"
-            f"?team_id={team_id}"
+            f"?workspace_id={workspace_id}"
             f"&user_email={user_email}"
             f"&since={since_iso}"
             f"&limit=50"
