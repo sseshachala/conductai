@@ -852,8 +852,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
       localStorage.setItem(TEST_RUN_KEY, JSON.stringify({ runId: data.run_id, startedAt: Date.now() }))
       setTestRunId(data.run_id)
       setTestRunStatus("pending")
-    } catch (e) {
-      console.error(e)
+    } catch {
+      // test run failed to start — setTestRunning resets below
     } finally {
       setTestRunning(false)
     }

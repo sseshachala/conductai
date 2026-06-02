@@ -18,9 +18,6 @@ interface WorkspaceContextValue {
   loading: boolean
   error: string | null
   refresh: () => Promise<void>
-  permissions: string[]
-  permissionsRole: string | null
-  permissionsLoading: boolean
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue>({
@@ -30,9 +27,6 @@ const WorkspaceContext = createContext<WorkspaceContextValue>({
   loading: true,
   error: null,
   refresh: async () => {},
-  permissions: [],
-  permissionsRole: null,
-  permissionsLoading: false,
 })
 
 export function useWorkspace() {
@@ -59,26 +53,21 @@ export function WorkspaceProvider({ children, clerkEnabled }: Props) {
 }
 
 function WorkspaceProviderWithAuth({ children }: { children: ReactNode }) {
-  const { getToken, isLoaded, isSignedIn } = useAuth()
-  return <WorkspaceProviderInner getToken={getToken} clerkReady={isLoaded && !!isSignedIn}>{children}</WorkspaceProviderInner>
+  const { getToken } = useAuth()
+  return <WorkspaceProviderInner getToken={getToken}>{children}</WorkspaceProviderInner>
 }
 
 function WorkspaceProviderInner({
   children,
   getToken,
-  clerkReady = true,
 }: {
   children: ReactNode
   getToken: (() => Promise<string | null>) | null
-  clerkReady?: boolean
 }) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [activeWorkspace, setActiveWorkspaceState] = useState<Workspace | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [permissions, setPermissions] = useState<string[]>([])
-  const [permissionsRole, setPermissionsRole] = useState<string | null>(null)
-  const [permissionsLoading, setPermissionsLoading] = useState(false)
 
   const refresh = useCallback(async () => {
     setError(null)
@@ -115,33 +104,6 @@ function WorkspaceProviderInner({
 
   useEffect(() => { refresh() }, [refresh])
 
-  useEffect(() => {
-    if (!activeWorkspace || !clerkReady) return
-    let cancelled = false
-    setPermissionsLoading(true)
-    async function fetchPerms() {
-      try {
-        const token = getToken ? await getToken() : null
-        if (!token) { if (!cancelled) setPermissionsLoading(false); return }
-        const headers = { "Authorization": `Bearer ${token}` }
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/me/permissions?workspace_id=${activeWorkspace!.id}`,
-          { headers }
-        )
-        if (res.ok) {
-          const data: { role: string; permissions: string[] } = await res.json()
-          if (!cancelled) { setPermissions(data.permissions); setPermissionsRole(data.role) }
-        }
-      } catch {
-        // non-fatal — Guard pages degrade to viewer permissions
-      } finally {
-        if (!cancelled) setPermissionsLoading(false)
-      }
-    }
-    fetchPerms()
-    return () => { cancelled = true }
-  }, [activeWorkspace?.id, clerkReady, getToken])
-
   function setActiveWorkspace(ws: Workspace) {
     setActiveWorkspaceState(ws)
     setCookie("delegator_project_id", ws.id)
@@ -149,7 +111,7 @@ function WorkspaceProviderInner({
   }
 
   return (
-    <WorkspaceContext.Provider value={{ workspaces, activeWorkspace, setActiveWorkspace, loading, error, refresh, permissions, permissionsRole, permissionsLoading }}>
+    <WorkspaceContext.Provider value={{ workspaces, activeWorkspace, setActiveWorkspace, loading, error, refresh }}>
       {children}
     </WorkspaceContext.Provider>
   )
