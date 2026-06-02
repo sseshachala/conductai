@@ -14,6 +14,10 @@ interface TeamPrefs {
 }
 
 export default function GuardSettingsPage() {
+  return <AppShell><SettingsContent /></AppShell>
+}
+
+function SettingsContent() {
   const { getToken } = useAuth()
   const { activeWorkspace } = useWorkspace()
   const { teamId } = useGuardTeam()
@@ -227,6 +231,5 @@ export default function GuardSettingsPage() {
           </div>
         )}
       </div>
-    </AppShell>
   )
 }

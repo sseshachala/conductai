@@ -125,11 +125,15 @@ function formatTotalTokensSaved(n: number): string {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function GuardPage() {
+  return <AppShell><GuardDashboard /></AppShell>
+}
+
+function GuardDashboard() {
   const { getToken } = useAuth()
   const { user } = useUser()
   const { teamId, loading: teamLoading } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
-  const { permissions, role: guardRole, loading: permissionsLoading } = useGuardRole(teamId, activeWorkspace?.id ?? null)
+  const { permissions, loading: permissionsLoading } = useGuardRole(teamId, activeWorkspace?.id ?? null)
 
   const [events, setEvents]       = useState<GuardEvent[]>([])
   const [stats, setStats]         = useState<SpendStats | null>(null)
@@ -280,11 +284,6 @@ export default function GuardPage() {
               : "—"
             }
           </div>
-        </div>
-
-        {/* Temporary debug — remove after fix confirmed */}
-        <div className="text-xs text-stone-400 font-mono">
-          role: {guardRole ?? (permissionsLoading ? "loading…" : "null")} | ws: {activeWorkspace?.id?.slice(0,8) ?? "none"}
         </div>
 
         {/* Viewer-scoped notice */}
@@ -454,6 +453,5 @@ export default function GuardPage() {
         </div>
 
       </div>
-    </AppShell>
   )
 }
