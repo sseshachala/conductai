@@ -246,7 +246,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1 and sys.argv[1] == "post":
+        post_usage_main()
+    else:
+        main()
 '''
 
 # ── Guard config helpers ──────────────────────────────────────────────────────
@@ -343,16 +346,27 @@ def _install_codex_hook(hook_path: Path) -> None:
         pre.append({"matcher": ".*", "hooks": [{"type": "command", "command": pre_cmd}]})
         changed = True
 
-    # PostToolUse
-    post_cmd = "conductguard-post"
+    # PostToolUse — self-contained: python3 /path/hook.py post (no PATH dependency)
+    post_cmd = f"python3 {hook_path} post"
     post = hook_section.setdefault("PostToolUse", [])
+    # Remove stale conductguard-post entries registered by older CLI versions
+    stale = "conductguard-post"
+    cleaned = False
+    for h in post:
+        before = len(h.get("hooks", []))
+        h["hooks"] = [e for e in h.get("hooks", []) if e.get("command") != stale]
+        if len(h["hooks"]) < before:
+            cleaned = True
+    post[:] = [h for h in post if h.get("hooks")]
     post_already = any(
         e.get("command") == post_cmd
         for h in post
         for e in h.get("hooks", [])
     )
     if not post_already:
-        post.append({"matcher": "*", "hooks": [{"type": "command", "command": post_cmd}]})
+        post.append({"matcher": ".*", "hooks": [{"type": "command", "command": post_cmd}]})
+        changed = True
+    if cleaned:
         changed = True
 
     if changed:
@@ -360,7 +374,7 @@ def _install_codex_hook(hook_path: Path) -> None:
         codex_hooks.write_text(json.dumps(hooks, indent=2))
         if not pre_already:
             print(f"  {GREEN}Codex PreToolUse hook registered{RESET}")
-        if not post_already:
+        if not post_already or cleaned:
             print(f"  {GREEN}Codex PostToolUse hook registered{RESET}")
     else:
         print(f"  {GRAY}Codex hooks already registered{RESET}")
@@ -439,16 +453,27 @@ def _install_claude_hook(hook_path: Path) -> None:
         pre.append({"matcher": ".*", "hooks": [{"type": "command", "command": pre_cmd}]})
         changed = True
 
-    # PostToolUse — conductguard-post entrypoint
+    # PostToolUse — self-contained: python3 /path/hook.py post (no PATH dependency)
     post = hooks.setdefault("PostToolUse", [])
-    post_cmd = "conductguard-post"
+    post_cmd = f"python3 {hook_path} post"
+    # Remove stale conductguard-post entries registered by older CLI versions
+    stale = "conductguard-post"
+    cleaned = False
+    for h in post:
+        before = len(h.get("hooks", []))
+        h["hooks"] = [e for e in h.get("hooks", []) if e.get("command") != stale]
+        if len(h["hooks"]) < before:
+            cleaned = True
+    post[:] = [h for h in post if h.get("hooks")]
     post_already = any(
         e.get("command") == post_cmd
         for h in post
         for e in h.get("hooks", [])
     )
     if not post_already:
-        post.append({"matcher": "*", "hooks": [{"type": "command", "command": post_cmd}]})
+        post.append({"matcher": ".*", "hooks": [{"type": "command", "command": post_cmd}]})
+        changed = True
+    if cleaned:
         changed = True
 
     if changed:
@@ -456,7 +481,7 @@ def _install_claude_hook(hook_path: Path) -> None:
         claude_settings.write_text(json.dumps(settings, indent=2))
         if not pre_already:
             print(f"  {GREEN}Claude Code PreToolUse hook registered{RESET}")
-        if not post_already:
+        if not post_already or cleaned:
             print(f"  {GREEN}Claude Code PostToolUse hook registered{RESET}")
     else:
         print(f"  {GRAY}Claude Code hooks already registered{RESET}")
