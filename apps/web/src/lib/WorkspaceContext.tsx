@@ -18,6 +18,9 @@ interface WorkspaceContextValue {
   loading: boolean
   error: string | null
   refresh: () => Promise<void>
+  permissions: string[]
+  permissionsRole: string | null
+  permissionsLoading: boolean
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue>({
@@ -27,6 +30,9 @@ const WorkspaceContext = createContext<WorkspaceContextValue>({
   loading: true,
   error: null,
   refresh: async () => {},
+  permissions: [],
+  permissionsRole: null,
+  permissionsLoading: false,
 })
 
 export function useWorkspace() {
@@ -68,6 +74,9 @@ function WorkspaceProviderInner({
   const [activeWorkspace, setActiveWorkspaceState] = useState<Workspace | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [permissions, setPermissions] = useState<string[]>([])
+  const [permissionsRole, setPermissionsRole] = useState<string | null>(null)
+  const [permissionsLoading, setPermissionsLoading] = useState(false)
 
   const refresh = useCallback(async () => {
     setError(null)
@@ -104,6 +113,33 @@ function WorkspaceProviderInner({
 
   useEffect(() => { refresh() }, [refresh])
 
+  useEffect(() => {
+    if (!activeWorkspace) return
+    let cancelled = false
+    setPermissionsLoading(true)
+    async function fetchPerms() {
+      try {
+        const token = getToken ? await getToken() : null
+        const headers: Record<string, string> = {}
+        if (token) headers["Authorization"] = `Bearer ${token}`
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/me/permissions?workspace_id=${activeWorkspace!.id}`,
+          { headers }
+        )
+        if (res.ok) {
+          const data: { role: string; permissions: string[] } = await res.json()
+          if (!cancelled) { setPermissions(data.permissions); setPermissionsRole(data.role) }
+        }
+      } catch {
+        // non-fatal — Guard pages degrade to viewer permissions
+      } finally {
+        if (!cancelled) setPermissionsLoading(false)
+      }
+    }
+    fetchPerms()
+    return () => { cancelled = true }
+  }, [activeWorkspace?.id])
+
   function setActiveWorkspace(ws: Workspace) {
     setActiveWorkspaceState(ws)
     setCookie("delegator_project_id", ws.id)
@@ -111,7 +147,7 @@ function WorkspaceProviderInner({
   }
 
   return (
-    <WorkspaceContext.Provider value={{ workspaces, activeWorkspace, setActiveWorkspace, loading, error, refresh }}>
+    <WorkspaceContext.Provider value={{ workspaces, activeWorkspace, setActiveWorkspace, loading, error, refresh, permissions, permissionsRole, permissionsLoading }}>
       {children}
     </WorkspaceContext.Provider>
   )

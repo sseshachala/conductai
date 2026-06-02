@@ -1,5 +1,6 @@
 from app.models.organization import Organization
 from app.models.workspace import Workspace
+from app.models.rbac import Role, Permission  # noqa
 from app.models.user import User
 from app.models.workspace_user import WorkspaceUser
 from app.models.project import Project
@@ -27,4 +28,5 @@ __all__ = [
     "PlaybookSubmission",
     "GuardTeam", "GuardMember", "GuardPolicy", "GuardSession",
     "GuardAuditEvent", "GuardSpendBudget",
+    "Role", "Permission",
 ]

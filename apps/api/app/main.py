@@ -17,6 +17,7 @@ from app.routers.organizations import router as organizations_router
 from app.routers.workspace_projects import router as workspace_projects_router, audit_router as audit_log_router, preferences_router as workspace_preferences_router, project_direct_router
 from app.routers.runs import workspace_runs_router
 from app.routers.api_keys import router as api_keys_router, me_router
+from app.routers.rbac import router as rbac_router, me_router as me_rbac_router
 
 setup_logging()
 log = structlog.get_logger(__name__)
@@ -83,6 +84,8 @@ app.include_router(guard_teams.router)
 app.include_router(guard_policies.router)
 app.include_router(guard_events.router)
 app.include_router(guard_spend.router)
+app.include_router(rbac_router)
+app.include_router(me_rbac_router)
 
 
 @app.on_event("startup")
