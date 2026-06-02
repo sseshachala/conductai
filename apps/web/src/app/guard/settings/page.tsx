@@ -47,9 +47,9 @@ export default function GuardSettingsPage() {
         if (!res.ok || cancelled) return
         const members: { clerk_user_id: string; role: string }[] = await res.json()
         const role = members.find(m => m.clerk_user_id === userId)?.role as UserRole ?? null
-        if (!cancelled) setUserRole(role ?? "admin")
+        if (!cancelled) setUserRole(role ?? "viewer")
       } catch {
-        if (!cancelled) setUserRole("admin")
+        if (!cancelled) setUserRole("viewer")
       }
     }
     fetchRole()
