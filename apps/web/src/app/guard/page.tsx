@@ -16,14 +16,14 @@ function getCookie(name: string): string | null {
 
 interface GuardEvent {
   id: string
-  developer_email: string
+  user_email: string | null
   ai_tool: string
   tool_call: string
-  input_summary: string
+  input_summary: string | null
   decision: "allowed" | "blocked" | "warned" | "approval"
   tokens_saved: number | null
-  reason: string | null
-  created_at: string
+  rule_message: string | null
+  ts: string
 }
 
 interface SpendStats {
@@ -234,15 +234,15 @@ export default function GuardPage() {
   // ── Derived data ─────────────────────────────────────────────────────────────
 
   const developerEmails = useMemo(
-    () => Array.from(new Set(events.map(e => e.developer_email))).sort(),
+    () => Array.from(new Set(events.map(e => e.user_email).filter(Boolean) as string[])).sort(),
     [events]
   )
 
   const filteredEvents = useMemo(() => {
     return events.filter(ev => {
-      if (filterTool !== "all"     && ev.ai_tool          !== filterTool)     return false
-      if (filterDecision !== "all" && ev.decision         !== filterDecision) return false
-      if (filterDev !== "all"      && ev.developer_email  !== filterDev)      return false
+      if (filterTool !== "all"     && ev.ai_tool    !== filterTool)     return false
+      if (filterDecision !== "all" && ev.decision   !== filterDecision) return false
+      if (filterDev !== "all"      && ev.user_email !== filterDev)      return false
       return true
     })
   }, [events, filterTool, filterDecision, filterDev])
@@ -284,7 +284,7 @@ export default function GuardPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatCard
               label="Active developers"
-              value={stats?.active_developers ?? new Set(events.map(e => e.developer_email)).size}
+              value={stats?.active_developers ?? new Set(events.map(e => e.user_email).filter(Boolean)).size}
               accent="text-indigo-700"
             />
             <StatCard
@@ -396,10 +396,10 @@ export default function GuardPage() {
                       className="border-b border-stone-100 last:border-0 hover:bg-stone-50 transition-colors"
                     >
                       <td className="px-4 py-3 text-stone-400 text-xs tabular-nums whitespace-nowrap">
-                        {timeAgo(ev.created_at)}
+                        {timeAgo(ev.ts)}
                       </td>
-                      <td className="px-4 py-3 text-stone-700 text-xs truncate max-w-[140px]" title={ev.developer_email}>
-                        {ev.developer_email}
+                      <td className="px-4 py-3 text-stone-700 text-xs truncate max-w-[140px]" title={ev.user_email ?? undefined}>
+                        {ev.user_email ?? "—"}
                       </td>
                       <td className="px-4 py-3">
                         <AiToolBadge tool={ev.ai_tool} />
@@ -412,9 +412,9 @@ export default function GuardPage() {
                       </td>
                       <td className="px-4 py-3">
                         <DecisionBadge decision={ev.decision} />
-                        {ev.reason && ev.decision !== "allowed" && (
-                          <div className="text-[11px] text-stone-400 mt-0.5 truncate max-w-[120px]" title={ev.reason}>
-                            {ev.reason}
+                        {ev.rule_message && ev.decision !== "allowed" && (
+                          <div className="text-[11px] text-stone-400 mt-0.5 truncate max-w-[120px]" title={ev.rule_message}>
+                            {ev.rule_message}
                           </div>
                         )}
                       </td>

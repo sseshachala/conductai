@@ -14,11 +14,11 @@ function getCookie(name: string): string | null {
 
 interface AuditEvent {
   id: string
-  timestamp: string
-  developer: string
+  ts: string
+  user_email: string | null
   ai_tool: string
   tool_call: string
-  input_summary: string
+  input_summary: string | null
   decision: "allowed" | "blocked" | "approval"
   rule_id: string | null
   conductai_run_id: string | null
@@ -54,11 +54,11 @@ function exportCsv(events: AuditEvent[]) {
   const header = "timestamp,developer,ai_tool,tool_call,input_summary,decision,rule_id\n"
   const rows = events.map((e) => {
     const cols = [
-      e.timestamp,
-      e.developer,
+      e.ts,
+      e.user_email ?? "",
       e.ai_tool,
       e.tool_call,
-      `"${e.input_summary.replace(/"/g, '""')}"`,
+      `"${(e.input_summary ?? "").replace(/"/g, '""')}"`,
       e.decision,
       e.rule_id ?? "",
     ]
@@ -94,7 +94,7 @@ export default function ActivityPage() {
   const [filterUntil, setFilterUntil] = useState("")
 
   // Unique values from loaded events for filter dropdowns
-  const developers = Array.from(new Set(events.map((e) => e.developer))).sort()
+  const developers = Array.from(new Set(events.map((e) => e.user_email).filter(Boolean) as string[])).sort()
   const tools = Array.from(new Set(events.map((e) => e.ai_tool))).sort()
 
   function buildParams(offset: number) {
@@ -291,10 +291,10 @@ export default function ActivityPage() {
                       className="border-b border-stone-100 last:border-0 hover:bg-stone-50 transition-colors"
                     >
                       <td className="px-4 py-3 text-xs text-stone-500 font-mono whitespace-nowrap">
-                        {formatTs(ev.timestamp)}
+                        {formatTs(ev.ts)}
                       </td>
                       <td className="px-4 py-3 text-xs text-stone-700 max-w-[180px] truncate">
-                        {ev.developer}
+                        {ev.user_email ?? "—"}
                       </td>
                       <td className="px-4 py-3 text-xs text-stone-600 whitespace-nowrap">
                         {ev.ai_tool}
