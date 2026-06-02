@@ -502,9 +502,9 @@ export default function PoliciesPage() {
         if (!res.ok || cancelled) return
         const members: { user_id: string; role: string }[] = await res.json()
         const role = members.find(m => m.user_id === userId)?.role as UserRole ?? null
-        if (!cancelled) setUserRole(role ?? "admin")
+        if (!cancelled) setUserRole(role ?? "viewer")
       } catch {
-        if (!cancelled) setUserRole("admin")
+        if (!cancelled) setUserRole("viewer")
       }
     }
     fetchRole()
