@@ -439,7 +439,19 @@ function GuardDashboard() {
                       <td className="px-4 py-3 font-mono text-xs text-stone-600 whitespace-nowrap">
                         {ev.tool_call}
                       </td>
-                      <td className="px-4 py-3 text-xs text-stone-500 max-w-[200px] truncate" title={ev.input_summary ?? undefined}>
+                      <td
+                        className="px-4 py-3 text-xs text-stone-500 max-w-[200px] truncate cursor-copy select-none"
+                        title={ev.input_summary ? "Double-click to copy" : undefined}
+                        onDoubleClick={() => {
+                          if (!ev.input_summary) return
+                          navigator.clipboard.writeText(ev.input_summary)
+                            .then(() => {
+                              const el = document.activeElement as HTMLElement
+                              el?.blur()
+                            })
+                            .catch(() => {})
+                        }}
+                      >
                         {ev.input_summary ?? "—"}
                       </td>
                       <td className="px-4 py-3">
