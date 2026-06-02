@@ -5,7 +5,6 @@ import Link from "next/link"
 import { useAuth } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
-import { getGuardTeamId } from "@/lib/guardStorage"
 
 type UserRole = "admin" | "security" | "editor" | "viewer" | null
 
@@ -477,10 +476,6 @@ function formatUpdatedAt(iso: string | undefined): string {
 // Main page
 // ---------------------------------------------------------------------------
 
-function getTeamId(): string {
-  return getGuardTeamId()
-}
-
 export default function PoliciesPage() {
   const { getToken, userId } = useAuth()
   const { activeWorkspace } = useWorkspace()
@@ -490,6 +485,8 @@ export default function PoliciesPage() {
   const [showModal, setShowModal] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [userRole, setUserRole] = useState<UserRole>(null)
+  // Populated from the first loaded policy; used for POST/PATCH/DELETE bodies.
+  const [resolvedTeamId, setResolvedTeamId] = useState<string | null>(null)
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ""
 
@@ -524,24 +521,27 @@ export default function PoliciesPage() {
       const t = await getToken()
       if (t) headers["Authorization"] = `Bearer ${t}`
     }
-    const ws = getTeamId()
-    if (ws) headers["X-Workspace-Id"] = ws
     return headers
   }, [getToken])
 
   // Fetch on mount
   useEffect(() => {
     async function load() {
+      const wsId = activeWorkspace?.id
+      if (!wsId) return
       setLoading(true)
       setError(null)
       try {
         const headers = await authHeaders()
-        const teamId = getTeamId()
-        const qs = teamId ? `?team_id=${encodeURIComponent(teamId)}` : ""
+        const qs = `?workspace_id=${encodeURIComponent(wsId)}`
         const res = await fetch(`${apiUrl}/guard/policies${qs}`, { headers })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data: Policy[] = await res.json()
         setPolicies(data)
+        // Cache the resolved team_id from the first result for write operations
+        if (data.length > 0 && data[0].team_id) {
+          setResolvedTeamId(data[0].team_id)
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load policies.")
       } finally {
@@ -549,7 +549,7 @@ export default function PoliciesPage() {
       }
     }
     load()
-  }, [apiUrl, authHeaders])
+  }, [apiUrl, authHeaders, activeWorkspace?.id])
 
   // Toggle enable/disable with optimistic update
   async function handleToggle(id: string) {
@@ -607,7 +607,6 @@ export default function PoliciesPage() {
     setSubmitting(true)
     try {
       const headers = await authHeaders()
-      const teamId = getTeamId()
       const body: Record<string, unknown> = {
         rule_id: formData.rule_id.trim(),
         description: formData.description.trim(),
@@ -619,7 +618,7 @@ export default function PoliciesPage() {
         builtin: false,
       }
       if (formData.match_path_pattern.trim()) body.match_path_pattern = formData.match_path_pattern.trim()
-      if (teamId) body.team_id = teamId
+      if (resolvedTeamId) body.team_id = resolvedTeamId
 
       const res = await fetch(`${apiUrl}/guard/policies`, {
         method: "POST",

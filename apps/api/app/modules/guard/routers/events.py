@@ -74,6 +74,18 @@ class EventOut(BaseModel):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+def _resolve_team_id(db: Session, team_id: str | None, workspace_id: str | None) -> str:
+    """Return a concrete team_id string, or raise 422 if neither param resolves."""
+    if team_id:
+        return team_id
+    if workspace_id:
+        from app.modules.guard.routers.teams import _lookup_team
+        team = _lookup_team(db, workspace_id)
+        if team:
+            return str(team.id)
+    raise HTTPException(status_code=422, detail="Provide team_id or workspace_id")
+
+
 def _event_to_dict(e: GuardAuditEvent) -> dict:
     return {
         "id": str(e.id),
@@ -265,7 +277,8 @@ def ingest_event(
 def list_events(
     db: Session = Depends(get_db),
     _org_id: str = Depends(get_guard_org_id),
-    team_id: str = Query(..., description="Team ID to filter by"),
+    team_id: str | None = Query(default=None, description="Team ID to filter by"),
+    workspace_id: str | None = Query(default=None, description="Workspace ID (alternative to team_id)"),
     decision: str | None = Query(default=None, description="allowed|blocked|warned|approval"),
     ai_tool: str | None = Query(default=None, description="claude_code|codex|cursor|copilot|windsurf|gemini"),
     user_email: str | None = Query(default=None),
@@ -274,9 +287,10 @@ def list_events(
     offset: int = Query(default=0, ge=0),
 ):
     """Paginated, filterable audit event list for a team."""
+    resolved = _resolve_team_id(db, team_id, workspace_id)
     q = (
         db.query(GuardAuditEvent)
-        .filter(GuardAuditEvent.team_id == team_id)
+        .filter(GuardAuditEvent.team_id == resolved)
     )
     if decision:
         q = q.filter(GuardAuditEvent.decision == decision)
@@ -321,14 +335,27 @@ def _fetch_new_events(team_id: str, since: datetime) -> tuple[list[dict], dateti
 @router.get("/stream")
 async def stream_events(
     request: Request,
-    team_id: str = Query(..., description="Team ID"),
+    team_id: str | None = Query(default=None, description="Team ID"),
+    workspace_id: str | None = Query(default=None, description="Workspace ID (alternative to team_id)"),
     token: str | None = Query(default=None, description="Bearer token (SSE can't set headers)"),
 ):
     if _clerk_enabled():
         if not token or not _verify_clerk_token(token):
             from fastapi.responses import Response
             return Response(status_code=403, content="Invalid or missing token")
-    """SSE endpoint — polls DB every 2s and pushes new events since last check."""
+    # Resolve team_id from workspace_id if needed
+    if not team_id and workspace_id:
+        db_sess = SessionLocal()
+        try:
+            from app.modules.guard.routers.teams import _lookup_team
+            team = _lookup_team(db_sess, workspace_id)
+            if team:
+                team_id = str(team.id)
+        finally:
+            db_sess.close()
+    if not team_id:
+        from fastapi.responses import Response
+        return Response(status_code=422, content="Provide team_id or workspace_id")
 
     async def event_generator():
         cursor = _now()

@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import { useAuth } from "@clerk/nextjs"
-import { getGuardTeamId } from "@/lib/guardStorage"
 import AppShell from "@/components/AppShell"
 import { timeAgo } from "@/lib/runUtils"
 import { useWorkspace } from "@/lib/WorkspaceContext"
@@ -144,19 +143,18 @@ export default function GuardPage() {
 
   const buildHeaders = useCallback(async (): Promise<Record<string, string>> => {
     const token = await getToken()
-    const teamId = getGuardTeamId()
     const h: Record<string, string> = { "Content-Type": "application/json" }
-    if (token)  h["Authorization"]  = `Bearer ${token}`
-    if (teamId) h["X-Workspace-Id"] = teamId
+    if (token) h["Authorization"] = `Bearer ${token}`
     return h
   }, [getToken])
 
   const loadEvents = useCallback(async () => {
+    const wsId = activeWorkspace?.id
+    if (!wsId) return
     const headers = await buildHeaders()
-    const teamId  = getGuardTeamId()
     const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params  = new URLSearchParams({ limit: "100" })
-    if (teamId) params.set("team_id", teamId)
+    params.set("workspace_id", wsId)
     try {
       const res = await fetch(`${base}/guard/events?${params}`, { headers })
       if (res.ok) {
@@ -168,29 +166,31 @@ export default function GuardPage() {
     } catch {
       // non-fatal — keep last known state
     }
-  }, [buildHeaders])
+  }, [buildHeaders, activeWorkspace?.id])
 
   const loadStats = useCallback(async () => {
+    const wsId = activeWorkspace?.id
+    if (!wsId) return
     const headers = await buildHeaders()
-    const teamId  = getGuardTeamId()
     const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params  = new URLSearchParams()
-    if (teamId) params.set("team_id", teamId)
+    params.set("workspace_id", wsId)
     try {
       const res = await fetch(`${base}/guard/spend?${params}`, { headers })
       if (res.ok) setStats(await res.json())
     } catch {
       // non-fatal
     }
-  }, [buildHeaders])
+  }, [buildHeaders, activeWorkspace?.id])
 
   const connectSSE = useCallback(async () => {
+    const wsId   = activeWorkspace?.id
+    if (!wsId) return
     const token  = await getToken()
-    const teamId = getGuardTeamId()
     const base   = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params = new URLSearchParams()
-    if (token)  params.set("token",   token)
-    if (teamId) params.set("team_id", teamId)
+    if (token) params.set("token", token)
+    params.set("workspace_id", wsId)
     const url = `${base}/guard/events/stream?${params}`
 
     if (esRef.current) esRef.current.close()
@@ -215,7 +215,7 @@ export default function GuardPage() {
         // malformed frame — ignore
       }
     }
-  }, [getToken])
+  }, [getToken, activeWorkspace?.id])
 
   useEffect(() => {
     connectSSE()
