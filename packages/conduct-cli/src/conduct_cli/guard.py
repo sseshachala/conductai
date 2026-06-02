@@ -322,7 +322,7 @@ def _parse_since(since_str: str) -> str:
     if unit not in delta_map:
         print(f"{RED}Invalid --since value '{since_str}'. Use: 1h, 24h, 7d, 30d{RESET}")
         sys.exit(1)
-    return (datetime.now(tz=timezone.utc) - delta_map[unit]).isoformat()
+    return (datetime.now(tz=timezone.utc) - delta_map[unit]).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # ── Hook helpers ─────────────────────────────────────────────────────────────
@@ -538,7 +538,7 @@ def cmd_guard_status(args):
     # Fetch recent violations (today)
     today_iso = datetime.now(tz=timezone.utc).replace(
         hour=0, minute=0, second=0, microsecond=0
-    ).isoformat()
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
     events: list = []
     try:
         events = _req(
