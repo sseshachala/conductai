@@ -16,9 +16,10 @@ GRAY   = "\033[90m"
 CYAN   = "\033[36m"
 YELLOW = "\033[33m"
 
-GUARD_DIR    = Path.home() / ".conductguard"
-CONFIG_PATH  = GUARD_DIR / "config.json"
-POLICY_PATH  = GUARD_DIR / "policy.json"
+GUARD_DIR      = Path.home() / ".conductguard"
+CONFIG_PATH    = GUARD_DIR / "config.json"
+POLICY_PATH    = GUARD_DIR / "policy.json"
+CONDUCT_CONFIG = Path.home() / ".conduct" / "config.json"
 
 _HOOK_SCRIPT = '''\
 #!/usr/bin/env python3
@@ -177,11 +178,14 @@ def _post_event(tool_name, tool_input, rule_id, action, message):
     })
 
     api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+    api_key = cfg.get("api_key", "")
+    member_token = cfg.get("member_token", "")
+    auth_header = f'"X-Api-Key": "{api_key}"' if api_key else f'"Authorization": "Bearer {member_token}"'
     script = (
         "import urllib.request\\n"
         "try:\\n"
         f"    req = urllib.request.Request(\\"{api_url}/guard/events\\","
-        f" data={repr(payload.encode())}, headers={{\\\"Content-Type\\\": \\\"application/json\\\"}}, method=\\"POST\\")\\n"
+        f" data={repr(payload.encode())}, headers={{\\\"Content-Type\\\": \\\"application/json\\\", {auth_header}}}, method=\\"POST\\")\\n"
         "    urllib.request.urlopen(req, timeout=5)\\n"
         "except: pass\\n"
     )
@@ -222,9 +226,16 @@ def _save_guard_config(data: dict):
 def _require_guard_config() -> dict:
     cfg = _load_guard_config()
     if not cfg or not cfg.get("team_id"):
-        print(f"{RED}Not connected. Run: conduct guard join <invite-code>{RESET}")
+        print(f"{RED}Not connected. Run: conduct guard install{RESET}")
         sys.exit(1)
     return cfg
+
+
+def _auth_kwargs(cfg: dict) -> dict:
+    """Return kwargs for _req: prefer api_key over member_token."""
+    if cfg.get("api_key"):
+        return {"api_key": cfg["api_key"]}
+    return {"token": cfg.get("member_token", "")}
 
 
 def _api_url(cfg: dict) -> str:
@@ -233,9 +244,11 @@ def _api_url(cfg: dict) -> str:
 
 # ── HTTP helpers (no third-party deps — mirrors api.py style) ─────────────────
 
-def _req(method: str, url: str, body=None, token: str = None, timeout: int = 20) -> dict:
+def _req(method: str, url: str, body=None, token: str = None, api_key: str = None, timeout: int = 20) -> dict:
     headers = {"Content-Type": "application/json"}
-    if token:
+    if api_key:
+        headers["X-Api-Key"] = api_key
+    elif token:
         headers["Authorization"] = f"Bearer {token}"
     data = json.dumps(body).encode() if body is not None else None
     r = urllib.request.Request(url, data=data, headers=headers, method=method)
@@ -351,6 +364,73 @@ def _install_claude_hook(hook_path: Path) -> None:
 
 # ── Commands ──────────────────────────────────────────────────────────────────
 
+def cmd_guard_install(args):
+    """conduct guard install — wire up Guard using the logged-in API key."""
+    # Read API key + server from conduct login config
+    conduct_cfg: dict = {}
+    if CONDUCT_CONFIG.exists():
+        try:
+            conduct_cfg = json.loads(CONDUCT_CONFIG.read_text())
+        except Exception:
+            pass
+
+    api_key  = getattr(args, "api_key", None) or conduct_cfg.get("api_key") or ""
+    base_url = getattr(args, "server", None) or conduct_cfg.get("server", "https://api.conductai.ai")
+    base_url = base_url.rstrip("/")
+
+    if not api_key:
+        print(f"{RED}No API key found. Run: conduct login --api-key <key>{RESET}")
+        sys.exit(1)
+
+    print(f"\nConnecting to Guard at {CYAN}{base_url}{RESET}…")
+
+    # Resolve Guard team for this workspace
+    status = _req("GET", f"{base_url}/guard/teams/installed", api_key=api_key)
+    if not status.get("installed"):
+        print(f"{RED}Guard is not installed for this workspace. Ask your admin to enable it.{RESET}")
+        sys.exit(1)
+
+    team_id   = status["team_id"]
+    team_name = status.get("team_name", team_id)
+    print(f"  {GREEN}Guard team:{RESET} {team_name} ({team_id})")
+
+    # Pull active policies
+    policy = _req("GET", f"{base_url}/guard/policies/sync?team_id={team_id}", api_key=api_key)
+    _save_policy(policy)
+    rule_count = len(policy.get("rules", []))
+    print(f"  {GREEN}Policies downloaded:{RESET} {rule_count} rule(s)")
+
+    # Fetch user email from /me for spend tracking
+    user_email = ""
+    try:
+        me = _req("GET", f"{base_url}/me", api_key=api_key)
+        user_email = me.get("email") or ""
+    except SystemExit:
+        pass
+
+    # Persist guard config (api_key-based, no member_token needed)
+    cfg = {
+        "team_id":    team_id,
+        "team_name":  team_name,
+        "user_email": user_email,
+        "api_key":    api_key,
+        "api_url":    base_url,
+    }
+    _save_guard_config(cfg)
+
+    # Write hook script and install
+    hook_path = GUARD_DIR / "hook.py"
+    hook_path.write_text(_HOOK_SCRIPT)
+    hook_path.chmod(0o755)
+    _install_claude_hook(hook_path)
+
+    print(
+        f"\n{BOLD}{GREEN}Guard active on {team_name}.{RESET} "
+        f"{rule_count} polic{'y' if rule_count == 1 else 'ies'} enforced. "
+        f"Every Claude Code tool call is now checked."
+    )
+
+
 def cmd_guard_join(args):
     invite_code = args.invite_code
 
@@ -421,31 +501,17 @@ def cmd_guard_join(args):
 
 
 def cmd_guard_sync(args):
-    cfg          = _require_guard_config()
-    team_id      = cfg["team_id"]
-    member_token = cfg.get("member_token", "")
-    base_url     = _api_url(cfg)
+    cfg      = _require_guard_config()
+    team_id  = cfg["team_id"]
+    base_url = _api_url(cfg)
+    auth     = _auth_kwargs(cfg)
 
     print(f"Syncing policy for team {CYAN}{cfg.get('team_name', team_id)}{RESET}…")
 
-    policy = _req(
-        "GET",
-        f"{base_url}/guard/policies/sync?team_id={team_id}",
-        token=member_token,
-    )
+    policy = _req("GET", f"{base_url}/guard/policies/sync?team_id={team_id}", **auth)
     _save_policy(policy)
     rule_count = len(policy.get("rules", []))
     print(f"  {GREEN}Policy refreshed:{RESET} {rule_count} rule(s)")
-
-    # Re-scan and register any newly found tool configs
-    registered = _register_mcp(team_id, member_token)
-    new_tools  = [(label, is_new) for label, is_new in registered if is_new]
-
-    if new_tools:
-        for label, _ in new_tools:
-            print(f"  {label} newly detected -> {GREEN}registered{RESET}")
-    else:
-        print(f"  {GRAY}No new AI tool configs detected.{RESET}")
 
     # Refresh hook script (picks up budget check and any other updates)
     hook_path = GUARD_DIR / "hook.py"
@@ -457,12 +523,12 @@ def cmd_guard_sync(args):
 
 
 def cmd_guard_status(args):
-    cfg          = _require_guard_config()
-    team_id      = cfg["team_id"]
-    user_email   = cfg.get("user_email", "")
-    team_name    = cfg.get("team_name", team_id)
-    member_token = cfg.get("member_token", "")
-    base_url     = _api_url(cfg)
+    cfg        = _require_guard_config()
+    team_id    = cfg["team_id"]
+    user_email = cfg.get("user_email", "")
+    team_name  = cfg.get("team_name", team_id)
+    base_url   = _api_url(cfg)
+    auth       = _auth_kwargs(cfg)
 
     # Load local policy for rule count
     rule_count = 0
@@ -476,11 +542,7 @@ def cmd_guard_status(args):
     # Fetch today's spend
     spend = {}
     try:
-        spend = _req(
-            "GET",
-            f"{base_url}/guard/spend?team_id={team_id}",
-            token=member_token,
-        )
+        spend = _req("GET", f"{base_url}/guard/spend?team_id={team_id}", **auth)
     except SystemExit:
         pass
 
@@ -492,14 +554,8 @@ def cmd_guard_status(args):
     try:
         events = _req(
             "GET",
-            (
-                f"{base_url}/guard/events"
-                f"?team_id={team_id}"
-                f"&user_email={user_email}"
-                f"&since={today_iso}"
-                f"&limit=20"
-            ),
-            token=member_token,
+            f"{base_url}/guard/events?team_id={team_id}&user_email={user_email}&since={today_iso}&limit=20",
+            **auth,
         )
         if not isinstance(events, list):
             events = events.get("events", [])
@@ -534,25 +590,19 @@ def cmd_guard_status(args):
 
 
 def cmd_guard_audit(args):
-    cfg          = _require_guard_config()
-    team_id      = cfg["team_id"]
-    user_email   = cfg.get("user_email", "")
-    member_token = cfg.get("member_token", "")
-    base_url     = _api_url(cfg)
+    cfg        = _require_guard_config()
+    team_id    = cfg["team_id"]
+    user_email = cfg.get("user_email", "")
+    base_url   = _api_url(cfg)
+    auth       = _auth_kwargs(cfg)
 
     since_str = getattr(args, "since", None) or "24h"
     since_iso = _parse_since(since_str)
 
     events_resp = _req(
         "GET",
-        (
-            f"{base_url}/guard/events"
-            f"?team_id={team_id}"
-            f"&user_email={user_email}"
-            f"&since={since_iso}"
-            f"&limit=50"
-        ),
-        token=member_token,
+        f"{base_url}/guard/events?team_id={team_id}&user_email={user_email}&since={since_iso}&limit=50",
+        **auth,
     )
     events = events_resp if isinstance(events_resp, list) else events_resp.get("events", [])
 
@@ -604,8 +654,13 @@ def register_guard_parser(sub):
     guard_p = sub.add_parser("guard", help="Guard — team policies and MCP registration")
     guard_sub = guard_p.add_subparsers(dest="guard_command")
 
+    # conduct guard install
+    install_p = guard_sub.add_parser("install", help="Install Guard using your API key (conduct login first)")
+    install_p.add_argument("--api-key", dest="api_key", help="Override API key (default: from conduct login)")
+    install_p.add_argument("--server",  help="Override API server URL")
+
     # conduct guard join <invite-code>
-    join_p = guard_sub.add_parser("join", help="Join a team with an invite code")
+    join_p = guard_sub.add_parser("join", help="Join a second workspace via invite token (on-demand)")
     join_p.add_argument("invite_code", help="Team invite code")
     join_p.add_argument("--email", help="Your email address (prompted if omitted)")
 
@@ -630,7 +685,9 @@ def register_guard_parser(sub):
 def dispatch_guard(args, guard_p):
     """Dispatch to the correct guard handler. Called from main()."""
     guard_command = getattr(args, "guard_command", None)
-    if guard_command == "join":
+    if guard_command == "install":
+        cmd_guard_install(args)
+    elif guard_command == "join":
         cmd_guard_join(args)
     elif guard_command == "sync":
         cmd_guard_sync(args)
