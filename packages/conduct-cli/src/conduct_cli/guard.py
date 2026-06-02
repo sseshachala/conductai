@@ -249,16 +249,13 @@ def _read_tokens_from_transcript(transcript_path, tool_use_id):
     return 0, 0
 
 
-def _read_codex_tokens():
-    """Read last_token_usage from the most recently modified Codex session file."""
+def _read_codex_tokens_from_transcript(transcript_path):
+    """Read last_token_usage from a Codex session JSONL (event_msg/token_count entries)."""
     try:
-        sessions_dir = Path.home() / ".codex" / "sessions"
-        if not sessions_dir.exists():
+        path = Path(transcript_path)
+        if not path.exists():
             return 0, 0
-        files = sorted(sessions_dir.rglob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
-        if not files:
-            return 0, 0
-        lines = _tail_lines(files[0])
+        lines = _tail_lines(path)
         for line in reversed(lines):
             if "token_count" not in line:
                 continue
@@ -292,10 +289,13 @@ def post_usage_main():
     tool_name       = (data.get("tool_name") or "").lower()
     tool_use_id     = data.get("tool_use_id")
     transcript_path = data.get("transcript_path")
-    if transcript_path:
+    is_codex = (tool_use_id or "").startswith("call_")
+    if transcript_path and is_codex:
+        tokens_input, tokens_output = _read_codex_tokens_from_transcript(transcript_path)
+    elif transcript_path:
         tokens_input, tokens_output = _read_tokens_from_transcript(transcript_path, tool_use_id)
     else:
-        tokens_input, tokens_output = _read_codex_tokens()
+        tokens_input, tokens_output = 0, 0
     _post_usage(session_id, tool_name, tokens_input, tokens_output, None)
     sys.exit(0)
 
