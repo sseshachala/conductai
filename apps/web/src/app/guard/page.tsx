@@ -26,6 +26,7 @@ interface GuardEvent {
   tokens_before: number | null
   tokens_after: number | null
   tokens_saved: number | null
+  cost_usd_after: number | null
   rule_message: string | null
   ts: string
 }
@@ -312,6 +313,7 @@ function GuardDashboard() {
       events_today: todayEvents.length,
       blocked_today: todayEvents.filter(e => e.decision === "blocked").length,
       tokens_saved_today: todayEvents.reduce((s, e) => s + (e.tokens_before ?? 0) + (e.tokens_after ?? 0), 0),
+      est_cost_today: todayEvents.reduce((s, e) => s + (e.cost_usd_after ?? 0), 0),
     }
   }, [events])
 
@@ -362,13 +364,13 @@ function GuardDashboard() {
 
         {/* Stats cards */}
         {loading ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-pulse">
-            {[...Array(4)].map((_, i) => (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 animate-pulse">
+            {[...Array(5)].map((_, i) => (
               <div key={i} className="bg-stone-100 rounded-xl h-24" />
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
             <StatCard
               label="Active developers"
               value={stats?.active_developers || derivedStats.active_developers}
@@ -387,6 +389,11 @@ function GuardDashboard() {
               label="Tokens used today (est.)"
               value={formatTotalTokensSaved(stats?.tokens_saved_today || derivedStats.tokens_saved_today)}
               accent="text-green-700"
+            />
+            <StatCard
+              label="Est. cost today"
+              value={`$${derivedStats.est_cost_today.toFixed(2)}`}
+              accent="text-stone-700"
             />
           </div>
         )}
