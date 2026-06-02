@@ -19,7 +19,8 @@
 |:---|:---:|:---:|:---:|:---:|
 | **Platform — Workflows** | | | | |
 | View workflows | ✓ | ✓ | ✓ | ✓ |
-| Create / edit / delete workflows | ✓ | — | ✓ | — |
+| Create / edit workflows | ✓ | — | ✓ | — |
+| Delete workflows | ✓ (all) | — | ✓ (own only) | — |
 | Trigger runs | ✓ | — | ✓ | — |
 | View runs | ✓ | ✓ | ✓ | ✓ |
 | **Platform — Marketplace & Eval** | | | | |
@@ -29,7 +30,8 @@
 | **Platform — Settings** | | | | |
 | Edit workspace (name, plan) | ✓ | — | — | — |
 | Manage members (invite, remove, change role) | ✓ | — | — | — |
-| Credentials / environments (view, add, delete) | ✓ | ✓ | — | — |
+| View environments (select for playbook install) | ✓ | ✓ | ✓ | — |
+| Add / delete credentials | ✓ | ✓ | — | — |
 | Audit log | ✓ | ✓ | — | — |
 | **Guard — Activity** | | | | |
 | View activity dashboard | ✓ | ✓ | own only | own only |
@@ -43,6 +45,16 @@
 | Toggle / add / delete policies | ✓ | ✓ | — | — |
 | **Guard — Settings** | | | | |
 | Edit Slack channel / notifications | ✓ | — | — | — |
+
+---
+
+## UI Contract — Credential Access
+
+Developers can view and select existing environments when installing a playbook, but cannot create or delete credentials. If no environment exists when a developer installs a playbook, the UI must show:
+
+> "No environment available. Ask your admin or security team to create one."
+
+Never show a dead error or a disabled "Add credentials" button with no explanation.
 
 ---
 
