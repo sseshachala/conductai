@@ -416,10 +416,28 @@ def audit(
 
 def get_guard_org_id(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
+    x_api_key: Annotated[str | None, Header()] = None,
+    db: Session = Depends(get_db),
 ) -> str:
-    """Extract org/user ID from Clerk token for Guard endpoints. No workspace UUID required."""
+    """Extract org/user ID for Guard endpoints.
+
+    Accepts (in order):
+    1. cond_live_ API key via X-Api-Key header — returns the key's workspace_id
+    2. Clerk Bearer JWT — returns org_id or sub claim
+    """
     if not _clerk_enabled():
         return "dev-org"
+
+    # API key path — same key used for workspace + playbook endpoints
+    if x_api_key and x_api_key.startswith("cond_live_"):
+        import hashlib
+        from app.models.conduct_api_key import ConductApiKey
+        key_hash = hashlib.sha256(x_api_key.encode()).hexdigest()
+        row = db.query(ConductApiKey).filter(ConductApiKey.key_hash == key_hash).first()
+        if not row:
+            raise HTTPException(status_code=401, detail="Invalid API key")
+        return row.workspace_id
+
     if not credentials:
         raise HTTPException(status_code=401, detail="Authentication required")
     claims = _verify_clerk_token(credentials.credentials)
