@@ -1,10 +1,12 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef } from "react"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth, useUser } from "@clerk/nextjs"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
+import { useGuardRole } from "@/hooks/useGuardRole"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
@@ -78,7 +80,10 @@ const PAGE_SIZE = 100
 
 export default function ActivityPage() {
   const { getToken } = useAuth()
+  const { user } = useUser()
   const { teamId, loading: teamLoading } = useGuardTeam()
+  const { activeWorkspace } = useWorkspace()
+  const { permissions } = useGuardRole(teamId, activeWorkspace?.id ?? null)
   const [events, setEvents] = useState<AuditEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -93,14 +98,21 @@ export default function ActivityPage() {
   const [filterSince, setFilterSince] = useState("")
   const [filterUntil, setFilterUntil] = useState("")
 
+  const currentUserEmail = user?.primaryEmailAddress?.emailAddress ?? null
+
   // Unique values from loaded events for filter dropdowns
   const developers = Array.from(new Set(events.map((e) => e.user_email).filter(Boolean) as string[])).sort()
   const tools = Array.from(new Set(events.map((e) => e.ai_tool))).sort()
 
+  // Viewers are locked to their own email — enforce server-side by injecting it into params
+  const effectiveDeveloperFilter = !permissions.canViewAllActivity && currentUserEmail
+    ? currentUserEmail
+    : filterDeveloper
+
   function buildParams(offset: number) {
     const p = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) })
     if (teamId) p.set("team_id", teamId)
-    if (filterDeveloper) p.set("user_email", filterDeveloper)
+    if (effectiveDeveloperFilter) p.set("user_email", effectiveDeveloperFilter)
     if (filterTool) p.set("ai_tool", filterTool)
     if (filterDecision) p.set("decision", filterDecision)
     if (filterSince) p.set("since", filterSince)
@@ -136,7 +148,7 @@ export default function ActivityPage() {
       setLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getToken, teamId, filterDeveloper, filterTool, filterDecision, filterSince, filterUntil])
+  }, [getToken, teamId, effectiveDeveloperFilter, filterTool, filterDecision, filterSince, filterUntil])
 
   useEffect(() => { load() }, [load])
 
@@ -170,28 +182,39 @@ export default function ActivityPage() {
             <h1 className="text-xl font-semibold text-stone-900 mb-1">Activity log</h1>
             <p className="text-sm text-stone-500">Complete log of all AI tool actions across your team.</p>
           </div>
-          <button
-            onClick={() => exportCsv(events)}
-            disabled={events.length === 0}
-            className="shrink-0 text-xs text-stone-600 hover:text-stone-800 border border-stone-200 rounded-lg px-3 py-1.5 hover:bg-stone-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            Export CSV
-          </button>
+          {permissions.canExportActivity && (
+            <button
+              onClick={() => exportCsv(events)}
+              disabled={events.length === 0}
+              className="shrink-0 text-xs text-stone-600 hover:text-stone-800 border border-stone-200 rounded-lg px-3 py-1.5 hover:bg-stone-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Export CSV
+            </button>
+          )}
         </div>
+
+        {/* Viewer-scoped notice */}
+        {!permissions.canViewAllActivity && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
+            You can view your own activity only. Contact your admin to request broader access.
+          </div>
+        )}
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Developer */}
-          <select
-            value={filterDeveloper}
-            onChange={(e) => setFilterDeveloper(e.target.value)}
-            className="text-xs border border-stone-200 rounded-lg px-3 py-1.5 text-stone-600 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          >
-            <option value="">All developers</option>
-            {developers.map((d) => (
-              <option key={d} value={d}>{d}</option>
-            ))}
-          </select>
+          {/* Developer — hidden for viewers (they are locked to their own email) */}
+          {permissions.canViewAllActivity && (
+            <select
+              value={filterDeveloper}
+              onChange={(e) => setFilterDeveloper(e.target.value)}
+              className="text-xs border border-stone-200 rounded-lg px-3 py-1.5 text-stone-600 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            >
+              <option value="">All developers</option>
+              {developers.map((d) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+          )}
 
           {/* Tool */}
           <select
@@ -241,7 +264,8 @@ export default function ActivityPage() {
           {(filterDeveloper || filterTool || filterDecision || filterSince || filterUntil) && (
             <button
               onClick={() => {
-                setFilterDeveloper("")
+                // Don't clear filterDeveloper for viewers — it is locked to their own email
+                if (permissions.canViewAllActivity) setFilterDeveloper("")
                 setFilterTool("")
                 setFilterDecision("")
                 setFilterSince("")

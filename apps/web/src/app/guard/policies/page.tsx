@@ -4,9 +4,9 @@ import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { useAuth } from "@clerk/nextjs"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
+import { useGuardRole } from "@/hooks/useGuardRole"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
-
-type UserRole = "admin" | "security" | "editor" | "viewer" | null
 
 // ---------------------------------------------------------------------------
 // Types
@@ -478,40 +478,19 @@ function formatUpdatedAt(iso: string | undefined): string {
 // ---------------------------------------------------------------------------
 
 export default function PoliciesPage() {
-  const { getToken, userId } = useAuth()
+  const { getToken } = useAuth()
   const { teamId, loading: teamLoading } = useGuardTeam()
+  const { activeWorkspace } = useWorkspace()
+  const { permissions } = useGuardRole(teamId, activeWorkspace?.id ?? null)
   const [policies, setPolicies] = useState<Policy[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [userRole, setUserRole] = useState<UserRole>(null)
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ""
 
-  // Fetch the current user's role — same pattern as AppShell
-  useEffect(() => {
-    let cancelled = false
-    async function fetchRole() {
-      if (!teamId || !userId) return
-      try {
-        const token = await getToken()
-        const h: Record<string, string> = {}
-        if (token) h["Authorization"] = `Bearer ${token}`
-        const res = await fetch(`${apiUrl}/guard/teams/${teamId}/members`, { headers: h })
-        if (!res.ok || cancelled) return
-        const members: { user_id: string; role: string }[] = await res.json()
-        const role = members.find(m => m.user_id === userId)?.role as UserRole ?? null
-        if (!cancelled) setUserRole(role ?? "viewer")
-      } catch {
-        if (!cancelled) setUserRole("viewer")
-      }
-    }
-    fetchRole()
-    return () => { cancelled = true }
-  }, [teamId, userId])
-
-  const canWrite = userRole === "admin" || userRole === "security"
+  const canWrite = permissions.canEditPolicies
 
   const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
     const headers: Record<string, string> = { "Content-Type": "application/json" }
