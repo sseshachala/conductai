@@ -52,11 +52,12 @@ class HookEvent(BaseModel):
     conductai_workflow: str | None = None
     duration_ms: int | None = None
     tool_use_id: str | None = None
+    hook_session_id: str | None = None
 
 
 class UsageUpdate(BaseModel):
     workspace_id: str
-    session_id: str
+    hook_session_id: str
     tool_name: str | None = None
     tokens_input: int
     tokens_output: int
@@ -248,6 +249,7 @@ def ingest_event(
         conductai_workflow=body.conductai_workflow,
         duration_ms=body.duration_ms,
         tool_use_id=body.tool_use_id,
+        hook_session_id=body.hook_session_id,
         ts=now,
     )
     db.add(event)
@@ -325,17 +327,11 @@ def update_usage(
     if not config:
         raise HTTPException(status_code=404, detail="workspace_id not found in guard_config")
 
-    import uuid as _uuid
-    try:
-        sid = _uuid.UUID(body.session_id)
-    except ValueError:
-        return UsageOut(updated=False)
-
     q = (
         db.query(GuardAuditEvent)
         .filter(
             GuardAuditEvent.workspace_id == ws_uuid,
-            GuardAuditEvent.session_id == sid,
+            GuardAuditEvent.hook_session_id == body.hook_session_id,
             GuardAuditEvent.tokens_before.is_(None),
         )
     )
