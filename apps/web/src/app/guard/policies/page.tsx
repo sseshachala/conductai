@@ -479,7 +479,7 @@ function formatUpdatedAt(iso: string | undefined): string {
 
 export default function PoliciesPage() {
   const { getToken, userId } = useAuth()
-  const { activeWorkspace } = useWorkspace()
+  const { activeWorkspace, loading: wsLoading } = useWorkspace()
   const [policies, setPolicies] = useState<Policy[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -524,6 +524,11 @@ export default function PoliciesPage() {
     }
     return headers
   }, [getToken])
+
+  // Clear skeleton when WorkspaceContext finishes loading but has no workspace
+  useEffect(() => {
+    if (!wsLoading && !activeWorkspace) setLoading(false)
+  }, [wsLoading, activeWorkspace])
 
   // Fetch on mount
   useEffect(() => {

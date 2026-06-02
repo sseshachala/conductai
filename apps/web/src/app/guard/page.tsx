@@ -124,7 +124,7 @@ function formatTotalTokensSaved(n: number): string {
 
 export default function GuardPage() {
   const { getToken } = useAuth()
-  const { activeWorkspace } = useWorkspace()
+  const { activeWorkspace, loading: wsLoading } = useWorkspace()
 
   const [events, setEvents]       = useState<GuardEvent[]>([])
   const [stats, setStats]         = useState<SpendStats | null>(null)
@@ -148,6 +148,11 @@ export default function GuardPage() {
     return h
   }, [getToken])
 
+  // Clear skeleton when WorkspaceContext finishes loading but has no workspace
+  useEffect(() => {
+    if (!wsLoading && !activeWorkspace) setLoading(false)
+  }, [wsLoading, activeWorkspace])
+
   const loadEvents = useCallback(async () => {
     const wsId = activeWorkspace?.id
     if (!wsId) return
@@ -160,11 +165,12 @@ export default function GuardPage() {
       if (res.ok) {
         const data: GuardEvent[] = await res.json()
         setEvents(data)
-        setLoading(false)
         setLastUpdated(new Date())
       }
     } catch {
       // non-fatal — keep last known state
+    } finally {
+      setLoading(false)
     }
   }, [buildHeaders, activeWorkspace?.id])
 
