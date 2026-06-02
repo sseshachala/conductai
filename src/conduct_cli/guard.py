@@ -143,8 +143,8 @@ def _post_event(tool_name, tool_input, decision, rule_id=None, message=None, ses
         "input_summary": json.dumps(tool_input)[:200],
         "decision":      decision,
         "rule_id":       rule_id,
-        "rule_message":  message,
-        "session_id":    session_id,
+        "rule_message":      message,
+        "hook_session_id":   session_id,
     })
     api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
     script = (
@@ -173,9 +173,9 @@ def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms)
     if not workspace_id or not session_id:
         return
     payload = json.dumps({
-        "workspace_id": workspace_id,
-        "session_id":   session_id,
-        "tool_name":    tool_name,
+        "workspace_id":    workspace_id,
+        "hook_session_id": session_id,
+        "tool_name":       tool_name,
         "tokens_input": tokens_input,
         "tokens_output": tokens_output,
         "duration_ms": duration_ms,
