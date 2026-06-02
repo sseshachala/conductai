@@ -36,7 +36,7 @@ from app.modules.guard.routers.policies import seed_builtin_policies
 
 router = APIRouter(prefix="/guard/teams", tags=["guard-teams"])
 
-_VALID_ROLES = {"owner", "security", "developer"}
+_VALID_ROLES = {"admin", "security", "developer", "viewer"}
 
 
 # ── Pydantic models ────────────────────────────────────────────────────────────
@@ -51,6 +51,7 @@ class TeamJoin(BaseModel):
     invite_code: str
     email: str
     user_id: str | None = None
+    role: str = "developer"
 
 
 class JoinOut(BaseModel):
@@ -291,6 +292,7 @@ def join_team(
         .first()
     )
 
+    requested_role = body.role if body.role in _VALID_ROLES else "developer"
     if existing:
         # Re-issue token and reactivate
         existing.member_token = new_token
@@ -302,7 +304,7 @@ def join_team(
             team_id=team.id,
             user_id=user_id,
             email=body.email,
-            role="developer",
+            role=requested_role,
             active=True,
             joined_at=datetime.now(timezone.utc),
             member_token=new_token,
