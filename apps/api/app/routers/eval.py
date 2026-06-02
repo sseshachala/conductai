@@ -238,7 +238,7 @@ def list_playbook_evals():
 def list_fixtures(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
 ):
     """
     Return a lightweight list of all playbook fixtures.
@@ -273,7 +273,7 @@ def get_fixture(
     slug: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
 ):
     """
     Return the full fixture for a single playbook: trigger payload,
@@ -299,7 +299,7 @@ def run_playbook_eval(
     slug: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
 ):
     """
     Re-run structural eval for a single playbook right now, bypassing the
@@ -328,7 +328,7 @@ def run_playbook_eval(
 def run_all_evals(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor")),
+    _role: str = Depends(require_workspace_role("admin", "developer")),
 ):
     """
     Re-run structural eval for all playbooks right now, replacing the cache.
@@ -577,7 +577,7 @@ def get_benchmark_edition(edition_slug: str):
 def list_playbook_baselines(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
 ):
     """
     Return all single-playbook baseline files.
@@ -787,7 +787,7 @@ def get_scenario_set(
     slug: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
 ):
     """
     Return all scenarios for a playbook that has a multi-scenario fixture file.

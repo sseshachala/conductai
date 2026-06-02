@@ -44,7 +44,7 @@ class EnvironmentOut(BaseModel):
 def list_environments(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
 ):
     rows = (
         db.query(Environment)
@@ -60,7 +60,7 @@ def create_environment(
     body: EnvironmentCreate,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor")),
+    _role: str = Depends(require_workspace_role("admin", "developer")),
 ):
     name = body.name.strip()
     if not name:
@@ -87,7 +87,7 @@ def update_environment(
     body: EnvironmentUpdate,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor")),
+    _role: str = Depends(require_workspace_role("admin", "developer")),
 ):
     env = (
         db.query(Environment)

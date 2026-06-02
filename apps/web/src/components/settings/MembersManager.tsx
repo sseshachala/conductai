@@ -6,7 +6,7 @@ import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface Member {
   clerk_user_id: string
-  role: "admin" | "editor" | "security" | "viewer"
+  role: "admin" | "developer" | "security" | "viewer"
   invited_by: string | null
   joined_at: string
   email: string | null
@@ -29,10 +29,10 @@ interface MemberWorkspace {
 }
 
 const ROLE_COLORS: Record<string, string> = {
-  admin:    "bg-indigo-50 text-indigo-700",
-  editor:   "bg-emerald-50 text-emerald-700",
-  security: "bg-violet-50 text-violet-700",
-  viewer:   "bg-stone-100 text-stone-600",
+  admin:     "bg-indigo-50 text-indigo-700",
+  developer: "bg-emerald-50 text-emerald-700",
+  security:  "bg-violet-50 text-violet-700",
+  viewer:    "bg-stone-100 text-stone-600",
 }
 
 function getCookie(name: string): string | null {
@@ -58,7 +58,7 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
   const [loading, setLoading] = useState(true)
   const [addOpen, setAddOpen] = useState(false)
   const [inviteEmail, setInviteEmail] = useState("")
-  const [inviteRole, setInviteRole] = useState<"admin" | "editor" | "security" | "viewer">("editor")
+  const [inviteRole, setInviteRole] = useState<"admin" | "developer" | "security" | "viewer">("developer")
   const [saving, setSaving] = useState(false)
   const [removing, setRemoving] = useState<string | null>(null)
   const [cancelling, setCancelling] = useState<string | null>(null)
@@ -128,7 +128,7 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
       }
       const data = await res.json().catch(() => ({}))
       setInviteEmail("")
-      setInviteRole("editor")
+      setInviteRole("developer")
       setAddOpen(false)
       if (data.email_sent === false) {
         setEmailWarning(`Invite created but the notification email couldn't be delivered to ${email}. Ask them to sign in at conductai.ai and they'll be added automatically.`)
@@ -256,7 +256,7 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
               className="border border-stone-200 rounded-lg px-3 py-2 text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-indigo-200"
             >
               <option value="admin">Admin</option>
-              <option value="editor">Editor</option>
+              <option value="developer">Developer</option>
               <option value="security">Security</option>
               <option value="viewer">Viewer</option>
             </select>
@@ -358,7 +358,7 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
                           className={`text-xs font-medium px-2 py-1 rounded-full border-0 focus:outline-none focus:ring-2 focus:ring-indigo-200 cursor-pointer ${ROLE_COLORS[m.role]}`}
                         >
                           <option value="admin">Admin</option>
-                          <option value="editor">Editor</option>
+                          <option value="developer">Developer</option>
                           <option value="security">Security</option>
                           <option value="viewer">Viewer</option>
                         </select>
@@ -408,7 +408,7 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
 
       <div className="rounded-lg bg-stone-50 border border-stone-200 px-4 py-3 text-xs text-stone-500 space-y-1">
         <p><span className="font-medium text-stone-700">Admin</span> — full access: manage members, credentials, environments, workflows, and runs</p>
-        <p><span className="font-medium text-stone-700">Editor</span> — run agents, edit workflows, manage credentials and environments; cannot manage members</p>
+        <p><span className="font-medium text-stone-700">Developer</span> — run agents, edit workflows, manage credentials and environments; cannot manage members</p>
         <p><span className="font-medium text-stone-700">Viewer</span> — read-only across all screens: view runs, workflows, credentials, and settings</p>
       </div>
 

@@ -266,7 +266,7 @@ def send_template_email(
 
 _ROLE_DESCRIPTIONS = {
     "admin":  "Full access — manage members, credentials, environments, and agents.",
-    "editor": "Run agents, edit workflows, and manage credentials.",
+    "developer": "Run agents, edit workflows, and manage credentials.",
     "viewer": "Read-only access — view runs, workflows, and settings.",
 }
 

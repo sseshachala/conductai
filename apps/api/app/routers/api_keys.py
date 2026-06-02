@@ -58,7 +58,7 @@ def list_api_keys(
     workspace_id: str,
     user_id:      Annotated[str, Depends(get_user_id)],
     _ws:          str = Depends(get_workspace_id),
-    _role:        str = Depends(require_workspace_role("admin", "editor")),
+    _role:        str = Depends(require_workspace_role("admin", "developer")),
     db:           Session = Depends(get_db),
 ):
     rows = db.query(ConductApiKey).filter(

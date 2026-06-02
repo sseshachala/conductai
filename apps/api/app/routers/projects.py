@@ -80,7 +80,7 @@ class MemberOut(BaseModel):
 class MemberAdd(BaseModel):
     clerk_user_id: str | None = None   # direct add (existing user)
     email: str | None = None           # invite by email (pending until login)
-    role: Literal["admin", "editor", "security", "viewer"] = "editor"
+    role: Literal["admin", "developer", "security", "viewer"] = "developer"
 
 
 class MemberWorkspaceOut(BaseModel):
@@ -411,7 +411,7 @@ def list_members(
     project_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
     workspace_id: Annotated[str, Depends(get_workspace_id)],
-    _role: Annotated[str, Depends(require_workspace_role("admin", "editor", "security", "viewer"))],
+    _role: Annotated[str, Depends(require_workspace_role("admin", "developer", "security", "viewer"))],
     db: Session = Depends(get_db),
 ):
     if project_id != workspace_id:
@@ -628,8 +628,8 @@ def update_member_role(
     if project_id != workspace_id:
         raise HTTPException(status_code=404, detail="Project not found")
     new_role = body.get("role", "")
-    if new_role not in ("admin", "editor", "security", "viewer"):
-        raise HTTPException(status_code=422, detail="Role must be admin, editor, security, or viewer")
+    if new_role not in ("admin", "developer", "security", "viewer"):
+        raise HTTPException(status_code=422, detail="Role must be admin, developer, security, or viewer")
     if clerk_user_id == user_id:
         raise HTTPException(status_code=400, detail="Cannot change your own role")
     old_row = db.execute(text("""

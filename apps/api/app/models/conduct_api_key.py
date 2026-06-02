@@ -12,7 +12,7 @@ class ConductApiKey(Base):
     name         = Column(String(100), nullable=False)
     key_prefix   = Column(String(20),  nullable=False)
     key_hash     = Column(String(64),  nullable=False, unique=True)
-    role         = Column(String(20),  nullable=False, default="editor")
+    role         = Column(String(20),  nullable=False, default="developer")
     created_at   = Column(DateTime(timezone=True), nullable=False)
     last_used_at = Column(DateTime(timezone=True), nullable=True)
     expires_at   = Column(DateTime(timezone=True), nullable=True)

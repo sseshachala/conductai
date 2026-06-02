@@ -11,7 +11,7 @@ class WorkspaceUser(Base):
 
     workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True)
     clerk_user_id = Column(String(255), primary_key=True)
-    role = Column(String(50), nullable=False, default="editor")  # admin / editor / viewer
+    role = Column(String(50), nullable=False, default="developer")  # admin / developer / security / viewer
     invited_by = Column(String(255), nullable=True)
     joined_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
