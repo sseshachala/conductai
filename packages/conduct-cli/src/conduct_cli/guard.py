@@ -111,6 +111,20 @@ def _check_policy(tool_name, tool_input):
     return None, "allow", None, None
 
 
+def _detect_ai_tool():
+    import os
+    if os.environ.get("CLAUDECODE") or os.environ.get("CLAUDE_CODE_ENTRYPOINT"):
+        return "claude-code"
+    path = os.environ.get("PATH", "")
+    if "Codex.app" in path or "codex" in path.lower():
+        return "codex"
+    if "cursor" in path.lower():
+        return "cursor"
+    if "windsurf" in path.lower():
+        return "windsurf"
+    return "unknown"
+
+
 def _post_event(tool_name, tool_input, decision, rule_id=None, message=None):
     try:
         cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
@@ -124,7 +138,7 @@ def _post_event(tool_name, tool_input, decision, rule_id=None, message=None):
         "workspace_id":  workspace_id,
         "clerk_user_id": cfg.get("user_email"),
         "user_email":    cfg.get("user_email"),
-        "ai_tool":       "claude-code",
+        "ai_tool":       _detect_ai_tool(),
         "tool_call":     tool_name,
         "input_summary": json.dumps(tool_input)[:200],
         "decision":      decision,
