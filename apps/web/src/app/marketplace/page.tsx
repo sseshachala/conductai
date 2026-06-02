@@ -68,7 +68,7 @@ const GITHUB_WEBHOOK_SLUGS = new Set([
   "autopilot_quick", "autopilot_full", "autopilot_approved",
   "security_patch_updater", "dependency_updater", "incident_responder",
   "flaky_test_detective", "release_readiness", "docs_drift_detector",
-  "terraform_reviewer",
+  "terraform_reviewer", "factory",
 ])
 
 // Playbooks that need manual webhook setup (show instructions instead).
@@ -109,6 +109,7 @@ const FRIENDLY_NAMES: Record<string, string> = {
   postmortem_drafter:   "Postmortem Drafter",
   docs_drift_detector:  "Docs Drift Detector",
   terraform_reviewer:   "Terraform Plan Reviewer",
+  factory:              "Software Factory",
 }
 
 export default function MarketplacePage() {
@@ -674,6 +675,13 @@ function PlaybookCard({ playbook, installing, installCount, grade, onInstall, on
               {installCount} installed
             </span>
           )}
+          <Link
+            href={`/playbooks/${playbook.slug}`}
+            className="text-[10px] bg-stone-100 text-stone-500 hover:bg-stone-200 px-1.5 py-0.5 rounded font-medium transition-colors"
+            title="Public shareable page"
+          >
+            ↗ Share
+          </Link>
         </div>
       </div>
       <div>
