@@ -106,6 +106,7 @@ class GuardAuditEvent(Base):
     tokens_saved = Column(Integer, nullable=True)
     cost_usd_before = Column(Float, nullable=True)
     cost_usd_after = Column(Float, nullable=True)
+    tool_use_id = Column(String(255), nullable=True, index=True)
     conductai_run_id = Column(String(255), nullable=True)
     conductai_workflow = Column(String(255), nullable=True)
     ts = Column(
