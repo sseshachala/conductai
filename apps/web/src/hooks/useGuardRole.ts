@@ -39,12 +39,6 @@ function permissionsFromList(perms: string[]): GuardPermissions {
   }
 }
 
-export const ROLE_PERMISSIONS = {
-  admin:     permissionsFromList(["guard.policies.edit","guard.settings.edit","guard.spend.budgets.edit","guard.activity.view_all","guard.spend.view_all","guard.spend.view_own","guard.activity.export"]),
-  security:  permissionsFromList(["guard.policies.edit","guard.activity.view_all","guard.spend.view_all","guard.spend.view_own","guard.activity.export"]),
-  developer: permissionsFromList(["guard.activity.view_own","guard.spend.view_own"]),
-  viewer:    permissionsFromList([]),
-}
 
 export function useGuardRole(
   _teamId: string | null,

@@ -7,6 +7,10 @@ import asyncio
 import json
 from datetime import datetime, timezone
 
+import structlog
+
+log = structlog.get_logger(__name__)
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -171,11 +175,9 @@ def _check_spend_budget(db: Session, team_id: str, team_obj: GuardTeam | None = 
         threshold_usd = budget.monthly_limit_usd * (budget.alert_threshold_pct / 100.0)
         if monthly_cost >= threshold_usd:
             scope = f"member={budget.member_id}" if budget.member_id else "team-wide"
-            print(
-                f"[guard] SPEND ALERT team={team_id} scope={scope} "
-                f"monthly_cost=${monthly_cost:.4f} threshold=${threshold_usd:.4f} "
-                f"({budget.alert_threshold_pct}% of ${budget.monthly_limit_usd:.2f})"
-            )
+            log.info("guard.spend_alert", team_id=team_id, scope=scope,
+                     monthly_cost_usd=round(monthly_cost, 4), threshold_usd=round(threshold_usd, 4),
+                     alert_threshold_pct=budget.alert_threshold_pct, budget_usd=budget.monthly_limit_usd)
             if team and budget.monthly_limit_usd > 0 and team.notify_on_budget:
                 pct_used = round((monthly_cost / budget.monthly_limit_usd) * 100)
                 who = f"member={budget.member_id}" if budget.member_id else "team-wide"
@@ -260,13 +262,13 @@ def ingest_event(
                 msg += f"\n> {body.rule_message}"
             _send_guard_slack(db, team, msg)
     except Exception as exc:
-        print(f"[guard] slack block notification failed: {exc}")
+        log.warning("guard.slack_notification_failed", exc=str(exc))
 
     # 4. Check spend budget (non-fatal — log + Slack)
     try:
         _check_spend_budget(db, body.team_id, team_obj=team)
     except Exception as exc:
-        print(f"[guard] spend budget check failed: {exc}")
+        log.warning("guard.spend_budget_check_failed", exc=str(exc))
 
     return EventOut(**_event_to_dict(event))
 

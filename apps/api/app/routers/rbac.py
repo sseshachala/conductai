@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_guard_org_id, get_user_id
+from app.core.auth import get_user_id
 from app.core.database import get_db
 from app.models.rbac import Permission, Role
 

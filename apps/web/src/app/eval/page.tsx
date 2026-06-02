@@ -319,7 +319,6 @@ function EvalContent({ getToken }: { getToken: (() => Promise<string | null>) | 
             status === 500 ? "The eval runner returned an error (500). Check the API logs." :
             `Both eval endpoints returned ${status}.`
           setError(hint)
-          console.error("[eval] summary:", summaryRes.status, "playbooks:", playbooksRes.status)
           return
         }
 
