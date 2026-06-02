@@ -179,6 +179,18 @@ def cmd_login(args):
     _save_config(cfg)
     print(f"{GREEN}✓ Config saved to {CONFIG_PATH}{RESET}")
 
+    # Auto-install Guard if available for this workspace
+    if ak and ak.startswith("cond_live_"):
+        try:
+            from conduct_cli.guard import cmd_guard_install
+            import types
+            fake_args = types.SimpleNamespace(api_key=ak, server=s)
+            cmd_guard_install(fake_args)
+        except SystemExit:
+            pass  # Guard not found — skip silently
+        except Exception:
+            pass  # Never block login on Guard errors
+
 
 def cmd_agents(args):
     server, workspace_id, api_key, token = _require_auth(args)
