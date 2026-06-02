@@ -449,15 +449,12 @@ function GuardInviteSection({
     async function load() {
       const base = process.env.NEXT_PUBLIC_API_URL ?? ""
       const h = await headers()
-      const res = await fetch(`${base}/guard/teams/installed?workspace_id=${workspaceId}`, { headers: h })
+      const res = await fetch(`${base}/guard/config/installed?workspace_id=${workspaceId}`, { headers: h })
       if (!res.ok) return
       const data = await res.json()
       if (!data.installed) return
-      setTeamId(data.team_id)
+      setTeamId(workspaceId)
       setGuardInstalled(true)
-
-      const mRes = await fetch(`${base}/guard/teams/${data.team_id}/members`, { headers: h })
-      if (mRes.ok) setGuardMembers(await mRes.json())
     }
     load()
   }, [workspaceId])

@@ -637,7 +637,7 @@ function GuardBlockPanel({
         const headers: Record<string, string> = {}
         if (token) headers["Authorization"] = `Bearer ${token}`
 
-        const installUrl = ws ? `${base}/guard/teams/installed?workspace_id=${ws}` : `${base}/guard/teams/installed`
+        const installUrl = ws ? `${base}/guard/config/installed?workspace_id=${ws}` : `${base}/guard/config/installed`
         const installRes = await fetch(installUrl, { headers })
         if (!installRes.ok) { if (!cancelled) setInstalled(false); return }
         const installData = await installRes.json()
@@ -645,9 +645,9 @@ function GuardBlockPanel({
         if (!installData.installed) { setInstalled(false); return }
 
         setInstalled(true)
-        setTeamId(installData.team_id)
+        setTeamId(ws ?? installData.workspace_id)
 
-        const polRes = await fetch(`${base}/guard/policies?team_id=${installData.team_id}`, { headers })
+        const polRes = await fetch(`${base}/guard/policies?workspace_id=${ws}`, { headers })
         if (!polRes.ok) return
         const polData: GuardPolicy[] = await polRes.json()
         if (!cancelled) setPolicies(polData.filter(p => p.enabled))

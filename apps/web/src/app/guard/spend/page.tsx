@@ -456,10 +456,9 @@ function SpendContent() {
     }
 
     try {
-      const [spendRes, budgetRes, membersRes] = await Promise.all([
+      const [spendRes, budgetRes] = await Promise.all([
         fetch(`${base}/guard/spend?team_id=${teamId}&month=${month}`, { headers }),
         fetch(`${base}/guard/spend/budgets?team_id=${teamId}`, { headers }),
-        fetch(`${base}/guard/teams/${teamId}/members`, { headers }),
       ])
       if (!spendRes.ok) throw new Error("Failed to load spend data")
       const spendJson: SpendData = await spendRes.json()
@@ -476,16 +475,10 @@ function SpendContent() {
             default_per_developer_usd: teamBudget.default_per_developer_usd,
           })
         }
-        const idToEmail: Record<string, string> = {}
-        if (membersRes.ok) {
-          const members: Array<{ id: string; email: string }> = await membersRes.json()
-          for (const m of members) idToEmail[m.id] = m.email
-        }
         const map: Record<string, number | null> = {}
         for (const b of budgetList) {
-          if (b.member_id != null) {
-            const email = idToEmail[b.member_id]
-            if (email) map[email] = b.monthly_limit_usd
+          if (b.member_id != null && b.member_id) {
+            map[b.member_id] = b.monthly_limit_usd
           }
         }
         setBudgets(map)
