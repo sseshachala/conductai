@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { timeAgo } from "@/lib/runUtils"
-import { useWorkspace } from "@/lib/WorkspaceContext"
+import { useGuardTeam } from "@/hooks/useGuardTeam"
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
@@ -124,7 +124,7 @@ function formatTotalTokensSaved(n: number): string {
 
 export default function GuardPage() {
   const { getToken } = useAuth()
-  const { activeWorkspace, loading: wsLoading } = useWorkspace()
+  const { teamId, loading: teamLoading } = useGuardTeam()
 
   const [events, setEvents]       = useState<GuardEvent[]>([])
   const [stats, setStats]         = useState<SpendStats | null>(null)
@@ -148,18 +148,17 @@ export default function GuardPage() {
     return h
   }, [getToken])
 
-  // Clear skeleton when WorkspaceContext finishes loading but has no workspace
+  // Clear skeleton when team resolution finishes with no result
   useEffect(() => {
-    if (!wsLoading && !activeWorkspace) setLoading(false)
-  }, [wsLoading, activeWorkspace])
+    if (!teamLoading && !teamId) setLoading(false)
+  }, [teamLoading, teamId])
 
   const loadEvents = useCallback(async () => {
-    const wsId = activeWorkspace?.id
-    if (!wsId) return
+    if (!teamId) return
     const headers = await buildHeaders()
     const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params  = new URLSearchParams({ limit: "100" })
-    params.set("workspace_id", wsId)
+    params.set("team_id", teamId)
     try {
       const res = await fetch(`${base}/guard/events?${params}`, { headers })
       if (res.ok) {
@@ -172,31 +171,29 @@ export default function GuardPage() {
     } finally {
       setLoading(false)
     }
-  }, [buildHeaders, activeWorkspace?.id])
+  }, [buildHeaders, teamId])
 
   const loadStats = useCallback(async () => {
-    const wsId = activeWorkspace?.id
-    if (!wsId) return
+    if (!teamId) return
     const headers = await buildHeaders()
     const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params  = new URLSearchParams()
-    params.set("workspace_id", wsId)
+    params.set("team_id", teamId)
     try {
       const res = await fetch(`${base}/guard/spend?${params}`, { headers })
       if (res.ok) setStats(await res.json())
     } catch {
       // non-fatal
     }
-  }, [buildHeaders, activeWorkspace?.id])
+  }, [buildHeaders, teamId])
 
   const connectSSE = useCallback(async () => {
-    const wsId   = activeWorkspace?.id
-    if (!wsId) return
+    if (!teamId) return
     const token  = await getToken()
     const base   = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params = new URLSearchParams()
     if (token) params.set("token", token)
-    params.set("workspace_id", wsId)
+    params.set("team_id", teamId)
     const url = `${base}/guard/events/stream?${params}`
 
     if (esRef.current) esRef.current.close()
@@ -221,7 +218,7 @@ export default function GuardPage() {
         // malformed frame — ignore
       }
     }
-  }, [getToken, activeWorkspace?.id])
+  }, [getToken, teamId])
 
   useEffect(() => {
     connectSSE()

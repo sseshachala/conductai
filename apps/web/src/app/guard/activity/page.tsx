@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react"
 import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
-import { useWorkspace } from "@/lib/WorkspaceContext"
+import { useGuardTeam } from "@/hooks/useGuardTeam"
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
@@ -78,7 +78,7 @@ const PAGE_SIZE = 100
 
 export default function ActivityPage() {
   const { getToken } = useAuth()
-  const { activeWorkspace, loading: wsLoading } = useWorkspace()
+  const { teamId, loading: teamLoading } = useGuardTeam()
   const [events, setEvents] = useState<AuditEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -98,9 +98,8 @@ export default function ActivityPage() {
   const tools = Array.from(new Set(events.map((e) => e.ai_tool))).sort()
 
   function buildParams(offset: number) {
-    const wsId = activeWorkspace?.id ?? ""
     const p = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) })
-    if (wsId) p.set("workspace_id", wsId)
+    if (teamId) p.set("team_id", teamId)
     if (filterDeveloper) p.set("user_email", filterDeveloper)
     if (filterTool) p.set("ai_tool", filterTool)
     if (filterDecision) p.set("decision", filterDecision)
@@ -109,14 +108,13 @@ export default function ActivityPage() {
     return p.toString()
   }
 
-  // Clear skeleton when WorkspaceContext finishes loading but has no workspace
+  // Clear skeleton when team resolution finishes with no result
   useEffect(() => {
-    if (!wsLoading && !activeWorkspace) setLoading(false)
-  }, [wsLoading, activeWorkspace])
+    if (!teamLoading && !teamId) setLoading(false)
+  }, [teamLoading, teamId])
 
   const load = useCallback(async () => {
-    const wsId = activeWorkspace?.id
-    if (!wsId) return
+    if (!teamId) return
     setLoading(true)
     setError(null)
     offsetRef.current = 0
@@ -138,7 +136,7 @@ export default function ActivityPage() {
       setLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getToken, activeWorkspace?.id, filterDeveloper, filterTool, filterDecision, filterSince, filterUntil])
+  }, [getToken, teamId, filterDeveloper, filterTool, filterDecision, filterSince, filterUntil])
 
   useEffect(() => { load() }, [load])
 

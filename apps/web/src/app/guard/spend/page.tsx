@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useAuth } from "@clerk/nextjs"
-import { useWorkspace } from "@/lib/WorkspaceContext"
+import { useGuardTeam } from "@/hooks/useGuardTeam"
 import AppShell from "@/components/AppShell"
 
 type UserRole = "admin" | "security" | "editor" | "viewer" | null
@@ -417,7 +417,7 @@ function MonthPicker({ value, onChange }: { value: string; onChange: (v: string)
 
 export default function SpendPage() {
   const { getToken, userId } = useAuth()
-  const { activeWorkspace } = useWorkspace()
+  const { teamId, loading: teamLoading, error: teamError } = useGuardTeam()
   const now = new Date()
   const [month, setMonth] = useState(
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
@@ -428,7 +428,6 @@ export default function SpendPage() {
   const [error, setError] = useState<string | null>(null)
   const [expandedDev, setExpandedDev] = useState<string | null>(null)
   const [currency, setCurrency] = useState<Currency>("USD")
-  const [teamId, setTeamId] = useState<string | null>(null)
   const [teamSettings, setTeamSettings] = useState<TeamBudgetSettings>({
     team_monthly_limit_usd: null,
     alert_threshold_pct: 80,
@@ -437,18 +436,17 @@ export default function SpendPage() {
   })
   const [userRole, setUserRole] = useState<UserRole>(null)
 
-  // Fetch the current user's role — same pattern as AppShell
+  // Fetch the current user's role
   useEffect(() => {
     let cancelled = false
     async function fetchRole() {
-      if (!activeWorkspace || !userId) return
+      if (!teamId || !userId) return
       try {
         const token = await getToken()
         const base = process.env.NEXT_PUBLIC_API_URL ?? ""
         const h: Record<string, string> = {}
         if (token) h["Authorization"] = `Bearer ${token}`
-        h["X-Workspace-ID"] = activeWorkspace.id
-        const res = await fetch(`${base}/projects/${activeWorkspace.id}/members`, { headers: h })
+        const res = await fetch(`${base}/guard/teams/${teamId}/members`, { headers: h })
         if (!res.ok || cancelled) return
         const members: { clerk_user_id: string; role: string }[] = await res.json()
         const role = members.find(m => m.clerk_user_id === userId)?.role as UserRole ?? null
@@ -459,12 +457,12 @@ export default function SpendPage() {
     }
     fetchRole()
     return () => { cancelled = true }
-  }, [activeWorkspace?.id, userId])
+  }, [teamId, userId])
 
   const isAdmin = userRole === "admin"
 
   const load = useCallback(async () => {
-    if (!activeWorkspace) return
+    if (!teamId) return
     setLoading(true)
     setError(null)
     const token = await getToken()
@@ -475,20 +473,10 @@ export default function SpendPage() {
     }
 
     try {
-      const teamRes = await fetch(`${base}/guard/teams/me?workspace_id=${activeWorkspace.id}`, { headers })
-      if (!teamRes.ok) {
-        setError("Guard is not installed for this workspace")
-        setLoading(false)
-        return
-      }
-      const team = await teamRes.json()
-      const resolvedTeamId: string = team.id
-      setTeamId(resolvedTeamId)
-
       const [spendRes, budgetRes, membersRes] = await Promise.all([
-        fetch(`${base}/guard/spend?team_id=${resolvedTeamId}&month=${month}`, { headers }),
-        fetch(`${base}/guard/spend/budgets?team_id=${resolvedTeamId}`, { headers }),
-        fetch(`${base}/guard/teams/${resolvedTeamId}/members`, { headers }),
+        fetch(`${base}/guard/spend?team_id=${teamId}&month=${month}`, { headers }),
+        fetch(`${base}/guard/spend/budgets?team_id=${teamId}`, { headers }),
+        fetch(`${base}/guard/teams/${teamId}/members`, { headers }),
       ])
       if (!spendRes.ok) throw new Error("Failed to load spend data")
       const spendJson: SpendData = await spendRes.json()
@@ -524,9 +512,14 @@ export default function SpendPage() {
     } finally {
       setLoading(false)
     }
-  }, [getToken, activeWorkspace, month])
+  }, [getToken, teamId, month])
 
   useEffect(() => { load() }, [load])
+
+  // Propagate hook-level error (Guard not installed) to page error state
+  useEffect(() => {
+    if (teamError) setError(teamError)
+  }, [teamError])
 
   async function saveTeamSettings(s: TeamBudgetSettings) {
     if (!teamId) return

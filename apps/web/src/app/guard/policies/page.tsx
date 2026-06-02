@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { useAuth } from "@clerk/nextjs"
-import { useWorkspace } from "@/lib/WorkspaceContext"
+import { useGuardTeam } from "@/hooks/useGuardTeam"
 import AppShell from "@/components/AppShell"
 
 type UserRole = "admin" | "security" | "editor" | "viewer" | null
@@ -479,15 +479,13 @@ function formatUpdatedAt(iso: string | undefined): string {
 
 export default function PoliciesPage() {
   const { getToken, userId } = useAuth()
-  const { activeWorkspace, loading: wsLoading } = useWorkspace()
+  const { teamId, loading: teamLoading } = useGuardTeam()
   const [policies, setPolicies] = useState<Policy[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [userRole, setUserRole] = useState<UserRole>(null)
-  // Populated from the first loaded policy; used for POST/PATCH/DELETE bodies.
-  const [resolvedTeamId, setResolvedTeamId] = useState<string | null>(null)
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ""
 
@@ -495,13 +493,12 @@ export default function PoliciesPage() {
   useEffect(() => {
     let cancelled = false
     async function fetchRole() {
-      if (!activeWorkspace || !userId) return
+      if (!teamId || !userId) return
       try {
         const token = await getToken()
         const h: Record<string, string> = {}
         if (token) h["Authorization"] = `Bearer ${token}`
-        h["X-Workspace-ID"] = activeWorkspace.id
-        const res = await fetch(`${apiUrl}/projects/${activeWorkspace.id}/members`, { headers: h })
+        const res = await fetch(`${apiUrl}/guard/teams/${teamId}/members`, { headers: h })
         if (!res.ok || cancelled) return
         const members: { clerk_user_id: string; role: string }[] = await res.json()
         const role = members.find(m => m.clerk_user_id === userId)?.role as UserRole ?? null
@@ -512,7 +509,7 @@ export default function PoliciesPage() {
     }
     fetchRole()
     return () => { cancelled = true }
-  }, [activeWorkspace?.id, userId])
+  }, [teamId, userId])
 
   const canWrite = userRole === "admin" || userRole === "security"
 
@@ -525,29 +522,24 @@ export default function PoliciesPage() {
     return headers
   }, [getToken])
 
-  // Clear skeleton when WorkspaceContext finishes loading but has no workspace
+  // Clear skeleton when team resolution finishes with no result
   useEffect(() => {
-    if (!wsLoading && !activeWorkspace) setLoading(false)
-  }, [wsLoading, activeWorkspace])
+    if (!teamLoading && !teamId) setLoading(false)
+  }, [teamLoading, teamId])
 
-  // Fetch on mount
+  // Fetch on mount / when teamId resolves
   useEffect(() => {
     async function load() {
-      const wsId = activeWorkspace?.id
-      if (!wsId) return
+      if (!teamId) return
       setLoading(true)
       setError(null)
       try {
         const headers = await authHeaders()
-        const qs = `?workspace_id=${encodeURIComponent(wsId)}`
+        const qs = `?team_id=${encodeURIComponent(teamId)}`
         const res = await fetch(`${apiUrl}/guard/policies${qs}`, { headers })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data: Policy[] = await res.json()
         setPolicies(data)
-        // Cache the resolved team_id from the first result for write operations
-        if (data.length > 0 && data[0].team_id) {
-          setResolvedTeamId(data[0].team_id)
-        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load policies.")
       } finally {
@@ -555,7 +547,7 @@ export default function PoliciesPage() {
       }
     }
     load()
-  }, [apiUrl, authHeaders, activeWorkspace?.id])
+  }, [apiUrl, authHeaders, teamId])
 
   // Toggle enable/disable with optimistic update
   async function handleToggle(id: string) {
@@ -624,7 +616,7 @@ export default function PoliciesPage() {
         builtin: false,
       }
       if (formData.match_path_pattern.trim()) body.match_path_pattern = formData.match_path_pattern.trim()
-      if (resolvedTeamId) body.team_id = resolvedTeamId
+      if (teamId) body.team_id = teamId
 
       const res = await fetch(`${apiUrl}/guard/policies`, {
         method: "POST",
