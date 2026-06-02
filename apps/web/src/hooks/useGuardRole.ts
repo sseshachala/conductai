@@ -1,5 +1,7 @@
 "use client"
 
+import { useState, useEffect } from "react"
+import { useAuth } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
 export type GuardRole = "admin" | "security" | "developer" | "viewer"
@@ -46,13 +48,46 @@ export const ROLE_PERMISSIONS = {
 
 export function useGuardRole(
   _teamId: string | null,
-  _workspaceId: string | null,
+  workspaceId: string | null,
 ): { role: GuardRole | null; permissions: GuardPermissions; loading: boolean } {
-  const { permissions, permissionsRole, permissionsLoading } = useWorkspace()
-  const role = (permissionsRole as GuardRole) ?? null
-  return {
-    role,
-    permissions: permissions.length > 0 ? permissionsFromList(permissions) : VIEWER_PERMISSIONS,
-    loading: permissionsLoading,
-  }
+  const { getToken, isLoaded, isSignedIn } = useAuth()
+  const { activeWorkspace } = useWorkspace()
+  const effectiveWorkspaceId = workspaceId ?? activeWorkspace?.id ?? null
+
+  const [role, setRole] = useState<GuardRole | null>(null)
+  const [permissions, setPermissions] = useState<GuardPermissions>(VIEWER_PERMISSIONS)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!effectiveWorkspaceId || !isLoaded || !isSignedIn) return
+    let cancelled = false
+    setLoading(true)
+
+    async function fetch_() {
+      try {
+        const token = await getToken()
+        if (!token) { if (!cancelled) setLoading(false); return }
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/me/permissions?workspace_id=${effectiveWorkspaceId}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        )
+        if (res.ok) {
+          const data: { role: string; permissions: string[] } = await res.json()
+          if (!cancelled) {
+            setRole(data.role as GuardRole)
+            setPermissions(data.permissions.length > 0 ? permissionsFromList(data.permissions) : VIEWER_PERMISSIONS)
+          }
+        }
+      } catch {
+        // degrade to viewer
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    fetch_()
+    return () => { cancelled = true }
+  }, [effectiveWorkspaceId, isLoaded, isSignedIn, getToken])
+
+  return { role, permissions, loading }
 }
