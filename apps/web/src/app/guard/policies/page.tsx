@@ -17,6 +17,7 @@ type MatchTool = "bash" | "edit" | "write" | "read" | "*"
 
 interface Policy {
   id: string
+  team_id: string
   rule_id: string
   description: string
   match_tool: MatchTool
