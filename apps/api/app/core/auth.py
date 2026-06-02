@@ -451,16 +451,29 @@ def get_guard_org_id(
 
 def get_guard_hook_auth(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
+    x_api_key: Annotated[str | None, Header()] = None,
     db: Session = Depends(get_db),
 ) -> str:
-    """Auth for hook/CLI endpoints that accept EITHER a Clerk JWT OR a member token.
+    """Auth for hook/CLI endpoints that accept a Clerk JWT, member token, or cond_live_ API key.
 
-    Returns org_id (from Clerk) or team_id string (from member token lookup).
-    This allows `conduct guard sync` and the MCP server to call protected endpoints
-    using the member_token issued at join time.
+    Returns workspace_id (from API key), org_id (from Clerk), or workspace_id (from member token).
     """
     if not _clerk_enabled():
         return "dev-org"
+
+    # cond_live_ API key — same path as get_workspace_id
+    if x_api_key and x_api_key.startswith("cond_live_"):
+        import hashlib
+        from app.models.conduct_api_key import ConductApiKey
+        from datetime import datetime, timezone
+        key_hash = hashlib.sha256(x_api_key.encode()).hexdigest()
+        row = db.query(ConductApiKey).filter(ConductApiKey.key_hash == key_hash).first()
+        if not row:
+            raise HTTPException(status_code=401, detail="Invalid API key")
+        if row.expires_at and row.expires_at < datetime.now(timezone.utc):
+            raise HTTPException(status_code=401, detail="API key expired")
+        return str(row.workspace_id)
+
     if not credentials:
         raise HTTPException(status_code=401, detail="Authentication required")
 
