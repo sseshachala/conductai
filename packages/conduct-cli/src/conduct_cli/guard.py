@@ -360,10 +360,11 @@ def cmd_guard_install(args):
 
     member_token = result.get("member_token") or ""
 
-    # Persist guard config
+    # Persist guard config — include api_key so CLI commands can authenticate
     _save_guard_config({
         "workspace_id": workspace_id,
         "member_token": member_token,
+        "api_key":      api_key,
         "api_url":      server,
     })
 
@@ -372,7 +373,7 @@ def cmd_guard_install(args):
         policy = _req(
             "GET",
             f"{server}/guard/policies/sync?workspace_id={workspace_id}",
-            token=member_token,
+            api_key=api_key,
         )
         _save_policy(policy)
         rule_count = len(policy.get("rules", []))
@@ -449,7 +450,7 @@ def cmd_guard_join(args):
 def cmd_guard_sync(args):
     cfg          = _require_guard_config()
     workspace_id = cfg.get("workspace_id")
-    member_token = cfg.get("member_token", "")
+    api_key      = cfg.get("api_key", "")
     base_url     = _api_url(cfg)
 
     print(f"Syncing policy…")
@@ -457,7 +458,7 @@ def cmd_guard_sync(args):
     policy = _req(
         "GET",
         f"{base_url}/guard/policies/sync?workspace_id={workspace_id}",
-        token=member_token,
+        api_key=api_key,
     )
     _save_policy(policy)
     rule_count = len(policy.get("rules", []))
@@ -476,7 +477,7 @@ def cmd_guard_status(args):
     cfg          = _require_guard_config()
     workspace_id = cfg.get("workspace_id")
     user_email   = cfg.get("user_email", "")
-    member_token = cfg.get("member_token", "")
+    api_key      = cfg.get("api_key", "")
     base_url     = _api_url(cfg)
 
     # Load local policy for rule count
@@ -494,7 +495,7 @@ def cmd_guard_status(args):
         spend = _req(
             "GET",
             f"{base_url}/guard/spend?workspace_id={workspace_id}",
-            token=member_token,
+            api_key=api_key,
         )
     except SystemExit:
         pass
@@ -514,7 +515,7 @@ def cmd_guard_status(args):
                 f"&since={today_iso}"
                 f"&limit=20"
             ),
-            token=member_token,
+            api_key=api_key,
         )
         if not isinstance(events, list):
             events = events.get("events", [])
@@ -550,7 +551,7 @@ def cmd_guard_audit(args):
     cfg          = _require_guard_config()
     workspace_id = cfg.get("workspace_id")
     user_email   = cfg.get("user_email", "")
-    member_token = cfg.get("member_token", "")
+    api_key      = cfg.get("api_key", "")
     base_url     = _api_url(cfg)
 
     since_str = getattr(args, "since", None) or "24h"
@@ -565,7 +566,7 @@ def cmd_guard_audit(args):
             f"&since={since_iso}"
             f"&limit=50"
         ),
-        token=member_token,
+        api_key=api_key,
     )
     events = events_resp if isinstance(events_resp, list) else events_resp.get("events", [])
 
