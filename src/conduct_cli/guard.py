@@ -125,7 +125,7 @@ def _detect_ai_tool():
     return "unknown"
 
 
-def _post_event(tool_name, tool_input, decision, rule_id=None, message=None):
+def _post_event(tool_name, tool_input, decision, rule_id=None, message=None, tool_use_id=None):
     try:
         cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
     except Exception:
@@ -144,6 +144,7 @@ def _post_event(tool_name, tool_input, decision, rule_id=None, message=None):
         "decision":      decision,
         "rule_id":       rule_id,
         "rule_message":  message,
+        "tool_use_id":   tool_use_id,
     })
     api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
     script = (
@@ -162,6 +163,55 @@ def _post_event(tool_name, tool_input, decision, rule_id=None, message=None):
     )
 
 
+def _post_usage(tool_use_id, tokens_input, tokens_output, duration_ms, ai_tool):
+    """Fire-and-forget POST to /guard/events/usage"""
+    try:
+        cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
+    except Exception:
+        return
+    workspace_id = cfg.get("workspace_id")
+    if not workspace_id or not tool_use_id:
+        return
+    payload = json.dumps({
+        "workspace_id": workspace_id,
+        "tool_use_id": tool_use_id,
+        "tokens_input": tokens_input,
+        "tokens_output": tokens_output,
+        "duration_ms": duration_ms,
+        "ai_tool": _detect_ai_tool(),
+    })
+    api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+    script = (
+        "import urllib.request\\n"
+        "try:\\n"
+        f"    req = urllib.request.Request(\\"{api_url}/guard/events/usage\\","
+        f" data={repr(payload.encode())}, headers={{\\\"Content-Type\\\": \\\"application/json\\\"}}, method=\\"POST\\")\\n"
+        "    urllib.request.urlopen(req, timeout=5)\\n"
+        "except: pass\\n"
+    )
+    subprocess.Popen(
+        [sys.executable, "-c", script],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+
+def post_usage_main():
+    """PostToolUse hook entrypoint — captures token usage and duration."""
+    try:
+        data = json.load(sys.stdin)
+    except Exception:
+        sys.exit(0)
+    tool_use_id = data.get("tool_use_id")
+    usage = data.get("usage") or {}
+    tokens_input  = usage.get("input_tokens", 0)
+    tokens_output = usage.get("output_tokens", 0)
+    duration_ms = data.get("duration_ms")
+    _post_usage(tool_use_id, tokens_input, tokens_output, duration_ms, _detect_ai_tool())
+    sys.exit(0)
+
+
 def main():
     try:
         data = json.load(sys.stdin)
@@ -178,12 +228,13 @@ def main():
 
     tool_name  = (data.get("tool_name") or "").lower()
     tool_input = data.get("tool_input") or {}
+    tool_use_id = data.get("tool_use_id")
 
     _, action, rule_id, message = _check_policy(tool_name, tool_input)
 
     # Always post an event — "allowed" for normal calls, "blocked"/"warned" for violations
     decision = {"block": "blocked", "warn": "warned", "approval": "blocked"}.get(action, "allowed")
-    _post_event(tool_name, tool_input, decision, rule_id, message)
+    _post_event(tool_name, tool_input, decision, rule_id, message, tool_use_id=tool_use_id)
 
     if action == "block":
         print(f"[ConductGuard] {message}")
@@ -265,7 +316,7 @@ def _register_mcp(workspace_id: str, member_token: str, api_url: str) -> None:
 
 
 def _install_codex_hook(hook_path: Path) -> None:
-    """Register hook in ~/.codex/hooks.json (same format as Claude Code)."""
+    """Register PreToolUse and PostToolUse hooks in ~/.codex/hooks.json."""
     codex_hooks = Path.home() / ".codex" / "hooks.json"
     if not (Path.home() / ".codex").exists():
         return  # Codex not installed
@@ -277,20 +328,42 @@ def _install_codex_hook(hook_path: Path) -> None:
         except json.JSONDecodeError:
             hooks = {}
 
-    cmd = f"python3 {hook_path}"
-    pre = hooks.setdefault("hooks", {}).setdefault("PreToolUse", [])
-    already = any(
-        e.get("command") == cmd
+    hook_section = hooks.setdefault("hooks", {})
+
+    # PreToolUse
+    pre_cmd = f"python3 {hook_path}"
+    pre = hook_section.setdefault("PreToolUse", [])
+    pre_already = any(
+        e.get("command") == pre_cmd
         for h in pre
         for e in h.get("hooks", [])
     )
-    if not already:
-        pre.append({"matcher": ".*", "hooks": [{"type": "command", "command": cmd}]})
+    changed = False
+    if not pre_already:
+        pre.append({"matcher": ".*", "hooks": [{"type": "command", "command": pre_cmd}]})
+        changed = True
+
+    # PostToolUse
+    post_cmd = "conductguard-post"
+    post = hook_section.setdefault("PostToolUse", [])
+    post_already = any(
+        e.get("command") == post_cmd
+        for h in post
+        for e in h.get("hooks", [])
+    )
+    if not post_already:
+        post.append({"matcher": "*", "hooks": [{"type": "command", "command": post_cmd}]})
+        changed = True
+
+    if changed:
         codex_hooks.parent.mkdir(parents=True, exist_ok=True)
         codex_hooks.write_text(json.dumps(hooks, indent=2))
-        print(f"  {GREEN}Codex hook registered{RESET}")
+        if not pre_already:
+            print(f"  {GREEN}Codex PreToolUse hook registered{RESET}")
+        if not post_already:
+            print(f"  {GREEN}Codex PostToolUse hook registered{RESET}")
     else:
-        print(f"  {GRAY}Codex hook already registered{RESET}")
+        print(f"  {GRAY}Codex hooks already registered{RESET}")
 
 
 # ── HTTP helpers (no third-party deps — mirrors api.py style) ─────────────────
@@ -342,7 +415,7 @@ def _parse_since(since_str: str) -> str:
 # ── Hook helpers ─────────────────────────────────────────────────────────────
 
 def _install_claude_hook(hook_path: Path) -> None:
-    """Register hook_path as a PreToolUse hook in ~/.claude/settings.json."""
+    """Register PreToolUse and PostToolUse hooks in ~/.claude/settings.json."""
     claude_settings = Path.home() / ".claude" / "settings.json"
     settings: dict = {}
     if claude_settings.exists():
@@ -352,21 +425,41 @@ def _install_claude_hook(hook_path: Path) -> None:
             settings = {}
 
     hooks = settings.setdefault("hooks", {})
-    pre = hooks.setdefault("PreToolUse", [])
-    cmd = f"python3 {hook_path}"
 
-    already = any(
-        e.get("command") == cmd
+    # PreToolUse — existing hook script
+    pre = hooks.setdefault("PreToolUse", [])
+    pre_cmd = f"python3 {hook_path}"
+    pre_already = any(
+        e.get("command") == pre_cmd
         for h in pre
         for e in h.get("hooks", [])
     )
-    if not already:
-        pre.append({"matcher": ".*", "hooks": [{"type": "command", "command": cmd}]})
+    changed = False
+    if not pre_already:
+        pre.append({"matcher": ".*", "hooks": [{"type": "command", "command": pre_cmd}]})
+        changed = True
+
+    # PostToolUse — conductguard-post entrypoint
+    post = hooks.setdefault("PostToolUse", [])
+    post_cmd = "conductguard-post"
+    post_already = any(
+        e.get("command") == post_cmd
+        for h in post
+        for e in h.get("hooks", [])
+    )
+    if not post_already:
+        post.append({"matcher": "*", "hooks": [{"type": "command", "command": post_cmd}]})
+        changed = True
+
+    if changed:
         claude_settings.parent.mkdir(parents=True, exist_ok=True)
         claude_settings.write_text(json.dumps(settings, indent=2))
-        print(f"  {GREEN}Claude Code hook registered{RESET}")
+        if not pre_already:
+            print(f"  {GREEN}Claude Code PreToolUse hook registered{RESET}")
+        if not post_already:
+            print(f"  {GREEN}Claude Code PostToolUse hook registered{RESET}")
     else:
-        print(f"  {GRAY}Claude Code hook already registered{RESET}")
+        print(f"  {GRAY}Claude Code hooks already registered{RESET}")
 
 
 # ── Commands ──────────────────────────────────────────────────────────────────
