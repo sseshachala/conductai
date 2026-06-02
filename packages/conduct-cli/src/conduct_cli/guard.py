@@ -198,25 +198,52 @@ def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms)
     )
 
 
+def _read_tokens_from_transcript(transcript_path, tool_use_id):
+    """Scan transcript JSONL backwards for the message that produced tool_use_id."""
+    try:
+        path = Path(transcript_path)
+        if not path.exists() or not tool_use_id:
+            return 0, 0
+        lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        for line in reversed(lines):
+            if not line.strip() or "tool_use" not in line:
+                continue
+            try:
+                entry = json.loads(line)
+            except Exception:
+                continue
+            msg = entry.get("message") or {}
+            usage = msg.get("usage")
+            if not usage:
+                continue
+            content = msg.get("content") or []
+            if any(
+                isinstance(b, dict) and b.get("type") == "tool_use" and b.get("id") == tool_use_id
+                for b in content
+            ):
+                total_in = (
+                    usage.get("input_tokens", 0)
+                    + usage.get("cache_creation_input_tokens", 0)
+                    + usage.get("cache_read_input_tokens", 0)
+                )
+                return total_in, usage.get("output_tokens", 0)
+    except Exception:
+        pass
+    return 0, 0
+
+
 def post_usage_main():
     """PostToolUse hook entrypoint — captures token usage and duration."""
     try:
         data = json.load(sys.stdin)
     except Exception:
         sys.exit(0)
-    # Write full payload to debug file so we can inspect what Claude Code sends
-    try:
-        debug_path = GUARD_DIR / "debug_post.json"
-        debug_path.write_text(json.dumps(data, indent=2))
-    except Exception:
-        pass
-    session_id = data.get("session_id")
-    tool_name  = (data.get("tool_name") or "").lower()
-    usage = data.get("usage") or {}
-    tokens_input  = usage.get("input_tokens", 0)
-    tokens_output = usage.get("output_tokens", 0)
-    duration_ms = data.get("duration_ms")
-    _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms)
+    session_id      = data.get("session_id")
+    tool_name       = (data.get("tool_name") or "").lower()
+    tool_use_id     = data.get("tool_use_id")
+    transcript_path = data.get("transcript_path")
+    tokens_input, tokens_output = _read_tokens_from_transcript(transcript_path, tool_use_id)
+    _post_usage(session_id, tool_name, tokens_input, tokens_output, None)
     sys.exit(0)
 
 
