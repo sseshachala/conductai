@@ -99,7 +99,8 @@ export default function ActivityPage() {
 
   function buildParams(offset: number) {
     const wsId = activeWorkspace?.id ?? ""
-    const p = new URLSearchParams({ workspace_id: wsId, limit: String(PAGE_SIZE), offset: String(offset) })
+    const p = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) })
+    if (wsId) p.set("workspace_id", wsId)
     if (filterDeveloper) p.set("user_email", filterDeveloper)
     if (filterTool) p.set("ai_tool", filterTool)
     if (filterDecision) p.set("decision", filterDecision)
@@ -109,6 +110,8 @@ export default function ActivityPage() {
   }
 
   const load = useCallback(async () => {
+    const wsId = activeWorkspace?.id
+    if (!wsId) return
     setLoading(true)
     setError(null)
     offsetRef.current = 0
