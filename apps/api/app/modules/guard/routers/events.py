@@ -56,7 +56,8 @@ class HookEvent(BaseModel):
 
 class UsageUpdate(BaseModel):
     workspace_id: str
-    tool_use_id: str
+    session_id: str
+    tool_name: str | None = None
     tokens_input: int
     tokens_output: int
     duration_ms: int | None = None
@@ -324,14 +325,23 @@ def update_usage(
     if not config:
         raise HTTPException(status_code=404, detail="workspace_id not found in guard_config")
 
-    event = (
+    import uuid as _uuid
+    try:
+        sid = _uuid.UUID(body.session_id)
+    except ValueError:
+        return UsageOut(updated=False)
+
+    q = (
         db.query(GuardAuditEvent)
         .filter(
             GuardAuditEvent.workspace_id == ws_uuid,
-            GuardAuditEvent.tool_use_id == body.tool_use_id,
+            GuardAuditEvent.session_id == sid,
+            GuardAuditEvent.tokens_before.is_(None),
         )
-        .first()
     )
+    if body.tool_name:
+        q = q.filter(GuardAuditEvent.tool_call == body.tool_name)
+    event = q.order_by(GuardAuditEvent.ts.desc()).first()
     if not event:
         return UsageOut(updated=False)
 
