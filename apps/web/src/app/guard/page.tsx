@@ -167,7 +167,7 @@ function GuardDashboard() {
     const headers = await buildHeaders()
     const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params  = new URLSearchParams({ limit: "100" })
-    params.set("team_id", teamId)
+    params.set("workspace_id", teamId)
     try {
       const res = await fetch(`${base}/guard/events?${params}`, { headers })
       if (res.ok) {
@@ -187,7 +187,7 @@ function GuardDashboard() {
     const headers = await buildHeaders()
     const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params  = new URLSearchParams()
-    params.set("team_id", teamId)
+    params.set("workspace_id", teamId)
     try {
       const res = await fetch(`${base}/guard/spend?${params}`, { headers })
       if (res.ok) setStats(await res.json())
@@ -202,7 +202,7 @@ function GuardDashboard() {
     const base   = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params = new URLSearchParams()
     if (token) params.set("token", token)
-    params.set("team_id", teamId)
+    params.set("workspace_id", teamId)
     const url = `${base}/guard/events/stream?${params}`
 
     if (esRef.current) esRef.current.close()
