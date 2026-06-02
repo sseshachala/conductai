@@ -78,7 +78,7 @@ const PAGE_SIZE = 100
 
 export default function ActivityPage() {
   const { getToken } = useAuth()
-  const { activeWorkspace } = useWorkspace()
+  const { activeWorkspace, loading: wsLoading } = useWorkspace()
   const [events, setEvents] = useState<AuditEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -108,6 +108,11 @@ export default function ActivityPage() {
     if (filterUntil) p.set("until", filterUntil)
     return p.toString()
   }
+
+  // Clear skeleton when WorkspaceContext finishes loading but has no workspace
+  useEffect(() => {
+    if (!wsLoading && !activeWorkspace) setLoading(false)
+  }, [wsLoading, activeWorkspace])
 
   const load = useCallback(async () => {
     const wsId = activeWorkspace?.id
