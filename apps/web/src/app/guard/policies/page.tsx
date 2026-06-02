@@ -478,6 +478,10 @@ function formatUpdatedAt(iso: string | undefined): string {
 // ---------------------------------------------------------------------------
 
 export default function PoliciesPage() {
+  return <AppShell><PoliciesContent /></AppShell>
+}
+
+function PoliciesContent() {
   const { getToken } = useAuth()
   const { teamId, loading: teamLoading } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
@@ -712,6 +716,5 @@ export default function PoliciesPage() {
           submitting={submitting}
         />
       )}
-    </AppShell>
   )
 }

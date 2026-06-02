@@ -416,6 +416,10 @@ function MonthPicker({ value, onChange }: { value: string; onChange: (v: string)
 }
 
 export default function SpendPage() {
+  return <AppShell><SpendContent /></AppShell>
+}
+
+function SpendContent() {
   const { getToken } = useAuth()
   const { teamId, loading: teamLoading, error: teamError } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
@@ -548,13 +552,11 @@ export default function SpendPage() {
 
   if (!canViewSpend) {
     return (
-      <AppShell>
-        <div className="max-w-6xl mx-auto px-6 py-8">
-          <div className="rounded-xl border border-stone-200 bg-white px-6 py-16 text-center text-sm text-stone-400">
-            You don&apos;t have access to spend data. Contact your admin.
-          </div>
+      <div className="max-w-6xl mx-auto px-6 py-8">
+        <div className="rounded-xl border border-stone-200 bg-white px-6 py-16 text-center text-sm text-stone-400">
+          You don&apos;t have access to spend data. Contact your admin.
         </div>
-      </AppShell>
+      </div>
     )
   }
 
@@ -764,6 +766,5 @@ export default function SpendPage() {
           </div>
         )}
       </div>
-    </AppShell>
   )
 }

@@ -79,6 +79,10 @@ function exportCsv(events: AuditEvent[]) {
 const PAGE_SIZE = 100
 
 export default function ActivityPage() {
+  return <AppShell><ActivityContent /></AppShell>
+}
+
+function ActivityContent() {
   const { getToken } = useAuth()
   const { user } = useUser()
   const { teamId, loading: teamLoading } = useGuardTeam()
@@ -373,6 +377,5 @@ export default function ActivityPage() {
           </div>
         )}
       </div>
-    </AppShell>
   )
 }
