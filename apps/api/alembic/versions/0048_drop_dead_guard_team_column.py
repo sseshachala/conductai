@@ -15,7 +15,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.drop_column("guard_teams", "conductai_workspace_id")
+    op.execute("""
+        ALTER TABLE guard_teams
+        DROP COLUMN IF EXISTS conductai_workspace_id
+    """)
 
 
 def downgrade() -> None:
