@@ -182,13 +182,15 @@ export default function ActivityPage() {
             <h1 className="text-xl font-semibold text-stone-900 mb-1">Activity log</h1>
             <p className="text-sm text-stone-500">Complete log of all AI tool actions across your team.</p>
           </div>
-          <button
-            onClick={() => exportCsv(events)}
-            disabled={events.length === 0}
-            className="shrink-0 text-xs text-stone-600 hover:text-stone-800 border border-stone-200 rounded-lg px-3 py-1.5 hover:bg-stone-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            Export CSV
-          </button>
+          {permissions.canExportActivity && (
+            <button
+              onClick={() => exportCsv(events)}
+              disabled={events.length === 0}
+              className="shrink-0 text-xs text-stone-600 hover:text-stone-800 border border-stone-200 rounded-lg px-3 py-1.5 hover:bg-stone-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Export CSV
+            </button>
+          )}
         </div>
 
         {/* Viewer-scoped notice */}
