@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth, useUser } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
 export type GuardRole = "admin" | "security" | "developer" | "viewer"
@@ -51,8 +51,10 @@ export function useGuardRole(
   workspaceId: string | null,
 ): { role: GuardRole | null; permissions: GuardPermissions; loading: boolean } {
   const { getToken, isLoaded, isSignedIn } = useAuth()
+  const { user } = useUser()
   const { activeWorkspace } = useWorkspace()
   const effectiveWorkspaceId = workspaceId ?? activeWorkspace?.id ?? null
+  const email = user?.primaryEmailAddress?.emailAddress ?? null
 
   const [role, setRole] = useState<GuardRole | null>(null)
   const [permissions, setPermissions] = useState<GuardPermissions>(VIEWER_PERMISSIONS)
@@ -67,8 +69,10 @@ export function useGuardRole(
       try {
         const token = await getToken()
         if (!token) { if (!cancelled) setLoading(false); return }
+        const params = new URLSearchParams({ workspace_id: effectiveWorkspaceId! })
+        if (email) params.set("email", email)
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/me/permissions?workspace_id=${effectiveWorkspaceId}`,
+          `${process.env.NEXT_PUBLIC_API_URL}/me/permissions?${params}`,
           { headers: { Authorization: `Bearer ${token}` } }
         )
         if (res.ok) {
@@ -87,7 +91,7 @@ export function useGuardRole(
 
     fetch_()
     return () => { cancelled = true }
-  }, [effectiveWorkspaceId, isLoaded, isSignedIn, getToken])
+  }, [effectiveWorkspaceId, isLoaded, isSignedIn, getToken, email])
 
   return { role, permissions, loading }
 }

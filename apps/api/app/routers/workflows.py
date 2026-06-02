@@ -147,6 +147,7 @@ _TEMPLATE_PLAYBOOKS = {
     "docs_drift_detector":    "docs-drift-detector.yaml",
     "terraform_reviewer":     "terraform-reviewer.yaml",
     "smoke_test":             "smoke-test.yaml",
+    "factory":               "factory.yaml",
 }
 
 _PLAYBOOK_META = {
@@ -168,6 +169,7 @@ _PLAYBOOK_META = {
     "docs_drift_detector":   {"icon": "📖",  "category": "Docs",               "tags": ["github", "docs"],                    "featured": True,  "description": "PR merged → AI checks if related docs, README, or runbooks are out of date → opens a follow-up docs PR or creates an issue."},
     "terraform_reviewer":    {"icon": "🏗️",  "category": "Platform & Infra",   "tags": ["github", "infra", "security"],       "featured": True,  "description": "Terraform plan PR opened → AI reviews for security misconfigs, cost anomalies, and drift from approved patterns → posts structured findings."},
     "smoke_test":            {"icon": "🏓",  "category": "Testing",            "tags": ["ci", "ops"],                         "featured": False, "description": "Minimal 1-step pipeline ping. Fires a brain block and returns ok. Use for CI gating and worker health checks — completes in under 30s."},
+    "factory":               {"icon": "🏭",  "category": "Issue to PR",        "tags": ["github", "code", "tdd", "approval"],  "featured": True,  "description": "GitHub issue → spec (Opus) → architecture + ADR → failing tests → implementation → passing tests → human approval → PR. The full software factory pipeline."},
 }
 
 
@@ -187,6 +189,7 @@ _GITHUB_WEBHOOK_EVENTS: dict[str, list[str]] = {
     "release_readiness":     ["create"],
     "docs_drift_detector":   ["pull_request"],
     "terraform_reviewer":    ["pull_request"],
+    "factory":               ["issues"],
 }
 
 # All GitHub events Conduct ever listens to — used when registering a repo webhook
