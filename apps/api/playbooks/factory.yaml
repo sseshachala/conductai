@@ -272,6 +272,8 @@ blocks:
   human_approval:
     type: approval
     label: "Phase 5 — Human approval gate"
+    via: slack
+    channel: "{{inputs.approval_channel}}"
     description: |
       Implementation complete. Tests are green. Review before the PR is opened.
 
