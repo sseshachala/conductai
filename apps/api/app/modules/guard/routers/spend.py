@@ -66,6 +66,10 @@ class ToolSpend(BaseModel):
 class SpendSummary(BaseModel):
     workspace_id: str
     period: str
+    active_developers: int
+    events_today: int
+    blocked_today: int
+    tokens_saved_today: int
     total_tokens_before: int
     total_tokens_after: int
     total_saved_pct: int
@@ -220,9 +224,43 @@ def get_spend_summary(
         for row in tool_rows
     ]
 
+    # Today stats — for the dashboard stat cards
+    from datetime import date
+    today_start = datetime.combine(date.today(), datetime.min.time()).replace(tzinfo=timezone.utc)
+    events_today = int(
+        db.query(func.count(GuardAuditEvent.id))
+        .filter(GuardAuditEvent.workspace_id == ws_uuid, GuardAuditEvent.ts >= today_start)
+        .scalar() or 0
+    )
+    blocked_today = int(
+        db.query(func.count(GuardAuditEvent.id))
+        .filter(
+            GuardAuditEvent.workspace_id == ws_uuid,
+            GuardAuditEvent.ts >= today_start,
+            GuardAuditEvent.decision == "blocked",
+        )
+        .scalar() or 0
+    )
+    tokens_saved_today = int(
+        db.query(func.coalesce(
+            func.sum(GuardAuditEvent.tokens_before - GuardAuditEvent.tokens_after), 0
+        ))
+        .filter(
+            GuardAuditEvent.workspace_id == ws_uuid,
+            GuardAuditEvent.ts >= today_start,
+            GuardAuditEvent.tokens_before.isnot(None),
+            GuardAuditEvent.tokens_after.isnot(None),
+        )
+        .scalar() or 0
+    )
+
     return SpendSummary(
         workspace_id=workspace_id,
         period=month or _period_label(),
+        active_developers=len(by_developer),
+        events_today=events_today,
+        blocked_today=blocked_today,
+        tokens_saved_today=tokens_saved_today,
         total_tokens_before=total_tokens_before,
         total_tokens_after=total_tokens_after,
         total_saved_pct=total_saved_pct,
