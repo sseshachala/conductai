@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_guard_org_id
+from app.core.auth import get_guard_org_id, get_user_id
 from app.core.database import get_db
 from app.models.rbac import Permission, Role
 
@@ -105,11 +105,11 @@ def _resolve_guard_role(db: Session, workspace_id: str, user_id: str) -> str:
 @me_router.get("/permissions", response_model=PermissionSet)
 def get_my_permissions(
     workspace_id: Annotated[str, Query()],
-    caller_id: Annotated[str, Depends(get_guard_org_id)],
+    user_id: Annotated[str, Depends(get_user_id)],
     db: Session = Depends(get_db),
 ) -> PermissionSet:
     """Return the calling user's resolved role and permission names for a workspace."""
-    role = _resolve_guard_role(db, workspace_id, caller_id)
+    role = _resolve_guard_role(db, workspace_id, user_id)
 
     rows = db.execute(
         text("""

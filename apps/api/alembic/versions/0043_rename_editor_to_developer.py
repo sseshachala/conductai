@@ -14,6 +14,11 @@ depends_on = None
 
 
 def upgrade():
+    # Drop any pre-existing role constraints so UPDATE and re-create can succeed
+    # (handles partial previous migration runs)
+    op.execute("ALTER TABLE workspace_users DROP CONSTRAINT IF EXISTS ck_workspace_users_role")
+    op.execute("ALTER TABLE guard_members DROP CONSTRAINT IF EXISTS ck_guard_members_role")
+
     # 1. Rename owner -> admin in guard_members (safety sweep; none expected in prod)
     op.execute("UPDATE guard_members SET role = 'admin' WHERE role = 'owner'")
 
