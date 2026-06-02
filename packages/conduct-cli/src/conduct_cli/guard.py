@@ -284,6 +284,10 @@ def post_usage_main():
         data = json.load(sys.stdin)
     except Exception:
         sys.exit(0)
+    try:
+        (GUARD_DIR / "debug_post.json").write_text(json.dumps(data, indent=2))
+    except Exception:
+        pass
     session_id      = data.get("session_id")
     tool_name       = (data.get("tool_name") or "").lower()
     tool_use_id     = data.get("tool_use_id")
