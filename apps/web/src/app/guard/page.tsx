@@ -23,6 +23,8 @@ interface GuardEvent {
   tool_call: string
   input_summary: string | null
   decision: "allowed" | "blocked" | "warned" | "approval"
+  tokens_before: number | null
+  tokens_after: number | null
   tokens_saved: number | null
   rule_message: string | null
   ts: string
@@ -111,15 +113,19 @@ function formatTokensSaved(n: number | null | undefined): string {
   return `${n}`
 }
 
-function formatTokensSavedPct(saved: number | null): string {
-  if (saved == null) return "—"
-  return `−${saved}% tokens`
-}
-
 function formatTotalTokensSaved(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000)     return `${(n / 1_000).toFixed(0)}k`
   return `${n}`
+}
+
+function formatTokensUsed(input: number | null, output: number | null): string | null {
+  if (input == null && output == null) return null
+  const fmt = (n: number) => n >= 1_000 ? `${(n / 1_000).toFixed(0)}k` : `${n}`
+  const parts = []
+  if (input)  parts.push(`${fmt(input)} in`)
+  if (output) parts.push(`${fmt(output)} out`)
+  return parts.join(" / ") || null
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -255,7 +261,7 @@ function GuardDashboard() {
       active_developers: distinctDevs > 0 ? distinctDevs : events.length > 0 ? 1 : 0,
       events_today: todayEvents.length,
       blocked_today: todayEvents.filter(e => e.decision === "blocked").length,
-      tokens_saved_today: todayEvents.reduce((s, e) => s + (e.tokens_saved ?? 0), 0),
+      tokens_saved_today: todayEvents.reduce((s, e) => s + (e.tokens_before ?? 0) + (e.tokens_after ?? 0), 0),
     }
   }, [events])
 
@@ -407,7 +413,7 @@ function GuardDashboard() {
                     <th className="px-4 py-3 text-left font-medium">Call</th>
                     <th className="px-4 py-3 text-left font-medium">Input</th>
                     <th className="px-4 py-3 text-left font-medium">Decision</th>
-                    <th className="px-4 py-3 text-right font-medium">Tokens saved</th>
+                    <th className="px-4 py-3 text-right font-medium">Tokens</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -462,11 +468,14 @@ function GuardDashboard() {
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right text-xs text-stone-500 tabular-nums whitespace-nowrap">
-                        {ev.tokens_saved != null && ev.tokens_saved !== 0
-                          ? <span className="text-green-700">{formatTokensSavedPct(ev.tokens_saved)}</span>
-                          : <span className="text-stone-300">—</span>
-                        }
+                      <td className="px-4 py-3 text-right text-xs tabular-nums whitespace-nowrap">
+                        {(() => {
+                          const used = formatTokensUsed(ev.tokens_before, ev.tokens_after)
+                          if (used) return <span className="text-stone-500">{used}</span>
+                          if (ev.tokens_saved && ev.tokens_saved > 0)
+                            return <span className="text-green-700">{formatTokensSaved(ev.tokens_saved)} saved</span>
+                          return <span className="text-stone-300">—</span>
+                        })()}
                       </td>
                     </tr>
                   ))}
