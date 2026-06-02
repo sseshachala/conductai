@@ -60,7 +60,7 @@ def _fetch_budget_status():
         return False, None
     team_id  = cfg.get("team_id")
     email    = cfg.get("user_email", "")
-    api_url  = cfg.get("api_url", "https://api.conduct.ai").rstrip("/")
+    api_url  = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
     if not team_id:
         return False, None
     url = f"{api_url}/guard/spend/budget-check?team_id={team_id}"
@@ -177,7 +177,7 @@ def _post_event(tool_name, tool_input, rule_id, action, message):
         "rule_message": message,
     })
 
-    api_url = cfg.get("api_url", "https://api.conduct.ai").rstrip("/")
+    api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
     api_key = cfg.get("api_key", "")
     member_token = cfg.get("member_token", "")
     auth_header = f'"X-Api-Key": "{api_key}"' if api_key else f'"Authorization": "Bearer {member_token}"'
@@ -239,7 +239,7 @@ def _auth_kwargs(cfg: dict) -> dict:
 
 
 def _api_url(cfg: dict) -> str:
-    return cfg.get("api_url", "https://api.conduct.ai").rstrip("/")
+    return cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
 
 
 # ── HTTP helpers (no third-party deps — mirrors api.py style) ─────────────────
@@ -375,7 +375,7 @@ def cmd_guard_install(args):
             pass
 
     api_key  = getattr(args, "api_key", None) or conduct_cfg.get("api_key") or ""
-    base_url = getattr(args, "server", None) or conduct_cfg.get("server", "https://api.conduct.ai")
+    base_url = getattr(args, "server", None) or conduct_cfg.get("server", "https://api.conductai.ai")
     base_url = base_url.rstrip("/")
 
     if not api_key:
@@ -442,7 +442,7 @@ def cmd_guard_join(args):
 
     # Use configured API URL or default
     existing_cfg = _load_guard_config()
-    base_url     = existing_cfg.get("api_url", "https://api.conduct.ai").rstrip("/")
+    base_url     = existing_cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
 
     print(f"\nJoining team with invite code {CYAN}{invite_code}{RESET}…")
 
