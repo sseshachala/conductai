@@ -354,15 +354,6 @@ blocks:
       slack:
         channel: "{{inputs.approval_channel}}"
 
-cleanup:
-  notify_cleanup:
-    type: output
-    label: Run complete
-    output:
-      via: slack
-      slack:
-        channel: "{{inputs.approval_channel}}"
-
 test_trigger:
   payload:
     action: labeled
