@@ -54,7 +54,7 @@ function SettingsContent() {
     setInstalled(true)
     try {
       const headers = await authHeaders()
-      const res = await fetch(`${base}/guard/teams/me?workspace_id=${wsId}`, { headers })
+      const res = await fetch(`${base}/guard/config?workspace_id=${wsId}`, { headers })
       if (res.status === 404) { setInstalled(false); setLoading(false); return }
       if (!res.ok) throw new Error(`Failed to load team (${res.status})`)
       const data = await res.json()
@@ -80,7 +80,7 @@ function SettingsContent() {
   async function patch(body: Partial<TeamPrefs>) {
     if (!wsId) return
     const headers = await authHeaders()
-    const res = await fetch(`${base}/guard/teams/me?workspace_id=${wsId}`, {
+    const res = await fetch(`${base}/guard/config?workspace_id=${wsId}`, {
       method: "PATCH",
       headers,
       body: JSON.stringify(body),

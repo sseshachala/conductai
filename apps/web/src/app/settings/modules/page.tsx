@@ -9,12 +9,12 @@ import { setGuardTeamId, removeGuardTeamId } from "@/lib/guardStorage"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface GuardTeam {
-  id: string
-  name: string
+interface GuardConfig {
+  workspace_id: string
   invite_code: string
-  developer_count: number
-  policy_count: number
+  alert_channel: string | null
+  notify_on_block: boolean
+  notify_on_budget: boolean
 }
 
 // ─── Module card shared shell ─────────────────────────────────────────────────
@@ -35,7 +35,7 @@ function ConductGuardModule() {
   const { getToken } = useAuth()
   const { workspaces, activeWorkspace } = useWorkspace()
 
-  const [team, setTeam] = useState<GuardTeam | null>(null)
+  const [config, setConfig] = useState<GuardConfig | null>(null)
   const [loading, setLoading] = useState(true)
   const [installing, setInstalling] = useState(false)
   const [uninstalling, setUninstalling] = useState(false)
@@ -67,25 +67,22 @@ function ConductGuardModule() {
     const guardWsId = wsId ?? activeWorkspace?.id
     try {
       const h = await buildHeaders(guardWsId)
-      const res = await fetch(`${base}/guard/teams/installed${guardWsId ? `?workspace_id=${guardWsId}` : ""}`, { headers: h })
+      const res = await fetch(`${base}/guard/config/installed${guardWsId ? `?workspace_id=${guardWsId}` : ""}`, { headers: h })
       if (res.ok) {
         const data = await res.json()
         if (data.installed) {
-          if (data.team_id && guardWsId && typeof window !== "undefined") setGuardTeamId(guardWsId, data.team_id)
-          const teamRes = await fetch(`${base}/guard/teams/me${guardWsId ? `?workspace_id=${guardWsId}` : ""}`, { headers: h })
-          if (teamRes.ok) {
-            const t = await teamRes.json()
-            if (t.id && guardWsId && typeof window !== "undefined") setGuardTeamId(guardWsId, t.id)
-            setTeam(t)
-          } else {
-            setTeam({ id: data.team_id, name: data.team_name ?? "", invite_code: data.invite_code ?? "", developer_count: 0, policy_count: 0 })
+          if (guardWsId && typeof window !== "undefined") setGuardTeamId(guardWsId, guardWsId)
+          const configRes = await fetch(`${base}/guard/config${guardWsId ? `?workspace_id=${guardWsId}` : ""}`, { headers: h })
+          if (configRes.ok) {
+            const t = await configRes.json()
+            setConfig(t)
           }
         } else {
-          setTeam(null)
+          setConfig(null)
         }
       }
     } catch {
-      setTeam(null)
+      setConfig(null)
     } finally {
       setLoading(false)
     }
@@ -111,11 +108,7 @@ function ConductGuardModule() {
     setError(null)
     try {
       const h = await buildHeaders(org.id)
-      const res = await fetch(`${base}/guard/teams`, {
-        method: "POST",
-        headers: h,
-        body: JSON.stringify({ name: `${org.name} Guard`, org_id: org.id, workspace_id: org.id }),
-      })
+      const res = await fetch(`${base}/guard/config?workspace_id=${org.id}`, { headers: h })
       if (!res.ok) {
         const body = await res.text()
         setError(`Installation failed — ${body || res.statusText}`)
@@ -140,7 +133,7 @@ function ConductGuardModule() {
       const wsId = activeWorkspace?.id
       const h = await buildHeaders(wsId)
       const qs = wsId ? `?workspace_id=${wsId}` : ""
-      await fetch(`${base}/guard/teams/me${qs}`, { method: "DELETE", headers: h })
+      await fetch(`${base}/guard/config${qs}`, { method: "DELETE", headers: h })
     } catch {
       // Non-fatal — clear local state regardless
     } finally {
@@ -148,7 +141,7 @@ function ConductGuardModule() {
         if (activeWorkspace?.id) removeGuardTeamId(activeWorkspace.id)
         window.dispatchEvent(new CustomEvent("guard-install-changed", { detail: { installed: false } }))
       }
-      setTeam(null)
+      setConfig(null)
       setConfirmUninstall(false)
       setUninstalling(false)
     }
@@ -157,8 +150,8 @@ function ConductGuardModule() {
   // ── Copy invite code ──────────────────────────────────────────────────────────
 
   async function handleCopy() {
-    if (!team?.invite_code) return
-    await navigator.clipboard.writeText(`conduct guard join ${team.invite_code}`)
+    if (!config?.invite_code) return
+    await navigator.clipboard.writeText(`conduct guard join ${config.invite_code}`)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -166,17 +159,18 @@ function ConductGuardModule() {
   // ── Regenerate invite code ────────────────────────────────────────────────────
 
   async function handleRegenerate() {
-    if (!team) return
+    if (!config) return
     setRegenerating(true)
     try {
       const h = await buildHeaders()
-      const res = await fetch(`${base}/guard/teams/${team.id}/invite/regenerate`, {
-        method: "POST",
-        headers: h,
-      })
+      const wsId = activeWorkspace?.id
+      const res = await fetch(
+        `${base}/guard/config/invite/regenerate${wsId ? `?workspace_id=${wsId}` : ""}`,
+        { method: "POST", headers: h }
+      )
       if (res.ok) {
-        const data: GuardTeam = await res.json()
-        setTeam(data)
+        const data: { invite_code: string } = await res.json()
+        setConfig(prev => prev ? { ...prev, invite_code: data.invite_code } : prev)
       }
     } catch {
       // Non-fatal
@@ -195,7 +189,7 @@ function ConductGuardModule() {
     )
   }
 
-  const isInstalled = !!team
+  const isInstalled = !!config
 
   return (
     <ModuleCard>
@@ -260,15 +254,9 @@ function ConductGuardModule() {
       )}
 
       {/* Installed state */}
-      {isInstalled && team && (
+      {isInstalled && config && (
         <div className="border-t border-stone-100 pt-4 space-y-4">
-          {/* Stats + dashboard link */}
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-stone-500">
-              {team.developer_count} developer{team.developer_count !== 1 ? "s" : ""} connected
-              &nbsp;·&nbsp;
-              {team.policy_count} polic{team.policy_count !== 1 ? "ies" : "y"} active
-            </p>
+          <div className="flex items-center justify-end">
             <Link
               href="/guard"
               className="text-xs font-medium text-indigo-600 hover:text-indigo-800 transition-colors"

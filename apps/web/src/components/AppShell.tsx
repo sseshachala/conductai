@@ -179,7 +179,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
         const h: Record<string, string> = {}
         if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/guard/teams/installed?workspace_id=${wsId}`,
+          `${process.env.NEXT_PUBLIC_API_URL}/guard/config/installed?workspace_id=${wsId}`,
           { headers: h }
         )
         if (!cancelled && res.ok) {

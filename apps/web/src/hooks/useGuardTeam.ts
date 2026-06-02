@@ -31,13 +31,13 @@ export function useGuardTeam(): GuardTeamResult {
         const headers: Record<string, string> = {}
         if (token) headers["Authorization"] = `Bearer ${token}`
         const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-        const res = await fetch(`${base}/guard/teams/me?workspace_id=${activeWorkspace.id}`, { headers })
+        const res = await fetch(`${base}/guard/config?workspace_id=${activeWorkspace.id}`, { headers })
         if (!res.ok) {
           if (!cancelled) { setLoading(false); setError(`Guard not installed (${res.status})`) }
           return
         }
         const data = await res.json()
-        if (!cancelled) { setTeamId(data.id); setLoading(false) }
+        if (!cancelled) { setTeamId(data.workspace_id); setLoading(false) }
       } catch (e) {
         if (!cancelled) { setLoading(false); setError("Failed to load Guard team") }
       }
