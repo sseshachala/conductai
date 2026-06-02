@@ -212,29 +212,68 @@ def _api_url(cfg: dict) -> str:
 
 # ── MCP registration ──────────────────────────────────────────────────────────
 
-def _register_mcp(workspace_id: str, member_token: str, api_url: str) -> None:
-    """Write conductguard MCP entry into ~/.claude/settings.json."""
-    claude_settings = Path.home() / ".claude" / "settings.json"
-    settings: dict = {}
-    if claude_settings.exists():
-        try:
-            settings = json.loads(claude_settings.read_text())
-        except json.JSONDecodeError:
-            settings = {}
+# Tools that support mcpServers JSON — only write if the config file already exists
+_MCP_TARGETS = [
+    (Path.home() / ".claude"   / "settings.json", "Claude Code"),
+    (Path.home() / ".cursor"   / "mcp.json",       "Cursor"),
+    (Path.home() / ".windsurf" / "mcp.json",        "Windsurf"),
+    (Path.home() / ".codex"    / "mcp.json",        "Codex"),
+]
 
+
+def _register_mcp(workspace_id: str, member_token: str, api_url: str) -> None:
+    """Write conductguard MCP entry into every AI tool config found on this machine."""
     entry = {
         "command": "conductguard-mcp",
         "args": ["--workspace", workspace_id, "--token", member_token, "--api-url", api_url],
     }
-    mcp = settings.setdefault("mcpServers", {})
-    current = mcp.get("conductguard", {})
-    if current.get("args") == entry["args"]:
-        print(f"  {GRAY}Guard MCP already registered{RESET}")
-        return
-    mcp["conductguard"] = entry
-    claude_settings.parent.mkdir(parents=True, exist_ok=True)
-    claude_settings.write_text(json.dumps(settings, indent=2))
-    print(f"  {GREEN}Guard MCP registered in Claude Code{RESET}")
+    found_any = False
+    for cfg_path, label in _MCP_TARGETS:
+        if not cfg_path.exists():
+            continue
+        found_any = True
+        try:
+            existing = json.loads(cfg_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            existing = {}
+        mcp = existing.setdefault("mcpServers", {})
+        if mcp.get("conductguard", {}).get("args") == entry["args"]:
+            print(f"  {GRAY}Guard MCP already registered in {label}{RESET}")
+            continue
+        mcp["conductguard"] = entry
+        cfg_path.write_text(json.dumps(existing, indent=2))
+        print(f"  {GREEN}Guard MCP registered in {label}{RESET}")
+    if not found_any:
+        print(f"  {GRAY}No AI tool configs found for MCP registration{RESET}")
+
+
+def _install_codex_hook(hook_path: Path) -> None:
+    """Register hook in ~/.codex/hooks.json (same format as Claude Code)."""
+    codex_hooks = Path.home() / ".codex" / "hooks.json"
+    if not (Path.home() / ".codex").exists():
+        return  # Codex not installed
+
+    hooks: dict = {}
+    if codex_hooks.exists():
+        try:
+            hooks = json.loads(codex_hooks.read_text())
+        except json.JSONDecodeError:
+            hooks = {}
+
+    cmd = f"python3 {hook_path}"
+    pre = hooks.setdefault("hooks", {}).setdefault("PreToolUse", [])
+    already = any(
+        e.get("command") == cmd
+        for h in pre
+        for e in h.get("hooks", [])
+    )
+    if not already:
+        pre.append({"matcher": ".*", "hooks": [{"type": "command", "command": cmd}]})
+        codex_hooks.parent.mkdir(parents=True, exist_ok=True)
+        codex_hooks.write_text(json.dumps(hooks, indent=2))
+        print(f"  {GREEN}Codex hook registered{RESET}")
+    else:
+        print(f"  {GRAY}Codex hook already registered{RESET}")
 
 
 # ── HTTP helpers (no third-party deps — mirrors api.py style) ─────────────────
@@ -373,12 +412,12 @@ def cmd_guard_install(args):
     hook_path.write_text(_HOOK_SCRIPT)
     hook_path.chmod(0o755)
 
-    # Install PreToolUse hook
+    # Install PreToolUse hooks — Claude Code + Codex (real interception)
     _install_claude_hook(hook_path)
+    _install_codex_hook(hook_path)
 
-    # Register MCP server
-    if member_token:
-        _register_mcp(workspace_id, member_token, server)
+    # Register MCP in all found AI tools — Cursor/Windsurf (advisory)
+    _register_mcp(workspace_id, member_token or "", server)
 
 
 def cmd_guard_join(args):
@@ -451,10 +490,14 @@ def cmd_guard_sync(args):
     rule_count = len(policy.get("rules", []))
     print(f"  {GREEN}Policy refreshed:{RESET} {rule_count} rule(s)")
 
-    # Refresh hook script (picks up budget check and any other updates)
+    # Refresh hook script + re-register in all tools
     hook_path = GUARD_DIR / "hook.py"
     hook_path.write_text(_HOOK_SCRIPT)
     hook_path.chmod(0o755)
+    _install_claude_hook(hook_path)
+    _install_codex_hook(hook_path)
+    cfg2 = _load_guard_config()
+    _register_mcp(workspace_id, cfg2.get("member_token", ""), base_url)
     print(f"  {GREEN}Hook script updated{RESET}")
 
     print(f"\n{BOLD}Policy refreshed ({rule_count} rule(s)).{RESET}")
