@@ -298,7 +298,7 @@ function GuardDashboard() {
         </div>
 
         {/* Viewer-scoped notice */}
-        {!permissionsLoading && !permissions.canViewAllActivity && (
+        {!loading && !permissionsLoading && !permissions.canViewAllActivity && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
             You can view your own activity only. Contact your admin to request broader access.
           </div>
