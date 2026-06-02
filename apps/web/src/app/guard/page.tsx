@@ -303,7 +303,13 @@ function GuardDashboard() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatCard
               label="Active developers"
-              value={stats?.active_developers ?? new Set(events.map(e => e.user_email).filter(Boolean)).size}
+              value={(() => {
+                const fromStats = stats?.active_developers ?? 0
+                if (fromStats > 0) return fromStats
+                const fromEmails = new Set(events.map(e => e.user_email).filter(Boolean)).size
+                if (fromEmails > 0) return fromEmails
+                return events.length > 0 ? 1 : 0
+              })()}
               accent="text-indigo-700"
             />
             <StatCard
