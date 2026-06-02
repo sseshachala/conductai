@@ -385,11 +385,13 @@ def cmd_guard_install(args):
         return
 
     member_token = result.get("member_token") or ""
+    user_email   = result.get("user_email") or ""
 
     # Persist guard config — include api_key so CLI commands can authenticate
     _save_guard_config({
         "workspace_id": workspace_id,
         "member_token": member_token,
+        "user_email":   user_email,
         "api_key":      api_key,
         "api_url":      server,
     })
@@ -624,10 +626,10 @@ def cmd_guard_audit(args):
     for ev in events:
         ts_raw   = ev.get("timestamp", ev.get("created_at", ""))
         ts       = ts_raw[:19].replace("T", " ") if ts_raw else "—"
-        tool     = (ev.get("tool") or "—")[:tool_w - 1]
-        action   = (ev.get("action") or "—")[:action_w - 1]
+        tool     = (ev.get("ai_tool") or "—")[:tool_w - 1]
+        action   = (ev.get("tool_call") or "—")[:action_w - 1]
         decision = ev.get("decision", "—")
-        rule     = ev.get("rule", "—")
+        rule     = (ev.get("rule_id") or ev.get("rule_message") or "—")
 
         dec_color = RED if decision == "blocked" else GREEN if decision == "allowed" else GRAY
         print(
