@@ -406,6 +406,69 @@ def list_events(
     return [EventOut(**_event_to_dict(e)) for e in rows]
 
 
+# ── GET /guard/events/cost-trend ─────────────────────────────────────────────
+
+@router.get("/cost-trend")
+def cost_trend(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    period: str = Query(default="daily", description="daily|weekly|monthly"),
+):
+    """Return aggregated cost per period, split by ai_tool (claude-code vs codex)."""
+    import uuid
+    from datetime import timedelta
+    from sqlalchemy import func, cast
+    from sqlalchemy.dialects.postgresql import TIMESTAMP
+
+    ws_uuid = uuid.UUID(workspace_id)
+    now = _now()
+
+    if period == "monthly":
+        since = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        trunc = "month"
+        fmt = "%Y-%m"
+    elif period == "weekly":
+        since = now - timedelta(weeks=12)
+        trunc = "week"
+        fmt = "%Y-%m-%d"
+    else:  # daily (default) — last 30 days
+        since = now - timedelta(days=30)
+        trunc = "day"
+        fmt = "%Y-%m-%d"
+
+    rows = (
+        db.query(
+            func.date_trunc(trunc, GuardAuditEvent.ts).label("bucket"),
+            GuardAuditEvent.ai_tool,
+            func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0).label("cost"),
+        )
+        .filter(
+            GuardAuditEvent.workspace_id == ws_uuid,
+            GuardAuditEvent.ts >= since,
+            GuardAuditEvent.cost_usd_after.isnot(None),
+        )
+        .group_by("bucket", GuardAuditEvent.ai_tool)
+        .order_by("bucket")
+        .all()
+    )
+
+    # Pivot into {date, claude, codex, other} per bucket
+    buckets: dict[str, dict] = {}
+    for row in rows:
+        label = row.bucket.strftime(fmt)
+        if label not in buckets:
+            buckets[label] = {"date": label, "claude": 0.0, "codex": 0.0, "other": 0.0}
+        tool = (row.ai_tool or "other").lower()
+        if "claude" in tool:
+            buckets[label]["claude"] = round(buckets[label]["claude"] + float(row.cost), 4)
+        elif "codex" in tool:
+            buckets[label]["codex"] = round(buckets[label]["codex"] + float(row.cost), 4)
+        else:
+            buckets[label]["other"] = round(buckets[label]["other"] + float(row.cost), 4)
+
+    return list(buckets.values())
+
+
 # ── GET /guard/events/stream — SSE real-time feed ─────────────────────────────
 
 def _fetch_new_events(workspace_id: str, since: datetime) -> tuple[list[dict], datetime]:

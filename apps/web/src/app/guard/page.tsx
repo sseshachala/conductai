@@ -1,6 +1,9 @@
 "use client"
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react"
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
+} from "recharts"
 import { useAuth, useUser } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { timeAgo } from "@/lib/runUtils"
@@ -99,6 +102,75 @@ function DecisionBadge({ decision }: { decision: string }) {
   )
 }
 
+type TrendPeriod = "daily" | "weekly" | "monthly"
+interface TrendPoint { date: string; claude: number; codex: number; other: number }
+
+function CostTrendChart({ apiBase, workspaceId, token }: { apiBase: string; workspaceId: string; token: string | null }) {
+  const [period, setPeriod] = useState<TrendPeriod>("daily")
+  const [data, setData] = useState<TrendPoint[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    const headers: Record<string, string> = {}
+    if (token) headers["Authorization"] = `Bearer ${token}`
+    fetch(`${apiBase}/guard/events/cost-trend?period=${period}&workspace_id=${workspaceId}`, { headers })
+      .then(r => r.json())
+      .then(setData)
+      .catch(() => setData([]))
+      .finally(() => setLoading(false))
+  }, [period, apiBase, workspaceId, token])
+
+  const hasData = data.some(d => d.claude > 0 || d.codex > 0 || d.other > 0)
+
+  return (
+    <div className="bg-white rounded-xl border border-stone-200 px-5 py-4">
+      <div className="flex items-center justify-between mb-4">
+        <span className="text-sm font-medium text-stone-700">Est. cost trend</span>
+        <div className="flex gap-1">
+          {(["daily", "weekly", "monthly"] as TrendPeriod[]).map(p => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={`text-xs px-2.5 py-1 rounded-md font-medium transition-colors ${
+                period === p
+                  ? "bg-stone-900 text-white"
+                  : "text-stone-500 hover:text-stone-700"
+              }`}
+            >
+              {p[0].toUpperCase() + p.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+      {loading ? (
+        <div className="h-40 bg-stone-50 rounded-lg animate-pulse" />
+      ) : !hasData ? (
+        <div className="h-40 flex items-center justify-center text-sm text-stone-400">No cost data yet</div>
+      ) : (
+        <ResponsiveContainer width="100%" height={160}>
+          <BarChart data={data} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+            <XAxis dataKey="date" tick={{ fontSize: 10 }} tickLine={false} axisLine={false}
+              tickFormatter={v => period === "monthly" ? v.slice(0, 7) : v.slice(5)} />
+            <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false}
+              tickFormatter={v => `$${v}`} />
+            <Tooltip
+              formatter={(val, name) => [`$${Number(val ?? 0).toFixed(4)}`, String(name)]}
+              contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e7e5e4" }}
+            />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+            <Bar dataKey="claude" name="Claude" stackId="a" fill="#6366f1" radius={[0, 0, 0, 0]} />
+            <Bar dataKey="codex"  name="Codex"  stackId="a" fill="#10b981" radius={[3, 3, 0, 0]} />
+            {data.some(d => d.other > 0) && (
+              <Bar dataKey="other" name="Other" stackId="a" fill="#a8a29e" radius={[3, 3, 0, 0]} />
+            )}
+          </BarChart>
+        </ResponsiveContainer>
+      )}
+    </div>
+  )
+}
+
 function StatCard({ label, value, accent, sub }: { label: string; value: number | string; accent?: string; sub?: React.ReactNode }) {
   return (
     <div className="bg-white rounded-xl border border-stone-200 px-5 py-4 flex flex-col gap-1">
@@ -152,6 +224,7 @@ function GuardDashboard() {
   const [hasMore, setHasMore]         = useState(true)
   const [live, setLive]               = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [chartToken, setChartToken]   = useState<string | null>(null)
 
   const PAGE_SIZE = 100
 
@@ -178,7 +251,10 @@ function GuardDashboard() {
 
   const loadEvents = useCallback(async () => {
     if (!teamId) return
-    const headers = await buildHeaders()
+    const token = await getToken()
+    if (token) setChartToken(token)
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    if (token) headers["Authorization"] = `Bearer ${token}`
     const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params  = new URLSearchParams({ limit: String(PAGE_SIZE), offset: "0" })
     params.set("workspace_id", teamId)
@@ -195,7 +271,7 @@ function GuardDashboard() {
     } finally {
       setLoading(false)
     }
-  }, [buildHeaders, teamId, PAGE_SIZE])
+  }, [buildHeaders, teamId, PAGE_SIZE, getToken])
 
   const loadMore = useCallback(async () => {
     if (!teamId || loadingMore) return
@@ -400,6 +476,15 @@ function GuardDashboard() {
               sub={<>Claude ${derivedStats.claude_cost_today.toFixed(2)} · Codex ${derivedStats.codex_cost_today.toFixed(2)}</>}
             />
           </div>
+        )}
+
+        {/* Cost trend chart */}
+        {!loading && teamId && (
+          <CostTrendChart
+            apiBase={process.env.NEXT_PUBLIC_API_URL ?? ""}
+            workspaceId={teamId}
+            token={chartToken}
+          />
         )}
 
         {/* Filter bar */}
