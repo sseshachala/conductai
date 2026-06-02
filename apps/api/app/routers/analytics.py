@@ -135,7 +135,7 @@ def _playbook_stats(db: Session, ws_hash: str, cutoff: datetime) -> list[Playboo
 @router.get("/summary", response_model=AnalyticsSummary)
 def get_summary(
     workspace_id: Annotated[str, Depends(get_workspace_id)],
-    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
     db: Session = Depends(get_db),
     days: int = Query(default=30, ge=1, le=365),
 ):
@@ -179,7 +179,7 @@ def get_summary(
 @router.get("/playbooks", response_model=list[PlaybookStat])
 def get_playbooks(
     workspace_id: Annotated[str, Depends(get_workspace_id)],
-    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
     db: Session = Depends(get_db),
     days: int = Query(default=30, ge=1, le=365),
 ):
@@ -190,7 +190,7 @@ def get_playbooks(
 @router.get("/runs", response_model=list[RunRecord])
 def get_runs(
     workspace_id: Annotated[str, Depends(get_workspace_id)],
-    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
     db: Session = Depends(get_db),
     days: int = Query(default=30, ge=1, le=365),
     playbook_slug: str | None = Query(default=None),

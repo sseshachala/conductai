@@ -54,8 +54,8 @@ _SAMPLE_CONTEXT: dict[str, dict] = {
     "workspace_invite": {
         "workspace_name": "Acme Corp",
         "invited_by_email": "admin@acme.com",
-        "role": "editor",
-        "role_description": _ROLE_DESCRIPTIONS.get("editor", ""),
+        "role": "developer",
+        "role_description": _ROLE_DESCRIPTIONS.get("developer", ""),
         "app_url": APP_URL,
     }
 }
@@ -74,7 +74,7 @@ def _require_admin(x_admin_secret: str | None = Header(default=None)) -> None:
 def list_templates(
     db: Session = Depends(get_db),
     _ws: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
 ):
     return db.query(EmailTemplate).order_by(EmailTemplate.slug).all()
 
@@ -84,7 +84,7 @@ def get_template(
     slug: str,
     db: Session = Depends(get_db),
     _ws: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
 ):
     row = db.query(EmailTemplate).filter(EmailTemplate.slug == slug).first()
     if not row:

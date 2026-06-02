@@ -179,7 +179,7 @@ def list_runs(
     workflow_id: UUID,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
 ):
     _get_workflow(workflow_id, workspace_id, db)
     # Return runs across ALL versions so autosave version bumps don't hide history
@@ -200,7 +200,7 @@ def create_run(
     body: RunCreate,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor")),
+    _role: str = Depends(require_workspace_role("admin", "developer")),
 ):
     workflow = _get_workflow(workflow_id, workspace_id, db)
     if not workflow.current_version_id:
@@ -320,7 +320,7 @@ def stream_run_events(
     run_id: UUID,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id_sse),
-    _role: str = Depends(require_workspace_role_sse("admin", "editor", "security", "viewer")),
+    _role: str = Depends(require_workspace_role_sse("admin", "developer", "security", "viewer")),
 ):
     """SSE stream of run_events driven by Redis pub/sub — one DB query per notification."""
     _get_workflow(workflow_id, workspace_id, db)
@@ -417,7 +417,7 @@ def get_run_trace(
     run_id: UUID,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
 ):
     """Return the full AI conversation trace for a run — ordered by turn and role."""
     _get_workflow(workflow_id, workspace_id, db)
@@ -454,7 +454,7 @@ def cancel_run(
     run_id: UUID,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor")),
+    _role: str = Depends(require_workspace_role("admin", "developer")),
 ):
     """Mark a running or pending run as cancelled. The worker will abort on next check."""
     _get_workflow(workflow_id, workspace_id, db)
@@ -476,7 +476,7 @@ def approve_run(
     body: ApprovalDecision,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor")),
+    _role: str = Depends(require_workspace_role("admin", "developer")),
 ):
     """
     Called by the human approver (or Slack webhook) to resume a paused run.
@@ -549,7 +549,7 @@ def list_all_runs(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
     user_id: str = Depends(get_user_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
     status: str | None = None,
     project_id: str | None = None,
     limit: int = Query(default=50, ge=1, le=500),
@@ -608,7 +608,7 @@ def get_workspace_run(
     run_id: UUID,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
 ):
     """Single run by ID, scoped to workspace, with workflow name."""
     row = (

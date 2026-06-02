@@ -12,7 +12,7 @@ import ErrorBoundary from "@/components/ui/ErrorBoundary"
 
 interface Project { id: string; name: string; agent_count: number }
 
-type UserRole = "admin" | "security" | "editor" | "viewer" | null
+type UserRole = "admin" | "security" | "developer" | "viewer" | null
 
 const GUARD_SECTION_KEY = "conduct_guard_section_open"
 const PROJECTS_SECTION_KEY = "conduct_projects_section_open"
@@ -280,8 +280,8 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
 
   // Role-based visibility
   const canSeeGuard = guardInstalled
-  const canSeeProjects = userRole === "admin" || userRole === "editor" || userRole === "viewer"
-  const canCreateProject = userRole === "admin" || userRole === "editor"
+  const canSeeProjects = userRole === "admin" || userRole === "developer" || userRole === "viewer"
+  const canCreateProject = userRole === "admin" || userRole === "developer"
 
   return (
     <PreferencesProvider workspaceId={activeWorkspace?.id ?? ""} getToken={getToken}>

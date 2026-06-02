@@ -66,7 +66,7 @@ class CredentialOut(BaseModel):
 
 
 @router.get("", response_model=list[CredentialOut])
-def list_credentials(db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer"))):
+def list_credentials(db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer"))):
     rows = db.query(Integration).filter(
         Integration.workspace_id == workspace_id
     ).order_by(Integration.created_at).all()
@@ -83,7 +83,7 @@ def list_credentials(db: Session = Depends(get_db), workspace_id: str = Depends(
 
 
 @router.post("", status_code=201)
-def upsert_credential(body: CredentialUpsert, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _role: str = Depends(require_workspace_role("admin", "editor"))):
+def upsert_credential(body: CredentialUpsert, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _role: str = Depends(require_workspace_role("admin", "developer"))):
     if not body.credentials:
         raise HTTPException(status_code=422, detail="credentials dict must not be empty")
 
@@ -179,7 +179,7 @@ def list_credentials_by_environment(
     env_id: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
 ):
     """List credentials scoped to a specific environment."""
     rows = db.query(Integration).filter(
@@ -423,7 +423,7 @@ def list_github_issues(
     label: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
 ):
     """Return open issues in repo with the given label using the stored GitHub token."""
     token = _github_token(workspace_id, db)
@@ -461,7 +461,7 @@ def list_github_repos(
     environment_id: str | None = None,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
 ):
     """Return repos the workspace's git token can access (provider-aware)."""
     token, provider = _git_token(workspace_id, db, environment_id)
@@ -514,7 +514,7 @@ def list_github_branches(
     repo: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor", "security", "viewer")),
+    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
 ):
     """Return branch names for the given repo (provider-aware)."""
     token, provider = _git_token(workspace_id, db)
@@ -688,7 +688,7 @@ class CredentialTestRequest(BaseModel):
 def test_credential(
     body: CredentialTestRequest,
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "editor")),
+    _role: str = Depends(require_workspace_role("admin", "developer")),
 ):
     """
     Test whether the supplied credentials can reach the named service.

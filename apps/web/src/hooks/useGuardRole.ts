@@ -37,7 +37,7 @@ const VIEWER_PERMISSIONS = ROLE_PERMISSIONS["viewer"]
 // ---------------------------------------------------------------------------
 
 function mapGuardRole(apiRole: string): GuardRole {
-  if (apiRole === "owner" || apiRole === "admin") return "admin"
+  if (apiRole === "admin") return "admin"
   if (apiRole === "security") return "security"
   if (apiRole === "developer") return "developer"
   return "viewer"
@@ -49,7 +49,7 @@ function mapGuardRole(apiRole: string): GuardRole {
 
 function mapPlatformRole(apiRole: string): GuardRole {
   if (apiRole === "admin") return "admin"
-  if (apiRole === "editor" || apiRole === "developer") return "developer"
+  if (apiRole === "developer") return "developer"
   return "viewer"
 }
 
