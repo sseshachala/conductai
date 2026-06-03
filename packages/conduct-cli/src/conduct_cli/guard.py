@@ -402,6 +402,20 @@ if __name__ == "__main__":
         main()
 '''
 
+# ── Python interpreter selection ─────────────────────────────────────────────
+
+def _best_python() -> str:
+    """Return the best available Python 3 interpreter path.
+    Prefers 3.11+ (Homebrew) over Apple's system Python 3.9 which has
+    restrictions that cause the hook to fail silently."""
+    import shutil
+    for candidate in ("python3.13", "python3.12", "python3.11", "python3.10"):
+        found = shutil.which(candidate)
+        if found:
+            return found
+    return sys.executable
+
+
 # ── Hook write helper ─────────────────────────────────────────────────────────
 
 def _write_hook(path: Path) -> None:
@@ -502,7 +516,7 @@ def _install_codex_hook(hook_path: Path) -> None:
     hook_section = hooks.setdefault("hooks", {})
 
     # PreToolUse
-    pre_cmd = f"{sys.executable} {hook_path}"
+    pre_cmd = f"{_best_python()} {hook_path}"
     hook_path_str = str(hook_path)
     pre = hook_section.setdefault("PreToolUse", [])
     # Match by hook path so old python3/python3.11 entries are treated as already registered
@@ -524,7 +538,7 @@ def _install_codex_hook(hook_path: Path) -> None:
                     changed = True
 
     # PostToolUse
-    post_cmd = f"{sys.executable} {hook_path} post"
+    post_cmd = f"{_best_python()} {hook_path} post"
     post = hook_section.setdefault("PostToolUse", [])
     # Remove stale conductguard-post entries registered by older CLI versions
     stale = "conductguard-post"
@@ -619,7 +633,7 @@ def _install_claude_hook(hook_path: Path) -> None:
 
     # PreToolUse — existing hook script
     pre = hooks.setdefault("PreToolUse", [])
-    pre_cmd = f"{sys.executable} {hook_path}"
+    pre_cmd = f"{_best_python()} {hook_path}"
     hook_path_str = str(hook_path)
     pre_already = any(
         hook_path_str in e.get("command", "")
@@ -640,7 +654,7 @@ def _install_claude_hook(hook_path: Path) -> None:
 
     # PostToolUse
     post = hooks.setdefault("PostToolUse", [])
-    post_cmd = f"{sys.executable} {hook_path} post"
+    post_cmd = f"{_best_python()} {hook_path} post"
     # Remove stale conductguard-post entries registered by older CLI versions
     stale = "conductguard-post"
     cleaned = False
