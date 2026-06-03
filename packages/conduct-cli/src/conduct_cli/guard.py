@@ -402,6 +402,24 @@ if __name__ == "__main__":
         main()
 '''
 
+# ── Hook write helper ─────────────────────────────────────────────────────────
+
+def _write_hook(path: Path) -> None:
+    """Write _HOOK_SCRIPT to path, then py_compile-validate it.
+    Raises RuntimeError if the written file fails to compile — prevents
+    silently deploying a syntactically broken hook."""
+    import py_compile, tempfile, os
+    path.write_text(_HOOK_SCRIPT)
+    path.chmod(0o755)
+    try:
+        py_compile.compile(str(path), doraise=True)
+    except py_compile.PyCompileError as exc:
+        path.unlink(missing_ok=True)
+        raise RuntimeError(
+            f"hook.py failed syntax check after write — hook NOT installed.\n{exc}"
+        ) from exc
+
+
 # ── Guard config helpers ──────────────────────────────────────────────────────
 
 def _load_guard_config() -> dict:
@@ -698,8 +716,7 @@ def cmd_guard_install(args):
 
     # Write hook script
     hook_path = GUARD_DIR / "hook.py"
-    hook_path.write_text(_HOOK_SCRIPT)
-    hook_path.chmod(0o755)
+    _write_hook(hook_path)
 
     # Install PreToolUse hooks — Claude Code + Codex (real interception)
     _install_claude_hook(hook_path)
@@ -748,8 +765,7 @@ def cmd_guard_join(args):
 
     # Write hook script
     hook_path = GUARD_DIR / "hook.py"
-    hook_path.write_text(_HOOK_SCRIPT)
-    hook_path.chmod(0o755)
+    _write_hook(hook_path)
     print(f"  {GREEN}Hook script written:{RESET} {hook_path}")
 
     # Install PreToolUse hook in ~/.claude/settings.json
@@ -781,8 +797,7 @@ def cmd_guard_sync(args):
 
     # Refresh hook script + re-register in all tools
     hook_path = GUARD_DIR / "hook.py"
-    hook_path.write_text(_HOOK_SCRIPT)
-    hook_path.chmod(0o755)
+    _write_hook(hook_path)
     _install_claude_hook(hook_path)
     _install_codex_hook(hook_path)
     cfg2 = _load_guard_config()
@@ -813,8 +828,7 @@ def cmd_guard_status(args):
             _save_guard_config(cfg)
             # Rewrite hook script so future events carry the email
             hook_path = GUARD_DIR / "hook.py"
-            hook_path.write_text(_HOOK_SCRIPT)
-            hook_path.chmod(0o755)
+            _write_hook(hook_path)
         except Exception:
             pass
 
