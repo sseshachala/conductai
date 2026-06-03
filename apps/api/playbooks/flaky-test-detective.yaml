@@ -1,8 +1,8 @@
 name: Flaky Test Detective
 version: 1
 description: >
-  CI run fails repeatedly on the same test(s) → AI identifies flaky tests,
-  finds the offending commit, and posts a fix recommendation to Slack and GitHub.
+  Flaky tests get identified, traced to the offending commit, and a fix
+  recommendation lands in Slack and GitHub automatically.
 
   Trigger: GitHub workflow_run webhook (completed, conclusion: failure)
 

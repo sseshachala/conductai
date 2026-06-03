@@ -1,9 +1,8 @@
 name: Postmortem Drafter
 version: 1
 description: >
-  Incident resolved → AI reads the timeline, alerts, recent commits and deploys →
-  drafts a structured postmortem with root cause, timeline, and action items →
-  posts draft to Slack and opens a GitHub issue for tracking.
+  Incidents close with a structured postmortem drafted automatically —
+  timeline, root cause, and action items ready before the team debrief.
 
 inputs:
   model:

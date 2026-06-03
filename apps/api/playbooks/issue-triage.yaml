@@ -1,9 +1,8 @@
 name: Issue Triage
 version: 1
 description: >
-  Triggered when a new GitHub issue is opened. AI reads the title and body,
-  assigns labels and priority, and posts a clarifying comment if the issue
-  is vague or missing reproduction steps.
+  New issues get labeled, prioritized, and clarified automatically.
+  Nothing sits in the backlog unread or untagged.
 
   Setup: GitHub repo → Settings → Webhooks → Add webhook.
   Payload URL: https://<your-api>/webhooks/inbound/<this-workflow-id>

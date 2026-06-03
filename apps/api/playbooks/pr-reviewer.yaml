@@ -1,8 +1,8 @@
 name: PR Reviewer
 version: 1
 description: >
-  Triggered when a pull request is opened — by Autopilot or a human.
-  Reviews the diff for bugs, security issues, and style, then posts a review comment on the PR.
+  Every PR gets reviewed for bugs, security issues, and style before a human
+  looks at it. Review comment posted automatically.
 
   Setup: GitHub repo → Settings → Webhooks → Add webhook.
   Payload URL: https://<your-api>/webhooks/inbound/<this-workflow-id>

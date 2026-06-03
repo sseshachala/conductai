@@ -1,9 +1,8 @@
 name: Release Notes Drafter
 version: 1
 description: >
-  Triggered when a git tag is pushed (GitHub sends a webhook on tag creation).
-  Reads all merged PRs since the previous tag, groups them by type, writes
-  a CHANGELOG entry, and posts a summary to Slack.
+  Tag a release. Get a CHANGELOG entry and Slack summary written automatically
+  from merged PRs — grouped by type, ready to publish.
 
   Setup: GitHub repo → Settings → Webhooks → Add webhook.
   Payload URL: https://<your-api>/webhooks/inbound/<this-workflow-id>

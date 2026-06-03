@@ -1,11 +1,8 @@
 name: Smoke Test — Pipeline Ping
 version: 1
 description: >
-  Minimal 1-step playbook for CI gating and queue health checks.
-  Fires a single brain block that returns {"ok": true} — proves the
-  full pipeline (trigger → queue → worker → LLM → done) in under 30s.
-  Use this with `conduct test --all --project <name> --parallel` as a
-  fast pre-deploy smoke suite instead of running heavy playbooks.
+  Prove the full pipeline is healthy in under 30 seconds. Use for CI gating
+  and queue health checks.
 
 inputs:
   model:

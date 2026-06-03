@@ -1,8 +1,8 @@
 name: CI Failure Alert
 version: 1
 description: >
-  Fires when a CI/CD build fails. Diagnoses the failure from the webhook payload
-  and posts a summary with root cause and suggested fix to Slack.
+  Failed builds get diagnosed and explained in Slack before anyone opens a
+  terminal. Root cause and suggested fix, instantly.
 
   Setup: GitHub repo → Settings → Webhooks → Add webhook.
   Payload URL: https://<your-api>/webhooks/inbound/<this-workflow-id>

@@ -1,9 +1,8 @@
 name: Terraform Plan Reviewer
 version: 1
 description: >
-  PR with Terraform changes opened → AI fetches the plan output, reviews for
-  security misconfigs, cost anomalies, and drift from approved patterns →
-  posts structured findings as a PR review comment.
+  Terraform PRs get reviewed for security misconfigs, cost anomalies, and drift
+  from approved patterns — findings posted as a PR review comment automatically.
 
   Trigger: GitHub pull_request webhook (opened, synchronize)
 

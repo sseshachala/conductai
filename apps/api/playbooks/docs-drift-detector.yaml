@@ -1,8 +1,8 @@
 name: Docs Drift Detector
 version: 1
 description: >
-  PR merged → AI checks if related docs, README, or runbooks are out of date →
-  opens a follow-up docs PR or creates a tracking issue.
+  Merged PRs that break the docs get a follow-up PR automatically.
+  Documentation never drifts silently.
 
   Trigger: GitHub pull_request webhook (closed + merged)
 
