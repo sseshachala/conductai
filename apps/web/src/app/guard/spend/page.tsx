@@ -265,7 +265,7 @@ function SpendControlsPanel({
             <div className="flex items-center gap-1.5">
               <span className="text-sm text-stone-400">{sym}</span>
               <input
-                type="number" min="0" step="100"
+                type="number" min="0.01" step="0.01"
                 value={displayAmt(local.team_monthly_limit_usd)}
                 onChange={e => setLocal(p => ({ ...p, team_monthly_limit_usd: parseAmt(e.target.value) }))}
                 placeholder="No limit"
@@ -290,7 +290,7 @@ function SpendControlsPanel({
             <div className="flex items-center gap-1.5">
               <span className="text-sm text-stone-400">{sym}</span>
               <input
-                type="number" min="0" step="50"
+                type="number" min="0.01" step="0.01"
                 value={displayAmt(local.default_per_developer_usd)}
                 onChange={e => setLocal(p => ({ ...p, default_per_developer_usd: parseAmt(e.target.value) }))}
                 placeholder="No limit"
