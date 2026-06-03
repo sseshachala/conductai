@@ -1372,7 +1372,7 @@ conduct guard audit --since 7d`}</Pre>
             <tbody className="divide-y divide-stone-100">
               {[
                 ["RTK",          "34.5M",  "99.2%", "$103.53"],
-                ["Agent Booster","96.3K",  "62.5%", "$0.29"],
+                ["Agent Booster","96.3K",  "62.5%", "—"],
               ].map(([tool, tokens, pct, cost]) => (
                 <tr key={tool}>
                   <td className="px-4 py-3 font-mono text-xs font-semibold text-stone-800">{tool}</td>
@@ -1385,7 +1385,7 @@ conduct guard audit --since 7d`}</Pre>
                 <td className="px-4 py-3 font-semibold text-stone-900">Combined</td>
                 <td className="px-4 py-3 font-bold text-emerald-700">34.6M</td>
                 <td className="px-4 py-3"><span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">~99%</span></td>
-                <td className="px-4 py-3 font-bold text-emerald-700">$103.82</td>
+                <td className="px-4 py-3 font-bold text-emerald-700">$103.53</td>
               </tr>
             </tbody>
           </table>
