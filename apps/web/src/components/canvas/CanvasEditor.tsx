@@ -971,28 +971,6 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
             {saveStatus === "saving" ? "Saving…" : saveStatus === "error" ? "Save failed" : "Saved ✓"}
           </span>
           <CostEstimate workflowId={workflowId} nodes={nodes} getToken={getToken} />
-          <a
-            href={`/workflows/${workflowId}/runs`}
-            className="text-xs text-stone-500 hover:text-stone-800 transition-colors px-2 py-1 rounded hover:bg-stone-100"
-          >
-            History
-          </a>
-          {!isViewer && (
-            <div className="flex items-center gap-1">
-              <button
-                onClick={undo}
-                disabled={!canUndo}
-                title="Undo (⌘Z)"
-                className="rounded-lg border border-stone-200 px-2 py-1.5 text-sm text-stone-500 hover:bg-stone-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              >↩</button>
-              <button
-                onClick={redo}
-                disabled={!canRedo}
-                title="Redo (⌘⇧Z)"
-                className="rounded-lg border border-stone-200 px-2 py-1.5 text-sm text-stone-500 hover:bg-stone-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              >↪</button>
-            </div>
-          )}
           <button
             onClick={() => fitView({ padding: 0.2, duration: 300 })}
             title="Fit all blocks into view"
