@@ -524,11 +524,17 @@ def cmd_init(platform: str, yes: bool) -> None:
         _merge_mcp_json(root)
         _append_claude_md(root)
         _install_hook(root)
+
         click.echo()
-        click.echo("Done. Next steps:")
-        click.echo("  booster index && booster embed")
-        click.echo("  Restart Claude Code to activate the MCP server.")
+        click.echo("Indexing repo…")
+        import subprocess as _sp
+        r = _sp.run(["booster", "index"], cwd=str(root))
+        if r.returncode == 0:
+            click.echo("Building embeddings…")
+            _sp.run(["booster", "embed"], cwd=str(root))
+
         click.echo()
+        click.echo("Done. Restart Claude Code to activate the MCP server.")
         click.echo("To remove at any time: booster remove claude")
 
     if platform in ("cursor", "all"):
