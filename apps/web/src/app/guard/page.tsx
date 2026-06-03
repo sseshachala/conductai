@@ -227,19 +227,34 @@ function SavingsStatCard({
     const totalUsd =
       savings.team_total.rtk_saved_usd + savings.team_total.booster_saved_usd
 
-    const toolNames =
-      savings.tools_installed && savings.tools_installed.length > 0
-        ? savings.tools_installed
-            .map(t => (t === "booster" ? "Agent Booster" : t.toUpperCase()))
-            .join(" + ")
-        : "RTK + Agent Booster"
+    const TOOL_LINKS: Record<string, { label: string; href: string }> = {
+      rtk:     { label: "RTK",          href: "https://pypi.org/project/rtk/" },
+      booster: { label: "Agent Booster", href: "https://pypi.org/project/agent-booster/" },
+    }
+
+    const installed = savings.tools_installed?.length > 0
+      ? savings.tools_installed
+      : ["rtk", "booster"]
+
+    const toolLinks = installed.map((t, i) => {
+      const info = TOOL_LINKS[t] ?? { label: t.toUpperCase(), href: `https://pypi.org/project/${t}/` }
+      return (
+        <span key={t}>
+          {i > 0 && " + "}
+          <a href={info.href} target="_blank" rel="noopener noreferrer"
+             className="underline underline-offset-2 hover:text-emerald-700">
+            {info.label}
+          </a>
+        </span>
+      )
+    })
 
     return (
       <StatCard
         label="Est. savings"
         value={formatTotalTokensSaved(totalTokens) + " tokens"}
         accent="text-emerald-700"
-        sub={<>${totalUsd.toFixed(2)} saved · {toolNames}</>}
+        sub={<>${totalUsd.toFixed(2)} saved · {toolLinks}</>}
       />
     )
   }
@@ -251,8 +266,8 @@ function SavingsStatCard({
       <div className="text-xs font-medium text-stone-500 uppercase tracking-wide">Est. savings</div>
       <div className="mt-1 text-[11px] text-stone-400 leading-relaxed space-y-0.5">
         <div className="font-medium text-stone-500">Save 60–99% on tokens with:</div>
-        <div>· RTK <span className="font-mono">pip install rtk</span></div>
-        <div>· Agent Booster <span className="font-mono">pip install agent-booster</span></div>
+        <div>· <a href="https://pypi.org/project/rtk/" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-stone-600">RTK</a> <span className="font-mono">pip install rtk</span></div>
+        <div>· <a href="https://pypi.org/project/agent-booster/" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-stone-600">Agent Booster</a> <span className="font-mono">pip install agent-booster</span></div>
         <div className="mt-1 text-stone-400">Run <span className="font-mono">conduct guard sync</span> to start tracking.</div>
       </div>
     </div>
