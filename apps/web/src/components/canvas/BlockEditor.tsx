@@ -1284,6 +1284,20 @@ export default function BlockEditor({
           </div>
 
           <div className={section}>
+            <span className={sectionLabel}>Prompt file</span>
+            <input
+              type="text"
+              value={((blockData.config as Record<string, unknown>)?.prompt_file as string) || ""}
+              onChange={e => onChange(blockId, { ...blockData, config: { ...(blockData.config as object || {}), prompt_file: e.target.value } })}
+              placeholder="prompts/fetch_issue.txt"
+              className={inputBase}
+            />
+            <p className="text-[10px] text-stone-400 mt-1">
+              Path relative to repo root. When set, overrides the agent instructions above. Store prompts in a <code className="bg-stone-100 px-1 rounded">prompts/</code> folder.
+            </p>
+          </div>
+
+          <div className={section}>
             <span className={sectionLabel}>Your instructions</span>
             <textarea
               value={(blockData.custom_instructions as string) || ""}

@@ -88,8 +88,11 @@ export default function BlockPalette({
                 <div className="shrink-0">
                   <BlockIcon type={block.type} />
                 </div>
-                <div className="min-w-0">
-                  <p className="text-[12px] font-semibold leading-none text-stone-800">{block.title}</p>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-[12px] font-semibold leading-none text-stone-800">{block.title}</p>
+                    {block.preferred && <span className="text-[8px] font-bold uppercase tracking-wide px-1 py-0.5 rounded bg-cyan-100 text-cyan-700 leading-none">preferred</span>}
+                  </div>
                   <p className="text-[10px] leading-none mt-0.5 opacity-60">{block.sub}</p>
                 </div>
               </div>

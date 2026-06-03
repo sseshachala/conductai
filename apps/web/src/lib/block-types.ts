@@ -33,15 +33,15 @@ export const BLOCK_STYLES: Record<BlockType, BlockStyle> = {
   mcp:      { bg: "bg-cyan-50",  border: "border-cyan-200",   label: "bg-cyan-50 text-cyan-700",    labelText: "MCP",        text: "text-cyan-700",   icon: "mcp",      buttonClass: "bg-cyan-50 border-cyan-200 text-cyan-700 hover:bg-cyan-100"       },
 }
 
-export const BLOCK_LIBRARY: { type: BlockType; title: string; sub: string; description: string }[] = [
+export const BLOCK_LIBRARY: { type: BlockType; title: string; sub: string; description: string; preferred?: boolean }[] = [
   { type: "trigger",  title: "Trigger",    sub: "starts a run",     description: "Start on GitHub webhook, schedule, or inbound event" },
   { type: "brain",    title: "Agent Step", sub: "reason + act",     description: "LLM reasoning loop — reads context, calls tools, decides" },
-  { type: "tool",     title: "Action",     sub: "perform an action",description: "Perform an action via GitHub, Slack, Linear, and more" },
+  { type: "mcp",      title: "MCP Tool",   sub: "any MCP server",   description: "Connect to any MCP-compatible server and call its tools", preferred: true },
+  { type: "tool",     title: "Action",     sub: "direct API call",  description: "Perform an action via GitHub, Slack, Linear, and more — use MCP when available" },
   { type: "logic",    title: "Condition",  sub: "choose path",      description: "Route on any condition or test result" },
   { type: "memory",   title: "Memory",     sub: "recall or record", description: "Read past context or write outcome for future runs" },
   { type: "approval", title: "Approval",   sub: "wait for human",   description: "Pause the run until a human approves or rejects" },
   { type: "output",   title: "Notify",     sub: "send output",      description: "Post to Slack, send email, or write a comment" },
   { type: "cleanup",  title: "Cleanup",    sub: "always runs",      description: "Teardown or finalize — executes even if the run fails" },
-  { type: "guard",    title: "Guard",      sub: "enforce policies", description: "Apply ConductGuard policies to this workflow — spend caps, tool blocks, audit" },
-  { type: "mcp",      title: "MCP Tool",   sub: "any MCP server",   description: "Connect to any MCP-compatible server and call its tools" },
+  { type: "guard",    title: "Guard",      sub: "enforce policies", description: "Apply ConductGuard policies to this agent — spend caps, tool blocks, audit" },
 ]
