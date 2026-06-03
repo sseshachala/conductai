@@ -60,8 +60,8 @@ Config goes down. Telemetry goes up. Developer is in the middle, working normall
 ### Developer experience: zero config
 
 ```bash
-# Team lead sends invite link. Developer runs one command:
-conductguard join <team-invite-code>
+# Developer runs one command — Guard is available for all workspace members:
+conduct guard sync
 
 # That's it. Everything else is managed by the team lead.
 # Claude Code, Codex, Cursor — all covered automatically.
@@ -229,15 +229,15 @@ The manager sees Conduct agent runs in the same ConductGuard dashboard as develo
 
 ```
 1. Sign up at conductguard.conductai.ai
-2. Create team → get invite code
-3. Configure: enable optimizer rules, turn on default policies
-4. Share invite code with team
+2. Create team (linked to your Conduct workspace)
+3. Configure: enable optimizer rules, turn on default policies, set budgets
+4. Developers are workspace members automatically — no invite step needed
 ```
 
 ### For each developer (60 seconds)
 
 ```bash
-conductguard join abc-xyz-123      # invite code from team lead
+conduct guard sync      # pulls policy, writes hook, registers MCP
 # → installs hooks for Claude Code, Codex, Cursor
 # → downloads current team policy
 # → done
@@ -283,12 +283,12 @@ No restarts. No developer action. No Slack message asking people to update.
 - Rust binary: policy check (PreToolUse) + token optimizer (PostToolUse)
 - Config pulled from backend on session start + polled every 60s
 - Local cache so sessions work offline
-- `conductguard join <code>` onboarding
+- `conduct guard sync` onboarding (no invite code required)
 
 **Exit criteria:** Team lead changes a policy in dashboard → propagates to developer hook within 60 seconds.
 
 ### Phase 2 — Manager Dashboard (3 weeks)
-- Team creation + invite codes
+- Team creation and workspace member provisioning
 - Policy editor (built-in library + custom rules)
 - Optimizer toggle panel
 - Real-time activity feed
@@ -324,7 +324,7 @@ No restarts. No developer action. No Slack message asking people to update.
 
 | v0.2 | v0.3 |
 |---|---|
-| Developer installs and configures | Manager configures, developer just joins |
+| Developer installs and configures | Manager configures, developer just syncs |
 | Data flows up | Config pushes down AND data flows up |
 | Policy as YAML in repo | Policy in dashboard, synced automatically |
 | RTK as separate add-on | Optimizer built in, manager-controlled |
