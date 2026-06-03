@@ -1285,6 +1285,11 @@ conduct guard audit --since 7d`}</Pre>
               alt="Slack showing multiple no-rm blocks for salessupport@organicsphere.com in rapid succession"
               caption="Multiple blocks in the same session — each blocked tool call fires its own Slack message in real time."
             />
+            <Screenshot
+              src="/guard-docs/Password-keys-compromise.png"
+              alt="Slack message from ConductAI showing salessupport@organicsphere.com warned by no-hardcoded-secrets rule in claude-code"
+              caption="Hardcoded secret detected — Guard warns the developer in Slack instantly with the rule ID and policy message. The developer email is always surfaced so managers know exactly who triggered the alert."
+            />
             <p className="text-xs text-stone-400 mt-1 leading-relaxed">The block fires on every blocked call. Spend alerts are deduped per 5% increment — policy blocks are not deduped.</p>
           </div>
           <div className="ml-10 rounded-xl bg-stone-50 border border-stone-200 px-4 py-2.5 text-xs text-stone-500">
