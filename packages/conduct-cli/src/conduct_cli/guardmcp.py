@@ -11,6 +11,7 @@ Exposes three tools:
   guard_check   — check whether a tool call would be blocked by policy
   guard_sync    — pull latest policy from the ConductGuard API
 """
+from __future__ import annotations
 import argparse
 import json
 import re
