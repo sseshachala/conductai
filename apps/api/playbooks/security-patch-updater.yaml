@@ -1,9 +1,8 @@
 name: Security Patch Updater
 version: 1
 description: >
-  Triggered by a Dependabot alert webhook or a GitHub security advisory event.
-  Automatically applies the security patch, runs tests, and opens a PR with a
-  clear CVE reference — no waiting for the weekly cron cycle.
+  Dependabot alerts get patched, tested, and PR'd automatically with a clear
+  CVE reference. CVEs don't wait for the weekly cron cycle.
 
   Setup:
   1. Go to your repo → Settings → Webhooks → Add webhook

@@ -1,8 +1,7 @@
 name: Autopilot Quick — GitHub Issues
 version: 1
 description: >
-  Watch for GitHub issues labeled `autopilot ready`, implement the fix, open a
-  PR immediately. No test step — CI runs tests on the PR instead.
+  Label an issue `autopilot ready`. Get a PR. CI handles the rest.
 
 inputs:
   trigger_label:

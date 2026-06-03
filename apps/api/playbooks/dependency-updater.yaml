@@ -1,9 +1,8 @@
 name: Dependency Updater
 version: 1
 description: >
-  Triggered via inbound webhook (e.g. a weekly GitHub Actions cron job).
-  Scans for outdated patch/minor dependencies, bumps versions, opens a PR.
-  Only patch and minor bumps — never major. Safe to automate weekly.
+  Outdated dependencies get bumped and PR'd automatically every week.
+  Patch and minor only — never a breaking major version.
 
   Setup — two options:
   Option A (GitHub Actions cron):

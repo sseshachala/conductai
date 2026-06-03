@@ -1,8 +1,8 @@
 name: Autopilot Approved — GitHub Issues
 version: 1
 description: >
-  Watch for GitHub issues labeled `autopilot ready`, implement the fix, run
-  tests, then pause for human approval before pushing the PR.
+  Label an issue `autopilot ready`. Claude implements the fix, runs tests, and
+  waits for your approval before opening the PR.
 
 inputs:
   trigger_label:

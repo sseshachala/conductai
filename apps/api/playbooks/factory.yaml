@@ -15,9 +15,8 @@
 name: Factory — AI-Operated Software Pipeline
 version: 1
 description: >
-  Watch for GitHub issues labeled `factory ready`, run the full software factory
-  pipeline: specification → architecture (ADR captured) → TDD implementation →
-  human approval → PR. Uses Opus for reasoning phases and Sonnet for execution.
+  Issues become merged PRs end-to-end. Claude handles spec, architecture,
+  implementation, and tests — Opus for reasoning, Sonnet for execution.
 
 inputs:
   trigger_label:

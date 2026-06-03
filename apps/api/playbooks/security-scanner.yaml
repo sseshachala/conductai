@@ -10,11 +10,8 @@
 name: Security Scanner
 version: 1
 description: >
-  Automated security review on every PR. Scans for OWASP Top 10 vulnerabilities,
-  hardcoded secrets, insecure dependencies, injection flaws, authentication
-  bypasses, and language-specific security anti-patterns. Posts a structured
-  security report as a PR review comment. Critical findings create a fix issue
-  that triggers Autopilot.
+  Every PR gets scanned for OWASP Top 10, hardcoded secrets, and vulnerable
+  dependencies before merge. Findings posted as a structured review comment.
 
 inputs:
   model:

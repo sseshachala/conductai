@@ -1,8 +1,8 @@
 name: Incident Responder
 version: 1
 description: >
-  PagerDuty or OpsGenie fires an alert webhook → agent investigates recent
-  commits and deploys → posts root cause hypothesis to Slack in under 60 seconds.
+  Alert fires. Root cause hypothesis is in Slack in under 60 seconds.
+  No war room needed.
 
   Setup:
   PagerDuty:  Service → Integrations → Add webhook → Payload URL below → trigger on "incident.trigger"

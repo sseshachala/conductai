@@ -11,8 +11,8 @@
 name: Autopilot — GitHub Issues
 version: 1
 description: >
-  Watch for GitHub issues labeled `autopilot ready`, implement the fix, run
-  tests (with inline retry), open a PR. Same flow as the original seed.
+  Label an issue `autopilot ready`. Claude implements the fix, runs tests with
+  inline retry, and opens the PR automatically.
 
 inputs:
   trigger_label:

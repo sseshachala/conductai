@@ -1,10 +1,8 @@
 name: Copilot / AI PR Reviewer
 version: 1
 description: >
-  Triggered when a pull request is opened by an AI author (GitHub Copilot,
-  Cursor, Claude Code, or any bot). Reviews the diff for correctness, security,
-  and test coverage, posts a structured review comment, then pauses for a human
-  to approve before the PR can be merged.
+  AI-authored PRs get a second AI review — catches what Copilot and Cursor miss
+  before humans touch it. Posts findings and waits for approval.
 
   Setup: GitHub repo → Settings → Webhooks → Add webhook.
   Payload URL: https://<your-api>/webhooks/inbound/<this-workflow-id>

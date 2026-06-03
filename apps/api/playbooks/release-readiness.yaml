@@ -1,8 +1,8 @@
 name: Release Readiness Reviewer
 version: 1
 description: >
-  Release branch cut or tag pushed → AI checks open blockers, failed CI,
-  pending reviews, and unresolved incidents → posts a go/no-go summary.
+  Cut a release branch. Get a go/no-go in Slack — open blockers, failed CI,
+  pending reviews, and unresolved incidents, all checked automatically.
 
 inputs:
   model:

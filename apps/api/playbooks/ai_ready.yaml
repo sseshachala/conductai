@@ -18,8 +18,8 @@
 name: ai-ready autopilot
 version: 1
 description: >
-  Fix GitHub issues labeled `ai-ready` on an ephemeral DO droplet.
-  Auto-opens a draft PR; teardown always runs.
+  Labeled issues get implemented on a fresh cloud VM and land as a draft PR.
+  Nothing runs on your machine.
 
 params:
   notify_email:
