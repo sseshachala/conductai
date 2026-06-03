@@ -20,6 +20,7 @@ from app.routers.workspace_projects import router as workspace_projects_router, 
 from app.routers.runs import workspace_runs_router
 from app.routers.api_keys import router as api_keys_router, me_router
 from app.routers.rbac import router as rbac_router, me_router as me_rbac_router
+from app.routers.mcp import router as mcp_router
 
 setup_logging()
 log = structlog.get_logger(__name__)
@@ -91,6 +92,7 @@ app.include_router(guard_spend.router)
 app.include_router(guard_savings.router)
 app.include_router(rbac_router)
 app.include_router(me_rbac_router)
+app.include_router(mcp_router)
 
 
 @app.on_event("startup")
