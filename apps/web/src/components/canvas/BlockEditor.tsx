@@ -812,6 +812,193 @@ function GuardBlockPanel({
   )
 }
 
+// ── MCP block panel ──────────────────────────────────────────────────────────
+
+interface MCPTool {
+  name: string
+  description?: string
+  inputSchema?: {
+    properties?: Record<string, { type?: string; description?: string }>
+    required?: string[]
+  }
+}
+
+function MCPBlockPanel({
+  getToken,
+  blockData,
+  onChange,
+  isViewer = false,
+}: {
+  getToken?: (() => Promise<string | null>) | null
+  blockData: Record<string, unknown>
+  onChange: (key: string, value: unknown) => void
+  isViewer?: boolean
+}) {
+  const [tools, setTools] = useState<MCPTool[]>([])
+  const [discovering, setDiscovering] = useState(false)
+  const [discoverErr, setDiscoverErr] = useState<string | null>(null)
+
+  const credentialKey = (getNestedValue(blockData, "config.credential_key") as string) || ""
+  const transport = (getNestedValue(blockData, "config.transport") as string) || "auto"
+  const toolName = (getNestedValue(blockData, "config.tool_name") as string) || ""
+
+  const selectedTool = tools.find(t => t.name === toolName) ?? null
+  const paramProps = selectedTool?.inputSchema?.properties ?? {}
+  const requiredParams = new Set(selectedTool?.inputSchema?.required ?? [])
+
+  async function authHeaders() {
+    const h: Record<string, string> = { "Content-Type": "application/json" }
+    if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
+    const ws = typeof document !== "undefined"
+      ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
+    if (ws) h["X-Workspace-Id"] = ws
+    return h
+  }
+
+  async function discoverTools() {
+    if (!credentialKey) { setDiscoverErr("Enter a credential handle first."); return }
+    setDiscovering(true)
+    setDiscoverErr(null)
+    try {
+      const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/mcp/tools`, {
+        method: "POST",
+        headers: await authHeaders(),
+        body: JSON.stringify({ credential_key: credentialKey, transport }),
+      })
+      const data = await r.json()
+      if (!r.ok) { setDiscoverErr(data.detail || `HTTP ${r.status}`); return }
+      const list: MCPTool[] = Array.isArray(data) ? data : (data.tools ?? [])
+      setTools(list)
+      if (list.length > 0 && !toolName) {
+        onChange("config.tool_name", list[0].name)
+      }
+    } catch (e) {
+      setDiscoverErr(e instanceof Error ? e.message : "Network error")
+    } finally {
+      setDiscovering(false)
+    }
+  }
+
+  const inputBase = "w-full border border-stone-200 rounded-lg px-2.5 py-1.5 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-200 bg-white disabled:opacity-60 disabled:cursor-not-allowed"
+  const sectionLabel = "text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-1.5 block"
+
+  return (
+    <div className="px-4 py-3 space-y-4">
+
+      {/* Credential handle */}
+      <div>
+        <span className={sectionLabel}>MCP Credential Handle <span className="text-red-500">*</span></span>
+        <input
+          type="text"
+          value={credentialKey}
+          onChange={e => !isViewer && onChange("config.credential_key", e.target.value)}
+          disabled={isViewer}
+          placeholder="mcp-vercel"
+          className={inputBase}
+        />
+        <p className="text-[10px] text-stone-400 mt-1">Handle saved in Settings → Credentials</p>
+      </div>
+
+      {/* Transport */}
+      <div>
+        <span className={sectionLabel}>Transport</span>
+        <select
+          value={transport}
+          onChange={e => !isViewer && onChange("config.transport", e.target.value)}
+          disabled={isViewer}
+          className={inputBase}
+        >
+          <option value="auto">Auto (HTTP → SSE fallback)</option>
+          <option value="http">HTTP (Streamable)</option>
+          <option value="sse">SSE</option>
+        </select>
+      </div>
+
+      {/* Discover tools button */}
+      <div>
+        <button
+          type="button"
+          onClick={discoverTools}
+          disabled={isViewer || discovering || !credentialKey}
+          className="w-full rounded-lg border border-cyan-200 bg-cyan-50 text-cyan-700 text-xs font-semibold px-3 py-2 hover:bg-cyan-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {discovering ? "Discovering…" : "Discover tools"}
+        </button>
+        {discoverErr && (
+          <p className="text-[10px] text-red-600 mt-1">{discoverErr}</p>
+        )}
+        {tools.length > 0 && (
+          <p className="text-[10px] text-emerald-600 mt-1">{tools.length} tool{tools.length !== 1 ? "s" : ""} found</p>
+        )}
+      </div>
+
+      {/* Tool selection */}
+      <div>
+        <span className={sectionLabel}>Tool name <span className="text-red-500">*</span></span>
+        {tools.length > 0 ? (
+          <select
+            value={toolName}
+            onChange={e => !isViewer && onChange("config.tool_name", e.target.value)}
+            disabled={isViewer}
+            className={inputBase}
+          >
+            <option value="">— pick a tool —</option>
+            {tools.map(t => (
+              <option key={t.name} value={t.name}>{t.name}{t.description ? ` — ${t.description}` : ""}</option>
+            ))}
+          </select>
+        ) : (
+          <input
+            type="text"
+            value={toolName}
+            onChange={e => !isViewer && onChange("config.tool_name", e.target.value)}
+            disabled={isViewer}
+            placeholder="get_logs"
+            className={inputBase}
+          />
+        )}
+        {selectedTool?.description && (
+          <p className="text-[10px] text-stone-400 mt-1">{selectedTool.description}</p>
+        )}
+      </div>
+
+      {/* Dynamic params from inputSchema */}
+      {Object.keys(paramProps).length > 0 && (
+        <div className="space-y-3">
+          <span className={sectionLabel}>Parameters</span>
+          {Object.entries(paramProps).map(([paramKey, paramDef]) => {
+            const required = requiredParams.has(paramKey)
+            const val = (getNestedValue(blockData, `config.params.${paramKey}`) as string) || ""
+            return (
+              <div key={paramKey}>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">{paramKey}</label>
+                  {required && <span className="text-red-500 text-[10px] font-bold">*</span>}
+                  {paramDef.description && (
+                    <span className="text-[10px] text-stone-400">{paramDef.description}</span>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  value={val}
+                  onChange={e => !isViewer && onChange(`config.params.${paramKey}`, e.target.value)}
+                  disabled={isViewer}
+                  placeholder={`{{previous_block.${paramKey}}}`}
+                  className={inputBase}
+                />
+              </div>
+            )
+          })}
+          <p className="text-[10px] text-stone-400 pt-1">
+            Use <code className="bg-stone-100 px-1 rounded">{"{{block_id.field}}"}</code> to reference earlier outputs.
+          </p>
+        </div>
+      )}
+
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function BlockEditor({
@@ -1189,7 +1376,7 @@ export default function BlockEditor({
       )}
 
       {/* ── Static config fields (trigger, logic, output, approval) ── */}
-      {staticFields.length > 0 && !isToolLike && blockType !== "brain" && (
+      {staticFields.length > 0 && !isToolLike && blockType !== "brain" && blockType !== "mcp" && (
         <div className={section}>
           <span className={sectionLabel}>Configuration</span>
           <div className="space-y-3">
@@ -1439,6 +1626,16 @@ export default function BlockEditor({
           config={blockData}
           onChange={handleFieldChange}
           isAdmin={isAdmin}
+          isViewer={isViewer}
+        />
+      )}
+
+      {/* ── MCP block ── */}
+      {blockType === "mcp" && (
+        <MCPBlockPanel
+          getToken={getToken}
+          blockData={blockData}
+          onChange={handleFieldChange}
           isViewer={isViewer}
         />
       )}

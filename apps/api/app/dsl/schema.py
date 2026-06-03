@@ -31,6 +31,7 @@ SUPPORTED_BLOCK_TYPES = {
     "memory",
     "output",
     "guard",
+    "mcp",
     # `trigger` and `cleanup` are special: triggers live under top-level
     # ``on:`` and cleanups under top-level ``cleanup:`` — they do not appear
     # as values of ``blocks:``.
@@ -116,7 +117,7 @@ class OutputConfig(BaseModel):
 # don't have to context-switch between subclasses while authoring YAML.
 # ---------------------------------------------------------------------------
 class Block(BaseModel):
-    type: Literal["tool", "brain", "logic", "approval", "memory", "output"]
+    type: Literal["tool", "brain", "logic", "approval", "memory", "output", "mcp"]
     label: str | None = None
     description: str | None = None
 
@@ -124,6 +125,10 @@ class Block(BaseModel):
     integration: str | None = None
     action: str | None = None
     params: dict[str, Any] = Field(default_factory=dict)
+
+    # — mcp blocks —
+    credential_key: str | None = None
+    tool_name: str | None = None
 
     # — brain blocks —
     mode: Literal["single", "agentic"] | None = None
@@ -194,6 +199,11 @@ class Block(BaseModel):
         elif t == "output":
             if not self.output:
                 raise ValueError("output blocks require an `output:` section")
+        elif t == "mcp":
+            if not self.credential_key:
+                raise ValueError("mcp blocks require `credential_key`")
+            if not self.tool_name:
+                raise ValueError("mcp blocks require `tool_name`")
         return self
 
 

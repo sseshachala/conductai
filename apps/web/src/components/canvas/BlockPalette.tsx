@@ -9,6 +9,7 @@ import {
   Bell,
   RefreshCw,
   Database,
+  Network,
 } from "lucide-react"
 import { BLOCK_LIBRARY, BLOCK_STYLES, type BlockType } from "@/lib/block-types"
 import { cn } from "@/lib/utils"
@@ -25,6 +26,7 @@ function BlockIcon({ type, className }: { type: BlockType; className?: string })
     case "cleanup":  return <RefreshCw {...props} />
     case "memory":   return <Database {...props} />
     case "guard":    return <ShieldCheck {...props} />
+    case "mcp":      return <Network {...props} />
   }
 }
 

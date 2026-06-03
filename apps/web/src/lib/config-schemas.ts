@@ -314,6 +314,34 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       readOnly: true,
     },
   ],
+  mcp: [
+    {
+      key: "config.credential_key",
+      label: "MCP Credential Handle",
+      type: "text",
+      required: true,
+      placeholder: "mcp-vercel",
+      hint: "Handle saved in Settings → Credentials",
+    },
+    {
+      key: "config.tool_name",
+      label: "Tool name",
+      type: "text",
+      required: true,
+      placeholder: "get_logs",
+    },
+    {
+      key: "config.transport",
+      label: "Transport",
+      type: "select",
+      defaultValue: "auto",
+      options: [
+        { value: "auto", label: "Auto (HTTP → SSE fallback)" },
+        { value: "http", label: "HTTP (Streamable)" },
+        { value: "sse",  label: "SSE" },
+      ],
+    },
+  ],
   output: [
     {
       key: "integration",
