@@ -25,61 +25,49 @@ Go to **Guard → Spend**. Set:
 
 Go to **Guard → Policies**. Built-in policies are enabled by default (e.g. block `rm -rf`, warn on force push). Add custom rules for your team's specific needs.
 
-### 5. Get the invite code
+### 5. Verify workspace members
 
-Go to **Guard → Team → Invite**. Copy the invite code. Send it to developers via Slack, email, or your onboarding docs.
+Go to **Guard → Team**. All workspace members appear automatically — no invite code or explicit join step required. Promote any developer to `security` or `admin` role from this view as needed.
 
 ---
 
-## Developer: Join the Team
+## Developer: Set Up Guard
 
-Developers need the `conduct-cli` package and the invite code from their admin.
+Developers need the `conduct-cli` package. Guard is available automatically to all workspace members.
 
 ```bash
 # Install
 pip install conduct-cli
 
-# Join
-conduct guard join <invite-code>
+# Authenticate (already done if you use Conduct)
+conduct login --server https://api.conductai.ai --api-key <api-key>
+
+# Sync Guard — installs hook + MCP, pulls policies
+conduct guard sync
 ```
 
-On join, the CLI:
-1. Authenticates with the ConductGuard API
-2. Writes `~/.conductguard/config.json` with team credentials and policies
-3. Registers PreToolUse and PostToolUse hooks in `~/.claude/settings.json`
-4. Prints confirmation with the registered hook path
+`sync`:
+1. Fetches current policies from `/guard/config/policies`
+2. Fetches current budget rules from `/guard/spend/budgets`
+3. Fetches the developer's `clerk_user_id` for per-user budget enforcement
+4. Writes the hook script to `~/.conductguard/hook.py`
+5. Registers the hook entries in `~/.claude/settings.json` and Codex
+6. Registers the `conductguard-mcp` server in `~/.claude/settings.json`
+7. Validates the hook compiles correctly (py_compile check)
 
 The developer is now covered. No further configuration is needed.
 
 ---
 
-## What Happens on First Sync
+## What Happens on Each Sync
 
-`conduct guard sync` (runs automatically after join, and every 60 seconds thereafter):
+Policies sync automatically every 60 seconds while Claude Code is running. On each sync:
 
 1. Fetches current policies from `/guard/config/policies`
 2. Fetches current budget rules from `/guard/spend/budgets`
-3. Fetches the developer's `clerk_user_id` for per-user budget enforcement
-4. Writes the hook script to `~/.conductguard/hook.py`
-5. Registers or updates the hook entries in `~/.claude/settings.json`
-6. Validates the hook compiles correctly (py_compile check)
-
----
-
-## Invite Code Mechanics
-
-| Field | Detail |
-|---|---|
-| Format | Short alphanumeric string, e.g. `grd_a1b2c3` |
-| Scope | Workspace-scoped — one code per Guard team |
-| Expiry | No expiry by default; admin can rotate at Guard → Settings |
-| Role assigned | All new joiners get `developer` role; admin promotes as needed |
-
----
-
-## Adding an Existing Workspace Member
-
-If a developer is already in the Conduct workspace (appears in `workspace_users`), they can still join Guard explicitly via the invite code. Explicit Guard membership takes priority over the workspace fallback for role resolution.
+3. Rewrites `~/.conductguard/hook.py` with the latest hook script
+4. Registers or updates hook entries in `~/.claude/settings.json`
+5. Validates the hook compiles correctly (py_compile check)
 
 ---
 
@@ -121,10 +109,11 @@ EOF
 - [ ] Workspace monthly limit and hard cap set
 - [ ] Per-developer default cap set (optional)
 - [ ] Policies reviewed and customized
-- [ ] Invite code sent to all developers
+- [ ] Verify all workspace members appear in Guard → Team
 
 **Per developer:**
 - [ ] `pip install conduct-cli`
-- [ ] `conduct guard join <invite-code>`
+- [ ] `conduct login --server https://api.conductai.ai --api-key <api-key>`
+- [ ] `conduct guard sync`
 - [ ] Confirm hook registered: `cat ~/.claude/settings.json | grep conductguard`
 - [ ] Run one Claude Code session — verify activity appears in Guard dashboard

@@ -86,13 +86,14 @@ ConductGuard is AI tool fleet management — your security team sets policies on
 ### How it works
 
 ```
-Manager installs Guard (conductai.ai/settings/modules)
-    └─ generates an invite code
+Admin configures policies and budgets in the Guard dashboard
+    └─ developers are workspace members automatically — no invite step needed
 
-Developer runs: conduct guard join <invite-code>
-    ├─ downloads team policy to ~/.conductguard/policy.json
-    ├─ writes PreToolUse hook → ~/.claude/settings.json
-    └─ registers conductguard-mcp → ~/.claude/settings.json (mcpServers)
+Developer runs: conduct guard sync
+    ├─ pulls latest policy to ~/.conductguard/policy.json
+    ├─ writes PreToolUse hook → ~/.conductguard/hook.py
+    ├─ registers hook → ~/.claude/settings.json
+    └─ registers conductguard-mcp → ~/.claude/settings.json (mcpServers) + Codex
 
 Every Claude Code tool call:
     ├─ PreToolUse hook fires (hook.py) → checks policy → block / warn / audit
@@ -102,10 +103,13 @@ Every Claude Code tool call:
 ### Developer setup
 
 ```bash
-# Get the invite code from your manager (Settings → Modules → ConductGuard)
-conduct guard join <invite-code>
+pip install conduct-cli
 
-# Enter your email when prompted — you'll be connected immediately
+# Authenticate (already done if you use Conduct)
+conduct login --server https://api.conductai.ai --api-key <api-key>
+
+# Sync Guard — installs hook + MCP, pulls policies
+conduct guard sync
 ```
 
 That's it. Policy enforcement is active from the next tool call.
@@ -114,14 +118,13 @@ That's it. Policy enforcement is active from the next tool call.
 
 | Command | Description |
 |---------|-------------|
-| `conduct guard join <code>` | Join a team, download policy, register hook + MCP |
-| `conduct guard sync` | Pull latest policy from server (run after security team updates rules) |
+| `conduct guard sync` | Pull latest policy, write hook to `~/.conductguard/hook.py`, register hook + MCP |
 | `conduct guard status` | Show today's spend, session count, and violations |
 | `conduct guard audit [--since 7d]` | Print recent guard events in a table |
 
 ### How the PreToolUse hook works
 
-When you run `conduct guard join`, the CLI writes a Python script to `~/.conductguard/hook.py` and registers it as a `PreToolUse` hook in `~/.claude/settings.json`:
+When you run `conduct guard sync`, the CLI writes a Python script to `~/.conductguard/hook.py` and registers it as a `PreToolUse` hook in `~/.claude/settings.json`:
 
 ```json
 {
@@ -149,7 +152,7 @@ Before every tool call, Claude Code runs the hook. The hook:
 
 ### How conductguard-mcp works
 
-`conduct guard join` also registers an MCP server entry in `~/.claude/settings.json`:
+`conduct guard sync` also registers an MCP server entry in `~/.claude/settings.json`:
 
 ```json
 {
@@ -220,7 +223,7 @@ Policy is stored at `~/.conductguard/policy.json` and synced from the server:
 
 ### Keeping policy up to date
 
-Policy is written to disk at `join` time. Run `conduct guard sync` after your security team updates rules in the ConductGuard dashboard. The sync command also re-registers the MCP entry in any newly detected AI tool configs.
+Run `conduct guard sync` after your security team updates rules in the ConductGuard dashboard. The sync command pulls the latest policy, rewrites the hook, and re-registers the MCP entry in any newly detected AI tool configs.
 
 ```bash
 # Add to a daily cron or run manually after policy changes

@@ -8,7 +8,7 @@ This guide covers how a developer installs ConductGuard on their machine and sta
 
 - Python 3.10+ (Homebrew recommended on macOS — system Python on macOS has network restrictions)
 - Claude Code or Codex CLI installed
-- A ConductGuard invite code from your team lead or admin
+- A Conduct workspace account (Guard is available to all workspace members by default)
 
 ---
 
@@ -29,36 +29,36 @@ conductguard-mcp --version   # should print version, not "command not found"
 
 ---
 
-## Join a Team
+## Authenticate
 
-Your admin sends you an invite link. The URL contains your invite code. Run:
+If you haven't already authenticated with Conduct:
 
 ```bash
-conduct guard join <invite-code>
+conduct login --server https://api.conductai.ai --api-key <api-key>
 ```
-
-This:
-1. Registers your machine with the ConductGuard team
-2. Writes `~/.conductguard/config.json` with your `member_token` and `clerk_user_id`
-3. Installs the PreToolUse and PostToolUse hooks into Claude Code's `~/.claude/settings.json`
-4. Pulls the current policy set from the server
 
 ---
 
-## Sync Policies
+## Sync Guard
 
-Policies sync automatically every 60 seconds while Claude Code is running. To force a manual sync:
+Guard is provisioned server-side for all workspace members — no invite code needed. Run:
 
 ```bash
 conduct guard sync
 ```
+
+This:
+1. Pulls the current policy set from the server
+2. Writes the PreToolUse hook to `~/.conductguard/hook.py`
+3. Registers the hook in `~/.claude/settings.json` and Codex
+4. Registers the `conductguard-mcp` server entry in `~/.claude/settings.json`
 
 You should see output like:
 
 ```
 [guard] synced 4 policies, 1 budget rule
 [guard] hook registered: PreToolUse → /Users/you/.conductguard/hook.py
-[guard] hook registered: PostToolUse → /Users/you/.conductguard/hook.py
+[guard] mcp registered: conductguard → ~/.claude/settings.json
 ```
 
 ---

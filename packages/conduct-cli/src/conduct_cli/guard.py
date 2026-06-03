@@ -482,7 +482,7 @@ def _register_mcp(workspace_id: str, member_token: str, api_url: str) -> None:
     """Write conductguard MCP entry into every AI tool config found on this machine.
 
     Credentials are NOT stored in the MCP config — the server reads them from
-    ~/.conductguard/config.json at startup, which is already written by guard join.
+    ~/.conductguard/config.json at startup, which is written by guard sync.
     """
     entry = {"command": "conductguard-mcp"}
     found_any = False

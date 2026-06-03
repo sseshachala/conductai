@@ -8,5 +8,5 @@
 | [conductguard-mcp](conductguard_mcp.md) | MCP server for Cursor/Gemini, registration, how it mirrors hook enforcement |
 | [Spend Controls](spend_controls.md) | Budget types, enforcement flow, Slack alerts, alert dedup, DB schema |
 | [Roles & Permissions](roles_permissions.md) | 4-role matrix, role resolution priority, frontend + API enforcement |
-| [Team Onboarding](team_onboarding.md) | Admin setup, developer join flow, invite codes, checklist |
+| [Team Onboarding](team_onboarding.md) | Admin setup, developer sync flow, checklist |
 | [Test Scenarios Runbook](../guard_scenarios.md) | End-to-end test scripts for all 4 Guard scenarios with Slack examples |

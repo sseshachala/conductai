@@ -149,21 +149,21 @@ Guard dashboard  ←  who, what tool, what decision, tokens, cost
 3. Set **Default per-developer limit** and alert threshold (default 80%)
 4. Create policy rules under Guard → Policies (block/warn/audit on tool + pattern)
 5. Configure Slack channel under Guard → Settings → Notifications
-6. Invite developers via Guard → Team → Invite
+6. Configure policies and budgets in the Guard dashboard — developers are already workspace members, no invite step needed
 
 ### For developers — two commands
 
 ```bash
 pip install conduct-cli
 
-# Join the team (invite code from your admin)
-conduct guard join <invite-code>
+# Authenticate (already done if you use Conduct)
+conduct login --server https://api.conductai.ai --api-key <api-key>
 
-# Sync latest policies at any time
+# Sync Guard — installs hook + MCP, pulls policies
 conduct guard sync
 ```
 
-`join` installs the PreToolUse and PostToolUse hooks in `~/.claude/settings.json`, writes `~/.conductguard/config.json`, and pulls current policies. Done.
+`sync` pulls the latest policy, writes the PreToolUse hook to `~/.conductguard/hook.py`, registers it in `~/.claude/settings.json` and Codex, and registers the MCP server. Done.
 
 ### Spend controls
 
@@ -216,7 +216,7 @@ When a rule fires, Slack is notified in real time:
 ### MCP server (Cursor / Windsurf)
 
 ```bash
-# Auto-registered at conduct guard join. To add manually:
+# Auto-registered at conduct guard sync. To add manually:
 conductguard-mcp
 ```
 
@@ -326,7 +326,7 @@ apps/
   api/app/modules/guard/ Guard team, policies, spend, audit events, MCP auth
   api/worker.py         Background run executor (Redis queue)
 packages/
-  conduct-cli/          Python CLI — trigger agents, guard join/sync/status
+  conduct-cli/          Python CLI — trigger agents, guard sync/status/audit
                         conductguard-mcp binary — MCP server for editors
 ```
 
@@ -393,10 +393,9 @@ conduct install-all --project DevOps --repo myorg/my-repo
 # Test all agents
 conduct test --all --project DevOps
 
-# Guard — join a team and pull policies
-conduct guard join <invite-code>
-conduct guard status
+# Guard — sync policies, hook, and MCP (run once, then keep up to date)
 conduct guard sync
+conduct guard status
 ```
 
 ---
