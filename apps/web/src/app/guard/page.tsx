@@ -173,9 +173,12 @@ function CostTrendChart({ apiBase, workspaceId, token }: { apiBase: string; work
   )
 }
 
-function StatCard({ label, value, accent, sub }: { label: string; value: number | string; accent?: string; sub?: React.ReactNode }) {
+function StatCard({ label, value, accent, sub, onClick, active }: { label: string; value: number | string; accent?: string; sub?: React.ReactNode; onClick?: () => void; active?: boolean }) {
   return (
-    <div className="bg-white rounded-xl border border-stone-200 px-5 py-4 flex flex-col gap-1">
+    <div
+      className={`bg-white rounded-xl border px-5 py-4 flex flex-col gap-1 ${onClick ? "cursor-pointer hover:border-stone-400 transition-colors" : ""} ${active ? "border-stone-900 ring-1 ring-stone-900" : "border-stone-200"}`}
+      onClick={onClick}
+    >
       <div className={`text-2xl font-bold ${accent ?? "text-stone-900"}`}>{value}</div>
       <div className="text-xs font-medium text-stone-500 uppercase tracking-wide">{label}</div>
       {sub && <div className="text-xs text-stone-400 mt-0.5">{sub}</div>}
@@ -540,6 +543,8 @@ function GuardDashboard() {
               label="Blocked today"
               value={stats?.blocked_today || derivedStats.blocked_today}
               accent={(stats?.blocked_today || derivedStats.blocked_today) > 0 ? "text-red-600" : undefined}
+              onClick={() => setFilterDecision(prev => prev === "blocked" ? "all" : "blocked")}
+              active={filterDecision === "blocked"}
             />
             <StatCard
               label="Tokens used today (est.)"
