@@ -64,25 +64,27 @@ def _agent_inject_command(root: Path) -> str:
 
 _GATE_SCRIPT = '''\
 #!/usr/bin/env python3
-"""Agent Booster gate hook — redirects Read to smart_read for indexed files."""
+"""Agent Booster gate hook — runs smart-read for indexed files, blocking the raw Read."""
 import json
 import sqlite3
+import subprocess
 import sys
 from pathlib import Path
 
 data = json.load(sys.stdin)
-tool_input = data.get("tool_input", {})
-file_path = tool_input.get("file_path", "")
+file_path = data.get("tool_input", {}).get("file_path", "")
 if not file_path:
     sys.exit(0)
 
-cwd = Path.cwd()
-db_path = cwd / ".booster" / "symbols.db"
+# Derive project root from this hook\'s known location — .claude/hooks/ is 2 levels down
+root = Path(__file__).resolve().parent.parent
+
+db_path = root / ".booster" / "symbols.db"
 if not db_path.exists():
     sys.exit(0)
 
 try:
-    rel = str(Path(file_path).relative_to(cwd))
+    rel = str(Path(file_path).relative_to(root))
 except ValueError:
     sys.exit(0)
 
@@ -93,25 +95,34 @@ try:
 except Exception:
     sys.exit(0)
 
-if count > 0:
-    print(
-        f"[booster] \'{rel}\' has {count} indexed symbols. "
-        "For exploration or understanding: use mcp__agent-booster__smart_read with a task description — returns only the relevant slice. "
-        "For a pre-edit read: proceed with Read as normal."
-    )
+if count == 0:
+    sys.exit(0)  # not indexed — let Read proceed normally
 
-sys.exit(0)
+try:
+    r = subprocess.run(
+        ["booster", "smart-read", rel],
+        capture_output=True, text=True, timeout=10, cwd=str(root),
+    )
+    output = r.stdout.strip()
+    if output:
+        print(output)
+        sys.exit(2)  # block raw Read — smart-read result is the content
+except Exception:
+    pass
+
+sys.exit(0)  # fallback — let Read proceed if smart-read fails
 '''
 
 _GREP_NUDGE_SCRIPT = '''\
 #!/usr/bin/env python3
-"""Booster grep nudge — blocks semantic Grep and redirects to search_context."""
+"""Booster grep nudge — runs booster search for semantic patterns, blocking raw Grep."""
 import json
+import subprocess
 import sys
+from pathlib import Path
 
 data = json.load(sys.stdin)
 pattern = data.get("tool_input", {}).get("pattern", "")
-
 if not pattern:
     sys.exit(0)
 
@@ -120,12 +131,24 @@ is_regex = any(c in REGEX_CHARS for c in pattern)
 word_count = len(pattern.split())
 
 if not is_regex and word_count >= 2:
-    print(
-        f"[booster] Grep blocked for semantic pattern \\'{pattern}\\'. "
-        "Use mcp__agent-booster__search_context instead — it searches by meaning "
-        "across all indexed symbols and returns ranked results with far fewer tokens."
-    )
-    sys.exit(2)
+    root = Path(__file__).resolve().parent.parent
+    db_path = root / ".booster" / "symbols.db"
+    if not db_path.exists():
+        sys.exit(0)  # not indexed — let Grep proceed
+
+    try:
+        r = subprocess.run(
+            ["booster", "search", pattern],
+            capture_output=True, text=True, timeout=10, cwd=str(root),
+        )
+        output = r.stdout.strip()
+        if output:
+            print(f"[booster/search] results for {pattern!r}:\\n{output}")
+            sys.exit(2)  # block Grep — search results are the answer
+        else:
+            print(f"[booster] No indexed symbols match {pattern!r} — falling through to Grep.")
+    except Exception:
+        pass
 
 sys.exit(0)
 '''
@@ -410,14 +433,62 @@ def cmd_embed() -> None:
 @main.command("search")
 @click.argument("query")
 def cmd_search(query: str) -> None:
+    """Semantic (vector) search across indexed symbols. Falls back to keyword if no embeddings."""
     root = Path.cwd()
     indexer = SymbolIndexer(root)
-    results = indexer.search(query)
+    results = indexer.vector_search(query)
     if not results:
         click.echo("No matches.")
         return
     for r in results:
         click.echo(f"{r['file']}:{r['start_line']}  {r['kind']} {r['name']}  {r['signature']}")
+
+
+@main.command("smart-read")
+@click.argument("file_path")
+@click.argument("task", default="")
+def cmd_smart_read(file_path: str, task: str) -> None:
+    """Return only the relevant symbol slices from a file. With no task, returns a symbol outline."""
+    import sys
+    from booster.retriever import smart_read
+    from booster.stats import StatsTracker
+
+    root = Path.cwd()
+    indexer = SymbolIndexer(root)
+
+    path = Path(file_path)
+    if not path.is_absolute():
+        path = root / path
+    if not path.exists():
+        click.echo(f"File not found: {file_path}", err=True)
+        sys.exit(1)
+
+    try:
+        rel = str(path.relative_to(root))
+    except ValueError:
+        rel = str(path)
+
+    full_text = path.read_text(encoding="utf-8", errors="replace")
+
+    if not task:
+        # No task — return full symbol outline so Claude can decide what to read
+        symbols = indexer.get_symbols(rel)
+        if not symbols:
+            sys.exit(0)  # not indexed — let the hook fall through to Read
+        lines = [
+            f"# {s['kind']} {s['name']}  (lines {s['start_line']}–{s['end_line']})\n{s['signature']}"
+            for s in symbols
+        ]
+        click.echo(f"# Symbol outline: {rel}  ({len(symbols)} symbols)\n")
+        click.echo("\n\n".join(lines))
+        return
+
+    result = smart_read(path, task, indexer)
+
+    tracker = StatsTracker(root)
+    tracker.record(rel, full_text, result, task)
+
+    click.echo(result)
 
 
 @main.command("serve")
@@ -597,11 +668,16 @@ def cmd_route(task: str) -> None:
 
 
 @main.command("gain")
-def cmd_gain() -> None:
+@click.option("--format", "-f", "fmt", type=click.Choice(["text", "json"]), default="text")
+def cmd_gain(fmt: str) -> None:
     from booster.stats import StatsTracker
 
     tracker = StatsTracker(Path.cwd())
     s = tracker.summary()
+
+    if fmt == "json":
+        click.echo(json.dumps(s))
+        return
 
     if s["total_reads"] == 0:
         click.echo("No data yet. Use booster serve and make some smart_read calls first.")
