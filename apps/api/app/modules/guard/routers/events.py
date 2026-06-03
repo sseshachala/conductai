@@ -183,7 +183,19 @@ def _check_spend_budget(db: Session, workspace_id: str, config: GuardConfig | No
 
     for budget in budgets:
         threshold_usd = budget.monthly_limit_usd * (budget.alert_threshold_pct / 100.0)
-        if monthly_cost >= threshold_usd:
+        if monthly_cost >= threshold_usd and budget.monthly_limit_usd > 0:
+            pct_used = (monthly_cost / budget.monthly_limit_usd) * 100
+            # Only alert once per 5% increment to avoid spam
+            pct_bucket = int(pct_used // 5) * 5
+            last_alerted = getattr(budget, "last_alert_pct_bucket", None)
+            if last_alerted is not None and pct_bucket <= last_alerted:
+                continue
+            try:
+                budget.last_alert_pct_bucket = pct_bucket
+                db.commit()
+            except Exception:
+                db.rollback()
+
             scope = f"user={budget.clerk_user_id}" if budget.clerk_user_id else "workspace-wide"
             log.info(
                 "guard.spend_alert",
@@ -194,12 +206,11 @@ def _check_spend_budget(db: Session, workspace_id: str, config: GuardConfig | No
                 alert_threshold_pct=budget.alert_threshold_pct,
                 budget_usd=budget.monthly_limit_usd,
             )
-            if cfg and budget.monthly_limit_usd > 0 and cfg.notify_on_budget:
-                pct_used = round((monthly_cost / budget.monthly_limit_usd) * 100)
+            if cfg and cfg.notify_on_budget:
                 who = f"user={budget.clerk_user_id}" if budget.clerk_user_id else "workspace-wide"
                 msg = (
                     f"\u26a0\ufe0f *Guard spend alert* ({who}): "
-                    f"${monthly_cost:.2f} of ${budget.monthly_limit_usd:.2f} used ({pct_used}%) \u2014 "
+                    f"${monthly_cost:.2f} of ${budget.monthly_limit_usd:.2f} used ({round(pct_used)}%) \u2014 "
                     f"alert threshold {budget.alert_threshold_pct}% reached"
                 )
                 _send_guard_slack(db, cfg, msg)
