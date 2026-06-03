@@ -259,16 +259,6 @@ def list_projects(
             ON CONFLICT (workspace_id, clerk_user_id) DO NOTHING
         """), {"ws": str(project_id), "uid": user_id, "token": _secrets.token_urlsafe(24), "now": now})
 
-        # 5. Add creator to guard_members as admin
-        creator_email = get_clerk_user_email(user_id) or f"{user_id}@unknown"
-        import secrets as _secrets
-        db.execute(text("""
-            INSERT INTO guard_members (id, team_id, user_id, email, role, active, joined_at, member_token)
-            VALUES (gen_random_uuid(), :team_id, :uid, :email, 'admin', true, :now, :token)
-            ON CONFLICT DO NOTHING
-        """), {"team_id": str(guard_team_id), "uid": user_id,
-               "email": creator_email, "now": now, "token": _secrets.token_urlsafe(24)})
-
         db.commit()
         return [ProjectOut(id=str(project_id), name="Engineering", owner_id=user_id,
                            is_approved=True, created_at=now, workflow_count=0)]
@@ -570,20 +560,18 @@ def add_member(
            action="member.added", resource_type="member",
            resource_id=body.clerk_user_id, meta={"role": body.role})
     # Provision Guard membership if Guard is installed for this workspace
-    guard_team = db.execute(
-        text("SELECT id FROM guard_teams WHERE workspace_id = :ws LIMIT 1"),
+    guard_config = db.execute(
+        text("SELECT workspace_id FROM guard_config WHERE workspace_id = :ws LIMIT 1"),
         {"ws": workspace_id},
     ).fetchone()
-    if guard_team:
-        member_email = get_clerk_user_email(body.clerk_user_id) or f"{body.clerk_user_id}@unknown"
+    if guard_config:
         import secrets as _secrets
         db.execute(text("""
-            INSERT INTO guard_members (id, team_id, user_id, email, role, active, joined_at, member_token)
-            VALUES (gen_random_uuid(), :team_id, :uid, :email, :role, true, :now, :token)
-            ON CONFLICT DO NOTHING
-        """), {"team_id": str(guard_team.id), "uid": body.clerk_user_id,
-               "email": member_email, "role": body.role, "now": now,
-               "token": _secrets.token_urlsafe(24)})
+            INSERT INTO guard_member_config (workspace_id, clerk_user_id, member_token, active, joined_at)
+            VALUES (:ws, :uid, :token, true, :now)
+            ON CONFLICT (workspace_id, clerk_user_id) DO NOTHING
+        """), {"ws": workspace_id, "uid": body.clerk_user_id,
+               "token": _secrets.token_urlsafe(24), "now": now})
     db.commit()
     return MemberOut(clerk_user_id=body.clerk_user_id, role=body.role,
                      invited_by=user_id, joined_at=now)

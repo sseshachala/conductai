@@ -75,11 +75,10 @@ sys.modules["app.core.database"] = _db_mod
 # Now import guard models (they'll use the real SQLite Base)
 from app.modules.guard.models import (   # noqa: E402
     GuardAuditEvent,
-    GuardMember,
+    GuardMemberConfig,
     GuardPolicy,
     GuardSession,
     GuardSpendBudget,
-    GuardTeam,
 )
 
 # Import executor last — all its deps are already stubbed
@@ -315,28 +314,27 @@ class TestGuardSpendBudgetModel:
         assert "default_per_developer_usd" in cols
         assert "alert_threshold_pct" in cols
 
-    def test_member_id_is_nullable(self):
-        col = GuardSpendBudget.__table__.c["member_id"]
+    def test_clerk_user_id_is_nullable(self):
+        col = GuardSpendBudget.__table__.c["clerk_user_id"]
         assert col.nullable is True
 
     def test_monthly_limit_field_exists(self):
         assert "monthly_limit_usd" in self._cols()
 
 
-# ── GuardTeam model ───────────────────────────────────────────────────────────
+# ── GuardMemberConfig model ───────────────────────────────────────────────────
 
-class TestGuardTeamModel:
+class TestGuardMemberConfigModel:
     def _cols(self):
-        return {c.key for c in GuardTeam.__table__.columns}
+        return {c.key for c in GuardMemberConfig.__table__.columns}
 
-    def test_has_notification_prefs(self):
+    def test_has_workspace_and_user(self):
         cols = self._cols()
-        assert "notify_on_block" in cols
-        assert "notify_on_budget" in cols
-        assert "alert_channel" in cols
+        assert "workspace_id" in cols
+        assert "clerk_user_id" in cols
 
-    def test_has_workspace_link(self):
-        assert "workspace_id" in self._cols()
+    def test_has_member_token(self):
+        assert "member_token" in self._cols()
 
 
 # ── GuardPolicy model ─────────────────────────────────────────────────────────

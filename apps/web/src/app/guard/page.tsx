@@ -466,7 +466,7 @@ function GuardDashboard() {
       active_developers: distinctDevs > 0 ? distinctDevs : events.length > 0 ? 1 : 0,
       events_today: todayEvents.length,
       blocked_today: todayEvents.filter(e => e.decision === "blocked").length,
-      tokens_saved_today: todayEvents.reduce((s, e) => s + (e.tokens_before ?? 0) + (e.tokens_after ?? 0), 0),
+      tokens_saved_today: todayEvents.reduce((s, e) => s + Math.max(0, (e.tokens_before ?? 0) - (e.tokens_after ?? 0)), 0),
       est_cost_today: todayEvents.reduce((s, e) => s + (e.cost_usd_after ?? 0), 0),
       claude_cost_today: todayEvents.filter(e => normTool(e.ai_tool).includes("claude")).reduce((s, e) => s + (e.cost_usd_after ?? 0), 0),
       codex_cost_today: todayEvents.filter(e => normTool(e.ai_tool).includes("codex")).reduce((s, e) => s + (e.cost_usd_after ?? 0), 0),
