@@ -55,6 +55,16 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "conduct guard sync"
+          }
+        ]
+      }
     ]
   }
 }
