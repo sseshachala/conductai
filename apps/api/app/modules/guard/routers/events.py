@@ -293,11 +293,14 @@ def ingest_event(
             who = body.user_email or body.clerk_user_id or "unknown"
             tool = body.ai_tool or "Claude Code"
             rule_label = f"`{body.rule_id}`" if body.rule_id else "a policy"
-            if body.decision == "blocked":
-                header_emoji = "\U0001f6a8"   # 🚨 blocked — dangerous
+            if body.rule_id == "budget-hard-cap":
+                header_emoji = "\U0001f6a8"
+                decision_label = "BUDGET CAP HIT"
+            elif body.decision == "blocked":
+                header_emoji = "\U0001f6a8"   # 🚨
                 decision_label = "BLOCKED"
             else:
-                header_emoji = "\u26a0\ufe0f"  # ⚠️ warned
+                header_emoji = "\u26a0\ufe0f"  # ⚠️
                 decision_label = "WARNED"
             msg = (
                 f"{header_emoji} *{decision_label}* by {rule_label} in {tool}\n"
