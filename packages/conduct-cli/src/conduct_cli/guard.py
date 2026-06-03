@@ -905,8 +905,11 @@ def _report_savings(cfg: dict, base_url: str, api_key: str) -> None:
     }
 
     try:
+        member_token = cfg.get("member_token", "")
         headers = {"Content-Type": "application/json"}
-        if api_key:
+        if member_token:
+            headers["Authorization"] = f"Bearer {member_token}"
+        elif api_key:
             headers["X-Api-Key"] = api_key
         data = json.dumps(payload).encode()
         req = urllib.request.Request(
