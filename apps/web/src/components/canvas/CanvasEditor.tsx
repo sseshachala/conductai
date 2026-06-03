@@ -971,13 +971,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
             {saveStatus === "saving" ? "Saving…" : saveStatus === "error" ? "Save failed" : "Saved ✓"}
           </span>
           <CostEstimate workflowId={workflowId} nodes={nodes} getToken={getToken} />
-          <button
-            onClick={() => fitView({ padding: 0.2, duration: 300 })}
-            title="Fit all blocks into view"
-            className="rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-500 hover:bg-stone-50 transition-colors"
-          >
-            ⊡ Fit
-          </button>
+
           <button
             onClick={() => {
               const laid = autoLayout(nodes, edges)
