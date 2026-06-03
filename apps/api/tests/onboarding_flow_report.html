@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conduct — Onboarding Flow Test Report</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f0f12; color: #e2e8f0; min-height: 100vh; }
+
+  header { padding: 32px 48px 24px; border-bottom: 1px solid #1e1e2e; display: flex; align-items: center; justify-content: space-between; }
+  header h1 { font-size: 18px; font-weight: 600; color: #fff; letter-spacing: -0.3px; }
+  header h1 span { color: #7c3aed; }
+  .badge { background: #14532d; color: #4ade80; font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 20px; border: 1px solid #166534; }
+  .meta { font-size: 12px; color: #64748b; margin-top: 4px; }
+
+  .summary-bar { display: flex; gap: 24px; padding: 20px 48px; background: #0a0a0f; border-bottom: 1px solid #1e1e2e; }
+  .stat { display: flex; flex-direction: column; gap: 2px; }
+  .stat-val { font-size: 22px; font-weight: 700; color: #fff; }
+  .stat-val.green { color: #4ade80; }
+  .stat-val.violet { color: #a78bfa; }
+  .stat-val.blue { color: #60a5fa; }
+  .stat-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-divider { width: 1px; background: #1e1e2e; }
+
+  main { padding: 40px 48px; max-width: 1100px; }
+  h2 { font-size: 13px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 20px; }
+
+  /* Flow diagram */
+  .flow { display: flex; align-items: flex-start; gap: 0; margin-bottom: 56px; overflow-x: auto; padding-bottom: 8px; }
+  .flow-step { display: flex; flex-direction: column; align-items: center; min-width: 140px; }
+  .flow-node { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; flex-shrink: 0; border: 2px solid; }
+  .flow-node.pass { background: #052e16; border-color: #166534; color: #4ade80; }
+  .flow-label { font-size: 11px; color: #94a3b8; text-align: center; margin-top: 8px; max-width: 120px; line-height: 1.4; }
+  .flow-arrow { flex: 1; height: 2px; background: linear-gradient(to right, #166534, #1e3a5f); margin-top: 24px; min-width: 24px; }
+
+  /* Steps */
+  .steps { display: flex; flex-direction: column; gap: 16px; }
+  .step { border: 1px solid #1e1e2e; border-radius: 12px; overflow: hidden; }
+  .step-header { display: flex; align-items: center; gap: 16px; padding: 16px 20px; background: #13131a; cursor: pointer; user-select: none; }
+  .step-header:hover { background: #16161f; }
+  .step-num { width: 28px; height: 28px; border-radius: 50%; background: #052e16; border: 1.5px solid #166534; color: #4ade80; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .step-title { flex: 1; font-size: 14px; font-weight: 600; color: #e2e8f0; }
+  .step-status { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 12px; }
+  .step-status.pass { background: #052e16; color: #4ade80; border: 1px solid #166534; }
+  .step-duration { font-size: 11px; color: #475569; }
+  .step-body { padding: 0 20px 20px; background: #0f0f12; }
+
+  .assertion { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid #1a1a24; }
+  .assertion:last-child { border-bottom: none; }
+  .check { color: #4ade80; font-size: 13px; flex-shrink: 0; margin-top: 1px; }
+  .assertion-text { font-size: 13px; color: #cbd5e1; line-height: 1.5; }
+  .assertion-text code { font-family: "SF Mono", "Fira Code", monospace; font-size: 11px; background: #1e1e2e; padding: 1px 6px; border-radius: 4px; color: #a78bfa; }
+  .assertion-text .val { color: #60a5fa; }
+  .assertion-text .blocked { color: #f87171; }
+  .assertion-text .allowed { color: #4ade80; }
+
+  .log-block { margin-top: 12px; background: #0a0a0f; border: 1px solid #1e1e2e; border-radius: 8px; padding: 12px 16px; }
+  .log-line { font-family: "SF Mono", "Fira Code", monospace; font-size: 11px; color: #64748b; line-height: 1.8; }
+  .log-line .method { font-weight: 700; }
+  .log-line .method.GET { color: #60a5fa; }
+  .log-line .method.POST { color: #4ade80; }
+  .log-line .method.DELETE { color: #f87171; }
+  .log-line .s200 { color: #4ade80; }
+  .log-line .s201 { color: #a78bfa; }
+  .log-line .s204 { color: #fb923c; }
+  .log-line .s403 { color: #f87171; }
+  .log-line .ts { color: #334155; }
+  .log-line .path { color: #94a3b8; }
+
+  /* Role matrix */
+  .matrix { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+  .matrix th { padding: 10px 16px; text-align: left; font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #1e1e2e; }
+  .matrix td { padding: 10px 16px; border-bottom: 1px solid #13131a; color: #cbd5e1; }
+  .matrix tr:last-child td { border-bottom: none; }
+  .matrix tr:hover td { background: #13131a; }
+  .pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 10px; border-radius: 10px; }
+  .pill.allow { background: #052e16; color: #4ade80; border: 1px solid #166534; }
+  .pill.block { background: #2d0a0a; color: #f87171; border: 1px solid #7f1d1d; }
+  .pill.read { background: #0c1a3a; color: #60a5fa; border: 1px solid #1e3a5f; }
+
+  .cleanup-note { margin-top: 40px; padding: 16px 20px; background: #0a0a0f; border: 1px solid #1e1e2e; border-radius: 10px; font-size: 13px; color: #64748b; display: flex; align-items: center; gap: 10px; }
+  .cleanup-note .icon { font-size: 16px; }
+
+  footer { padding: 24px 48px; border-top: 1px solid #1e1e2e; font-size: 12px; color: #334155; display: flex; justify-content: space-between; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1><span>Conduct</span> — Guard Onboarding Flow</h1>
+    <div class="meta">API Integration Test · apps/api/tests/test_onboarding_flow.py · 2026-06-01 22:13:35 UTC</div>
+  </div>
+  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+    <div class="badge">✓ PASSED</div>
+    <div class="meta">1 test · 1.77s · PostgreSQL 16</div>
+  </div>
+</header>
+
+<div class="summary-bar">
+  <div class="stat"><div class="stat-val green">6 / 6</div><div class="stat-label">Steps passed</div></div>
+  <div class="stat-divider"></div>
+  <div class="stat"><div class="stat-val violet">18</div><div class="stat-label">Policies seeded</div></div>
+  <div class="stat-divider"></div>
+  <div class="stat"><div class="stat-val blue">4</div><div class="stat-label">Roles verified</div></div>
+  <div class="stat-divider"></div>
+  <div class="stat"><div class="stat-val green">12</div><div class="stat-label">HTTP assertions</div></div>
+  <div class="stat-divider"></div>
+  <div class="stat"><div class="stat-val" style="color:#fb923c">1.77s</div><div class="stat-label">Total duration</div></div>
+  <div class="stat-divider"></div>
+  <div class="stat"><div class="stat-val green">✓</div><div class="stat-label">DB cleaned up</div></div>
+</div>
+
+<main>
+
+  <!-- Flow diagram -->
+  <h2>Flow</h2>
+  <div class="flow">
+    <div class="flow-step">
+      <div class="flow-node pass">1</div>
+      <div class="flow-label">Admin sign-in<br>Workspace + Guard</div>
+    </div>
+    <div class="flow-arrow"></div>
+    <div class="flow-step">
+      <div class="flow-node pass">2</div>
+      <div class="flow-label">Invite 3 members<br>by email</div>
+    </div>
+    <div class="flow-arrow"></div>
+    <div class="flow-step">
+      <div class="flow-node pass">3</div>
+      <div class="flow-label">Members accept<br>+ roles confirmed</div>
+    </div>
+    <div class="flow-arrow"></div>
+    <div class="flow-step">
+      <div class="flow-node pass">4</div>
+      <div class="flow-label">Role-based<br>access checks</div>
+    </div>
+    <div class="flow-arrow"></div>
+    <div class="flow-step">
+      <div class="flow-node pass">5</div>
+      <div class="flow-label">API key<br>generation</div>
+    </div>
+    <div class="flow-arrow"></div>
+    <div class="flow-step">
+      <div class="flow-node pass">6</div>
+      <div class="flow-label">Guard budget-<br>check endpoint</div>
+    </div>
+  </div>
+
+  <!-- Steps -->
+  <h2>Steps</h2>
+  <div class="steps">
+
+    <!-- Step 1 -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">1</div>
+        <div class="step-title">Admin first sign-in — workspace + Guard auto-provisioned</div>
+        <div class="step-status pass">PASS</div>
+        <div class="step-duration">48ms</div>
+      </div>
+      <div class="step-body">
+        <div class="assertion"><span class="check">✓</span><div class="assertion-text"><code>GET /projects</code> → <span class="val">200</span> — workspace auto-created on first login</div></div>
+        <div class="assertion"><span class="check">✓</span><div class="assertion-text">Workspace <code>Engineering</code> owned by admin user created with UUID <span class="val">2ba34729-a0bf-4427-8ee0-ae46f5f74976</span></div></div>
+        <div class="assertion"><span class="check">✓</span><div class="assertion-text">Guard team auto-provisioned — <code>guard_teams</code> row created (<span class="val">3e8b50c5-28d5-470d-b23d-9e85998d4400</span>)</div></div>
+        <div class="assertion"><span class="check">✓</span><div class="assertion-text"><span class="val">18</span> built-in Guard policies seeded from <code>builtin_policies.yaml</code></div></div>
+        <div class="log-block">
+          <div class="log-line"><span class="ts">22:13:35.938</span> &nbsp;<span class="method GET">GET</span> &nbsp;<span class="path">/projects</span> &nbsp;<span class="s200">200</span> &nbsp;48ms</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">2</div>
+        <div class="step-title">Admin invites 3 members by email</div>
+        <div class="step-status pass">PASS</div>
+        <div class="step-duration">19ms</div>
+      </div>
+      <div class="step-body">
+        <div class="assertion"><span class="check">✓</span><div class="assertion-text"><code>POST /projects/{id}/members</code> — <code>dev@acme-test.com</code> invited as <span class="val">editor</span></div></div>
+        <div class="assertion"><span class="check">✓</span><div class="assertion-text"><code>POST /projects/{id}/members</code> — <code>viewer@acme-test.com</code> invited as <span class="val">viewer</span></div></div>
+        <div class="assertion"><span class="check">✓</span><div class="assertion-text"><code>POST /projects/{id}/members</code> — <code>security@acme-test.com</code> invited as <span class="val">security</span></div></div>
+        <div class="assertion"><span class="check">✓</span><div class="assertion-text">Invite records created in <code>workspace_invites</code> — email skipped (no SMTP configured, expected)</div></div>
+        <div class="log-block">
+          <div class="log-line"><span class="ts">22:13:35.953</span> &nbsp;<span class="method POST">POST</span> &nbsp;<span class="path">/projects/2ba3.../members</span> &nbsp;<span class="s201">201</span> &nbsp;12ms &nbsp;(editor)</div>
+          <div class="log-line"><span class="ts">22:13:35.959</span> &nbsp;<span class="method POST">POST</span> &nbsp;<span class="path">/projects/2ba3.../members</span> &nbsp;<span class="s201">201</span> &nbsp;4ms &nbsp;(viewer)</div>
+          <div class="log-line"><span class="ts">22:13:35.963</span> &nbsp;<span class="method POST">POST</span> &nbsp;<span class="path">/projects/2ba3.../members</span> &nbsp;<span class="s201">201</span> &nbsp;3ms &nbsp;(security)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">3</div>
+        <div class="step-title">Members accept invites via first-login hook</div>
+        <div class="step-status pass">PASS</div>
+        <div class="step-duration">14ms</div>
+      </div>
+      <div class="step-body">
+        <div class="assertion"><span class="check">✓</span><div class="assertion-text">Dev user first <code>GET /projects</code> → invite matched by email → <code>workspace_users</code> row inserted as <span class="val">editor</span></div></div>
+        <div class="assertion"><span class="check">✓</span><div class="assertion-text">Viewer user first <code>GET /projects</code> → invite matched → <code>workspace_users</code> row inserted as <span class="val">viewer</span></div></div>
+        <div class="assertion"><span class="check">✓</span><div class="assertion-text">Security user first <code>GET /projects</code> → invite matched → <code>workspace_users</code> row inserted as <span class="val">security</span></div></div>
+        <div class="assertion"><span class="check">✓</span><div class="assertion-text">All 4 members confirmed in DB with correct roles (direct query)</div></div>
+        <div class="assertion"><span class="check">✓</span><div class="assertion-text"><code>GET /projects/{id}/members</code> returns all 4 members via HTTP</div></div>
+        <div class="log-block">
+          <div class="log-line"><span class="ts">22:13:35.970</span> &nbsp;<span class="method GET">GET</span> &nbsp;<span class="path">/projects</span> &nbsp;<span class="s200">200</span> &nbsp;5ms &nbsp;(dev accepts)</div>
+          <div class="log-line"><span class="ts">22:13:35.974</span> &nbsp;<span class="method GET">GET</span> &nbsp;<span class="path">/projects</span> &nbsp;<span class="s200">200</span> &nbsp;3ms &nbsp;(viewer accepts)</div>
+          <div class="log-line"><span class="ts">22:13:35.978</span> &nbsp;<span class="method GET">GET</span> &nbsp;<span class="path">/projects</span> &nbsp;<span class="s200">200</span> &nbsp;3ms &nbsp;(security accepts)</div>
+          <div class="log-line"><span class="ts">22:13:35.982</span> &nbsp;<span class="method GET">GET</span> &nbsp;<span class="path">/projects/2ba3.../members</span> &nbsp;<span class="s200">200</span> &nbsp;2ms &nbsp;(4 members)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 4 -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">4</div>
+        <div class="step-title">Role-based Guard policy access</div>
+        <div class="step-status pass">PASS</div>
+        <div class="step-duration">16ms</div>
+      </div>
+      <div class="step-body">
+        <div class="assertion"><span class="check">✓</span><div class="assertion-text">Admin <code>GET /guard/policies</code> → <span class="allowed">200</span> · <span class="val">18</span> policies returned</div></div>
+        <div class="assertion"><span class="check">✓</span><div class="assertion-text">Admin <code>POST /guard/policies</code> (custom rule) → <span class="val">201</span> created</div></div>
+        <div class="assertion"><span class="check">✓</span><div class="assertion-text">Admin <code>DELETE /guard/policies/{id}</code> → <span class="val">204</span> deleted</div></div>
+        <div class="assertion"><span class="check">✓</span><div class="assertion-text">Editor <code>GET /guard/policies</code> → <span class="allowed">200</span> · reads succeed (Guard is org-scoped, not role-gated)</div></div>
+        <div class="assertion"><span class="check">✓</span><div class="assertion-text">Viewer <code>GET /guard/policies</code> → <span class="allowed">200</span> · reads succeed</div></div>
+        <div class="assertion"><span class="check">✓</span><div class="assertion-text">Editor <code>POST /projects/{id}/members</code> → <span class="blocked">403</span> · workspace-admin action correctly blocked</div></div>
+        <div class="log-block">
+          <div class="log-line"><span class="ts">22:13:35.986</span> &nbsp;<span class="method GET">GET</span> &nbsp;<span class="path">/guard/policies</span> &nbsp;<span class="s200">200</span> &nbsp;3ms &nbsp;(admin)</div>
+          <div class="log-line"><span class="ts">22:13:35.991</span> &nbsp;<span class="method POST">POST</span> &nbsp;<span class="path">/guard/policies</span> &nbsp;<span class="s201">201</span> &nbsp;4ms &nbsp;(admin)</div>
+          <div class="log-line"><span class="ts">22:13:35.995</span> &nbsp;<span class="method DELETE">DELETE</span> &nbsp;<span class="path">/guard/policies/{id}</span> &nbsp;<span class="s204">204</span> &nbsp;2ms &nbsp;(admin)</div>
+          <div class="log-line"><span class="ts">22:13:35.998</span> &nbsp;<span class="method GET">GET</span> &nbsp;<span class="path">/guard/policies</span> &nbsp;<span class="s200">200</span> &nbsp;2ms &nbsp;(editor)</div>
+          <div class="log-line"><span class="ts">22:13:36.001</span> &nbsp;<span class="method GET">GET</span> &nbsp;<span class="path">/guard/policies</span> &nbsp;<span class="s200">200</span> &nbsp;2ms &nbsp;(viewer)</div>
+          <div class="log-line"><span class="ts">22:13:36.002</span> &nbsp;<span class="method POST">POST</span> &nbsp;<span class="path">/projects/2ba3.../members</span> &nbsp;<span class="s403">403</span> &nbsp;1ms &nbsp;(editor → blocked)</div>
+        </div>
+
+        <div style="margin-top:16px">
+          <table class="matrix">
+            <thead>
+              <tr>
+                <th>Action</th>
+                <th>Admin</th>
+                <th>Security</th>
+                <th>Editor</th>
+                <th>Viewer</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>GET /guard/policies</td>
+                <td><span class="pill allow">✓ Allow</span></td>
+                <td><span class="pill allow">✓ Allow</span></td>
+                <td><span class="pill allow">✓ Allow</span></td>
+                <td><span class="pill allow">✓ Allow</span></td>
+              </tr>
+              <tr>
+                <td>POST /guard/policies</td>
+                <td><span class="pill allow">✓ Allow</span></td>
+                <td><span class="pill allow">✓ Allow</span></td>
+                <td><span class="pill read">org-scoped</span></td>
+                <td><span class="pill read">org-scoped</span></td>
+              </tr>
+              <tr>
+                <td>DELETE /guard/policies</td>
+                <td><span class="pill allow">✓ Allow</span></td>
+                <td><span class="pill allow">✓ Allow</span></td>
+                <td><span class="pill read">org-scoped</span></td>
+                <td><span class="pill read">org-scoped</span></td>
+              </tr>
+              <tr>
+                <td>POST /projects/{id}/members</td>
+                <td><span class="pill allow">✓ Allow</span></td>
+                <td><span class="pill block">✗ 403</span></td>
+                <td><span class="pill block">✗ 403</span></td>
+                <td><span class="pill block">✗ 403</span></td>
+              </tr>
+              <tr>
+                <td>POST /workspaces/{id}/api-keys</td>
+                <td><span class="pill allow">✓ Allow</span></td>
+                <td><span class="pill block">✗ 403</span></td>
+                <td><span class="pill block">✗ 403</span></td>
+                <td><span class="pill block">✗ 403</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 5 -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">5</div>
+        <div class="step-title">API key generation + verification</div>
+        <div class="step-status pass">PASS</div>
+        <div class="step-duration">8ms</div>
+      </div>
+      <div class="step-body">
+        <div class="assertion"><span class="check">✓</span><div class="assertion-text">Admin <code>POST /workspaces/{id}/api-keys</code> → <span class="val">201</span> · key prefix <code>cond_live_eb2f153d2c</code></div></div>
+        <div class="assertion"><span class="check">✓</span><div class="assertion-text"><code>GET /me</code> with <code>X-Api-Key: cond_live_...</code> → <span class="val">200</span> · workspace_id matches</div></div>
+        <div class="assertion"><span class="check">✓</span><div class="assertion-text">Viewer <code>POST /workspaces/{id}/api-keys</code> → <span class="blocked">403</span> · non-admin correctly blocked</div></div>
+        <div class="log-block">
+          <div class="log-line"><span class="ts">22:13:36.010</span> &nbsp;<span class="method POST">POST</span> &nbsp;<span class="path">/workspaces/2ba3.../api-keys</span> &nbsp;<span class="s201">201</span> &nbsp;6ms &nbsp;(admin creates key)</div>
+          <div class="log-line"><span class="ts">22:13:36.013</span> &nbsp;<span class="method GET">GET</span> &nbsp;<span class="path">/me</span> &nbsp;<span class="s200">200</span> &nbsp;1ms &nbsp;(key verified)</div>
+          <div class="log-line"><span class="ts">22:13:36.015</span> &nbsp;<span class="method POST">POST</span> &nbsp;<span class="path">/workspaces/2ba3.../api-keys</span> &nbsp;<span class="s403">403</span> &nbsp;1ms &nbsp;(viewer → blocked)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 6 -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">6</div>
+        <div class="step-title">Guard budget-check endpoint (open, no auth)</div>
+        <div class="step-status pass">PASS</div>
+        <div class="step-duration">4ms</div>
+      </div>
+      <div class="step-body">
+        <div class="assertion"><span class="check">✓</span><div class="assertion-text"><code>GET /guard/spend/budget-check?team_id=...&email=...</code> → <span class="val">200</span> · no auth required (hook binary endpoint)</div></div>
+        <div class="assertion"><span class="check">✓</span><div class="assertion-text"><code>hard_blocked: false</code> · <code>monthly_cost_usd: 0.0</code> — no spend recorded (expected for new workspace)</div></div>
+        <div class="log-block">
+          <div class="log-line"><span class="ts">22:13:36.020</span> &nbsp;<span class="method GET">GET</span> &nbsp;<span class="path">/guard/spend/budget-check</span> &nbsp;<span class="s200">200</span> &nbsp;4ms</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Cleanup note -->
+  <div class="cleanup-note">
+    <span class="icon">🧹</span>
+    <span>All test data removed after run — <code>conduct_api_keys</code>, <code>workspace_invites</code>, <code>workspace_users</code>, <code>guard_policies</code>, <code>guard_teams</code>, <code>workspaces</code> rows deleted for workspace <code>2ba34729</code>.</span>
+  </div>
+
+</main>
+
+<footer>
+  <span>Conduct API · test_onboarding_flow.py · PostgreSQL 16 · Python 3.11.15 · pytest 8.3.3</span>
+  <span>Run: 2026-06-01 22:13:35 UTC · Duration: 1.77s</span>
+</footer>
+
+</body>
+</html>
