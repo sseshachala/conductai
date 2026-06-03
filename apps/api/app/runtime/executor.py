@@ -1707,12 +1707,16 @@ def _execute_mcp(block: dict, state: dict, cred_store: object) -> dict:
     if not tool_name:
         return {"skipped": True, "reason": "No MCP tool configured"}
 
+    # server_url may come from block config (panel-set) or from the credential vault entry
+    server_url = config.get("server_url") or None
+
     creds = cred_store.get(credential_key) if cred_store else {}
     if not creds:
         return {"skipped": True, "reason": f"Credential '{credential_key}' not found"}
 
-    server_url = creds.get("server_url") or creds.get("url")
-    token      = creds.get("token") or creds.get("api_key")
+    if not server_url:
+        server_url = creds.get("server_url") or creds.get("url")
+    token = creds.get("token") or creds.get("api_key") or (creds if isinstance(creds, str) else None)
 
     if not server_url:
         return {"skipped": True, "reason": f"Credential '{credential_key}' missing server_url"}
