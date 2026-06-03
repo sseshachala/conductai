@@ -534,7 +534,8 @@ def cmd_init(platform: str, yes: bool) -> None:
             _sp.run(["booster", "embed"], cwd=str(root))
 
         click.echo()
-        click.echo("Done. Restart Claude Code to activate the MCP server.")
+        click.echo("Done. Hooks are active immediately — no restart needed.")
+        click.echo("Optional: restart Claude Code to also activate the MCP server tools.")
         click.echo("To remove at any time: booster remove claude")
 
     if platform in ("cursor", "all"):
