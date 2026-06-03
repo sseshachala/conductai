@@ -413,15 +413,19 @@ def cost_trend(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
     period: str = Query(default="daily", description="daily|weekly|monthly"),
+    tz_offset: int = Query(default=0, description="Client UTC offset in minutes (e.g. -330 for IST, 300 for US/ET)"),
 ):
-    """Return aggregated cost per period, split by ai_tool (claude-code vs codex)."""
+    """Return aggregated cost per period, split by ai_tool (claude-code vs codex).
+    tz_offset shifts timestamps into the user's local day before bucketing."""
     import uuid
     from datetime import timedelta
-    from sqlalchemy import func, cast
-    from sqlalchemy.dialects.postgresql import TIMESTAMP
+    from sqlalchemy import func, text as _text
 
     ws_uuid = uuid.UUID(workspace_id)
     now = _now()
+
+    # Shift: convert UTC ts → local ts by adding the offset, then date_trunc
+    offset_interval = f"{-tz_offset} minutes"  # tz_offset is getTimezoneOffset() = -localOffsetMinutes
 
     if period == "monthly":
         since = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -436,9 +440,15 @@ def cost_trend(
         trunc = "day"
         fmt = "%Y-%m-%d"
 
+    from sqlalchemy import literal_column
+    shifted = func.date_trunc(
+        trunc,
+        GuardAuditEvent.ts + literal_column(f"interval '{-tz_offset} minutes'"),
+    )
+
     rows = (
         db.query(
-            func.date_trunc(trunc, GuardAuditEvent.ts).label("bucket"),
+            shifted.label("bucket"),
             GuardAuditEvent.ai_tool,
             func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0).label("cost"),
         )

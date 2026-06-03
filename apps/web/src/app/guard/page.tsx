@@ -114,7 +114,8 @@ function CostTrendChart({ apiBase, workspaceId, token }: { apiBase: string; work
     setLoading(true)
     const headers: Record<string, string> = {}
     if (token) headers["Authorization"] = `Bearer ${token}`
-    fetch(`${apiBase}/guard/events/cost-trend?period=${period}&workspace_id=${workspaceId}`, { headers })
+    const tzOffset = new Date().getTimezoneOffset()
+    fetch(`${apiBase}/guard/events/cost-trend?period=${period}&workspace_id=${workspaceId}&tz_offset=${tzOffset}`, { headers })
       .then(r => r.json())
       .then(setData)
       .catch(() => setData([]))
@@ -385,8 +386,11 @@ function GuardDashboard() {
   )
 
   const derivedStats = useMemo(() => {
-    const todayStr = new Date().toISOString().slice(0, 10) // "YYYY-MM-DD"
-    const todayEvents = events.filter(e => e.ts.slice(0, 10) === todayStr)
+    // Use local date so "today" matches the user's timezone, not UTC
+    const localToday = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+    const todayStr = localToday(new Date())
+    const todayEvents = events.filter(e => localToday(new Date(e.ts)) === todayStr)
     const distinctDevs = new Set(events.map(e => e.user_email).filter(Boolean)).size
     return {
       active_developers: distinctDevs > 0 ? distinctDevs : events.length > 0 ? 1 : 0,
