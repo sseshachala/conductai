@@ -55,11 +55,14 @@ def _fetch_budget_status():
         cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
     except Exception:
         return False, None
-    workspace_id = cfg.get("workspace_id")
-    api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+    workspace_id  = cfg.get("workspace_id")
+    clerk_user_id = cfg.get("clerk_user_id") or ""
+    api_url       = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
     if not workspace_id:
         return False, None
     url = f"{api_url}/guard/spend/budget-check?workspace_id={workspace_id}"
+    if clerk_user_id:
+        url += f"&clerk_user_id={clerk_user_id}"
     try:
         with urllib.request.urlopen(urllib.request.Request(url), timeout=5) as resp:
             data = json.loads(resp.read())
@@ -666,16 +669,18 @@ def cmd_guard_install(args):
         print(f"  {GRAY}Guard not installed for this workspace — skipping{RESET}")
         return
 
-    member_token = result.get("member_token") or ""
-    user_email   = result.get("user_email") or ""
+    member_token   = result.get("member_token") or ""
+    user_email     = result.get("user_email") or ""
+    clerk_user_id  = result.get("clerk_user_id") or ""
 
     # Persist guard config — include api_key so CLI commands can authenticate
     _save_guard_config({
-        "workspace_id": workspace_id,
-        "member_token": member_token,
-        "user_email":   user_email,
-        "api_key":      api_key,
-        "api_url":      server,
+        "workspace_id":  workspace_id,
+        "member_token":  member_token,
+        "user_email":    user_email,
+        "clerk_user_id": clerk_user_id,
+        "api_key":       api_key,
+        "api_url":       server,
     })
 
     # Download policies
@@ -794,19 +799,22 @@ def cmd_guard_status(args):
     api_key      = cfg.get("api_key", "")
     base_url     = _api_url(cfg)
 
-    # Auto-refresh user_email into config if it was installed before this was wired up
-    if not user_email and api_key:
+    # Auto-refresh user_email + clerk_user_id into config if missing
+    if (not user_email or not cfg.get("clerk_user_id")) and api_key:
         try:
             installed = _req("GET", f"{base_url}/guard/config/installed", api_key=api_key)
             fetched_email = installed.get("user_email") or ""
+            fetched_clerk = installed.get("clerk_user_id") or ""
             if fetched_email:
                 cfg["user_email"] = fetched_email
-                _save_guard_config(cfg)
-                # Rewrite hook script so future events carry the email
-                hook_path = GUARD_DIR / "hook.py"
-                hook_path.write_text(_HOOK_SCRIPT)
-                hook_path.chmod(0o755)
                 user_email = fetched_email
+            if fetched_clerk:
+                cfg["clerk_user_id"] = fetched_clerk
+            _save_guard_config(cfg)
+            # Rewrite hook script so future events carry the email
+            hook_path = GUARD_DIR / "hook.py"
+            hook_path.write_text(_HOOK_SCRIPT)
+            hook_path.chmod(0o755)
         except Exception:
             pass
 

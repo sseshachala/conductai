@@ -52,6 +52,7 @@ class InstallStatusOut(BaseModel):
     invite_code: str | None = None
     member_token: str | None = None
     user_email: str | None = None
+    clerk_user_id: str | None = None
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -157,6 +158,7 @@ def get_install_status(
         invite_code=config.invite_code,
         member_token=token_row.member_token if token_row else None,
         user_email=user_email,
+        clerk_user_id=user_id,
     )
 
 
