@@ -274,7 +274,7 @@ def _scan_codex_tokens(transcript_path):
                 buf = f.read(read_size) + buf
             text = buf.decode("utf-8", errors="ignore")
             # Split; if we haven't reached the start the first fragment may be partial
-            parts = text.split("\n")
+            parts = text.split("\\n")
             start = 1 if pos > 0 else 0
             for line in reversed(parts[start:]):
                 if "token_count" not in line or not line.strip():
