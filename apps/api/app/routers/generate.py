@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.core.auth import get_workspace_id
-from app.compiler.yaml_to_graph import yaml_to_graph
+from app.dsl.loader import load_workflow_yaml, yaml_to_graph
 from app.runtime.llm_client import AnthropicClient, LLMTextBlock
 
 log = structlog.get_logger(__name__)
@@ -137,7 +137,8 @@ async def generate_workflow(
     try:
         parsed = _yaml.safe_load(raw)
         name = parsed.get("name", "generated-agent")
-        graph = yaml_to_graph(parsed)
+        dsl = load_workflow_yaml(raw)
+        graph = yaml_to_graph(dsl)
     except Exception as exc:
         log.error("generate.parse_error", error=str(exc), yaml=raw[:500])
         raise HTTPException(status_code=422, detail=f"Generated YAML invalid: {exc}")
