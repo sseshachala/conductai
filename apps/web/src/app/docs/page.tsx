@@ -102,6 +102,7 @@ const TAB_NAV: Record<TabId, { href: string; label: string }[]> = {
     { href: "#guard-hook",      label: "Hook & tool coverage" },
     { href: "#guard-mcp",       label: "conductguard-mcp" },
     { href: "#guard-spend",     label: "Spend controls" },
+    { href: "#guard-savings",   label: "Maximize savings" },
     { href: "#guard-roles",     label: "Roles & permissions" },
     { href: "#guard-onboarding",  label: "Team onboarding" },
     { href: "#guard-scenarios",   label: "Test scenarios" },
@@ -885,6 +886,168 @@ conduct guard status`}</Pre>
         <div className="mt-3 rounded-xl bg-stone-100 border border-stone-200 px-4 py-3 text-sm text-stone-700">
           The hook caches the response at <Code>~/.conductguard/budget_cache.json</Code> for 5 minutes.
           Delete it to force an immediate re-check.
+        </div>
+      </section>
+
+      <section id="guard-savings">
+        <SectionHeading id="guard-savings">Maximize savings</SectionHeading>
+        <p className="text-stone-500 text-sm mb-6 leading-relaxed">
+          Guard tracks AI spend — but the real leverage is reducing how many tokens your team burns in the first place.
+          Two tools stack on top of each other to compress token usage before it hits the model.
+          Guard captures the combined savings and shows them on the Spend dashboard.
+        </p>
+
+        {/* 3-column before/after comparison */}
+        <div className="grid grid-cols-3 gap-3 mb-8">
+          {[
+            {
+              label: "No optimisation",
+              color: "border-stone-200 bg-white",
+              badge: null,
+              cost: "$180",
+              tokens: "60M tokens / mo",
+              savings: "$0 saved",
+              savingsColor: "text-stone-400",
+              rows: [
+                ["Command output", "Raw — full git diff, full test log, full build"],
+                ["File reads",     "Full file — every read loads the entire file"],
+                ["Spend",         "$180 / developer / month (est.)"],
+              ],
+            },
+            {
+              label: "+ RTK",
+              color: "border-indigo-200 bg-indigo-50",
+              badge: { text: "pip install rtk-cli", color: "bg-indigo-100 text-indigo-700" },
+              cost: "$27",
+              tokens: "9M tokens / mo",
+              savings: "~$153 saved  (85%)",
+              savingsColor: "text-indigo-600 font-semibold",
+              rows: [
+                ["Command output", "Filtered — failures only, compact diffs, deduped logs"],
+                ["File reads",     "Full file — reads unchanged"],
+                ["Spend",         "$27 / developer / month (est.)"],
+              ],
+            },
+            {
+              label: "+ RTK + Agent Booster",
+              color: "border-green-300 bg-green-50",
+              badge: { text: "pip install agent-booster", color: "bg-green-100 text-green-700" },
+              cost: "$11",
+              tokens: "3.5M tokens / mo",
+              savings: "~$169 saved  (94%)",
+              savingsColor: "text-green-600 font-semibold",
+              rows: [
+                ["Command output", "Filtered — same as RTK"],
+                ["File reads",     "Symbol-slice — only the relevant function/class, not the whole file"],
+                ["Spend",         "$11 / developer / month (est.)"],
+              ],
+            },
+          ].map(({ label, color, badge, cost, tokens, savings, savingsColor, rows }) => (
+            <div key={label} className={`rounded-xl border-2 ${color} overflow-hidden`}>
+              <div className="px-4 py-3 border-b border-inherit">
+                <p className="text-xs font-bold text-stone-800 mb-1">{label}</p>
+                {badge && (
+                  <code className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${badge.color}`}>{badge.text}</code>
+                )}
+              </div>
+              <div className="px-4 py-3">
+                <p className="text-2xl font-bold text-stone-900">{cost}</p>
+                <p className="text-[10px] text-stone-400 mb-3">{tokens}</p>
+                <p className={`text-xs mb-4 ${savingsColor}`}>{savings}</p>
+                <div className="space-y-2">
+                  {rows.map(([field, detail]) => (
+                    <div key={field}>
+                      <p className="text-[10px] font-semibold text-stone-500 uppercase tracking-wider">{field}</p>
+                      <p className="text-xs text-stone-600 leading-relaxed">{detail}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-xs text-stone-400 mb-8 -mt-4">
+          Estimates based on a developer running ~100 Claude Code tool calls/day, 20 working days/month.
+          RTK savings rate observed: 85–99%. Agent Booster savings rate observed: 62% on file reads.
+          Actual savings vary by workflow.
+        </p>
+
+        {/* RTK install block */}
+        <SubHeading>RTK — token optimizer for command output</SubHeading>
+        <p className="text-stone-500 text-sm mb-3 leading-relaxed">
+          RTK (Rust Token Killer) wraps every shell command Claude Code runs — git, test, build, docker — and strips noise before it
+          enters the context window. Failures only. Compact diffs. Deduplicated logs. 60–99% savings depending on command type.
+        </p>
+        <Pre>{`# Install
+pip install rtk-cli   # or: cargo install rtk
+
+# See your savings at any time
+rtk gain
+
+# Sample output:
+# Total commands:  3,312
+# Tokens saved:    34.5M  (99.2%)
+# Est. cost saved: $103`}</Pre>
+        <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800 mb-8">
+          <strong>Guard integration (coming soon):</strong> Once RTK is installed, Guard reads <Code>rtk gain</Code> at each sync,
+          diffs against the last baseline, and posts the delta to the Spend dashboard automatically.
+          Your team's real savings appear in the <strong>Est. savings</strong> card — not zero.
+        </div>
+
+        {/* Agent Booster install block */}
+        <SubHeading>Agent Booster — token optimizer for file reads</SubHeading>
+        <p className="text-stone-500 text-sm mb-3 leading-relaxed">
+          Agent Booster indexes your codebase and serves only the relevant symbol slice when Claude reads a file — the
+          function, class, or block it actually needs, not the entire 800-line file. 62% savings on file reads observed in practice.
+          Stacks on top of RTK — both run in the same session.
+        </p>
+        <Pre>{`# Install
+pip install agent-booster
+
+# Index your repo (one-time, re-runs incrementally)
+booster index
+
+# See your savings
+booster gain
+
+# Sample output:
+# Total reads:   30
+# Tokens served: 57,764
+# Tokens saved:  96,324  (62%)`}</Pre>
+        <div className="mt-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 mb-4">
+          <strong>Guard integration (coming soon):</strong> Guard reads <Code>booster gain</Code> at each sync alongside RTK.
+          The combined RTK + Booster delta is posted as <strong>Est. savings</strong> on the Spend dashboard.
+          Admins see exactly how much each tool is contributing.
+        </div>
+
+        {/* Savings breakdown table */}
+        <SubHeading>What Guard will show</SubHeading>
+        <div className="rounded-xl border border-stone-200 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-stone-50 border-b border-stone-200">
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Source</th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">What it compresses</th>
+                <th className="text-right px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Typical rate</th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Tracked by</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-stone-100">
+              {[
+                ["RTK",           "Command output — git, test, build, docker, grep", "85–99%", "rtk gain -f json"],
+                ["Agent Booster", "File reads — serves symbol slices, not full files",  "50–70%", "booster gain"],
+                ["Combined",      "Both layers stacked in the same session",            "90–94%", "Guard sync posts delta"],
+              ].map(([src, what, rate, how]) => (
+                <tr key={src}>
+                  <td className="px-4 py-3 text-xs font-semibold text-stone-800">{src}</td>
+                  <td className="px-4 py-3 text-xs text-stone-500">{what}</td>
+                  <td className="px-4 py-3 text-xs text-right font-mono text-green-600">{rate}</td>
+                  <td className="px-4 py-3 text-xs font-mono text-stone-400">{how}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
 
