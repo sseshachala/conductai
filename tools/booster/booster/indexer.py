@@ -12,6 +12,17 @@ from tree_sitter import Language, Node, Parser
 if TYPE_CHECKING:
     from sentence_transformers import SentenceTransformer as _ST
 
+_embed_model: "_ST | None" = None
+
+
+def _get_embed_model() -> "_ST":
+    global _embed_model
+    if _embed_model is None:
+        from sentence_transformers import SentenceTransformer
+        _embed_model = SentenceTransformer("all-MiniLM-L6-v2")
+    return _embed_model
+
+
 PY_LANGUAGE = Language(tspython.language())
 TS_LANGUAGE = Language(tsts.language_typescript())
 TSX_LANGUAGE = Language(tsts.language_tsx())
@@ -191,7 +202,7 @@ class SymbolIndexer:
 
     def build_embeddings(self) -> int:
         try:
-            from sentence_transformers import SentenceTransformer
+            from sentence_transformers import SentenceTransformer  # noqa: F401
         except ImportError:
             raise SystemExit("Semantic search requires: pip install agent-booster[embed]")
 
@@ -199,7 +210,7 @@ class SymbolIndexer:
         if not rows:
             return 0
 
-        model: _ST = SentenceTransformer("all-MiniLM-L6-v2")
+        model = _get_embed_model()
         ids = np.array([r["id"] for r in rows], dtype=np.int64)
         texts = [f"{r['name']} {r['signature']}" for r in rows]
         vecs = model.encode(texts, show_progress_bar=False, convert_to_numpy=True)
@@ -221,13 +232,11 @@ class SymbolIndexer:
             return self.search(query, limit)
 
         try:
-            from sentence_transformers import SentenceTransformer
-        except ImportError:
+            _get_embed_model()
+        except (ImportError, Exception):
             return self.search(query, limit)
 
-        from sentence_transformers import SentenceTransformer
-
-        model: _ST = SentenceTransformer("all-MiniLM-L6-v2")
+        model = _get_embed_model()
         vecs = np.load(str(vec_path))
         ids = np.load(str(ids_path))
 
@@ -264,8 +273,8 @@ class SymbolIndexer:
             return _keyword_match(file_symbols, query, limit)
 
         try:
-            from sentence_transformers import SentenceTransformer
-        except ImportError:
+            _get_embed_model()
+        except (ImportError, Exception):
             return _keyword_match(file_symbols, query, limit)
 
         file_id_set = {s["id"] for s in file_symbols}
@@ -278,7 +287,7 @@ class SymbolIndexer:
         file_vecs = all_vecs[mask]
         file_ids_ordered = [int(all_ids[i]) for i in range(len(all_ids)) if mask[i]]
 
-        model: _ST = SentenceTransformer("all-MiniLM-L6-v2")
+        model = _get_embed_model()
         q = model.encode([query], show_progress_bar=False, convert_to_numpy=True)[0]
         norm = np.linalg.norm(q)
         if norm > 0:

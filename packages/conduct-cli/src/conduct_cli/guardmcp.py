@@ -208,13 +208,14 @@ def _err(msg_id, code: int, message: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="conductguard-mcp")
-    parser.add_argument("--workspace", required=True, help="Guard workspace ID")
-    parser.add_argument("--token",     required=True, help="Member token")
-    parser.add_argument("--api-url",   default="https://api.conductai.ai", help=argparse.SUPPRESS)
+    parser.add_argument("--workspace", default=None, help="Guard workspace ID (falls back to ~/.conductguard/config.json)")
+    parser.add_argument("--token",     default=None, help="Member token (falls back to ~/.conductguard/config.json)")
+    parser.add_argument("--api-url",   default=None, help=argparse.SUPPRESS)
     args = parser.parse_args()
 
-    workspace_id = args.workspace
-    token        = args.token
+    cfg = _load_config()
+    workspace_id = args.workspace or cfg.get("workspace_id", "")
+    token        = args.token     or cfg.get("member_token", "")
 
     for raw in sys.stdin:
         raw = raw.strip()
