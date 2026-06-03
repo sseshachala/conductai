@@ -105,7 +105,8 @@ const TAB_NAV: Record<TabId, { href: string; label: string }[]> = {
     { href: "#guard-savings",   label: "Maximize savings" },
     { href: "#guard-roles",     label: "Roles & permissions" },
     { href: "#guard-onboarding",  label: "Team onboarding" },
-    { href: "#guard-scenarios",   label: "Test scenarios" },
+    { href: "#guard-scenarios",      label: "Test scenarios" },
+    { href: "#guard-token-savings",  label: "RTK + Agent Booster" },
   ],
   "integrations": [
     { href: "#github", label: "GitHub" },
@@ -1324,6 +1325,94 @@ conduct guard audit --since 7d`}</Pre>
               ))}
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <section id="guard-token-savings">
+        <SectionHeading id="guard-token-savings">RTK + Agent Booster</SectionHeading>
+        <p className="text-stone-500 text-sm mb-6 leading-relaxed">
+          Guard controls what your team <em>spends</em>. RTK and Agent Booster control what your team <em>burns</em>.
+          Together they cut the token footprint of every Claude Code, Cursor, and Codex session — and Guard surfaces the combined savings on the dashboard automatically.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+          <div className="rounded-xl border border-stone-200 px-5 py-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs font-bold px-2 py-0.5 rounded bg-stone-900 text-white font-mono">RTK</span>
+              <span className="text-xs text-stone-400">Rust Token Killer</span>
+            </div>
+            <p className="text-sm text-stone-600 leading-relaxed mb-3">
+              Wraps every CLI tool your agent calls — <Code>git</Code>, <Code>pytest</Code>, <Code>tsc</Code>, <Code>docker</Code> — and strips noise before the output reaches the model. Typical savings: <strong>60–99%</strong> per command.
+            </p>
+            <Pre>{`pip install rtk\nrtk git status   # 80% fewer tokens\nrtk pytest       # failures only, 90% savings`}</Pre>
+          </div>
+          <div className="rounded-xl border border-stone-200 px-5 py-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs font-bold px-2 py-0.5 rounded bg-indigo-600 text-white font-mono">Booster</span>
+              <span className="text-xs text-stone-400">Agent Booster</span>
+            </div>
+            <p className="text-sm text-stone-600 leading-relaxed mb-3">
+              Indexes your codebase with AST + vector embeddings. Intercepts raw file reads and grep calls, returning only the relevant symbol slices. Typical savings: <strong>60–70%</strong> per read. Hooks are active immediately after install — no session restart needed.
+            </p>
+            <Pre>{`pip install agent-booster\nbooster init claude   # indexes repo + wires hooks`}</Pre>
+          </div>
+        </div>
+
+        <SubHeading>Real numbers from a single developer install</SubHeading>
+        <div className="rounded-xl border border-stone-200 overflow-hidden mb-6">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-stone-50 border-b border-stone-200">
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Tool</th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Tokens saved</th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Savings %</th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Est. cost saved</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-stone-100">
+              {[
+                ["RTK",          "34.5M",  "99.2%", "$103.53"],
+                ["Agent Booster","96.3K",  "62.5%", "$0.29"],
+              ].map(([tool, tokens, pct, cost]) => (
+                <tr key={tool}>
+                  <td className="px-4 py-3 font-mono text-xs font-semibold text-stone-800">{tool}</td>
+                  <td className="px-4 py-3 text-stone-700 font-medium">{tokens}</td>
+                  <td className="px-4 py-3"><span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">{pct}</span></td>
+                  <td className="px-4 py-3 text-stone-700">{cost}</td>
+                </tr>
+              ))}
+              <tr className="bg-stone-50">
+                <td className="px-4 py-3 font-semibold text-stone-900">Combined</td>
+                <td className="px-4 py-3 font-bold text-emerald-700">34.6M</td>
+                <td className="px-4 py-3"><span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">~99%</span></td>
+                <td className="px-4 py-3 font-bold text-emerald-700">$103.82</td>
+              </tr>
+            </tbody>
+          </table>
+          <div className="border-t border-stone-100 px-4 py-2 bg-stone-50">
+            <p className="text-xs text-stone-400">Measured over 1 day · 3,354 RTK commands · 30 Booster reads · Claude Sonnet pricing ($3.00/M tokens)</p>
+          </div>
+        </div>
+
+        <SubHeading>How Guard surfaces savings</SubHeading>
+        <p className="text-sm text-stone-600 leading-relaxed mb-4">
+          Every time a developer runs <Code>conduct guard sync</Code>, the CLI reads <Code>rtk gain</Code> and <Code>booster gain</Code> locally and posts the totals to the Guard API. The <strong>Est. savings</strong> card on the Guard dashboard aggregates this across all team members in real time — no extra setup required.
+        </p>
+        <Pre>{`conduct guard sync\n\n#   Policy refreshed: 19 rule(s)\n#   Hook script updated\n#   Savings reported`}</Pre>
+
+        <div className="mt-8 rounded-xl bg-indigo-50 border border-indigo-200 px-6 py-5 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex-1">
+            <p className="font-semibold text-indigo-900 mb-1">Add Agent Booster to your workflow</p>
+            <p className="text-sm text-indigo-700 leading-relaxed">
+              One command indexes your repo, wires the hooks, and starts tracking savings — no session restart needed.
+            </p>
+          </div>
+          <Link
+            href="/tools/agent-booster"
+            className="shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors"
+          >
+            Get Agent Booster →
+          </Link>
         </div>
       </section>
     </div>
