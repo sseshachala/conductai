@@ -823,6 +823,16 @@ interface MCPTool {
   }
 }
 
+const MCP_PROVIDERS: { value: string; label: string; serverUrl: string; credentialKey: string; transport: string }[] = [
+  { value: "vercel",   label: "Vercel",   serverUrl: "https://mcp.vercel.com",          credentialKey: "VERCEL_TOKEN",    transport: "http" },
+  { value: "linear",   label: "Linear",   serverUrl: "https://mcp.linear.app/mcp",      credentialKey: "LINEAR_API_KEY",  transport: "http" },
+  { value: "railway",  label: "Railway",  serverUrl: "https://mcp.railway.com",         credentialKey: "RAILWAY_TOKEN",   transport: "http" },
+  { value: "jira",     label: "Jira",     serverUrl: "https://mcp.atlassian.com/mcp",   credentialKey: "JIRA_TOKEN",      transport: "http" },
+  { value: "github",   label: "GitHub",   serverUrl: "https://api.githubcopilot.com/mcp", credentialKey: "GITHUB_TOKEN",  transport: "http" },
+  { value: "slack",    label: "Slack",    serverUrl: "https://mcp.slack.com",           credentialKey: "SLACK_TOKEN",     transport: "sse"  },
+  { value: "custom",   label: "Custom",   serverUrl: "",                                credentialKey: "",                transport: "auto" },
+]
+
 function MCPBlockPanel({
   getToken,
   blockData,
@@ -838,13 +848,28 @@ function MCPBlockPanel({
   const [discovering, setDiscovering] = useState(false)
   const [discoverErr, setDiscoverErr] = useState<string | null>(null)
 
+  const provider      = (getNestedValue(blockData, "config.provider")      as string) || "custom"
   const credentialKey = (getNestedValue(blockData, "config.credential_key") as string) || ""
-  const transport = (getNestedValue(blockData, "config.transport") as string) || "auto"
-  const toolName = (getNestedValue(blockData, "config.tool_name") as string) || ""
+  const serverUrl     = (getNestedValue(blockData, "config.server_url")     as string) || ""
+  const transport     = (getNestedValue(blockData, "config.transport")      as string) || "auto"
+  const toolName      = (getNestedValue(blockData, "config.tool_name")      as string) || ""
 
+  const isCustom = provider === "custom"
   const selectedTool = tools.find(t => t.name === toolName) ?? null
-  const paramProps = selectedTool?.inputSchema?.properties ?? {}
+  const paramProps   = selectedTool?.inputSchema?.properties ?? {}
   const requiredParams = new Set(selectedTool?.inputSchema?.required ?? [])
+
+  function handleProviderChange(val: string) {
+    const p = MCP_PROVIDERS.find(x => x.value === val)
+    if (!p) return
+    onChange("config.provider",       p.value)
+    onChange("config.server_url",     p.serverUrl)
+    onChange("config.credential_key", p.credentialKey)
+    onChange("config.transport",      p.transport)
+    onChange("config.tool_name",      "")
+    setTools([])
+    setDiscoverErr(null)
+  }
 
   async function authHeaders() {
     const h: Record<string, string> = { "Content-Type": "application/json" }
@@ -856,22 +881,20 @@ function MCPBlockPanel({
   }
 
   async function discoverTools() {
-    if (!credentialKey) { setDiscoverErr("Enter a credential handle first."); return }
-    setDiscovering(true)
-    setDiscoverErr(null)
+    const key = credentialKey.trim()
+    if (!key) { setDiscoverErr("Enter a credential key first."); return }
+    setDiscovering(true); setDiscoverErr(null)
     try {
       const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/mcp/tools`, {
         method: "POST",
         headers: await authHeaders(),
-        body: JSON.stringify({ credential_key: credentialKey, transport }),
+        body: JSON.stringify({ credential_key: key, transport }),
       })
       const data = await r.json()
       if (!r.ok) { setDiscoverErr(data.detail || `HTTP ${r.status}`); return }
       const list: MCPTool[] = Array.isArray(data) ? data : (data.tools ?? [])
       setTools(list)
-      if (list.length > 0 && !toolName) {
-        onChange("config.tool_name", list[0].name)
-      }
+      if (list.length > 0 && !toolName) onChange("config.tool_name", list[0].name)
     } catch (e) {
       setDiscoverErr(e instanceof Error ? e.message : "Network error")
     } finally {
@@ -885,36 +908,53 @@ function MCPBlockPanel({
   return (
     <div className="px-4 py-3 space-y-4">
 
-      {/* Credential handle */}
+      {/* Provider */}
       <div>
-        <span className={sectionLabel}>MCP Credential Handle <span className="text-red-500">*</span></span>
+        <span className={sectionLabel}>Provider <span className="text-red-500">*</span></span>
+        <select
+          value={provider}
+          onChange={e => !isViewer && handleProviderChange(e.target.value)}
+          disabled={isViewer}
+          className={inputBase}
+        >
+          {MCP_PROVIDERS.map(p => (
+            <option key={p.value} value={p.value}>{p.label}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Custom server URL */}
+      {isCustom && (
+        <div>
+          <span className={sectionLabel}>MCP Server URL <span className="text-red-500">*</span></span>
+          <input
+            type="text"
+            value={serverUrl}
+            onChange={e => !isViewer && onChange("config.server_url", e.target.value)}
+            disabled={isViewer}
+            placeholder="https://my-mcp-server.com/mcp"
+            className={inputBase}
+          />
+        </div>
+      )}
+
+      {/* Credential key — always shown, pre-filled for known providers */}
+      <div>
+        <span className={sectionLabel}>Credential Key <span className="text-red-500">*</span></span>
         <input
           type="text"
           value={credentialKey}
           onChange={e => !isViewer && onChange("config.credential_key", e.target.value)}
           disabled={isViewer}
-          placeholder="mcp-vercel"
+          placeholder={isCustom ? "MY_SERVICE_TOKEN" : credentialKey}
           className={inputBase}
         />
-        <p className="text-[10px] text-stone-400 mt-1">Handle saved in Settings → Credentials</p>
+        <p className="text-[10px] text-stone-400 mt-1">
+          Env var name from <a href="/settings/environments" className="underline hover:text-stone-600">Settings → Environments</a>
+        </p>
       </div>
 
-      {/* Transport */}
-      <div>
-        <span className={sectionLabel}>Transport</span>
-        <select
-          value={transport}
-          onChange={e => !isViewer && onChange("config.transport", e.target.value)}
-          disabled={isViewer}
-          className={inputBase}
-        >
-          <option value="auto">Auto (HTTP → SSE fallback)</option>
-          <option value="http">HTTP (Streamable)</option>
-          <option value="sse">SSE</option>
-        </select>
-      </div>
-
-      {/* Discover tools button */}
+      {/* Discover */}
       <div>
         <button
           type="button"
@@ -924,17 +964,13 @@ function MCPBlockPanel({
         >
           {discovering ? "Discovering…" : "Discover tools"}
         </button>
-        {discoverErr && (
-          <p className="text-[10px] text-red-600 mt-1">{discoverErr}</p>
-        )}
-        {tools.length > 0 && (
-          <p className="text-[10px] text-emerald-600 mt-1">{tools.length} tool{tools.length !== 1 ? "s" : ""} found</p>
-        )}
+        {discoverErr && <p className="text-[10px] text-red-600 mt-1">{discoverErr}</p>}
+        {tools.length > 0 && <p className="text-[10px] text-emerald-600 mt-1">{tools.length} tool{tools.length !== 1 ? "s" : ""} found</p>}
       </div>
 
-      {/* Tool selection */}
+      {/* Tool picker */}
       <div>
-        <span className={sectionLabel}>Tool name <span className="text-red-500">*</span></span>
+        <span className={sectionLabel}>Tool <span className="text-red-500">*</span></span>
         {tools.length > 0 ? (
           <select
             value={toolName}
@@ -953,30 +989,26 @@ function MCPBlockPanel({
             value={toolName}
             onChange={e => !isViewer && onChange("config.tool_name", e.target.value)}
             disabled={isViewer}
-            placeholder="get_logs"
+            placeholder="Click Discover to populate"
             className={inputBase}
           />
         )}
-        {selectedTool?.description && (
-          <p className="text-[10px] text-stone-400 mt-1">{selectedTool.description}</p>
-        )}
+        {selectedTool?.description && <p className="text-[10px] text-stone-400 mt-1">{selectedTool.description}</p>}
       </div>
 
-      {/* Dynamic params from inputSchema */}
+      {/* Dynamic params */}
       {Object.keys(paramProps).length > 0 && (
         <div className="space-y-3">
           <span className={sectionLabel}>Parameters</span>
           {Object.entries(paramProps).map(([paramKey, paramDef]) => {
-            const required = requiredParams.has(paramKey)
+            const req = requiredParams.has(paramKey)
             const val = (getNestedValue(blockData, `config.params.${paramKey}`) as string) || ""
             return (
               <div key={paramKey}>
                 <div className="flex items-center gap-1.5 mb-1">
                   <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">{paramKey}</label>
-                  {required && <span className="text-red-500 text-[10px] font-bold">*</span>}
-                  {paramDef.description && (
-                    <span className="text-[10px] text-stone-400">{paramDef.description}</span>
-                  )}
+                  {req && <span className="text-red-500 text-[10px]">*</span>}
+                  {paramDef.description && <span className="text-[10px] text-stone-400">{paramDef.description}</span>}
                 </div>
                 <input
                   type="text"
