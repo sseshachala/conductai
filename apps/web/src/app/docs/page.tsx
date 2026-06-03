@@ -897,80 +897,63 @@ conduct guard status`}</Pre>
           Guard captures the combined savings and shows them on the Spend dashboard.
         </p>
 
-        {/* 3-column before/after comparison */}
-        <div className="grid grid-cols-3 gap-3 mb-8">
-          {[
-            {
-              label: "No optimisation",
-              color: "border-stone-200 bg-white",
-              badge: null,
-              cost: "$180",
-              tokens: "60M tokens / mo",
-              savings: "$0 saved",
-              savingsColor: "text-stone-400",
-              rows: [
-                ["Command output", "Raw — full git diff, full test log, full build"],
-                ["File reads",     "Full file — every read loads the entire file"],
-                ["Spend",         "$180 / developer / month (est.)"],
-              ],
-            },
-            {
-              label: "+ RTK",
-              color: "border-indigo-200 bg-indigo-50",
-              badge: { text: "pip install rtk-cli", color: "bg-indigo-100 text-indigo-700" },
-              cost: "$27",
-              tokens: "9M tokens / mo",
-              savings: "~$153 saved  (85%)",
-              savingsColor: "text-indigo-600 font-semibold",
-              rows: [
-                ["Command output", "Filtered — failures only, compact diffs, deduped logs"],
-                ["File reads",     "Full file — reads unchanged"],
-                ["Spend",         "$27 / developer / month (est.)"],
-              ],
-            },
-            {
-              label: "+ RTK + Agent Booster",
-              color: "border-green-300 bg-green-50",
-              badge: { text: "pip install agent-booster", color: "bg-green-100 text-green-700" },
-              cost: "$11",
-              tokens: "3.5M tokens / mo",
-              savings: "~$169 saved  (94%)",
-              savingsColor: "text-green-600 font-semibold",
-              rows: [
-                ["Command output", "Filtered — same as RTK"],
-                ["File reads",     "Symbol-slice — only the relevant function/class, not the whole file"],
-                ["Spend",         "$11 / developer / month (est.)"],
-              ],
-            },
-          ].map(({ label, color, badge, cost, tokens, savings, savingsColor, rows }) => (
-            <div key={label} className={`rounded-xl border-2 ${color} overflow-hidden`}>
-              <div className="px-4 py-3 border-b border-inherit">
-                <p className="text-xs font-bold text-stone-800 mb-1">{label}</p>
-                {badge && (
-                  <code className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${badge.color}`}>{badge.text}</code>
-                )}
+        {/* Real numbers comparison */}
+        <div className="rounded-xl border-2 border-stone-200 overflow-hidden mb-3">
+          <div className="grid grid-cols-3 divide-x divide-stone-200">
+            {[
+              {
+                state: "No optimisation",
+                bg: "bg-white",
+                tokens: "34.8M",
+                tokenLabel: "tokens consumed (command output)",
+                saved: "$0",
+                savedLabel: "saved",
+                savedColor: "text-stone-300",
+                rate: "—",
+                rateLabel: "savings rate",
+                detail: "Full git diff, full test log, full build output fed into context on every tool call.",
+              },
+              {
+                state: "+ RTK",
+                bg: "bg-indigo-50",
+                tokens: "286K",
+                tokenLabel: "tokens consumed (after filtering)",
+                saved: "$103.51",
+                savedLabel: "saved (real, this install)",
+                savedColor: "text-indigo-600",
+                rate: "99.2%",
+                rateLabel: "across 3,316 commands",
+                detail: "Failures only. Compact diffs. Deduped logs. 34.5M tokens that never entered the context window.",
+              },
+              {
+                state: "+ RTK + Agent Booster",
+                bg: "bg-green-50",
+                tokens: "57.8K",
+                tokenLabel: "tokens served from file reads",
+                saved: "$103.80",
+                savedLabel: "saved combined (real)",
+                savedColor: "text-green-600",
+                rate: "62%",
+                rateLabel: "on file reads (30 reads)",
+                detail: "Symbol-slice reads on top of RTK. Only the relevant function or class enters context — not the whole file.",
+              },
+            ].map(({ state, bg, tokens, tokenLabel, saved, savedLabel, savedColor, rate, rateLabel, detail }) => (
+              <div key={state} className={`${bg} px-4 py-4`}>
+                <p className="text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-3">{state}</p>
+                <p className="text-2xl font-bold text-stone-900 leading-none">{tokens}</p>
+                <p className="text-[10px] text-stone-400 mb-3">{tokenLabel}</p>
+                <p className={`text-lg font-bold ${savedColor}`}>{saved}</p>
+                <p className="text-[10px] text-stone-400 mb-3">{savedLabel}</p>
+                <p className="text-sm font-semibold text-stone-700">{rate}</p>
+                <p className="text-[10px] text-stone-400 mb-3">{rateLabel}</p>
+                <p className="text-xs text-stone-500 leading-relaxed border-t border-stone-200 pt-3 mt-1">{detail}</p>
               </div>
-              <div className="px-4 py-3">
-                <p className="text-2xl font-bold text-stone-900">{cost}</p>
-                <p className="text-[10px] text-stone-400 mb-3">{tokens}</p>
-                <p className={`text-xs mb-4 ${savingsColor}`}>{savings}</p>
-                <div className="space-y-2">
-                  {rows.map(([field, detail]) => (
-                    <div key={field}>
-                      <p className="text-[10px] font-semibold text-stone-500 uppercase tracking-wider">{field}</p>
-                      <p className="text-xs text-stone-600 leading-relaxed">{detail}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-
-        <p className="text-xs text-stone-400 mb-8 -mt-4">
-          Estimates based on a developer running ~100 Claude Code tool calls/day, 20 working days/month.
-          RTK savings rate observed: 85–99%. Agent Booster savings rate observed: 62% on file reads.
-          Actual savings vary by workflow.
+        <p className="text-xs text-stone-400 mb-8">
+          Real numbers from a single developer install. RTK: 3,316 commands, 34.5M tokens saved at Claude Sonnet input pricing ($3/M tokens).
+          Agent Booster: 30 reads, 96K tokens saved. Combined: 34.6M tokens, $103.80 saved.
         </p>
 
         {/* RTK install block */}
@@ -985,10 +968,10 @@ pip install rtk-cli   # or: cargo install rtk
 # See your savings at any time
 rtk gain
 
-# Sample output:
-# Total commands:  3,312
+# Real output (single developer install):
+# Total commands:  3,316
 # Tokens saved:    34.5M  (99.2%)
-# Est. cost saved: $103`}</Pre>
+# Est. cost saved: $103.51  (at Claude Sonnet $3/M input)`}</Pre>
         <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800 mb-8">
           <strong>Guard integration (coming soon):</strong> Once RTK is installed, Guard reads <Code>rtk gain</Code> at each sync,
           diffs against the last baseline, and posts the delta to the Spend dashboard automatically.
@@ -1011,10 +994,11 @@ booster index
 # See your savings
 booster gain
 
-# Sample output:
+# Real output (1 active day, 30 reads):
 # Total reads:   30
 # Tokens served: 57,764
-# Tokens saved:  96,324  (62%)`}</Pre>
+# Tokens saved:  96,324  (62%)
+# Top file:      executor.py — 22,904 tokens saved`}</Pre>
         <div className="mt-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 mb-4">
           <strong>Guard integration (coming soon):</strong> Guard reads <Code>booster gain</Code> at each sync alongside RTK.
           The combined RTK + Booster delta is posted as <strong>Est. savings</strong> on the Spend dashboard.
