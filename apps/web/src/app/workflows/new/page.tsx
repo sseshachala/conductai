@@ -98,6 +98,12 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
   const [webhookError, setWebhookError]   = useState<string | null>(null)
   const [error, setError]                 = useState<string | null>(null)
 
+  // NL-to-DAG mode
+  const [mode, setMode]                   = useState<"playbook" | "describe">("playbook")
+  const [nlPrompt, setNlPrompt]           = useState("")
+  const [generating, setGenerating]       = useState(false)
+  const [generatedCreds, setGeneratedCreds] = useState<string[]>([])
+
   const buildHeaders = useCallback(async (contentType = false): Promise<Record<string, string>> => {
     const h: Record<string, string> = {}
     if (contentType) h["Content-Type"] = "application/json"
@@ -186,6 +192,47 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
   }, [template])
 
 
+  async function handleGenerate() {
+    if (!nlPrompt.trim()) return
+    setGenerating(true)
+    setError(null)
+    try {
+      const headers = await buildHeaders(true)
+      const genRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/generate`, {
+        method: "POST", headers, body: JSON.stringify({ prompt: nlPrompt.trim() }),
+      })
+      if (!genRes.ok) {
+        const err = await genRes.json().catch(() => ({}))
+        setError(err.detail ?? `Generation failed (${genRes.status})`)
+        return
+      }
+      const { name, yaml, required_credentials } = await genRes.json()
+      setGeneratedCreds(required_credentials ?? [])
+
+      // Create the workflow with the generated YAML
+      const createRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, {
+        method: "POST", headers,
+        body: JSON.stringify({
+          name: agentName.trim() || name,
+          yaml_source: yaml,
+          ...(selectedProjectId && { project_id: selectedProjectId }),
+          ...(selectedEnvId     && { environment_id: selectedEnvId }),
+        }),
+      })
+      if (!createRes.ok) {
+        const err = await createRes.json().catch(() => ({}))
+        setError(err.detail ?? `Create failed (${createRes.status})`)
+        return
+      }
+      const wf = await createRes.json()
+      router.push(`/workflows/${wf.id}`)
+    } catch {
+      setError("Network error — please try again")
+    } finally {
+      setGenerating(false)
+    }
+  }
+
   async function handleCreate() {
     setLoading(true)
     setError(null)
@@ -224,9 +271,74 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
     <AppShell>
       <div className="mx-auto max-w-md px-6 py-10">
         <h1 className="text-base font-semibold text-stone-900 mb-1">New agent</h1>
-        <p className="text-xs text-stone-400 mb-8">Choose a playbook and configure it — webhook registered automatically on create.</p>
+        <p className="text-xs text-stone-400 mb-6">Build from a playbook template, or describe what you want in plain English.</p>
 
-        <div className="flex flex-col gap-5">
+        {/* Mode toggle */}
+        <div className="flex rounded-lg border border-stone-200 p-0.5 mb-6 bg-stone-50">
+          <button
+            type="button"
+            onClick={() => setMode("playbook")}
+            className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-colors ${mode === "playbook" ? "bg-white text-stone-900 shadow-sm" : "text-stone-400 hover:text-stone-600"}`}
+          >From playbook</button>
+          <button
+            type="button"
+            onClick={() => setMode("describe")}
+            className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-colors ${mode === "describe" ? "bg-white text-stone-900 shadow-sm" : "text-stone-400 hover:text-stone-600"}`}
+          >Describe it</button>
+        </div>
+
+        {/* Describe mode */}
+        {mode === "describe" && (
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-stone-500">What should this agent do?</label>
+              <textarea
+                rows={5}
+                value={nlPrompt}
+                onChange={e => setNlPrompt(e.target.value)}
+                placeholder={"Watch my Vercel logs for errors, create a GitHub issue for each new one, and notify Slack."}
+                className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-200 resize-none"
+              />
+              <p className="text-[10px] text-stone-400">Be specific — mention integrations, triggers, and what should happen on each outcome.</p>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-stone-500">Agent name</label>
+              <input
+                value={agentName}
+                onChange={e => setAgentName(e.target.value)}
+                placeholder="My generated agent"
+                className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
+              />
+            </div>
+
+            {generatedCreds.length > 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+                <p className="text-xs font-semibold text-amber-800 mb-1">Credentials needed</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {generatedCreds.map(c => (
+                    <span key={c} className="text-[11px] font-mono bg-amber-100 text-amber-700 px-2 py-0.5 rounded">{c}</span>
+                  ))}
+                </div>
+                <p className="text-[10px] text-amber-700 mt-1.5">Add these in <a href="/settings/environments" className="underline">Settings → Environments</a> before running.</p>
+              </div>
+            )}
+
+            {error && <p className="text-xs text-red-600">{error}</p>}
+
+            <button
+              type="button"
+              onClick={handleGenerate}
+              disabled={generating || !nlPrompt.trim()}
+              className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {generating ? "Generating…" : "Generate agent"}
+            </button>
+          </div>
+        )}
+
+        {/* Playbook mode */}
+        {mode === "playbook" && <div className="flex flex-col gap-5">
 
           {/* Template picker — rich dropdown */}
           <div className="flex flex-col gap-1.5" ref={templateRef}>
@@ -418,6 +530,7 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
             </>
           )}
         </div>
+        }
       </div>
     </AppShell>
   )
