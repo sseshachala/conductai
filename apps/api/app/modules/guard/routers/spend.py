@@ -493,8 +493,8 @@ def budget_check(
             return BudgetCheckOut(
                 hard_blocked=True,
                 reason=(
-                    f"Workspace monthly spend ${workspace_cost:.2f} has reached the hard cap "
-                    f"of ${workspace_budget.hard_limit_usd:.2f}. Contact your security team."
+                    f"Your team's monthly AI budget of ${workspace_budget.hard_limit_usd:.2f} has been reached. "
+                    f"New tool calls are paused until the limit is raised. Contact your security team."
                 ),
                 monthly_cost_usd=workspace_cost,
                 hard_limit_usd=workspace_budget.hard_limit_usd,
@@ -530,8 +530,8 @@ def budget_check(
                 return BudgetCheckOut(
                     hard_blocked=True,
                     reason=(
-                        f"Your monthly spend ${user_cost:.2f} has reached your "
-                        f"hard cap of ${hard_limit:.2f}. Contact your manager."
+                        f"You've reached your monthly AI spend limit of ${hard_limit:.2f}. "
+                        f"New tool calls are paused. Contact your manager to have your limit raised."
                     ),
                     monthly_cost_usd=user_cost,
                     hard_limit_usd=hard_limit,
