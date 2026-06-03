@@ -680,6 +680,18 @@ def _install_claude_hook(hook_path: Path) -> None:
     if cleaned:
         changed = True
 
+    # Stop — auto-sync RTK + Booster savings at end of every session
+    stop = hooks.setdefault("Stop", [])
+    stop_cmd = "conduct guard sync"
+    stop_already = any(
+        stop_cmd in e.get("command", "")
+        for h in stop
+        for e in h.get("hooks", [])
+    )
+    if not stop_already:
+        stop.append({"hooks": [{"type": "command", "command": stop_cmd}]})
+        changed = True
+
     if changed:
         claude_settings.parent.mkdir(parents=True, exist_ok=True)
         claude_settings.write_text(json.dumps(settings, indent=2))
@@ -687,6 +699,8 @@ def _install_claude_hook(hook_path: Path) -> None:
             print(f"  {GREEN}Claude Code PreToolUse hook registered{RESET}")
         if not post_already or cleaned:
             print(f"  {GREEN}Claude Code PostToolUse hook registered{RESET}")
+        if not stop_already:
+            print(f"  {GREEN}Claude Code Stop hook registered (auto-sync savings){RESET}")
     else:
         print(f"  {GRAY}Claude Code hooks already registered{RESET}")
 
