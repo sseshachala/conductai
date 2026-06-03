@@ -24,6 +24,15 @@ function SubHeading({ children }: { children: React.ReactNode }) {
   return <h3 className="text-sm font-semibold text-stone-700 mb-2 mt-5">{children}</h3>
 }
 
+function Screenshot({ src, alt, caption }: { src: string; alt: string; caption: string }) {
+  return (
+    <figure className="my-4">
+      <img src={src} alt={alt} className="rounded-xl border border-stone-200 w-full shadow-sm" />
+      <figcaption className="text-xs text-stone-400 mt-2 text-center">{caption}</figcaption>
+    </figure>
+  )
+}
+
 function Method({ m }: { m: string }) {
   const colors: Record<string, string> = {
     GET:    "bg-blue-50 text-blue-700",
@@ -94,7 +103,8 @@ const TAB_NAV: Record<TabId, { href: string; label: string }[]> = {
     { href: "#guard-mcp",       label: "conductguard-mcp" },
     { href: "#guard-spend",     label: "Spend controls" },
     { href: "#guard-roles",     label: "Roles & permissions" },
-    { href: "#guard-onboarding",label: "Team onboarding" },
+    { href: "#guard-onboarding",  label: "Team onboarding" },
+    { href: "#guard-scenarios",   label: "Test scenarios" },
   ],
   "integrations": [
     { href: "#github", label: "GitHub" },
@@ -983,6 +993,190 @@ conduct guard audit --since 7d`}</Pre>
         <div className="mt-4 rounded-xl bg-stone-100 border border-stone-200 px-4 py-3 text-sm text-stone-700">
           <strong>CLI auto-updates.</strong> Developers never need to manually upgrade — the CLI checks PyPI on
           every run and upgrades itself if a newer version is available.
+        </div>
+      </section>
+
+      <section id="guard-scenarios">
+        <SectionHeading id="guard-scenarios">Test scenarios</SectionHeading>
+        <p className="text-stone-500 text-sm mb-6 leading-relaxed">
+          Four end-to-end scenarios that cover every Guard enforcement path. Run them in order after onboarding a developer to verify the full stack — hook, API, Slack, and activity log — is wired correctly.
+        </p>
+
+        <Screenshot
+          src="/guard-docs/dashboard.png"
+          alt="Guard dashboard showing active developers, events, tokens, and cost trend chart"
+          caption="Guard dashboard — real-time overview of team AI usage. The cost trend chart breaks down spend by Claude vs Codex."
+        />
+        <Screenshot
+          src="/guard-docs/activity-log.png"
+          alt="Guard activity log showing tool calls from Claude Code and Codex with token counts"
+          caption="Activity log — every tool call is recorded: who, which AI tool, what command, and token cost. Both Claude Code and Codex sessions appear here."
+        />
+
+        {/* Scenario 1 */}
+        <div className="mb-12">
+          <div className="flex items-center gap-3 mb-3">
+            <span className="w-7 h-7 rounded-full bg-stone-900 text-white text-xs font-bold flex items-center justify-center shrink-0">1</span>
+            <h3 className="font-semibold text-stone-900 text-base">Workspace hard cap — blocks all tool calls</h3>
+          </div>
+          <p className="text-sm text-stone-500 mb-4 ml-10">Verify that setting the workspace monthly budget below current spend blocks every subsequent tool call for all users.</p>
+          <div className="ml-10">
+            <Screenshot
+              src="/guard-docs/spend-controls.png"
+              alt="Spend Controls panel showing team monthly budget, per-developer limit, alert threshold, and hard cap"
+              caption="Guard → Spend — set the Team monthly budget and Hard cap here. Enable 'Hard cap on' to block sessions at 100%."
+            />
+          </div>
+          <div className="ml-10 rounded-xl border border-stone-200 divide-y divide-stone-100 mb-4">
+            {[
+              { label: "Set workspace budget below current spend", detail: "Guard → Spend → Team monthly budget → set to a value ≤ current spend → Save." },
+              { label: "Sync and clear the cache", detail: "conduct guard sync && rm ~/.conductguard/budget_cache.json" },
+              { label: "Verify the API", detail: 'GET /guard/spend/budget-check — expect { "hard_blocked": true }' },
+              { label: "Test the hook", detail: `echo '{"tool_name":"bash","tool_input":{"command":"ls"},"session_id":"test"}' | python3.11 ~/.conductguard/hook.py\nExpected: exit 2 with budget block message` },
+            ].map(({ label, detail }) => (
+              <div key={label} className="px-4 py-3">
+                <p className="text-xs font-semibold text-stone-700 mb-1">{label}</p>
+                <pre className="text-xs text-stone-500 font-mono whitespace-pre-wrap leading-relaxed">{detail}</pre>
+              </div>
+            ))}
+          </div>
+          <div className="ml-10 rounded-xl bg-stone-50 border border-stone-200 px-4 py-2.5 text-xs text-stone-500">
+            <strong className="text-stone-700">Teardown:</strong> Raise the budget above current spend → Save. Run conduct guard sync &amp;&amp; rm ~/.conductguard/budget_cache.json.
+          </div>
+        </div>
+
+        {/* Scenario 2 */}
+        <div className="mb-12">
+          <div className="flex items-center gap-3 mb-3">
+            <span className="w-7 h-7 rounded-full bg-stone-900 text-white text-xs font-bold flex items-center justify-center shrink-0">2</span>
+            <h3 className="font-semibold text-stone-900 text-base">Per-developer hard cap — blocks one user</h3>
+          </div>
+          <p className="text-sm text-stone-500 mb-4 ml-10">Verify that a per-developer spend limit blocks tool calls for a specific user without affecting others.</p>
+          <div className="ml-10 rounded-xl border border-stone-200 divide-y divide-stone-100 mb-4">
+            {[
+              { label: "Set per-developer limit below the user's spend", detail: "Guard → Spend → Default per-developer limit → set below current user spend → Save." },
+              { label: "Sync and clear the cache", detail: "conduct guard sync && rm ~/.conductguard/budget_cache.json" },
+              { label: "Verify the API with clerk_user_id", detail: "GET /guard/spend/budget-check?workspace_id=<ws>&clerk_user_id=<uid>\nExpect { \"hard_blocked\": true } for this user only." },
+              { label: "Test the hook", detail: "Same hook test as Scenario 1 — expect exit 2 with per-user block message." },
+            ].map(({ label, detail }) => (
+              <div key={label} className="px-4 py-3">
+                <p className="text-xs font-semibold text-stone-700 mb-1">{label}</p>
+                <pre className="text-xs text-stone-500 font-mono whitespace-pre-wrap leading-relaxed">{detail}</pre>
+              </div>
+            ))}
+          </div>
+          <div className="ml-10">
+            <Screenshot
+              src="/guard-docs/spend-by-developer.png"
+              alt="Spend breakdown by developer and by AI tool showing sessions, tokens, cost, and budget"
+              caption="Guard → Spend — By Developer table shows each user's sessions, token usage, cost, savings, and individual budget. By AI Tool breakdown shows Claude Code vs Codex split."
+            />
+          </div>
+          <div className="ml-10 rounded-xl bg-stone-50 border border-stone-200 px-4 py-2.5 text-xs text-stone-500">
+            <strong className="text-stone-700">Teardown:</strong> Raise the per-developer limit above the user's spend → Save. Sync and clear cache.
+          </div>
+        </div>
+
+        {/* Scenario 3 */}
+        <div className="mb-12">
+          <div className="flex items-center gap-3 mb-3">
+            <span className="w-7 h-7 rounded-full bg-stone-900 text-white text-xs font-bold flex items-center justify-center shrink-0">3</span>
+            <h3 className="font-semibold text-stone-900 text-base">Policy rule — blocks a specific tool call</h3>
+          </div>
+          <p className="text-sm text-stone-500 mb-4 ml-10">Verify that a Guard policy rule matches a pattern in a tool call, blocks it with a custom message, logs it to the activity feed, and fires a Slack notification.</p>
+          <div className="ml-10 rounded-xl border border-stone-200 divide-y divide-stone-100 mb-4">
+            {[
+              { label: "Create the policy rule", detail: "Guard → Policies → Add rule\nRule ID: no-rm | Match tool: bash | Match pattern: rm | Action: block\nMessage: Deleting files is not allowed. Use git to revert changes instead." },
+              { label: "Sync the policy", detail: "conduct guard sync" },
+              { label: "Test the hook directly", detail: `echo '{"tool_name":"bash","tool_input":{"command":"rm -rf /tmp/test"},"session_id":"test"}' | python3.11 ~/.conductguard/hook.py; echo "exit: $?"` },
+              { label: "Trigger from Claude Code", detail: "Ask Claude to run: bash -c 'rm -rf /tmp/test'\nExpected: PreToolUse hook error — tool call blocked inline." },
+              { label: "Verify activity log", detail: "Guard → Activity — find the event. Confirm decision=blocked, rule_id=no-rm, tool_name=bash." },
+            ].map(({ label, detail }) => (
+              <div key={label} className="px-4 py-3">
+                <p className="text-xs font-semibold text-stone-700 mb-1">{label}</p>
+                <pre className="text-xs text-stone-500 font-mono whitespace-pre-wrap leading-relaxed">{detail}</pre>
+              </div>
+            ))}
+          </div>
+          <div className="ml-10">
+            <Screenshot
+              src="/guard-docs/audit-blocked.png"
+              alt="Audit log showing blocked bash commands with no-rm rule alongside allowed events"
+              caption="Guard → Activity — blocked events are tagged in red with the rule ID (no-rm). Allowed events show green. Every tool call — blocked or allowed — is recorded."
+            />
+          </div>
+          <div className="ml-10 mb-4">
+            <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">What you'll see in Slack</p>
+            <pre className="bg-stone-900 text-green-400 rounded-xl px-4 py-3 text-xs font-mono overflow-x-auto leading-relaxed">{`🚫 salessupport@organicsphere.com blocked by no-rm in claude-code
+   Deleting files is not allowed. Use git to revert changes instead.
+
+⚠️ Guard spend alert (workspace-wide): $25.05 of $30.00 used (83%) — alert threshold 80% reached`}</pre>
+            <p className="text-xs text-stone-400 mt-2 leading-relaxed">Both messages appear in the same channel. The block fires on every blocked call. The spend alert fires once per 5% increment (deduped since v0.4.21).</p>
+          </div>
+          <div className="ml-10 rounded-xl bg-stone-50 border border-stone-200 px-4 py-2.5 text-xs text-stone-500">
+            <strong className="text-stone-700">Teardown:</strong> Guard → Policies → delete no-rm → Save. Run conduct guard sync.
+          </div>
+        </div>
+
+        {/* Scenario 4 */}
+        <div className="mb-12">
+          <div className="flex items-center gap-3 mb-3">
+            <span className="w-7 h-7 rounded-full bg-stone-900 text-white text-xs font-bold flex items-center justify-center shrink-0">4</span>
+            <h3 className="font-semibold text-stone-900 text-base">Alert threshold — fires Slack notification</h3>
+          </div>
+          <p className="text-sm text-stone-500 mb-4 ml-10">Verify that spend crossing the alert threshold triggers a Slack notification, deduped per 5% increment.</p>
+          <div className="ml-10">
+            <Screenshot
+              src="/guard-docs/settings-notifications.png"
+              alt="Guard Settings page showing Slack channel input and notification toggles for block/warn and budget threshold"
+              caption="Guard → Settings — configure the Slack channel and toggle which events trigger notifications. Both toggles must be on to receive spend alerts and block notifications."
+            />
+          </div>
+          <div className="ml-10 rounded-xl border border-stone-200 divide-y divide-stone-100 mb-4">
+            {[
+              { label: "Set alert threshold below current spend %", detail: "Guard → Spend → Alert threshold → set below current spend percentage → Save.\nExample: if spend is at 85% of budget, set threshold to 80%." },
+              { label: "Trigger any tool call", detail: "In a Claude Code session, trigger any passing tool call (e.g. list files). The hook checks spend on every call." },
+              { label: "Verify Slack", detail: "Expected: ⚠️ Guard spend alert (workspace-wide): $X.XX of $Y.YY used (Z%) — alert threshold 80% reached" },
+            ].map(({ label, detail }) => (
+              <div key={label} className="px-4 py-3">
+                <p className="text-xs font-semibold text-stone-700 mb-1">{label}</p>
+                <pre className="text-xs text-stone-500 font-mono whitespace-pre-wrap leading-relaxed">{detail}</pre>
+              </div>
+            ))}
+          </div>
+          <div className="ml-10 mb-4">
+            <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">Real Slack output from a live session (2026-06-02)</p>
+            <pre className="bg-stone-900 text-green-400 rounded-xl px-4 py-3 text-xs font-mono overflow-x-auto leading-relaxed">{`7:45 PM  ⚠️ Guard spend alert (workspace-wide): $25.05 of $30.00 used (83%) — alert threshold 80% reached
+7:50 PM  ⚠️ Guard spend alert (workspace-wide): $27.39 of $30.00 used (91%) — alert threshold 80% reached
+7:52 PM  ⚠️ Guard spend alert (workspace-wide): $28.60 of $30.00 used (95%) — alert threshold 80% reached
+7:53 PM  ⚠️ Guard spend alert (workspace-wide): $30.23 of $30.00 used (101%) — alert threshold 80% reached`}</pre>
+            <p className="text-xs text-stone-400 mt-2 leading-relaxed">Each line represents a distinct 5% band crossing. Alerts do not fire on every tool call.</p>
+          </div>
+          <div className="ml-10 rounded-xl bg-stone-50 border border-stone-200 px-4 py-2.5 text-xs text-stone-500">
+            <strong className="text-stone-700">Teardown:</strong> Set alert threshold back to your preferred operational value (e.g. 80%) and save.
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-stone-200 overflow-hidden mt-4">
+          <div className="bg-stone-50 border-b border-stone-200 px-4 py-2.5">
+            <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Known issues</p>
+          </div>
+          <table className="w-full text-sm">
+            <tbody className="divide-y divide-stone-100">
+              {[
+                ["Budget cache TTL", "Changes to spend limits take up to 5 min to reflect", "rm ~/.conductguard/budget_cache.json"],
+                ["Wrong Python binary", "Apple system Python has network restrictions — hook fails silently", "Re-run conduct guard sync (auto-detects Homebrew Python since v0.4.20)"],
+                ["Missing clerk_user_id", "Per-user budget checks silently skipped", "Run conduct guard sync — added in v0.4.16"],
+                ["Alert dedup", "Alerts fire once per 5% increment — won't re-fire in the same band", "Adjust spend or threshold to cross a new 5% boundary"],
+              ].map(([issue, detail, fix]) => (
+                <tr key={issue}>
+                  <td className="px-4 py-3 text-xs font-medium text-stone-800 w-44 align-top">{issue}</td>
+                  <td className="px-4 py-3 text-xs text-stone-500 align-top">{detail}</td>
+                  <td className="px-4 py-3 text-xs font-mono text-stone-500 align-top">{fix}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
     </div>
