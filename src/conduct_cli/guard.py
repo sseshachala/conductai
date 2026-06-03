@@ -371,7 +371,9 @@ def main():
     if hard_blocked is None:
         hard_blocked, reason = _fetch_budget_status()
     if hard_blocked:
-        print(f"[ConductGuard] {reason or 'Budget hard cap reached. Contact your manager.'}")
+        msg = f"[ConductGuard] {reason or 'Budget hard cap reached. Contact your manager.'}"
+        print(msg)
+        print(msg, file=sys.stderr)
         sys.exit(2)
 
     session_id = data.get("session_id")
@@ -385,7 +387,9 @@ def main():
     _post_event(tool_name, tool_input, decision, rule_id, message, session_id=session_id)
 
     if action == "block":
-        print(f"[ConductGuard] {message}")
+        msg = f"[ConductGuard] {message}"
+        print(msg)
+        print(msg, file=sys.stderr)
         sys.exit(2)
     if action in ("warn", "approval"):
         print(f"[ConductGuard] {message}")
