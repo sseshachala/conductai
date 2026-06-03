@@ -371,11 +371,31 @@ PreToolUse hook error: [...]: [ConductGuard] Deleting files is not allowed. Use 
 
 ### Step 6 — Verify Slack notification
 
-Check the configured Slack channel. Expected message:
+Check the configured Slack channel. You will see two messages — one for the block, one for the spend alert (if threshold is crossed):
 
+**Block notification:**
 ```
 🚫 salessupport@organicsphere.com blocked by no-rm in claude-code
 Deleting files is not allowed. Use git to revert changes instead.
+```
+
+**Spend alert (fires if current spend has crossed the alert threshold):**
+```
+⚠️ Guard spend alert (workspace-wide): $30.23 of $30.00 used (101%) — alert threshold 80% reached
+```
+
+> Both messages appear in the same Slack channel. The block notification fires on every blocked tool call. The spend alert fires once per 5% spend increment (deduped since v0.4.21).
+
+**Real example from a live session (2026-06-02):**
+```
+[7:45 PM] 🚫 salessupport@organicsphere.com blocked by no-rm in claude-code
+          Deleting files is not allowed. Use git to revert changes instead.
+[7:45 PM] ⚠️ Guard spend alert (workspace-wide): $25.05 of $30.00 used (83%) — alert threshold 80% reached
+[7:52 PM] 🚫 salessupport@organicsphere.com blocked by no-rm in claude-code
+          Deleting files is not allowed. Use git to revert changes instead.
+[7:52 PM] ⚠️ Guard spend alert (workspace-wide): $28.60 of $30.00 used (95%) — alert threshold 80% reached
+[8:07 PM] 🚫 salessupport@organicsphere.com blocked by no-rm in claude-code
+          Deleting files is not allowed. Use git to revert changes instead.
 ```
 
 ---
@@ -456,7 +476,15 @@ Check the configured Slack channel. Expected message:
 ⚠️ Guard spend alert (workspace-wide): $X.XX of $Y.YY used (Z%) — alert threshold 80% reached
 ```
 
-> Alerts are deduplicated since v0.4.21. The same threshold crossing will not fire again until spend moves into the next 5% increment. If the alert does not appear, confirm that the threshold is genuinely crossed and that this is the first trigger in this increment.
+**Real example from a live session (2026-06-02), spend progressing from 83% → 101%:**
+```
+[7:45 PM] ⚠️ Guard spend alert (workspace-wide): $25.05 of $30.00 used (83%) — alert threshold 80% reached
+[7:50 PM] ⚠️ Guard spend alert (workspace-wide): $27.39 of $30.00 used (91%) — alert threshold 80% reached
+[7:52 PM] ⚠️ Guard spend alert (workspace-wide): $28.60 of $30.00 used (95%) — alert threshold 80% reached
+[7:53 PM] ⚠️ Guard spend alert (workspace-wide): $30.23 of $30.00 used (101%) — alert threshold 80% reached
+```
+
+> Alerts are deduplicated since v0.4.21 — fires once per 5% spend increment, not on every tool call. Each line above represents a distinct 5% crossing.
 
 ---
 
