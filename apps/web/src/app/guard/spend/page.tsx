@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/nextjs"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { useGuardSavings } from "@/hooks/useGuardSavings"
 import AppShell from "@/components/AppShell"
 
 interface DeveloperSpend {
@@ -424,6 +425,7 @@ function SpendContent() {
   const { teamId, loading: teamLoading, error: teamError } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
   const { permissions } = useGuardRole(teamId, activeWorkspace?.id ?? null)
+  const { savings, loading: savingsLoading } = useGuardSavings(teamId)
   const now = new Date()
   const [month, setMonth] = useState(
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
@@ -614,6 +616,38 @@ function SpendContent() {
                 accent="text-indigo-700"
               />
             </div>
+
+            {/* RTK + Agent Booster savings */}
+            {!savingsLoading && savings && (savings.team_total.rtk_saved_tokens > 0 || savings.team_total.booster_saved_tokens > 0) && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4">
+                <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-3">Token savings from developer tools</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <StatCard
+                    label="RTK — tokens saved"
+                    value={formatTokens(savings.team_total.rtk_saved_tokens)}
+                    accent="text-emerald-700"
+                  />
+                  <StatCard
+                    label="RTK — cost saved"
+                    value={`$${savings.team_total.rtk_saved_usd.toFixed(2)}`}
+                    accent="text-emerald-700"
+                  />
+                  <StatCard
+                    label="Booster — tokens saved"
+                    value={formatTokens(savings.team_total.booster_saved_tokens)}
+                    accent="text-emerald-700"
+                  />
+                  <StatCard
+                    label="Combined savings"
+                    value={`$${(savings.team_total.rtk_saved_usd + savings.team_total.booster_saved_usd).toFixed(2)}`}
+                    accent="text-emerald-800"
+                  />
+                </div>
+                <p className="text-xs text-emerald-600 mt-3">
+                  Reported by {savings.by_member.length} developer{savings.by_member.length !== 1 ? "s" : ""} via <span className="font-mono">conduct guard sync</span> · RTK + Agent Booster · Claude Sonnet pricing
+                </p>
+              </div>
+            )}
           </>
         ) : null}
 
