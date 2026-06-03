@@ -291,11 +291,20 @@ def ingest_event(
     try:
         if body.decision in ("blocked", "warned") and config.notify_on_block:
             who = body.user_email or body.clerk_user_id or "unknown"
-            emoji = "\U0001f6ab" if body.decision == "blocked" else "\u26a0\ufe0f"
+            tool = body.ai_tool or "Claude Code"
             rule_label = f"`{body.rule_id}`" if body.rule_id else "a policy"
-            msg = f"{emoji} *{who}* {body.decision} by {rule_label} in {body.ai_tool or 'Claude Code'}"
+            if body.decision == "blocked":
+                header_emoji = "\U0001f6a8"   # 🚨 blocked — dangerous
+                decision_label = "BLOCKED"
+            else:
+                header_emoji = "\u26a0\ufe0f"  # ⚠️ warned
+                decision_label = "WARNED"
+            msg = (
+                f"{header_emoji} *{decision_label}* by {rule_label} in {tool}\n"
+                f"\U0001f464 *Developer:* {who}"
+            )
             if body.rule_message:
-                msg += f"\n> {body.rule_message}"
+                msg += f"\n\U0001f4ac {body.rule_message}"
             _send_guard_slack(db, config, msg)
     except Exception as exc:
         log.warning("guard.slack_notification_failed", exc=str(exc))
