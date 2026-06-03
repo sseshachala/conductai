@@ -502,10 +502,12 @@ def _install_codex_hook(hook_path: Path) -> None:
     hook_section = hooks.setdefault("hooks", {})
 
     # PreToolUse
-    pre_cmd = f"python3 {hook_path}"
+    pre_cmd = f"{sys.executable} {hook_path}"
+    hook_path_str = str(hook_path)
     pre = hook_section.setdefault("PreToolUse", [])
+    # Match by hook path so old python3/python3.11 entries are treated as already registered
     pre_already = any(
-        e.get("command") == pre_cmd
+        hook_path_str in e.get("command", "")
         for h in pre
         for e in h.get("hooks", [])
     )
@@ -513,9 +515,16 @@ def _install_codex_hook(hook_path: Path) -> None:
     if not pre_already:
         pre.append({"matcher": ".*", "hooks": [{"type": "command", "command": pre_cmd}]})
         changed = True
+    else:
+        # Update existing entry to use current sys.executable
+        for h in pre:
+            for e in h.get("hooks", []):
+                if hook_path_str in e.get("command", "") and e["command"] != pre_cmd:
+                    e["command"] = pre_cmd
+                    changed = True
 
-    # PostToolUse — self-contained: python3 /path/hook.py post (no PATH dependency)
-    post_cmd = f"python3 {hook_path} post"
+    # PostToolUse
+    post_cmd = f"{sys.executable} {hook_path} post"
     post = hook_section.setdefault("PostToolUse", [])
     # Remove stale conductguard-post entries registered by older CLI versions
     stale = "conductguard-post"
@@ -527,7 +536,7 @@ def _install_codex_hook(hook_path: Path) -> None:
             cleaned = True
     post[:] = [h for h in post if h.get("hooks")]
     post_already = any(
-        e.get("command") == post_cmd
+        hook_path_str in e.get("command", "")
         for h in post
         for e in h.get("hooks", [])
     )
@@ -610,9 +619,10 @@ def _install_claude_hook(hook_path: Path) -> None:
 
     # PreToolUse — existing hook script
     pre = hooks.setdefault("PreToolUse", [])
-    pre_cmd = f"python3 {hook_path}"
+    pre_cmd = f"{sys.executable} {hook_path}"
+    hook_path_str = str(hook_path)
     pre_already = any(
-        e.get("command") == pre_cmd
+        hook_path_str in e.get("command", "")
         for h in pre
         for e in h.get("hooks", [])
     )
@@ -620,10 +630,17 @@ def _install_claude_hook(hook_path: Path) -> None:
     if not pre_already:
         pre.append({"matcher": ".*", "hooks": [{"type": "command", "command": pre_cmd}]})
         changed = True
+    else:
+        # Update existing entry to use current sys.executable
+        for h in pre:
+            for e in h.get("hooks", []):
+                if hook_path_str in e.get("command", "") and e["command"] != pre_cmd:
+                    e["command"] = pre_cmd
+                    changed = True
 
-    # PostToolUse — self-contained: python3 /path/hook.py post (no PATH dependency)
+    # PostToolUse
     post = hooks.setdefault("PostToolUse", [])
-    post_cmd = f"python3 {hook_path} post"
+    post_cmd = f"{sys.executable} {hook_path} post"
     # Remove stale conductguard-post entries registered by older CLI versions
     stale = "conductguard-post"
     cleaned = False
@@ -634,7 +651,7 @@ def _install_claude_hook(hook_path: Path) -> None:
             cleaned = True
     post[:] = [h for h in post if h.get("hooks")]
     post_already = any(
-        e.get("command") == post_cmd
+        hook_path_str in e.get("command", "")
         for h in post
         for e in h.get("hooks", [])
     )
