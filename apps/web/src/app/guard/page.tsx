@@ -448,7 +448,7 @@ function GuardDashboard() {
 
   useEffect(() => {
     loadEvents(filterDecision !== "all" ? filterDecision : undefined)
-  }, [filterDecision]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [filterDecision, loadEvents])
 
   // Fetch chart token once when teamId resolves
   useEffect(() => {
