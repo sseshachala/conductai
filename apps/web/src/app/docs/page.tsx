@@ -1248,18 +1248,31 @@ conduct guard audit --since 7d`}</Pre>
           </div>
           <div className="ml-10">
             <Screenshot
+              src="/guard-docs/block-claude-terminal.png"
+              alt="Claude Code terminal showing PreToolUse hook blocking a bash command with ConductGuard error message"
+              caption="Claude Code surfaces the block inline — the tool call never runs. The error shows the rule message exactly as configured in Guard → Policies."
+            />
+          </div>
+          <div className="ml-10">
+            <Screenshot
               src="/guard-docs/audit-blocked.png"
               alt="Audit log showing blocked bash commands with no-rm rule alongside allowed events"
-              caption="Guard → Activity — blocked events are tagged in red with the rule ID (no-rm). Allowed events show green. Every tool call — blocked or allowed — is recorded."
+              caption="Guard → Activity — blocked events are tagged in red with the rule ID. Allowed events show green. Every tool call — blocked or allowed — is recorded."
             />
           </div>
           <div className="ml-10 mb-4">
-            <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">What you'll see in Slack</p>
-            <pre className="bg-stone-900 text-green-400 rounded-xl px-4 py-3 text-xs font-mono overflow-x-auto leading-relaxed">{`🚫 salessupport@organicsphere.com blocked by no-rm in claude-code
-   Deleting files is not allowed. Use git to revert changes instead.
-
-⚠️ Guard spend alert (workspace-wide): $25.05 of $30.00 used (83%) — alert threshold 80% reached`}</pre>
-            <p className="text-xs text-stone-400 mt-2 leading-relaxed">Both messages appear in the same channel. The block fires on every blocked call. The spend alert fires once per 5% increment (deduped since v0.4.21).</p>
+            <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">Real Slack notifications from a live session (2026-06-02)</p>
+            <Screenshot
+              src="/guard-docs/slack-drop-table-block.png"
+              alt="Slack message from ConductAI showing salessupport@organicsphere.com blocked by no-drop-table rule"
+              caption="DROP TABLE blocked — Slack fires instantly with the developer email, rule ID, and policy message."
+            />
+            <Screenshot
+              src="/guard-docs/slack-file-delete-block.png"
+              alt="Slack showing multiple no-rm blocks for salessupport@organicsphere.com in rapid succession"
+              caption="Multiple blocks in the same session — each blocked tool call fires its own Slack message in real time."
+            />
+            <p className="text-xs text-stone-400 mt-1 leading-relaxed">The block fires on every blocked call. Spend alerts are deduped per 5% increment — policy blocks are not deduped.</p>
           </div>
           <div className="ml-10 rounded-xl bg-stone-50 border border-stone-200 px-4 py-2.5 text-xs text-stone-500">
             <strong className="text-stone-700">Teardown:</strong> Guard → Policies → delete no-rm → Save. Run conduct guard sync.
