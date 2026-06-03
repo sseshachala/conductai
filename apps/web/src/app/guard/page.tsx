@@ -251,10 +251,7 @@ function GuardDashboard() {
 
   const loadEvents = useCallback(async () => {
     if (!teamId) return
-    const token = await getToken()
-    if (token) setChartToken(token)
-    const headers: Record<string, string> = { "Content-Type": "application/json" }
-    if (token) headers["Authorization"] = `Bearer ${token}`
+    const headers = await buildHeaders()
     const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params  = new URLSearchParams({ limit: String(PAGE_SIZE), offset: "0" })
     params.set("workspace_id", teamId)
@@ -271,7 +268,7 @@ function GuardDashboard() {
     } finally {
       setLoading(false)
     }
-  }, [buildHeaders, teamId, PAGE_SIZE, getToken])
+  }, [buildHeaders, teamId, PAGE_SIZE])
 
   const loadMore = useCallback(async () => {
     if (!teamId || loadingMore) return
@@ -373,6 +370,12 @@ function GuardDashboard() {
       esRef.current?.close()
     }
   }, [connectSSE, loadEvents, loadStats, refreshRecent])
+
+  // Fetch chart token once when teamId resolves
+  useEffect(() => {
+    if (!teamId) return
+    getToken().then(t => { if (t) setChartToken(t) })
+  }, [teamId, getToken])
 
   // ── Derived data ─────────────────────────────────────────────────────────────
 
