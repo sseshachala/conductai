@@ -1188,6 +1188,19 @@ conduct guard audit --since 7d`}</Pre>
               </div>
             ))}
           </div>
+          <div className="ml-10 mb-4">
+            <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">What it looks like in Claude Code (live session, 2026-06-02)</p>
+            <Screenshot
+              src="/guard-docs/budget-cap-bash-blocked.png"
+              alt="Claude Code terminal showing ConductGuard budget hard cap blocking a bash tool call"
+              caption="Every tool call — Bash, Read, Edit — is blocked until the budget is raised. The message surfaces inline before the tool runs."
+            />
+            <Screenshot
+              src="/guard-docs/budget-cap-claude-blocked.png"
+              alt="Claude Code response showing Guard budget hard cap hit and instructions to raise the workspace budget"
+              caption="Claude Code itself reports the block. Guard stops the entire session cold — no workaround from inside the agent."
+            />
+          </div>
           <div className="ml-10 rounded-xl bg-stone-50 border border-stone-200 px-4 py-2.5 text-xs text-stone-500">
             <strong className="text-stone-700">Teardown:</strong> Raise the budget above current spend → Save. Run conduct guard sync &amp;&amp; rm ~/.conductguard/budget_cache.json.
           </div>
