@@ -127,50 +127,107 @@ Install any of these in one click from the [Marketplace](https://conductai.ai/ma
 
 ## ConductGuard
 
-ConductGuard is the team policy layer. It enforces spend limits, blocked actions, and custom rules — inside hosted workflows via the Guard block, and on developers' local AI tools via a hook and MCP server.
+ConductGuard is MDM for AI coding tools. The security or team lead configures policies and spend limits once — they propagate to every developer's machine within 60 seconds. Developers run Claude Code, Codex, and Cursor exactly as before. Governance just happens.
 
-### For team leads
+![Guard dashboard showing stat cards and cost trend chart](apps/web/public/guard-docs/dashboard.png)
+*Real-time Guard dashboard — active developers, events, blocked calls, token usage, and Claude vs Codex cost breakdown.*
 
-1. Open Guard in the Conduct dashboard
-2. Set a monthly hard cap per developer and configure policy rules
-3. Invite developers by email — they get a member token
+### How control flows
 
-### For developers
+```
+Security / Team Lead  →  policies, spend limits, alert thresholds
+                               ↓  (synced every 60s)
+    Every developer's machine (PreToolUse hook + conductguard-mcp)
+                               ↓  (real-time)
+Guard dashboard  ←  who, what tool, what decision, tokens, cost
+```
+
+### For admins
+
+1. Open **Guard** in the Conduct dashboard
+2. Set a **Team monthly budget** and **Hard cap** under Guard → Spend
+3. Set **Default per-developer limit** and alert threshold (default 80%)
+4. Create policy rules under Guard → Policies (block/warn/audit on tool + pattern)
+5. Configure Slack channel under Guard → Settings → Notifications
+6. Invite developers via Guard → Team → Invite
+
+### For developers — two commands
 
 ```bash
 pip install conduct-cli
 
-# Join the team — installs the PreToolUse hook and pulls policies
-conduct guard join \
-  --team  <team-id> \
-  --token <member-token>
+# Join the team (invite code from your admin)
+conduct guard join <invite-code>
 
-# Check current status and spend
-conduct guard status
-
-# Sync latest policies
+# Sync latest policies at any time
 conduct guard sync
 ```
 
-The PreToolUse hook runs before every Claude Code call. It checks the monthly hard cap (cached 5 min) and evaluates policy rules. If the cap is hit, the call is blocked before it reaches the model. Slack is notified in real time.
+`join` installs the PreToolUse and PostToolUse hooks in `~/.claude/settings.json`, writes `~/.conductguard/config.json`, and pulls current policies. Done.
 
-### MCP server (Claude Code / Cursor)
+### Spend controls
 
-```bash
-# Run the Guard MCP server
-conductguard-mcp \
-  --team  <team-id> \
-  --token <member-token>
+![Spend controls panel showing monthly budget, per-developer limit, and hard cap toggle](apps/web/public/guard-docs/spend-controls.png)
+*Guard → Spend — set team and per-developer limits. Hard cap blocks all sessions at 100%. Slack alert fires at the configured threshold.*
+
+![Spend breakdown by developer and by AI tool](apps/web/public/guard-docs/spend-by-developer.png)
+*By Developer and By AI Tool breakdown — sessions, tokens, cost, savings, and individual budget status.*
+
+When the workspace hard cap or a developer's personal limit is hit, the PreToolUse hook exits with code 2. Claude Code surfaces the message inline before the tool runs:
+
+```
+PreToolUse hook error: [ConductGuard] Your team's monthly AI budget of $50.00 has been
+reached. New tool calls are paused until the limit is raised. Contact your security team.
 ```
 
-Add to `~/.claude/mcp.json`:
+Spend alerts are deduped — Slack fires once per 5% increment, not on every tool call.
+
+### Policy enforcement
+
+![Audit log showing blocked and allowed events with rule IDs](apps/web/public/guard-docs/audit-blocked.png)
+*Guard → Activity — every tool call logged with decision (blocked/allowed), rule ID, developer, and AI tool.*
+
+Rules are created in the dashboard and synced to every developer within 60 seconds:
+
+| Field | Example |
+|---|---|
+| Match tool | `bash` |
+| Match pattern | `rm -rf` |
+| Action | `block` |
+| Message | `Destructive delete blocked. Use git to revert.` |
+
+When a rule fires, Slack is notified in real time:
+
+```
+🚫 dev@yourteam.com blocked by no-rm in claude-code
+   Deleting files is not allowed. Use git to revert changes instead.
+```
+
+### Slack notifications
+
+![Guard Settings showing Slack channel input and notification toggles](apps/web/public/guard-docs/settings-notifications.png)
+*Guard → Settings — configure the alert channel and toggle block/warn and budget threshold notifications independently.*
+
+### Activity log
+
+![Activity log showing Claude Code and Codex tool calls with token counts](apps/web/public/guard-docs/activity-log.png)
+*Guard → Activity — every Claude Code and Codex session logged: tool call type, input summary, tokens in/out. Realtime.*
+
+### MCP server (Cursor / Windsurf)
+
+```bash
+# Auto-registered at conduct guard join. To add manually:
+conductguard-mcp
+```
+
+Add to `~/.cursor/mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "conductguard": {
       "command": "conductguard-mcp",
-      "args": ["--team", "<team-id>", "--token", "<member-token>"]
+      "args": ["--workspace", "<workspace-id>", "--token", "<member-token>"]
     }
   }
 }
@@ -188,6 +245,15 @@ blocks:
     enforcement_mode: block   # block | warn | audit
     next: deploy_fix
 ```
+
+### Roles
+
+| Role | Guard access |
+|---|---|
+| **admin** | Full — policies, budgets, settings, members |
+| **security** | Full policy + activity access. Cannot manage members. |
+| **developer** | View policies. Own activity and spend only. |
+| **viewer** | Own activity only. Read-only. |
 
 ---
 
@@ -328,7 +394,7 @@ conduct install-all --project DevOps --repo myorg/my-repo
 conduct test --all --project DevOps
 
 # Guard — join a team and pull policies
-conduct guard join --team <team-id> --token <member-token>
+conduct guard join <invite-code>
 conduct guard status
 conduct guard sync
 ```
