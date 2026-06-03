@@ -400,6 +400,7 @@ def list_events(
     ai_tool: str | None = Query(default=None, description="claude_code|codex|cursor|copilot|windsurf|gemini"),
     user_email: str | None = Query(default=None),
     since: datetime | None = Query(default=None, description="ISO datetime lower bound"),
+    until: datetime | None = Query(default=None, description="ISO datetime upper bound"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ):
@@ -416,6 +417,8 @@ def list_events(
         q = q.filter(GuardAuditEvent.user_email == user_email)
     if since:
         q = q.filter(GuardAuditEvent.ts >= since)
+    if until:
+        q = q.filter(GuardAuditEvent.ts <= until)
 
     rows = (
         q.order_by(GuardAuditEvent.ts.desc())

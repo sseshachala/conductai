@@ -27,11 +27,14 @@ interface GuardEvent {
   tool_call: string
   input_summary: string | null
   decision: "allowed" | "blocked" | "warned" | "approval"
+  rule_id: string | null
+  rule_message: string | null
   tokens_before: number | null
   tokens_after: number | null
   tokens_saved: number | null
+  tokens_input: number | null
+  tokens_output: number | null
   cost_usd_after: number | null
-  rule_message: string | null
   ts: string
 }
 
@@ -303,9 +306,11 @@ function GuardDashboard() {
   const PAGE_SIZE = 100
 
   // Filters
-  const [filterTool, setFilterTool]       = useState("all")
-  const [filterDecision, setFilterDecision] = useState("all")
-  const [filterDev, setFilterDev]         = useState("all")
+  const [filterTool, setFilterTool]           = useState("all")
+  const [filterDecision, setFilterDecision]   = useState("all")
+  const [filterDev, setFilterDev]             = useState("all")
+  const [filterDateRange, setFilterDateRange] = useState("7d")
+  const [filterSearch, setFilterSearch]       = useState("")
 
   const esRef = useRef<EventSource | null>(null)
 
@@ -323,13 +328,26 @@ function GuardDashboard() {
     if (!teamLoading && !teamId) setLoading(false)
   }, [teamLoading, teamId])
 
-  const loadEvents = useCallback(async (decision?: string) => {
+  const dateRangeToSince = useCallback((range: string): string | null => {
+    const now = new Date()
+    if (range === "today") {
+      const start = new Date(now); start.setHours(0, 0, 0, 0)
+      return start.toISOString()
+    }
+    if (range === "7d")  { const d = new Date(now); d.setDate(d.getDate() - 7);  return d.toISOString() }
+    if (range === "30d") { const d = new Date(now); d.setDate(d.getDate() - 30); return d.toISOString() }
+    return null // "all"
+  }, [])
+
+  const loadEvents = useCallback(async (decision?: string, dateRange?: string) => {
     if (!teamId) return
     const headers = await buildHeaders()
     const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params  = new URLSearchParams({ limit: String(PAGE_SIZE), offset: "0" })
     params.set("workspace_id", teamId)
     if (decision && decision !== "all") params.set("decision", decision)
+    const since = dateRangeToSince(dateRange ?? filterDateRange)
+    if (since) params.set("since", since)
     try {
       const res = await fetch(`${base}/guard/events?${params}`, { headers })
       if (res.ok) {
@@ -447,8 +465,8 @@ function GuardDashboard() {
   }, [connectSSE, loadEvents, loadStats, refreshRecent])
 
   useEffect(() => {
-    loadEvents(filterDecision !== "all" ? filterDecision : undefined)
-  }, [filterDecision, loadEvents])
+    loadEvents(filterDecision !== "all" ? filterDecision : undefined, filterDateRange)
+  }, [filterDecision, filterDateRange, loadEvents])
 
   // Fetch chart token once when teamId resolves
   useEffect(() => {
@@ -484,15 +502,29 @@ function GuardDashboard() {
   const currentUserEmail = user?.primaryEmailAddress?.emailAddress ?? null
 
   const filteredEvents = useMemo(() => {
+    const q = filterSearch.toLowerCase()
     return events.filter(ev => {
-      // Viewers can only see their own events
       if (!permissions.canViewAllActivity && ev.user_email !== currentUserEmail) return false
       if (filterTool !== "all"     && normTool(ev.ai_tool) !== filterTool) return false
       if (filterDecision !== "all" && ev.decision   !== filterDecision) return false
       if (filterDev !== "all"      && ev.user_email !== filterDev)      return false
+      if (q && !ev.user_email?.toLowerCase().includes(q) && !ev.rule_id?.toLowerCase().includes(q)) return false
       return true
     })
-  }, [events, filterTool, filterDecision, filterDev, permissions.canViewAllActivity, currentUserEmail])
+  }, [events, filterTool, filterDecision, filterDev, filterSearch, permissions.canViewAllActivity, currentUserEmail])
+
+  const exportCSV = useCallback(() => {
+    const header = "timestamp,developer,tool,decision,rule_id,rule_message,tokens_input,tokens_output,cost_usd"
+    const rows = filteredEvents.map(ev => [
+      ev.ts, ev.user_email ?? "", ev.ai_tool ?? "", ev.decision,
+      ev.rule_id ?? "", (ev.rule_message ?? "").replace(/,/g, ";"),
+      ev.tokens_input ?? 0, ev.tokens_output ?? 0, ev.cost_usd_after ?? 0,
+    ].join(","))
+    const blob = new Blob([header + "\n" + rows.join("\n")], { type: "text/csv" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a"); a.href = url; a.download = "guard-activity.csv"; a.click()
+    URL.revokeObjectURL(url)
+  }, [filteredEvents])
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -577,6 +609,18 @@ function GuardDashboard() {
 
         {/* Filter bar */}
         <div className="flex flex-wrap items-center gap-3">
+          {/* Date range */}
+          <select
+            value={filterDateRange}
+            onChange={e => setFilterDateRange(e.target.value)}
+            className="text-sm border border-stone-200 rounded-lg px-3 py-1.5 bg-white text-stone-700 outline-none focus:ring-2 focus:ring-indigo-200"
+          >
+            <option value="today">Today</option>
+            <option value="7d">Last 7 days</option>
+            <option value="30d">Last 30 days</option>
+            <option value="all">All time</option>
+          </select>
+
           <select
             value={filterTool}
             onChange={e => setFilterTool(e.target.value)}
@@ -610,9 +654,23 @@ function GuardDashboard() {
             ))}
           </select>
 
-          {(filterTool !== "all" || filterDecision !== "all" || filterDev !== "all") && (
+          {/* Search */}
+          <div className="relative">
+            <input
+              type="text"
+              value={filterSearch}
+              onChange={e => setFilterSearch(e.target.value)}
+              placeholder="Search rule or email…"
+              className="text-sm border border-stone-200 rounded-lg pl-3 pr-7 py-1.5 bg-white text-stone-700 outline-none focus:ring-2 focus:ring-indigo-200 w-48"
+            />
+            {filterSearch && (
+              <button onClick={() => setFilterSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 text-xs">✕</button>
+            )}
+          </div>
+
+          {(filterTool !== "all" || filterDecision !== "all" || filterDev !== "all" || filterSearch) && (
             <button
-              onClick={() => { setFilterTool("all"); setFilterDecision("all"); setFilterDev("all") }}
+              onClick={() => { setFilterTool("all"); setFilterDecision("all"); setFilterDev("all"); setFilterSearch("") }}
               className="text-xs text-stone-400 hover:text-stone-700 border border-stone-200 rounded-lg px-3 py-1.5 hover:bg-stone-50 transition-colors"
             >
               Clear filters
@@ -622,6 +680,15 @@ function GuardDashboard() {
           <span className="ml-auto text-xs text-stone-400">
             {filteredEvents.length} event{filteredEvents.length !== 1 ? "s" : ""}
           </span>
+
+          {filteredEvents.length > 0 && (
+            <button
+              onClick={exportCSV}
+              className="text-xs text-stone-500 hover:text-stone-800 border border-stone-200 rounded-lg px-3 py-1.5 hover:bg-stone-50 transition-colors"
+            >
+              Export CSV
+            </button>
+          )}
         </div>
 
         {/* Activity feed */}
