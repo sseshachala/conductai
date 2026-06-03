@@ -323,12 +323,13 @@ function GuardDashboard() {
     if (!teamLoading && !teamId) setLoading(false)
   }, [teamLoading, teamId])
 
-  const loadEvents = useCallback(async () => {
+  const loadEvents = useCallback(async (decision?: string) => {
     if (!teamId) return
     const headers = await buildHeaders()
     const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params  = new URLSearchParams({ limit: String(PAGE_SIZE), offset: "0" })
     params.set("workspace_id", teamId)
+    if (decision && decision !== "all") params.set("decision", decision)
     try {
       const res = await fetch(`${base}/guard/events?${params}`, { headers })
       if (res.ok) {
@@ -444,6 +445,10 @@ function GuardDashboard() {
       esRef.current?.close()
     }
   }, [connectSSE, loadEvents, loadStats, refreshRecent])
+
+  useEffect(() => {
+    loadEvents(filterDecision !== "all" ? filterDecision : undefined)
+  }, [filterDecision]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch chart token once when teamId resolves
   useEffect(() => {
