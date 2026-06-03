@@ -9,6 +9,7 @@ import AppShell from "@/components/AppShell"
 import { timeAgo } from "@/lib/runUtils"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
+import { useGuardSavings, type GuardSavingsSummary } from "@/hooks/useGuardSavings"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
 function getCookie(name: string): string | null {
@@ -205,6 +206,59 @@ function formatTokensUsed(input: number | null, output: number | null): string |
   return parts.join(" / ") || null
 }
 
+function SavingsStatCard({
+  savings,
+  loading,
+}: {
+  savings: GuardSavingsSummary | null
+  loading: boolean
+}) {
+  if (loading) {
+    return <div className="bg-stone-100 rounded-xl h-24 animate-pulse" />
+  }
+
+  const hasSavings =
+    savings !== null &&
+    (savings.team_total.rtk_saved_tokens > 0 || savings.team_total.booster_saved_tokens > 0)
+
+  if (hasSavings && savings !== null) {
+    const totalTokens =
+      savings.team_total.rtk_saved_tokens + savings.team_total.booster_saved_tokens
+    const totalUsd =
+      savings.team_total.rtk_saved_usd + savings.team_total.booster_saved_usd
+
+    const toolNames =
+      savings.tools_installed && savings.tools_installed.length > 0
+        ? savings.tools_installed
+            .map(t => (t === "booster" ? "Agent Booster" : t.toUpperCase()))
+            .join(" + ")
+        : "RTK + Agent Booster"
+
+    return (
+      <StatCard
+        label="Est. savings"
+        value={formatTotalTokensSaved(totalTokens) + " tokens"}
+        accent="text-emerald-700"
+        sub={<>${totalUsd.toFixed(2)} saved · {toolNames}</>}
+      />
+    )
+  }
+
+  // Empty state — no savings data yet
+  return (
+    <div className="bg-white rounded-xl border border-stone-200 px-5 py-4 flex flex-col gap-1">
+      <div className="text-2xl font-bold text-stone-300">—</div>
+      <div className="text-xs font-medium text-stone-500 uppercase tracking-wide">Est. savings</div>
+      <div className="mt-1 text-[11px] text-stone-400 leading-relaxed space-y-0.5">
+        <div className="font-medium text-stone-500">Save 60–99% on tokens with:</div>
+        <div>· RTK <span className="font-mono">pip install rtk</span></div>
+        <div>· Agent Booster <span className="font-mono">pip install agent-booster</span></div>
+        <div className="mt-1 text-stone-400">Run <span className="font-mono">conduct guard sync</span> to start tracking.</div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function GuardPage() {
@@ -217,6 +271,7 @@ function GuardDashboard() {
   const { teamId, loading: teamLoading } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
   const { permissions, loading: permissionsLoading } = useGuardRole(teamId, activeWorkspace?.id ?? null)
+  const { savings, loading: savingsLoading } = useGuardSavings(teamId)
 
   const [events, setEvents]           = useState<GuardEvent[]>([])
   const [stats, setStats]             = useState<SpendStats | null>(null)
@@ -450,13 +505,13 @@ function GuardDashboard() {
 
         {/* Stats cards */}
         {loading ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 animate-pulse">
-            {[...Array(5)].map((_, i) => (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 animate-pulse">
+            {[...Array(6)].map((_, i) => (
               <div key={i} className="bg-stone-100 rounded-xl h-24" />
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <StatCard
               label="Active developers"
               value={stats?.active_developers || derivedStats.active_developers}
@@ -482,6 +537,7 @@ function GuardDashboard() {
               accent="text-stone-700"
               sub={<>Claude ${derivedStats.claude_cost_today.toFixed(2)} · Codex ${derivedStats.codex_cost_today.toFixed(2)}</>}
             />
+            <SavingsStatCard savings={savings} loading={savingsLoading} />
           </div>
         )}
 
