@@ -18,7 +18,10 @@ log = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/guard/savings", tags=["guard"])
 
-_USD_PER_MILLION_TOKENS = 3.00
+_USD_PER_MILLION_INPUT_TOKENS  = 3.00   # Claude Sonnet 4.6 input
+_USD_PER_MILLION_OUTPUT_TOKENS = 15.00  # Claude Sonnet 4.6 output
+# RTK/Booster save primarily input tokens; use a blended 80/20 input/output estimate
+_USD_PER_MILLION_TOKENS = _USD_PER_MILLION_INPUT_TOKENS * 0.8 + _USD_PER_MILLION_OUTPUT_TOKENS * 0.2
 
 
 def _now() -> datetime:
