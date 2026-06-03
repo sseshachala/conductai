@@ -983,6 +983,11 @@ function MCPBlockPanel({
               <option key={t.name} value={t.name}>{t.name}{t.description ? ` — ${t.description}` : ""}</option>
             ))}
           </select>
+        ) : toolName ? (
+          <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5">
+            <span className="text-sm font-mono text-emerald-800 flex-1 truncate">{toolName}</span>
+            <span className="text-[10px] text-emerald-600 shrink-0">Discover to change</span>
+          </div>
         ) : (
           <input
             type="text"
