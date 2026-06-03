@@ -687,6 +687,19 @@ def _execute_brain(
 
     artifact = compiled_artifacts.get(block["id"], {})
     system_prompt = artifact.get("system_prompt", block["data"].get("description", ""))
+
+    # prompt_file overrides inline description when present
+    prompt_file = (block["data"].get("config") or {}).get("prompt_file") or block["data"].get("prompt_file")
+    if prompt_file:
+        import pathlib
+        base = pathlib.Path(__file__).parent.parent.parent  # repo root
+        candidate = (base / prompt_file).resolve()
+        try:
+            candidate.relative_to(base.resolve())  # prevent path traversal
+            system_prompt = candidate.read_text(encoding="utf-8")
+        except (ValueError, FileNotFoundError, OSError) as exc:
+            log.warning("brain.prompt_file_unreadable", path=str(prompt_file), error=str(exc))
+
     custom = block["data"].get("custom_instructions", "") or ""
     if custom.strip():
         system_prompt = f"{system_prompt}\n\nAdditional instructions:\n{custom.strip()}"

@@ -135,6 +135,7 @@ class Block(BaseModel):
     model: str | None = None  # Claude model ID, e.g. "claude-haiku-4-5-20251001"
     runs_on: RunsOn | None = None
     custom_instructions: str | None = None  # user-editable zone, appended to description at runtime
+    prompt_file: str | None = None  # path relative to playbook dir, e.g. prompts/fetch_issue.txt
 
     # — logic blocks —
     condition: str | None = None
@@ -172,8 +173,8 @@ class Block(BaseModel):
         elif t == "brain":
             if self.mode and self.mode not in BRAIN_MODES:
                 raise ValueError(f"brain mode must be one of {BRAIN_MODES}")
-            if not self.description:
-                raise ValueError("brain blocks require a `description`")
+            if not self.description and not self.prompt_file:
+                raise ValueError("brain blocks require a `description` or `prompt_file`")
         elif t == "logic":
             if not self.condition:
                 raise ValueError("logic blocks require a `condition`")
