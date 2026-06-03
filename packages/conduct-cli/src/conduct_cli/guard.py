@@ -840,7 +840,88 @@ def cmd_guard_sync(args):
     _register_mcp(workspace_id, cfg2.get("member_token", ""), base_url)
     print(f"  {GREEN}Hook script updated{RESET}")
 
+    # Capture savings from RTK and Agent Booster
+    _report_savings(cfg, base_url, api_key)
+
     print(f"\n{BOLD}Policy refreshed ({rule_count} rule(s)).{RESET}")
+
+
+def _report_savings(cfg: dict, base_url: str, api_key: str) -> None:
+    import subprocess
+
+    rtk_data = {}
+    booster_data = {}
+
+    # Read RTK savings — rtk gain -f json nests under "summary" key
+    try:
+        r = subprocess.run(["rtk", "gain", "-f", "json"], capture_output=True, text=True, timeout=10)
+        if r.returncode == 0:
+            raw = json.loads(r.stdout)
+            summary = raw.get("summary", raw)
+            rtk_data = {
+                "saved_tokens": summary.get("total_saved", 0),
+                "savings_pct": summary.get("avg_savings_pct", 0.0),
+                "total_commands": summary.get("total_commands", 0),
+            }
+    except Exception:
+        pass
+
+    # Read Agent Booster savings
+    try:
+        r = subprocess.run(["booster", "gain", "-f", "json"], capture_output=True, text=True, timeout=10)
+        if r.returncode == 0:
+            raw = json.loads(r.stdout)
+            booster_data = {
+                "saved_tokens": raw.get("saved_tokens", 0),
+                "savings_pct": raw.get("savings_pct", 0.0),
+                "total_reads": raw.get("total_reads", 0),
+            }
+    except Exception:
+        pass
+
+    # If neither tool returned data, skip silently
+    if not rtk_data and not booster_data:
+        return
+
+    # Load baseline to compute period_start
+    baseline_path = GUARD_DIR / "savings_baseline.json"
+    period_start = None
+    try:
+        if baseline_path.exists():
+            baseline = json.loads(baseline_path.read_text())
+            period_start = baseline.get("recorded_at")
+    except Exception:
+        pass
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    payload = {
+        "workspace_id": cfg.get("workspace_id", ""),
+        "member_email": cfg.get("user_email", ""),
+        "rtk": rtk_data,
+        "booster": booster_data,
+        "period_start": period_start,
+        "period_end": now_iso,
+    }
+
+    try:
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["X-Api-Key"] = api_key
+        data = json.dumps(payload).encode()
+        req = urllib.request.Request(
+            f"{base_url}/guard/savings",
+            data=data,
+            headers=headers,
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            resp.read()
+        # Save baseline for next diff
+        baseline_path.write_text(json.dumps({"recorded_at": now_iso, "rtk": rtk_data, "booster": booster_data}))
+        print(f"  {GREEN}Savings reported{RESET}")
+    except Exception:
+        pass  # Never fail sync because savings POST failed
 
 
 def cmd_guard_status(args):

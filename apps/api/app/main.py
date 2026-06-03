@@ -14,6 +14,7 @@ from app.modules.guard.routers import members as guard_members
 from app.modules.guard.routers import policies as guard_policies
 from app.modules.guard.routers import events as guard_events
 from app.modules.guard.routers import spend as guard_spend
+from app.modules.guard.routers import savings as guard_savings
 from app.routers.organizations import router as organizations_router
 from app.routers.workspace_projects import router as workspace_projects_router, audit_router as audit_log_router, preferences_router as workspace_preferences_router, project_direct_router
 from app.routers.runs import workspace_runs_router
@@ -87,6 +88,7 @@ app.include_router(guard_members.router)
 app.include_router(guard_policies.router)
 app.include_router(guard_events.router)
 app.include_router(guard_spend.router)
+app.include_router(guard_savings.router)
 app.include_router(rbac_router)
 app.include_router(me_rbac_router)
 

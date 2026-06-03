@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.core.database import Base
@@ -116,6 +116,25 @@ class GuardAuditEvent(Base):
         default=lambda: datetime.now(timezone.utc),
     )
     duration_ms = Column(Integer, nullable=True)
+
+
+class GuardSavings(Base):
+    """Per-developer RTK + Agent Booster token savings snapshot, pushed by `conduct guard sync`."""
+
+    __tablename__ = "guard_savings"
+
+    id = Column(Integer, primary_key=True)
+    workspace_id = Column(String, nullable=False, index=True)
+    member_email = Column(String, nullable=False)
+    rtk_saved_tokens = Column(BigInteger, nullable=False, default=0)
+    rtk_savings_pct = Column(Float, nullable=False, default=0.0)
+    rtk_total_commands = Column(Integer, nullable=False, default=0)
+    booster_saved_tokens = Column(BigInteger, nullable=False, default=0)
+    booster_savings_pct = Column(Float, nullable=False, default=0.0)
+    booster_total_reads = Column(Integer, nullable=False, default=0)
+    period_start = Column(DateTime(timezone=True), nullable=True)
+    period_end = Column(DateTime(timezone=True), nullable=False)
+    recorded_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class GuardSpendBudget(Base):
