@@ -374,6 +374,10 @@ def main():
         msg = f"[ConductGuard] {reason or 'Budget hard cap reached. Contact your manager.'}"
         print(msg)
         print(msg, file=sys.stderr)
+        tool_name  = (data.get("tool_name") or "").lower()
+        tool_input = data.get("tool_input") or {}
+        session_id = data.get("session_id")
+        _post_event(tool_name, tool_input, "blocked", "budget-hard-cap", reason or "Monthly budget hard cap reached.", session_id=session_id)
         sys.exit(2)
 
     session_id = data.get("session_id")
