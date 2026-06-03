@@ -1000,6 +1000,17 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
           >
             ⊡ Fit
           </button>
+          <button
+            onClick={() => {
+              const laid = autoLayout(nodes, edges)
+              setNodes(laid.nodes)
+              setTimeout(() => fitView({ padding: 0.15, duration: 400 }), 50)
+            }}
+            title="Re-layout all blocks cleanly"
+            className="rounded-lg border border-indigo-200 px-3 py-1.5 text-xs font-medium text-indigo-500 hover:bg-indigo-50 transition-colors"
+          >
+            ⬡ Organize
+          </button>
           {!isViewer && (
             <>
               {prefs.show_test_trigger && playbookSlug && (
