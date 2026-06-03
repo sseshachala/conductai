@@ -479,11 +479,12 @@ _MCP_TARGETS = [
 
 
 def _register_mcp(workspace_id: str, member_token: str, api_url: str) -> None:
-    """Write conductguard MCP entry into every AI tool config found on this machine."""
-    entry = {
-        "command": "conductguard-mcp",
-        "args": ["--workspace", workspace_id, "--token", member_token, "--api-url", api_url],
-    }
+    """Write conductguard MCP entry into every AI tool config found on this machine.
+
+    Credentials are NOT stored in the MCP config — the server reads them from
+    ~/.conductguard/config.json at startup, which is already written by guard join.
+    """
+    entry = {"command": "conductguard-mcp"}
     found_any = False
     for cfg_path, label in _MCP_TARGETS:
         if not cfg_path.exists():
@@ -494,7 +495,7 @@ def _register_mcp(workspace_id: str, member_token: str, api_url: str) -> None:
         except (json.JSONDecodeError, OSError):
             existing = {}
         mcp = existing.setdefault("mcpServers", {})
-        if mcp.get("conductguard", {}).get("args") == entry["args"]:
+        if mcp.get("conductguard") == entry:
             print(f"  {GRAY}Guard MCP already registered in {label}{RESET}")
             continue
         mcp["conductguard"] = entry
