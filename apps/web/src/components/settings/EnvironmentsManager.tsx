@@ -85,6 +85,24 @@ const SERVICES: ServiceDef[] = [
   },
 ]
 
+interface Integration {
+  id: string
+  name: string
+  desc: string
+  credKey: string
+  color: string
+}
+
+const INTEGRATIONS: Integration[] = [
+  { id: "github",       name: "GitHub",       desc: "Clone, branch, push, open & merge PRs, add secrets",  credKey: "GITHUB_TOKEN",         color: "#1c1917" },
+  { id: "slack",        name: "Slack",        desc: "Post messages, DMs, approval buttons, Guard alerts",   credKey: "SLACK_BOT_TOKEN",      color: "#7c3aed" },
+  { id: "linear",       name: "Linear",       desc: "Create and update issues, post comments, query cycles", credKey: "LINEAR_API_KEY",       color: "#5b5bd6" },
+  { id: "vercel",       name: "Vercel",       desc: "Deploy projects, manage env vars, read deployment logs", credKey: "VERCEL_TOKEN",        color: "#1c1917" },
+  { id: "railway",      name: "Railway",      desc: "Deploy services, run migrations, read metrics",         credKey: "RAILWAY_TOKEN",       color: "#7c4dff" },
+  { id: "digitalocean", name: "DigitalOcean", desc: "Provision droplets, manage DNS and databases",          credKey: "DIGITALOCEAN_TOKEN",  color: "#0ea5e9" },
+  { id: "email",        name: "Email",        desc: "Send transactional and alert emails via Resend",        credKey: "RESEND_API_KEY",      color: "#059669" },
+]
+
 function EyeIcon({ open }: { open: boolean }) {
   return open ? (
     <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -114,15 +132,22 @@ function EnvironmentsManagerWithAuth({ isAdmin }: { isAdmin: boolean }) {
   return <EnvironmentsManagerInner getToken={getToken} isAdmin={isAdmin} />
 }
 
+interface EnvVar { key: string; value: string; handle?: string }
+
 function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Promise<string | null>) | null; isAdmin: boolean }) {
   const [environments, setEnvironments] = useState<Environment[]>([])
   const [listLoading, setListLoading] = useState(true)
-  const [selected, setSelected] = useState<Environment | null>(null)
-  const [newName, setNewName] = useState("")
-  const [creating, setCreating] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
-  const [deleting, setDeleting] = useState<string | null>(null)
-  const [listError, setListError] = useState("")
+  const [active, setActive] = useState(0)
+  const [envVars, setEnvVars] = useState<EnvVar[]>([])
+  const [varsLoading, setVarsLoading] = useState(false)
+  const [settingKey, setSettingKey] = useState<string | null>(null)
+  const [inputValue, setInputValue] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState("")
+  const [showNewEnv, setShowNewEnv] = useState(false)
+  const [newEnvName, setNewEnvName] = useState("")
+  const [creatingEnv, setCreatingEnv] = useState(false)
+  const [viewingDetail, setViewingDetail] = useState(false)
   const loadingRef = useRef(false)
 
   const buildHeaders = useCallback(async (contentType = false): Promise<Record<string, string>> => {
@@ -138,14 +163,13 @@ function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Prom
   }, [getToken])
 
   const loadEnvironments = useCallback(async () => {
-    if (loadingRef.current) return // prevent concurrent loads
+    if (loadingRef.current) return
     loadingRef.current = true
     try {
       const headers = await buildHeaders()
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments`, { headers })
       if (!res.ok) return
       const envs: Environment[] = await res.json()
-      // Fetch credentials for each environment to show connected services inline
       const enriched = await Promise.all(envs.map(async env => {
         try {
           const r = await fetch(
@@ -164,168 +188,226 @@ function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Prom
     }
   }, [buildHeaders])
 
+  const loadVarsForEnv = useCallback(async (envId: string) => {
+    setVarsLoading(true)
+    try {
+      const headers = await buildHeaders()
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/env-vars/${envId}`, { headers })
+      if (res.ok) setEnvVars(await res.json())
+      else setEnvVars([])
+    } catch { setEnvVars([]) }
+    finally { setVarsLoading(false) }
+  }, [buildHeaders])
+
   useEffect(() => { loadEnvironments() }, [loadEnvironments])
 
-  async function handleCreate() {
-    const name = newName.trim()
-    if (!name) { setListError("Environment name is required"); return }
-    setCreating(true)
-    setListError("")
+  useEffect(() => {
+    if (environments.length > 0) {
+      loadVarsForEnv(environments[active]?.id ?? "")
+    }
+  }, [active, environments, loadVarsForEnv])
+
+  async function addEnv() {
+    const name = newEnvName.trim()
+    if (!name) return
+    setCreatingEnv(true)
     try {
       const headers = await buildHeaders(true)
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments`, {
         method: "POST", headers, body: JSON.stringify({ name }),
       })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        throw new Error(body.detail || "Failed to create environment")
+      if (res.ok) {
+        setNewEnvName("")
+        setShowNewEnv(false)
+        await loadEnvironments()
       }
-      setNewName("")
-      await loadEnvironments()
-    } catch (e: unknown) {
-      setListError(e instanceof Error ? e.message : "Failed to create environment")
-    } finally {
-      setCreating(false)
-    }
+    } catch { /* silent */ }
+    finally { setCreatingEnv(false) }
   }
 
-  async function handleDelete(id: string) {
-    setDeleting(id)
-    setListError("")
+  async function saveCredential(credKey: string, value: string) {
+    const env = environments[active]
+    if (!env) return
+    setSaving(true)
+    setSaveError("")
     try {
-      const headers = await buildHeaders()
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments/${id}`, {
-        method: "DELETE", headers,
+      const updated = envVars.some(v => v.key === credKey)
+        ? envVars.map(v => v.key === credKey ? { ...v, value } : v)
+        : [...envVars, { key: credKey, value }]
+      const headers = await buildHeaders(true)
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/env-vars/${env.id}`, {
+        method: "PUT", headers,
+        body: JSON.stringify(updated.map(v => ({ key: v.key, value: v.value }))),
       })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        setListError(body.detail ?? "Failed to delete environment")
-        setConfirmDelete(null)
-        return
-      }
-      setEnvironments(prev => prev.filter(e => e.id !== id))
-      setConfirmDelete(null)
-    } catch {
-      setListError("Failed to delete environment")
-    } finally {
-      setDeleting(null)
-    }
+      if (!res.ok) throw new Error("Save failed")
+      setEnvVars(updated)
+      setSettingKey(null)
+      setInputValue("")
+    } catch { setSaveError("Save failed") }
+    finally { setSaving(false) }
   }
 
-  function formatDate(iso: string) {
-    try {
-      return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
-    } catch { return iso }
+  function isSet(credKey: string): boolean {
+    return envVars.some(v => v.key === credKey && v.value)
   }
 
-  // Drill into an environment
-  if (selected) {
-    return (
-      <EnvironmentDetail
-        environment={selected}
-        buildHeaders={buildHeaders}
-        onBack={() => setSelected(null)}
-        isAdmin={isAdmin}
-      />
-    )
+  function maskedFor(credKey: string): string {
+    const v = envVars.find(v => v.key === credKey)
+    if (!v?.value) return ""
+    return v.value.length > 8 ? v.value.slice(0, 4) + "••••••••" : "••••••••"
   }
+
+  const env = environments[active]
+  const required = INTEGRATIONS.length
+  const setCount = INTEGRATIONS.filter(it => isSet(it.credKey)).length
+  const missing = required - setCount
 
   if (listLoading) {
     return (
-      <div className="space-y-3">
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {[1, 2].map(i => (
-          <div key={i} className="h-16 rounded-xl bg-stone-100 animate-pulse" />
+          <div key={i} style={{ height: 64, borderRadius: 12, background: "var(--surface-2)", border: "1px solid var(--border)", opacity: 0.7 }} />
         ))}
       </div>
     )
   }
 
-  return (
-    <div className="space-y-3">
-      {environments.map(env => (
-        <div key={env.id} className="rounded-xl border border-stone-200 bg-white">
-          <div className="flex items-center justify-between px-4 py-3.5">
-            <button
-              className="flex items-center gap-3 flex-1 text-left"
-              onClick={() => setSelected(env)}
-            >
-              <span className="w-9 h-9 rounded-lg text-xs font-bold flex items-center justify-center shrink-0 bg-violet-100 text-violet-700">
-                {env.name.slice(0, 2).toUpperCase()}
-              </span>
-              <div>
-                <p className="text-sm font-medium text-stone-900">{env.name}</p>
-                <div className="flex items-center gap-1 mt-1 flex-wrap">
-                  {env.connectedServices && env.connectedServices.length > 0
-                    ? env.connectedServices.map(svc => (
-                        <span key={svc} className="text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-100 px-1.5 py-0.5 rounded-full">
-                          {svc}
-                        </span>
-                      ))
-                    : <span className="text-xs text-stone-400">No integrations yet · click to add</span>
-                  }
-                  {env.allowed_hosts && env.allowed_hosts.length > 0 && (
-                    <span className="text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-100 px-1.5 py-0.5 rounded-full">
-                      restricted
-                    </span>
-                  )}
-                </div>
-              </div>
+  if (viewingDetail && env) {
+    return (
+      <EnvironmentDetail
+        environment={env}
+        buildHeaders={buildHeaders}
+        onBack={() => setViewingDetail(false)}
+        isAdmin={isAdmin}
+      />
+    )
+  }
+
+  if (environments.length === 0) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, alignItems: "center", padding: "40px 0", textAlign: "center" }}>
+        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>No environments yet.</p>
+        {showNewEnv ? (
+          <div style={{ display: "flex", gap: 8, maxWidth: 380 }}>
+            <input autoFocus value={newEnvName} onChange={e => setNewEnvName(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") addEnv(); if (e.key === "Escape") { setShowNewEnv(false); setNewEnvName("") } }}
+              placeholder="e.g. Production"
+              style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 9, padding: "8px 12px", fontSize: 13.5, color: "var(--text)", background: "var(--surface)", outline: "none" }} />
+            <button onClick={addEnv} disabled={creatingEnv || !newEnvName.trim()} className="btn btn-primary btn-sm" style={{ opacity: (creatingEnv || !newEnvName.trim()) ? 0.4 : 1 }}>
+              {creatingEnv ? "Creating…" : "Create"}
             </button>
-
-            <div className="flex items-center gap-2 ml-4">
-              {isAdmin && (confirmDelete === env.id ? (
-                  <>
-                    <span className="text-xs text-stone-500">Delete?</span>
-                    <button
-                      onClick={() => handleDelete(env.id)}
-                      disabled={deleting === env.id}
-                      className="text-xs font-medium text-red-600 hover:text-red-800 disabled:opacity-50 transition-colors"
-                    >
-                      {deleting === env.id ? "Deleting…" : "Confirm"}
-                    </button>
-                    <button
-                      onClick={() => setConfirmDelete(null)}
-                      className="text-xs text-stone-400 hover:text-stone-600 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    onClick={e => { e.stopPropagation(); setConfirmDelete(env.id) }}
-                    className="text-xs text-stone-400 hover:text-red-500 transition-colors"
-                  >
-                    Delete
-                  </button>
-                ))}
-              <span className="text-stone-300 text-sm">→</span>
-            </div>
+            <button onClick={() => { setShowNewEnv(false); setNewEnvName("") }} className="btn btn-ghost btn-sm">Cancel</button>
           </div>
-        </div>
-      ))}
+        ) : (
+          <button className="btn btn-primary btn-sm" onClick={() => setShowNewEnv(true)}>+ New environment</button>
+        )}
+      </div>
+    )
+  }
 
-      {/* Create new environment — admin only */}
-      {isAdmin && <div className="rounded-xl border border-dashed border-stone-200 bg-white px-4 py-4">
-        <p className="text-xs font-medium text-stone-500 mb-2">New environment</p>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={newName}
-            onChange={e => { setNewName(e.target.value); setListError("") }}
-            onKeyDown={e => e.key === "Enter" && handleCreate()}
-            placeholder="e.g. staging, production, customer-A"
-            className="flex-1 border border-stone-200 rounded-lg px-3 py-2 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-violet-200"
-          />
-          <button
-            onClick={handleCreate}
-            disabled={creating || !newName.trim()}
-            className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700 disabled:opacity-50 transition-colors"
-          >
-            {creating ? "Creating…" : "Create"}
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        {environments.map((e, i) => {
+          const on = i === active
+          const miss = 0
+          return (
+            <button key={e.name} onClick={() => setActive(i)} className="chip" style={{ height: 32, cursor: "pointer", fontWeight: 600, gap: 7,
+              background: on ? "var(--accent-weak)" : "var(--surface)", borderColor: on ? "var(--accent-ring)" : "var(--border)", color: on ? "var(--accent-text)" : "var(--text-2)" }}>
+              {e.name}
+              {miss > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: "var(--warn)", background: "var(--warn-bg)", borderRadius: 20, padding: "0 6px", lineHeight: "15px" }}>{miss} needed</span>}
+            </button>
+          )
+        })}
+        {showNewEnv ? (
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <input autoFocus value={newEnvName} onChange={e => setNewEnvName(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") addEnv(); if (e.key === "Escape") { setShowNewEnv(false); setNewEnvName("") } }}
+              placeholder="Environment name"
+              style={{ height: 32, border: "1px solid var(--border)", borderRadius: 8, padding: "0 10px", fontSize: 13, color: "var(--text)", background: "var(--surface)", outline: "none" }} />
+            <button onClick={addEnv} disabled={creatingEnv || !newEnvName.trim()} className="btn btn-primary btn-sm" style={{ height: 32, opacity: (creatingEnv || !newEnvName.trim()) ? 0.4 : 1 }}>
+              {creatingEnv ? "…" : "Create"}
+            </button>
+            <button onClick={() => { setShowNewEnv(false); setNewEnvName("") }} className="btn btn-ghost btn-sm" style={{ height: 32 }}>✕</button>
+          </div>
+        ) : (
+          <button onClick={() => setShowNewEnv(true)} className="btn btn-ghost btn-sm" style={{ height: 32 }}>+ New environment</button>
+        )}
+      </div>
+
+      {env && (
+        <div className="card" style={{ padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 12,
+          background: missing > 0 ? "var(--warn-bg)" : "var(--surface-2)", borderColor: missing > 0 ? "var(--warn-bd)" : "var(--border)" }}>
+          <div style={{ flex: 1, fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>
+            {missing > 0
+              ? <><b style={{ color: "var(--text)" }}>{env.name}</b> needs {missing} of {required} variables filled in.</>
+              : <><b style={{ color: "var(--text)" }}>{env.name}</b> has all {required} credentials set.</>}
+          </div>
+          <span className="mono" style={{ fontSize: 12, fontWeight: 700, color: missing > 0 ? "var(--warn)" : "var(--ok)", flexShrink: 0 }}>{setCount}/{required} set</span>
+          <button onClick={() => setViewingDetail(true)} className="btn btn-ghost btn-sm" style={{ flexShrink: 0, fontSize: 12 }}>
+            Manage variables →
           </button>
         </div>
-        {listError && <p className="text-xs text-red-500 mt-2">{listError}</p>}
-      </div>}
+      )}
+
+      {varsLoading ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {[1, 2, 3].map(i => <div key={i} style={{ height: 112, borderRadius: 12, background: "var(--surface-2)", border: "1px solid var(--border)", opacity: 0.7 }} />)}
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(330px, 1fr))", gap: 14 }}>
+          {INTEGRATIONS.map(it => {
+            const on = isSet(it.credKey)
+            const isEditing = settingKey === it.credKey
+            return (
+              <div key={it.id} className="card" style={{ padding: "16px 18px", borderColor: on ? "var(--ok-bd)" : "var(--border)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                  <div style={{ width: 38, height: 38, borderRadius: 10, background: it.color, color: "#fff", display: "grid", placeItems: "center", fontWeight: 700, fontSize: 15, flexShrink: 0 }}>{it.name[0]}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 650, fontSize: 14.5 }}>{it.name}</div>
+                    <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{it.desc}</div>
+                  </div>
+                  {on
+                    ? <span className="sbadge ok"><span className="dot" style={{ background: "var(--ok)" }} />Set</span>
+                    : <span className="sbadge warn"><span className="dot" style={{ background: "var(--warn)" }} />Needs value</span>}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 8, background: "var(--surface-2)", border: "1px solid var(--border)", marginBottom: 12 }}>
+                  <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>{it.credKey}</span>
+                  <span className="mono" style={{ marginLeft: "auto", fontSize: 11.5, color: on ? "var(--text-3)" : "var(--warn)" }}>
+                    {on ? (maskedFor(it.credKey) || "••••••••") : "not set"}
+                  </span>
+                </div>
+                {isEditing ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <input
+                      autoFocus
+                      type="password"
+                      value={inputValue}
+                      onChange={e => setInputValue(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") saveCredential(it.credKey, inputValue); if (e.key === "Escape") { setSettingKey(null); setInputValue("") } }}
+                      placeholder={`Paste ${it.credKey}`}
+                      className="mono"
+                      style={{ fontSize: 12, padding: "7px 10px", borderRadius: 7, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", width: "100%", boxSizing: "border-box" }}
+                    />
+                    {saveError && <span style={{ fontSize: 11.5, color: "var(--err)" }}>{saveError}</span>}
+                    <div style={{ display: "flex", gap: 7 }}>
+                      <button className="btn btn-primary btn-sm" style={{ flex: 1, justifyContent: "center" }} onClick={() => saveCredential(it.credKey, inputValue)} disabled={saving || !inputValue.trim()}>
+                        {saving ? "Saving…" : "Save"}
+                      </button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => { setSettingKey(null); setInputValue(""); setSaveError("") }}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button className={"btn btn-sm " + (on ? "btn-ghost" : "btn-primary")} style={{ width: "100%", justifyContent: "center" }}
+                    onClick={() => { setSettingKey(it.credKey); setInputValue("") }}>
+                    {on ? "Rotate value" : `Set ${it.credKey}`}
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -350,23 +432,17 @@ function TestConnectionsPanel({
 }: {
   vars: EnvVar[]
   buildHeaders: (contentType?: boolean) => Promise<Record<string, string>>
-  /** When this value changes, automatically run tests for the listed services. */
   autoRun?: { services: string[]; at: number } | null
 }) {
-  // manualSel: service → fieldKey → envKey chosen by user (overrides auto-detect)
   const [manualSel, setManualSel] = useState<Record<string, Record<string, string>>>({})
   const [results,   setResults]   = useState<Record<string, TestResult>>({})
 
   const varKeys = vars.filter(v => v.value).map(v => v.key)
 
-  // Auto-run tests whenever the parent signals a save that touched known service keys.
-  // `autoRun.at` is a timestamp that changes each time, so the effect fires exactly once per save.
   useEffect(() => {
     if (!autoRun?.services.length) return
-    // Small delay so the new var values have propagated into `vars` state
     const t = setTimeout(() => {
       autoRun.services.forEach(service => {
-        // Only auto-test if the service actually has a configured key now
         const svc = SERVICE_DETECTION[service]
         if (!svc) return
         const hasAnyKey = svc.fields.some(f => f.envKeys.some(k => vars.some(v => v.key === k && v.value)))
@@ -374,26 +450,21 @@ function TestConnectionsPanel({
       })
     }, 200)
     return () => clearTimeout(t)
-  // runTest changes reference on every render — suppress exhaustive-deps
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoRun?.at])
 
-  /** First matching key from the env vars for a field, or "" */
   function autoKey(field: ServiceFieldDef): string {
     return field.envKeys.find(k => vars.some(v => v.key === k && v.value)) ?? ""
   }
 
-  /** Currently selected key for a field (manual override or auto) */
   function selectedKey(service: string, field: ServiceFieldDef): string {
     return manualSel[service]?.[field.fieldKey] ?? autoKey(field)
   }
 
-  /** Value for a key, or "" */
   function varValue(key: string): string {
     return vars.find(v => v.key === key)?.value ?? ""
   }
 
-  /** Build credentials dict — only populated fields included */
   function buildCreds(service: string): Record<string, string> {
     const svc = SERVICE_DETECTION[service]
     const creds: Record<string, string> = {}
@@ -405,10 +476,8 @@ function TestConnectionsPanel({
     return creds
   }
 
-  /** A service is testable when every required field has a value */
   function isTestable(service: string): boolean {
     const svc = SERVICE_DETECTION[service]
-    // email is special: at least one of resend/sendgrid must be present
     if (service === "email") {
       const creds = buildCreds(service)
       return !!(creds.resend_api_key || creds.sendgrid_api_key)
@@ -436,15 +505,15 @@ function TestConnectionsPanel({
   }
 
   return (
-    <div className="mt-6">
-      <div className="mb-3">
-        <p className="text-sm font-medium text-stone-900">Test connections</p>
-        <p className="text-xs text-stone-400">
+    <div style={{ marginTop: 24 }}>
+      <div style={{ marginBottom: 12 }}>
+        <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>Test connections</p>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
           Verify each credential is valid. Values are sent directly to the provider — nothing is stored or re-encrypted.
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
         {Object.entries(SERVICE_DETECTION).map(([service, svc]) => {
           const result  = results[service] ?? "idle"
           const testing = result === "testing"
@@ -453,30 +522,20 @@ function TestConnectionsPanel({
           const testable = isTestable(service)
 
           return (
-            <div
-              key={service}
-              className={`rounded-xl border px-4 py-3 flex flex-col gap-2.5 transition-colors ${
-                ok  ? "border-emerald-200 bg-emerald-50" :
-                err ? "border-red-200 bg-red-50" :
-                "border-stone-200 bg-white"
-              }`}
-            >
-              {/* Header */}
-              <div className="flex items-center gap-2">
-                <span className={`w-7 h-7 rounded-md text-[10px] font-bold flex items-center justify-center shrink-0 ${svc.color}`}>
+            <div key={service} className="card" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10,
+              borderColor: ok ? "var(--ok-bd)" : err ? "var(--err-bd)" : "var(--border)",
+              background: ok ? "var(--ok-bg, var(--surface-2))" : err ? "var(--err-bg)" : "var(--surface)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ width: 28, height: 28, borderRadius: 7, background: svc.color.includes("bg-stone") ? "#1c1917" : svc.color.includes("bg-purple") ? "#7c3aed" : svc.color.includes("bg-indigo") ? "#4f46e5" : svc.color.includes("bg-blue") ? "#2563eb" : svc.color.includes("bg-emerald") ? "#059669" : svc.color.includes("bg-amber") ? "#d97706" : "#4f46e5",
+                  color: "#fff", display: "grid", placeItems: "center", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
                   {svc.abbr}
                 </span>
-                <span className="text-sm font-medium text-stone-800">{svc.label}</span>
-                {ok && (
-                  <span className="ml-auto text-[10px] font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">✓ OK</span>
-                )}
-                {err && (
-                  <span className="ml-auto text-[10px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full">✗ Failed</span>
-                )}
+                <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{svc.label}</span>
+                {ok && <span className="sbadge ok" style={{ marginLeft: "auto" }}>✓ OK</span>}
+                {err && <span className="sbadge err" style={{ marginLeft: "auto" }}>✗ Failed</span>}
               </div>
 
-              {/* Field selectors */}
-              <div className="space-y-1.5">
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {svc.fields.map(field => {
                   const auto    = autoKey(field)
                   const current = selectedKey(service, field)
@@ -484,40 +543,22 @@ function TestConnectionsPanel({
 
                   return (
                     <div key={field.fieldKey}>
-                      <p className="text-[10px] text-stone-400 mb-0.5">{field.label}</p>
-                      {/* Auto-detected — show key name as a chip */}
+                      <p style={{ fontSize: 10.5, color: "var(--text-muted)", marginBottom: 3 }}>{field.label}</p>
                       {auto && manualSel[service]?.[field.fieldKey] === undefined ? (
-                        <div className="flex items-center gap-1">
-                          <span className="text-[10px] font-mono bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded truncate max-w-[140px]">
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <span className="mono" style={{ fontSize: 10.5, background: "var(--surface-2)", color: "var(--text-3)", padding: "2px 6px", borderRadius: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 140 }}>
                             {auto}
                           </span>
-                          <button
-                            onClick={() => setManualSel(prev => ({
-                              ...prev,
-                              [service]: { ...prev[service], [field.fieldKey]: "" },
-                            }))}
-                            className="text-[10px] text-stone-300 hover:text-stone-500 transition-colors"
-                            title="Change"
-                          >
-                            ✎
-                          </button>
+                          <button onClick={() => setManualSel(prev => ({ ...prev, [service]: { ...prev[service], [field.fieldKey]: "" } }))}
+                            style={{ fontSize: 10, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }} title="Change">✎</button>
                         </div>
                       ) : (
-                        /* Manual picker */
-                        <select
-                          value={current}
-                          onChange={e => setManualSel(prev => ({
-                            ...prev,
-                            [service]: { ...prev[service], [field.fieldKey]: e.target.value },
-                          }))}
-                          className={`w-full text-[10px] font-mono border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-stone-300 ${
-                            hasVal ? "border-stone-200 text-stone-700 bg-white" : "border-dashed border-stone-200 text-stone-400 bg-stone-50"
-                          }`}
-                        >
+                        <select value={current}
+                          onChange={e => setManualSel(prev => ({ ...prev, [service]: { ...prev[service], [field.fieldKey]: e.target.value } }))}
+                          className="mono"
+                          style={{ width: "100%", fontSize: 10.5, border: `1px ${hasVal ? "solid" : "dashed"} var(--border)`, borderRadius: 5, padding: "3px 6px", color: hasVal ? "var(--text-2)" : "var(--text-muted)", background: "var(--surface)", outline: "none" }}>
                           <option value="">— pick a var —</option>
-                          {varKeys.map(k => (
-                            <option key={k} value={k}>{k}</option>
-                          ))}
+                          {varKeys.map(k => <option key={k} value={k}>{k}</option>)}
                         </select>
                       )}
                     </div>
@@ -525,20 +566,12 @@ function TestConnectionsPanel({
                 })}
               </div>
 
-              {/* Result detail */}
-              {ok  && <p className="text-[11px] text-emerald-700 font-medium">{(result as {ok:boolean;detail:string}).detail}</p>}
-              {err && <p className="text-[11px] text-red-600">{(result as {ok:boolean;detail:string}).detail}</p>}
+              {ok  && <p style={{ fontSize: 11.5, color: "var(--ok)", fontWeight: 500 }}>{(result as {ok:boolean;detail:string}).detail}</p>}
+              {err && <p style={{ fontSize: 11.5, color: "var(--err)" }}>{(result as {ok:boolean;detail:string}).detail}</p>}
 
-              {/* Test button */}
-              <button
-                onClick={() => runTest(service)}
-                disabled={!testable || testing}
-                className={`mt-auto rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                  testable && !testing
-                    ? "bg-stone-900 text-white hover:bg-stone-700"
-                    : "bg-stone-100 text-stone-400 cursor-not-allowed"
-                }`}
-              >
+              <button onClick={() => runTest(service)} disabled={!testable || testing}
+                className={testable && !testing ? "btn btn-primary btn-sm" : "btn btn-ghost btn-sm"}
+                style={{ marginTop: "auto", justifyContent: "center", opacity: (!testable || testing) ? 0.5 : 1, cursor: (!testable || testing) ? "not-allowed" : "pointer" }}>
                 {testing ? "Testing…" : testable ? "Test connection" : "Add key to test"}
               </button>
             </div>
@@ -552,8 +585,6 @@ function TestConnectionsPanel({
 // ---------------------------------------------------------------------------
 // Environment detail — simple key-value env var editor
 // ---------------------------------------------------------------------------
-
-interface EnvVar { key: string; value: string; handle?: string }
 
 function EnvironmentDetail({
   environment,
@@ -577,15 +608,17 @@ function EnvironmentDetail({
   const [showNew, setShowNew] = useState(false)
   const [showPaste, setShowPaste] = useState(false)
   const [pasteText, setPasteText] = useState("")
-  // Signals TestConnectionsPanel to auto-run tests for affected services after a save
   const [testTrigger, setTestTrigger] = useState<{ services: string[]; at: number } | null>(null)
+  const [confirmVarIndex, setConfirmVarIndex] = useState<number | null>(null)
+  const [confirmVarValue, setConfirmVarValue] = useState("")
+  const [confirmHost, setConfirmHost] = useState<string | null>(null)
+  const [confirmHostValue, setConfirmHostValue] = useState("")
 
   function triggerTestsForKeys(keys: string[]) {
     const services = affectedServices(keys)
     if (services.length) setTestTrigger({ services, at: Date.now() })
   }
 
-  // Egress allowlist chip state
   const [hosts, setHosts] = useState<string[]>(environment.allowed_hosts ?? [])
   const [hostInput, setHostInput] = useState("")
   const [hostSaving, setHostSaving] = useState(false)
@@ -638,7 +671,6 @@ function EnvironmentDetail({
       if (!res.ok) throw new Error("Save failed")
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
-      // Auto-test any service whose key was explicitly changed
       if (changedKeys?.length) triggerTestsForKeys(changedKeys)
     } catch { setError("Save failed") } finally { setSaving(false) }
   }
@@ -650,6 +682,8 @@ function EnvironmentDetail({
   function removeVar(i: number) {
     const updated = vars.filter((_, idx) => idx !== i)
     setVars(updated)
+    setConfirmVarIndex(null)
+    setConfirmVarValue("")
     saveAll(updated)
   }
 
@@ -695,170 +729,166 @@ function EnvironmentDetail({
 
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <button onClick={onBack} className="text-stone-400 hover:text-stone-700 text-sm transition-colors">←</button>
-        <span className="w-8 h-8 rounded-lg text-xs font-bold flex items-center justify-center bg-violet-100 text-violet-700">
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
+        <button onClick={onBack} style={{ color: "var(--text-muted)", background: "none", border: "none", fontSize: 18, cursor: "pointer", lineHeight: 1 }}>←</button>
+        <span style={{ width: 32, height: 32, borderRadius: 8, background: "var(--accent-weak)", color: "var(--accent-text)", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
           {environment.name.slice(0, 2).toUpperCase()}
         </span>
         <div>
-          <h2 className="text-sm font-semibold text-stone-900">{environment.name}</h2>
-          <p className="text-xs text-stone-400">{vars.length} variable{vars.length !== 1 ? "s" : ""}</p>
+          <h2 style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", margin: 0 }}>{environment.name}</h2>
+          <p style={{ fontSize: 11.5, color: "var(--text-muted)", margin: 0 }}>{vars.length} variable{vars.length !== 1 ? "s" : ""}</p>
         </div>
-        <div className="ml-auto flex items-center gap-2">
-          <button
-            onClick={() => { setShowPaste(p => !p); setError("") }}
-            className="text-xs border border-stone-200 text-stone-600 hover:bg-stone-50 px-3 py-1.5 rounded-lg transition-colors"
-          >
-            Paste .env
-          </button>
-          <button
-            onClick={() => saveAll(vars)}
-            disabled={saving}
-            className="text-xs font-medium bg-stone-900 text-white hover:bg-stone-700 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-          >
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+          <button onClick={() => { setShowPaste(p => !p); setError("") }} className="btn btn-ghost btn-sm">Paste .env</button>
+          <button onClick={() => saveAll(vars)} disabled={saving} className="btn btn-primary btn-sm" style={{ opacity: saving ? 0.5 : 1 }}>
             {saving ? "Saving…" : saved ? "Saved ✓" : "Save"}
           </button>
         </div>
       </div>
 
-      {/* Paste .env panel */}
       {showPaste && (
-        <div className="mb-4 rounded-xl border border-stone-200 bg-stone-50 p-4 space-y-3">
-          <p className="text-xs text-stone-500">Paste the contents of your <span className="font-mono">.env</span> file. Existing keys will be overwritten; new keys will be added.</p>
+        <div className="card" style={{ padding: "14px 16px", background: "var(--surface-2)", marginBottom: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+          <p style={{ fontSize: 12, color: "var(--text-2)" }}>Paste the contents of your <code className="mono" style={{ fontSize: 11 }}>.env</code> file. Existing keys will be overwritten; new keys will be added.</p>
           <textarea
             autoFocus
             value={pasteText}
             onChange={e => setPasteText(e.target.value)}
             placeholder={"GITHUB_TOKEN=ghp_...\nANTHROPIC_API_KEY=sk-ant-...\nSLACK_BOT_TOKEN=xoxb-..."}
             rows={7}
-            className="w-full font-mono text-xs text-stone-800 border border-stone-200 rounded-lg px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 resize-none"
+            className="mono"
+            style={{ width: "100%", fontSize: 12, color: "var(--text)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", background: "var(--surface)", outline: "none", resize: "vertical", boxSizing: "border-box" }}
           />
-          <div className="flex gap-2">
-            <button
-              onClick={handlePasteImport}
-              className="text-xs font-medium bg-stone-900 text-white hover:bg-stone-700 px-4 py-2 rounded-lg transition-colors"
-            >
-              Import
-            </button>
-            <button
-              onClick={() => { setShowPaste(false); setPasteText(""); setError("") }}
-              className="text-xs border border-stone-200 text-stone-600 hover:bg-stone-50 px-4 py-2 rounded-lg transition-colors"
-            >
-              Cancel
-            </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={handlePasteImport} className="btn btn-primary btn-sm">Import</button>
+            <button onClick={() => { setShowPaste(false); setPasteText(""); setError("") }} className="btn btn-ghost btn-sm">Cancel</button>
           </div>
         </div>
       )}
 
-      {error && <p className="mb-3 text-xs text-red-500">{error}</p>}
+      {error && <p style={{ marginBottom: 10, fontSize: 12, color: "var(--err)" }}>{error}</p>}
 
-      {/* Key-value table */}
-      <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
-        {/* Column headers */}
-        <div className="grid grid-cols-[1fr_1fr_auto] gap-0 border-b border-stone-100 px-4 py-2 bg-stone-50">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-stone-400">Key</p>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-stone-400">Value</p>
-          <p className="w-16" />
+      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", borderBottom: "1px solid var(--border)", padding: "8px 16px", background: "var(--surface-2)" }}>
+          <p className="eyebrow">Key</p>
+          <p className="eyebrow">Value</p>
+          <p style={{ width: 64 }} />
         </div>
 
         {loading ? (
-          <p className="text-sm text-stone-400 px-4 py-6">Loading…</p>
+          <p style={{ fontSize: 13, color: "var(--text-muted)", padding: "20px 16px" }}>Loading…</p>
         ) : vars.length === 0 ? (
-          <p className="text-sm text-stone-400 px-4 py-6">No variables yet — add one or import a .env file.</p>
+          <p style={{ fontSize: 13, color: "var(--text-muted)", padding: "20px 16px" }}>No variables yet — add one or import a .env file.</p>
         ) : (
           vars.map((v, i) => (
-            <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-0 border-b border-stone-100 last:border-0 px-4 py-2 items-center group">
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", borderBottom: i < vars.length - 1 ? "1px solid var(--border)" : "none", padding: "8px 16px", alignItems: "center" }}>
               <input
                 value={v.key}
                 onChange={e => updateVar(i, "key", e.target.value)}
                 onBlur={() => saveAll(vars, [v.key])}
-                className="font-mono text-xs text-stone-800 bg-transparent border-none outline-none w-full pr-4"
+                className="mono"
+                style={{ fontSize: 12, color: "var(--text)", background: "transparent", border: "none", outline: "none", width: "100%", paddingRight: 16 }}
               />
-              <div className="relative flex items-center">
+              <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
                 <input
                   type={showValues[i] ? "text" : "password"}
                   value={v.value}
                   onChange={e => updateVar(i, "value", e.target.value)}
                   onBlur={() => saveAll(vars, [v.key])}
-                  className="font-mono text-xs text-stone-600 bg-transparent border-none outline-none w-full pr-7"
+                  className="mono"
+                  style={{ fontSize: 12, color: "var(--text-2)", background: "transparent", border: "none", outline: "none", width: "100%", paddingRight: 28 }}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowValues(prev => ({ ...prev, [i]: !prev[i] }))}
-                  className="absolute right-1 text-stone-300 hover:text-stone-600 transition-colors"
-                >
+                <button type="button" onClick={() => setShowValues(prev => ({ ...prev, [i]: !prev[i] }))}
+                  style={{ position: "absolute", right: 4, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center" }}>
                   <EyeIcon open={!!showValues[i]} />
                 </button>
               </div>
-              <button
-                onClick={() => removeVar(i)}
-                className="text-stone-200 hover:text-red-500 transition-colors w-16 text-right text-xs"
-              >
-                Remove
-              </button>
+              {confirmVarIndex === i ? (
+                <div style={{ minWidth: 230, display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+                  <p style={{ margin: 0, fontSize: 11, color: "var(--err)", textAlign: "right" }}>
+                    Type <strong>{v.key || "key"}</strong> to remove.
+                  </p>
+                  <div style={{ display: "flex", gap: 6, width: "100%" }}>
+                    <input
+                      value={confirmVarValue}
+                      onChange={e => setConfirmVarValue(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter" && confirmVarValue === v.key) removeVar(i)
+                        if (e.key === "Escape") { setConfirmVarIndex(null); setConfirmVarValue("") }
+                      }}
+                      placeholder={v.key || "key"}
+                      className="mono"
+                      style={{ flex: 1, minWidth: 0, fontSize: 11.5, border: "1px solid var(--err-bd, #fecaca)", borderRadius: 8, padding: "5px 8px", outline: "none" }}
+                    />
+                    <button
+                      onClick={() => removeVar(i)}
+                      disabled={confirmVarValue !== v.key}
+                      className="btn btn-sm"
+                      style={{ background: "var(--err)", color: "#fff", border: "none", opacity: confirmVarValue !== v.key ? 0.4 : 1 }}
+                    >
+                      Remove
+                    </button>
+                    <button
+                      onClick={() => { setConfirmVarIndex(null); setConfirmVarValue("") }}
+                      className="btn btn-ghost btn-sm"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => { setConfirmVarIndex(i); setConfirmVarValue("") }}
+                  style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", width: 64, textAlign: "right" }}
+                >
+                  Remove
+                </button>
+              )}
             </div>
           ))
         )}
 
-        {/* Add new row */}
         {isAdmin && (showNew ? (
-          <div className="grid grid-cols-[1fr_1fr_auto] gap-0 border-t border-stone-100 px-4 py-2 items-center bg-stone-50">
-            <input
-              autoFocus
-              value={newKey}
-              onChange={e => setNewKey(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && addVar()}
-              placeholder="VARIABLE_NAME"
-              className="font-mono text-xs text-stone-800 bg-transparent border-none outline-none w-full pr-4 placeholder:text-stone-300"
-            />
-            <input
-              value={newValue}
-              onChange={e => setNewValue(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && addVar()}
-              placeholder="value"
-              type="password"
-              className="font-mono text-xs text-stone-600 bg-transparent border-none outline-none w-full pr-4 placeholder:text-stone-300"
-            />
-            <div className="flex gap-2 w-16 justify-end">
-              <button onClick={addVar} className="text-xs font-medium text-green-600 hover:text-green-800">Add</button>
-              <button onClick={() => { setShowNew(false); setNewKey(""); setNewValue("") }} className="text-xs text-stone-400 hover:text-stone-600">✕</button>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", borderTop: "1px solid var(--border)", padding: "8px 16px", alignItems: "center", background: "var(--surface-2)" }}>
+            <input autoFocus value={newKey} onChange={e => setNewKey(e.target.value)} onKeyDown={e => e.key === "Enter" && addVar()}
+              placeholder="VARIABLE_NAME" className="mono"
+              style={{ fontSize: 12, color: "var(--text)", background: "transparent", border: "none", outline: "none", width: "100%", paddingRight: 16 }} />
+            <input value={newValue} onChange={e => setNewValue(e.target.value)} onKeyDown={e => e.key === "Enter" && addVar()}
+              placeholder="value" type="password" className="mono"
+              style={{ fontSize: 12, color: "var(--text-2)", background: "transparent", border: "none", outline: "none", width: "100%", paddingRight: 16 }} />
+            <div style={{ display: "flex", gap: 8, width: 64, justifyContent: "flex-end" }}>
+              <button onClick={addVar} style={{ fontSize: 12, fontWeight: 600, color: "var(--ok)", background: "none", border: "none", cursor: "pointer" }}>Add</button>
+              <button onClick={() => { setShowNew(false); setNewKey(""); setNewValue("") }} style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}>✕</button>
             </div>
           </div>
         ) : (
-          <div className="border-t border-stone-100 px-4 py-2">
-            <button
-              onClick={() => setShowNew(true)}
-              className="text-xs text-stone-400 hover:text-stone-700 transition-colors"
-            >
+          <div style={{ borderTop: "1px solid var(--border)", padding: "8px 16px" }}>
+            <button onClick={() => setShowNew(true)} style={{ fontSize: 12.5, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}>
               + Add Environment Variable
             </button>
           </div>
         ))}
       </div>
 
-      {/* Test connections */}
       {!loading && <TestConnectionsPanel vars={vars} buildHeaders={buildHeaders} autoRun={testTrigger} />}
 
-      {/* Egress allowlist */}
-      <div className="mt-6">
-        <div className="flex items-center justify-between mb-2">
+      <div style={{ marginTop: 24 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
           <div>
-            <p className="text-sm font-medium text-stone-900">Allowed hosts</p>
-            <p className="text-xs text-stone-400">Leave empty for unrestricted outbound access. Use <span className="font-mono">*.example.com</span> for subdomains. Applies to integration blocks only — shell commands in AI blocks are not network-restricted.</p>
+            <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>Allowed hosts</p>
+            <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>Leave empty for unrestricted outbound access. Use <code className="mono" style={{ fontSize: 11 }}>*.example.com</code> for subdomains. Applies to integration blocks only.</p>
           </div>
-          {hostSaving && <span className="text-[10px] text-stone-400">Saving…</span>}
+          {hostSaving && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>Saving…</span>}
         </div>
-        <div className="rounded-xl border border-stone-200 bg-white px-4 py-3 space-y-3">
+        <div className="card" style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
           {hosts.length > 0 && (
-            <div className="flex flex-wrap gap-2">
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {hosts.map(h => (
-                <span key={h} className="inline-flex items-center gap-1.5 text-xs font-mono bg-amber-50 text-amber-800 border border-amber-100 px-2.5 py-1 rounded-full">
+                <span key={h} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, background: "var(--warn-bg)", color: "var(--warn)", border: "1px solid var(--warn-bd)", padding: "3px 10px", borderRadius: 20 }} className="mono">
                   {h}
                   {isAdmin && (
                     <button
-                      onClick={() => removeHost(h)}
-                      className="text-amber-400 hover:text-amber-700 leading-none transition-colors"
+                      onClick={() => { setConfirmHost(h); setConfirmHostValue("") }}
+                      style={{ color: "var(--warn)", background: "none", border: "none", cursor: "pointer", lineHeight: 1, fontSize: 13 }}
                     >
                       ×
                     </button>
@@ -867,26 +897,62 @@ function EnvironmentDetail({
               ))}
             </div>
           )}
+
+          {isAdmin && confirmHost && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <p style={{ margin: 0, fontSize: 12, color: "var(--err)" }}>
+                Type <strong>{confirmHost}</strong> to remove allowed host.
+              </p>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  value={confirmHostValue}
+                  onChange={e => setConfirmHostValue(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && confirmHostValue === confirmHost) {
+                      removeHost(confirmHost)
+                      setConfirmHost(null)
+                      setConfirmHostValue("")
+                    }
+                    if (e.key === "Escape") { setConfirmHost(null); setConfirmHostValue("") }
+                  }}
+                  placeholder={confirmHost}
+                  className="mono"
+                  style={{ flex: 1, fontSize: 12, border: "1px solid var(--err-bd, #fecaca)", borderRadius: 8, padding: "6px 10px", outline: "none" }}
+                />
+                <button
+                  className="btn btn-sm"
+                  onClick={() => {
+                    if (confirmHostValue !== confirmHost) return
+                    removeHost(confirmHost)
+                    setConfirmHost(null)
+                    setConfirmHostValue("")
+                  }}
+                  disabled={confirmHostValue !== confirmHost}
+                  style={{ background: "var(--err)", color: "#fff", border: "none", opacity: confirmHostValue !== confirmHost ? 0.4 : 1 }}
+                >
+                  Remove
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => { setConfirmHost(null); setConfirmHostValue("") }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
           {isAdmin && (
-            <div className="flex gap-2">
+            <div style={{ display: "flex", gap: 8 }}>
               <input
                 value={hostInput}
                 onChange={e => setHostInput(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addHost() } }}
                 placeholder="e.g. api.github.com or *.slack.com"
-                className="flex-1 font-mono text-xs text-stone-800 border border-stone-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-200 placeholder:text-stone-300"
+                className="mono"
+                style={{ flex: 1, fontSize: 12, color: "var(--text)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", background: "var(--surface)", outline: "none" }}
               />
-              <button
-                onClick={addHost}
-                disabled={!hostInput.trim()}
-                className="text-xs font-medium bg-stone-900 text-white hover:bg-stone-700 px-3 py-2 rounded-lg transition-colors disabled:opacity-40"
-              >
-                Add
-              </button>
+              <button onClick={addHost} disabled={!hostInput.trim()} className="btn btn-ghost btn-sm" style={{ opacity: hostInput.trim() ? 1 : 0.4 }}>Add</button>
             </div>
           )}
           {hosts.length === 0 && !isAdmin && (
-            <p className="text-xs text-stone-400">No restrictions — agents can reach any host.</p>
+            <p style={{ fontSize: 12, color: "var(--text-muted)" }}>No restrictions — agents can reach any host.</p>
           )}
         </div>
       </div>
