@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 
@@ -20,6 +21,7 @@ interface Environment {
 
 export default function AgentSettingsPage() {
   const { id: workflowId } = useParams<{ id: string }>()
+  const router = useRouter()
   const { getToken } = useAuth()
   const [workflow, setWorkflow] = useState<WorkflowDetail | null>(null)
   const [environments, setEnvironments] = useState<Environment[]>([])
@@ -27,6 +29,10 @@ export default function AgentSettingsPage() {
   const [turnsInput, setTurnsInput] = useState("")
   const [turnsSaving, setTurnsSaving] = useState(false)
   const [turnsSaved, setTurnsSaved] = useState(false)
+  const [deleteConfirmValue, setDeleteConfirmValue] = useState("")
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   async function headers(): Promise<Record<string, string>> {
     const h: Record<string, string> = {}
@@ -81,6 +87,30 @@ export default function AgentSettingsPage() {
       setTimeout(() => setTurnsSaved(false), 2000)
     } finally {
       setTurnsSaving(false)
+    }
+  }
+
+  async function deleteAgent() {
+    if (!workflow || deleteConfirmValue !== workflow.name) return
+    setDeleteError(null)
+    setDeleting(true)
+    try {
+      const h = await headers()
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, {
+        method: "DELETE",
+        headers: h,
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setDeleteError(body.detail ?? "Could not delete agent. Please try again.")
+        return
+      }
+      router.push("/workflows")
+      router.refresh()
+    } catch {
+      setDeleteError("Could not delete agent — check your connection.")
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -173,9 +203,54 @@ export default function AgentSettingsPage() {
               <div className="rounded-xl border border-red-100 bg-red-50 px-5 py-4">
                 <p className="text-xs font-semibold text-red-400 uppercase tracking-wider mb-3">Danger zone</p>
                 <p className="text-sm text-red-700 mb-3">Deleting this agent removes all its runs and history permanently.</p>
-                <button className="text-xs font-medium text-white bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition-colors">
-                  Delete agent
-                </button>
+                {deleteConfirmOpen ? (
+                  <div className="space-y-2">
+                    <p className="text-xs text-red-700">
+                      Type <strong>{workflow?.name ?? "this agent"}</strong> to permanently delete it.
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        value={deleteConfirmValue}
+                        onChange={e => setDeleteConfirmValue(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter") deleteAgent()
+                          if (e.key === "Escape") {
+                            setDeleteConfirmOpen(false)
+                            setDeleteConfirmValue("")
+                            setDeleteError(null)
+                          }
+                        }}
+                        placeholder={workflow?.name ?? "Agent name"}
+                        className="flex-1 border border-red-200 rounded-lg px-3 py-2 text-sm text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-red-300"
+                      />
+                      <button
+                        onClick={deleteAgent}
+                        disabled={deleting || deleteConfirmValue !== (workflow?.name ?? "")}
+                        className="text-xs font-medium text-white bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition-colors disabled:opacity-40"
+                      >
+                        {deleting ? "Deleting…" : "Delete"}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setDeleteConfirmOpen(false)
+                          setDeleteConfirmValue("")
+                          setDeleteError(null)
+                        }}
+                        className="text-xs font-medium text-stone-600 border border-stone-200 hover:bg-stone-50 px-4 py-2 rounded-lg transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    {deleteError && <p className="text-xs text-red-600">{deleteError}</p>}
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => { setDeleteConfirmOpen(true); setDeleteConfirmValue(""); setDeleteError(null) }}
+                    className="text-xs font-medium text-white bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition-colors"
+                  >
+                    Delete agent
+                  </button>
+                )}
               </div>
 
             </div>

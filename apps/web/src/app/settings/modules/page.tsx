@@ -45,6 +45,7 @@ function ConductGuardModule() {
   const [error, setError] = useState<string | null>(null)
   const [showTeamPicker, setShowTeamPicker] = useState(false)
   const [selectedOrg, setSelectedOrg] = useState<OrgOption | null>(null)
+  const [uninstallConfirmValue, setUninstallConfirmValue] = useState("")
 
   const availableOrgs: OrgOption[] = workspaces.map(w => ({ id: w.id, name: w.name }))
 
@@ -128,6 +129,7 @@ function ConductGuardModule() {
   // ── Uninstall ─────────────────────────────────────────────────────────────────
 
   async function handleUninstall() {
+    if (uninstallConfirmValue !== "ConductGuard") return
     setUninstalling(true)
     try {
       const wsId = activeWorkspace?.id
@@ -143,6 +145,7 @@ function ConductGuardModule() {
       }
       setConfig(null)
       setConfirmUninstall(false)
+      setUninstallConfirmValue("")
       setUninstalling(false)
     }
   }
@@ -329,16 +332,29 @@ function ConductGuardModule() {
             <p className="text-sm text-stone-600">
               This will disconnect all developers. Audit data is retained for 90 days.
             </p>
+            <p className="text-xs text-red-700">
+              Type <strong>ConductGuard</strong> to confirm uninstall.
+            </p>
+            <input
+              value={uninstallConfirmValue}
+              onChange={e => setUninstallConfirmValue(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter") handleUninstall()
+                if (e.key === "Escape") { setConfirmUninstall(false); setUninstallConfirmValue("") }
+              }}
+              placeholder="ConductGuard"
+              className="w-full text-sm border border-red-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-red-300"
+            />
             <div className="flex gap-3 pt-1">
               <button
-                onClick={() => setConfirmUninstall(false)}
+                onClick={() => { setConfirmUninstall(false); setUninstallConfirmValue("") }}
                 className="flex-1 text-sm font-medium text-stone-600 border border-stone-200 rounded-lg px-4 py-2 hover:bg-stone-50 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleUninstall}
-                disabled={uninstalling}
+                disabled={uninstalling || uninstallConfirmValue !== "ConductGuard"}
                 className="flex-1 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg px-4 py-2 transition-colors disabled:opacity-50"
               >
                 Uninstall

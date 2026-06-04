@@ -443,6 +443,8 @@ function PoliciesContent() {
   const [error, setError] = useState<string | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [confirmDeleteValue, setConfirmDeleteValue] = useState("")
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ""
   const canWrite = permissions.canEditPolicies
@@ -500,6 +502,9 @@ function PoliciesContent() {
   async function handleDelete(id: string) {
     const prev = policies.find(p => p.id === id)
     if (!prev || prev.builtin) return
+    if (confirmDeleteValue !== prev.rule_id) return
+    setConfirmDeleteId(null)
+    setConfirmDeleteValue("")
     setPolicies(ps => ps.filter(p => p.id !== id))
     try {
       const headers = await authHeaders()
@@ -657,17 +662,51 @@ function PoliciesContent() {
 
                   {/* Delete (custom rules only) */}
                   {!p.builtin && canWrite && (
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(p.id)}
-                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4, flexShrink: 0 }}
-                      title="Delete rule"
-                      aria-label={`Delete rule ${p.rule_id}`}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                        <path fillRule="evenodd" d="M5 3.25V4H2.75a.75.75 0 0 0 0 1.5h.3l.815 8.15A1.5 1.5 0 0 0 5.357 15h5.285a1.5 1.5 0 0 0 1.493-1.35L12.95 5.5h.3a.75.75 0 0 0 0-1.5H11v-.75A2.25 2.25 0 0 0 8.75 1h-1.5A2.25 2.25 0 0 0 5 3.25Zm2.25-.75a.75.75 0 0 0-.75.75V4h3v-.75a.75.75 0 0 0-.75-.75h-1.5ZM6.05 6a.75.75 0 0 1 .787.713l.275 5.5a.75.75 0 0 1-1.498.075l-.275-5.5A.75.75 0 0 1 6.05 6Zm3.9 0a.75.75 0 0 1 .712.787l-.275 5.5a.75.75 0 0 1-1.498-.075l.275-5.5A.75.75 0 0 1 9.95 6Z" clipRule="evenodd" />
-                      </svg>
-                    </button>
+                    confirmDeleteId === p.id ? (
+                      <div style={{ minWidth: 220, display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
+                        <p style={{ margin: 0, fontSize: 11, color: "var(--err)" }}>
+                          Type <strong>{p.rule_id}</strong> to delete.
+                        </p>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input
+                            value={confirmDeleteValue}
+                            onChange={e => setConfirmDeleteValue(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === "Enter") handleDelete(p.id)
+                              if (e.key === "Escape") { setConfirmDeleteId(null); setConfirmDeleteValue("") }
+                            }}
+                            placeholder={p.rule_id}
+                            style={{ flex: 1, minWidth: 0, fontSize: 11.5, border: "1px solid var(--err-bd, #fecaca)", borderRadius: 8, padding: "5px 8px", outline: "none" }}
+                          />
+                          <button
+                            onClick={() => handleDelete(p.id)}
+                            disabled={confirmDeleteValue !== p.rule_id}
+                            className="btn btn-sm"
+                            style={{ background: "var(--err)", color: "#fff", border: "none", opacity: confirmDeleteValue !== p.rule_id ? 0.4 : 1 }}
+                          >
+                            Delete
+                          </button>
+                          <button
+                            onClick={() => { setConfirmDeleteId(null); setConfirmDeleteValue("") }}
+                            className="btn btn-ghost btn-sm"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => { setConfirmDeleteId(p.id); setConfirmDeleteValue("") }}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4, flexShrink: 0 }}
+                        title="Delete rule"
+                        aria-label={`Delete rule ${p.rule_id}`}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                          <path fillRule="evenodd" d="M5 3.25V4H2.75a.75.75 0 0 0 0 1.5h.3l.815 8.15A1.5 1.5 0 0 0 5.357 15h5.285a1.5 1.5 0 0 0 1.493-1.35L12.95 5.5h.3a.75.75 0 0 0 0-1.5H11v-.75A2.25 2.25 0 0 0 8.75 1h-1.5A2.25 2.25 0 0 0 5 3.25Zm2.25-.75a.75.75 0 0 0-.75.75V4h3v-.75a.75.75 0 0 0-.75-.75h-1.5ZM6.05 6a.75.75 0 0 1 .787.713l.275 5.5a.75.75 0 0 1-1.498.075l-.275-5.5A.75.75 0 0 1 6.05 6Zm3.9 0a.75.75 0 0 1 .712.787l-.275 5.5a.75.75 0 0 1-1.498-.075l.275-5.5A.75.75 0 0 1 9.95 6Z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                    )
                   )}
                   {p.builtin && (
                     <span style={{ color: "var(--border-2)", flexShrink: 0 }} title="Built-in rule — cannot be deleted">
