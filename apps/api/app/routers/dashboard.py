@@ -18,6 +18,7 @@ from app.core.database import get_db
 from app.models.run import Run
 from app.models.run_trace import RunTrace
 from app.models.workflow import Workflow, WorkflowVersion
+from app.modules.guard.models import GuardAuditEvent
 from app.schemas.run import _extract_trigger_summary
 
 
@@ -139,6 +140,7 @@ class DashboardOut(BaseModel):
     agent_health: list[AgentHealth]
     recent_activity: list[RecentRun]
     token_usage: TokenUsage
+    guard_blocks_today: int
 
 
 @router.get("", response_model=DashboardOut)
@@ -147,6 +149,7 @@ def get_dashboard(
     workspace_id: str = Depends(get_workspace_id),
     _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
 ):
+    today_midnight = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     week_start = datetime.now(timezone.utc) - timedelta(days=7)
 
     # ── Week runs with playbook_slug for COALESCE outcome resolution ──────────
@@ -341,10 +344,23 @@ def get_dashboard(
         by_agent=by_agent,
     )
 
+    # ── Guard blocks today — count "blocked" audit events since midnight UTC ──
+    guard_blocks_today: int = (
+        db.query(func.count(GuardAuditEvent.id))
+        .filter(
+            GuardAuditEvent.workspace_id == workspace_id,
+            GuardAuditEvent.decision == "blocked",
+            GuardAuditEvent.ts >= today_midnight,
+        )
+        .scalar()
+        or 0
+    )
+
     return DashboardOut(
         outcomes=outcomes,
         needs_attention=needs_attention,
         agent_health=agent_health,
         recent_activity=recent_activity,
         token_usage=token_usage,
+        guard_blocks_today=guard_blocks_today,
     )

@@ -62,7 +62,9 @@ export function timeAgo(ts: string): string {
 
 export function duration(startedAt: string | null, completedAt: string | null): string {
   if (!startedAt || !completedAt) return "—"
-  const secs = Math.round((new Date(completedAt).getTime() - new Date(startedAt).getTime()) / 1000)
-  if (secs < 60) return `${secs}s`
-  return `${Math.floor(secs / 60)}m ${secs % 60}s`
+  const ms = new Date(completedAt).getTime() - new Date(startedAt).getTime()
+  if (ms < 1000) return "< 1s"
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
+  const totalSecs = Math.floor(ms / 1000)
+  return `${Math.floor(totalSecs / 60)}m ${totalSecs % 60}s`
 }

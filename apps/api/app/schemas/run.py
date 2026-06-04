@@ -105,9 +105,31 @@ class RunOut(BaseModel):
         return data
 
 
+def _compute_actual_turns(state: dict | None) -> int:
+    if not state:
+        return 0
+    return sum(
+        v.get("turns", 0) or 0
+        for k, v in state.items()
+        if not k.startswith("__") and isinstance(v, dict)
+    )
+
+
 class RunDetailOut(RunOut):
     events: list[RunEventOut] = []
     state: Optional[dict[str, Any]] = None
+    actual_turns: int = 0
+
+    @model_validator(mode="before")
+    @classmethod
+    def compute_actual_turns(cls, data: Any) -> Any:
+        if hasattr(data, "__dict__"):
+            state = getattr(data, "state", None)
+            data.__dict__.setdefault("actual_turns", _compute_actual_turns(state))
+        elif isinstance(data, dict):
+            if "actual_turns" not in data:
+                data["actual_turns"] = _compute_actual_turns(data.get("state"))
+        return data
 
 
 class RunWithWorkflowOut(RunOut):
