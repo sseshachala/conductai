@@ -1096,6 +1096,9 @@ export default function BlockEditor({
   const [streamedPrompt, setStreamedPrompt] = useState<string>("")
   const [isStreaming, setIsStreaming] = useState(false)
   const [brainAdvanced, setBrainAdvanced] = useState(false)
+  const [toolAdvanced, setToolAdvanced] = useState(false)
+  const [configAdvanced, setConfigAdvanced] = useState(false)
+  const [memoryAdvanced, setMemoryAdvanced] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const style = BLOCK_STYLES[blockType]
 
@@ -1152,6 +1155,7 @@ export default function BlockEditor({
   }, [blockId, action])
 
   function handleFieldChange(path: string, value: unknown) {
+    if (isViewer) return
     const updated = setNestedValue({ ...blockData }, path, value)
     onChange(blockId, updated)
   }
@@ -1284,11 +1288,18 @@ export default function BlockEditor({
     setPromptOpen(false)
     setStreamedPrompt("")
     setIsStreaming(false)
+    setBrainAdvanced(false)
+    setToolAdvanced(false)
+    setConfigAdvanced(false)
+    setMemoryAdvanced(false)
   }, [blockId])
 
   const section = "px-4 py-3 space-y-3 border-b border-stone-100"
   const sectionLabel = "text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-2 block"
   const inputBase = "w-full border border-stone-200 rounded-lg px-2.5 py-1.5 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-200 bg-white"
+  const modePillBase = "text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
+  const basicModePill = `${modePillBase} bg-stone-100 text-stone-500`
+  const advancedModePill = `${modePillBase} bg-violet-100 text-violet-600`
 
   return (
     <div className="bg-white flex flex-col h-full overflow-y-auto">
@@ -1298,6 +1309,7 @@ export default function BlockEditor({
         <input
           value={label}
           onChange={e => onChange(blockId, { ...blockData, label: e.target.value })}
+          disabled={isViewer}
           className="flex-1 text-sm font-semibold text-stone-900 bg-transparent border-0 outline-none focus:bg-stone-50 rounded px-1 -mx-1 min-w-0"
           placeholder="Block name"
         />
@@ -1307,7 +1319,10 @@ export default function BlockEditor({
       {blockType === "brain" && (
         <>
           <div className={section}>
-            <span className={sectionLabel}>What should this step do?</span>
+            <div className="flex items-center justify-between">
+              <span className={sectionLabel}>What should this step do?</span>
+              <span className={basicModePill}>Basic</span>
+            </div>
             <textarea
               value={(blockData.custom_instructions as string) || ""}
               onChange={e => onChange(blockId, { ...blockData, custom_instructions: e.target.value })}
@@ -1324,6 +1339,7 @@ export default function BlockEditor({
           <button
             type="button"
             onClick={() => setBrainAdvanced(v => !v)}
+            disabled={isViewer}
             className="flex items-center gap-1.5 text-[11px] text-stone-400 hover:text-stone-600 transition-colors px-4 py-1"
           >
             <span>{brainAdvanced ? "▾" : "▸"}</span>
@@ -1335,6 +1351,9 @@ export default function BlockEditor({
               <div className={section}>
                 <div className="flex items-center justify-between">
                   <span className={sectionLabel}>System prompt</span>
+                  <span className={advancedModePill}>Advanced</span>
+                </div>
+                <div className="flex items-center justify-between">
                   <span className="text-[10px] text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded mb-2">read-only</span>
                 </div>
                 <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 text-xs text-stone-600 leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto">
@@ -1386,27 +1405,15 @@ export default function BlockEditor({
           </div>
 
           <div className={section}>
-            <span className={sectionLabel}>Provider override</span>
-            <select
-              value={(blockData.provider as string) || "auto"}
-              onChange={e => onChange(blockId, { ...blockData, provider: e.target.value === "auto" ? "" : e.target.value })}
-              className={cn(inputBase)}
-            >
-              <option value="auto">Auto — let Conduct choose</option>
-              <option value="anthropic">Anthropic</option>
-              <option value="openai">OpenAI</option>
-            </select>
-            <p className="text-[10px] text-stone-500 mt-1">
-              Use auto for policy-based routing, or pin a provider while still letting Conduct choose the safest model within it.
-            </p>
-          </div>
-
-          <div className={section}>
-            <span className={sectionLabel}>Model routing</span>
+            <div className="flex items-center justify-between">
+              <span className={sectionLabel}>Model routing</span>
+              <span className={basicModePill}>Basic</span>
+            </div>
             <select
               value={(blockData.routingPreference as string) || "balanced"}
               onChange={e => onChange(blockId, { ...blockData, routingPreference: e.target.value })}
               className={cn(inputBase)}
+              disabled={isViewer}
             >
               <option value="balanced">Balanced — best default</option>
               <option value="quality">Quality — strongest model</option>
@@ -1426,14 +1433,58 @@ export default function BlockEditor({
                 </p>
               )
             })()}
+            {!brainAdvanced && (() => {
+              const providerValue = ((blockData.provider as string) || "auto").toLowerCase()
+              const providerLabel = providerValue === "auto"
+                ? "Auto — let Conduct choose"
+                : (PROVIDER_LABELS[providerValue] ?? providerValue)
+              return (
+                <p className="text-[10px] text-stone-500 mt-1">
+                  Provider override: <span className="font-medium text-stone-700">{providerLabel}</span>
+                  {" "}·{" "}
+                  <button
+                    type="button"
+                    onClick={() => setBrainAdvanced(true)}
+                    className="text-violet-600 hover:text-violet-700 underline"
+                  >
+                    change in Advanced
+                  </button>
+                </p>
+              )
+            })()}
           </div>
+
+          {brainAdvanced && (
+            <div className={section}>
+              <div className="flex items-center justify-between">
+                <span className={sectionLabel}>Provider override</span>
+                <span className={advancedModePill}>Advanced</span>
+              </div>
+              <select
+                value={(blockData.provider as string) || "auto"}
+                onChange={e => onChange(blockId, { ...blockData, provider: e.target.value === "auto" ? "" : e.target.value })}
+                className={cn(inputBase)}
+                disabled={isViewer}
+              >
+                <option value="auto">Auto — let Conduct choose</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="openai">OpenAI</option>
+              </select>
+              <p className="text-[10px] text-stone-500 mt-1">
+                Use auto for policy-based routing, or pin a provider while still letting Conduct choose the safest model within it.
+              </p>
+            </div>
+          )}
         </>
       )}
 
       {/* ── Tool blocks: integration + action + params ── */}
       {isToolLike && (
         <div className={section}>
-          <span className={sectionLabel}>Integration</span>
+          <div className="flex items-center justify-between">
+            <span className={sectionLabel}>Integration</span>
+            <span className={basicModePill}>Basic</span>
+          </div>
           <div className="space-y-2">
             <select
               value={integration}
@@ -1442,6 +1493,7 @@ export default function BlockEditor({
                 onChange(blockId, setNestedValue(updated, "config.action", ""))
               }}
               className={inputBase}
+              disabled={isViewer}
             >
               <option value="">— pick integration —</option>
               {INTEGRATIONS.map(i => <option key={i.value} value={i.value}>{i.label}</option>)}
@@ -1452,6 +1504,7 @@ export default function BlockEditor({
                 value={action}
                 onChange={e => handleFieldChange("config.action", e.target.value)}
                 className={inputBase}
+                disabled={isViewer}
               >
                 <option value="">— pick action —</option>
                 {(INTEGRATION_ACTIONS[integration] || []).map(a => (
@@ -1464,21 +1517,58 @@ export default function BlockEditor({
           {/* Params */}
           {actionFields.length > 0 && (
             <div className="space-y-2 pt-2">
-              <span className={sectionLabel}>Parameters</span>
-              {actionFields.map(field => {
-                const rendered = renderField(field)
-                if (rendered === null) return null
+              {(() => {
+                const requiredActionFields = actionFields.filter(f => f.required)
+                const basicActionFields = requiredActionFields.length > 0 ? requiredActionFields : actionFields
+                const optionalActionFields = requiredActionFields.length > 0
+                  ? actionFields.filter(f => !f.required)
+                  : []
                 return (
-                  <div key={field.key}>
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">{field.label}</label>
-                      {field.required && <span className="text-red-500 text-[10px] font-bold">*</span>}
-                      {field.hint && <span className="text-[10px] text-stone-400">{field.hint}</span>}
-                    </div>
-                    {rendered}
-                  </div>
+                  <>
+                    <span className={sectionLabel}>Parameters</span>
+                    {basicActionFields.map(field => {
+                      const rendered = renderField(field)
+                      if (rendered === null) return null
+                      return (
+                        <div key={field.key}>
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">{field.label}</label>
+                            {field.required && <span className="text-red-500 text-[10px] font-bold">*</span>}
+                            {field.hint && <span className="text-[10px] text-stone-400">{field.hint}</span>}
+                          </div>
+                          {rendered}
+                        </div>
+                      )
+                    })}
+
+                    {optionalActionFields.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setToolAdvanced(v => !v)}
+                        disabled={isViewer}
+                        className="flex items-center gap-1.5 text-[11px] text-stone-400 hover:text-stone-600 transition-colors pt-1"
+                      >
+                        <span>{toolAdvanced ? "▾" : "▸"}</span>
+                        <span>Advanced parameters</span>
+                      </button>
+                    )}
+
+                    {toolAdvanced && optionalActionFields.map(field => {
+                      const rendered = renderField(field)
+                      if (rendered === null) return null
+                      return (
+                        <div key={field.key}>
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">{field.label}</label>
+                            {field.hint && <span className="text-[10px] text-stone-400">{field.hint}</span>}
+                          </div>
+                          {rendered}
+                        </div>
+                      )
+                    })}
+                  </>
                 )
-              })}
+              })()}
               <p className="text-[10px] text-stone-400 pt-1">
                 Use <code className="bg-stone-100 px-1 rounded">{"{{block_id.field}}"}</code> to reference earlier outputs.
               </p>
@@ -1486,7 +1576,7 @@ export default function BlockEditor({
           )}
 
           {/* Secret warning */}
-          {(() => {
+          {toolAdvanced && (() => {
             const leaked = findHardcodedSecrets(getNestedValue(blockData, "config.params"))
             return leaked.length > 0 ? (
               <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-800 mt-2">
@@ -1501,140 +1591,166 @@ export default function BlockEditor({
       {/* ── Static config fields (trigger, logic, output, approval) ── */}
       {staticFields.length > 0 && !isToolLike && blockType !== "brain" && blockType !== "mcp" && (
         <div className={section}>
-          <span className={sectionLabel}>Configuration</span>
+          <div className="flex items-center justify-between">
+            <span className={sectionLabel}>Configuration</span>
+            <span className={basicModePill}>Basic</span>
+          </div>
           <div className="space-y-3">
-            {staticFields.map(field => {
-              const rendered = renderField(field)
-              if (rendered === null) return null
-              return (
-                <div key={field.key}>
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">{field.label}</label>
-                    {field.required && <span className="text-red-500 text-[10px] font-bold">*</span>}
-                    {field.hint && <span className="text-[10px] text-stone-400">{field.hint}</span>}
-                  </div>
-                  {rendered}
-                  {/* GitHub issue-labeled — webhook URL card + compact register panel */}
-                  {blockType === "trigger" && field.key === "config.event_type" && triggerEventType === "github_issue_labeled" && (() => {
-                    const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
-                    const webhookUrl = projectSlug && playbookSlug
-                      ? `${base}/webhooks/github/${projectSlug}/${playbookSlug}`
-                      : (() => {
-                          const ws = typeof document !== "undefined"
-                            ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
-                          return ws ? `${base}/webhooks/github?workspace_id=${ws}` : null
-                        })()
-                    return (
-                      <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2.5 text-xs text-violet-800 mt-2 space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <p className="font-semibold text-[10px] uppercase tracking-wide text-violet-500">GitHub Webhook</p>
-                          {webhookUrl && (
-                            <button
-                              type="button"
-                              onClick={() => navigator.clipboard.writeText(webhookUrl)}
-                              className="text-[10px] font-medium text-violet-500 hover:text-violet-700 border border-violet-200 rounded px-1.5 py-0.5 transition-colors"
-                            >
-                              Copy
-                            </button>
-                          )}
-                        </div>
-                        {webhookUrl
-                          ? <p className="font-mono break-all text-violet-700 text-[11px]">{webhookUrl}</p>
-                          : <p className="text-violet-400 text-[11px]">Select a workspace to see your URL</p>
-                        }
-                        <GitHubWebhookStatusPanel
-                          workflowId={workflowId}
-                          hookId={githubHookId ?? null}
-                          hookRepo={githubHookRepo ?? null}
-                          getToken={getToken}
-                          onWebhookChange={onWebhookChange}
-                          compact
-                        />
-                      </div>
-                    )
-                  })()}
+            {(() => {
+              const requiredStaticFields = staticFields.filter(f => f.required)
+              const basicStaticFields = requiredStaticFields.length > 0 ? requiredStaticFields : staticFields
+              const visibleStaticFields = configAdvanced ? staticFields : basicStaticFields
+              const hasAdvanced = requiredStaticFields.length > 0 && staticFields.length > basicStaticFields.length
 
-                  {/* Inbound webhook URL panel */}
-                  {blockType === "trigger" && field.key === "config.event_type" && triggerEventType === "webhook" && (() => {
-                    const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
-                    const githubUrl = projectSlug && playbookSlug
-                      ? `${base}/webhooks/github/${projectSlug}/${playbookSlug}`
-                      : (() => {
+              return (
+                <>
+                  {visibleStaticFields.map(field => {
+                    const rendered = renderField(field)
+                    if (rendered === null) return null
+                    return (
+                      <div key={field.key}>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">{field.label}</label>
+                          {field.required && <span className="text-red-500 text-[10px] font-bold">*</span>}
+                          {field.hint && <span className="text-[10px] text-stone-400">{field.hint}</span>}
+                        </div>
+                        {rendered}
+                        {/* GitHub issue-labeled — webhook URL card + compact register panel */}
+                        {blockType === "trigger" && field.key === "config.event_type" && triggerEventType === "github_issue_labeled" && (() => {
+                          const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
+                          const webhookUrl = projectSlug && playbookSlug
+                            ? `${base}/webhooks/github/${projectSlug}/${playbookSlug}`
+                            : (() => {
+                                const ws = typeof document !== "undefined"
+                                  ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
+                                return ws ? `${base}/webhooks/github?workspace_id=${ws}` : null
+                              })()
+                          return (
+                            <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2.5 text-xs text-violet-800 mt-2 space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <p className="font-semibold text-[10px] uppercase tracking-wide text-violet-500">GitHub Webhook</p>
+                                {webhookUrl && (
+                                  <button
+                                    type="button"
+                                    onClick={() => navigator.clipboard.writeText(webhookUrl)}
+                                    className="text-[10px] font-medium text-violet-500 hover:text-violet-700 border border-violet-200 rounded px-1.5 py-0.5 transition-colors"
+                                  >
+                                    Copy
+                                  </button>
+                                )}
+                              </div>
+                              {webhookUrl
+                                ? <p className="font-mono break-all text-violet-700 text-[11px]">{webhookUrl}</p>
+                                : <p className="text-violet-400 text-[11px]">Select a workspace to see your URL</p>
+                              }
+                              <GitHubWebhookStatusPanel
+                                workflowId={workflowId}
+                                hookId={githubHookId ?? null}
+                                hookRepo={githubHookRepo ?? null}
+                                getToken={getToken}
+                                onWebhookChange={onWebhookChange}
+                                compact
+                              />
+                            </div>
+                          )
+                        })()}
+
+                        {/* Inbound webhook URL panel */}
+                        {blockType === "trigger" && field.key === "config.event_type" && triggerEventType === "webhook" && (() => {
+                          const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
+                          const githubUrl = projectSlug && playbookSlug
+                            ? `${base}/webhooks/github/${projectSlug}/${playbookSlug}`
+                            : (() => {
+                                const ws = typeof document !== "undefined"
+                                  ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
+                                return ws ? `${base}/webhooks/github?workspace_id=${ws}` : null
+                              })()
+                          const inboundUrl = `${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}/webhooks/inbound/${workflowId}`
+                          const webhookUrl = githubHookRepo ? githubUrl : inboundUrl
+                          const displayUrl = webhookUrl ?? inboundUrl
+                          return (
+                            <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2.5 text-xs text-violet-800 mt-2 space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <p className="font-semibold text-[10px] uppercase tracking-wide text-violet-500">
+                                  {githubHookRepo ? "GitHub webhook" : "Webhook URL"}
+                                </p>
+                                {displayUrl && (
+                                  <button
+                                    type="button"
+                                    onClick={() => displayUrl && navigator.clipboard.writeText(displayUrl)}
+                                    className="text-[10px] font-medium text-violet-500 hover:text-violet-700 border border-violet-200 rounded px-1.5 py-0.5 transition-colors"
+                                  >
+                                    Copy
+                                  </button>
+                                )}
+                              </div>
+                              <p className="font-mono break-all text-violet-700 text-[11px]">
+                                {displayUrl}
+                              </p>
+                              {githubHookRepo && githubWebhook
+                                ? <GitHubWebhookStatusPanel
+                                    workflowId={workflowId}
+                                    hookId={githubHookId ?? null}
+                                    hookRepo={githubHookRepo}
+                                    getToken={getToken}
+                                    onWebhookChange={onWebhookChange}
+                                    compact
+                                  />
+                                : <>
+                                    <p className="text-violet-500 text-[10px]">POST any JSON to this URL — payload available as <span className="font-mono">{"{{_trigger.*}}"}</span></p>
+                                    <div className="border-t border-violet-100 pt-1.5 space-y-0.5">
+                                      <p className="font-semibold text-[10px] uppercase tracking-wide text-violet-400">GitHub setup</p>
+                                      <p className="text-[10px] text-violet-500">Repo → Settings → Webhooks → Add webhook</p>
+                                      <p className="text-[10px] text-violet-500">Content type: <span className="font-mono">application/json</span></p>
+                                      <p className="text-[10px] text-violet-500">Events: choose individual → <span className="font-mono">Pull requests</span></p>
+                                    </div>
+                                  </>
+                              }
+                            </div>
+                          )
+                        })()}
+                        {/* Vercel deployment trigger URL + auto-register panel */}
+                        {blockType === "trigger" && field.key === "config.event_type" && isVercelTrigger && (() => {
                           const ws = typeof document !== "undefined"
                             ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
-                          return ws ? `${base}/webhooks/github?workspace_id=${ws}` : null
-                        })()
-                    const inboundUrl = `${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}/webhooks/inbound/${workflowId}`
-                    const webhookUrl = githubHookRepo ? githubUrl : inboundUrl
-                    const displayUrl = webhookUrl ?? inboundUrl
-                    return (
-                      <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2.5 text-xs text-violet-800 mt-2 space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <p className="font-semibold text-[10px] uppercase tracking-wide text-violet-500">
-                            {githubHookRepo ? "GitHub webhook" : "Webhook URL"}
-                          </p>
-                          {displayUrl && (
-                            <button
-                              type="button"
-                              onClick={() => displayUrl && navigator.clipboard.writeText(displayUrl)}
-                              className="text-[10px] font-medium text-violet-500 hover:text-violet-700 border border-violet-200 rounded px-1.5 py-0.5 transition-colors"
-                            >
-                              Copy
-                            </button>
-                          )}
-                        </div>
-                        <p className="font-mono break-all text-violet-700 text-[11px]">
-                          {displayUrl}
-                        </p>
-                        {githubHookRepo && githubWebhook
-                          ? <GitHubWebhookStatusPanel
-                              workflowId={workflowId}
-                              hookId={githubHookId ?? null}
-                              hookRepo={githubHookRepo}
-                              getToken={getToken}
-                              onWebhookChange={onWebhookChange}
-                              compact
-                            />
-                          : <>
-                              <p className="text-violet-500 text-[10px]">POST any JSON to this URL — payload available as <span className="font-mono">{"{{_trigger.*}}"}</span></p>
-                              <div className="border-t border-violet-100 pt-1.5 space-y-0.5">
-                                <p className="font-semibold text-[10px] uppercase tracking-wide text-violet-400">GitHub setup</p>
-                                <p className="text-[10px] text-violet-500">Repo → Settings → Webhooks → Add webhook</p>
-                                <p className="text-[10px] text-violet-500">Content type: <span className="font-mono">application/json</span></p>
-                                <p className="text-[10px] text-violet-500">Events: choose individual → <span className="font-mono">Pull requests</span></p>
+                          const webhookUrl = ws
+                            ? `${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}/webhooks/vercel?workspace_id=${ws}`
+                            : null
+                          return (
+                            <div className="mt-2 space-y-2">
+                              <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2.5 text-xs text-violet-800 space-y-1.5">
+                                <p className="font-semibold text-[10px] uppercase tracking-wide text-violet-500">Vercel webhook URL</p>
+                                {webhookUrl
+                                  ? <p className="font-mono break-all select-all text-violet-700 text-[11px]">{webhookUrl}</p>
+                                  : <p className="text-violet-400 text-[11px]">Select a workspace to see your URL</p>
+                                }
+                                <p className="text-violet-500 text-[10px]">Paste in Vercel → Project → Settings → Webhooks</p>
+                                <div className="border-t border-violet-100 pt-1.5 space-y-0.5">
+                                  <p className="text-[10px] text-violet-500">Payload available as <span className="font-mono">{"{{_trigger.vercel_webhook.*}}"}</span></p>
+                                </div>
                               </div>
-                            </>
-                        }
+                              <VercelWebhookRegisterButton eventType={triggerEventType} getToken={getToken} />
+                            </div>
+                          )
+                        })()}
                       </div>
                     )
-                  })()}
-                  {/* Vercel deployment trigger URL + auto-register panel */}
-                  {blockType === "trigger" && field.key === "config.event_type" && isVercelTrigger && (() => {
-                    const ws = typeof document !== "undefined"
-                      ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
-                    const webhookUrl = ws
-                      ? `${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}/webhooks/vercel?workspace_id=${ws}`
-                      : null
-                    return (
-                      <div className="mt-2 space-y-2">
-                        <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2.5 text-xs text-violet-800 space-y-1.5">
-                          <p className="font-semibold text-[10px] uppercase tracking-wide text-violet-500">Vercel webhook URL</p>
-                          {webhookUrl
-                            ? <p className="font-mono break-all select-all text-violet-700 text-[11px]">{webhookUrl}</p>
-                            : <p className="text-violet-400 text-[11px]">Select a workspace to see your URL</p>
-                          }
-                          <p className="text-violet-500 text-[10px]">Paste in Vercel → Project → Settings → Webhooks</p>
-                          <div className="border-t border-violet-100 pt-1.5 space-y-0.5">
-                            <p className="text-[10px] text-violet-500">Payload available as <span className="font-mono">{"{{_trigger.vercel_webhook.*}}"}</span></p>
-                          </div>
-                        </div>
-                        <VercelWebhookRegisterButton eventType={triggerEventType} getToken={getToken} />
-                      </div>
-                    )
-                  })()}
-                </div>
+                  })}
+
+                  {hasAdvanced && (
+                    <button
+                      type="button"
+                      onClick={() => setConfigAdvanced(v => !v)}
+                      disabled={isViewer}
+                      className="flex items-center gap-1.5 text-[11px] text-stone-400 hover:text-stone-600 transition-colors"
+                    >
+                      <span>{configAdvanced ? "▾" : "▸"}</span>
+                      <span>Advanced configuration</span>
+                    </button>
+                  )}
+                </>
               )
-            })}
+            })()}
           </div>
         </div>
       )}
@@ -1657,11 +1773,15 @@ export default function BlockEditor({
         return (
           <>
             <div className={section}>
-              <span className={sectionLabel}>Action</span>
+              <div className="flex items-center justify-between">
+                <span className={sectionLabel}>Action</span>
+                <span className={basicModePill}>Basic</span>
+              </div>
               <select
                 value={action}
                 onChange={e => handleFieldChange("config.action", e.target.value)}
                 className={inputBase}
+                disabled={isViewer}
               >
                 <option value="read">Read — recall past context</option>
                 <option value="write">Write — record outcome</option>
@@ -1685,59 +1805,74 @@ export default function BlockEditor({
                   onChange(blockId, updated)
                 }}
                 className={inputBase}
+                disabled={isViewer}
               >
                 <option value="repo">Repo — per repository</option>
                 <option value="workspace">Workspace — shared across repos</option>
               </select>
             </div>
 
-            <div className={section}>
-              <span className={sectionLabel}>Key</span>
-              <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-stone-50 border border-stone-200 rounded-lg">
-                <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-mono font-medium bg-violet-100 text-violet-700 border border-violet-200">
-                  {currentKey || autoKey}
-                </span>
-              </div>
-              <p className="text-[10px] text-stone-400 mt-1">
-                Auto-set from scope — groups memories by {scope === "repo" ? "repository" : "workspace"}.
-              </p>
-            </div>
+            <button
+              type="button"
+              onClick={() => setMemoryAdvanced(v => !v)}
+              disabled={isViewer}
+              className="flex items-center gap-1.5 text-[11px] text-stone-400 hover:text-stone-600 transition-colors px-4 py-1"
+            >
+              <span>{memoryAdvanced ? "▾" : "▸"}</span>
+              <span>Advanced</span>
+            </button>
 
-            {action === "read" && (
-              <div className={section}>
-                <span className={sectionLabel}>Max entries</span>
-                <input
-                  type="number"
-                  value={limit}
-                  onChange={e => handleFieldChange("config.limit", e.target.value)}
-                  min={1}
-                  max={20}
-                  className={cn(inputBase, "w-24")}
-                />
-                <p className="text-[10px] text-stone-400 mt-1">
-                  Retrieved entries available as <code className="bg-stone-100 px-1 rounded">{"{{block_id.entries}}"}</code> in the brain prompt.
-                </p>
-              </div>
-            )}
+            {memoryAdvanced && (
+              <>
+                <div className={section}>
+                  <span className={sectionLabel}>Key</span>
+                  <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-stone-50 border border-stone-200 rounded-lg">
+                    <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-mono font-medium bg-violet-100 text-violet-700 border border-violet-200">
+                      {currentKey || autoKey}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-stone-400 mt-1">
+                    Auto-set from scope — groups memories by {scope === "repo" ? "repository" : "workspace"}.
+                  </p>
+                </div>
 
-            {action === "write" && (
-              <div className={section}>
-                <span className={sectionLabel}>Summary template</span>
-                {summary ? (
-                  <pre className="text-[11px] font-mono text-stone-700 bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 whitespace-pre-wrap break-all leading-relaxed">
-                    {summary}
-                  </pre>
-                ) : (
-                  <div className="rounded-lg border border-dashed border-stone-200 bg-stone-50 px-3 py-2.5 text-[11px] text-stone-400 leading-relaxed">
-                    No summary template set. Edit the workflow YAML to add one.
+                {action === "read" && (
+                  <div className={section}>
+                    <span className={sectionLabel}>Max entries</span>
+                    <input
+                      type="number"
+                      value={limit}
+                      onChange={e => handleFieldChange("config.limit", e.target.value)}
+                      min={1}
+                      max={20}
+                      className={cn(inputBase, "w-24")}
+                      disabled={isViewer}
+                    />
+                    <p className="text-[10px] text-stone-400 mt-1">
+                      Retrieved entries available as <code className="bg-stone-100 px-1 rounded">{"{{block_id.entries}}"}</code> in the brain prompt.
+                    </p>
                   </div>
                 )}
-                <p className="text-[10px] text-stone-400 mt-1">
-                  Resolved at runtime — <code className="bg-stone-100 px-1 rounded">{"{{block_id.field}}"}</code> refs pull from block outputs.
-                </p>
-              </div>
-            )}
 
+                {action === "write" && (
+                  <div className={section}>
+                    <span className={sectionLabel}>Summary template</span>
+                    {summary ? (
+                      <pre className="text-[11px] font-mono text-stone-700 bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 whitespace-pre-wrap break-all leading-relaxed">
+                        {summary}
+                      </pre>
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-stone-200 bg-stone-50 px-3 py-2.5 text-[11px] text-stone-400 leading-relaxed">
+                        No summary template set. Edit the workflow YAML to add one.
+                      </div>
+                    )}
+                    <p className="text-[10px] text-stone-400 mt-1">
+                      Resolved at runtime — <code className="bg-stone-100 px-1 rounded">{"{{block_id.field}}"}</code> refs pull from block outputs.
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
           </>
         )
       })()}
@@ -1764,7 +1899,7 @@ export default function BlockEditor({
       )}
 
       {/* ── Brain: compiled prompt preview (collapsed by default) ── */}
-      {blockType === "brain" && (
+      {blockType === "brain" && brainAdvanced && (
         <div className="px-4 py-3">
           <button
             onClick={() => setPromptOpen(v => !v)}
