@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy.dialects.postgresql import JSON, UUID
 
 from app.core.database import Base
 
@@ -135,6 +135,23 @@ class GuardSavings(Base):
     period_start = Column(DateTime(timezone=True), nullable=True)
     period_end = Column(DateTime(timezone=True), nullable=False)
     recorded_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class GuardDeveloperTools(Base):
+    """Per-developer AI tool coverage snapshot, pushed by conduct login / guard sync."""
+    __tablename__ = "guard_developer_tools"
+
+    id = Column(Integer, primary_key=True)
+    workspace_id = Column(String, nullable=False, index=True)
+    user_email = Column(String, nullable=False)
+    detected_tools = Column(JSON, nullable=False, default=list)   # ["claude-code", "vscode", ...]
+    mcp_registered = Column(JSON, nullable=False, default=list)   # tools where conduct-mcp is wired
+    hook_registered = Column(JSON, nullable=False, default=list)  # tools where Guard hook is wired
+    reported_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "user_email", name="uq_guard_dev_tools"),
+    )
 
 
 class GuardSpendBudget(Base):
