@@ -400,14 +400,15 @@ def _report_tool_coverage() -> None:
             return
 
         payload = json.dumps({"email": email, "tools": tools}).encode()
-        auth = token or api_key
+        headers = {"Content-Type": "application/json"}
+        if api_key and api_key.startswith("cond_live_"):
+            headers["X-Api-Key"] = api_key
+        elif token:
+            headers["Authorization"] = f"Bearer {token}"
         req = urllib.request.Request(
             f"{server}/guard/developer-tools",
             data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {auth}",
-            },
+            headers=headers,
             method="POST",
         )
         urllib.request.urlopen(req, timeout=8)

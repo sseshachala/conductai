@@ -934,15 +934,25 @@ def _report_tools_to_server() -> None:
         if not email:
             return
 
+        # Also pull conduct API key for X-Api-Key auth (member_token is not accepted by this endpoint)
+        conduct_cfg_path = Path.home() / ".conduct" / "config.json"
+        conduct_api_key = ""
+        if conduct_cfg_path.exists():
+            try:
+                conduct_api_key = json.loads(conduct_cfg_path.read_text()).get("api_key", "")
+            except Exception:
+                pass
+
         payload = json.dumps({"email": email, "tools": tools}).encode()
-        auth = token or api_key
+        headers = {"Content-Type": "application/json"}
+        if conduct_api_key and conduct_api_key.startswith("cond_live_"):
+            headers["X-Api-Key"] = conduct_api_key
+        elif token:
+            headers["Authorization"] = f"Bearer {token}"
         req = urllib.request.Request(
             f"{base_url}/guard/developer-tools",
             data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {auth}",
-            },
+            headers=headers,
             method="POST",
         )
         urllib.request.urlopen(req, timeout=8)
