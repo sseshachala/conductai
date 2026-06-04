@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 import sys
 import uuid
+import importlib
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -28,20 +29,22 @@ if str(APPS_API) not in sys.path:
     sys.path.insert(0, str(APPS_API))
 
 # ── Minimal env so Settings() doesn't blow up ────────────────────────────────
-os.environ["DATABASE_URL"]      = "sqlite:///:memory:"
-os.environ["REDIS_URL"]         = "redis://localhost:6379"
-os.environ["ANTHROPIC_API_KEY"] = "sk-test"
-os.environ["ENCRYPTION_KEY"]    = "test-key-32-bytes-long-xxxxxxxx!"
+os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
+os.environ.setdefault("ANTHROPIC_API_KEY", "sk-test")
+os.environ.setdefault("ENCRYPTION_KEY", "test-key-32-bytes-long-xxxxxxxx!")
 
 # ── Stub modules that have side-effects or binary deps ───────────────────────
-for _mod in [
+_STUBBED_MODULES = [
     "structlog", "redis", "sentry_sdk",
     "app.runtime.llm_client", "app.runtime.model_router",
     "app.routers.runs",
     "app.models.environment", "app.models.integration",
     "app.models.run", "app.models.workflow", "app.models.workspace",
     "app.core.crypto",
-]:
+]
+_ORIG_STUBBED_MODULES = {name: sys.modules.get(name) for name in _STUBBED_MODULES}
+for _mod in _STUBBED_MODULES:
     sys.modules.setdefault(_mod, MagicMock())
 
 # publish_run_event is called inside _emit — stub it out
@@ -56,6 +59,7 @@ _cfg_stub.settings = MagicMock(
     encryption_key="test-key-32-bytes-long-xxxxxxxx!",
     allowed_egress_hosts=[],
 )
+_ORIG_APP_CORE_CONFIG = sys.modules.get("app.core.config")
 sys.modules["app.core.config"] = _cfg_stub
 
 # ── Real SQLAlchemy Base + SQLite engine for guard models ────────────────────
@@ -83,6 +87,21 @@ from app.modules.guard.models import (   # noqa: E402
 
 # Import executor last — all its deps are already stubbed
 from app.runtime.executor import _execute_guard   # noqa: E402
+
+# Restore globally visible module entries so this test file doesn't pollute
+# later tests during full-suite collection/import.
+if _ORIG_APP_CORE_CONFIG is not None:
+    sys.modules["app.core.config"] = _ORIG_APP_CORE_CONFIG
+else:
+    sys.modules.pop("app.core.config", None)
+sys.modules.pop("app.core.database", None)
+sys.modules.pop("app.modules.guard.models", None)
+for _mod, _orig in _ORIG_STUBBED_MODULES.items():
+    if _orig is not None:
+        sys.modules[_mod] = _orig
+    else:
+        sys.modules.pop(_mod, None)
+importlib.invalidate_caches()
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -113,6 +132,10 @@ def _make_db(team=None, policies=None, no_team=False):
     db = MagicMock()
     resolved_team = None if no_team else (team or _make_team())
     resolved_policies = policies or []
+
+    execute_result = MagicMock()
+    execute_result.fetchone.return_value = None if no_team else object()
+    db.execute.return_value = execute_result
 
     q = MagicMock()
     q.filter.return_value = q
@@ -269,9 +292,8 @@ class TestOutputShape:
     def test_required_fields_present(self):
         db, team = _make_db(policies=[])
         result = _run({}, {}, db)
-        for f in ("status", "team_id", "rules_checked", "violations", "warnings"):
+        for f in ("status", "rules_checked", "violations", "warnings", "enforcement_mode"):
             assert f in result
-        assert result["team_id"] == str(team.id)
 
 
 # ── GuardAuditEvent model ─────────────────────────────────────────────────────

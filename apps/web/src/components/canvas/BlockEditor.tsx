@@ -38,6 +38,13 @@ const MODEL_LABELS: Record<string, string> = {
   "claude-opus-4-7":            "Claude Opus",
   "claude-sonnet-4-6":          "Claude Sonnet",
   "claude-haiku-4-5-20251001":  "Claude Haiku",
+  "gpt-4.1":                    "GPT-4.1",
+  "gpt-4.1-mini":               "GPT-4.1 Mini",
+}
+
+const PROVIDER_LABELS: Record<string, string> = {
+  anthropic: "Anthropic",
+  openai: "OpenAI",
 }
 
 const SLUG_CATEGORY: Record<string, string> = {
@@ -51,25 +58,53 @@ const SLUG_CATEGORY: Record<string, string> = {
   incident_responder: "reasoning", terraform_reviewer: "reasoning",
 }
 
-const POLICY: Record<string, Record<string, [string, string]>> = {
-  code_implementation: { quality: ["claude-opus-4-7", "strongest reasoning"], balanced: ["claude-sonnet-4-6", "balanced default"], speed: ["claude-sonnet-4-6", "fast"], cost: ["claude-sonnet-4-6", "minimum viable for code"] },
-  code_review:         { quality: ["claude-opus-4-7", "strongest reasoning"], balanced: ["claude-sonnet-4-6", "balanced default"], speed: ["claude-sonnet-4-6", "fast"], cost: ["claude-haiku-4-5-20251001", "efficient for review"] },
-  security:            { quality: ["claude-opus-4-7", "security needs highest precision"], balanced: ["claude-opus-4-7", "security: quality first"], speed: ["claude-sonnet-4-6", "speed prioritized"], cost: ["claude-sonnet-4-6", "minimum viable for security"] },
-  triage:              { quality: ["claude-sonnet-4-6", "sufficient for triage"], balanced: ["claude-sonnet-4-6", "balanced default"], speed: ["claude-haiku-4-5-20251001", "fast triage"], cost: ["claude-haiku-4-5-20251001", "cost-optimal"] },
-  summarization:       { quality: ["claude-sonnet-4-6", "sufficient for summaries"], balanced: ["claude-sonnet-4-6", "balanced default"], speed: ["claude-haiku-4-5-20251001", "fast"], cost: ["claude-haiku-4-5-20251001", "cost-optimal"] },
-  reasoning:           { quality: ["claude-opus-4-7", "strongest reasoning"], balanced: ["claude-sonnet-4-6", "balanced default"], speed: ["claude-sonnet-4-6", "fast"], cost: ["claude-sonnet-4-6", "minimum viable for reasoning"] },
+const POLICY: Record<string, Record<string, [string, string, string]>> = {
+  code_implementation: { quality: ["anthropic", "claude-opus-4-7", "code implementation benefits from strongest reasoning"], balanced: ["anthropic", "claude-sonnet-4-6", "balanced model for code implementation"], speed: ["anthropic", "claude-sonnet-4-6", "sonnet is fast enough for code tasks"], cost: ["openai", "gpt-4.1-mini", "cost-efficient model for code implementation"] },
+  code_review:         { quality: ["anthropic", "claude-opus-4-7", "code review benefits from strongest reasoning model"], balanced: ["anthropic", "claude-sonnet-4-6", "balanced model for code review"], speed: ["openai", "gpt-4.1-mini", "fast and efficient for code review"], cost: ["openai", "gpt-4.1-mini", "cost-efficient for structured code review output"] },
+  security:            { quality: ["anthropic", "claude-opus-4-7", "security scanning requires highest-precision model"], balanced: ["anthropic", "claude-opus-4-7", "security scanning: quality always preferred over cost"], speed: ["anthropic", "claude-sonnet-4-6", "sonnet for security when speed is prioritized"], cost: ["anthropic", "claude-sonnet-4-6", "sonnet minimum viable for security"] },
+  triage:              { quality: ["anthropic", "claude-sonnet-4-6", "sonnet sufficient for structured triage tasks"], balanced: ["openai", "gpt-4.1-mini", "balanced and efficient for triage"], speed: ["openai", "gpt-4.1-mini", "fast triage classification"], cost: ["openai", "gpt-4.1-mini", "cost-optimal for simple triage tasks"] },
+  summarization:       { quality: ["anthropic", "claude-sonnet-4-6", "sonnet more than sufficient for summarization"], balanced: ["openai", "gpt-4.1-mini", "balanced model for summarization"], speed: ["openai", "gpt-4.1-mini", "fast summarization"], cost: ["openai", "gpt-4.1-mini", "cost-optimal for summarization"] },
+  reasoning:           { quality: ["anthropic", "claude-opus-4-7", "reasoning tasks benefit from strongest model"], balanced: ["anthropic", "claude-sonnet-4-6", "balanced model for reasoning tasks"], speed: ["anthropic", "claude-sonnet-4-6", "sonnet balances speed and reasoning depth"], cost: ["openai", "gpt-4.1-mini", "cost-efficient minimum viable reasoning"] },
 }
 
-const PREF_DEFAULTS: Record<string, [string, string]> = {
-  quality: ["claude-opus-4-7", "quality preference"], balanced: ["claude-sonnet-4-6", "balanced preference"],
-  speed: ["claude-sonnet-4-6", "speed preference"], cost: ["claude-haiku-4-5-20251001", "cost preference"],
+const PREF_DEFAULTS: Record<string, [string, string, string]> = {
+  quality: ["anthropic", "claude-opus-4-7", "quality preference: strongest model"],
+  balanced: ["anthropic", "claude-sonnet-4-6", "balanced preference: default model"],
+  speed: ["openai", "gpt-4.1-mini", "speed preference: efficient model"],
+  cost: ["openai", "gpt-4.1-mini", "cost preference: efficient model"],
 }
 
-function previewModel(playbookSlug: string | null | undefined, pref: string): [string, string] {
+const PROVIDER_DEFAULTS: Record<string, Record<string, [string, string]>> = {
+  anthropic: {
+    code_implementation: ["claude-sonnet-4-6", "anthropic override: balanced default for code implementation"],
+    code_review: ["claude-sonnet-4-6", "anthropic override: balanced default for code review"],
+    security: ["claude-opus-4-7", "anthropic override: strongest model for security"],
+    triage: ["claude-sonnet-4-6", "anthropic override: balanced default for triage"],
+    summarization: ["claude-sonnet-4-6", "anthropic override: balanced default for summarization"],
+    reasoning: ["claude-sonnet-4-6", "anthropic override: balanced default for reasoning"],
+    unknown: ["claude-sonnet-4-6", "anthropic override: balanced default model"],
+  },
+  openai: {
+    code_implementation: ["gpt-4.1-mini", "openai override: efficient model for code implementation"],
+    code_review: ["gpt-4.1-mini", "openai override: efficient model for code review"],
+    security: ["gpt-4.1", "openai override: strongest available OpenAI model for security"],
+    triage: ["gpt-4.1-mini", "openai override: efficient model for triage"],
+    summarization: ["gpt-4.1-mini", "openai override: efficient model for summarization"],
+    reasoning: ["gpt-4.1", "openai override: strongest available OpenAI model for reasoning"],
+    unknown: ["gpt-4.1-mini", "openai override: balanced default model"],
+  },
+}
+
+function previewModel(playbookSlug: string | null | undefined, pref: string, providerOverride?: string): [string, string, string] {
   const p = (pref || "balanced").toLowerCase()
   const category = SLUG_CATEGORY[playbookSlug ?? ""] ?? ""
-  const [model, reason] = (category ? POLICY[category]?.[p] : null) ?? PREF_DEFAULTS[p] ?? ["claude-sonnet-4-6", "default"]
-  return [MODEL_LABELS[model] ?? model, reason]
+  const override = (providerOverride || "").toLowerCase()
+  if (override === "anthropic" || override === "openai") {
+    const [model, reason] = PROVIDER_DEFAULTS[override][category || "unknown"] ?? PROVIDER_DEFAULTS[override].unknown
+    return [PROVIDER_LABELS[override] ?? override, MODEL_LABELS[model] ?? model, reason]
+  }
+  const [provider, model, reason] = (category ? POLICY[category]?.[p] : null) ?? PREF_DEFAULTS[p] ?? ["anthropic", "claude-sonnet-4-6", "default"]
+  return [PROVIDER_LABELS[provider] ?? provider, MODEL_LABELS[model] ?? model, reason]
 }
 
 // ── GitHub webhook status panel ───────────────────────────────────────────────
@@ -1334,6 +1369,22 @@ export default function BlockEditor({
           </div>
 
           <div className={section}>
+            <span className={sectionLabel}>Provider override</span>
+            <select
+              value={(blockData.provider as string) || "auto"}
+              onChange={e => onChange(blockId, { ...blockData, provider: e.target.value === "auto" ? "" : e.target.value })}
+              className={cn(inputBase)}
+            >
+              <option value="auto">Auto — let Conduct choose</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="openai">OpenAI</option>
+            </select>
+            <p className="text-[10px] text-stone-500 mt-1">
+              Use auto for policy-based routing, or pin a provider while still letting Conduct choose the safest model within it.
+            </p>
+          </div>
+
+          <div className={section}>
             <span className={sectionLabel}>Model routing</span>
             <select
               value={(blockData.routingPreference as string) || "balanced"}
@@ -1346,10 +1397,14 @@ export default function BlockEditor({
               <option value="cost">Cost — efficient model</option>
             </select>
             {(() => {
-              const [model, reason] = previewModel(playbookSlug, (blockData.routingPreference as string) || "balanced")
+              const [provider, model, reason] = previewModel(
+                playbookSlug,
+                (blockData.routingPreference as string) || "balanced",
+                (blockData.provider as string) || "",
+              )
               return (
                 <p className="text-[10px] text-stone-500 mt-1">
-                  <span className="font-medium text-violet-700">{model}</span>
+                  <span className="font-medium text-violet-700">{provider} · {model}</span>
                   {" "}— {reason}
                 </p>
               )

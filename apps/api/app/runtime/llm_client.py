@@ -16,6 +16,7 @@ Adding a new provider: implement LLMClient, pass to _execute_brain via the llm k
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
@@ -224,3 +225,151 @@ class AnthropicClient:
             {"type": "tool_result", "tool_use_id": tid, "content": content}
             for tid, content in results
         ]}]
+
+
+# ── OpenAI adapter ───────────────────────────────────────────────────────────
+
+# Per-model pricing in USD per 1M tokens.
+_OPENAI_PRICING: dict[str, dict[str, float]] = {
+    "gpt-4.1": {
+        "input": 2.00,
+        "output": 8.00,
+    },
+    "gpt-4.1-mini": {
+        "input": 0.40,
+        "output": 1.60,
+    },
+}
+
+_OPENAI_PRICING_DEFAULT = _OPENAI_PRICING["gpt-4.1-mini"]
+
+
+def _openai_cost(model: str, usage: LLMUsage) -> float:
+    rates = _OPENAI_PRICING.get(model, _OPENAI_PRICING_DEFAULT)
+    return round((
+        usage.input_tokens * rates["input"]
+        + usage.output_tokens * rates["output"]
+    ) / 1_000_000, 6)
+
+
+class OpenAIClient:
+    """
+    LLMClient adapter for OpenAI Chat Completions.
+
+    Handles:
+    - Tool use normalization (tool_calls -> LLMToolUseBlock)
+    - stop_reason normalization (stop/tool_calls/length)
+    - Per-model cost computation from pricing table
+    - Conversation history formatting for assistant/tool turns
+    """
+
+    def __init__(self, api_key: str) -> None:
+        self._api_key = api_key
+
+    def create(
+        self,
+        *,
+        model: str,
+        messages: list[dict],
+        system: str,
+        tools: list[dict] | None = None,
+        max_tokens: int = 4096,
+        cache_system: bool = False,
+    ) -> LLMResponse:
+        import httpx
+
+        # OpenAI Chat Completions expects the system prompt as a system message.
+        # cache_system is Anthropic-specific; ignored here.
+        _ = cache_system
+
+        oai_messages = [{"role": "system", "content": system}, *messages]
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": oai_messages,
+            "max_tokens": max_tokens,
+        }
+
+        if tools:
+            payload["tools"] = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": t["name"],
+                        "description": t.get("description", ""),
+                        "parameters": t.get("input_schema", {"type": "object", "properties": {}}),
+                    },
+                }
+                for t in tools
+            ]
+
+        r = httpx.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=60,
+        )
+        r.raise_for_status()
+        raw = r.json()
+
+        choice = ((raw.get("choices") or [{}])[0])
+        message = choice.get("message") or {}
+        finish_reason = choice.get("finish_reason") or "stop"
+
+        content: list[LLMTextBlock | LLMToolUseBlock] = []
+        text = message.get("content")
+        if isinstance(text, str) and text.strip():
+            content.append(LLMTextBlock(text=text))
+
+        for tc in message.get("tool_calls") or []:
+            fn = tc.get("function") or {}
+            raw_args = fn.get("arguments") or "{}"
+            try:
+                parsed_args = json.loads(raw_args) if isinstance(raw_args, str) else dict(raw_args)
+            except Exception:
+                parsed_args = {}
+            content.append(LLMToolUseBlock(
+                id=tc.get("id", ""),
+                name=fn.get("name", ""),
+                input=parsed_args if isinstance(parsed_args, dict) else {},
+            ))
+
+        u = raw.get("usage") or {}
+        usage = LLMUsage(
+            input_tokens=int(u.get("prompt_tokens", 0) or 0),
+            output_tokens=int(u.get("completion_tokens", 0) or 0),
+            cache_read_tokens=0,
+            cache_write_tokens=0,
+        )
+
+        stop_reason_map = {
+            "tool_calls": "tool_use",
+            "length": "max_tokens",
+            "stop": "end_turn",
+        }
+        stop_reason = stop_reason_map.get(finish_reason, "end_turn")
+
+        return LLMResponse(
+            content=content,
+            stop_reason=stop_reason,
+            usage=usage,
+            cost_usd=_openai_cost(model, usage),
+            _raw_content=message,
+        )
+
+    def make_assistant_turn(self, response: LLMResponse) -> list[dict]:
+        # OpenAI expects assistant text and tool_calls on the assistant message.
+        msg = response._raw_content or {}
+        out: dict[str, Any] = {"role": "assistant", "content": msg.get("content") or ""}
+        if msg.get("tool_calls"):
+            out["tool_calls"] = msg["tool_calls"]
+        return [out]
+
+    def make_tool_results_turn(self, results: list[tuple[str, str]]) -> list[dict]:
+        # OpenAI sends one role=tool message per tool result.
+        return [
+            {"role": "tool", "tool_call_id": tid, "content": content}
+            for tid, content in results
+        ]
