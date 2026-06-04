@@ -74,3 +74,13 @@ body {
 .react-flow__background {
   background-color: #FAFAF9;
 }
+
+/* Runs feed — pulsing status dot */
+@keyframes conduct-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: .4; }
+}
+
+.conduct-pulse-dot {
+  animation: conduct-pulse 1.4s ease-in-out infinite;
+}

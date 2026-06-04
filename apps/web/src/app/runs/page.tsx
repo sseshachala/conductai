@@ -1,11 +1,11 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import { useSearchParams } from "next/navigation"
 import AppShell from "@/components/AppShell"
-import { statusStyle, needsAttention, isActive, formatTrigger, timeAgo, duration } from "@/lib/runUtils"
+import { needsAttention, isActive, formatTrigger, timeAgo, duration } from "@/lib/runUtils"
 
 interface Run {
   id: string
@@ -23,135 +23,296 @@ interface Run {
   created_at: string
 }
 
-type View = "all" | "by-agent" | "needs-attention"
-
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
   const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
   return m ? decodeURIComponent(m[1]) : null
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const s = statusStyle(status)
+// Map API status values to display variants used in the design
+type BadgeVariant = "ok" | "run" | "wait" | "err" | "idle"
+
+function getVariant(status: string): BadgeVariant {
+  if (status === "succeeded") return "ok"
+  if (status === "running") return "run"
+  if (status === "paused") return "wait"
+  if (status === "failed" || status === "cancelled") return "err"
+  return "idle"
+}
+
+interface BadgeConfig {
+  bg: string
+  color: string
+  border: string
+  label: string
+  pulse: boolean
+}
+
+const BADGE_MAP: Record<BadgeVariant, BadgeConfig> = {
+  ok:   { bg: "var(--ok-bg)",   color: "var(--ok)",   border: "var(--ok)",   label: "Succeeded", pulse: false },
+  run:  { bg: "var(--info-bg)", color: "var(--info)",  border: "var(--info)",  label: "Running",   pulse: true  },
+  wait: { bg: "var(--warn-bg)", color: "var(--warn)",  border: "var(--warn)",  label: "Awaiting",  pulse: true  },
+  err:  { bg: "var(--err-bg)",  color: "var(--err)",   border: "var(--err)",   label: "Failed",    pulse: false },
+  idle: { bg: "var(--surface-3)", color: "var(--text-2)", border: "var(--border)", label: "Pending", pulse: false },
+}
+
+interface StatusBadgeProps {
+  status: string
+}
+
+function StatusBadge({ status }: StatusBadgeProps) {
+  const variant = getVariant(status)
+  const cfg = BADGE_MAP[variant]
   return (
-    <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${s.bg} ${s.text}`}>
-      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
-      {s.label}
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
+        fontSize: 11,
+        fontWeight: 600,
+        lineHeight: 1,
+        padding: "3px 8px",
+        borderRadius: 999,
+        background: cfg.bg,
+        color: cfg.color,
+        border: `1px solid ${cfg.border}`,
+        whiteSpace: "nowrap",
+        flexShrink: 0,
+      }}
+    >
+      {cfg.pulse && (
+        <span
+          className="conduct-pulse-dot"
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: "50%",
+            background: cfg.color,
+            flexShrink: 0,
+          }}
+        />
+      )}
+      {cfg.label}
     </span>
   )
 }
 
-function RunRow({ run }: { run: Run }) {
-  const ts = run.started_at ?? run.created_at
+interface OutcomeTextProps {
+  status: string
+  triggerSummary: string | null
+}
+
+function outcomeText(status: string, triggerSummary: string | null): string {
+  if (triggerSummary) return triggerSummary
+  if (status === "succeeded") return "Completed successfully"
+  if (status === "running") return "In progress"
+  if (status === "paused") return "Waiting for approval"
+  if (status === "failed") return "Execution failed"
+  if (status === "cancelled") return "Cancelled"
+  return "Pending"
+}
+
+interface FilterChipProps {
+  label: string
+  count?: number
+  active: boolean
+  onClick: () => void
+}
+
+function FilterChip({ label, count, active, onClick }: FilterChipProps) {
   return (
-    <tr
-      onClick={() => window.location.href = `/workflows/${run.workflow_id}/runs/${run.id}`}
-      className="border-b border-stone-100 last:border-0 hover:bg-stone-50 cursor-pointer transition-colors group"
+    <button
+      onClick={onClick}
+      style={{
+        height: 30,
+        cursor: "pointer",
+        fontWeight: 600,
+        fontSize: 12.5,
+        padding: "0 12px",
+        borderRadius: 999,
+        border: `1px solid ${active ? "var(--accent-ring)" : "var(--border)"}`,
+        background: active ? "var(--accent-weak)" : "var(--surface)",
+        color: active ? "var(--accent-text)" : "var(--text-2)",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        transition: "background .12s, border-color .12s, color .12s",
+        outline: "none",
+      }}
     >
-      <td className="px-4 py-3">
-        <div className="font-medium text-stone-900 text-sm group-hover:text-indigo-600 transition-colors">
+      {label}
+      {count !== undefined && (
+        <span style={{ opacity: 0.6, marginLeft: 2 }}>· {count}</span>
+      )}
+    </button>
+  )
+}
+
+type FilterLabel = "All" | "Running" | "Awaiting" | "Failed"
+
+const FILTERS: FilterLabel[] = ["All", "Running", "Awaiting", "Failed"]
+
+function matchesFilter(run: Run, filter: FilterLabel): boolean {
+  if (filter === "All") return true
+  if (filter === "Running") return run.status === "running"
+  if (filter === "Awaiting") return run.status === "paused"
+  if (filter === "Failed") return run.status === "failed" || run.status === "cancelled"
+  return true
+}
+
+const GRID = "1.6fr 1fr 1.2fr 0.7fr 0.7fr 30px"
+const HEADERS = ["Workflow", "Trigger", "Outcome", "Duration", "When", ""]
+
+interface RunRowProps {
+  run: Run
+  onClick: () => void
+}
+
+function RunRow({ run, onClick }: RunRowProps) {
+  const [hovered, setHovered] = useState(false)
+  const ts = run.started_at ?? run.created_at
+  const triggerLabel = formatTrigger(run.triggered_by)
+  const triggerDetail = run.trigger_summary ?? (run.repo ? run.repo : null)
+  const durationStr = duration(run.started_at, run.completed_at)
+
+  return (
+    <div
+      role="row"
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: "grid",
+        gridTemplateColumns: GRID,
+        gap: 14,
+        padding: "13px 20px",
+        borderBottom: "1px solid var(--border)",
+        alignItems: "center",
+        cursor: "pointer",
+        transition: "background .12s",
+        background: hovered ? "var(--surface-2)" : "transparent",
+      }}
+    >
+      {/* Workflow */}
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontWeight: 600, fontSize: 13.5, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {run.workflow_name}
         </div>
-        {run.project_name && (
-          <div className="text-[11px] text-stone-400 mt-0.5">{run.project_name}</div>
-        )}
-      </td>
-      <td className="px-4 py-3"><StatusBadge status={run.status} /></td>
-      <td className="px-4 py-3">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-xs text-stone-600">{formatTrigger(run.triggered_by)}</span>
-          {run.repo && (
-            <span className="text-[10px] font-medium text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded">
-              {run.repo}
-            </span>
-          )}
-        </div>
-        {run.trigger_summary && (
-          <div className="text-[11px] text-stone-400 mt-0.5 truncate max-w-[200px]">{run.trigger_summary}</div>
-        )}
-      </td>
-      <td className="px-4 py-3 text-xs text-stone-500 whitespace-nowrap">{timeAgo(ts)}</td>
-      <td className="px-4 py-3 text-xs text-stone-500 whitespace-nowrap">
-        {duration(run.started_at, run.completed_at)}
-      </td>
-    </tr>
-  )
-}
-
-function RunTable({ runs }: { runs: Run[] }) {
-  if (runs.length === 0) return (
-    <div className="rounded-xl border border-dashed border-stone-300 py-16 text-center">
-      <p className="text-stone-500 font-medium">No runs</p>
-      <p className="text-stone-400 text-sm mt-1">Nothing to show here yet.</p>
-    </div>
-  )
-  return (
-    <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-stone-100 text-left">
-            <th className="px-4 py-3 text-xs font-medium text-stone-400">Agent · Project</th>
-            <th className="px-4 py-3 text-xs font-medium text-stone-400">Status</th>
-            <th className="px-4 py-3 text-xs font-medium text-stone-400">Trigger</th>
-            <th className="px-4 py-3 text-xs font-medium text-stone-400">Started</th>
-            <th className="px-4 py-3 text-xs font-medium text-stone-400">Duration</th>
-          </tr>
-        </thead>
-        <tbody>
-          {runs.map(run => <RunRow key={run.id} run={run} />)}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function ByAgentView({ runs }: { runs: Run[] }) {
-  // Group by workflow_id to avoid merging agents with identical names across projects
-  const grouped = runs.reduce<Record<string, { name: string; projectName: string | null; runs: Run[] }>>((acc, r) => {
-    if (!acc[r.workflow_id]) acc[r.workflow_id] = { name: r.workflow_name, projectName: r.project_name, runs: [] }
-    acc[r.workflow_id].runs.push(r)
-    return acc
-  }, {})
-
-  return (
-    <div className="space-y-6">
-      {Object.entries(grouped).map(([wfId, { name, projectName, runs: agentRuns }]) => {
-        const latest = agentRuns[0]
-        const s = statusStyle(latest.status)
-        return (
-          <div key={wfId} className="rounded-xl border border-stone-200 bg-white overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-stone-100 bg-stone-50">
-              <div className="flex items-center gap-2">
-                <Link href={`/workflows/${wfId}`} onClick={e => e.stopPropagation()}
-                  className="font-medium text-stone-900 hover:text-indigo-600 transition-colors text-sm">
-                  {name}
-                </Link>
-                {projectName && (
-                  <span className="text-[10px] text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded-full">{projectName}</span>
-                )}
-              </div>
-              <div className="flex items-center gap-3">
-                <span className={`text-xs font-medium ${s.text}`}>{agentRuns.length} run{agentRuns.length !== 1 ? "s" : ""}</span>
-                <StatusBadge status={latest.status} />
-              </div>
-            </div>
-            <table className="w-full text-sm">
-              <tbody>
-                {agentRuns.slice(0, 5).map(run => (
-                  <tr key={run.id}
-                    onClick={() => window.location.href = `/workflows/${run.workflow_id}/runs/${run.id}`}
-                    className="border-b border-stone-100 last:border-0 hover:bg-stone-50 cursor-pointer transition-colors">
-                    <td className="px-4 py-2.5"><StatusBadge status={run.status} /></td>
-                    <td className="px-4 py-2.5 text-xs text-stone-500">{formatTrigger(run.triggered_by)}</td>
-                    <td className="px-4 py-2.5 text-xs text-stone-400">{timeAgo(run.started_at ?? run.created_at)}</td>
-                    <td className="px-4 py-2.5 text-xs text-stone-400">{duration(run.started_at, run.completed_at)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {triggerDetail && (
+          <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 11, color: "var(--text-muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {triggerDetail}
           </div>
-        )
-      })}
+        )}
+      </div>
+
+      {/* Trigger */}
+      <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {triggerLabel}
+      </div>
+
+      {/* Outcome */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+        <StatusBadge status={run.status} />
+        <span style={{ fontSize: 12.5, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {outcomeText(run.status, run.trigger_summary)}
+        </span>
+      </div>
+
+      {/* Duration */}
+      <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12, color: "var(--text-3)" }}>
+        {durationStr}
+      </div>
+
+      {/* When */}
+      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+        {timeAgo(ts)}
+      </div>
+
+      {/* Chevron */}
+      <svg
+        width={15}
+        height={15}
+        viewBox="0 0 15 15"
+        fill="none"
+        style={{ color: "var(--text-muted)", flexShrink: 0 }}
+        aria-hidden
+      >
+        <path d="M5.5 3.5L9.5 7.5L5.5 11.5" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </div>
+  )
+}
+
+interface RunsTableProps {
+  runs: Run[]
+  onNavigate: (run: Run) => void
+}
+
+function RunsTable({ runs, onNavigate }: RunsTableProps) {
+  if (runs.length === 0) {
+    return (
+      <div
+        style={{
+          borderRadius: 12,
+          border: "1.5px dashed var(--border-2)",
+          padding: "64px 0",
+          textAlign: "center",
+        }}
+      >
+        <p style={{ fontWeight: 500, color: "var(--text-2)", marginBottom: 4 }}>No runs</p>
+        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Nothing to show for this filter.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      style={{
+        borderRadius: 12,
+        border: "1px solid var(--border)",
+        background: "var(--surface)",
+        overflow: "hidden",
+        boxShadow: "var(--shadow-sm)",
+      }}
+    >
+      {/* Header row */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: GRID,
+          gap: 14,
+          padding: "11px 20px",
+          borderBottom: "1px solid var(--border)",
+          background: "var(--surface-2)",
+        }}
+      >
+        {HEADERS.map((h, i) => (
+          <div
+            key={i}
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: "0.07em",
+              textTransform: "uppercase",
+              color: "var(--text-muted)",
+            }}
+          >
+            {h}
+          </div>
+        ))}
+      </div>
+
+      {/* Data rows */}
+      <div>
+        {runs.map(run => (
+          <RunRow
+            key={run.id}
+            run={run}
+            onClick={() => onNavigate(run)}
+          />
+        ))}
+      </div>
     </div>
   )
 }
@@ -170,20 +331,24 @@ function RunsWithAuth() {
 const PAGE_SIZE = 50
 
 function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
+  const router = useRouter()
+  // Keep searchParams import for potential future use; suppress lint by referencing it
   const searchParams = useSearchParams()
+  void searchParams
+
   const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(false)
   const [offset, setOffset] = useState(0)
-  const initialView = (searchParams.get("view") as View | null) ?? "all"
-  const [view, setView] = useState<View>(initialView)
-  const [filterProject, setFilterProject] = useState("")
-  const [filterStatus, setFilterStatus] = useState("")
+  const [activeFilter, setActiveFilter] = useState<FilterLabel>("All")
 
   async function buildHeaders() {
     const headers: Record<string, string> = {}
-    if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
+    if (getToken) {
+      const t = await getToken()
+      if (t) headers["Authorization"] = `Bearer ${t}`
+    }
     const wsId = getCookie("delegator_project_id")
     if (wsId) headers["X-Workspace-Id"] = wsId
     return headers
@@ -200,10 +365,12 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
           setHasMore(data.length === PAGE_SIZE)
           setOffset(PAGE_SIZE)
         }
-      } finally { setLoading(false) }
+      } finally {
+        setLoading(false)
+      }
     }
     load()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function loadMore() {
@@ -217,168 +384,211 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
         setHasMore(data.length === PAGE_SIZE)
         setOffset(o => o + PAGE_SIZE)
       }
-    } finally { setLoadingMore(false) }
+    } finally {
+      setLoadingMore(false)
+    }
   }
 
-  const projects = Array.from(new Set(runs.map(r => r.project_name).filter(Boolean))) as string[]
-
-  const filtered = runs.filter(r => {
-    if (filterProject && r.project_name !== filterProject) return false
-    if (filterStatus && r.status !== filterStatus) return false
-    return true
-  })
-
-  const running     = runs.filter(r => r.status === "running").length
-  const waiting     = runs.filter(r => r.status === "paused").length
-  const today       = new Date(); today.setHours(0, 0, 0, 0)
-  const todayRuns   = runs.filter(r => new Date(r.created_at) >= today)
-  const failedToday = todayRuns.filter(r => r.status === "failed").length
-  const needsReview = runs.filter(r => needsAttention(r.status)).length
-
-  const attentionRuns = filtered.filter(r => needsAttention(r.status))
-  const activeRuns    = filtered.filter(r => isActive(r.status))
-  const recentRuns    = filtered.filter(r => !needsAttention(r.status) && !isActive(r.status))
-
-  const viewRuns: Record<View, Run[]> = {
-    "all":            filtered,
-    "by-agent":       filtered,
-    "needs-attention": attentionRuns,
+  async function handleRefresh() {
+    setLoading(true)
+    setRuns([])
+    setOffset(0)
+    setHasMore(false)
+    const headers = await buildHeaders()
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/runs?limit=${PAGE_SIZE}&offset=0`, { headers })
+      if (res.ok) {
+        const data: Run[] = await res.json()
+        setRuns(data)
+        setHasMore(data.length === PAGE_SIZE)
+        setOffset(PAGE_SIZE)
+      }
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const VIEWS: { id: View; label: string; count?: number; urgent?: boolean }[] = [
-    { id: "all",             label: "All",             count: filtered.length },
-    { id: "by-agent",        label: "By Agent" },
-    { id: "needs-attention", label: "Needs Attention", count: attentionRuns.length, urgent: attentionRuns.length > 0 },
-  ]
+  function handleNavigate(run: Run) {
+    router.push(`/workflows/${run.workflow_id}/runs/${run.id}`)
+  }
+
+  const shownRuns = runs.filter(r => matchesFilter(r, activeFilter))
+
+  // Count badges for chips
+  const countFor = (f: FilterLabel) => {
+    if (f === "All") return runs.length
+    return runs.filter(r => matchesFilter(r, f)).length
+  }
+
+  // Keep existing derived counts (used for backwards compat logic)
+  const _needsReview = runs.filter(r => needsAttention(r.status)).length
+  void _needsReview
+  const _activeRuns = runs.filter(r => isActive(r.status)).length
+  void _activeRuns
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-5xl px-6 py-8">
-        <h1 className="text-xl font-semibold text-stone-900 mb-6">Runs</h1>
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 24px" }}>
 
-        {/* Top strip */}
-        <div className="grid grid-cols-4 gap-3 mb-6">
-          {[
-            { label: "Running",      value: running,     color: "text-blue-600",  bg: "bg-blue-50",   border: "border-blue-100" },
-            { label: "Waiting",      value: waiting,     color: "text-amber-600", bg: "bg-amber-50",  border: "border-amber-100" },
-            { label: "Failed today", value: failedToday, color: "text-red-600",   bg: "bg-red-50",    border: "border-red-100" },
-            { label: "Needs review", value: needsReview, color: "text-orange-600",bg: "bg-orange-50", border: "border-orange-100" },
-          ].map(({ label, value, color, bg, border }) => (
-            <div key={label} className={`rounded-xl border ${border} ${bg} px-4 py-3`}>
-              <div className={`text-2xl font-bold ${color}`}>{loading ? "—" : value}</div>
-              <div className="text-xs text-stone-500 mt-0.5">{label}</div>
-            </div>
+        {/* Page header */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-end",
+            marginBottom: 20,
+          }}
+        >
+          <div>
+            <h1
+              style={{
+                fontSize: 22,
+                fontWeight: 700,
+                color: "var(--text)",
+                lineHeight: 1.2,
+                margin: 0,
+              }}
+            >
+              Runs
+            </h1>
+            <p
+              style={{
+                fontSize: 13.5,
+                color: "var(--text-muted)",
+                marginTop: 4,
+                marginBottom: 0,
+              }}
+            >
+              Every agent run across your workspace — live trace, outcome, and duration.
+            </p>
+          </div>
+
+          <div style={{ marginLeft: "auto", display: "flex", gap: 9 }}>
+            {/* Filter button (placeholder — filter is done by chips) */}
+            <button
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                height: 34,
+                padding: "0 14px",
+                borderRadius: 8,
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                color: "var(--text-2)",
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: "pointer",
+                transition: "background .12s",
+                outline: "none",
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
+              onMouseLeave={e => (e.currentTarget.style.background = "var(--surface)")}
+            >
+              <svg width={15} height={15} viewBox="0 0 15 15" fill="none" aria-hidden>
+                <path d="M1.5 4h12M4 7.5h7M6.5 11h2" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" />
+              </svg>
+              Filter
+            </button>
+
+            <button
+              onClick={handleRefresh}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                height: 34,
+                padding: "0 14px",
+                borderRadius: 8,
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                color: "var(--text-2)",
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: "pointer",
+                transition: "background .12s",
+                outline: "none",
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
+              onMouseLeave={e => (e.currentTarget.style.background = "var(--surface)")}
+            >
+              <svg width={15} height={15} viewBox="0 0 15 15" fill="none" aria-hidden>
+                <path d="M13 2.5A6.5 6.5 0 1 1 6.5 1" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" />
+                <path d="M13 1v3h-3" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        {/* Filter chips */}
+        <div style={{ display: "flex", gap: 7, marginBottom: 16 }}>
+          {FILTERS.map(f => (
+            <FilterChip
+              key={f}
+              label={f}
+              count={f === "All" ? countFor("All") : undefined}
+              active={activeFilter === f}
+              onClick={() => setActiveFilter(f)}
+            />
           ))}
         </div>
 
-        {/* View tabs + filters */}
-        <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
-          <div className="flex gap-1 border-b border-stone-200">
-            {VIEWS.map(v => (
-              <button key={v.id} onClick={() => setView(v.id)}
-                className={`px-4 py-2 text-sm font-medium transition-colors rounded-t-lg flex items-center gap-1.5 ${
-                  view === v.id
-                    ? "bg-white border border-b-white border-stone-200 text-stone-900 -mb-px"
-                    : v.urgent
-                      ? "text-amber-600 hover:text-amber-800"
-                      : "text-stone-400 hover:text-stone-700"
-                }`}>
-                {v.label}
-                {v.count !== undefined && v.count > 0 && (
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                    view === v.id
-                      ? (v.urgent ? "bg-amber-100 text-amber-700" : "bg-stone-100 text-stone-600")
-                      : (v.urgent ? "bg-amber-100 text-amber-700" : "bg-stone-100 text-stone-400")
-                  }`}>{v.count}</span>
-                )}
-              </button>
+        {/* Runs table / skeleton */}
+        {loading ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {[1, 2, 3, 4, 5].map(i => (
+              <div
+                key={i}
+                style={{
+                  height: 56,
+                  borderRadius: 10,
+                  border: "1px solid var(--border)",
+                  background: "var(--surface)",
+                  opacity: 0.6,
+                }}
+                className="animate-pulse"
+              />
             ))}
           </div>
-
-          <div className="flex items-center gap-2">
-            {projects.length > 1 && (
-              <select value={filterProject} onChange={e => setFilterProject(e.target.value)}
-                className="text-xs border border-stone-200 rounded-lg px-2 py-1.5 text-stone-600 bg-white focus:outline-none focus:ring-2 focus:ring-stone-200">
-                <option value="">All projects</option>
-                {projects.map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
-            )}
-            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-              className="text-xs border border-stone-200 rounded-lg px-2 py-1.5 text-stone-600 bg-white focus:outline-none focus:ring-2 focus:ring-stone-200">
-              <option value="">All statuses</option>
-              {["running","paused","succeeded","failed","cancelled"].map(s => (
-                <option key={s} value={s}>{statusStyle(s).label}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Content */}
-        {loading ? (
-          <div className="space-y-2">
-            {[1,2,3,4].map(i => <div key={i} className="h-14 rounded-xl border border-stone-200 bg-white animate-pulse" />)}
-          </div>
-        ) : view === "by-agent" ? (
-          <ByAgentView runs={filtered} />
-        ) : view === "needs-attention" ? (
-          <div className="space-y-6">
-            {activeRuns.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Active</p>
-                <RunTable runs={activeRuns} />
-              </div>
-            )}
-            <div>
-              {attentionRuns.length === 0
-                ? <div className="rounded-xl border border-dashed border-stone-300 py-16 text-center">
-                    <p className="text-stone-500 font-medium">All clear</p>
-                    <p className="text-stone-400 text-sm mt-1">No failed, paused, or cancelled runs.</p>
-                  </div>
-                : <>
-                    <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Needs attention</p>
-                    <RunTable runs={attentionRuns} />
-                  </>
-              }
-            </div>
+        ) : runs.length === 0 ? (
+          <div
+            style={{
+              borderRadius: 12,
+              border: "1.5px dashed var(--border-2)",
+              padding: "80px 0",
+              textAlign: "center",
+            }}
+          >
+            <p style={{ fontWeight: 600, color: "var(--text-2)", marginBottom: 4 }}>No runs yet</p>
+            <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              Runs are executions of installed agents. Open an agent and trigger a test run.
+            </p>
           </div>
         ) : (
-          <div className="space-y-6">
-            {activeRuns.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Active</p>
-                <RunTable runs={activeRuns} />
-              </div>
-            )}
-            {attentionRuns.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Needs attention</p>
-                <RunTable runs={attentionRuns} />
-              </div>
-            )}
-            {recentRuns.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Recent</p>
-                <RunTable runs={recentRuns} />
-              </div>
-            )}
-            {runs.length === 0 && (
-              <div className="rounded-xl border border-dashed border-stone-300 py-20 text-center">
-                <p className="text-stone-800 font-medium mb-1">No runs yet</p>
-                <p className="text-stone-400 text-sm">Runs are executions of installed agents. Open an agent and trigger a test run.</p>
-              </div>
-            )}
-          </div>
+          <RunsTable runs={shownRuns} onNavigate={handleNavigate} />
         )}
 
-        {/* Pagination */}
+        {/* Load more */}
         {!loading && hasMore && (
-          <div className="mt-4 text-center">
+          <div style={{ marginTop: 16, textAlign: "center" }}>
             <button
               onClick={loadMore}
               disabled={loadingMore}
-              className="text-sm text-stone-500 hover:text-stone-800 border border-stone-200 rounded-lg px-5 py-2 transition-colors hover:bg-stone-50 disabled:opacity-50"
+              style={{
+                fontSize: 13,
+                color: "var(--text-2)",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                padding: "7px 20px",
+                background: "var(--surface)",
+                cursor: loadingMore ? "not-allowed" : "pointer",
+                opacity: loadingMore ? 0.5 : 1,
+                transition: "background .12s",
+              }}
+              onMouseEnter={e => { if (!loadingMore) e.currentTarget.style.background = "var(--surface-2)" }}
+              onMouseLeave={e => { e.currentTarget.style.background = "var(--surface)" }}
             >
-              {loadingMore ? "Loading…" : `Load more`}
+              {loadingMore ? "Loading…" : "Load more"}
             </button>
           </div>
         )}
