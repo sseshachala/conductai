@@ -832,6 +832,124 @@ def cmd_guard_join(args):
     )
 
 
+def _report_tools_to_server() -> None:
+    """Detect AI coding tools on this machine and POST coverage to Guard API. Silent on failure."""
+    home = Path.home()
+
+    def _check_json_key(path: Path, *keys) -> bool:
+        try:
+            d = json.loads(path.read_text()) if path.exists() else {}
+            for k in keys:
+                d = d.get(k, {}) if isinstance(d, dict) else {}
+            return bool(d) and isinstance(d, dict) and len(d) > 0
+        except Exception:
+            return False
+
+    def _check_json_mcp(path: Path) -> bool:
+        try:
+            d = json.loads(path.read_text()) if path.exists() else {}
+            return "conduct" in d.get("mcpServers", {})
+        except Exception:
+            return False
+
+    def _check_json_hook(path: Path) -> bool:
+        try:
+            d = json.loads(path.read_text()) if path.exists() else {}
+            hooks = d.get("hooks", {})
+            pre = hooks.get("PreToolUse", [])
+            return any("conductguard" in str(h) or "conduct" in str(h).lower() for h in pre)
+        except Exception:
+            return False
+
+    def _check_toml_str(path: Path, needle: str) -> bool:
+        try:
+            return needle in (path.read_text() if path.exists() else "")
+        except Exception:
+            return False
+
+    tools = []
+
+    claude_dir = home / ".claude"
+    if claude_dir.exists():
+        settings = claude_dir / "settings.json"
+        tools.append({
+            "name": "claude-code",
+            "mcp_registered": _check_json_mcp(settings),
+            "hook_registered": _check_json_hook(settings),
+        })
+
+    codex_dir = home / ".codex"
+    if codex_dir.exists():
+        config = codex_dir / "config.toml"
+        tools.append({
+            "name": "codex",
+            "mcp_registered": _check_toml_str(config, "conduct-mcp"),
+            "hook_registered": _check_toml_str(config, "conductguard"),
+        })
+
+    cursor_dir = home / ".cursor"
+    if cursor_dir.exists():
+        tools.append({
+            "name": "cursor",
+            "mcp_registered": _check_json_mcp(cursor_dir / "mcp.json"),
+            "hook_registered": False,
+        })
+
+    windsurf_dir = home / ".codeium" / "windsurf"
+    if windsurf_dir.exists():
+        tools.append({
+            "name": "windsurf",
+            "mcp_registered": _check_json_mcp(windsurf_dir / "mcp_config.json"),
+            "hook_registered": False,
+        })
+
+    vscode_candidates = [
+        home / "Library" / "Application Support" / "Code" / "User" / "settings.json",
+        home / ".config" / "Code" / "User" / "settings.json",
+        home / ".vscode" / "settings.json",
+    ]
+    vscode_settings = next((p for p in vscode_candidates if p.exists()), None)
+    if vscode_settings:
+        try:
+            d = json.loads(vscode_settings.read_text())
+            mcp_reg = "conduct" in d.get("mcp", {}).get("servers", {})
+        except Exception:
+            mcp_reg = False
+        tools.append({
+            "name": "vscode",
+            "mcp_registered": mcp_reg,
+            "hook_registered": False,
+        })
+
+    if not tools:
+        return
+
+    try:
+        cfg = _load_guard_config()
+        base_url = _api_url(cfg)
+        email = cfg.get("user_email", "")
+        token = cfg.get("member_token", "")
+        api_key = cfg.get("api_key", "")
+
+        if not email:
+            return
+
+        payload = json.dumps({"email": email, "tools": tools}).encode()
+        auth = token or api_key
+        req = urllib.request.Request(
+            f"{base_url}/guard/developer-tools",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {auth}",
+            },
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=8)
+    except Exception:
+        pass  # Never surface errors — this is background telemetry
+
+
 def cmd_guard_sync(args):
     cfg          = _require_guard_config()
     workspace_id = cfg.get("workspace_id")
@@ -860,6 +978,12 @@ def cmd_guard_sync(args):
 
     # Capture savings from RTK and Agent Booster
     _report_savings(cfg, base_url, api_key)
+
+    # Report AI tool coverage
+    try:
+        _report_tools_to_server()
+    except Exception:
+        pass
 
     print(f"\n{BOLD}Policy refreshed ({rule_count} rule(s)).{RESET}")
 
