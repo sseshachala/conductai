@@ -83,6 +83,8 @@ class RunOut(BaseModel):
     completed_at: Optional[datetime] = None
     current_block_id: Optional[str] = None
     max_turns: Optional[int] = None
+    explainability: Optional[dict[str, Any]] = None
+    governance: Optional[dict[str, Any]] = None
     created_at: datetime
     trigger_summary: Optional[str] = None
     repo: Optional[str] = None
@@ -97,11 +99,18 @@ class RunOut(BaseModel):
             state = getattr(data, "state", None)
             data.__dict__.setdefault("trigger_summary", _extract_trigger_summary(state))
             data.__dict__.setdefault("repo", _extract_repo(state))
+            if state and isinstance(state, dict):
+                data.__dict__.setdefault("explainability", state.get("__run_explainability"))
+                data.__dict__.setdefault("governance", state.get("__governance"))
         elif isinstance(data, dict):
             if "trigger_summary" not in data:
                 data["trigger_summary"] = _extract_trigger_summary(data.get("state"))
             if "repo" not in data:
                 data["repo"] = _extract_repo(data.get("state"))
+            state = data.get("state")
+            if isinstance(state, dict):
+                data.setdefault("explainability", state.get("__run_explainability"))
+                data.setdefault("governance", state.get("__governance"))
         return data
 
 

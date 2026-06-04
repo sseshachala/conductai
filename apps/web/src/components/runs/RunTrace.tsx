@@ -26,6 +26,18 @@ interface RunMeta {
   paused_at: string | null
   current_block_id: string | null
   workflow_version_id: string | null
+  explainability?: {
+    version?: string
+    source?: string
+    trigger_provider?: string
+    budget?: { max_turns?: number; max_cost_usd?: number }
+  } | null
+  governance?: {
+    policy_surface?: string
+    provider?: string
+    enforcement_mode?: string
+    version?: string
+  } | null
 }
 
 interface Props {
@@ -635,7 +647,16 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}`, { headers })
       if (res.ok) {
         const run = await res.json()
-        setMeta({ triggered_by: run.triggered_by, started_at: run.started_at, completed_at: run.completed_at, paused_at: run.paused_at, current_block_id: run.current_block_id, workflow_version_id: run.workflow_version_id ?? null })
+        setMeta({
+          triggered_by: run.triggered_by,
+          started_at: run.started_at,
+          completed_at: run.completed_at,
+          paused_at: run.paused_at,
+          current_block_id: run.current_block_id,
+          workflow_version_id: run.workflow_version_id ?? null,
+          explainability: run.explainability ?? null,
+          governance: run.governance ?? null,
+        })
         if (run.status === "paused") { setStatus("paused"); setApprovalPending(true); setApprovalBlockId(run.current_block_id) }
         else if (["succeeded", "failed", "cancelled"].includes(run.status)) { setStatus(run.status) }
       }
@@ -650,7 +671,16 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
         .then(run => {
           if (!run) return
           if (run.events) setEvents(run.events)
-          setMeta({ triggered_by: run.triggered_by, started_at: run.started_at, completed_at: run.completed_at, paused_at: run.paused_at, current_block_id: run.current_block_id, workflow_version_id: run.workflow_version_id ?? null })
+          setMeta({
+            triggered_by: run.triggered_by,
+            started_at: run.started_at,
+            completed_at: run.completed_at,
+            paused_at: run.paused_at,
+            current_block_id: run.current_block_id,
+            workflow_version_id: run.workflow_version_id ?? null,
+            explainability: run.explainability ?? null,
+            governance: run.governance ?? null,
+          })
         }).catch(() => {})
     )
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -846,6 +876,10 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
           <p style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted, #a8a29e)", textTransform: "uppercase", letterSpacing: ".07em", margin: "0 0 2px" }}>Triggered by</p>
           <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text, #1c1917)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{meta.triggered_by ?? "—"}</p>
         </div>
+        <div>
+          <p style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted, #a8a29e)", textTransform: "uppercase", letterSpacing: ".07em", margin: "0 0 2px" }}>Provider</p>
+          <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text, #1c1917)", margin: 0 }}>{meta.explainability?.trigger_provider ?? meta.governance?.provider ?? "—"}</p>
+        </div>
       </div>
 
       {/* Status bar */}
@@ -932,6 +966,19 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
         <div>
           <span style={{ fontSize: 11, color: "var(--text-muted, #a8a29e)", display: "block", marginBottom: 2 }}>Version</span>
           <span className="mono" style={{ color: "var(--text, #1c1917)", fontSize: 12 }}>{meta.workflow_version_id?.slice(0, 8) ?? "—"}</span>
+        </div>
+        <div>
+          <span style={{ fontSize: 11, color: "var(--text-muted, #a8a29e)", display: "block", marginBottom: 2 }}>Budget cap</span>
+          <span style={{ color: "var(--text, #1c1917)" }}>
+            {meta.explainability?.budget?.max_turns ?? maxTurns ?? "—"} turns · ${meta.explainability?.budget?.max_cost_usd?.toFixed?.(2) ?? "—"}
+          </span>
+        </div>
+        <div>
+          <span style={{ fontSize: 11, color: "var(--text-muted, #a8a29e)", display: "block", marginBottom: 2 }}>Governance</span>
+          <span style={{ color: "var(--text, #1c1917)" }}>
+            {meta.governance?.policy_surface ?? "—"}
+            {meta.governance?.enforcement_mode ? ` · ${meta.governance.enforcement_mode}` : ""}
+          </span>
         </div>
       </div>
 

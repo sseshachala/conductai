@@ -28,6 +28,7 @@ from app.compiler.stream import stream_compile_block
 from app.runtime.model_router import resolve as resolve_model
 from app.runtime.pricing import freeze_pricing_snapshot, get_model_rates, pricing_note
 from app.runtime.input_contract import InputContractError, validate_run_start_inputs
+from app.runtime.run_contract import enrich_run_state_contract
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
 
@@ -1745,6 +1746,15 @@ def test_trigger(
     else:
         # Non-GitHub trigger — keep raw payload as _trigger
         _initial_state["_trigger"] = payload
+
+    _initial_state = enrich_run_state_contract(
+        _initial_state,
+        source="manual:test_trigger",
+        trigger_provider="github" if _issue else "manual",
+        workflow_id=str(workflow_id),
+        workspace_id=workspace_id,
+        max_turns=suggested_turns,
+    )
 
     try:
         _initial_state = validate_run_start_inputs(_initial_state)
