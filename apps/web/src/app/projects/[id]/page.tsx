@@ -73,6 +73,7 @@ function ProjectContent({ getToken, currentUserId }: {
   const [activeTab, setActiveTab] = useState<"Agents" | "Runs">("Agents")
   const [runs, setRuns] = useState<Run[]>([])
   const [runsLoading, setRunsLoading] = useState(false)
+  const [runsError, setRunsError] = useState<string | null>(null)
 
   async function authHeaders(): Promise<Record<string, string>> {
     const h: Record<string, string> = {}
@@ -80,8 +81,8 @@ function ProjectContent({ getToken, currentUserId }: {
       const token = await getToken()
       if (token) h["Authorization"] = `Bearer ${token}`
     }
-    // workspace id from cookie
-    const wsId = document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1]
+    // Prefer the project's workspace ID so cross-workspace project pages load correctly.
+    const wsId = project?.workspace_id || document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1]
     if (wsId) h["X-Workspace-ID"] = wsId
     return h
   }
@@ -133,13 +134,28 @@ function ProjectContent({ getToken, currentUserId }: {
 
   async function loadRuns() {
     setRunsLoading(true)
+    setRunsError(null)
     try {
       const h = await authHeaders()
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/runs?project_id=${projectId}&limit=100`,
         { headers: h }
       )
-      if (res.ok) setRuns(await res.json())
+      if (res.ok) {
+        setRuns(await res.json())
+      } else {
+        setRuns([])
+        if (res.status === 403) {
+          setRunsError("You do not have access to runs for this project in the selected workspace.")
+        } else if (res.status === 404) {
+          setRunsError("Runs endpoint not found.")
+        } else {
+          setRunsError(`Failed to load runs (${res.status}).`)
+        }
+      }
+    } catch {
+      setRuns([])
+      setRunsError("Network error while loading runs.")
     } finally {
       setRunsLoading(false)
     }
@@ -170,42 +186,46 @@ function ProjectContent({ getToken, currentUserId }: {
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-3xl px-6 py-10">
+      <div style={{ maxWidth: 840, margin: "0 auto", padding: "32px 24px" }}>
         {/* Breadcrumb */}
-        <nav className="flex items-center gap-1.5 text-xs text-stone-400 mb-4">
-          <Link href="/projects" className="hover:text-stone-600 transition-colors">Projects</Link>
+        <nav style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-3)", marginBottom: 16 }}>
+          <Link href="/projects" style={{ color: "var(--text-3)", textDecoration: "none" }}>Projects</Link>
           <span>/</span>
-          <span className="text-stone-600 font-medium">{project?.name ?? "…"}</span>
+          <span style={{ color: "var(--text-2)", fontWeight: 500 }}>{project?.name ?? "…"}</span>
         </nav>
+
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24 }}>
           <div>
-            <h1 className="text-xl font-semibold text-stone-900">
-              {project?.name ?? "Loading..."}
-            </h1>
+            <h1 className="page-title" style={{ fontSize: 22, marginBottom: 4 }}>{project?.name ?? "Loading..."}</h1>
+            <p style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{workflows.length} agent{workflows.length !== 1 ? "s" : ""}</p>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-stone-400">{workflows.length} agent{workflows.length !== 1 ? "s" : ""}</span>
-            <Link
-              href={`/workflows/new?project_id=${projectId}`}
-              className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700 transition-colors"
-            >
-              + New agent
-            </Link>
-          </div>
+          <Link
+            href={`/workflows/new?project_id=${projectId}`}
+            className="btn btn-primary btn-sm"
+            style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 6 }}
+          >
+            + New agent
+          </Link>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 border-b border-stone-200 mb-6">
+        <div style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border)", marginBottom: 24 }}>
           {(["Agents", "Runs"] as const).map(tab => (
             <button
               key={tab}
               onClick={() => handleTabChange(tab)}
-              className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
-                activeTab === tab
-                  ? "border-stone-900 text-stone-900"
-                  : "border-transparent text-stone-400 hover:text-stone-700"
-              }`}
+              style={{
+                background: "none",
+                border: "none",
+                padding: "9px 14px",
+                fontSize: 13.5,
+                fontWeight: activeTab === tab ? 600 : 500,
+                cursor: "pointer",
+                marginBottom: -1,
+                color: activeTab === tab ? "var(--text)" : "var(--text-3)",
+                borderBottom: `2px solid ${activeTab === tab ? "var(--accent)" : "transparent"}`,
+              }}
             >
               {tab}
             </button>
@@ -215,35 +235,44 @@ function ProjectContent({ getToken, currentUserId }: {
         {/* Runs tab */}
         {activeTab === "Runs" && (
           runsLoading ? (
-            <div className="space-y-2">
-              {[1,2,3].map(i => <div key={i} className="h-14 rounded-xl border border-stone-200 bg-white animate-pulse" />)}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {[1,2,3].map(i => <div key={i} style={{ height: 56, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface-2)", opacity: 0.6 }} />)}
+            </div>
+          ) : runsError ? (
+            <div style={{ border: "1px solid var(--err-bd, #fecaca)", borderRadius: 14, padding: "24px", background: "var(--err-bg, #fff5f5)" }}>
+              <p style={{ color: "var(--err, #dc2626)", fontSize: 13.5, marginBottom: 10 }}>{runsError}</p>
+              <button
+                onClick={loadRuns}
+                className="btn btn-ghost btn-sm"
+                style={{ color: "var(--err, #dc2626)", borderColor: "var(--err-bd, #fecaca)" }}
+              >
+                Retry
+              </button>
             </div>
           ) : runs.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-stone-300 px-8 py-12 text-center">
-              <p className="text-stone-500 text-sm">No runs yet for this project.</p>
+            <div style={{ border: "1.5px dashed var(--border)", borderRadius: 14, padding: "48px 32px", textAlign: "center" }}>
+              <p style={{ color: "var(--text-muted)", fontSize: 13.5 }}>No runs yet for this project.</p>
             </div>
           ) : (
-            <div className="grid gap-2">
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {runs.map(run => {
-                const s = statusStyle(run.status)
+                const sKey = run.status === "running" ? "run" : run.status === "succeeded" ? "ok" : run.status === "failed" ? "err" : run.status === "paused" ? "warn" : "idle"
                 return (
                   <Link
                     key={run.id}
                     href={`/workflows/${run.workflow_id}/runs/${run.id}`}
-                    className="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-5 py-3 hover:border-stone-300 hover:shadow-sm transition-all"
+                    className="card"
+                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px", textDecoration: "none", color: "inherit", gap: 12 }}
                   >
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-stone-900 truncate">{run.workflow_name}</p>
-                      <p className="text-xs text-stone-400 mt-0.5">{formatTrigger(run.triggered_by)}</p>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{run.workflow_name}</p>
+                      <p style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{formatTrigger(run.triggered_by)}</p>
                     </div>
-                    <div className="flex items-center gap-3 ml-3 shrink-0">
-                      <span className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${s.bg} ${s.text}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-                        {s.label}
-                      </span>
-                      <span className="text-xs text-stone-400">{runsTimeAgo(run.created_at)}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                      <span className={`sbadge ${sKey}`}>{run.status}</span>
+                      <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{runsTimeAgo(run.created_at)}</span>
                       {(run.started_at || run.completed_at) && (
-                        <span className="text-xs text-stone-300">{duration(run.started_at, run.completed_at)}</span>
+                        <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>{duration(run.started_at, run.completed_at)}</span>
                       )}
                     </div>
                   </Link>
@@ -255,32 +284,26 @@ function ProjectContent({ getToken, currentUserId }: {
 
         {/* Agents list */}
         {activeTab === "Agents" && (loading ? (
-          <div className="space-y-2">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {[1, 2, 3].map(i => (
-              <div key={i} className="h-20 rounded-xl border border-stone-200 bg-white animate-pulse" />
+              <div key={i} style={{ height: 72, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface-2)", opacity: 0.6 }} />
             ))}
           </div>
         ) : workflows.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-stone-300 px-8 py-12 text-center">
-            <p className="text-stone-800 font-semibold mb-2">No agents in this project</p>
-            <p className="text-stone-400 text-sm mb-6">Create your first agent or install a playbook.</p>
-            <div className="flex items-center justify-center gap-3">
-              <Link
-                href={`/workflows/new?project_id=${projectId}`}
-                className="rounded-lg bg-stone-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-stone-700 transition-colors"
-              >
+          <div style={{ border: "1.5px dashed var(--border)", borderRadius: 14, padding: "48px 32px", textAlign: "center" }}>
+            <p style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>No agents in this project</p>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 24 }}>Create your first agent or install a playbook.</p>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+              <Link href={`/workflows/new?project_id=${projectId}`} className="btn btn-primary btn-sm" style={{ textDecoration: "none" }}>
                 Create agent →
               </Link>
-              <Link
-                href="/marketplace"
-                className="rounded-lg border border-stone-200 px-5 py-2.5 text-sm font-medium text-stone-700 hover:bg-stone-50 transition-colors"
-              >
+              <Link href="/marketplace" className="btn btn-ghost btn-sm" style={{ textDecoration: "none" }}>
                 Browse playbooks
               </Link>
             </div>
           </div>
         ) : (
-          <div className="grid gap-2">
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {workflows.map(w => (
               <AgentCard
                 key={w.id}
@@ -334,11 +357,11 @@ function AgentCard({ workflow, isAdmin, onRename, onDelete }: {
 
   if (confirmValue !== null) {
     return (
-      <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4">
-        <p className="text-sm text-red-700 mb-2">
+      <div className="card" style={{ padding: "14px 16px", borderColor: "var(--err-bd)", background: "var(--err-bg)" }}>
+        <p style={{ fontSize: 12.5, color: "var(--err)", marginBottom: 10 }}>
           Type <strong>{workflow.name}</strong> to permanently delete this agent and all its data.
         </p>
-        <div className="flex gap-2">
+        <div style={{ display: "flex", gap: 8 }}>
           <input
             ref={confirmInputRef}
             value={confirmValue}
@@ -348,25 +371,18 @@ function AgentCard({ workflow, isAdmin, onRename, onDelete }: {
               if (e.key === "Escape") setConfirmValue(null)
             }}
             placeholder={workflow.name}
-            className="flex-1 text-sm border border-red-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-red-300 bg-white"
+            style={{ flex: 1, fontSize: 12.5, border: "1px solid var(--err-bd)", borderRadius: 8, padding: "6px 10px", outline: "none", background: "var(--surface)" }}
           />
-          <button
-            onClick={() => onDelete()}
-            disabled={confirmValue !== workflow.name}
-            className="text-xs font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-40 px-3 py-1.5 rounded-lg transition-colors"
-          >Delete</button>
-          <button
-            onClick={() => setConfirmValue(null)}
-            className="text-xs font-medium text-stone-600 border border-stone-200 hover:bg-stone-50 px-3 py-1.5 rounded-lg transition-colors"
-          >Cancel</button>
+          <button onClick={() => onDelete()} disabled={confirmValue !== workflow.name} className="btn btn-sm" style={{ background: "var(--err)", color: "#fff", border: "none", opacity: confirmValue !== workflow.name ? 0.4 : 1 }}>Delete</button>
+          <button onClick={() => setConfirmValue(null)} className="btn btn-ghost btn-sm">Cancel</button>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-5 py-4 hover:border-stone-300 hover:shadow-sm transition-all group">
-      <Link href={renaming ? "#" : `/workflows/${workflow.id}`} className="flex-1 min-w-0" onClick={renaming ? e => e.preventDefault() : undefined}>
+    <div className="card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", gap: 12 }}>
+      <Link href={renaming ? "#" : `/workflows/${workflow.id}`} style={{ flex: 1, minWidth: 0, textDecoration: "none", color: "inherit" }} onClick={renaming ? e => e.preventDefault() : undefined}>
         {renaming ? (
           <input
             ref={inputRef}
@@ -375,39 +391,38 @@ function AgentCard({ workflow, isAdmin, onRename, onDelete }: {
             onBlur={submitRename}
             onKeyDown={e => { if (e.key === "Enter") submitRename(); if (e.key === "Escape") { setNameValue(workflow.name); setRenaming(false) } }}
             onClick={e => e.preventDefault()}
-            className="text-sm font-semibold text-stone-900 bg-transparent border-b border-indigo-400 outline-none w-full"
+            style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", background: "transparent", borderBottom: "1px solid var(--accent)", outline: "none", width: "100%" }}
           />
         ) : (
-          <p className="font-semibold text-stone-900 truncate">{workflow.name}</p>
+          <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{workflow.name}</p>
         )}
-        <p className="text-xs text-stone-400 mt-0.5">edited {timeAgo(workflow.updated_at)}</p>
+        <p style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 3 }}>edited {timeAgo(workflow.updated_at)}</p>
       </Link>
 
-      <div className="flex items-center gap-3 ml-3 shrink-0">
-        {status ? (
-          <span className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${status.bg} ${status.text}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
-            {status.label}
-          </span>
-        ) : (
-          <span className="text-xs text-stone-400 italic">never run</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+        {status ? (() => {
+          const sKey = workflow.last_run_status === "running" ? "run" : workflow.last_run_status === "succeeded" ? "ok" : workflow.last_run_status === "failed" ? "err" : workflow.last_run_status === "paused" ? "warn" : "idle"
+          return <span className={`sbadge ${sKey}`}>{status.label}</span>
+        })() : (
+          <span style={{ fontSize: 11.5, color: "var(--text-muted)", fontStyle: "italic" }}>never run</span>
         )}
-        {workflow.last_run_at && <span className="text-xs text-stone-400">{timeAgo(workflow.last_run_at)}</span>}
+        {workflow.last_run_at && <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{timeAgo(workflow.last_run_at)}</span>}
 
         {isAdmin && (
-          <div className="relative" ref={menuRef}>
+          <div style={{ position: "relative" }} ref={menuRef}>
             <button
               onClick={e => { e.preventDefault(); setMenuOpen(v => !v) }}
-              className="p-1.5 rounded-lg text-stone-300 hover:text-stone-600 hover:bg-stone-100 transition-colors opacity-0 group-hover:opacity-100"
+              className="btn btn-ghost btn-icon btn-sm"
+              style={{ color: "var(--text-3)" }}
             >
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M10 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4z" />
               </svg>
             </button>
             {menuOpen && (
-              <div className="absolute right-0 top-8 z-20 w-36 bg-white rounded-xl border border-stone-200 shadow-lg py-1">
-                <button onClick={() => { setMenuOpen(false); setRenaming(true) }} className="w-full text-left px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">Rename</button>
-                <button onClick={() => { setMenuOpen(false); setConfirmValue("") }} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">Delete</button>
+              <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 20, width: 140, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "var(--shadow-lg)", overflow: "hidden" }}>
+                <button onClick={() => { setMenuOpen(false); setRenaming(true) }} style={{ width: "100%", textAlign: "left", padding: "10px 14px", fontSize: 13, color: "var(--text)", background: "none", border: "none", cursor: "pointer" }}>Rename</button>
+                <button onClick={() => { setMenuOpen(false); setConfirmValue("") }} style={{ width: "100%", textAlign: "left", padding: "10px 14px", fontSize: 13, color: "var(--err)", background: "none", border: "none", cursor: "pointer" }}>Delete</button>
               </div>
             )}
           </div>
