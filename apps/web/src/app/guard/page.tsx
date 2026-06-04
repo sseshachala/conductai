@@ -839,7 +839,12 @@ function GuardDashboard() {
                   label="Tool coverage"
                   value={totalDevs === 0 ? "—" : `${coveredCount}/${totalDevs}`}
                   tone={totalDevs === 0 ? "plain" : coveredCount === totalDevs ? "ok" : "warn"}
-                  sub={totalDevs === 0 ? "no data yet" : coveredCount === totalDevs ? "all tools covered" : "run: conduct guard sync"}
+                  sub={totalDevs === 0 ? "no data yet" : (() => {
+                    const totalTools = toolCoverage.reduce((s, d) => s + d.detected_tools.length, 0)
+                    return coveredCount === totalDevs
+                      ? `${totalTools} tool${totalTools !== 1 ? "s" : ""} · all covered`
+                      : `${totalDevs - coveredCount} dev${totalDevs - coveredCount !== 1 ? "s" : ""} need sync`
+                  })()}
                 />
               </div>
             )}
