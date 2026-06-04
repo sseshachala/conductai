@@ -1,7 +1,7 @@
 """
-ModelRouter — V1 rules-based model selection.
+ModelRouter — V1 rules-based provider + model selection.
 
-Resolves (playbook_slug, block_task_category, routing_preference) → (model_id, reason).
+Resolves (playbook_slug, block_task_category, routing_preference) -> (provider, model_id, reason).
 
 Design principles:
 - Deterministic: same inputs always produce same output
@@ -18,11 +18,16 @@ import structlog
 
 log = structlog.get_logger(__name__)
 
-# ── Model IDs ────────────────────────────────────────────────────────────────
+# ── Provider + model IDs ─────────────────────────────────────────────────────
 
 SONNET   = "claude-sonnet-4-6"
 OPUS     = "claude-opus-4-7"
 HAIKU    = "claude-haiku-4-5-20251001"
+GPT_41   = "gpt-4.1"
+GPT_41_M = "gpt-4.1-mini"
+
+ANTHROPIC = "anthropic"
+OPENAI    = "openai"
 
 # ── Task categories (derived from playbook slug) ──────────────────────────────
 
@@ -46,77 +51,107 @@ _SLUG_TO_CATEGORY: dict[str, str] = {
     "terraform_reviewer":     "reasoning",
 }
 
-# ── Static policy: (task_category, routing_preference) → (model_id, reason) ─
+# ── Static policy: (task_category, routing_preference) -> (provider, model, reason) ─
 
-_POLICY: dict[tuple[str, str], tuple[str, str]] = {
+_POLICY: dict[tuple[str, str], tuple[str, str, str]] = {
     # code_implementation — needs strong tool use + multi-file reasoning
-    ("code_implementation", "quality"):  (OPUS,    "code implementation benefits from strongest reasoning"),
-    ("code_implementation", "balanced"): (SONNET,  "balanced model for code implementation"),
-    ("code_implementation", "speed"):    (SONNET,  "sonnet is fast enough for code tasks"),
-    ("code_implementation", "cost"):     (SONNET,  "haiku lacks multi-file tool use; sonnet is minimum viable"),
+    ("code_implementation", "quality"):  (ANTHROPIC, OPUS,   "code implementation benefits from strongest reasoning"),
+    ("code_implementation", "balanced"): (ANTHROPIC, SONNET, "balanced model for code implementation"),
+    ("code_implementation", "speed"):    (ANTHROPIC, SONNET, "sonnet is fast enough for code tasks"),
+    ("code_implementation", "cost"):     (OPENAI,    GPT_41_M, "cost-efficient model for code implementation"),
 
     # code_review — diff reasoning, precise feedback
-    ("code_review", "quality"):  (OPUS,    "code review benefits from strongest reasoning model"),
-    ("code_review", "balanced"): (SONNET,  "balanced model for code review"),
-    ("code_review", "speed"):    (SONNET,  "sonnet handles diffs well at speed"),
-    ("code_review", "cost"):     (HAIKU,   "haiku sufficient for structured code review output"),
+    ("code_review", "quality"):  (ANTHROPIC, OPUS,   "code review benefits from strongest reasoning model"),
+    ("code_review", "balanced"): (ANTHROPIC, SONNET, "balanced model for code review"),
+    ("code_review", "speed"):    (OPENAI,    GPT_41_M, "fast and efficient for code review"),
+    ("code_review", "cost"):     (OPENAI,    GPT_41_M, "cost-efficient for structured code review output"),
 
     # security — must not miss findings; cost secondary
-    ("security", "quality"):  (OPUS,    "security scanning requires highest-precision model"),
-    ("security", "balanced"): (OPUS,    "security scanning: quality always preferred over cost"),
-    ("security", "speed"):    (SONNET,  "sonnet for security when speed is prioritized"),
-    ("security", "cost"):     (SONNET,  "haiku too weak for security; sonnet minimum viable"),
+    ("security", "quality"):  (ANTHROPIC, OPUS,   "security scanning requires highest-precision model"),
+    ("security", "balanced"): (ANTHROPIC, OPUS,   "security scanning: quality always preferred over cost"),
+    ("security", "speed"):    (ANTHROPIC, SONNET, "sonnet for security when speed is prioritized"),
+    ("security", "cost"):     (ANTHROPIC, SONNET, "sonnet minimum viable for security"),
 
     # triage — classification, labeling, simple decisions
-    ("triage", "quality"):  (SONNET,  "sonnet sufficient for structured triage tasks"),
-    ("triage", "balanced"): (SONNET,  "balanced model for triage"),
-    ("triage", "speed"):    (HAIKU,   "haiku ideal for fast triage classification"),
-    ("triage", "cost"):     (HAIKU,   "haiku cost-optimal for simple triage tasks"),
+    ("triage", "quality"):  (ANTHROPIC, SONNET, "sonnet sufficient for structured triage tasks"),
+    ("triage", "balanced"): (OPENAI,    GPT_41_M, "balanced and efficient for triage"),
+    ("triage", "speed"):    (OPENAI,    GPT_41_M, "fast triage classification"),
+    ("triage", "cost"):     (OPENAI,    GPT_41_M, "cost-optimal for simple triage tasks"),
 
     # summarization — extraction and formatting, not reasoning
-    ("summarization", "quality"):  (SONNET,  "sonnet more than sufficient for summarization"),
-    ("summarization", "balanced"): (SONNET,  "balanced model for summarization"),
-    ("summarization", "speed"):    (HAIKU,   "haiku fast and accurate for summarization"),
-    ("summarization", "cost"):     (HAIKU,   "haiku cost-optimal for summarization"),
+    ("summarization", "quality"):  (ANTHROPIC, SONNET, "sonnet more than sufficient for summarization"),
+    ("summarization", "balanced"): (OPENAI,    GPT_41_M, "balanced model for summarization"),
+    ("summarization", "speed"):    (OPENAI,    GPT_41_M, "fast summarization"),
+    ("summarization", "cost"):     (OPENAI,    GPT_41_M, "cost-optimal for summarization"),
 
     # reasoning — log analysis, incident response, complex decisions
-    ("reasoning", "quality"):  (OPUS,    "reasoning tasks benefit from strongest model"),
-    ("reasoning", "balanced"): (SONNET,  "balanced model for reasoning tasks"),
-    ("reasoning", "speed"):    (SONNET,  "sonnet balances speed and reasoning depth"),
-    ("reasoning", "cost"):     (SONNET,  "haiku lacks reasoning depth; sonnet minimum viable"),
+    ("reasoning", "quality"):  (ANTHROPIC, OPUS,   "reasoning tasks benefit from strongest model"),
+    ("reasoning", "balanced"): (ANTHROPIC, SONNET, "balanced model for reasoning tasks"),
+    ("reasoning", "speed"):    (ANTHROPIC, SONNET, "sonnet balances speed and reasoning depth"),
+    ("reasoning", "cost"):     (OPENAI,    GPT_41_M, "cost-efficient minimum viable reasoning"),
 }
 
 # Defaults when category or preference is not matched
-_CATEGORY_DEFAULT: dict[str, tuple[str, str]] = {
-    "code_implementation": (SONNET, "default: balanced model for code implementation"),
-    "code_review":         (SONNET, "default: balanced model for code review"),
-    "security":            (OPUS,   "default: strongest model for security tasks"),
-    "triage":              (HAIKU,  "default: cost-efficient model for triage"),
-    "summarization":       (HAIKU,  "default: cost-efficient model for summarization"),
-    "reasoning":           (SONNET, "default: balanced model for reasoning"),
+_CATEGORY_DEFAULT: dict[str, tuple[str, str, str]] = {
+    "code_implementation": (ANTHROPIC, SONNET, "default: balanced model for code implementation"),
+    "code_review":         (ANTHROPIC, SONNET, "default: balanced model for code review"),
+    "security":            (ANTHROPIC, OPUS,   "default: strongest model for security tasks"),
+    "triage":              (OPENAI,    GPT_41_M, "default: cost-efficient model for triage"),
+    "summarization":       (OPENAI,    GPT_41_M, "default: cost-efficient model for summarization"),
+    "reasoning":           (ANTHROPIC, SONNET, "default: balanced model for reasoning"),
 }
 
-_GLOBAL_DEFAULT = (SONNET, "default: balanced model")
+_GLOBAL_DEFAULT = (ANTHROPIC, SONNET, "default: balanced model")
+
+_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {
+    ANTHROPIC: {
+        "code_implementation": (SONNET, "anthropic override: balanced default for code implementation"),
+        "code_review":         (SONNET, "anthropic override: balanced default for code review"),
+        "security":            (OPUS,   "anthropic override: strongest model for security"),
+        "triage":              (SONNET, "anthropic override: balanced default for triage"),
+        "summarization":       (SONNET, "anthropic override: balanced default for summarization"),
+        "reasoning":           (SONNET, "anthropic override: balanced default for reasoning"),
+        "unknown":             (SONNET, "anthropic override: balanced default model"),
+    },
+    OPENAI: {
+        "code_implementation": (GPT_41_M, "openai override: efficient model for code implementation"),
+        "code_review":         (GPT_41_M, "openai override: efficient model for code review"),
+        "security":            (GPT_41,   "openai override: strongest available OpenAI model for security"),
+        "triage":              (GPT_41_M, "openai override: efficient model for triage"),
+        "summarization":       (GPT_41_M, "openai override: efficient model for summarization"),
+        "reasoning":           (GPT_41,   "openai override: strongest available OpenAI model for reasoning"),
+        "unknown":             (GPT_41_M, "openai override: balanced default model"),
+    },
+}
+
+
+def _infer_provider(model: str) -> str:
+    m = (model or "").lower()
+    if m.startswith("gpt-"):
+        return OPENAI
+    return ANTHROPIC
 
 
 def resolve(
     playbook_slug: str | None,
     routing_preference: str | None,
     explicit_model: str | None = None,
+    explicit_provider: str | None = None,
 ) -> tuple[str, str]:
     """
-    Return (model_id, routing_reason).
+    Return (provider, model_id, routing_reason).
 
     Priority:
     1. explicit_model on the block — user pinned a specific model
-    2. Static policy lookup: (task_category, routing_preference)
-    3. Category default
-    4. Global default (sonnet)
+    2. explicit_provider on the block — user pinned a provider, router picks a safe model for it
+    3. Static policy lookup: (task_category, routing_preference)
+    4. Category default
+    5. Global default (sonnet)
     """
     try:
         # 1. Pinned model
         if explicit_model:
-            return explicit_model, "user-pinned model"
+            return _infer_provider(explicit_model), explicit_model, "user-pinned model"
 
         pref = (routing_preference or "balanced").lower()
         if pref == "auto":
@@ -125,21 +160,38 @@ def resolve(
         # 2. Resolve category from slug
         category = _SLUG_TO_CATEGORY.get(playbook_slug or "", "") if playbook_slug else ""
 
+        requested_provider = (explicit_provider or "").lower().strip()
+        if requested_provider in (ANTHROPIC, OPENAI):
+            category_key = category or "unknown"
+            model, reason = _PROVIDER_MODEL_DEFAULTS[requested_provider].get(
+                category_key,
+                _PROVIDER_MODEL_DEFAULTS[requested_provider]["unknown"],
+            )
+            log.debug(
+                "model_router.provider_override",
+                slug=playbook_slug,
+                pref=pref,
+                category=category_key,
+                provider=requested_provider,
+                model=model,
+            )
+            return requested_provider, model, reason
+
         if category:
-            model, reason = _POLICY.get((category, pref), _CATEGORY_DEFAULT.get(category, _GLOBAL_DEFAULT))
+            provider, model, reason = _POLICY.get((category, pref), _CATEGORY_DEFAULT.get(category, _GLOBAL_DEFAULT))
         else:
             # Unknown slug — fall back by preference only
-            pref_defaults: dict[str, tuple[str, str]] = {
-                "quality":  (OPUS,   "quality preference: strongest model"),
-                "balanced": (SONNET, "balanced preference: default model"),
-                "speed":    (SONNET, "speed preference: sonnet is fast"),
-                "cost":     (HAIKU,  "cost preference: efficient model"),
+            pref_defaults: dict[str, tuple[str, str, str]] = {
+                "quality":  (ANTHROPIC, OPUS,   "quality preference: strongest model"),
+                "balanced": (ANTHROPIC, SONNET, "balanced preference: default model"),
+                "speed":    (OPENAI,    GPT_41_M, "speed preference: efficient model"),
+                "cost":     (OPENAI,    GPT_41_M, "cost preference: efficient model"),
             }
-            model, reason = pref_defaults.get(pref, _GLOBAL_DEFAULT)
+            provider, model, reason = pref_defaults.get(pref, _GLOBAL_DEFAULT)
 
-        log.debug("model_router.resolved", slug=playbook_slug, pref=pref, category=category, model=model)
-        return model, reason
+        log.debug("model_router.resolved", slug=playbook_slug, pref=pref, category=category, provider=provider, model=model)
+        return provider, model, reason
 
     except Exception as e:
         log.warning("model_router.error", error=str(e))
-        return SONNET, "fallback: routing error"
+        return ANTHROPIC, SONNET, "fallback: routing error"

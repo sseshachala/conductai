@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.core.config import settings
-from app.runtime.llm_client import AnthropicClient, LLMTextBlock, LLMToolUseBlock
+from app.runtime.llm_client import AnthropicClient, OpenAIClient, LLMTextBlock, LLMToolUseBlock
 from app.runtime.model_router import resolve as _router_resolve
 from app.core.crypto import decrypt
 from app.core.database import SessionLocal
@@ -708,8 +708,9 @@ def _execute_brain(
     # Model selection via router
     routing_pref = block["data"].get("routingPreference") or "balanced"
     explicit_model = block["data"].get("model") or None
-    model_id, routing_reason = _router_resolve(playbook_slug, routing_pref, explicit_model)
-    log.debug("brain.model_selected", block_id=block["id"], model=model_id, reason=routing_reason)
+    explicit_provider = block["data"].get("provider") or None
+    provider, model_id, routing_reason = _router_resolve(playbook_slug, routing_pref, explicit_model, explicit_provider)
+    log.debug("brain.model_selected", block_id=block["id"], provider=provider, model=model_id, reason=routing_reason)
 
     # Resolve remote host (if the YAML's `runs_on:` was set on this block).
     # When set, all four Brain tools dispatch over SSH to that host rather
@@ -813,7 +814,22 @@ def _execute_brain(
         or _env_vars.get("ANTHROPIC_API_KEY")
         or settings.anthropic_api_key
     )
-    llm = AnthropicClient(api_key=_anthropic_key)
+    _openai_key = (
+        (credentials or {}).get("openai", {}).get("api_key")
+        or _env_vars.get("openai_api_key")
+        or _env_vars.get("OPENAI_API_KEY")
+        or settings.openai_api_key
+    )
+
+    # Provider fallback keeps existing Anthropic behavior if OpenAI is selected
+    # but no key is configured for this workspace/run.
+    if provider == "openai" and _openai_key:
+        llm = OpenAIClient(api_key=_openai_key)
+    else:
+        if provider == "openai" and not _openai_key:
+            log.warning("brain.provider_fallback", reason="missing_openai_key", selected_provider=provider, fallback_provider="anthropic")
+            provider = "anthropic"
+        llm = AnthropicClient(api_key=_anthropic_key)
 
     if is_agentic:
         # Bounded agentic loop — max_turns from run state, default 20
@@ -889,6 +905,7 @@ def _execute_brain(
                     "files_changed": files_changed,
                     "diff_stat": diff_stat,
                     "remote_host_ip": remote_host.get("ip") if remote_host else None,
+                    "provider": provider,
                     "model": model_id,
                     "routing_reason": routing_reason,
                 }
@@ -999,6 +1016,7 @@ def _execute_brain(
             "input_tokens": response.usage.input_tokens,
             "output_tokens": response.usage.output_tokens,
             "cost_usd": response.cost_usd,
+            "provider": provider,
             "model": model_id,
             "routing_reason": routing_reason,
         }
