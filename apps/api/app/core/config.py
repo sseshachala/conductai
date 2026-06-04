@@ -67,6 +67,18 @@ class Settings(BaseSettings):
     openai_api_key: str = ""   # text-embedding-3-small (1536d)
     voyage_api_key: str = ""   # voyage-3-lite (512d) — future
 
+    # Pricing registry overrides (optional).
+    # MODEL_PRICING_OVERRIDES_JSON format:
+    # {
+    #   "version": "2026-06-10",
+    #   "providers": {
+    #     "anthropic": {"claude-sonnet-4-6": {"input": 3.0, "output": 15.0, "cache_read": 0.3, "cache_write": 3.75}},
+    #     "openai": {"gpt-4.1-mini": {"input": 0.4, "output": 1.6}}
+    #   }
+    # }
+    pricing_registry_version: str = "2026-06-04-default"
+    pricing_overrides_json: str = ""
+
     # Fixture promotion — fallback repo if not derivable from the run's workflow
     github_promotion_repo: str = ""
 

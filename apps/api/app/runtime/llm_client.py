@@ -20,6 +20,8 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
+from app.runtime.pricing import get_model_rates
+
 
 # ── Normalized response types ─────────────────────────────────────────────────
 
@@ -105,37 +107,8 @@ class LLMClient(Protocol):
         ...
 
 
-# ── Anthropic adapter ─────────────────────────────────────────────────────────
-
-# Per-model pricing in USD per 1M tokens.
-# Cache read ≈ 10% of input price; cache write ≈ 125% of input price.
-_ANTHROPIC_PRICING: dict[str, dict[str, float]] = {
-    "claude-sonnet-4-6": {
-        "input":       3.00,
-        "output":     15.00,
-        "cache_read":  0.30,
-        "cache_write": 3.75,
-    },
-    "claude-opus-4-7": {
-        "input":       15.00,
-        "output":      75.00,
-        "cache_read":   1.50,
-        "cache_write": 18.75,
-    },
-    "claude-haiku-4-5-20251001": {
-        "input":       0.80,
-        "output":      4.00,
-        "cache_read":  0.08,
-        "cache_write": 1.00,
-    },
-}
-
-# Fallback: Sonnet rates for any unrecognized model ID
-_ANTHROPIC_PRICING_DEFAULT = _ANTHROPIC_PRICING["claude-sonnet-4-6"]
-
-
-def _anthropic_cost(model: str, usage: LLMUsage) -> float:
-    rates = _ANTHROPIC_PRICING.get(model, _ANTHROPIC_PRICING_DEFAULT)
+def _anthropic_cost(model: str, usage: LLMUsage, pricing_snapshot: dict[str, Any] | None = None) -> float:
+    rates, _ = get_model_rates("anthropic", model, pricing_snapshot)
     return round((
         usage.input_tokens         * rates["input"]
         + usage.output_tokens      * rates["output"]
@@ -156,9 +129,10 @@ class AnthropicClient:
     - Conversation history formatting (Anthropic requires raw content objects for assistant turns)
     """
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, pricing_snapshot: dict[str, Any] | None = None) -> None:
         import anthropic as _anthropic
         self._client = _anthropic.Anthropic(api_key=api_key)
+        self._pricing_snapshot = pricing_snapshot
 
     def create(
         self,
@@ -210,7 +184,7 @@ class AnthropicClient:
             content=content,
             stop_reason=raw.stop_reason or "end_turn",
             usage=usage,
-            cost_usd=_anthropic_cost(model, usage),
+            cost_usd=_anthropic_cost(model, usage, self._pricing_snapshot),
             _raw_content=raw.content,  # preserved for make_assistant_turn
         )
 
@@ -227,25 +201,8 @@ class AnthropicClient:
         ]}]
 
 
-# ── OpenAI adapter ───────────────────────────────────────────────────────────
-
-# Per-model pricing in USD per 1M tokens.
-_OPENAI_PRICING: dict[str, dict[str, float]] = {
-    "gpt-4.1": {
-        "input": 2.00,
-        "output": 8.00,
-    },
-    "gpt-4.1-mini": {
-        "input": 0.40,
-        "output": 1.60,
-    },
-}
-
-_OPENAI_PRICING_DEFAULT = _OPENAI_PRICING["gpt-4.1-mini"]
-
-
-def _openai_cost(model: str, usage: LLMUsage) -> float:
-    rates = _OPENAI_PRICING.get(model, _OPENAI_PRICING_DEFAULT)
+def _openai_cost(model: str, usage: LLMUsage, pricing_snapshot: dict[str, Any] | None = None) -> float:
+    rates, _ = get_model_rates("openai", model, pricing_snapshot)
     return round((
         usage.input_tokens * rates["input"]
         + usage.output_tokens * rates["output"]
@@ -263,8 +220,9 @@ class OpenAIClient:
     - Conversation history formatting for assistant/tool turns
     """
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, pricing_snapshot: dict[str, Any] | None = None) -> None:
         self._api_key = api_key
+        self._pricing_snapshot = pricing_snapshot
 
     def create(
         self,
@@ -355,7 +313,7 @@ class OpenAIClient:
             content=content,
             stop_reason=stop_reason,
             usage=usage,
-            cost_usd=_openai_cost(model, usage),
+            cost_usd=_openai_cost(model, usage, self._pricing_snapshot),
             _raw_content=message,
         )
 

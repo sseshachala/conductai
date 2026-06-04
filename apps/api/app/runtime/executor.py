@@ -22,6 +22,7 @@ from typing import Any
 from app.core.config import settings
 from app.runtime.llm_client import AnthropicClient, OpenAIClient, LLMTextBlock, LLMToolUseBlock
 from app.runtime.model_router import resolve as _router_resolve
+from app.runtime.pricing import freeze_pricing_snapshot, get_model_rates
 from app.core.crypto import decrypt
 from app.core.database import SessionLocal
 from app.models.environment import Environment  # noqa: F401 — used for FK relationship loading
@@ -821,15 +822,20 @@ def _execute_brain(
         or settings.openai_api_key
     )
 
+    pricing_snapshot = freeze_pricing_snapshot()
+
     # Provider fallback keeps existing Anthropic behavior if OpenAI is selected
     # but no key is configured for this workspace/run.
     if provider == "openai" and _openai_key:
-        llm = OpenAIClient(api_key=_openai_key)
+        llm = OpenAIClient(api_key=_openai_key, pricing_snapshot=pricing_snapshot)
     else:
         if provider == "openai" and not _openai_key:
             log.warning("brain.provider_fallback", reason="missing_openai_key", selected_provider=provider, fallback_provider="anthropic")
-            provider = "anthropic"
-        llm = AnthropicClient(api_key=_anthropic_key)
+            provider, model_id, fallback_reason = _router_resolve(playbook_slug, routing_pref, None, "anthropic")
+            routing_reason = f"{routing_reason}; fallback: {fallback_reason}"
+        llm = AnthropicClient(api_key=_anthropic_key, pricing_snapshot=pricing_snapshot)
+
+    pricing_rates, pricing_version = get_model_rates(provider, model_id, pricing_snapshot)
 
     if is_agentic:
         # Bounded agentic loop — max_turns from run state, default 20
@@ -908,6 +914,8 @@ def _execute_brain(
                     "provider": provider,
                     "model": model_id,
                     "routing_reason": routing_reason,
+                    "pricing_version": pricing_version,
+                    "pricing_rates": pricing_rates,
                 }
                 # Extract structured values from the last JSON line of the output
                 # so brain blocks can surface keys like pr_url, passed, etc. as
@@ -994,6 +1002,10 @@ def _execute_brain(
                 "cost_usd": cost_usd,
                 "files_changed": files_changed,
                 "diff_stat": diff_stat,
+                "provider": provider,
+                "model": model_id,
+                "pricing_version": pricing_version,
+                "pricing_rates": pricing_rates,
             })
         _close_session()
         raise RuntimeError(
@@ -1020,6 +1032,8 @@ def _execute_brain(
             "provider": provider,
             "model": model_id,
             "routing_reason": routing_reason,
+            "pricing_version": pricing_version,
+            "pricing_rates": pricing_rates,
         }
         # Extract structured values from the last JSON line of the output
         import json as _json
