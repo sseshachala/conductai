@@ -7,7 +7,7 @@ import Link from "next/link"
 import RunTrace from "@/components/runs/RunTrace"
 import ConversationTrace from "@/components/runs/ConversationTrace"
 import AppShell from "@/components/AppShell"
-import { statusStyle, formatTrigger, timeAgo, duration, isTerminal, isActive } from "@/lib/runUtils"
+import { statusStyle, formatTrigger, duration, isTerminal, isActive } from "@/lib/runUtils"
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
@@ -136,9 +136,21 @@ export default function RunDetailPage() {
   const prUrl = triggerCtx?.pr_url as string | undefined
   const prNum = (t.pull_request as Record<string,unknown>)?.number as number | undefined
 
+  // Compute tokens and cost totals for StatRow (same logic as Cost tab)
+  const statState = (run.state ?? {}) as Record<string, unknown>
+  const statBlocks = Object.entries(statState).filter(([k]) => !k.startsWith("__") && !k.startsWith("_"))
+  let statTotalTokens = 0, statTotalCost = 0
+  for (const [, val] of statBlocks) {
+    const v = val as Record<string, unknown>
+    statTotalTokens += ((v?.input_tokens as number) || 0) + ((v?.output_tokens as number) || 0)
+    statTotalCost   += (v?.cost_usd as number) || 0
+  }
+  const statTokensDisplay = statTotalTokens > 0 ? statTotalTokens.toLocaleString() : "—"
+  const statCostDisplay   = statTotalCost   > 0 ? `$${statTotalCost.toFixed(2)}`   : "—"
+
   return (
     <AppShell>
-      <div className="mx-auto max-w-4xl px-6 py-8">
+      <div className="mx-auto max-w-5xl px-6 py-8">
         {/* Breadcrumb */}
         <nav className="flex items-center gap-1.5 text-xs text-stone-400 mb-5">
           <Link href="/projects" className="hover:text-stone-600">Projects</Link>
@@ -196,44 +208,95 @@ export default function RunDetailPage() {
           </div>
         </div>
 
+        {/* StatRow metric bar */}
+        <div className="card" style={{ display: "flex", padding: 0, overflow: "hidden", marginBottom: 22 }}>
+          {([
+            ["Duration",     duration(run.started_at, run.completed_at), false],
+            ["Turns",        run.max_turns ? `— / ${run.max_turns} est.` : "—", false],
+            ["Tokens",       statTokensDisplay, false],
+            ["Est. cost",    statCostDisplay, false],
+            ["Triggered by", formatTrigger(run.triggered_by), true],
+          ] as [string, string, boolean][]).map(([label, value, mono], i, arr) => (
+            <div key={label} style={{
+              flex: i === arr.length - 1 ? 1.4 : 1,
+              padding: "16px 20px",
+              borderLeft: i ? "1px solid var(--border)" : "none",
+            }}>
+              <div style={{ fontSize: 9.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".07em", color: "var(--text-muted)", marginBottom: 7 }}>{label}</div>
+              <div style={{ fontSize: mono ? 14 : 18, fontWeight: 680, letterSpacing: "-.01em", fontFamily: mono ? "var(--font-mono, monospace)" : undefined }}>{value}</div>
+            </div>
+          ))}
+        </div>
+
         {/* Tabs */}
-        <div className="flex gap-1 border-b border-stone-200 mb-4">
+        <div style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border)", marginBottom: 24, overflowX: "auto" }}>
           {tabs.map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`px-4 py-2 text-xs font-medium rounded-t-lg transition-colors ${
-                activeTab === tab.id
-                  ? "bg-white border border-b-white border-stone-200 text-stone-900 -mb-px"
-                  : "text-stone-400 hover:text-stone-600"
-              }`}>
+              style={{
+                background: "none",
+                border: "none",
+                padding: "9px 14px",
+                fontSize: 13.5,
+                fontWeight: activeTab === tab.id ? 600 : 500,
+                whiteSpace: "nowrap",
+                cursor: "pointer",
+                marginBottom: -1,
+                color: activeTab === tab.id ? "var(--text)" : "var(--text-3)",
+                borderBottom: `2px solid ${activeTab === tab.id ? "var(--accent)" : "transparent"}`,
+              }}>
               {tab.label}
             </button>
           ))}
         </div>
 
-        <div className="bg-white rounded-xl border border-stone-200 p-6">
+        <div>
 
           {/* Summary */}
           {activeTab === "summary" && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                {[
-                  ["Status",    s.label],
-                  ["Trigger",   formatTrigger(run.triggered_by)],
-                  ["Started",   run.started_at ? timeAgo(run.started_at) : "—"],
-                  ["Duration",  duration(run.started_at, run.completed_at)],
-                  ["Max turns", run.max_turns?.toString() ?? "—"],
-                  ["Run ID",    run.id.slice(0,8) + "…"],
-                ].map(([label, value]) => (
-                  <div key={label}>
-                    <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-0.5">{label}</p>
-                    <p className="text-sm text-stone-800 font-medium">{value}</p>
+            <div>
+              {/* Summary stat grid — horizontal card with vertical-border cells */}
+              {(() => {
+                const summaryItems: [string, string, boolean][] = [
+                  ["Status",       s.label,                                                   false],
+                  ["Workflow",     workflowName ?? "—",                                        false],
+                  ["Project",      projectName ?? "—",                                         false],
+                  ["Trigger",      formatTrigger(run.triggered_by),                            true ],
+                  ["Started",      run.started_at ? new Date(run.started_at).toLocaleString() : "—", false],
+                  ["Elapsed",      duration(run.started_at, run.completed_at),                 false],
+                ]
+                return (
+                  <div className="card" style={{ display: "flex", flexWrap: "wrap", padding: 0, overflow: "hidden", marginBottom: 24 }}>
+                    {summaryItems.map(([label, value, mono], i) => (
+                      <div key={label} style={{
+                        flex: "1 1 160px",
+                        padding: "16px 20px",
+                        borderLeft: i ? "1px solid var(--border)" : "none",
+                        borderTop: i >= 3 ? "1px solid var(--border)" : "none",
+                      }}>
+                        <div style={{ fontSize: 9.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".07em", color: "var(--text-muted)", marginBottom: 7 }}>{label}</div>
+                        <div style={{ fontSize: mono ? 13 : 14, fontWeight: 550, fontFamily: mono ? "var(--font-mono, monospace)" : undefined, color: "var(--text)" }}>
+                          {label === "Status" ? (
+                            <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${s.bg} ${s.text}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+                              {s.label}
+                            </span>
+                          ) : value}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                )
+              })()}
               {run.trigger_summary && (
-                <div className="pt-4 border-t border-stone-100">
+                <div className="pt-4 border-t border-stone-100 mt-2">
                   <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-1">Trigger context</p>
                   <p className="text-sm text-stone-700">{run.trigger_summary}</p>
+                </div>
+              )}
+              {(issueNum || (prNum && prUrl)) && (
+                <div className="pt-4 border-t border-stone-100 mt-2 flex flex-wrap gap-3">
+                  {issueNum && <span className="text-xs text-stone-500 bg-stone-100 px-2 py-0.5 rounded">Issue #{issueNum}{issueTitle ? ` — ${issueTitle}` : ""}</span>}
+                  {prNum && prUrl && <a href={prUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 hover:underline font-medium">PR #{prNum} →</a>}
                 </div>
               )}
             </div>
