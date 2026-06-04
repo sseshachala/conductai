@@ -22,6 +22,7 @@ from typing import Any
 from app.core.config import settings
 from app.runtime.llm_client import AnthropicClient, OpenAIClient, LLMTextBlock, LLMToolUseBlock
 from app.runtime.model_router import resolve as _router_resolve
+from app.runtime.pricing import freeze_pricing_snapshot, get_model_rates
 from app.core.crypto import decrypt
 from app.core.database import SessionLocal
 from app.models.environment import Environment  # noqa: F401 — used for FK relationship loading
@@ -392,6 +393,51 @@ class ApprovalRequired(Exception):
         self.block_id = block_id
         self.message = message
         super().__init__(message)
+
+
+def _classify_failure(exc: Exception, block_id: str | None = None) -> dict[str, Any]:
+    """Normalize runtime failures into a structured, user-actionable summary."""
+    msg = str(exc)
+
+    code = "EXECUTION_ERROR"
+    category = "runtime"
+    stop_reason = "exception"
+    next_action = "Inspect the failed block output and rerun after fixing the underlying error."
+
+    if isinstance(exc, PermissionError):
+        code = "EGRESS_POLICY_BLOCKED"
+        category = "governance"
+        stop_reason = "policy_block"
+        next_action = "Update allowed_hosts for this environment or remove the blocked outbound call."
+    elif isinstance(exc, RuntimeError) and "Turn budget exhausted" in msg:
+        code = "RETRY_BUDGET_EXHAUSTED"
+        category = "reliability"
+        stop_reason = "max_turns_reached"
+        next_action = "Tighten the task scope or increase the run turn budget for this workflow."
+    elif isinstance(exc, RuntimeError) and "Cost budget exhausted" in msg:
+        code = "COST_BUDGET_EXHAUSTED"
+        category = "reliability"
+        stop_reason = "max_cost_reached"
+        next_action = "Reduce task scope or raise the cost cap for this workflow run."
+    elif isinstance(exc, ValueError) and msg.startswith("NEEDS_CLARIFICATION:"):
+        code = "INSUFFICIENT_INPUT_CONTEXT"
+        category = "input_contract"
+        stop_reason = "missing_context"
+        next_action = "Provide clearer trigger context or required inputs before starting the run."
+    elif "Approval rejected" in msg:
+        code = "APPROVAL_REJECTED"
+        category = "approval"
+        stop_reason = "human_rejected"
+        next_action = "Review rejection feedback, update the plan, and rerun for approval."
+
+    return {
+        "code": code,
+        "category": category,
+        "stop_reason": stop_reason,
+        "message": msg,
+        "block_id": block_id,
+        "next_action": next_action,
+    }
 
 
 # ── tool definitions for Brain agentic mode ───────────────────────────────────
@@ -821,21 +867,29 @@ def _execute_brain(
         or settings.openai_api_key
     )
 
+    pricing_snapshot = freeze_pricing_snapshot()
+
     # Provider fallback keeps existing Anthropic behavior if OpenAI is selected
     # but no key is configured for this workspace/run.
     if provider == "openai" and _openai_key:
-        llm = OpenAIClient(api_key=_openai_key)
+        llm = OpenAIClient(api_key=_openai_key, pricing_snapshot=pricing_snapshot)
     else:
         if provider == "openai" and not _openai_key:
             log.warning("brain.provider_fallback", reason="missing_openai_key", selected_provider=provider, fallback_provider="anthropic")
-            provider = "anthropic"
-        llm = AnthropicClient(api_key=_anthropic_key)
+            provider, model_id, fallback_reason = _router_resolve(playbook_slug, routing_pref, None, "anthropic")
+            routing_reason = f"{routing_reason}; fallback: {fallback_reason}"
+        llm = AnthropicClient(api_key=_anthropic_key, pricing_snapshot=pricing_snapshot)
+
+    pricing_rates, pricing_version = get_model_rates(provider, model_id, pricing_snapshot)
 
     if is_agentic:
-        # Bounded agentic loop — max_turns from run state, default 20
+        # Bounded agentic loop — deterministic retry boundaries from run state
         messages: list[dict] = [{"role": "user", "content": user_message}]
         turns = 0
         max_turns = int(state.get("__max_turns", 20))
+        max_turns = max(1, max_turns)
+        max_cost_usd = float(state.get("__max_cost_usd", 5.0) or 5.0)
+        max_cost_usd = max(0.01, max_cost_usd)
         total_input_tokens = 0
         total_output_tokens = 0
         total_cache_read_tokens = 0
@@ -865,6 +919,35 @@ def _execute_brain(
             total_cache_read_tokens  += response.usage.cache_read_tokens
             total_cache_write_tokens += response.usage.cache_write_tokens
             total_cost_usd           += response.cost_usd
+
+            if total_cost_usd >= max_cost_usd:
+                cost_usd = round(total_cost_usd, 6)
+                files_changed, diff_stat = session.capture_artifacts()
+                if db and run_id:
+                    _emit(db, run_id, block_id, "brain_budget_exhausted", {
+                        "reason": "max_cost_reached",
+                        "stop_reason": "max_cost_reached",
+                        "turns": turns,
+                        "max_turns": max_turns,
+                        "max_cost_usd": max_cost_usd,
+                        "input_tokens": total_input_tokens,
+                        "output_tokens": total_output_tokens,
+                        "cache_read_tokens": total_cache_read_tokens,
+                        "cache_write_tokens": total_cache_write_tokens,
+                        "cost_usd": cost_usd,
+                        "files_changed": files_changed,
+                        "diff_stat": diff_stat,
+                        "provider": provider,
+                        "model": model_id,
+                        "pricing_version": pricing_version,
+                        "pricing_rates": pricing_rates,
+                        "next_action": "Reduce scope or raise max_cost_usd before retrying.",
+                    })
+                _close_session()
+                raise RuntimeError(
+                    f"Cost budget exhausted: agent reached ${cost_usd:.4f} with cap ${max_cost_usd:.4f} "
+                    f"after {turns} turns"
+                )
 
             # Collect tool calls from response
             tool_calls  = [b for b in response.content if isinstance(b, LLMToolUseBlock)]
@@ -908,6 +991,8 @@ def _execute_brain(
                     "provider": provider,
                     "model": model_id,
                     "routing_reason": routing_reason,
+                    "pricing_version": pricing_version,
+                    "pricing_rates": pricing_rates,
                 }
                 # Extract structured values from the last JSON line of the output
                 # so brain blocks can surface keys like pr_url, passed, etc. as
@@ -986,7 +1071,11 @@ def _execute_brain(
                     "turn": max_turns,
                 })
             _emit(db, run_id, block_id, "brain_budget_exhausted", {
+                "reason": "max_turns_reached",
+                "stop_reason": "max_turns_reached",
                 "turns": max_turns,
+                "max_turns": max_turns,
+                "max_cost_usd": max_cost_usd,
                 "input_tokens": total_input_tokens,
                 "output_tokens": total_output_tokens,
                 "cache_read_tokens": total_cache_read_tokens,
@@ -994,6 +1083,11 @@ def _execute_brain(
                 "cost_usd": cost_usd,
                 "files_changed": files_changed,
                 "diff_stat": diff_stat,
+                "provider": provider,
+                "model": model_id,
+                "pricing_version": pricing_version,
+                "pricing_rates": pricing_rates,
+                "next_action": "Reduce scope or increase max_turns before retrying.",
             })
         _close_session()
         raise RuntimeError(
@@ -1020,6 +1114,8 @@ def _execute_brain(
             "provider": provider,
             "model": model_id,
             "routing_reason": routing_reason,
+            "pricing_version": pricing_version,
+            "pricing_rates": pricing_rates,
         }
         # Extract structured values from the last JSON line of the output
         import json as _json
@@ -1807,6 +1903,7 @@ def _execute_dag(
 
     failed = False
     fail_error = ""
+    fail_summary: dict[str, Any] | None = None
     logic_routes: dict[str, str] = {}  # block_id → 'pass'|'fail'
 
     # Cache the skip set and only recompute when a new logic route is resolved.
@@ -1959,7 +2056,13 @@ def _execute_dag(
                     sentry_sdk.capture_exception(e)
             failed = True
             fail_error = str(e)
-            _emit(db, run_id, block_id, "block_failed", {"error": str(e)})
+            fail_summary = _classify_failure(e, block_id)
+            _emit(db, run_id, block_id, "block_failed", {
+                "error": str(e),
+                "failure": fail_summary,
+                "reason_code": fail_summary["code"],
+                "next_action": fail_summary["next_action"],
+            })
             break
 
         except Exception as e:
@@ -1973,7 +2076,13 @@ def _execute_dag(
                     sentry_sdk.capture_exception(e)
             failed = True
             fail_error = str(e)
-            _emit(db, run_id, block_id, "block_failed", {"error": str(e)})
+            fail_summary = _classify_failure(e, block_id)
+            _emit(db, run_id, block_id, "block_failed", {
+                "error": str(e),
+                "failure": fail_summary,
+                "reason_code": fail_summary["code"],
+                "next_action": fail_summary["next_action"],
+            })
             break
 
     # Always run cleanup blocks
@@ -1983,7 +2092,13 @@ def _execute_dag(
             result = _execute_tool(block, state, credentials, allowed_hosts=allowed_hosts)
             _emit(db, run_id, block["id"], "block_completed", {"output": result})
         except Exception as e:
-            _emit(db, run_id, block["id"], "block_failed", {"error": str(e)})
+            cleanup_summary = _classify_failure(e, block["id"])
+            _emit(db, run_id, block["id"], "block_failed", {
+                "error": str(e),
+                "failure": cleanup_summary,
+                "reason_code": cleanup_summary["code"],
+                "next_action": cleanup_summary["next_action"],
+            })
 
     run.status = "failed" if failed else "succeeded"
     run.completed_at = _now()
@@ -1999,9 +2114,16 @@ def _execute_dag(
     except Exception:
         pass
 
+    if failed and not fail_summary and fail_error:
+        fail_summary = _classify_failure(RuntimeError(fail_error), None)
+
     _emit(db, run_id, None, "run_completed" if not failed else "run_failed", {
         "status": run.status,
         "error": fail_error,
+        "failure": fail_summary,
+        "reason_code": fail_summary["code"] if fail_summary else None,
+        "next_action": fail_summary["next_action"] if fail_summary else None,
+        "stop_reason": fail_summary["stop_reason"] if fail_summary else None,
     })
     log.info("run.finished", run_id=run_id, status=run.status)
 

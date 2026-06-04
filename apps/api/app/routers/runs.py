@@ -23,6 +23,7 @@ from app.models.run import Run, RunEvent
 from app.models.workflow import Workflow, WorkflowVersion
 from app.models.project import Project
 from app.schemas.run import RunCreate, RunDetailOut, RunOut, RunWithWorkflowOut
+from app.runtime.input_contract import InputContractError, validate_run_start_inputs
 
 router = APIRouter(prefix="/workflows/{workflow_id}/runs", tags=["runs"])
 
@@ -209,6 +210,11 @@ def create_run(
     initial_state = body.initial_state or {}
     if body.dry_run:
         initial_state["__dry_run"] = True
+
+    try:
+        initial_state = validate_run_start_inputs(initial_state)
+    except InputContractError as err:
+        raise HTTPException(status_code=422, detail=str(err))
 
     # If the caller didn't provide an explicit turn budget, estimate it server-side
     # so CLI and API callers get the same guard as the canvas preflight banner.
