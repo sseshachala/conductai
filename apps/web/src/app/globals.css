@@ -26,10 +26,13 @@
   --text-3:      #78716c;
   --text-muted:  #a8a29e;
 
-  --ok:    #059669;  --ok-bg:    #ecfdf5;
-  --warn:  #d97706;  --warn-bg:  #fffbeb;
-  --err:   #dc2626;  --err-bg:   #fef2f2;
-  --info:  #2563eb;  --info-bg:  #eff6ff;
+  --ok:    #059669;  --ok-bg:    #ecfdf5;  --ok-bd:    #6ee7b7;
+  --warn:  #d97706;  --warn-bg:  #fffbeb;  --warn-bd:  #fcd34d;
+  --err:   #dc2626;  --err-bg:   #fef2f2;  --err-bd:   #fca5a5;
+  --info:  #2563eb;  --info-bg:  #eff6ff;  --info-bd:  #93c5fd;
+
+  --inverse:    #1c1917;
+  --on-inverse: #ffffff;
 
   --bg-grid:     #ece9e4;
 
@@ -82,5 +85,124 @@ body {
 }
 
 .conduct-pulse-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
   animation: conduct-pulse 1.4s ease-in-out infinite;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+/* ── Guard design-system primitives ─────────────────────────────────────────── */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.card-pad {
+  padding: 16px 18px;
+}
+
+.eyebrow {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.mono {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+/* Status badges */
+.sbadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+.sbadge.ok   { background: var(--ok-bg);   color: var(--ok);   border: 1px solid var(--ok-bd);   }
+.sbadge.warn { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-bd); }
+.sbadge.err  { background: var(--err-bg);  color: var(--err);  border: 1px solid var(--err-bd);  }
+.sbadge.info { background: var(--info-bg); color: var(--info); border: 1px solid var(--info-bd); }
+
+/* Filter chip */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all .12s;
+}
+.chip:hover { border-color: var(--border-2); color: var(--text); }
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all .12s;
+  padding: 7px 14px;
+  text-decoration: none;
+}
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn-ghost {
+  background: transparent;
+  color: var(--text-2);
+  border-color: var(--border);
+}
+.btn-ghost:hover { background: var(--surface-2); color: var(--text); }
+.btn-sm { font-size: 12px; padding: 5px 11px; border-radius: 7px; }
+
+/* Guard underline tab nav */
+.guard-tab-nav {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 24px;
+}
+.guard-tab {
+  background: none;
+  border: none;
+  padding: 9px 14px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-3);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  transition: color .12s;
+}
+.guard-tab:hover { color: var(--text-2); }
+.guard-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
 }

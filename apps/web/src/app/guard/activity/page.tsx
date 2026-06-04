@@ -3,16 +3,13 @@
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useAuth, useUser } from "@clerk/nextjs"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import AppShell from "@/components/AppShell"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
-function getCookie(name: string): string | null {
-  if (typeof document === "undefined") return null
-  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
-  return m ? decodeURIComponent(m[1]) : null
-}
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface AuditEvent {
   id: string
@@ -26,23 +23,117 @@ interface AuditEvent {
   conductai_run_id: string | null
 }
 
-const DECISION_STYLES: Record<string, string> = {
-  allowed:  "text-green-700 bg-green-50 border-green-200",
-  blocked:  "text-red-700 bg-red-50 border-red-200",
-  approval: "text-amber-700 bg-amber-50 border-amber-200",
+// ─── Guard Shell ──────────────────────────────────────────────────────────────
+
+const GUARD_TABS = [
+  { href: "/guard",          label: "Overview"  },
+  { href: "/guard/spend",    label: "Spend"     },
+  { href: "/guard/policies", label: "Policies"  },
+  { href: "/guard/activity", label: "Activity"  },
+  { href: "/guard/settings", label: "Settings"  },
+]
+
+function GuardShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
+  return (
+    <div style={{ maxWidth: 1240, margin: "0 auto", padding: "28px 24px 48px" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", marginBottom: 20 }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", letterSpacing: "-.02em", margin: 0 }}>
+              Guard
+            </h1>
+            <span className="sbadge ok" style={{ marginTop: 2 }}>
+              <span className="conduct-pulse-dot" />
+              live
+            </span>
+          </div>
+          <p style={{ fontSize: 13, color: "var(--text-3)", marginTop: 5 }}>
+            MDM for AI coding tools — policies and spend limits enforced on every Claude Code, Codex, and Cursor call.
+          </p>
+        </div>
+        <div style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)", paddingTop: 4 }}>
+          last updated: just now
+        </div>
+      </div>
+      <div className="guard-tab-nav">
+        {GUARD_TABS.map(tab => {
+          const isActive = tab.href === "/guard"
+            ? pathname === "/guard"
+            : pathname?.startsWith(tab.href)
+          return (
+            <Link key={tab.href} href={tab.href} className={`guard-tab${isActive ? " active" : ""}`}>
+              {tab.label}
+            </Link>
+          )
+        })}
+      </div>
+      {children}
+    </div>
+  )
 }
 
-function DecisionBadge({ decision }: { decision: string }) {
-  const cls = DECISION_STYLES[decision] ?? "text-stone-600 bg-stone-100 border-stone-200"
+// ─── Tool badge ───────────────────────────────────────────────────────────────
+
+const TOOL_COLORS: Record<string, string> = {
+  "claude-code":  "var(--accent)",
+  "claude_code":  "var(--accent)",
+  "codex":        "var(--ok)",
+  "cursor":       "#7c3aed",
+  "windsurf":     "#0284c7",
+  "gemini":       "#ea580c",
+}
+
+function ToolBadge({ tool }: { tool: string }) {
+  const color = TOOL_COLORS[tool] ?? TOOL_COLORS[tool.replace(/-/g, "_")] ?? "var(--text-3)"
+  const LABELS: Record<string, string> = {
+    claude_code: "Claude Code", claude: "Claude", codex: "Codex",
+    cursor: "Cursor", windsurf: "Windsurf", gemini: "Gemini",
+  }
+  const label = LABELS[tool.replace(/-/g, "_")] ?? tool
   return (
-    <span className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full border ${cls}`}>
+    <span
+      style={{
+        fontSize: 11,
+        fontWeight: 600,
+        color,
+        background: "var(--surface-3)",
+        borderRadius: 5,
+        padding: "2px 7px",
+      }}
+    >
+      {label}
+    </span>
+  )
+}
+
+// ─── Decision badge ───────────────────────────────────────────────────────────
+
+function DecisionBadge({ decision }: { decision: string }) {
+  if (decision === "allowed") {
+    return (
+      <span className="sbadge ok" style={{ textTransform: "capitalize" }}>
+        {decision}
+      </span>
+    )
+  }
+  if (decision === "blocked") {
+    return (
+      <span className="sbadge err" style={{ textTransform: "capitalize" }}>
+        {decision}
+      </span>
+    )
+  }
+  return (
+    <span className="sbadge warn" style={{ textTransform: "capitalize" }}>
       {decision}
     </span>
   )
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function formatTs(ts: string): string {
-  // Full timestamp for compliance — no relative time
   try {
     const d = new Date(ts)
     const pad = (n: number) => String(n).padStart(2, "0")
@@ -54,15 +145,11 @@ function formatTs(ts: string): string {
 
 function exportCsv(events: AuditEvent[]) {
   const header = "timestamp,developer,ai_tool,tool_call,input_summary,decision,rule_id\n"
-  const rows = events.map((e) => {
+  const rows = events.map(e => {
     const cols = [
-      e.ts,
-      e.user_email ?? "",
-      e.ai_tool,
-      e.tool_call,
+      e.ts, e.user_email ?? "", e.ai_tool, e.tool_call,
       `"${(e.input_summary ?? "").replace(/"/g, '""')}"`,
-      e.decision,
-      e.rule_id ?? "",
+      e.decision, e.rule_id ?? "",
     ]
     return cols.join(",")
   })
@@ -77,6 +164,8 @@ function exportCsv(events: AuditEvent[]) {
 }
 
 const PAGE_SIZE = 100
+
+// ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function ActivityPage() {
   return <AppShell><ActivityContent /></AppShell>
@@ -96,19 +185,17 @@ function ActivityContent() {
   const offsetRef = useRef(0)
 
   // Filters
+  const [filterDecision, setFilterDecision] = useState("")
   const [filterDeveloper, setFilterDeveloper] = useState("")
   const [filterTool, setFilterTool] = useState("")
-  const [filterDecision, setFilterDecision] = useState("")
   const [filterSince, setFilterSince] = useState("")
   const [filterUntil, setFilterUntil] = useState("")
 
   const currentUserEmail = user?.primaryEmailAddress?.emailAddress ?? null
 
-  // Unique values from loaded events for filter dropdowns
-  const developers = Array.from(new Set(events.map((e) => e.user_email).filter(Boolean) as string[])).sort()
-  const tools = Array.from(new Set(events.map((e) => e.ai_tool))).sort()
+  const developers = Array.from(new Set(events.map(e => e.user_email).filter(Boolean) as string[])).sort()
+  const tools = Array.from(new Set(events.map(e => e.ai_tool))).sort()
 
-  // Viewers are locked to their own email — enforce server-side by injecting it into params
   const effectiveDeveloperFilter = !permissions.canViewAllActivity && currentUserEmail
     ? currentUserEmail
     : filterDeveloper
@@ -124,7 +211,6 @@ function ActivityContent() {
     return p.toString()
   }
 
-  // Clear skeleton when team resolution finishes with no result
   useEffect(() => {
     if (!teamLoading && !teamId) setLoading(false)
   }, [teamLoading, teamId])
@@ -166,215 +252,224 @@ function ActivityContent() {
       const res = await fetch(`${base}/guard/events?${buildParams(offsetRef.current)}`, { headers })
       if (!res.ok) throw new Error("Failed to load more events")
       const rows: AuditEvent[] = await res.json()
-      setEvents((prev) => [...prev, ...rows])
+      setEvents(prev => [...prev, ...rows])
       setHasMore(rows.length === PAGE_SIZE)
       offsetRef.current += rows.length
     } catch {
-      // non-fatal — user can retry
+      // non-fatal
     } finally {
       setLoadingMore(false)
     }
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
-
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-semibold text-stone-900 mb-1">Activity log</h1>
-            <p className="text-sm text-stone-500">Complete log of all AI tool actions across your team.</p>
-          </div>
-          {permissions.canExportActivity && (
-            <button
-              onClick={() => exportCsv(events)}
-              disabled={events.length === 0}
-              className="shrink-0 text-xs text-stone-600 hover:text-stone-800 border border-stone-200 rounded-lg px-3 py-1.5 hover:bg-stone-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              Export CSV
-            </button>
-          )}
+    <GuardShell>
+      {/* Viewer-scoped notice */}
+      {!permissions.canViewAllActivity && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800 mb-4">
+          You can view your own activity only. Contact your admin to request broader access.
         </div>
+      )}
 
-        {/* Viewer-scoped notice */}
-        {!permissions.canViewAllActivity && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
-            You can view your own activity only. Contact your admin to request broader access.
-          </div>
-        )}
-
-        {/* Filters */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Developer — hidden for viewers (they are locked to their own email) */}
-          {permissions.canViewAllActivity && (
-            <select
-              value={filterDeveloper}
-              onChange={(e) => setFilterDeveloper(e.target.value)}
-              className="text-xs border border-stone-200 rounded-lg px-3 py-1.5 text-stone-600 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            >
-              <option value="">All developers</option>
-              {developers.map((d) => (
-                <option key={d} value={d}>{d}</option>
-              ))}
-            </select>
-          )}
-
-          {/* Tool */}
-          <select
-            value={filterTool}
-            onChange={(e) => setFilterTool(e.target.value)}
-            className="text-xs border border-stone-200 rounded-lg px-3 py-1.5 text-stone-600 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          >
-            <option value="">All tools</option>
-            {tools.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-
-          {/* Decision */}
-          <select
-            value={filterDecision}
-            onChange={(e) => setFilterDecision(e.target.value)}
-            className="text-xs border border-stone-200 rounded-lg px-3 py-1.5 text-stone-600 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          >
-            <option value="">All decisions</option>
-            <option value="allowed">Allowed</option>
-            <option value="blocked">Blocked</option>
-            <option value="approval">Approval</option>
-          </select>
-
-          {/* Since */}
-          <input
-            type="date"
-            value={filterSince}
-            onChange={(e) => setFilterSince(e.target.value)}
-            className="text-xs border border-stone-200 rounded-lg px-3 py-1.5 text-stone-600 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            placeholder="From date"
-            aria-label="From date"
-          />
-
-          {/* Until */}
-          <input
-            type="date"
-            value={filterUntil}
-            onChange={(e) => setFilterUntil(e.target.value)}
-            className="text-xs border border-stone-200 rounded-lg px-3 py-1.5 text-stone-600 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            placeholder="To date"
-            aria-label="To date"
-          />
-
-          {/* Clear filters */}
-          {(filterDeveloper || filterTool || filterDecision || filterSince || filterUntil) && (
+      {/* Filter chips + realtime indicator */}
+      <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 16, flexWrap: "wrap" }}>
+        {/* Decision filter chips */}
+        {["", "blocked", "warned", "allowed"].map(d => {
+          const label = d === "" ? "All" : d.charAt(0).toUpperCase() + d.slice(1)
+          const active = filterDecision === d
+          return (
             <button
-              onClick={() => {
-                // Don't clear filterDeveloper for viewers — it is locked to their own email
-                if (permissions.canViewAllActivity) setFilterDeveloper("")
-                setFilterTool("")
-                setFilterDecision("")
-                setFilterSince("")
-                setFilterUntil("")
+              key={d}
+              onClick={() => setFilterDecision(d)}
+              className="chip"
+              style={{
+                height: 30,
+                fontWeight: 600,
+                background: active ? "var(--accent-weak)" : "var(--surface)",
+                borderColor: active ? "var(--accent-ring)" : "var(--border)",
+                color: active ? "var(--accent-text)" : "var(--text-2)",
               }}
-              className="text-xs text-stone-400 hover:text-stone-600 transition-colors"
             >
-              Clear filters
+              {label}
             </button>
-          )}
-        </div>
+          )
+        })}
 
-        {error && (
-          <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>
+        {/* More filters */}
+        {permissions.canViewAllActivity && (
+          <select
+            value={filterDeveloper}
+            onChange={e => setFilterDeveloper(e.target.value)}
+            className="text-xs border border-stone-200 rounded-lg px-3 py-1.5 text-stone-600 bg-white focus:outline-none"
+          >
+            <option value="">All developers</option>
+            {developers.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
         )}
 
-        {/* Events table */}
-        {loading ? (
-          <div className="space-y-2 animate-pulse">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="bg-stone-100 rounded-xl h-12" />
-            ))}
-          </div>
-        ) : events.length === 0 ? (
-          <div className="rounded-xl border border-stone-200 bg-white px-6 py-16 text-center text-sm text-stone-400">
-            No activity events found for the selected filters.
-          </div>
-        ) : (
-          <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-stone-100 text-xs text-stone-400 uppercase tracking-wide bg-stone-50">
-                    <th className="px-4 py-3 text-left font-medium whitespace-nowrap">Timestamp</th>
-                    <th className="px-4 py-3 text-left font-medium">Developer</th>
-                    <th className="px-4 py-3 text-left font-medium">Tool</th>
-                    <th className="px-4 py-3 text-left font-medium">Action</th>
-                    <th className="px-4 py-3 text-left font-medium">Input</th>
-                    <th className="px-4 py-3 text-left font-medium">Decision</th>
-                    <th className="px-4 py-3 text-left font-medium">Rule</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {events.map((ev) => (
-                    <tr
-                      key={ev.id}
-                      className="border-b border-stone-100 last:border-0 hover:bg-stone-50 transition-colors"
-                    >
-                      <td className="px-4 py-3 text-xs text-stone-500 font-mono whitespace-nowrap">
-                        {formatTs(ev.ts)}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-stone-700 max-w-[180px] truncate">
-                        {ev.user_email ?? "—"}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-stone-600 whitespace-nowrap">
-                        {ev.ai_tool}
-                      </td>
-                      <td className="px-4 py-3 text-xs font-mono text-stone-600 whitespace-nowrap">
-                        {ev.tool_call}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-stone-500 max-w-[220px] truncate font-mono">
-                        {ev.input_summary}
-                      </td>
-                      <td className="px-4 py-3">
-                        {ev.conductai_run_id ? (
-                          <Link href={`/runs/${ev.conductai_run_id}`} className="hover:opacity-80 transition-opacity">
-                            <DecisionBadge decision={ev.decision} />
-                          </Link>
-                        ) : (
-                          <DecisionBadge decision={ev.decision} />
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-stone-400 font-mono">
-                        {ev.rule_id ? (
-                          <span className="text-stone-600">{ev.rule_id}</span>
-                        ) : (
-                          <span className="text-stone-300">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+        <select
+          value={filterTool}
+          onChange={e => setFilterTool(e.target.value)}
+          className="text-xs border border-stone-200 rounded-lg px-3 py-1.5 text-stone-600 bg-white focus:outline-none"
+        >
+          <option value="">All tools</option>
+          {tools.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
 
-            {/* Load more */}
-            {hasMore && (
-              <div className="border-t border-stone-100 px-4 py-3 flex items-center justify-between">
-                <span className="text-xs text-stone-400">Showing {events.length} events</span>
-                <button
-                  onClick={loadMore}
-                  disabled={loadingMore}
-                  className="text-xs text-indigo-600 hover:text-indigo-800 disabled:opacity-50 font-medium transition-colors"
-                >
-                  {loadingMore ? "Loading…" : "Load more"}
-                </button>
-              </div>
-            )}
+        <input
+          type="date"
+          value={filterSince}
+          onChange={e => setFilterSince(e.target.value)}
+          className="text-xs border border-stone-200 rounded-lg px-3 py-1.5 text-stone-600 bg-white focus:outline-none"
+          aria-label="From date"
+        />
+        <input
+          type="date"
+          value={filterUntil}
+          onChange={e => setFilterUntil(e.target.value)}
+          className="text-xs border border-stone-200 rounded-lg px-3 py-1.5 text-stone-600 bg-white focus:outline-none"
+          aria-label="To date"
+        />
 
-            {!hasMore && events.length > 0 && (
-              <div className="border-t border-stone-100 px-4 py-2 text-xs text-stone-400 text-center">
-                {events.length} event{events.length !== 1 ? "s" : ""} total
-              </div>
-            )}
-          </div>
+        {(filterDeveloper || filterTool || filterSince || filterUntil) && (
+          <button
+            onClick={() => {
+              if (permissions.canViewAllActivity) setFilterDeveloper("")
+              setFilterTool(""); setFilterSince(""); setFilterUntil("")
+            }}
+            style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
+          >
+            Clear filters
+          </button>
+        )}
+
+        {/* Realtime indicator */}
+        <span style={{ marginLeft: "auto", fontSize: 12.5, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6 }}>
+          <span className="conduct-pulse-dot" style={{ background: "var(--ok)" }} />
+          Realtime · every tool call logged
+        </span>
+
+        {/* Export CSV */}
+        {permissions.canExportActivity && (
+          <button
+            onClick={() => exportCsv(events)}
+            disabled={events.length === 0}
+            className="btn btn-ghost btn-sm"
+            style={{ fontSize: 11 }}
+          >
+            Export CSV
+          </button>
         )}
       </div>
+
+      {error && (
+        <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 mb-4">{error}</div>
+      )}
+
+      {/* Events table */}
+      {loading ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="animate-pulse" style={{ height: 44, background: "var(--surface-2)", borderRadius: 8 }} />
+          ))}
+        </div>
+      ) : events.length === 0 ? (
+        <div className="card" style={{ padding: "40px 24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
+          No activity events found for the selected filters.
+        </div>
+      ) : (
+        <div className="card" style={{ overflow: "hidden" }}>
+          {/* Table header */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "0.8fr 1.4fr 1fr 0.7fr 1.8fr 0.9fr 0.8fr",
+              gap: 12,
+              padding: "10px 18px",
+              borderBottom: "1px solid var(--border)",
+              background: "var(--surface-2)",
+            }}
+          >
+            {["Time", "Developer", "Tool", "Call", "Input", "Decision", "Rule"].map((h, i) => (
+              <div key={i} className="eyebrow" style={{ fontSize: 9.5 }}>{h}</div>
+            ))}
+          </div>
+
+          {/* Table rows */}
+          {events.map((ev, i) => (
+            <div
+              key={ev.id}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "0.8fr 1.4fr 1fr 0.7fr 1.8fr 0.9fr 0.8fr",
+                gap: 12,
+                padding: "11px 18px",
+                borderBottom: i < events.length - 1 ? "1px solid var(--border)" : "none",
+                alignItems: "center",
+                background: ev.decision === "blocked" ? "var(--err-bg)" : "transparent",
+              }}
+            >
+              {/* Time */}
+              <div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
+                {formatTs(ev.ts)}
+              </div>
+
+              {/* Developer */}
+              <div className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {ev.user_email ?? "—"}
+              </div>
+
+              {/* Tool */}
+              <div>
+                <ToolBadge tool={ev.ai_tool} />
+              </div>
+
+              {/* Call */}
+              <div className="mono" style={{ fontSize: 12, fontWeight: 600 }}>{ev.tool_call}</div>
+
+              {/* Input */}
+              <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {ev.input_summary ? `{${ev.input_summary}…}` : "—"}
+              </div>
+
+              {/* Decision */}
+              <div>
+                {ev.conductai_run_id ? (
+                  <Link href={`/runs/${ev.conductai_run_id}`} className="hover:opacity-80 transition-opacity">
+                    <DecisionBadge decision={ev.decision} />
+                  </Link>
+                ) : (
+                  <DecisionBadge decision={ev.decision} />
+                )}
+              </div>
+
+              {/* Rule */}
+              <div className="mono" style={{ fontSize: 11.5, color: ev.rule_id ? "var(--err)" : "var(--text-muted)" }}>
+                {ev.rule_id ?? "—"}
+              </div>
+            </div>
+          ))}
+
+          {/* Load more / count */}
+          {hasMore && (
+            <div style={{ borderTop: "1px solid var(--border)", padding: "12px 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Showing {events.length} events</span>
+              <button
+                onClick={loadMore}
+                disabled={loadingMore}
+                style={{ fontSize: 12, color: "var(--accent-text)", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}
+              >
+                {loadingMore ? "Loading…" : "Load more"}
+              </button>
+            </div>
+          )}
+          {!hasMore && events.length > 0 && (
+            <div style={{ borderTop: "1px solid var(--border)", padding: "8px 18px", textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>
+              {events.length} event{events.length !== 1 ? "s" : ""} total
+            </div>
+          )}
+        </div>
+      )}
+    </GuardShell>
   )
 }

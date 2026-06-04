@@ -1,12 +1,16 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useGuardSavings } from "@/hooks/useGuardSavings"
 import AppShell from "@/components/AppShell"
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface DeveloperSpend {
   email: string
@@ -39,12 +43,12 @@ type Currency = "USD" | "EUR" | "INR"
 const CURRENCY_SYMBOLS: Record<Currency, string> = { USD: "$", EUR: "€", INR: "₹" }
 const CURRENCY_RATES: Record<Currency, number> = { USD: 1, EUR: 0.92, INR: 83.5 }
 
-function toUsd(amount: number, currency: Currency): number {
-  return amount / CURRENCY_RATES[currency]
-}
-
 function fromUsd(amount: number, currency: Currency): number {
   return amount * CURRENCY_RATES[currency]
+}
+
+function toUsd(amount: number, currency: Currency): number {
+  return amount / CURRENCY_RATES[currency]
 }
 
 interface BudgetOut {
@@ -65,51 +69,293 @@ interface TeamBudgetSettings {
   default_per_developer_usd: number | null
 }
 
-function StatCard({
-  label,
-  value,
-  sub,
-  accent,
-}: {
-  label: string
-  value: string | number
-  sub?: string
-  accent?: string
-}) {
+// ─── Guard Shell ──────────────────────────────────────────────────────────────
+
+const GUARD_TABS = [
+  { href: "/guard",          label: "Overview"  },
+  { href: "/guard/spend",    label: "Spend"     },
+  { href: "/guard/policies", label: "Policies"  },
+  { href: "/guard/activity", label: "Activity"  },
+  { href: "/guard/settings", label: "Settings"  },
+]
+
+function GuardShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
   return (
-    <div className="bg-white rounded-xl border border-stone-200 px-5 py-4 flex flex-col gap-1">
-      <div className={`text-2xl font-bold ${accent ?? "text-stone-900"}`}>{value}</div>
-      <div className="text-xs font-medium text-stone-500 uppercase tracking-wide">{label}</div>
-      {sub && <div className="text-xs text-stone-400">{sub}</div>}
+    <div style={{ maxWidth: 1240, margin: "0 auto", padding: "28px 24px 48px" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", marginBottom: 20 }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", letterSpacing: "-.02em", margin: 0 }}>
+              Guard
+            </h1>
+            <span className="sbadge ok" style={{ marginTop: 2 }}>
+              <span className="conduct-pulse-dot" />
+              live
+            </span>
+          </div>
+          <p style={{ fontSize: 13, color: "var(--text-3)", marginTop: 5 }}>
+            MDM for AI coding tools — policies and spend limits enforced on every Claude Code, Codex, and Cursor call.
+          </p>
+        </div>
+        <div style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)", paddingTop: 4 }}>
+          last updated: just now
+        </div>
+      </div>
+      <div className="guard-tab-nav">
+        {GUARD_TABS.map(tab => {
+          const isActive = tab.href === "/guard"
+            ? pathname === "/guard"
+            : pathname?.startsWith(tab.href)
+          return (
+            <Link key={tab.href} href={tab.href} className={`guard-tab${isActive ? " active" : ""}`}>
+              {tab.label}
+            </Link>
+          )
+        })}
+      </div>
+      {children}
     </div>
   )
 }
 
-function BudgetBar({ used, limit }: { used: number; limit: number | null }) {
-  if (limit == null || limit === 0) {
-    return <span className="text-xs text-stone-400">No limit</span>
-  }
-  const pct = Math.min((used / limit) * 100, 100)
-  const fillColour =
-    pct >= 95 ? "bg-red-500" : pct >= 80 ? "bg-amber-400" : "bg-indigo-500"
-  return (
-    <div className="flex items-center gap-2 min-w-[120px]">
-      <div className="flex-1 h-2 bg-stone-200 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all ${fillColour}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <span className="text-xs text-stone-500 whitespace-nowrap">{Math.round(pct)}%</span>
-    </div>
-  )
-}
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`
   return String(n)
 }
+
+const MONTHS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+]
+
+// ─── Spend controls panel ─────────────────────────────────────────────────────
+
+function SpendControlsPanel({
+  settings,
+  onSave,
+  currency,
+  readOnly,
+}: {
+  settings: TeamBudgetSettings
+  onSave: (s: TeamBudgetSettings) => Promise<void>
+  currency: Currency
+  readOnly?: boolean
+}) {
+  const [editing, setEditing] = useState(false)
+  const [local, setLocal] = useState(settings)
+  const [saving, setSaving] = useState(false)
+  const sym = CURRENCY_SYMBOLS[currency]
+
+  useEffect(() => { setLocal(settings) }, [settings])
+
+  function reset() { setLocal(settings); setEditing(false) }
+
+  async function handleSave() {
+    setSaving(true)
+    try { await onSave(local); setEditing(false) } finally { setSaving(false) }
+  }
+
+  function displayAmt(usd: number | null): string {
+    if (usd == null) return ""
+    return String(Math.round(fromUsd(usd, currency)))
+  }
+
+  function parseAmt(val: string): number | null {
+    const n = parseFloat(val)
+    return isNaN(n) || n < 0 ? null : toUsd(n, currency)
+  }
+
+  const teamPct =
+    settings.team_monthly_limit_usd && settings.team_monthly_limit_usd > 0
+      ? Math.min((0 / settings.team_monthly_limit_usd) * 100, 100)
+      : null
+
+  const gridItems: [React.ReactNode, React.ReactNode, React.ReactNode | null][] = [
+    [
+      "Team monthly budget",
+      editing ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 13, color: "var(--text-muted)" }}>{sym}</span>
+          <input
+            type="number" min="0.01" step="0.01"
+            value={displayAmt(local.team_monthly_limit_usd)}
+            onChange={e => setLocal(p => ({ ...p, team_monthly_limit_usd: parseAmt(e.target.value) }))}
+            placeholder="No limit"
+            style={{ width: 100, fontSize: 13, border: "1px solid var(--border-2)", borderRadius: 7, padding: "5px 10px" }}
+          />
+        </div>
+      ) : (
+        <span style={{ fontSize: 18, fontWeight: 650 }}>
+          {settings.team_monthly_limit_usd != null
+            ? `${sym}${Math.round(fromUsd(settings.team_monthly_limit_usd, currency)).toLocaleString()} / month`
+            : <span style={{ color: "var(--text-muted)", fontWeight: 400, fontSize: 14 }}>No limit set</span>
+          }
+        </span>
+      ),
+      teamPct != null && !editing
+        ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+            <div style={{ flex: 1, height: 7, borderRadius: 6, background: "var(--surface-3)" }}>
+              <div style={{ width: `${teamPct}%`, height: "100%", borderRadius: 6, background: "var(--accent)" }} />
+            </div>
+            <span className="mono" style={{ fontSize: 12, color: "var(--text-3)" }}>{Math.round(teamPct)}%</span>
+          </div>
+        )
+        : null,
+    ],
+    [
+      "Default per-developer limit",
+      editing ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 13, color: "var(--text-muted)" }}>{sym}</span>
+          <input
+            type="number" min="0.01" step="0.01"
+            value={displayAmt(local.default_per_developer_usd)}
+            onChange={e => setLocal(p => ({ ...p, default_per_developer_usd: parseAmt(e.target.value) }))}
+            placeholder="No limit"
+            style={{ width: 100, fontSize: 13, border: "1px solid var(--border-2)", borderRadius: 7, padding: "5px 10px" }}
+          />
+        </div>
+      ) : (
+        <span style={{ fontSize: 18, fontWeight: 650 }}>
+          {settings.default_per_developer_usd != null
+            ? `${sym}${Math.round(fromUsd(settings.default_per_developer_usd, currency)).toLocaleString()} / month`
+            : <span style={{ color: "var(--text-muted)", fontWeight: 400, fontSize: 14 }}>No limit set</span>
+          }
+        </span>
+      ),
+      <div key="devlimit-sub" style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 10 }}>
+        Applies to new members automatically
+      </div>,
+    ],
+    [
+      "Alert threshold",
+      editing ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
+          <input
+            type="range" min="50" max="99" step="5"
+            value={local.alert_threshold_pct}
+            onChange={e => setLocal(p => ({ ...p, alert_threshold_pct: parseInt(e.target.value) }))}
+            style={{ width: 100, accentColor: "var(--accent)" }}
+          />
+          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--warn)" }}>{local.alert_threshold_pct}%</span>
+        </div>
+      ) : (
+        <span style={{ fontSize: 18, fontWeight: 650 }}>
+          <span style={{ color: "var(--warn)" }}>{settings.alert_threshold_pct}%</span>
+          <span style={{ fontSize: 13, fontWeight: 400, color: "var(--text-muted)" }}> — notify team lead + developer</span>
+        </span>
+      ),
+      null,
+    ],
+    [
+      "Hard cap at 100%",
+      editing ? (
+        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginTop: 4 }}>
+          <input
+            type="checkbox"
+            checked={local.hard_cap_enabled}
+            onChange={e => setLocal(p => ({ ...p, hard_cap_enabled: e.target.checked }))}
+            style={{ width: 16, height: 16, accentColor: "var(--accent)" }}
+          />
+          <span style={{ fontSize: 13, color: "var(--text-2)" }}>Block new AI sessions at cap</span>
+        </label>
+      ) : (
+        <span style={{ fontSize: 18, fontWeight: 650 }}>
+          {settings.hard_cap_enabled
+            ? <span style={{ color: "var(--err)" }}>On — sessions blocked at 100%</span>
+            : <span style={{ color: "var(--text-3)", fontWeight: 400, fontSize: 14 }}>Off</span>
+          }
+        </span>
+      ),
+      null,
+    ],
+  ]
+
+  return (
+    <div className="card" style={{ borderColor: "var(--warn-bd)", marginBottom: 22, overflow: "hidden" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 22px", borderBottom: "1px solid var(--border)" }}>
+        <span style={{ width: 32, height: 32, borderRadius: 9, background: "var(--warn-bg)", color: "var(--warn)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+          </svg>
+        </span>
+        <div>
+          <div style={{ fontWeight: 650, fontSize: 15 }}>Spend controls</div>
+          <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>Set limits now — not after the bill arrives.</div>
+        </div>
+        {!readOnly && (
+          editing ? (
+            <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+              <button onClick={reset} className="btn btn-ghost btn-sm">Cancel</button>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="btn btn-primary btn-sm"
+                style={{ opacity: saving ? 0.6 : 1 }}
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setEditing(true)}
+              className="btn btn-ghost btn-sm"
+              style={{ marginLeft: "auto", color: "var(--accent-text)", borderColor: "var(--accent-ring)" }}
+            >
+              Configure
+            </button>
+          )
+        )}
+      </div>
+
+      {/* 2×2 grid body */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
+        {gridItems.map(([k, v, extra], i) => (
+          <div
+            key={i}
+            style={{
+              padding: "18px 22px",
+              borderTop: "1px solid var(--border)",
+              borderRight: i % 2 === 0 ? "1px solid var(--border)" : "none",
+            }}
+          >
+            <div style={{ fontSize: 12.5, color: "var(--text-2)", marginBottom: 6 }}>{k}</div>
+            {v}
+            {extra}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Budget bar ───────────────────────────────────────────────────────────────
+
+function BudgetBar({ used, limit }: { used: number; limit: number | null }) {
+  if (limit == null || limit === 0) {
+    return <span style={{ fontSize: 12, color: "var(--text-muted)" }}>No limit</span>
+  }
+  const pct = Math.min((used / limit) * 100, 100)
+  const over = pct >= 95
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 9, flex: 1 }}>
+      <div style={{ flex: 1, height: 7, borderRadius: 6, background: "var(--surface-3)", overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", borderRadius: 6, background: over ? "var(--warn)" : "var(--accent)" }} />
+      </div>
+      <span className="mono" style={{ fontSize: 11.5, color: over ? "var(--warn)" : "var(--text-muted)", width: 30, textAlign: "right" }}>
+        {Math.round(pct)}%
+      </span>
+    </div>
+  )
+}
+
+// ─── Budget inline editor ─────────────────────────────────────────────────────
 
 function BudgetInput({
   email,
@@ -140,7 +386,7 @@ function BudgetInput({
     return (
       <button
         onClick={() => setEditing(true)}
-        className="text-stone-400 hover:text-indigo-600 transition-colors"
+        style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
         title="Set budget"
         aria-label={`Set budget for ${email}`}
       >
@@ -152,17 +398,15 @@ function BudgetInput({
   }
 
   return (
-    <div className="flex items-center gap-1">
-      <span className="text-xs text-stone-400">$</span>
+    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>$</span>
       <input
-        type="number"
-        min="0"
-        step="10"
+        type="number" min="0" step="10"
         value={value}
-        onChange={(e) => setValue(e.target.value)}
-        className="w-16 text-xs border border-stone-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+        onChange={e => setValue(e.target.value)}
+        style={{ width: 56, fontSize: 11, border: "1px solid var(--border-2)", borderRadius: 5, padding: "2px 6px" }}
         autoFocus
-        onKeyDown={(e) => {
+        onKeyDown={e => {
           if (e.key === "Enter") handleSave()
           if (e.key === "Escape") setEditing(false)
         }}
@@ -170,192 +414,21 @@ function BudgetInput({
       <button
         onClick={handleSave}
         disabled={saving}
-        className="text-xs text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded px-1.5 py-0.5 transition-colors"
+        style={{ fontSize: 11, background: "var(--accent)", color: "#fff", border: "none", borderRadius: 5, padding: "2px 7px", cursor: "pointer" }}
       >
         {saving ? "…" : "Save"}
       </button>
       <button
         onClick={() => setEditing(false)}
-        className="text-xs text-stone-500 hover:text-stone-700"
+        style={{ fontSize: 11, background: "none", border: "none", cursor: "pointer", color: "var(--text-3)" }}
       >
-        Cancel
+        ✕
       </button>
     </div>
   )
 }
 
-function SpendControlsPanel({
-  settings,
-  onSave,
-  currency,
-  readOnly,
-}: {
-  settings: TeamBudgetSettings
-  onSave: (s: TeamBudgetSettings) => Promise<void>
-  currency: Currency
-  readOnly?: boolean
-}) {
-  const [editing, setEditing] = useState(false)
-  const [local, setLocal] = useState(settings)
-  const [saving, setSaving] = useState(false)
-  const sym = CURRENCY_SYMBOLS[currency]
-
-  useEffect(() => { setLocal(settings) }, [settings])
-
-  function reset() { setLocal(settings); setEditing(false) }
-
-  async function handleSave() {
-    setSaving(true)
-    try { await onSave(local); setEditing(false) } finally { setSaving(false) }
-  }
-
-  const teamPct =
-    settings.team_monthly_limit_usd && settings.team_monthly_limit_usd > 0
-      ? Math.min((0 / settings.team_monthly_limit_usd) * 100, 100)
-      : null
-
-  function displayAmt(usd: number | null): string {
-    if (usd == null) return ""
-    return String(Math.round(fromUsd(usd, currency)))
-  }
-
-  function parseAmt(val: string): number | null {
-    const n = parseFloat(val)
-    return isNaN(n) || n < 0 ? null : toUsd(n, currency)
-  }
-
-  return (
-    <div className="bg-white rounded-xl border border-amber-200 overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100">
-        <div className="flex items-center gap-2">
-          <span className="text-base" aria-hidden>⚡</span>
-          <div>
-            <h2 className="text-sm font-semibold text-stone-900">Spend Controls</h2>
-            <p className="text-xs text-stone-500">Set limits now — not after the bill arrives.</p>
-          </div>
-        </div>
-        {!readOnly && (
-          !editing ? (
-            <button
-              onClick={() => setEditing(true)}
-              className="text-xs font-medium text-indigo-600 hover:text-indigo-800 border border-indigo-200 rounded-lg px-3 py-1.5 transition-colors"
-            >
-              Configure
-            </button>
-          ) : (
-            <div className="flex gap-2">
-              <button onClick={reset} className="text-xs text-stone-500 hover:text-stone-700 border border-stone-200 rounded-lg px-3 py-1.5 transition-colors">
-                Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
-              >
-                {saving ? "Saving…" : "Save"}
-              </button>
-            </div>
-          )
-        )}
-      </div>
-
-      <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-2 gap-5">
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-stone-700">Team monthly budget</label>
-          {editing ? (
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm text-stone-400">{sym}</span>
-              <input
-                type="number" min="0.01" step="0.01"
-                value={displayAmt(local.team_monthly_limit_usd)}
-                onChange={e => setLocal(p => ({ ...p, team_monthly_limit_usd: parseAmt(e.target.value) }))}
-                placeholder="No limit"
-                className="w-32 text-sm border border-stone-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              />
-            </div>
-          ) : (
-            <p className="text-sm font-semibold text-stone-900">
-              {settings.team_monthly_limit_usd != null
-                ? `${sym}${Math.round(fromUsd(settings.team_monthly_limit_usd, currency)).toLocaleString()} / month`
-                : <span className="text-stone-400 font-normal">No limit set</span>}
-            </p>
-          )}
-          {teamPct != null && !editing && (
-            <BudgetBar used={0} limit={settings.team_monthly_limit_usd} />
-          )}
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-stone-700">Default per-developer limit</label>
-          {editing ? (
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm text-stone-400">{sym}</span>
-              <input
-                type="number" min="0.01" step="0.01"
-                value={displayAmt(local.default_per_developer_usd)}
-                onChange={e => setLocal(p => ({ ...p, default_per_developer_usd: parseAmt(e.target.value) }))}
-                placeholder="No limit"
-                className="w-32 text-sm border border-stone-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              />
-            </div>
-          ) : (
-            <p className="text-sm font-semibold text-stone-900">
-              {settings.default_per_developer_usd != null
-                ? `${sym}${Math.round(fromUsd(settings.default_per_developer_usd, currency)).toLocaleString()} / month`
-                : <span className="text-stone-400 font-normal">No limit set</span>}
-            </p>
-          )}
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-stone-700">Alert threshold</label>
-          {editing ? (
-            <div className="flex items-center gap-2">
-              <input
-                type="range" min="50" max="99" step="5"
-                value={local.alert_threshold_pct}
-                onChange={e => setLocal(p => ({ ...p, alert_threshold_pct: parseInt(e.target.value) }))}
-                className="w-32 accent-indigo-600"
-              />
-              <span className="text-sm font-medium text-stone-700 w-10">{local.alert_threshold_pct}%</span>
-            </div>
-          ) : (
-            <p className="text-sm font-semibold text-stone-900">
-              Alert at <span className="text-amber-600">{settings.alert_threshold_pct}%</span>
-              <span className="text-xs font-normal text-stone-400 ml-1">— notify team lead + developer</span>
-            </p>
-          )}
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-stone-700">Hard cap at 100%</label>
-          {editing ? (
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={local.hard_cap_enabled}
-                onChange={e => setLocal(p => ({ ...p, hard_cap_enabled: e.target.checked }))}
-                className="w-4 h-4 accent-indigo-600"
-              />
-              <span className="text-sm text-stone-700">Block new AI sessions when budget is exhausted</span>
-            </label>
-          ) : (
-            <p className="text-sm font-semibold text-stone-900">
-              {settings.hard_cap_enabled
-                ? <span className="text-red-600">Hard cap on — sessions blocked at 100%</span>
-                : <span className="text-stone-400 font-normal">Off — spend can exceed limit</span>}
-            </p>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-const MONTHS = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-]
+// ─── Month picker ─────────────────────────────────────────────────────────────
 
 function MonthPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false)
@@ -370,7 +443,7 @@ function MonthPicker({ value, onChange }: { value: string; onChange: (v: string)
   return (
     <div className="relative">
       <button
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen(o => !o)}
         className="text-xs border border-stone-200 rounded-lg px-3 py-1.5 text-stone-600 hover:bg-stone-50 transition-colors flex items-center gap-1.5"
       >
         {label}
@@ -381,17 +454,11 @@ function MonthPicker({ value, onChange }: { value: string; onChange: (v: string)
       {open && (
         <div className="absolute right-0 mt-1 bg-white border border-stone-200 rounded-xl shadow-lg p-3 z-10 min-w-[160px]">
           <div className="flex items-center justify-between mb-2">
-            <button
-              onClick={() => onChange(`${year - 1}-${String(month).padStart(2, "0")}`)}
-              className="text-stone-400 hover:text-stone-600 text-xs px-1"
-            >
+            <button onClick={() => onChange(`${year - 1}-${String(month).padStart(2, "0")}`)} className="text-stone-400 hover:text-stone-600 text-xs px-1">
               &lsaquo; {year - 1}
             </button>
             <span className="text-xs font-medium text-stone-700">{year}</span>
-            <button
-              onClick={() => onChange(`${year + 1}-${String(month).padStart(2, "0")}`)}
-              className="text-stone-400 hover:text-stone-600 text-xs px-1"
-            >
+            <button onClick={() => onChange(`${year + 1}-${String(month).padStart(2, "0")}`)} className="text-stone-400 hover:text-stone-600 text-xs px-1">
               {year + 1} &rsaquo;
             </button>
           </div>
@@ -400,11 +467,7 @@ function MonthPicker({ value, onChange }: { value: string; onChange: (v: string)
               <button
                 key={m}
                 onClick={() => select(i + 1)}
-                className={`text-xs rounded px-1.5 py-1 transition-colors ${
-                  i + 1 === month
-                    ? "bg-indigo-600 text-white"
-                    : "text-stone-600 hover:bg-stone-100"
-                }`}
+                className={`text-xs rounded px-1.5 py-1 transition-colors ${i + 1 === month ? "bg-indigo-600 text-white" : "text-stone-600 hover:bg-stone-100"}`}
               >
                 {m}
               </button>
@@ -415,6 +478,8 @@ function MonthPicker({ value, onChange }: { value: string; onChange: (v: string)
     </div>
   )
 }
+
+// ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function SpendPage() {
   return <AppShell><SpendContent /></AppShell>
@@ -494,7 +559,6 @@ function SpendContent() {
 
   useEffect(() => { load() }, [load])
 
-  // Propagate hook-level error (Guard not installed) to page error state
   useEffect(() => {
     if (teamError) setError(teamError)
   }, [teamError])
@@ -537,7 +601,7 @@ function SpendContent() {
       body: JSON.stringify({ workspace_id: teamId, email, monthly_limit_usd: limit }),
     })
     if (!res.ok) throw new Error("Failed to save budget")
-    setBudgets((prev) => ({ ...prev, [email]: limit }))
+    setBudgets(prev => ({ ...prev, [email]: limit }))
   }
 
   const monthLabel = (() => {
@@ -547,249 +611,199 @@ function SpendContent() {
 
   if (!canViewSpend) {
     return (
-      <div className="max-w-6xl mx-auto px-6 py-8">
+      <GuardShell>
         <div className="rounded-xl border border-stone-200 bg-white px-6 py-16 text-center text-sm text-stone-400">
           You don&apos;t have access to spend data. Contact your admin.
         </div>
-      </div>
+      </GuardShell>
     )
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
+    <GuardShell>
+      {/* Page controls row */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, marginBottom: 20 }}>
+        <select
+          value={currency}
+          onChange={e => setCurrency(e.target.value as Currency)}
+          className="text-xs border border-stone-200 rounded-lg px-2.5 py-1.5 text-stone-600 bg-white focus:outline-none"
+        >
+          <option value="USD">$ USD</option>
+          <option value="EUR">€ EUR</option>
+          <option value="INR">₹ INR</option>
+        </select>
+        <MonthPicker value={month} onChange={setMonth} />
+      </div>
 
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-stone-900 mb-1">Spend</h1>
-            <p className="text-sm text-stone-500">Token usage and estimated cost for your team.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <select
-              value={currency}
-              onChange={e => setCurrency(e.target.value as Currency)}
-              className="text-xs border border-stone-200 rounded-lg px-2.5 py-1.5 text-stone-600 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            >
-              <option value="USD">$ USD</option>
-              <option value="EUR">€ EUR</option>
-              <option value="INR">₹ INR</option>
-            </select>
-            <MonthPicker value={month} onChange={setMonth} />
-          </div>
+      {error && (
+        <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 mb-4">{error}</div>
+      )}
+
+      {/* Spend controls card */}
+      <SpendControlsPanel settings={teamSettings} onSave={saveTeamSettings} currency={currency} readOnly={!isAdmin} />
+
+      {/* 4 stat cards */}
+      {loading ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 22 }}>
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="card card-pad animate-pulse" style={{ height: 80 }} />
+          ))}
         </div>
-
-        {error && (
-          <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>
-        )}
-
-        <SpendControlsPanel settings={teamSettings} onSave={saveTeamSettings} currency={currency} readOnly={!isAdmin} />
-
-        {loading ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-pulse">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="bg-stone-100 rounded-xl h-24" />
+      ) : data ? (
+        <>
+          <div className="eyebrow" style={{ marginBottom: 11 }}>Spend for {monthLabel}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 22 }}>
+            {[
+              [`${CURRENCY_SYMBOLS[currency]}${fromUsd(data.total_cost_usd, currency).toFixed(2)}`, "Est. cost this month", "plain"],
+              [formatTokens(data.total_tokens_after), "Tokens used", "ok"],
+              [`${CURRENCY_SYMBOLS[currency]}${fromUsd(data.total_cost_usd + data.total_saved_usd, currency).toFixed(0)}`, "Est. cost without Guard", "plain"],
+              [`${CURRENCY_SYMBOLS[currency]}${fromUsd(data.total_saved_usd, currency).toFixed(0)}`, "Est. savings", "accent"],
+            ].map(([v, k, tone], i) => (
+              <div key={i} className="card card-pad">
+                <div style={{
+                  fontSize: 24,
+                  fontWeight: 700,
+                  letterSpacing: "-.02em",
+                  color: tone === "ok" ? "var(--ok)" : tone === "accent" ? "var(--accent-text)" : "var(--text)",
+                }}>
+                  {v}
+                </div>
+                <div className="eyebrow" style={{ marginTop: 7, fontSize: 9.5 }}>{k}</div>
+              </div>
             ))}
           </div>
-        ) : data ? (
-          <>
-            <p className="text-xs font-medium text-stone-500 uppercase tracking-wide -mb-4">
-              Spend for {monthLabel}
-            </p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <StatCard
-                label="Est. cost this month"
-                value={`${CURRENCY_SYMBOLS[currency]}${fromUsd(data.total_cost_usd, currency).toFixed(2)}`}
-                accent="text-stone-900"
-              />
-              <StatCard
-                label="Tokens used"
-                value={formatTokens(data.total_tokens_after)}
-                accent="text-green-700"
-              />
-              <StatCard
-                label="Est. cost without Guard"
-                value={`${CURRENCY_SYMBOLS[currency]}${fromUsd(data.total_cost_usd + data.total_saved_usd, currency).toFixed(0)}`}
-                accent="text-stone-500"
-              />
-              <StatCard
-                label="Est. savings"
-                value={`${CURRENCY_SYMBOLS[currency]}${fromUsd(data.total_saved_usd, currency).toFixed(0)}`}
-                accent="text-indigo-700"
-              />
-            </div>
 
-            {/* RTK + Agent Booster savings */}
-            {!savingsLoading && savings && (savings.team_total.rtk_saved_tokens > 0 || savings.team_total.booster_saved_tokens > 0) && (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4">
-                <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-3">Token savings from developer tools</p>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <StatCard
-                    label="RTK — tokens saved"
-                    value={formatTokens(savings.team_total.rtk_saved_tokens)}
-                    accent="text-emerald-700"
-                  />
-                  <StatCard
-                    label="RTK — cost saved"
-                    value={`$${savings.team_total.rtk_saved_usd.toFixed(2)}`}
-                    accent="text-emerald-700"
-                  />
-                  <StatCard
-                    label="Booster — tokens saved"
-                    value={formatTokens(savings.team_total.booster_saved_tokens)}
-                    accent="text-emerald-700"
-                  />
-                  <StatCard
-                    label="Combined savings"
-                    value={`$${(savings.team_total.rtk_saved_usd + savings.team_total.booster_saved_usd).toFixed(2)}`}
-                    accent="text-emerald-800"
-                  />
-                </div>
-                <p className="text-xs text-emerald-600 mt-3">
-                  Reported by {savings.by_member.length} developer{savings.by_member.length !== 1 ? "s" : ""} via <span className="font-mono">conduct guard sync</span> · RTK + Agent Booster · Claude Sonnet pricing
-                </p>
+          {/* RTK + Agent Booster savings */}
+          {!savingsLoading && savings &&
+            (savings.team_total.rtk_saved_tokens > 0 || savings.team_total.booster_saved_tokens > 0) && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 mb-6">
+              <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-3">Token savings from developer tools</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {[
+                  [formatTokens(savings.team_total.rtk_saved_tokens), "RTK — tokens saved", "text-emerald-700"],
+                  [`$${savings.team_total.rtk_saved_usd.toFixed(2)}`, "RTK — cost saved", "text-emerald-700"],
+                  [formatTokens(savings.team_total.booster_saved_tokens), "Booster — tokens saved", "text-emerald-700"],
+                  [`$${(savings.team_total.rtk_saved_usd + savings.team_total.booster_saved_usd).toFixed(2)}`, "Combined savings", "text-emerald-800"],
+                ].map(([v, k, accent], i) => (
+                  <div key={i} className="bg-white rounded-xl border border-emerald-100 px-4 py-3">
+                    <div className={`text-xl font-bold ${accent}`}>{v}</div>
+                    <div className="text-xs font-medium text-stone-500 uppercase tracking-wide mt-1">{k}</div>
+                  </div>
+                ))}
               </div>
-            )}
-          </>
-        ) : null}
-
-        <div>
-          <h2 className="text-sm font-semibold text-stone-700 mb-3">By Developer</h2>
-          {loading ? (
-            <div className="space-y-2 animate-pulse">
-              {[...Array(3)].map((_, i) => (
-                <div key={i} className="bg-stone-100 rounded-xl h-14" />
-              ))}
-            </div>
-          ) : !data || data.by_developer.length === 0 ? (
-            <div className="rounded-xl border border-stone-200 bg-white px-6 py-10 text-center text-sm text-stone-400">
-              No developer spend data for this period.
-            </div>
-          ) : (
-            <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-stone-100 text-xs text-stone-400 uppercase tracking-wide">
-                    <th className="px-4 py-3 text-left font-medium">Developer</th>
-                    <th className="px-4 py-3 text-right font-medium">Sessions</th>
-                    <th className="px-4 py-3 text-right font-medium">Tokens used</th>
-                    <th className="px-4 py-3 text-right font-medium">Est. cost</th>
-                    <th className="px-4 py-3 text-right font-medium">Est. saved</th>
-                    <th className="px-4 py-3 text-left font-medium">Budget</th>
-                    <th className="px-4 py-3 text-left font-medium w-6" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.by_developer.map((dev) => {
-                    const budgetLimit = budgets[dev.email] ?? null
-                    const isExpanded = expandedDev === dev.email
-                    return (
-                      <>
-                        <tr
-                          key={dev.email}
-                          className="border-b border-stone-100 last:border-0 hover:bg-stone-50 transition-colors cursor-pointer"
-                          onClick={() => setExpandedDev(isExpanded ? null : dev.email)}
-                        >
-                          <td className="px-4 py-3 font-medium text-stone-800">{dev.email}</td>
-                          <td className="px-4 py-3 text-right text-stone-600">{dev.sessions}</td>
-                          <td className="px-4 py-3 text-right text-stone-600 font-mono text-xs">
-                            {formatTokens(dev.tokens_after)}
-                          </td>
-                          <td className="px-4 py-3 text-right text-stone-700 font-mono text-xs font-medium">
-                            {CURRENCY_SYMBOLS[currency]}{fromUsd(dev.cost_usd, currency).toFixed(2)}
-                          </td>
-                          <td className="px-4 py-3 text-right text-green-700 font-mono text-xs">
-                            {CURRENCY_SYMBOLS[currency]}{fromUsd(dev.saved_usd, currency).toFixed(2)}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-stone-500 font-mono whitespace-nowrap">
-                                ${dev.cost_usd.toFixed(0)}/{budgetLimit != null ? `$${budgetLimit}` : "—"}
-                              </span>
-                              <BudgetBar used={dev.cost_usd} limit={budgetLimit} />
-                            </div>
-                          </td>
-                          {isAdmin && (
-                            <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                              <BudgetInput
-                                email={dev.email}
-                                current={budgetLimit}
-                                onSave={saveBudget}
-                              />
-                            </td>
-                          )}
-                          {!isAdmin && <td className="px-4 py-3" />}
-                        </tr>
-                        {isExpanded && (
-                          <tr key={`${dev.email}-expanded`} className="bg-stone-50 border-b border-stone-100">
-                            <td colSpan={7} className="px-6 py-4">
-                              <p className="text-xs text-stone-500">
-                                Session breakdown for <span className="font-medium text-stone-700">{dev.email}</span> is available in the Activity log.
-                              </p>
-                              <a
-                                href={`/guard/activity?developer=${encodeURIComponent(dev.email)}`}
-                                className="mt-1 inline-block text-xs text-indigo-600 hover:underline"
-                              >
-                                View activity log for this developer &rarr;
-                              </a>
-                            </td>
-                          </tr>
-                        )}
-                      </>
-                    )
-                  })}
-                </tbody>
-              </table>
+              <p className="text-xs text-emerald-600 mt-3">
+                Reported by {savings.by_member.length} developer{savings.by_member.length !== 1 ? "s" : ""} via <span className="font-mono">conduct guard sync</span>
+              </p>
             </div>
           )}
+        </>
+      ) : null}
+
+      {/* By developer table */}
+      <div className="card" style={{ overflow: "hidden", marginBottom: 24 }}>
+        <div style={{ padding: "15px 20px 13px", borderBottom: "1px solid var(--border)", fontWeight: 650, fontSize: 14.5 }}>
+          By developer
+        </div>
+        {/* Header row */}
+        <div style={{ display: "grid", gridTemplateColumns: "1.8fr 0.8fr 0.9fr 0.9fr 0.9fr 1.3fr", gap: 14, padding: "10px 20px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+          {["Developer", "Sessions", "Tokens", "Est. cost", "Saved", "Budget"].map((h, i) => (
+            <div key={i} className="eyebrow" style={{ fontSize: 10 }}>{h}</div>
+          ))}
         </div>
 
-        {data && data.by_ai_tool.length > 0 && (
-          <div>
-            <h2 className="text-sm font-semibold text-stone-700 mb-3">By AI Tool</h2>
-            <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-stone-100 text-xs text-stone-400 uppercase tracking-wide">
-                    <th className="px-4 py-3 text-left font-medium">Tool</th>
-                    <th className="px-4 py-3 text-right font-medium">Tokens used</th>
-                    <th className="px-4 py-3 text-right font-medium">Est. cost</th>
-                    <th className="px-4 py-3 text-right font-medium">% of total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.by_ai_tool.map((t) => {
-                    const pct = data.total_tokens_after > 0
-                      ? (t.tokens_after / data.total_tokens_after) * 100
-                      : 0
-                    return (
-                      <tr key={t.ai_tool} className="border-b border-stone-100 last:border-0">
-                        <td className="px-4 py-3 font-medium text-stone-800">{t.ai_tool}</td>
-                        <td className="px-4 py-3 text-right text-stone-600 font-mono text-xs">
-                          {formatTokens(t.tokens_after)}
-                        </td>
-                        <td className="px-4 py-3 text-right text-stone-700 font-mono text-xs font-medium">
-                          {CURRENCY_SYMBOLS[currency]}{fromUsd(t.cost_usd, currency).toFixed(2)}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <div className="w-16 h-1.5 bg-stone-200 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-indigo-500 rounded-full"
-                                style={{ width: `${Math.min(pct, 100)}%` }}
-                              />
-                            </div>
-                            <span className="text-xs text-stone-500 w-8 text-right">
-                              {Math.round(pct)}%
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+        {loading ? (
+          <div style={{ padding: "20px" }}>
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="animate-pulse" style={{ height: 40, background: "var(--surface-2)", borderRadius: 6, marginBottom: 8 }} />
+            ))}
           </div>
+        ) : !data || data.by_developer.length === 0 ? (
+          <div style={{ padding: "40px 20px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
+            No developer spend data for this period.
+          </div>
+        ) : (
+          data.by_developer.map(dev => {
+            const budgetLimit  = budgets[dev.email] ?? null
+            const isExpanded   = expandedDev === dev.email
+            return (
+              <div key={dev.email}>
+                <div
+                  style={{ display: "grid", gridTemplateColumns: "1.8fr 0.8fr 0.9fr 0.9fr 0.9fr 1.3fr", gap: 14, padding: "12px 20px", borderBottom: "1px solid var(--border)", alignItems: "center", cursor: "pointer" }}
+                  onClick={() => setExpandedDev(isExpanded ? null : dev.email)}
+                >
+                  <div className="mono" style={{ fontSize: 12.5, fontWeight: 550 }}>{dev.email}</div>
+                  <div className="mono" style={{ fontSize: 12.5, color: "var(--text-3)" }}>{dev.sessions}</div>
+                  <div className="mono" style={{ fontSize: 12.5, color: "var(--text-3)" }}>{formatTokens(dev.tokens_after)}</div>
+                  <div className="mono" style={{ fontSize: 12.5, color: "var(--text-2)" }}>
+                    {CURRENCY_SYMBOLS[currency]}{fromUsd(dev.cost_usd, currency).toFixed(2)}
+                  </div>
+                  <div className="mono" style={{ fontSize: 12.5, color: "var(--ok)" }}>
+                    {CURRENCY_SYMBOLS[currency]}{fromUsd(dev.saved_usd, currency).toFixed(2)}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <BudgetBar used={dev.cost_usd} limit={budgetLimit} />
+                    {isAdmin && (
+                      <span onClick={e => e.stopPropagation()}>
+                        <BudgetInput email={dev.email} current={budgetLimit} onSave={saveBudget} />
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {isExpanded && (
+                  <div style={{ padding: "14px 20px", background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
+                    <p style={{ fontSize: 12, color: "var(--text-3)" }}>
+                      Session breakdown for <strong style={{ color: "var(--text-2)" }}>{dev.email}</strong> is available in the Activity log.
+                    </p>
+                    <a
+                      href={`/guard/activity?developer=${encodeURIComponent(dev.email)}`}
+                      style={{ fontSize: 12, color: "var(--accent-text)", textDecoration: "underline", marginTop: 4, display: "inline-block" }}
+                    >
+                      View activity log for this developer &rarr;
+                    </a>
+                  </div>
+                )}
+              </div>
+            )
+          })
         )}
       </div>
+
+      {/* By AI tool table */}
+      {data && data.by_ai_tool.length > 0 && (
+        <div className="card" style={{ overflow: "hidden" }}>
+          <div style={{ padding: "15px 20px 13px", borderBottom: "1px solid var(--border)", fontWeight: 650, fontSize: 14.5 }}>
+            By AI tool
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1.6fr", gap: 14, padding: "10px 20px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+            {["Tool", "Tokens used", "Est. cost", "% of total"].map((h, i) => (
+              <div key={i} className="eyebrow" style={{ fontSize: 10 }}>{h}</div>
+            ))}
+          </div>
+          {data.by_ai_tool.map(t => {
+            const pct = data.total_tokens_after > 0
+              ? Math.round((t.tokens_after / data.total_tokens_after) * 100)
+              : 0
+            return (
+              <div
+                key={t.ai_tool}
+                style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1.6fr", gap: 14, padding: "13px 20px", borderBottom: "1px solid var(--border)", alignItems: "center" }}
+              >
+                <div className="mono" style={{ fontWeight: 600, fontSize: 13 }}>{t.ai_tool}</div>
+                <div className="mono" style={{ fontSize: 13, color: "var(--text-2)" }}>{formatTokens(t.tokens_after)}</div>
+                <div className="mono" style={{ fontSize: 13, color: "var(--text-2)" }}>
+                  {CURRENCY_SYMBOLS[currency]}{fromUsd(t.cost_usd, currency).toFixed(2)}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                  <div style={{ flex: 1, height: 8, borderRadius: 6, background: "var(--surface-3)", overflow: "hidden" }}>
+                    <div style={{ width: `${pct}%`, height: "100%", background: "var(--accent)", borderRadius: 6 }} />
+                  </div>
+                  <span className="mono" style={{ fontSize: 12, color: "var(--text-3)", width: 34, textAlign: "right" }}>{pct}%</span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </GuardShell>
   )
 }

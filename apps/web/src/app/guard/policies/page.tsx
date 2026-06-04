@@ -2,15 +2,14 @@
 
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type PolicyAction = "block" | "warn" | "audit" | "approval" | "inject"
 type MatchTool = "bash" | "edit" | "write" | "read" | "*"
@@ -32,30 +31,24 @@ interface Policy {
   updated_at?: string
 }
 
-// ---------------------------------------------------------------------------
-// Category mapping
-// ---------------------------------------------------------------------------
+// ─── Category mapping ─────────────────────────────────────────────────────────
 
 const RULE_CATEGORIES: Record<string, string> = {
-  // Destructive Operations
   "no-rm-rf": "Destructive Operations",
   "no-git-reset-hard": "Destructive Operations",
   "no-force-push": "Destructive Operations",
   "no-drop-table": "Destructive Operations",
   "no-truncate-table": "Destructive Operations",
   "no-delete-without-where": "Destructive Operations",
-  // Secrets & Credentials
   "no-env-commits": "Secrets & Credentials",
   "no-hardcoded-secrets": "Secrets & Credentials",
   "no-aws-keys": "Secrets & Credentials",
   "no-private-key-files": "Secrets & Credentials",
-  // Production Gates
   "approve-prod-deploy": "Production Gates",
   "approve-db-migration-prod": "Production Gates",
   "approve-terraform-destroy": "Production Gates",
   "approve-kubectl-delete": "Production Gates",
   "approve-prod-env-edit": "Production Gates",
-  // Audit
   "audit-migrations": "Audit",
   "audit-ci-config": "Audit",
   "audit-dockerfile": "Audit",
@@ -73,54 +66,203 @@ function categoryFor(rule_id: string): string {
   return RULE_CATEGORIES[rule_id] ?? "Custom Rules"
 }
 
-// ---------------------------------------------------------------------------
-// Badge
-// ---------------------------------------------------------------------------
+// ─── Guard Shell ──────────────────────────────────────────────────────────────
 
-const ACTION_BADGE: Record<PolicyAction, { label: string; className: string }> = {
-  block: { label: "BLOCK", className: "bg-red-100 text-red-700 border border-red-200" },
-  warn: { label: "WARN", className: "bg-amber-100 text-amber-700 border border-amber-200" },
-  approval: { label: "APPROVAL", className: "bg-blue-100 text-blue-700 border border-blue-200" },
-  audit: { label: "AUDIT", className: "bg-stone-100 text-stone-600 border border-stone-200" },
-  inject: { label: "INJECT", className: "bg-indigo-100 text-indigo-700 border border-indigo-200" },
+const GUARD_TABS = [
+  { href: "/guard",          label: "Overview"  },
+  { href: "/guard/spend",    label: "Spend"     },
+  { href: "/guard/policies", label: "Policies"  },
+  { href: "/guard/activity", label: "Activity"  },
+  { href: "/guard/settings", label: "Settings"  },
+]
+
+function GuardShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
+  return (
+    <div style={{ maxWidth: 1240, margin: "0 auto", padding: "28px 24px 48px" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", marginBottom: 20 }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", letterSpacing: "-.02em", margin: 0 }}>
+              Guard
+            </h1>
+            <span className="sbadge ok" style={{ marginTop: 2 }}>
+              <span className="conduct-pulse-dot" />
+              live
+            </span>
+          </div>
+          <p style={{ fontSize: 13, color: "var(--text-3)", marginTop: 5 }}>
+            MDM for AI coding tools — policies and spend limits enforced on every Claude Code, Codex, and Cursor call.
+          </p>
+        </div>
+        <div style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)", paddingTop: 4 }}>
+          last updated: just now
+        </div>
+      </div>
+      <div className="guard-tab-nav">
+        {GUARD_TABS.map(tab => {
+          const isActive = tab.href === "/guard"
+            ? pathname === "/guard"
+            : pathname?.startsWith(tab.href)
+          return (
+            <Link key={tab.href} href={tab.href} className={`guard-tab${isActive ? " active" : ""}`}>
+              {tab.label}
+            </Link>
+          )
+        })}
+      </div>
+      {children}
+    </div>
+  )
 }
 
-function ActionBadge({ action }: { action: PolicyAction }) {
-  const { label, className } = ACTION_BADGE[action] ?? ACTION_BADGE.audit
+// ─── Action icon avatar ───────────────────────────────────────────────────────
+
+function ActionAvatar({ action }: { action: PolicyAction }) {
+  const styles: Record<PolicyAction, { bg: string; color: string }> = {
+    block:    { bg: "var(--err-bg)",  color: "var(--err)"  },
+    warn:     { bg: "var(--warn-bg)", color: "var(--warn)" },
+    audit:    { bg: "var(--info-bg)", color: "var(--info)" },
+    approval: { bg: "var(--info-bg)", color: "var(--info)" },
+    inject:   { bg: "var(--ok-bg)",   color: "var(--ok)"   },
+  }
+  const s = styles[action] ?? styles.audit
+
+  const Icon = () => {
+    if (action === "block") {
+      return (
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        </svg>
+      )
+    }
+    if (action === "warn") {
+      return (
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+          <line x1="12" y1="9" x2="12" y2="13" />
+          <line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+      )
+    }
+    // audit / approval / inject
+    return (
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+    )
+  }
+
   return (
-    <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold tracking-wide ${className}`}>
-      {label}
+    <span style={{
+      width: 38,
+      height: 38,
+      borderRadius: 10,
+      flexShrink: 0,
+      display: "grid",
+      placeItems: "center",
+      background: s.bg,
+      color: s.color,
+    }}>
+      <Icon />
     </span>
   )
 }
 
-// ---------------------------------------------------------------------------
-// Toggle
-// ---------------------------------------------------------------------------
+// ─── Action badge ─────────────────────────────────────────────────────────────
 
-function Toggle({ enabled, onChange }: { enabled: boolean; onChange: () => void }) {
+const ACTION_BADGE_TONE: Record<PolicyAction, string> = {
+  block:    "err",
+  warn:     "warn",
+  audit:    "info",
+  approval: "info",
+  inject:   "ok",
+}
+
+function ActionBadge({ action }: { action: PolicyAction }) {
+  const tone = ACTION_BADGE_TONE[action] ?? "info"
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={enabled}
-      onClick={onChange}
-      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 ${
-        enabled ? "bg-indigo-600" : "bg-stone-200"
-      }`}
-    >
-      <span
-        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
-          enabled ? "translate-x-5" : "translate-x-0.5"
-        }`}
-      />
-    </button>
+    <span className={`sbadge ${tone}`} style={{ textTransform: "uppercase", fontSize: 9.5, letterSpacing: ".06em" }}>
+      {action}
+    </span>
   )
 }
 
-// ---------------------------------------------------------------------------
-// Add rule modal
-// ---------------------------------------------------------------------------
+// ─── Toggle ───────────────────────────────────────────────────────────────────
+
+function Toggle({ enabled, onChange }: { enabled: boolean; onChange: () => void }) {
+  return (
+    <span
+      onClick={onChange}
+      role="switch"
+      aria-checked={enabled}
+      style={{
+        width: 40,
+        height: 23,
+        borderRadius: 20,
+        background: enabled ? "var(--accent)" : "var(--border-2)",
+        position: "relative",
+        cursor: "pointer",
+        flexShrink: 0,
+        transition: "background .15s",
+        display: "inline-block",
+      }}
+    >
+      <span
+        style={{
+          position: "absolute",
+          top: 2.5,
+          left: enabled ? 19.5 : 2.5,
+          width: 18,
+          height: 18,
+          borderRadius: "50%",
+          background: "#fff",
+          transition: "left .15s",
+          boxShadow: "var(--shadow-sm)",
+        }}
+      />
+    </span>
+  )
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatLastTriggered(val: string | null | undefined): string {
+  if (!val) return "Never"
+  try {
+    const d = new Date(val)
+    const diffMs = Date.now() - d.getTime()
+    const diffMin = Math.floor(diffMs / 60000)
+    if (diffMin < 1) return "Just now"
+    if (diffMin < 60) return `${diffMin}m ago`
+    const diffH = Math.floor(diffMin / 60)
+    if (diffH < 24) return `${diffH}h ago`
+    return `${Math.floor(diffH / 24)}d ago`
+  } catch {
+    return "—"
+  }
+}
+
+function formatUpdatedAt(iso: string | undefined): string {
+  if (!iso) return "—"
+  try {
+    const d = new Date(iso)
+    const diffMs = Date.now() - d.getTime()
+    const diffMin = Math.floor(diffMs / 60000)
+    if (diffMin < 1) return "just now"
+    if (diffMin < 60) return `${diffMin} min ago`
+    const diffH = Math.floor(diffMin / 60)
+    if (diffH < 24) return `${diffH}h ago`
+    return `${Math.floor(diffH / 24)}d ago`
+  } catch {
+    return "—"
+  }
+}
+
+// ─── Add rule modal ───────────────────────────────────────────────────────────
 
 interface AddRuleFormData {
   rule_id: string
@@ -176,42 +318,25 @@ function AddRuleModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-
       <div className="relative z-10 w-full max-w-lg rounded-xl bg-white shadow-xl border border-stone-200">
         <div className="px-6 py-4 border-b border-stone-100 flex items-center justify-between">
           <h2 className="text-base font-semibold text-stone-900">Add rule</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-stone-400 hover:text-stone-600 transition-colors text-lg leading-none"
-            aria-label="Close"
-          >
-            ✕
-          </button>
+          <button type="button" onClick={onClose} className="text-stone-400 hover:text-stone-600 text-lg leading-none" aria-label="Close">✕</button>
         </div>
-
         <form onSubmit={handleSubmit} className="px-6 py-4 space-y-4">
-          {/* Rule ID */}
           <div>
-            <label className="block text-xs font-medium text-stone-700 mb-1">
-              Rule ID <span className="text-red-500">*</span>
-            </label>
+            <label className="block text-xs font-medium text-stone-700 mb-1">Rule ID <span className="text-red-500">*</span></label>
             <input
               type="text"
               value={form.rule_id}
               onChange={e => set("rule_id", e.target.value)}
               placeholder="no-rm-rf"
-              className={`w-full rounded-md border px-3 py-1.5 text-sm text-stone-900 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-                errors.rule_id ? "border-red-400" : "border-stone-200"
-              }`}
+              className={`w-full rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.rule_id ? "border-red-400" : "border-stone-200"}`}
             />
             {errors.rule_id && <p className="mt-1 text-xs text-red-500">{errors.rule_id}</p>}
             <p className="mt-1 text-xs text-stone-400">Slug format: lowercase letters, numbers, hyphens only.</p>
           </div>
-
-          {/* Description */}
           <div>
             <label className="block text-xs font-medium text-stone-700 mb-1">Description</label>
             <input
@@ -219,18 +344,16 @@ function AddRuleModal({
               value={form.description}
               onChange={e => set("description", e.target.value)}
               placeholder="Prevents recursive deletion of directories"
-              className="w-full rounded-md border border-stone-200 px-3 py-1.5 text-sm text-stone-900 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              className="w-full rounded-md border border-stone-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
-
           <div className="grid grid-cols-2 gap-3">
-            {/* Match tool */}
             <div>
               <label className="block text-xs font-medium text-stone-700 mb-1">Match tool</label>
               <select
                 value={form.match_tool}
                 onChange={e => set("match_tool", e.target.value as MatchTool)}
-                className="w-full rounded-md border border-stone-200 px-3 py-1.5 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full rounded-md border border-stone-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="*">* (any)</option>
                 <option value="bash">bash</option>
@@ -239,14 +362,12 @@ function AddRuleModal({
                 <option value="read">read</option>
               </select>
             </div>
-
-            {/* Action */}
             <div>
               <label className="block text-xs font-medium text-stone-700 mb-1">Action</label>
               <select
                 value={form.action}
                 onChange={e => set("action", e.target.value as PolicyAction)}
-                className="w-full rounded-md border border-stone-200 px-3 py-1.5 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full rounded-md border border-stone-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="block">block</option>
                 <option value="warn">warn</option>
@@ -256,39 +377,27 @@ function AddRuleModal({
               </select>
             </div>
           </div>
-
-          {/* Match pattern */}
           <div>
-            <label className="block text-xs font-medium text-stone-700 mb-1">
-              Match pattern (regex) <span className="text-red-500">*</span>
-            </label>
+            <label className="block text-xs font-medium text-stone-700 mb-1">Match pattern (regex) <span className="text-red-500">*</span></label>
             <input
               type="text"
               value={form.match_pattern}
               onChange={e => set("match_pattern", e.target.value)}
               placeholder={String.raw`rm\s+-rf`}
-              className={`w-full rounded-md border px-3 py-1.5 text-sm font-mono text-stone-900 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-                errors.match_pattern ? "border-red-400" : "border-stone-200"
-              }`}
+              className={`w-full rounded-md border px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.match_pattern ? "border-red-400" : "border-stone-200"}`}
             />
             {errors.match_pattern && <p className="mt-1 text-xs text-red-500">{errors.match_pattern}</p>}
           </div>
-
-          {/* Match path pattern */}
           <div>
-            <label className="block text-xs font-medium text-stone-700 mb-1">
-              Match path pattern (regex, optional)
-            </label>
+            <label className="block text-xs font-medium text-stone-700 mb-1">Match path pattern (regex, optional)</label>
             <input
               type="text"
               value={form.match_path_pattern}
               onChange={e => set("match_path_pattern", e.target.value)}
               placeholder=".github/workflows/.*"
-              className="w-full rounded-md border border-stone-200 px-3 py-1.5 text-sm font-mono text-stone-900 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              className="w-full rounded-md border border-stone-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
-
-          {/* Message */}
           <div>
             <label className="block text-xs font-medium text-stone-700 mb-1">Message</label>
             <input
@@ -296,17 +405,12 @@ function AddRuleModal({
               value={form.message}
               onChange={e => set("message", e.target.value)}
               placeholder="This operation is not permitted by your team policy."
-              className="w-full rounded-md border border-stone-200 px-3 py-1.5 text-sm text-stone-900 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              className="w-full rounded-md border border-stone-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
             <p className="mt-1 text-xs text-stone-400">Shown to the developer when the rule fires.</p>
           </div>
-
           <div className="flex items-center justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-1.5 rounded-md text-sm text-stone-600 hover:text-stone-900 hover:bg-stone-50 border border-stone-200 transition-colors"
-            >
+            <button type="button" onClick={onClose} className="px-4 py-1.5 rounded-md text-sm text-stone-600 hover:text-stone-900 hover:bg-stone-50 border border-stone-200 transition-colors">
               Cancel
             </button>
             <button
@@ -323,159 +427,7 @@ function AddRuleModal({
   )
 }
 
-// ---------------------------------------------------------------------------
-// Rule row
-// ---------------------------------------------------------------------------
-
-function formatLastTriggered(val: string | null | undefined): string {
-  if (!val) return "Never"
-  try {
-    const d = new Date(val)
-    const diffMs = Date.now() - d.getTime()
-    const diffMin = Math.floor(diffMs / 60000)
-    if (diffMin < 1) return "Just now"
-    if (diffMin < 60) return `${diffMin}m ago`
-    const diffH = Math.floor(diffMin / 60)
-    if (diffH < 24) return `${diffH}h ago`
-    return `${Math.floor(diffH / 24)}d ago`
-  } catch {
-    return "—"
-  }
-}
-
-function RuleRow({
-  policy,
-  onToggle,
-  onDelete,
-  canWrite,
-}: {
-  policy: Policy
-  onToggle: (id: string) => void
-  onDelete: (id: string) => void
-  canWrite: boolean
-}) {
-  return (
-    <tr className="group border-b border-stone-100 last:border-b-0">
-      <td className="py-3 pl-4 pr-3 w-10">
-        {canWrite
-          ? <Toggle enabled={policy.enabled} onChange={() => onToggle(policy.id)} />
-          : <span className={`inline-block w-9 h-5 rounded-full ${policy.enabled ? "bg-indigo-600" : "bg-stone-200"} opacity-50 cursor-not-allowed`} />
-        }
-      </td>
-      <td className="py-3 pr-4 min-w-[160px]">
-        <span className="font-mono text-sm text-stone-800">{policy.rule_id}</span>
-        {policy.description && (
-          <p className="text-xs text-stone-400 mt-0.5 truncate max-w-[200px]">{policy.description}</p>
-        )}
-      </td>
-      <td className="py-3 pr-4 w-28">
-        <ActionBadge action={policy.action} />
-      </td>
-      <td className="py-3 pr-4 hidden md:table-cell">
-        <code className="text-xs text-stone-500 font-mono break-all">{policy.match_pattern}</code>
-      </td>
-      <td className="py-3 pr-4 text-xs text-stone-400 w-28 text-right whitespace-nowrap">
-        {formatLastTriggered(policy.last_triggered)}
-      </td>
-      <td className="py-3 pr-4 w-8 text-right">
-        {policy.builtin || !canWrite ? (
-          <span
-            className="text-stone-300 text-sm select-none"
-            title={policy.builtin ? "Built-in rule — cannot be deleted" : undefined}
-          >
-            {policy.builtin && (
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 inline-block">
-                <path fillRule="evenodd" d="M8 1a3 3 0 0 0-3 3v1H4a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-1V4a3 3 0 0 0-3-3Zm0 1.5A1.5 1.5 0 0 1 9.5 4v1h-3V4A1.5 1.5 0 0 1 8 2.5Z" clipRule="evenodd" />
-              </svg>
-            )}
-          </span>
-        ) : (
-          <button
-            type="button"
-            onClick={() => onDelete(policy.id)}
-            className="text-stone-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
-            title="Delete rule"
-            aria-label={`Delete rule ${policy.rule_id}`}
-          >
-            {/* trash icon */}
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 inline-block">
-              <path fillRule="evenodd" d="M5 3.25V4H2.75a.75.75 0 0 0 0 1.5h.3l.815 8.15A1.5 1.5 0 0 0 5.357 15h5.285a1.5 1.5 0 0 0 1.493-1.35L12.95 5.5h.3a.75.75 0 0 0 0-1.5H11v-.75A2.25 2.25 0 0 0 8.75 1h-1.5A2.25 2.25 0 0 0 5 3.25Zm2.25-.75a.75.75 0 0 0-.75.75V4h3v-.75a.75.75 0 0 0-.75-.75h-1.5ZM6.05 6a.75.75 0 0 1 .787.713l.275 5.5a.75.75 0 0 1-1.498.075l-.275-5.5A.75.75 0 0 1 6.05 6Zm3.9 0a.75.75 0 0 1 .712.787l-.275 5.5a.75.75 0 0 1-1.498-.075l.275-5.5A.75.75 0 0 1 9.95 6Z" clipRule="evenodd" />
-            </svg>
-          </button>
-        )}
-      </td>
-    </tr>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Category section
-// ---------------------------------------------------------------------------
-
-function CategorySection({
-  category,
-  policies,
-  onToggle,
-  onDelete,
-  canWrite,
-}: {
-  category: string
-  policies: Policy[]
-  onToggle: (id: string) => void
-  onDelete: (id: string) => void
-  canWrite: boolean
-}) {
-  return (
-    <div className="mb-6">
-      <h2 className="text-xs font-semibold uppercase tracking-widest text-stone-400 mb-2 px-4">
-        {category}
-      </h2>
-      <div className="rounded-lg border border-stone-200 bg-white overflow-hidden">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="border-b border-stone-100 bg-stone-50">
-              <th className="py-2 pl-4 pr-3 w-10" />
-              <th className="py-2 pr-4 text-xs font-medium text-stone-500">Rule ID</th>
-              <th className="py-2 pr-4 w-28 text-xs font-medium text-stone-500">Action</th>
-              <th className="py-2 pr-4 hidden md:table-cell text-xs font-medium text-stone-500">Pattern</th>
-              <th className="py-2 pr-4 w-28 text-xs font-medium text-stone-500 text-right">Last triggered</th>
-              <th className="py-2 pr-4 w-8" />
-            </tr>
-          </thead>
-          <tbody>
-            {policies.map(p => (
-              <RuleRow key={p.id} policy={p} onToggle={onToggle} onDelete={onDelete} canWrite={canWrite} />
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Sync status footer
-// ---------------------------------------------------------------------------
-
-function formatUpdatedAt(iso: string | undefined): string {
-  if (!iso) return "—"
-  try {
-    const d = new Date(iso)
-    const diffMs = Date.now() - d.getTime()
-    const diffMin = Math.floor(diffMs / 60000)
-    if (diffMin < 1) return "just now"
-    if (diffMin < 60) return `${diffMin} min ago`
-    const diffH = Math.floor(diffMin / 60)
-    if (diffH < 24) return `${diffH}h ago`
-    return `${Math.floor(diffH / 24)}d ago`
-  } catch {
-    return "—"
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Main page
-// ---------------------------------------------------------------------------
+// ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function PoliciesPage() {
   return <AppShell><PoliciesContent /></AppShell>
@@ -493,7 +445,6 @@ function PoliciesContent() {
   const [submitting, setSubmitting] = useState(false)
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ""
-
   const canWrite = permissions.canEditPolicies
 
   const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
@@ -505,12 +456,10 @@ function PoliciesContent() {
     return headers
   }, [getToken])
 
-  // Clear skeleton when team resolution finishes with no result
   useEffect(() => {
     if (!teamLoading && !teamId) setLoading(false)
   }, [teamLoading, teamId])
 
-  // Fetch on mount / when teamId resolves
   useEffect(() => {
     async function load() {
       if (!teamId) return
@@ -532,59 +481,36 @@ function PoliciesContent() {
     load()
   }, [apiUrl, authHeaders, teamId])
 
-  // Toggle enable/disable with optimistic update
   async function handleToggle(id: string) {
     const prev = policies.find(p => p.id === id)
     if (!prev) return
-
-    // Optimistic update
     setPolicies(ps => ps.map(p => p.id === id ? { ...p, enabled: !p.enabled } : p))
-
     try {
       const headers = await authHeaders()
       const res = await fetch(`${apiUrl}/guard/policies/${id}`, {
-        method: "PATCH",
-        headers,
+        method: "PATCH", headers,
         body: JSON.stringify({ enabled: !prev.enabled }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
     } catch {
-      // Revert on failure
       setPolicies(ps => ps.map(p => p.id === id ? { ...p, enabled: prev.enabled } : p))
     }
   }
 
-  // Delete custom rule
   async function handleDelete(id: string) {
     const prev = policies.find(p => p.id === id)
     if (!prev || prev.builtin) return
-
-    // Optimistic remove
     setPolicies(ps => ps.filter(p => p.id !== id))
-
     try {
       const headers = await authHeaders()
-      const res = await fetch(`${apiUrl}/guard/policies/${id}`, {
-        method: "DELETE",
-        headers,
-      })
+      const res = await fetch(`${apiUrl}/guard/policies/${id}`, { method: "DELETE", headers })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
     } catch {
-      // Revert
       setPolicies(ps => [...ps, prev].sort((a, b) => a.rule_id.localeCompare(b.rule_id)))
     }
   }
 
-  // Add rule
-  async function handleAddRule(formData: {
-    rule_id: string
-    description: string
-    match_tool: MatchTool
-    match_pattern: string
-    match_path_pattern: string
-    action: PolicyAction
-    message: string
-  }) {
+  async function handleAddRule(formData: AddRuleFormData) {
     setSubmitting(true)
     try {
       const headers = await authHeaders()
@@ -602,8 +528,7 @@ function PoliciesContent() {
       if (teamId) body.workspace_id = teamId
 
       const res = await fetch(`${apiUrl}/guard/policies`, {
-        method: "POST",
-        headers,
+        method: "POST", headers,
         body: JSON.stringify(body),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -611,14 +536,13 @@ function PoliciesContent() {
       setPolicies(ps => [...ps, created])
       setShowModal(false)
     } catch (e) {
-      // Surface error inside modal — rethrow to keep modal open
       throw e
     } finally {
       setSubmitting(false)
     }
   }
 
-  // Group policies by category
+  // Group by category
   const grouped = policies.reduce<Record<string, Policy[]>>((acc, p) => {
     const cat = categoryFor(p.rule_id)
     if (!acc[cat]) acc[cat] = []
@@ -631,7 +555,6 @@ function PoliciesContent() {
     ...Object.keys(grouped).filter(c => !CATEGORY_ORDER.includes(c)),
   ]
 
-  // Latest updated_at for sync footer
   const latestUpdated = policies
     .map(p => p.updated_at)
     .filter(Boolean)
@@ -640,73 +563,146 @@ function PoliciesContent() {
 
   return (
     <>
-    <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-semibold text-stone-900">Policies</h1>
-            <p className="text-sm text-stone-500 mt-1">
-              Set rules that apply to all developer AI tool sessions.
-            </p>
-          </div>
+      <GuardShell>
+        {/* Sub-header row */}
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
+          <span style={{ fontSize: 13.5, color: "var(--text-3)" }}>
+            Rules sync to every developer&apos;s machine within <strong style={{ color: "var(--text)" }}>60 seconds</strong>.
+            {" "}{policies.filter(p => p.enabled).length} active.
+          </span>
           {canWrite && (
-            <Link
-              href="/guard/policies/new"
-              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+            <button
+              onClick={() => setShowModal(true)}
+              className="btn btn-primary btn-sm"
+              style={{ marginLeft: "auto" }}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
-                <path d="M8.75 3.75a.75.75 0 0 0-1.5 0v3.5h-3.5a.75.75 0 0 0 0 1.5h3.5v3.5a.75.75 0 0 0 1.5 0v-3.5h3.5a.75.75 0 0 0 0-1.5h-3.5v-3.5Z" />
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <path d="M12 5v14M5 12h14" />
               </svg>
-              Add rule
-            </Link>
+              New policy
+            </button>
           )}
         </div>
 
         {/* Error */}
         {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </div>
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 mb-4">{error}</div>
         )}
 
         {/* Loading */}
         {loading && (
-          <div className="space-y-4">
-            {[1, 2].map(i => (
-              <div key={i} className="rounded-lg border border-stone-200 bg-white p-4 space-y-2 animate-pulse">
-                <div className="h-3 w-32 rounded bg-stone-100" />
-                <div className="h-10 w-full rounded bg-stone-50" />
-                <div className="h-10 w-full rounded bg-stone-50" />
-              </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+            {[1, 2, 3].map(i => (
+              <div key={i} className="card" style={{ padding: 18, height: 72 }} />
             ))}
           </div>
         )}
 
-        {/* Policy groups */}
+        {/* Empty */}
         {!loading && !error && orderedCategories.length === 0 && (
-          <div className="rounded-lg border border-stone-200 bg-white px-6 py-12 text-center">
-            <p className="text-sm text-stone-400">No policies yet. Add a rule to get started.</p>
+          <div className="card" style={{ padding: "48px 24px", textAlign: "center" }}>
+            <p style={{ fontSize: 13, color: "var(--text-muted)" }}>No policies yet. Add a rule to get started.</p>
           </div>
         )}
 
+        {/* Policy cards — grouped by category */}
         {!loading && !error && orderedCategories.map(cat => (
-          <CategorySection
-            key={cat}
-            category={cat}
-            policies={grouped[cat]}
-            onToggle={handleToggle}
-            onDelete={handleDelete}
-            canWrite={canWrite}
-          />
+          <div key={cat} style={{ marginBottom: 24 }}>
+            <div className="eyebrow" style={{ marginBottom: 10, paddingLeft: 2 }}>{cat}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {grouped[cat].map(p => (
+                <div
+                  key={p.id}
+                  className="card"
+                  style={{
+                    padding: "15px 18px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 16,
+                    opacity: p.enabled ? 1 : 0.62,
+                  }}
+                >
+                  <ActionAvatar action={p.action} />
+
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 3 }}>
+                      <span className="mono" style={{ fontWeight: 650, fontSize: 13.5 }}>{p.rule_id}</span>
+                      <ActionBadge action={p.action} />
+                    </div>
+                    <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>
+                      {p.description || p.message || "—"}
+                    </div>
+                  </div>
+
+                  {/* Match info */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 150 }}>
+                    <div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
+                      match <strong style={{ color: "var(--text-2)" }}>{p.match_tool}</strong>
+                    </div>
+                    <div
+                      className="mono"
+                      style={{ fontSize: 11.5, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                    >
+                      pattern <span style={{ color: "var(--err)" }}>{p.match_pattern}</span>
+                    </div>
+                  </div>
+
+                  {/* Hits + last triggered */}
+                  <div style={{ textAlign: "center", minWidth: 72 }}>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                      {formatLastTriggered(p.last_triggered)}
+                    </div>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 1 }}>last triggered</div>
+                  </div>
+
+                  {/* Delete (custom rules only) */}
+                  {!p.builtin && canWrite && (
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(p.id)}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4, flexShrink: 0 }}
+                      title="Delete rule"
+                      aria-label={`Delete rule ${p.rule_id}`}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                        <path fillRule="evenodd" d="M5 3.25V4H2.75a.75.75 0 0 0 0 1.5h.3l.815 8.15A1.5 1.5 0 0 0 5.357 15h5.285a1.5 1.5 0 0 0 1.493-1.35L12.95 5.5h.3a.75.75 0 0 0 0-1.5H11v-.75A2.25 2.25 0 0 0 8.75 1h-1.5A2.25 2.25 0 0 0 5 3.25Zm2.25-.75a.75.75 0 0 0-.75.75V4h3v-.75a.75.75 0 0 0-.75-.75h-1.5ZM6.05 6a.75.75 0 0 1 .787.713l.275 5.5a.75.75 0 0 1-1.498.075l-.275-5.5A.75.75 0 0 1 6.05 6Zm3.9 0a.75.75 0 0 1 .712.787l-.275 5.5a.75.75 0 0 1-1.498-.075l.275-5.5A.75.75 0 0 1 9.95 6Z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                  )}
+                  {p.builtin && (
+                    <span style={{ color: "var(--border-2)", flexShrink: 0 }} title="Built-in rule — cannot be deleted">
+                      <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+                        <path fillRule="evenodd" d="M8 1a3 3 0 0 0-3 3v1H4a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-1V4a3 3 0 0 0-3-3Zm0 1.5A1.5 1.5 0 0 1 9.5 4v1h-3V4A1.5 1.5 0 0 1 8 2.5Z" clipRule="evenodd" />
+                      </svg>
+                    </span>
+                  )}
+
+                  {/* Toggle */}
+                  {canWrite
+                    ? <Toggle enabled={p.enabled} onChange={() => handleToggle(p.id)} />
+                    : (
+                      <span
+                        style={{
+                          width: 40, height: 23, borderRadius: 20,
+                          background: p.enabled ? "var(--accent)" : "var(--border-2)",
+                          display: "inline-block", opacity: 0.5, flexShrink: 0,
+                        }}
+                      />
+                    )
+                  }
+                </div>
+              ))}
+            </div>
+          </div>
         ))}
 
         {/* Sync status footer */}
         {!loading && !error && policies.length > 0 && (
-          <p className="text-xs text-stone-400 text-center pb-2">
+          <p style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", paddingBottom: 8 }}>
             Policy last updated: {formatUpdatedAt(latestUpdated)} · Synced to developers
           </p>
         )}
-      </div>
+      </GuardShell>
 
       {/* Add rule modal */}
       {showModal && (
