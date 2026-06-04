@@ -313,6 +313,28 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
               />
             </div>
 
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-stone-500">Environment</label>
+              {environments.length === 0 ? (
+                <p className="text-xs text-stone-400">
+                  No environments found. <a href="/settings/environments" className="underline font-medium">Create one first</a>.
+                </p>
+              ) : (
+                <select
+                  value={selectedEnvId}
+                  onChange={e => setSelectedEnvId(e.target.value)}
+                  className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
+                >
+                  <option value="">— select environment —</option>
+                  {environments.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                </select>
+              )}
+              <p className="text-[10px] text-stone-400">
+                ANTHROPIC_API_KEY is read from this environment&apos;s keys.{" "}
+                <a href="/settings/environments" className="underline hover:text-stone-600">Manage keys</a>
+              </p>
+            </div>
+
             {generatedCreds.length > 0 && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
                 <p className="text-xs font-semibold text-amber-800 mb-1">Credentials needed</p>
