@@ -76,9 +76,9 @@ function GuardShell({ children }: { children: React.ReactNode }) {
 // ─── Tool badge ───────────────────────────────────────────────────────────────
 
 const TOOL_COLORS: Record<string, string> = {
-  "claude-code":  "var(--accent)",
-  "claude_code":  "var(--accent)",
-  "codex":        "var(--ok)",
+  "claude-code":  "var(--chart-claude)",
+  "claude_code":  "var(--chart-claude)",
+  "codex":        "var(--chart-codex)",
   "cursor":       "#7c3aed",
   "windsurf":     "#0284c7",
   "gemini":       "#ea580c",

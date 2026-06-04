@@ -11,6 +11,34 @@ const ACCENTS: Record<string, { base: string; hover: string; ring: string; weak:
   amber:   { base: "#d97706", hover: "#b45309", ring: "#fcd34d", weak: "#fffbeb", weak2: "#fef3c7", text: "#b45309" },
 }
 
+function hexToRgb(hex: string): [number, number, number] | null {
+  const clean = hex.trim().replace(/^#/, "")
+  if (!/^[0-9a-fA-F]{6}$/.test(clean)) return null
+  return [
+    Number.parseInt(clean.slice(0, 2), 16),
+    Number.parseInt(clean.slice(2, 4), 16),
+    Number.parseInt(clean.slice(4, 6), 16),
+  ]
+}
+
+function getAccentContrast(hex: string): string {
+  const rgb = hexToRgb(hex)
+  if (!rgb) return "#ffffff"
+  const [r, g, b] = rgb
+  const srgb = [r, g, b].map(v => v / 255).map(v =>
+    v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
+  )
+  const l = (0.2126 * srgb[0]) + (0.7152 * srgb[1]) + (0.0722 * srgb[2])
+  return l > 0.45 ? "#111827" : "#ffffff"
+}
+
+const SEMANTIC_VARS = [
+  "--ok", "--ok-bg", "--ok-bd",
+  "--warn", "--warn-bg", "--warn-bd",
+  "--err", "--err-bg", "--err-bd",
+  "--info", "--info-bg", "--info-bd",
+]
+
 function applyTheme(look: string, accent: string) {
   if (typeof document === "undefined") return
   document.documentElement.setAttribute("data-theme", look === "dark" ? "dark" : "light")
@@ -23,6 +51,10 @@ function applyTheme(look: string, accent: string) {
   r.setProperty("--accent-weak",  dark ? `color-mix(in srgb, ${A.base} 18%, transparent)` : A.weak)
   r.setProperty("--accent-weak-2",dark ? `color-mix(in srgb, ${A.base} 30%, transparent)` : A.weak2)
   r.setProperty("--accent-text",  dark ? A.ring  : A.text)
+  r.setProperty("--accent-contrast", getAccentContrast(A.base))
+
+  // Ensure semantic tokens come from CSS theme definitions, not stale inline overrides.
+  for (const v of SEMANTIC_VARS) r.removeProperty(v)
 }
 
 function ToggleRow({
