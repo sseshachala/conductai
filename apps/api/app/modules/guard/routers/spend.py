@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from app.core.auth import get_workspace_id
 from app.core.database import get_db
-from app.modules.guard.models import GuardAuditEvent, GuardConfig, GuardSession, GuardSpendBudget
+from app.modules.guard.models import GuardAuditEvent, GuardConfig, GuardDeveloperTools, GuardSession, GuardSpendBudget
 
 router = APIRouter(prefix="/guard/spend", tags=["guard"])
 
@@ -55,6 +55,9 @@ class DeveloperSpend(BaseModel):
     cost_usd: float
     saved_usd: float
     sessions: int
+    detected_tools: list[str] = []
+    mcp_registered: list[str] = []
+    hook_registered: list[str] = []
 
 
 class ToolSpend(BaseModel):
@@ -214,6 +217,16 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
         if email:
             session_counts[email] = cnt
 
+    # Tool coverage per developer (latest snapshot, keyed by email)
+    tool_coverage: dict[str, GuardDeveloperTools] = {}
+    coverage_rows = (
+        db.query(GuardDeveloperTools)
+        .filter(GuardDeveloperTools.workspace_id == workspace_id)
+        .all()
+    )
+    for tc in coverage_rows:
+        tool_coverage[tc.user_email] = tc
+
     by_developer = [
         DeveloperSpend(
             email=row.user_email,
@@ -221,6 +234,9 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
             cost_usd=round(float(row.cost_usd), 6),
             saved_usd=round(float(row.saved_usd), 6),
             sessions=session_counts.get(row.user_email, 0),
+            detected_tools=tool_coverage[row.user_email].detected_tools or [] if row.user_email in tool_coverage else [],
+            mcp_registered=tool_coverage[row.user_email].mcp_registered or [] if row.user_email in tool_coverage else [],
+            hook_registered=tool_coverage[row.user_email].hook_registered or [] if row.user_email in tool_coverage else [],
         )
         for row in dev_rows
     ]

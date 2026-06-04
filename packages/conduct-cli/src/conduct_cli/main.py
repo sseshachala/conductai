@@ -283,6 +283,138 @@ def _write_vscode_mcp_config() -> bool:
         return False
 
 
+def _detect_ai_tools() -> list:
+    """
+    Detect which AI coding tools are installed and whether Guard/conduct-mcp is registered.
+    Returns list of {name, mcp_registered, hook_registered} for each detected tool.
+    Only includes tools whose config directory exists on this machine.
+    """
+    home = Path.home()
+    results = []
+
+    def _check_json_mcp(path: Path) -> bool:
+        try:
+            d = json.loads(path.read_text()) if path.exists() else {}
+            return "conduct" in d.get("mcpServers", {})
+        except Exception:
+            return False
+
+    def _check_json_hook(path: Path, hook_key: str = "hooks") -> bool:
+        try:
+            d = json.loads(path.read_text()) if path.exists() else {}
+            hooks = d.get(hook_key, {})
+            pre = hooks.get("PreToolUse", [])
+            return any("conductguard" in str(h) or "conduct" in str(h).lower() for h in pre)
+        except Exception:
+            return False
+
+    def _check_toml_str(path: Path, needle: str) -> bool:
+        try:
+            return needle in (path.read_text() if path.exists() else "")
+        except Exception:
+            return False
+
+    # Claude Code
+    claude_dir = home / ".claude"
+    if claude_dir.exists():
+        settings = claude_dir / "settings.json"
+        results.append({
+            "name": "claude-code",
+            "mcp_registered": _check_json_mcp(settings),
+            "hook_registered": _check_json_hook(settings),
+        })
+
+    # Codex
+    codex_dir = home / ".codex"
+    if codex_dir.exists():
+        config = codex_dir / "config.toml"
+        results.append({
+            "name": "codex",
+            "mcp_registered": _check_toml_str(config, "conduct-mcp"),
+            "hook_registered": _check_toml_str(config, "conductguard"),
+        })
+
+    # Cursor
+    cursor_dir = home / ".cursor"
+    if cursor_dir.exists():
+        results.append({
+            "name": "cursor",
+            "mcp_registered": _check_json_mcp(cursor_dir / "mcp.json"),
+            "hook_registered": False,  # Cursor uses MCP only, no hook
+        })
+
+    # Windsurf
+    windsurf_dir = home / ".codeium" / "windsurf"
+    if windsurf_dir.exists():
+        results.append({
+            "name": "windsurf",
+            "mcp_registered": _check_json_mcp(windsurf_dir / "mcp_config.json"),
+            "hook_registered": False,  # Windsurf uses MCP only
+        })
+
+    # VS Code (Copilot)
+    vscode_settings_candidates = [
+        home / "Library" / "Application Support" / "Code" / "User" / "settings.json",
+        home / ".config" / "Code" / "User" / "settings.json",
+        home / ".vscode" / "settings.json",
+    ]
+    vscode_settings = next((p for p in vscode_settings_candidates if p.exists()), None)
+    if vscode_settings:
+        try:
+            d = json.loads(vscode_settings.read_text())
+            mcp_reg = "conduct" in d.get("mcp", {}).get("servers", {})
+        except Exception:
+            mcp_reg = False
+        results.append({
+            "name": "vscode",
+            "mcp_registered": mcp_reg,
+            "hook_registered": False,  # VS Code uses MCP only
+        })
+
+    return results
+
+
+def _report_tool_coverage() -> None:
+    """Detect AI tools on this machine and POST coverage to Guard API. Silent on failure."""
+    try:
+        cfg = _load_config()
+        server  = cfg.get("server", "").rstrip("/")
+        api_key = cfg.get("api_key", "")
+        token   = cfg.get("token", "")
+        email   = cfg.get("email", "")
+
+        # also check guard config for email/token
+        guard_cfg_path = Path.home() / ".conductguard" / "config.json"
+        if guard_cfg_path.exists():
+            gcfg = json.loads(guard_cfg_path.read_text())
+            if not email:
+                email = gcfg.get("user_email", "")
+            if not token:
+                token = gcfg.get("member_token", "")
+
+        if not server or not email:
+            return
+
+        tools = _detect_ai_tools()
+        if not tools:
+            return
+
+        payload = json.dumps({"email": email, "tools": tools}).encode()
+        auth = token or api_key
+        req = urllib.request.Request(
+            f"{server}/guard/developer-tools",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {auth}",
+            },
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=8)
+    except Exception:
+        pass  # Never surface errors — this is background telemetry
+
+
 def cmd_mcp_install(args):
     """Register conduct-mcp in Claude Code, Codex, Cursor, Windsurf, and VS Code."""
     import shutil
@@ -332,6 +464,16 @@ def cmd_mcp_install(args):
         print(f"{YELLOW}⚠ No supported AI tools detected on this machine.{RESET}")
         print(f"{GRAY}  Supported: Claude Code, Codex, Cursor, Windsurf, VS Code{RESET}")
         print(f"{GRAY}  After installing any of these, re-run: conduct mcp install{RESET}")
+
+    tools = _detect_ai_tools()
+    if tools:
+        print(f"{GRAY}  Detected tools: {', '.join(t['name'] for t in tools)}{RESET}")
+        covered = [t['name'] for t in tools if t['mcp_registered']]
+        if covered:
+            print(f"{GREEN}  MCP registered: {', '.join(covered)}{RESET}")
+        uncovered = [t['name'] for t in tools if not t['mcp_registered']]
+        if uncovered:
+            print(f"{YELLOW}  Not covered: {', '.join(uncovered)} — run: conduct mcp install{RESET}")
 
 
 def cmd_login(args):
@@ -402,6 +544,12 @@ def cmd_login(args):
         cmd_mcp_install(types.SimpleNamespace())
     except Exception:
         pass  # Never block login on MCP registration errors
+
+    # Report tool coverage to Guard
+    try:
+        _report_tool_coverage()
+    except Exception:
+        pass
 
 
 def cmd_agents(args):
