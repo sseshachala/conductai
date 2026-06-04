@@ -192,6 +192,81 @@ def _poll_run(server: str, workflow_id: str, run_id: str, hdrs: dict) -> bool:
 
 # ── Commands ──────────────────────────────────────────────────────────────────
 
+def _write_claude_mcp_settings() -> bool:
+    """Write conduct-mcp into ~/.claude/settings.json. Returns True if written."""
+    settings_path = Path.home() / ".claude" / "settings.json"
+    try:
+        existing = json.loads(settings_path.read_text()) if settings_path.exists() else {}
+        servers = existing.setdefault("mcpServers", {})
+        if "conduct" in servers:
+            return True  # already registered
+        servers["conduct"] = {"command": "conduct-mcp", "args": []}
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
+        settings_path.write_text(json.dumps(existing, indent=2))
+        return True
+    except Exception:
+        return False
+
+
+def _write_codex_mcp_config() -> bool:
+    """Write conduct-mcp into ~/.codex/config.toml. Returns True if written."""
+    codex_dir = Path.home() / ".codex"
+    if not codex_dir.exists():
+        return False
+    config_path = codex_dir / "config.toml"
+    try:
+        content = config_path.read_text() if config_path.exists() else ""
+        if "conduct-mcp" in content:
+            return True  # already registered
+        mcp_block = '\n[[mcp_servers]]\nname = "conduct"\ncommand = "conduct-mcp"\nargs = []\n'
+        config_path.write_text(content + mcp_block)
+        return True
+    except Exception:
+        return False
+
+
+def cmd_mcp_install(args):
+    """Register conduct-mcp in Claude Code and Codex CLI."""
+    import shutil
+    import subprocess
+
+    registered = []
+
+    # --- Claude Code ---
+    if shutil.which("claude"):
+        try:
+            result = subprocess.run(
+                ["claude", "mcp", "add", "conduct", "conduct-mcp"],
+                capture_output=True, text=True, timeout=15,
+            )
+            if result.returncode == 0:
+                registered.append("Claude Code")
+            else:
+                # claude mcp add is idempotent; also try writing settings.json directly as fallback
+                _write_claude_mcp_settings()
+                registered.append("Claude Code (settings.json)")
+        except Exception:
+            _write_claude_mcp_settings()
+            registered.append("Claude Code (settings.json)")
+    else:
+        # claude CLI not found but .claude/ might exist (IDE extension)
+        written = _write_claude_mcp_settings()
+        if written:
+            registered.append("Claude Code (settings.json)")
+
+    # --- Codex CLI ---
+    written = _write_codex_mcp_config()
+    if written:
+        registered.append("Codex")
+
+    if registered:
+        print(f"{GREEN}✓ conduct-mcp registered in: {', '.join(registered)}{RESET}")
+        print(f"{GRAY}  Restart Claude Code / Codex to pick up the new MCP server.{RESET}")
+    else:
+        print(f"{YELLOW}⚠ No supported AI tools detected. Install Claude Code or Codex first.{RESET}")
+        print(f"{GRAY}  Then re-run: conduct mcp install{RESET}")
+
+
 def cmd_login(args):
     server    = args.server
     api_key   = args.api_key
@@ -253,6 +328,13 @@ def cmd_login(args):
             pass  # Guard not found — skip silently
         except Exception:
             pass  # Never block login on Guard errors
+
+    # Auto-register MCP servers in Claude Code / Codex
+    try:
+        import types
+        cmd_mcp_install(types.SimpleNamespace())
+    except Exception:
+        pass  # Never block login on MCP registration errors
 
 
 def cmd_agents(args):
@@ -1179,6 +1261,11 @@ def main():
     # conduct guard
     guard_p, _guard_sub = _guard.register_guard_parser(sub)
 
+    # conduct mcp
+    mcp_p = sub.add_parser("mcp", help="Manage the Conduct MCP server")
+    mcp_sub = mcp_p.add_subparsers(dest="mcp_command")
+    mcp_sub.add_parser("install", help="Register conduct-mcp in Claude Code and Codex")
+
     args = parser.parse_args()
 
     if args.command == "login":
@@ -1223,6 +1310,11 @@ def main():
         cmd_run(args)
     elif args.command == "guard":
         _guard.dispatch_guard(args, guard_p)
+    elif args.command == "mcp":
+        if getattr(args, "mcp_command", None) == "install":
+            cmd_mcp_install(args)
+        else:
+            mcp_p.print_help()
     else:
         parser.print_help()
 

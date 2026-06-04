@@ -85,6 +85,7 @@ const TAB_NAV: Record<TabId, { href: string; label: string }[]> = {
     { href: "#cli-auth",     label: "CLI — Authentication" },
     { href: "#cli-commands", label: "CLI — Commands" },
     { href: "#ci",           label: "CI / GitHub Actions" },
+    { href: "#cli-mcp",      label: "MCP Server" },
   ],
   "api": [
     { href: "#api-auth",      label: "Authentication" },
@@ -378,6 +379,93 @@ jobs:
                 <tr key={s}>
                   <td className="px-4 py-3 font-mono text-xs text-stone-800">{s}</td>
                   <td className="px-4 py-3 text-stone-500">{v}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="cli-mcp">
+        <SectionHeading id="cli-mcp">MCP Server</SectionHeading>
+        <p className="text-stone-500 text-sm mb-4 leading-relaxed">
+          <Code>conduct-mcp</Code> is a zero-dependency MCP server that ships inside <Code>conduct-cli</Code>.
+          It exposes your Conduct workspace as tools that Claude Code, Codex, Cursor, and Windsurf can call directly —
+          no copy-pasting workflow IDs or run commands.
+        </p>
+
+        <SubHeading>Installation</SubHeading>
+        <p className="text-stone-500 text-sm mb-3">
+          The server binary is installed automatically with the CLI. Register it in your AI tools with one command:
+        </p>
+        <Pre>{`pip install conduct-cli
+conduct login --server https://api.conductai.ai --api-key cond_live_xxxx
+# ↑ login auto-registers conduct-mcp in Claude Code and Codex
+
+# Or register manually at any time:
+conduct mcp install`}</Pre>
+
+        <p className="text-stone-500 text-sm mt-3 mb-4">
+          <Code>conduct mcp install</Code> detects which AI tools are present and registers <Code>conduct-mcp</Code>
+          in each: it runs <Code>claude mcp add conduct conduct-mcp</Code> for Claude Code and writes the
+          <Code>[[mcp_servers]]</Code> block into <Code>~/.codex/config.toml</Code> for Codex.
+          Restart your AI tool once to pick up the server.
+        </p>
+
+        <SubHeading>Available tools</SubHeading>
+        <div className="rounded-xl border border-stone-200 overflow-hidden mb-6">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-stone-50 border-b border-stone-200">
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider w-56">Tool</th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">What it does</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-stone-100">
+              {[
+                ["conduct_list_agents",    "List all installed agents in your workspace (id, name, status)"],
+                ["conduct_list_projects",  "List all projects in your workspace"],
+                ["conduct_list_playbooks", "List available playbook templates"],
+                ["conduct_run_workflow",   "Trigger a workflow run — provide workflow_id and an optional payload"],
+                ["conduct_get_run",        "Fetch the status and result of any run by workflow_id + run_id"],
+                ["conduct_guard_status",   "Show active ConductGuard policy: rule count, team info, policy version"],
+              ].map(([tool, desc]) => (
+                <tr key={tool}>
+                  <td className="px-4 py-3 font-mono text-xs text-stone-800">{tool}</td>
+                  <td className="px-4 py-3 text-xs text-stone-500">{desc}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <SubHeading>Example usage in Claude Code</SubHeading>
+        <Pre>{`# After conduct mcp install + restart, ask Claude:
+"List my Conduct agents"
+"Run the autopilot workflow on myorg/my-repo"
+"What's the status of run abc-123 in workflow xyz-456?"`}</Pre>
+
+        <SubHeading>Tool coverage by AI client</SubHeading>
+        <div className="rounded-xl border border-stone-200 overflow-hidden mb-4">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-stone-50 border-b border-stone-200">
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Tool</th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Registered by</th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Config written</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-stone-100">
+              {[
+                ["Claude Code", "conduct login  /  conduct mcp install", "~/.claude/settings.json"],
+                ["Codex CLI",   "conduct login  /  conduct mcp install", "~/.codex/config.toml"],
+                ["Cursor",      "Manual — add conduct-mcp in Cursor MCP settings", "Cursor UI"],
+                ["Windsurf",    "Manual — add conduct-mcp in Windsurf MCP settings", "Windsurf UI"],
+              ].map(([tool, how, cfg]) => (
+                <tr key={tool}>
+                  <td className="px-4 py-3 text-xs font-medium text-stone-800">{tool}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-stone-500">{how}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-stone-500">{cfg}</td>
                 </tr>
               ))}
             </tbody>
