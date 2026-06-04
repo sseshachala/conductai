@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.core.auth import get_guard_org_id
+from app.core.auth import get_workspace_id
 from app.core.database import get_db
 from app.modules.guard.models import GuardDeveloperTools
 
@@ -39,7 +39,7 @@ class DeveloperToolsOut(BaseModel):
 @router.post("", status_code=204)
 def report_developer_tools(
     body: DeveloperToolsIn,
-    workspace_id: str = Depends(get_guard_org_id),
+    workspace_id: str = Depends(get_workspace_id),
     db: Session = Depends(get_db),
 ):
     """CLI pushes AI tool coverage snapshot for a developer (upsert by workspace + email)."""
@@ -69,7 +69,7 @@ def report_developer_tools(
 
 @router.get("", response_model=list[DeveloperToolsOut])
 def get_developer_tools(
-    workspace_id: str = Depends(get_guard_org_id),
+    workspace_id: str = Depends(get_workspace_id),
     db: Session = Depends(get_db),
 ):
     """Return the latest tool coverage snapshot for every developer in the workspace."""
