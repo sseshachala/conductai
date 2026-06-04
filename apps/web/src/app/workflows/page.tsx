@@ -9,6 +9,7 @@ import AppShell from "@/components/AppShell"
 interface Workflow {
   id: string
   name: string
+  workspace_id: string
   updated_at: string
   last_run_status: string | null
   last_run_at: string | null
@@ -183,7 +184,9 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
   async function renameAgent(id: string, name: string) {
     const h = await authHeaders()
     h["Content-Type"] = "application/json"
-    if (project?.id) h["X-Workspace-ID"] = project.id
+    const wf = workflows.find(w => w.id === id)
+    const wsId = project?.id ?? wf?.workspace_id
+    if (wsId) h["X-Workspace-ID"] = wsId
     const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${id}`, {
       method: "PUT", headers: h, body: JSON.stringify({ name }),
     })
@@ -195,8 +198,11 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
 
   async function deleteAgent(id: string) {
     const h = await authHeaders()
-    if (project?.id) h["X-Workspace-ID"] = project.id
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${id}`, { method: "DELETE", headers: h })
+    const wf = workflows.find(w => w.id === id)
+    const wsId = project?.id ?? wf?.workspace_id
+    if (wsId) h["X-Workspace-ID"] = wsId
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${id}`, { method: "DELETE", headers: h })
+    if (!res.ok) return
     setWorkflows(prev => prev.filter(w => w.id !== id))
     setConfirming(null)
     setConfirmValue("")
