@@ -10,6 +10,15 @@ interface RunEvent {
   created_at?: string
 }
 
+interface FailureSummary {
+  code?: string
+  category?: string
+  stop_reason?: string
+  message?: string
+  block_id?: string | null
+  next_action?: string
+}
+
 interface RunMeta {
   triggered_by: string | null
   started_at: string | null
@@ -186,6 +195,8 @@ interface BlockRow {
   model?: string
   routingReason?: string
   timedOut?: boolean
+  failure?: FailureSummary
+  nextAction?: string
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -396,6 +407,21 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
           </p>
         )}
 
+        {row.status === "failed" && (row.failure?.code || row.nextAction) && (
+          <div style={{ marginTop: 4 }}>
+            {row.failure?.code && (
+              <p className="mono" style={{ fontSize: 11, color: "var(--text-3, #78716c)", margin: 0 }}>
+                Reason: {row.failure.code}
+              </p>
+            )}
+            {row.nextAction && (
+              <p style={{ fontSize: 12, color: "var(--text-3, #78716c)", margin: "2px 0 0", lineHeight: 1.35 }}>
+                Next: {row.nextAction}
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Summary line */}
         {summary && row.status !== "failed" && (
           <p style={{ marginTop: 4, fontSize: 12.5, color: isSkipped ? "var(--text-muted, #a8a29e)" : "var(--text-3, #78716c)", lineHeight: 1.4, fontStyle: isSkipped ? "italic" : undefined }}>
@@ -489,6 +515,9 @@ function RunTerminalRow({ runFailed, runCompleted }: {
 
   const isReaped = runFailed?.payload?.reaped === true
   const errMsg   = typeof runFailed?.payload?.error === "string" ? runFailed.payload.error : ""
+  const failure = (runFailed?.payload?.failure as FailureSummary | undefined) ?? undefined
+  const reasonCode = typeof runFailed?.payload?.reason_code === "string" ? runFailed.payload.reason_code : failure?.code
+  const nextAction = typeof runFailed?.payload?.next_action === "string" ? runFailed.payload.next_action : failure?.next_action
 
   if (runFailed) {
     if (isReaped) {
@@ -526,6 +555,16 @@ function RunTerminalRow({ runFailed, runCompleted }: {
           <p style={{ fontWeight: 600, color: "var(--err, #dc2626)", margin: 0, fontSize: 13.5 }}>
             Run failed{errMsg ? ` — ${errMsg}` : ""}
           </p>
+          {reasonCode && (
+            <p className="mono" style={{ marginTop: 4, fontSize: 11, color: "var(--text-3, #78716c)" }}>
+              Reason: {reasonCode}
+            </p>
+          )}
+          {nextAction && (
+            <p style={{ marginTop: 2, fontSize: 12.5, color: "var(--text-3, #78716c)", lineHeight: 1.4 }}>
+              Next: {nextAction}
+            </p>
+          )}
         </div>
       </div>
     )
@@ -680,10 +719,14 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
       }
     } else if (ev.kind === "block_failed" && blockMap[ev.block_id]) {
       const errStr = ev.payload.error as string
+      const failure = (ev.payload.failure as FailureSummary | undefined) ?? undefined
+      const nextAction = (ev.payload.next_action as string | undefined) ?? failure?.next_action
       blockMap[ev.block_id].status = "failed"
       blockMap[ev.block_id].completedAt = ev.created_at
       blockMap[ev.block_id].error = errStr
       blockMap[ev.block_id].timedOut = isTimeoutError(errStr)
+      blockMap[ev.block_id].failure = failure
+      blockMap[ev.block_id].nextAction = nextAction
     } else if (ev.kind === "block_skipped") {
       const row: BlockRow = {
         blockId: ev.block_id,
