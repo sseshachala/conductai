@@ -74,6 +74,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   const themeScript = `(function(){
     var ACCENTS={indigo:{base:"#4f46e5",hover:"#4338ca",ring:"#818cf8",weak:"#eef2ff",weak2:"#e0e7ff",text:"#4338ca"},violet:{base:"#7c3aed",hover:"#6d28d9",ring:"#a78bfa",weak:"#f5f3ff",weak2:"#ede9fe",text:"#6d28d9"},emerald:{base:"#059669",hover:"#047857",ring:"#34d399",weak:"#ecfdf5",weak2:"#d1fae5",text:"#047857"},blue:{base:"#2563eb",hover:"#1d4ed8",ring:"#93c5fd",weak:"#eff6ff",weak2:"#dbeafe",text:"#1d4ed8"},amber:{base:"#d97706",hover:"#b45309",ring:"#fcd34d",weak:"#fffbeb",weak2:"#fef3c7",text:"#b45309"}};
+    function accentContrast(hex){
+      if(!/^#[0-9a-fA-F]{6}$/.test(hex)) return "#ffffff";
+      var r=parseInt(hex.slice(1,3),16)/255;
+      var g=parseInt(hex.slice(3,5),16)/255;
+      var b=parseInt(hex.slice(5,7),16)/255;
+      function f(v){return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4)}
+      var l=0.2126*f(r)+0.7152*f(g)+0.0722*f(b);
+      return l>0.45?"#111827":"#ffffff";
+    }
+    var SEMANTIC=["--ok","--ok-bg","--ok-bd","--warn","--warn-bg","--warn-bd","--err","--err-bg","--err-bd","--info","--info-bg","--info-bd"];
     var look=localStorage.getItem("conduct-theme")||"light";
     var acc=localStorage.getItem("conduct-accent")||"indigo";
     var A=ACCENTS[acc]||ACCENTS.indigo;
@@ -86,6 +96,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     r.setProperty("--accent-weak",dark?"color-mix(in srgb, "+A.base+" 18%, transparent)":A.weak);
     r.setProperty("--accent-weak-2",dark?"color-mix(in srgb, "+A.base+" 30%, transparent)":A.weak2);
     r.setProperty("--accent-text",dark?A.ring:A.text);
+    r.setProperty("--accent-contrast",accentContrast(A.base));
+    for(var i=0;i<SEMANTIC.length;i++) r.removeProperty(SEMANTIC[i]);
   })()`
 
   if (clerkEnabled) {

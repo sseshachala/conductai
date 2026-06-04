@@ -290,20 +290,20 @@ function CostTrendChart({
                 contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid var(--border)" }}
               />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="claude" name="Claude" stackId="a" fill="var(--accent)" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="codex"  name="Codex"  stackId="a" fill="var(--ok)"     radius={[3, 3, 0, 0]} />
+              <Bar dataKey="claude" name="Claude" stackId="a" fill="var(--chart-claude)" radius={[0, 0, 0, 0]} />
+              <Bar dataKey="codex"  name="Codex"  stackId="a" fill="var(--chart-codex)"  radius={[3, 3, 0, 0]} />
               {data.some(d => d.other > 0) && (
-                <Bar dataKey="other" name="Other" stackId="a" fill="var(--text-muted)" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="other" name="Other" stackId="a" fill="var(--chart-other)" radius={[3, 3, 0, 0]} />
               )}
             </BarChart>
           </ResponsiveContainer>
           <div style={{ display: "flex", gap: 18, justifyContent: "center", marginTop: 14, fontSize: 12 }}>
             <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ width: 11, height: 11, borderRadius: 3, background: "var(--accent)", display: "inline-block" }} />
+              <span style={{ width: 11, height: 11, borderRadius: 3, background: "var(--chart-claude)", display: "inline-block" }} />
               <span style={{ color: "var(--text-2)" }}>Claude</span>
             </span>
             <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ width: 11, height: 11, borderRadius: 3, background: "var(--ok)", display: "inline-block" }} />
+              <span style={{ width: 11, height: 11, borderRadius: 3, background: "var(--chart-codex)", display: "inline-block" }} />
               <span style={{ color: "var(--text-2)" }}>Codex</span>
             </span>
           </div>

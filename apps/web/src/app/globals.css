@@ -14,6 +14,7 @@
   --accent-weak:   #eef2ff;
   --accent-weak-2: #e0e7ff;
   --accent-text:   #4338ca;
+  --accent-contrast: #ffffff;
 
   --bg:          #faf9f7;
   --surface:     #ffffff;
@@ -30,6 +31,10 @@
   --warn:  #d97706;  --warn-bg:  #fffbeb;  --warn-bd:  #fcd34d;
   --err:   #dc2626;  --err-bg:   #fef2f2;  --err-bd:   #fca5a5;
   --info:  #2563eb;  --info-bg:  #eff6ff;  --info-bd:  #93c5fd;
+
+  --chart-claude: #4f46e5;
+  --chart-codex:  #0f766e;
+  --chart-other:  #78716c;
 
   --inverse:    #1c1917;
   --on-inverse: #ffffff;
@@ -73,6 +78,10 @@
   --warn:  #fbbf24;  --warn-bg: #2d1f0a;  --warn-bd: #78350f;
   --err:   #f87171;  --err-bg:  #2a0e0e;  --err-bd:  #7f1d1d;
   --info:  #60a5fa;  --info-bg: #0c1e3d;  --info-bd: #1e40af;
+
+  --chart-claude: #93c5fd;
+  --chart-codex:  #5eead4;
+  --chart-other:  #a8a29e;
 
   --inverse:    #f5f3f0;
   --on-inverse: #0b0a09;
@@ -223,7 +232,7 @@ body {
 }
 .btn-primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-contrast);
   border-color: var(--accent);
 }
 .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
