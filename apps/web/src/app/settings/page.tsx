@@ -14,8 +14,8 @@ type Tab = "credentials" | "members" | "preferences" | "api-keys"
 
 const TAB_LABELS: Record<Tab, string> = {
   credentials: "Environments",
-  preferences: "Preferences",
-  members: "Members",
+  preferences: "Appearance",
+  members: "Members & roles",
   "api-keys": "API Keys",
 }
 
@@ -193,31 +193,53 @@ function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolea
           </button>
         </div>
       )}
-      <div className="mx-auto max-w-3xl px-6 py-10">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-xl font-semibold text-stone-900">Global Settings</h1>
-          <span className="text-xs text-stone-400">Tokens encrypted at rest</span>
+      <div className="mx-auto max-w-5xl px-6 py-10">
+        <div style={{ marginBottom: 20 }}>
+          <h1 style={{ fontSize: 25, fontWeight: 680, letterSpacing: "-.02em", color: "var(--text)", margin: 0 }}>
+            Settings
+          </h1>
+          <p style={{ fontSize: 14, color: "var(--text-3)", marginTop: 5, margin: "5px 0 0" }}>
+            Connect tools, manage environments, members, appearance, and API access.
+          </p>
         </div>
 
         {isAdmin && <OrgNameEditor getToken={getToken} />}
 
-        <div className="flex bg-stone-100 rounded-lg p-1 mb-6 w-fit">
+        <div style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border)", marginBottom: 24 }}>
           {tabs.map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                activeTab === tab
-                  ? "bg-white text-stone-900 shadow-sm"
-                  : "text-stone-500 hover:text-stone-800"
-              }`}
+              style={{
+                background: "none",
+                border: "none",
+                padding: "9px 14px",
+                fontSize: 13.5,
+                fontWeight: 600,
+                cursor: "pointer",
+                marginBottom: -1,
+                color: activeTab === tab ? "var(--text)" : "var(--text-3)",
+                borderBottom: activeTab === tab ? "2px solid var(--accent)" : "2px solid transparent",
+              }}
             >
               {TAB_LABELS[tab]}
             </button>
           ))}
           <Link
             href="/settings/modules"
-            className="px-4 py-1.5 rounded-md text-sm font-medium transition-colors text-stone-500 hover:text-stone-800"
+            style={{
+              background: "none",
+              border: "none",
+              padding: "9px 14px",
+              fontSize: 13.5,
+              fontWeight: 600,
+              cursor: "pointer",
+              marginBottom: -1,
+              color: "var(--text-3)",
+              borderBottom: "2px solid transparent",
+              textDecoration: "none",
+              display: "inline-block",
+            }}
           >
             Modules
           </Link>
