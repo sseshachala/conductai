@@ -192,12 +192,23 @@ async def generate_workflow(
         parsed = _yaml.safe_load(raw)
         name = parsed.get("name", "generated-agent")
 
-        # Claude naturally emits blocks as a list; DSL expects a dict keyed by block id
+        # Claude naturally emits blocks as a list; DSL expects a dict keyed by block id.
+        # Also normalize common generation quirks:
+        #   - skip type=trigger (belongs in trigger section, not blocks)
+        #   - mcp: hoist config.credential_key / config.tool_name to block level
         if isinstance(parsed.get("blocks"), list):
             blocks_dict = {}
             for i, block in enumerate(parsed["blocks"]):
                 block = dict(block)
                 block_id = block.pop("id", f"block_{i}")
+                if block.get("type") == "trigger":
+                    continue
+                if block.get("type") == "mcp":
+                    cfg = block.get("config") or {}
+                    if not block.get("credential_key") and cfg.get("credential_key"):
+                        block["credential_key"] = cfg["credential_key"]
+                    if not block.get("tool_name") and cfg.get("tool_name"):
+                        block["tool_name"] = cfg["tool_name"]
                 blocks_dict[block_id] = block
             parsed["blocks"] = blocks_dict
 
