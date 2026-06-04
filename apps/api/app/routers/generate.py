@@ -1,15 +1,22 @@
 """
 POST /workflows/generate  — natural language → Conduct-compliant YAML + graph
+
+API key resolved from the workspace's credential vault (env_vars handle),
+same pattern as the executor. Falls back to settings.anthropic_api_key.
 """
-import os
 import re
 import structlog
 import yaml as _yaml
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id
+from app.core.config import settings
+from app.core.crypto import decrypt
+from app.core.database import get_db
 from app.dsl.loader import load_workflow_yaml, yaml_to_graph
+from app.models.integration import Integration
 from app.runtime.llm_client import AnthropicClient, LLMTextBlock
 
 log = structlog.get_logger(__name__)
@@ -85,6 +92,7 @@ Output ONLY the YAML. No markdown. No explanation."""
 
 class GenerateRequest(BaseModel):
     prompt: str
+    environment_id: str | None = None
 
 
 class GenerateResponse(BaseModel):
@@ -107,14 +115,53 @@ def _extract_credentials(raw_yaml: str) -> list[str]:
     return [c.strip() for c in match.group(1).split(",") if c.strip()]
 
 
+def _resolve_anthropic_key(workspace_id: str, environment_id: str | None, db: Session) -> str | None:
+    """Resolve ANTHROPIC_API_KEY from the workspace credential vault, same as executor."""
+    from app.models.environment import Environment as _Env
+
+    env_ids: list[str] = []
+    if environment_id:
+        env_ids.append(environment_id)
+    # Always include Default environment as fallback
+    default_env = db.query(_Env).filter(
+        _Env.workspace_id == workspace_id,
+        _Env.name == "Default",
+    ).first()
+    if default_env and str(default_env.id) not in env_ids:
+        env_ids.append(str(default_env.id))
+
+    for eid in env_ids:
+        rows = db.query(Integration).filter(
+            Integration.workspace_id == workspace_id,
+            Integration.environment_id == eid,
+            Integration.handle == "env_vars",
+        ).all()
+        for row in rows:
+            if not row.encrypted_credentials:
+                continue
+            env_vars = decrypt(row.encrypted_credentials) or {}
+            key = env_vars.get("ANTHROPIC_API_KEY") or env_vars.get("anthropic_api_key")
+            if key:
+                return key
+
+    return None
+
+
 @router.post("/generate", response_model=GenerateResponse)
 async def generate_workflow(
     body: GenerateRequest,
     workspace_id: str = Depends(get_workspace_id),
+    db: Session = Depends(get_db),
 ):
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    api_key = (
+        _resolve_anthropic_key(workspace_id, body.environment_id, db)
+        or settings.anthropic_api_key
+    )
     if not api_key:
-        raise HTTPException(status_code=503, detail="AI generation not configured — set ANTHROPIC_API_KEY")
+        raise HTTPException(
+            status_code=503,
+            detail="ANTHROPIC_API_KEY not found — add it in Settings → Environments",
+        )
 
     try:
         llm = AnthropicClient(api_key=api_key)

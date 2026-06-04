@@ -199,7 +199,8 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
     try {
       const headers = await buildHeaders(true)
       const genRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/generate`, {
-        method: "POST", headers, body: JSON.stringify({ prompt: nlPrompt.trim() }),
+        method: "POST", headers,
+        body: JSON.stringify({ prompt: nlPrompt.trim(), environment_id: selectedEnvId || null }),
       })
       if (!genRes.ok) {
         const err = await genRes.json().catch(() => ({}))
