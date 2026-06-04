@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Conduct — AI agent workflows for engineering teams</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #fafaf9; --white: #fff;
+  --stone-900: #1c1917; --stone-800: #292524; --stone-700: #44403c;
+  --stone-600: #57534e; --stone-500: #78716c; --stone-400: #a8a29e;
+  --stone-300: #d6d3d1; --stone-200: #e7e5e4; --stone-100: #f5f5f4; --stone-50: #fafaf9;
+  --indigo-600: #4f46e5; --indigo-700: #4338ca; --indigo-100: #e0e7ff; --indigo-50: #eef2ff;
+  --violet-700: #6d28d9; --violet-600: #7c3aed; --violet-100: #ede9fe; --violet-50: #f5f3ff;
+  --amber-600: #d97706; --amber-100: #fef3c7; --amber-50: #fffbeb;
+  --emerald-600: #059669; --emerald-100: #d1fae5;
+  --red-600: #dc2626; --red-100: #fee2e2; --red-50: #fef2f2;
+  --sans: "Inter", system-ui, sans-serif; --mono: "JetBrains Mono", monospace;
+  --r: 14px; --shadow: 0 4px 24px rgba(28,25,23,.08), 0 1px 4px rgba(28,25,23,.04);
+  --shadow-lg: 0 20px 60px rgba(28,25,23,.14), 0 4px 12px rgba(28,25,23,.06);
+}
+html { scroll-behavior: smooth; }
+body { font-family: var(--sans); background: var(--bg); color: var(--stone-900); -webkit-font-smoothing: antialiased; line-height: 1.6; }
+a { text-decoration: none; color: inherit; }
+button { font-family: var(--sans); cursor: pointer; border: none; }
+img { display: block; max-width: 100%; }
+.mono { font-family: var(--mono); }
+.container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+
+/* ---- Nav ---- */
+nav { position: sticky; top: 0; z-index: 50; background: rgba(255,255,255,.92); backdrop-filter: blur(12px); border-bottom: 1px solid var(--stone-200); }
+.nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+.nav-logo { display: flex; align-items: center; gap: 10px; }
+.nav-mark { width: 30px; height: 30px; border-radius: 8px; background: var(--stone-900); color: #fff; display: grid; place-items: center; flex-shrink: 0; }
+.nav-mark svg { width: 17px; height: 17px; }
+.nav-wordmark { font-weight: 750; font-size: 16px; letter-spacing: -.02em; }
+.nav-links { display: flex; align-items: center; gap: 6px; }
+.nav-link { font-size: 13.5px; font-weight: 500; color: var(--stone-600); padding: 6px 10px; border-radius: 8px; transition: color .12s, background .12s; }
+.nav-link:hover { color: var(--stone-900); background: var(--stone-100); }
+.nav-link.guard { color: var(--violet-600); font-weight: 600; }
+.nav-link.guard:hover { color: var(--violet-700); background: var(--violet-50); }
+.nav-sep { width: 1px; height: 18px; background: var(--stone-200); margin: 0 4px; }
+.btn { display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 16px; border-radius: 10px; font-size: 13.5px; font-weight: 600; transition: all .13s; white-space: nowrap; }
+.btn-primary { background: var(--stone-900); color: #fff; }
+.btn-primary:hover { background: var(--stone-700); }
+.btn-ghost { border: 1.5px solid var(--stone-200); color: var(--stone-700); background: #fff; }
+.btn-ghost:hover { border-color: var(--stone-300); background: var(--stone-50); }
+.btn-indigo { background: var(--indigo-600); color: #fff; }
+.btn-indigo:hover { background: var(--indigo-700); }
+.btn-violet { background: var(--violet-600); color: #fff; }
+.btn-violet:hover { background: var(--violet-700); }
+.btn-sm { height: 32px; padding: 0 13px; font-size: 13px; border-radius: 8px; }
+
+/* ---- Hero ---- */
+.hero { padding: 80px 0 60px; }
+.hero-badge { display: inline-flex; align-items: center; gap: 8px; background: var(--stone-100); color: var(--stone-600); font-size: 12px; font-weight: 600; padding: 5px 13px; border-radius: 20px; margin-bottom: 28px; letter-spacing: .01em; white-space: nowrap; }
+.hero-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; flex-shrink: 0; }
+h1 { font-size: clamp(40px, 5.5vw, 62px); font-weight: 800; letter-spacing: -.035em; line-height: 1.08; max-width: 700px; }
+h1 em { font-style: normal; color: var(--indigo-600); }
+.hero-sub { font-size: 18px; color: var(--stone-500); max-width: 520px; margin-top: 20px; line-height: 1.65; }
+.hero-ctas { display: flex; align-items: center; gap: 12px; margin-top: 32px; flex-wrap: wrap; }
+.hero-meta { font-size: 12px; color: var(--stone-400); margin-top: 12px; }
+.hero-layout { display: grid; grid-template-columns: 1fr 1.1fr; gap: 60px; align-items: center; }
+
+/* ---- Product mock ---- */
+.product-frame { background: #fff; border-radius: 18px; box-shadow: var(--shadow-lg); overflow: hidden; border: 1px solid var(--stone-200); }
+.mock-topbar { height: 44px; background: #fff; border-bottom: 1px solid var(--stone-200); display: flex; align-items: center; justify-content: space-between; padding: 0 14px; }
+.mock-topbar-left { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--stone-500); }
+.mock-topbar-right { display: flex; gap: 8px; }
+.mock-btn { height: 26px; padding: 0 10px; border-radius: 7px; font-size: 11px; font-weight: 600; border: 1.5px solid var(--stone-200); color: var(--stone-600); background: #fff; }
+.mock-run-btn { background: var(--indigo-600); color: #fff; border-color: var(--indigo-600); }
+.mock-breadcrumb { font-size: 12px; color: var(--stone-400); display: flex; align-items: center; gap: 5px; }
+.mock-breadcrumb b { color: var(--stone-800); font-weight: 600; }
+.mock-body { display: grid; grid-template-columns: 140px 1fr 160px; height: 320px; }
+.mock-pal { border-right: 1px solid var(--stone-200); padding: 10px 8px; display: flex; flex-direction: column; gap: 5px; background: var(--stone-50); }
+.mock-pal-label { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--stone-400); padding: 4px 6px 8px; }
+.mock-block { padding: 7px 9px; border-radius: 8px; border: 1.5px solid; font-size: 10.5px; font-weight: 600; line-height: 1.1; }
+.mb-trigger { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+.mb-brain   { background: #f5f3ff; border-color: #ddd6fe; color: #6d28d9; }
+.mb-action  { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+.mb-approve { background: #fff7ed; border-color: #fed7aa; color: #c2410c; }
+.mb-output  { background: #fff1f2; border-color: #fecdd3; color: #be123c; }
+.mb-guard   { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+.mock-canvas { position: relative; background: var(--stone-50); background-image: radial-gradient(#d6d3d1 1px, transparent 1px); background-size: 16px 16px; padding: 18px 14px; overflow: hidden; }
+.mc-block { position: absolute; border-radius: 10px; border: 1.5px solid; padding: 8px 10px; font-size: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.07); background: #fff; }
+.mc-label { font-size: 8px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 4px; }
+.mc-name { font-size: 11px; font-weight: 650; color: var(--stone-800); line-height: 1.2; }
+.mc-tag { display: inline-block; margin-top: 5px; background: var(--stone-900); color: #fff; border-radius: 4px; padding: 1px 5px; font-size: 9px; font-weight: 700; font-family: var(--mono); }
+.mc-ai { display: inline-block; margin-left: 4px; background: #7c3aed; color: #fff; border-radius: 4px; padding: 1px 5px; font-size: 8px; font-weight: 800; }
+.mock-trace { border-left: 1px solid var(--stone-200); padding: 10px 8px; overflow: hidden; background: #fff; }
+.mt-title { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--stone-400); margin-bottom: 8px; }
+.mt-event { display: flex; align-items: flex-start; gap: 7px; margin-bottom: 8px; font-size: 10px; }
+.mt-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-top: 2px; }
+.mt-name { font-weight: 600; color: var(--stone-800); line-height: 1.2; }
+.mt-dur { color: var(--stone-400); font-size: 9.5px; font-family: var(--mono); }
+.mt-wait { font-size: 9.5px; color: #d97706; font-weight: 600; }
+.mt-approve-btns { display: flex; gap: 5px; margin-top: 5px; }
+.mt-approve-btns button { font-size: 9px; font-weight: 700; padding: 3px 8px; border-radius: 5px; border: none; cursor: default; }
+.btn-ok { background: #ecfdf5; color: #059669; }
+.btn-rej { background: #fef2f2; color: #dc2626; }
+
+/* ---- Sections ---- */
+section { padding: 80px 0; }
+.eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--stone-400); margin-bottom: 14px; }
+h2 { font-size: clamp(28px, 4vw, 42px); font-weight: 800; letter-spacing: -.03em; line-height: 1.12; }
+h2 em { font-style: normal; color: var(--indigo-600); }
+h2 .violet { color: var(--violet-600); }
+.section-intro { font-size: 16px; color: var(--stone-500); max-width: 520px; margin-top: 16px; line-height: 1.65; }
+.text-center { text-align: center; }
+.text-center .section-intro { margin: 16px auto 0; }
+
+/* trust strip */
+.trust-strip { border-top: 1px solid var(--stone-200); border-bottom: 1px solid var(--stone-200); background: var(--stone-50); padding: 18px 0; }
+.trust-items { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 24px; font-size: 12.5px; font-weight: 500; color: var(--stone-500); }
+.trust-items span { display: flex; align-items: center; gap: 7px; }
+.trust-dot { width: 6px; height: 6px; border-radius: 50%; background: #22c55e; flex-shrink: 0; }
+
+/* how it works */
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; margin-top: 52px; }
+.step { position: relative; }
+.step-num { font-size: 11px; font-weight: 800; color: var(--stone-300); letter-spacing: .05em; margin-bottom: 14px; }
+.step-icon { font-size: 30px; margin-bottom: 14px; }
+.step h3 { font-size: 17px; font-weight: 700; margin-bottom: 8px; letter-spacing: -.01em; }
+.step p { font-size: 14px; color: var(--stone-500); line-height: 1.6; }
+.step-connector { position: absolute; top: 32px; right: -16px; width: 32px; color: var(--stone-300); font-size: 18px; text-align: center; z-index: 1; }
+
+/* pillars */
+.pillars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 48px; }
+.pillar { background: var(--white); border: 1.5px solid var(--stone-200); border-radius: var(--r); padding: 28px 26px; transition: box-shadow .15s, border-color .15s; }
+.pillar:hover { box-shadow: var(--shadow); border-color: var(--stone-300); }
+.pillar-icon { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; margin-bottom: 18px; font-size: 22px; }
+.pillar h3 { font-size: 19px; font-weight: 750; letter-spacing: -.015em; margin-bottom: 10px; }
+.pillar p { font-size: 13.5px; color: var(--stone-500); line-height: 1.6; }
+.pillar-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 18px; font-size: 13px; font-weight: 600; }
+.pillar.agents .pillar-icon { background: var(--indigo-50); color: var(--indigo-600); }
+.pillar.agents .pillar-link { color: var(--indigo-600); }
+.pillar.guard { border-color: var(--violet-100); background: linear-gradient(135deg, #fefeff 0%, #faf5ff 100%); }
+.pillar.guard .pillar-icon { background: var(--violet-50); color: var(--violet-600); }
+.pillar.guard .pillar-link { color: var(--violet-600); }
+.pillar.memory .pillar-icon { background: var(--amber-50); color: var(--amber-600); }
+.pillar.memory .pillar-link { color: var(--amber-600); }
+
+/* playbooks grid */
+.pb-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 40px; }
+.pb-card { background: var(--white); border: 1.5px solid var(--stone-200); border-radius: 12px; padding: 18px 20px; }
+.pb-cat { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding: 3px 9px; border-radius: 20px; display: inline-block; margin-bottom: 12px; }
+.pb-cat.issue-pr { background: var(--indigo-50); color: var(--indigo-600); }
+.pb-cat.review   { background: #eff6ff; color: #2563eb; }
+.pb-cat.security { background: var(--red-50); color: var(--red-600); }
+.pb-cat.ci       { background: #f0fdf4; color: #166534; }
+.pb-cat.incidents{ background: #fff7ed; color: #c2410c; }
+.pb-cat.triage   { background: var(--amber-50); color: var(--amber-600); }
+.pb-card h4 { font-size: 15px; font-weight: 700; margin-bottom: 6px; letter-spacing: -.01em; }
+.pb-card p { font-size: 12.5px; color: var(--stone-500); line-height: 1.5; }
+.pb-meta { display: flex; align-items: center; gap: 12px; margin-top: 13px; font-size: 11.5px; color: var(--stone-400); font-family: var(--mono); }
+.pb-trigger { display: flex; align-items: center; gap: 5px; }
+
+/* Guard section (dark) */
+.guard-section { background: var(--stone-900); color: #fff; padding: 80px 0; }
+.guard-section .eyebrow { color: #a78bfa; }
+.guard-section h2 { color: #fff; }
+.guard-section h2 .violet { color: #a78bfa; }
+.guard-section .section-intro { color: #a8a29e; max-width: 580px; }
+.guard-problems { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 44px; }
+.guard-problem { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 12px; padding: 22px; }
+.guard-problem-icon { font-size: 24px; margin-bottom: 12px; }
+.guard-problem h4 { font-size: 15px; font-weight: 700; margin-bottom: 7px; }
+.guard-problem p { font-size: 13px; color: #a8a29e; line-height: 1.6; }
+.guard-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 44px; }
+.guard-step { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.09); border-radius: 12px; padding: 22px; }
+.guard-step-num { font-size: 10px; font-weight: 800; color: #7c3aed; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 10px; }
+.guard-step h4 { font-size: 14.5px; font-weight: 700; margin-bottom: 8px; color: #fff; }
+.guard-step p { font-size: 12.5px; color: #a8a29e; line-height: 1.6; }
+.guard-step code { display: block; margin-top: 12px; background: rgba(0,0,0,.4); color: #4ade80; font-family: var(--mono); font-size: 12px; padding: 9px 12px; border-radius: 8px; }
+.guard-works-with { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.guard-tool-chip { font-size: 12px; font-weight: 500; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); border-radius: 20px; padding: 4px 12px; color: #d6d3d1; }
+.guard-cta-row { display: flex; align-items: center; gap: 12px; margin-top: 44px; }
+.guard-stat-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 44px; }
+.guard-stat { background: rgba(124,58,237,.12); border: 1px solid rgba(124,58,237,.3); border-radius: 12px; padding: 20px 22px; }
+.guard-stat-label { font-size: 9.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #a78bfa; margin-bottom: 8px; }
+.guard-stat-val { font-size: 20px; font-weight: 800; color: #fff; margin-bottom: 5px; letter-spacing: -.015em; }
+.guard-stat-sub { font-size: 12px; color: #a8a29e; }
+
+/* Memory (amber) */
+.memory-section { background: var(--amber-50); padding: 80px 0; border-top: 1px solid #fde68a; border-bottom: 1px solid #fde68a; }
+.memory-section .eyebrow { color: var(--amber-600); }
+.memory-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 44px; }
+.memory-card { background: var(--white); border: 1.5px solid #fde68a; border-radius: 12px; padding: 22px; }
+.memory-card h4 { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
+.memory-card p { font-size: 13px; color: var(--stone-500); line-height: 1.6; }
+.memory-card .mem-icon { font-size: 24px; margin-bottom: 12px; }
+
+/* Tools + Compare callouts */
+.callouts { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 48px; }
+.callout { background: var(--white); border: 1.5px solid var(--stone-200); border-radius: var(--r); padding: 28px 28px; }
+.callout h3 { font-size: 18px; font-weight: 750; margin-bottom: 8px; letter-spacing: -.01em; }
+.callout p { font-size: 13.5px; color: var(--stone-500); line-height: 1.6; }
+.callout-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 16px; font-size: 13.5px; font-weight: 700; }
+
+/* Social proof */
+.quotes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 48px; }
+.quote-card { background: var(--white); border: 1.5px solid var(--stone-200); border-radius: 12px; padding: 22px; }
+.quote-text { font-size: 14px; color: var(--stone-700); line-height: 1.65; font-style: italic; }
+.quote-author { margin-top: 16px; display: flex; align-items: center; gap: 10px; }
+.quote-avatar { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; color: #fff; flex-shrink: 0; }
+.quote-name { font-size: 13px; font-weight: 600; }
+.quote-role { font-size: 11.5px; color: var(--stone-400); margin-top: 1px; }
+
+/* Bottom CTA */
+.cta-section { background: var(--stone-900); padding: 80px 0; text-align: center; }
+.cta-section h2 { color: #fff; }
+.cta-section .section-intro { color: #a8a29e; margin: 16px auto 0; }
+.cta-btns { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 36px; flex-wrap: wrap; }
+.cta-meta { font-size: 12px; color: #78716c; margin-top: 14px; }
+
+/* Footer */
+footer { border-top: 1px solid var(--stone-200); padding: 36px 0; }
+.footer-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
+.footer-links { display: flex; gap: 20px; flex-wrap: wrap; }
+.footer-links a { font-size: 13px; color: var(--stone-400); transition: color .12s; }
+.footer-links a:hover { color: var(--stone-700); }
+.footer-copy { font-size: 12px; color: var(--stone-300); }
+
+@media (max-width: 900px) {
+  .hero-layout { grid-template-columns: 1fr; }
+  .mock-topbar, .mock-body { display: none; }
+  .product-frame { display: none; }
+  .steps, .pillars, .pb-grid, .guard-problems, .guard-steps, .guard-stat-strip, .memory-cards, .callouts, .quotes { grid-template-columns: 1fr; }
+  .step-connector { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="container">
+    <div class="nav-inner">
+      <a href="/" class="nav-logo">
+        <div class="nav-mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="5" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="7" r="2"/>
+            <path d="M7 5h5a2 2 0 0 1 2 2v3"/><path d="M5 7v10"/>
+          </svg>
+        </div>
+        <span class="nav-wordmark">Conduct</span>
+      </a>
+      <div class="nav-links">
+        <a href="/marketplace" class="nav-link">Playbooks</a>
+        <a href="/tools" class="nav-link">Tools</a>
+        <a href="/compare" class="nav-link">Compare</a>
+        <a href="/benchmark" class="nav-link">Benchmark</a>
+        <a href="/docs" class="nav-link">Docs</a>
+        <div class="nav-sep"></div>
+        <a href="/guard-landing" class="nav-link guard">Guard ↗</a>
+        <a href="https://cal.com/conductai/demo" target="_blank" class="btn btn-ghost btn-sm">Book a demo</a>
+        <a href="/sign-in" class="btn btn-primary btn-sm">Sign in free</a>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="container">
+    <div class="hero-layout">
+      <div>
+        <div class="hero-badge"><span class="dot"></span>Free during early access · No credit card</div>
+        <h1>You have AI that writes code.<br><em>Conduct handles the work around it.</em></h1>
+        <p class="hero-sub">Conduct turns tickets, PRs, alerts, and incidents into auditable AI agent workflows. Install a playbook. Connect your tools. Human approval before anything ships.</p>
+        <div class="hero-ctas">
+          <a href="/sign-in" class="btn btn-primary">Sign in — it's free →</a>
+          <a href="https://cal.com/conductai/demo" target="_blank" class="btn btn-ghost">Book a demo</a>
+        </div>
+        <p class="hero-meta">Sign in with Google, GitHub, or Microsoft · Connect your existing stack</p>
+      </div>
+      <!-- Product mock -->
+      <div class="product-frame">
+        <div class="mock-topbar">
+          <div class="mock-topbar-left">
+            <div class="mock-breadcrumb"><span>Projects</span> <span>›</span> <span>DevOps</span> <span>›</span> <b>Story → shipped PR</b></div>
+            <span style="display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:5px;font-size:10px;font-weight:600;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;margin-left:6px;">Draft</span>
+          </div>
+          <div class="mock-topbar-right">
+            <button class="mock-btn">Dry run</button>
+            <button class="mock-btn mock-run-btn">▶ Run</button>
+          </div>
+        </div>
+        <div class="mock-body">
+          <!-- Block palette -->
+          <div class="mock-pal">
+            <div class="mock-pal-label">Blocks</div>
+            <div class="mock-block mb-trigger">Trigger<br><span style="font-weight:400;opacity:.8;font-size:9.5px">starts a run</span></div>
+            <div class="mock-block mb-brain">Agent Step<br><span style="font-weight:400;opacity:.8;font-size:9.5px">reason + act</span></div>
+            <div class="mock-block mb-action">Action<br><span style="font-weight:400;opacity:.8;font-size:9.5px">direct API call</span></div>
+            <div class="mock-block mb-approve">Approval<br><span style="font-weight:400;opacity:.8;font-size:9.5px">wait for human</span></div>
+            <div class="mock-block mb-output">Notify<br><span style="font-weight:400;opacity:.8;font-size:9.5px">send output</span></div>
+            <div class="mock-block mb-guard" style="margin-top:4px">Guard<br><span style="font-weight:400;opacity:.8;font-size:9.5px">enforce policy</span></div>
+          </div>
+          <!-- Canvas -->
+          <div class="mock-canvas">
+            <!-- Block 1: Trigger -->
+            <div class="mc-block mb-trigger" style="left:16px;top:18px;width:118px;">
+              <div class="mc-label">TRIGGER</div>
+              <div class="mc-name">Story ready</div>
+              <div class="mc-tag">Linear</div>
+            </div>
+            <!-- connector lines (SVG overlay) -->
+            <svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible">
+              <!-- T→Agent -->
+              <path d="M 134 52 C 160 52, 160 118, 186 118" fill="none" stroke="#d6d3d1" stroke-width="1.5"/>
+              <!-- Agent→Action -->
+              <path d="M 314 118 C 340 118, 340 188, 186 188" fill="none" stroke="#d6d3d1" stroke-width="1.5"/>
+              <!-- Action→Approval -->
+              <path d="M 304 188 C 330 188, 330 256, 186 256" fill="none" stroke="#d6d3d1" stroke-width="1.5"/>
+              <!-- Approval→Notify -->
+              <path d="M 304 258 C 330 258, 358 52, 380 52" fill="none" stroke="#22c55e" stroke-width="1.5" stroke-dasharray="none"/>
+              <text x="342" y="164" fill="#22c55e" font-size="9" font-weight="700" font-family="JetBrains Mono,monospace">approve</text>
+            </svg>
+            <!-- Block 2: Agent -->
+            <div class="mc-block mb-brain" style="left:186px;top:88px;width:128px;">
+              <div class="mc-label">AGENT STEP <span class="mc-ai">AI</span></div>
+              <div class="mc-name">Generate code</div>
+              <div style="font-size:9.5px;color:#78716c;margin-top:4px">Sonnet · 14 tool calls</div>
+            </div>
+            <!-- Block 3: Action -->
+            <div class="mc-block mb-action" style="left:186px;top:158px;width:118px;">
+              <div class="mc-label">ACTION</div>
+              <div class="mc-name">Push + draft PR</div>
+              <div class="mc-tag">GitHub</div>
+            </div>
+            <!-- Block 4: Approval -->
+            <div class="mc-block mb-approve" style="left:186px;top:228px;width:118px;">
+              <div class="mc-label">APPROVAL</div>
+              <div class="mc-name">Await reviewer</div>
+              <div class="mc-tag">Slack</div>
+            </div>
+          </div>
+          <!-- Run trace -->
+          <div class="mock-trace">
+            <div class="mt-title">Run trace</div>
+            <div class="mt-event">
+              <div class="mt-dot" style="background:#22c55e"></div>
+              <div>
+                <div class="mt-name">Story ready</div>
+                <div class="mt-dur">0.0s</div>
+              </div>
+            </div>
+            <div class="mt-event">
+              <div class="mt-dot" style="background:#22c55e"></div>
+              <div>
+                <div class="mt-name">Guard check</div>
+                <div class="mt-dur">0.1s · passed</div>
+              </div>
+            </div>
+            <div class="mt-event">
+              <div class="mt-dot" style="background:#22c55e"></div>
+              <div>
+                <div class="mt-name">Generate code</div>
+                <div class="mt-dur">48s · Sonnet</div>
+              </div>
+            </div>
+            <div class="mt-event">
+              <div class="mt-dot" style="background:#22c55e"></div>
+              <div>
+                <div class="mt-name">Run tests</div>
+                <div class="mt-dur">22s · 218 pass</div>
+              </div>
+            </div>
+            <div class="mt-event">
+              <div class="mt-dot" style="background:#22c55e"></div>
+              <div>
+                <div class="mt-name">Push + draft PR</div>
+                <div class="mt-dur">3.1s · #1294</div>
+              </div>
+            </div>
+            <div class="mt-event">
+              <div class="mt-dot" style="background:#d97706;animation:pulse 1.5s infinite"></div>
+              <div>
+                <div class="mt-name">Await reviewer</div>
+                <div class="mt-wait">waiting…</div>
+                <div class="mt-approve-btns">
+                  <button class="btn-ok">✓ Approve</button>
+                  <button class="btn-rej">✕ Reject</button>
+                </div>
+              </div>
+            </div>
+            <style>@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}</style>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TRUST STRIP -->
+<div class="trust-strip">
+  <div class="container">
+    <div class="trust-items">
+      <span><span class="trust-dot"></span>18 ready-made playbooks</span>
+      <span><span class="trust-dot"></span>Human approval before every merge</span>
+      <span><span class="trust-dot"></span>Hard cap per developer</span>
+      <span><span class="trust-dot"></span>Full audit trail · SOC 2 ready</span>
+      <span><span class="trust-dot"></span>MIT licensed · open source</span>
+    </div>
+  </div>
+</div>
+
+<!-- HOW IT WORKS -->
+<section style="background:#fff">
+  <div class="container text-center">
+    <div class="eyebrow">Setup in minutes</div>
+    <h2>Live on day one.</h2>
+    <p class="section-intro">Connect your stack, install a playbook, and your first agent run goes through Guard automatically.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">01</div>
+        <div class="step-icon">🔗</div>
+        <h3>Connect your repo</h3>
+        <p>Link GitHub and Slack. Add credentials in Settings → Environments. No migration, no new tooling — Conduct wraps around what you already use.</p>
+        <div class="step-connector">→</div>
+      </div>
+      <div class="step">
+        <div class="step-num">02</div>
+        <div class="step-icon">📦</div>
+        <h3>Install a playbook</h3>
+        <p>Browse 18 pre-built agent playbooks. Click Install — the canvas is pre-wired. Add your credentials and the agent is ready to run.</p>
+        <div class="step-connector">→</div>
+      </div>
+      <div class="step">
+        <div class="step-num">03</div>
+        <div class="step-icon">✅</div>
+        <h3>Get output in Slack</h3>
+        <p>PRs, reviews, triage comments, incident diagnoses — delivered to Slack. Every run passes through Guard automatically. Approve or reject in one click.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- THREE PILLARS -->
+<section style="background:var(--stone-50)">
+  <div class="container text-center">
+    <div class="eyebrow">What Conduct does</div>
+    <h2>Three pillars. One platform.</h2>
+    <div class="pillars">
+      <div class="pillar agents">
+        <div class="pillar-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="7" r="2"/><path d="M7 5h5a2 2 0 0 1 2 2v3"/><path d="M5 7v10"/></svg>
+        </div>
+        <h3>Agent Workflows</h3>
+        <p>18 pre-built playbooks for the work around coding — issue triage, PR reviews, incident response, release notes, dependency updates. Human approval before anything ships.</p>
+        <a href="/marketplace" class="pillar-link">Browse Marketplace →</a>
+      </div>
+      <div class="pillar guard">
+        <div class="pillar-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4 3 7 7 9 4-2 7-5 7-9V6l-7-3Z"/></svg>
+        </div>
+        <h3>ConductGuard</h3>
+        <p>MDM for AI coding tools. Spend limits, policy enforcement, and a full audit trail — across Claude Code, Cursor, Windsurf, and every AI tool your team uses. Set once, applied to all.</p>
+        <a href="/guard-landing" class="pillar-link">See the full Guard story →</a>
+      </div>
+      <div class="pillar memory">
+        <div class="pillar-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a7 7 0 0 1 0 14"/><path d="M12 16v6"/><circle cx="12" cy="12" r="3"/></svg>
+        </div>
+        <h3>Agent Memory</h3>
+        <p>Agents that get better with every run. Before acting, each agent recalls what it learned on this repo last time. After the run, it records the outcome. The 10th PR is smarter than the first.</p>
+        <a href="/docs#memory-block" class="pillar-link" style="color:var(--amber-600)">Memory docs →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PLAYBOOKS -->
+<section style="background:#fff">
+  <div class="container">
+    <div class="text-center">
+      <div class="eyebrow">Playbook Marketplace</div>
+      <h2>One click to install.<br>Running in minutes.</h2>
+      <p class="section-intro">18 pre-built agent playbooks across 10 categories. Browse, install, configure credentials, run.</p>
+    </div>
+    <div class="pb-grid">
+      <div class="pb-card">
+        <div class="pb-cat issue-pr">Issue → PR</div>
+        <h4>Autopilot + Approval</h4>
+        <p>Issue labeled ai-ready → AI implements fix, runs tests, opens PR → human approves in Slack before merge.</p>
+        <div class="pb-meta"><span class="pb-trigger">⚡ Issue labeled</span><span>9 blocks</span><span>4.8k installs</span></div>
+      </div>
+      <div class="pb-card">
+        <div class="pb-cat review">Code Review</div>
+        <h4>PR Reviewer</h4>
+        <p>PR opened → AI reviews the diff for bugs, security issues, and style → posts a structured review comment.</p>
+        <div class="pb-meta"><span class="pb-trigger">⚡ PR opened</span><span>4 blocks</span><span>5.2k installs</span></div>
+      </div>
+      <div class="pb-card">
+        <div class="pb-cat security">Security</div>
+        <h4>Security Scanner</h4>
+        <p>PR opened → OWASP Top 10, secrets, auth bypass scan → posts a security findings report to the PR.</p>
+        <div class="pb-meta"><span class="pb-trigger">⚡ PR opened</span><span>5 blocks</span><span>2.7k installs</span></div>
+      </div>
+      <div class="pb-card">
+        <div class="pb-cat ci">CI/CD</div>
+        <h4>CI Failure Alert</h4>
+        <p>Build fails → AI diagnoses the failing step, finds the root cause → posts a structured fix to Slack.</p>
+        <div class="pb-meta"><span class="pb-trigger">⚡ Build fails</span><span>4 blocks</span><span>2.2k installs</span></div>
+      </div>
+      <div class="pb-card">
+        <div class="pb-cat triage">Triage</div>
+        <h4>Issue Triage</h4>
+        <p>New issue opened → AI classifies type and priority, adds labels, asks clarifying questions if vague.</p>
+        <div class="pb-meta"><span class="pb-trigger">⚡ Issue opened</span><span>4 blocks</span><span>3.6k installs</span></div>
+      </div>
+      <div class="pb-card">
+        <div class="pb-cat incidents">Incidents</div>
+        <h4>Incident Responder</h4>
+        <p>Alert fires → AI correlates recent deploys and commits → posts a root-cause hypothesis to #incidents.</p>
+        <div class="pb-meta"><span class="pb-trigger">⚡ PagerDuty webhook</span><span>7 blocks</span><span>1.1k installs</span></div>
+      </div>
+    </div>
+    <div style="text-align:center;margin-top:28px">
+      <a href="/marketplace" class="btn btn-ghost">Browse all 18 playbooks in the Marketplace →</a>
+    </div>
+  </div>
+</section>
+
+<!-- GUARD (one consolidated dark section) -->
+<div class="guard-section">
+  <div class="container">
+    <div class="eyebrow">ConductGuard</div>
+    <h2 style="max-width:600px">Every AI tool. Every developer.<br><span class="violet">One policy.</span></h2>
+    <p class="section-intro">AI spend is now a board-level concern. Guard gives your VP Eng and CFO spend visibility, policy enforcement, and a full audit trail — across every AI coding tool your team uses.</p>
+
+    <!-- Problem -->
+    <div class="guard-problems">
+      <div class="guard-problem">
+        <div class="guard-problem-icon">👁️</div>
+        <h4>No visibility</h4>
+        <p>Which developer spent $800 on Claude last month? Which project burned your budget? Today, you can't answer these questions.</p>
+      </div>
+      <div class="guard-problem">
+        <div class="guard-problem-icon">🚫</div>
+        <h4>No policy</h4>
+        <p>Developers run destructive commands in production environments, push secrets to AI context, deploy without review. Uncontrolled.</p>
+      </div>
+      <div class="guard-problem">
+        <div class="guard-problem-icon">📋</div>
+        <h4>No audit</h4>
+        <p>When something goes wrong, there's no record of what the AI did, what was approved, or who authorised it.</p>
+      </div>
+    </div>
+
+    <!-- Stat strip -->
+    <div class="guard-stat-strip">
+      <div class="guard-stat">
+        <div class="guard-stat-label">Spend visibility</div>
+        <div class="guard-stat-val">Per developer</div>
+        <div class="guard-stat-sub">Tokens + cost per dev, per tool, per day</div>
+      </div>
+      <div class="guard-stat">
+        <div class="guard-stat-label">Policy enforcement</div>
+        <div class="guard-stat-val">BLOCK / WARN / AUDIT</div>
+        <div class="guard-stat-sub">Three modes — from hard stop to silent log</div>
+      </div>
+      <div class="guard-stat">
+        <div class="guard-stat-label">Audit trail</div>
+        <div class="guard-stat-val">Every AI call</div>
+        <div class="guard-stat-sub">Linked to the run that triggered it</div>
+      </div>
+    </div>
+
+    <!-- How it works -->
+    <div style="margin-top:44px">
+      <div class="eyebrow">Set once. Enforced everywhere.</div>
+    </div>
+    <div class="guard-steps">
+      <div class="guard-step">
+        <div class="guard-step-num">Step 1 · Team lead</div>
+        <h4>Set the policies</h4>
+        <p>Define spend caps, blocked commands, approved tools, and enforcement mode in the Guard dashboard. One config. Applied automatically to every developer.</p>
+      </div>
+      <div class="guard-step">
+        <div class="guard-step-num">Step 2 · Developer</div>
+        <h4>Join in one command</h4>
+        <p>Run one command. Policies download and apply automatically to their local environment. No IT ticket. 30 seconds.</p>
+        <code>conduct guard join</code>
+      </div>
+      <div class="guard-step">
+        <div class="guard-step-num">Step 3 · MCP</div>
+        <h4>Guard in every editor</h4>
+        <p>The <code style="background:rgba(255,255,255,.1);padding:1px 5px;border-radius:4px;font-family:var(--mono);font-size:11px">conductguard-mcp</code> server connects Guard to Claude Code, Cursor, Windsurf automatically.</p>
+        <div class="guard-works-with">
+          <span class="guard-tool-chip">Claude Code</span><span class="guard-tool-chip">Cursor</span><span class="guard-tool-chip">Windsurf</span><span class="guard-tool-chip">Aider</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="guard-cta-row">
+      <a href="/guard-landing" class="btn btn-violet">See the full Guard story →</a>
+      <a href="https://cal.com/conductai/demo" target="_blank" class="btn btn-ghost" style="border-color:rgba(255,255,255,.15);color:#d6d3d1">Book a demo</a>
+      <span style="font-size:13px;color:#78716c;margin-left:4px">For VP Eng · CFO · Security leads</span>
+    </div>
+  </div>
+</div>
+
+<!-- MEMORY -->
+<div class="memory-section">
+  <div class="container text-center">
+    <div class="eyebrow">Agent Memory</div>
+    <h2>Agents that get better<br>with every run.</h2>
+    <p class="section-intro">Most AI tools start from scratch every time. Conduct agents remember. Before each run the agent recalls what it learned on this repo. After the run it records the outcome.</p>
+    <div class="memory-cards">
+      <div class="memory-card">
+        <div class="mem-icon">🧠</div>
+        <h4>Recall before acting</h4>
+        <p>Before the agent block runs, a Memory read block retrieves the most relevant past summaries using vector similarity — not just recent history, but what's most applicable to this exact task.</p>
+      </div>
+      <div class="memory-card">
+        <div class="mem-icon">📝</div>
+        <h4>Record every outcome</h4>
+        <p>After the run, a Memory write block stores what was done: the approach, files changed, what worked. That becomes context for future runs on the same repo.</p>
+      </div>
+      <div class="memory-card">
+        <div class="mem-icon">🔒</div>
+        <h4>Scoped and isolated</h4>
+        <p>Each playbook builds its own knowledge store per repo. What Autopilot learns on conductai/api never bleeds into conductai/web. Two scopes: repo or workspace.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TOOLS + COMPARE callouts -->
+<section style="background:#fff">
+  <div class="container text-center">
+    <div class="eyebrow">Going deeper</div>
+    <h2>Built to be honest.</h2>
+    <p class="section-intro">Open source tools for developers. An honest comparison with every major AI engineering tool.</p>
+    <div class="callouts">
+      <div class="callout" style="border-color:#e0e7ff;background:linear-gradient(135deg,#fff 0%,#eef2ff 100%)">
+        <div style="font-size:28px;margin-bottom:14px">◈</div>
+        <h3>Open source tools</h3>
+        <p>Agent Booster cuts per-request AI costs by up to 15× by sending only the relevant code. Claude Code Team Kit gives your whole team a shared setup in one command. Both free, MIT licensed.</p>
+        <a href="/tools" class="callout-link" style="color:var(--indigo-600)">Browse open source tools →</a>
+      </div>
+      <div class="callout" style="border-color:var(--stone-200)">
+        <div style="font-size:28px;margin-bottom:14px">⚖️</div>
+        <h3>AI tools, compared honestly</h3>
+        <p>How does Conduct compare to GitHub Copilot, Devin, CodeRabbit, LinearB, and others? Honest feature matrix, strengths, trade-offs, and a decision guide for your team's situation.</p>
+        <a href="/compare" class="callout-link" style="color:var(--stone-700)">Compare all tools →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SOCIAL PROOF -->
+<section style="background:var(--stone-50)">
+  <div class="container text-center">
+    <div class="eyebrow">Early adopters</div>
+    <h2>Teams shipping faster.</h2>
+    <div class="quotes">
+      <div class="quote-card">
+        <p class="quote-text">"Labeled a bug at 5pm on a Friday. PR was open by 5:02pm, tests green, ready to review Monday morning. That's the thing — it just works while we're not watching."</p>
+        <div class="quote-author">
+          <div class="quote-avatar" style="background:#4f46e5">E</div>
+          <div>
+            <div class="quote-name">Engineering Lead</div>
+            <div class="quote-role">Series B startup · 35-person eng team</div>
+          </div>
+        </div>
+      </div>
+      <div class="quote-card">
+        <p class="quote-text">"Guard paid for itself in week one. I could finally see exactly which developers and which tools were burning our Claude budget. We cut spend by 40% without slowing anyone down."</p>
+        <div class="quote-author">
+          <div class="quote-avatar" style="background:#7c3aed">V</div>
+          <div>
+            <div class="quote-name">VP Engineering</div>
+            <div class="quote-role">SaaS company · 60-person team</div>
+          </div>
+        </div>
+      </div>
+      <div class="quote-card">
+        <p class="quote-text">"The Copilot reviewer playbook caught three hallucinated API calls in AI-authored PRs that our human reviewers missed. We won't merge AI code without it now."</p>
+        <div class="quote-author">
+          <div class="quote-avatar" style="background:#059669">S</div>
+          <div>
+            <div class="quote-name">Senior Engineer</div>
+            <div class="quote-role">Growth-stage startup · 12-person eng team</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- BOTTOM CTA -->
+<div class="cta-section">
+  <div class="container">
+    <h2>Try it in 30 seconds.</h2>
+    <p class="section-intro">Sign in with Google, connect a GitHub repo, and install your first playbook. Running in under 5 minutes.</p>
+    <div class="cta-btns">
+      <a href="/sign-in" class="btn btn-primary" style="height:48px;font-size:15px;padding:0 24px">Sign in — it's free →</a>
+      <a href="https://cal.com/conductai/demo" target="_blank" class="btn btn-ghost" style="height:48px;font-size:15px;padding:0 24px;border-color:rgba(255,255,255,.2);color:#d6d3d1">Book a demo</a>
+    </div>
+    <p class="cta-meta">No credit card · Connect your existing tools · Sign in with Google, GitHub, or Microsoft</p>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div style="display:flex;align-items:center;gap:9px">
+        <div class="nav-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><circle cx="5" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="7" r="2"/><path d="M7 5h5a2 2 0 0 1 2 2v3"/><path d="M5 7v10"/></svg></div>
+        <span style="font-weight:700;font-size:14px;letter-spacing:-.015em">Conduct</span>
+      </div>
+      <div class="footer-links">
+        <a href="/marketplace">Playbooks</a>
+        <a href="/guard-landing">Guard</a>
+        <a href="/tools">Tools</a>
+        <a href="/compare">Compare</a>
+        <a href="/benchmark">Benchmark</a>
+        <a href="/docs">Docs</a>
+        <a href="https://narratr.ai/blog/conductai" target="_blank">Blog</a>
+        <a href="https://github.com/sseshachala/conductai" target="_blank">GitHub</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+      </div>
+      <p class="footer-copy">© 2026 Conduct · MIT licensed · Made with ♥ from Houston</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>AI Engineering Tools Compared | Conduct AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#fafaf9;--white:#fff;
+  --stone-900:#1c1917;--stone-800:#292524;--stone-700:#44403c;
+  --stone-600:#57534e;--stone-500:#78716c;--stone-400:#a8a29e;
+  --stone-300:#d6d3d1;--stone-200:#e7e5e4;--stone-100:#f5f5f4;--stone-50:#fafaf9;
+  --indigo-600:#4f46e5;--indigo-100:#e0e7ff;--indigo-50:#eef2ff;
+  --emerald-600:#059669;--emerald-100:#d1fae5;
+  --amber-600:#d97706;--amber-50:#fffbeb;
+  --red-600:#dc2626;--red-50:#fef2f2;
+  --violet-600:#7c3aed;--violet-50:#f5f3ff;
+  --sans:"Inter",system-ui,sans-serif;--mono:"JetBrains Mono",monospace;
+  --r:12px;--shadow:0 4px 24px rgba(28,25,23,.08),0 1px 4px rgba(28,25,23,.04);
+}
+html{scroll-behavior:smooth}
+body{font-family:var(--sans);background:var(--bg);color:var(--stone-900);-webkit-font-smoothing:antialiased;line-height:1.6}
+a{text-decoration:none;color:inherit}
+button{font-family:var(--sans);cursor:pointer;border:none;background:none}
+.mono{font-family:var(--mono)}
+.container{max-width:1200px;margin:0 auto;padding:0 24px}
+
+/* NAV */
+nav{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.93);backdrop-filter:blur(12px);border-bottom:1px solid var(--stone-200)}
+.nav-inner{display:flex;align-items:center;justify-content:space-between;height:58px}
+.nav-logo{display:flex;align-items:center;gap:9px}
+.nav-mark{width:28px;height:28px;border-radius:7px;background:var(--stone-900);display:grid;place-items:center}
+.nav-wordmark{font-weight:750;font-size:15px;letter-spacing:-.02em}
+.nav-links{display:flex;align-items:center;gap:5px}
+.nav-link{font-size:13px;font-weight:500;color:var(--stone-600);padding:5px 9px;border-radius:7px;transition:color .12s,background .12s}
+.nav-link:hover{color:var(--stone-900);background:var(--stone-100)}
+.btn{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border-radius:8px;font-size:13px;font-weight:600;transition:all .13s;white-space:nowrap}
+.btn-dark{background:var(--stone-900);color:#fff}
+.btn-dark:hover{background:var(--stone-700)}
+.btn-ghost{border:1.5px solid var(--stone-200);color:var(--stone-700);background:#fff}
+.btn-ghost:hover{border-color:var(--stone-300)}
+
+/* HERO */
+.hero{padding:64px 0 40px;text-align:center}
+.hero-badge{display:inline-flex;align-items:center;gap:8px;background:var(--stone-100);color:var(--stone-600);font-size:12px;font-weight:600;padding:5px 13px;border-radius:20px;margin-bottom:24px}
+h1{font-size:clamp(36px,5.5vw,56px);font-weight:900;letter-spacing:-.04em;line-height:1.08}
+h1 em{font-style:normal;color:var(--indigo-600)}
+.hero-sub{font-size:16px;color:var(--stone-500);max-width:560px;margin:16px auto 0;line-height:1.65}
+.hero-caveat{font-size:13px;color:var(--stone-400);margin-top:10px;max-width:500px;margin-left:auto;margin-right:auto}
+.hero-caveat a{color:var(--stone-500);text-decoration:underline;text-underline-offset:3px}
+
+/* TOOL GRID */
+.tool-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:40px}
+.tool-card{background:var(--white);border:1.5px solid var(--stone-200);border-radius:var(--r);padding:16px 18px;display:flex;flex-direction:column;gap:10px;transition:box-shadow .14s,border-color .14s}
+.tool-card:hover{box-shadow:var(--shadow);border-color:var(--stone-300)}
+.tool-card.conduct{border-color:var(--indigo-600);background:var(--indigo-50)}
+.tool-header{display:flex;align-items:center;justify-content:space-between}
+.tool-emoji{font-size:24px}
+.tool-cat{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:2px 8px;border-radius:20px}
+.cat-orchestration{background:var(--indigo-100);color:var(--indigo-600)}
+.cat-assistant{background:#eff6ff;color:#1d4ed8}
+.cat-review{background:var(--emerald-100);color:var(--emerald-600)}
+.cat-analytics{background:var(--amber-50);color:var(--amber-600)}
+.cat-engineering{background:#f0fdf4;color:#166534}
+.tool-name{font-size:15px;font-weight:750;letter-spacing:-.01em}
+.tool-maker{font-size:11.5px;color:var(--stone-400)}
+.tool-oneliner{font-size:12.5px;color:var(--stone-500);line-height:1.5}
+
+/* MATRIX */
+.matrix-section{padding:56px 0;background:var(--stone-50)}
+.matrix-legend{display:flex;align-items:center;gap:16px;justify-content:center;flex-wrap:wrap;font-size:12.5px;color:var(--stone-500);margin-bottom:20px}
+.matrix-legend span{display:flex;align-items:center;gap:5px}
+.filter-row{display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.filter-btn{height:30px;padding:0 12px;border-radius:20px;font-size:12px;font-weight:600;border:1.5px solid var(--stone-200);color:var(--stone-600);background:var(--white);cursor:pointer;transition:all .12s}
+.filter-btn.active,.filter-btn:hover{background:var(--stone-900);color:#fff;border-color:var(--stone-900)}
+.matrix-wrap{overflow-x:auto;border-radius:var(--r);box-shadow:var(--shadow);background:var(--white);border:1px solid var(--stone-200)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{padding:11px 14px;text-align:center;font-weight:700;font-size:11.5px;border-bottom:2px solid var(--stone-200);background:var(--stone-50);white-space:nowrap;letter-spacing:-.01em}
+thead th:first-child{text-align:left;min-width:220px;position:sticky;left:0;background:var(--stone-50);z-index:2}
+thead th.conduct-col{background:var(--indigo-50);color:var(--indigo-600)}
+tbody tr:hover{background:var(--stone-50)}
+tbody td{padding:9px 14px;text-align:center;border-bottom:1px solid var(--stone-100);vertical-align:middle}
+tbody td:first-child{text-align:left;position:sticky;left:0;background:var(--white);z-index:1;font-weight:500}
+tbody tr:hover td:first-child{background:var(--stone-50)}
+.td-cat{font-size:10px;font-weight:700;color:var(--stone-400);letter-spacing:.08em;text-transform:uppercase;padding:14px 14px 4px;background:var(--stone-50);border-bottom:1px solid var(--stone-200)}
+td.conduct-col{background:rgba(79,70,229,.04)}
+.yes{color:#16a34a;font-size:16px}
+.partial{color:var(--amber-600);font-size:16px}
+.no{color:var(--stone-300);font-size:16px}
+.best{background:var(--indigo-50);font-weight:700;font-size:12px;color:var(--indigo-600);border-radius:6px;padding:2px 8px}
+
+/* DETAIL -->*/
+.detail-section{padding:56px 0;background:var(--white)}
+.detail-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px}
+.detail-card{border:1.5px solid var(--stone-200);border-radius:var(--r);padding:24px;scroll-margin-top:80px}
+.detail-card.conduct{border-color:var(--indigo-600);background:var(--indigo-50)}
+.detail-header{display:flex;align-items:flex-start;gap:14px;margin-bottom:16px}
+.detail-emoji{font-size:32px}
+.detail-name{font-size:19px;font-weight:750;letter-spacing:-.015em}
+.detail-maker{font-size:12.5px;color:var(--stone-400)}
+.detail-url{font-size:11.5px;color:var(--stone-400);text-decoration:underline;text-underline-offset:3px}
+.detail-desc{font-size:13.5px;color:var(--stone-600);line-height:1.65;margin-bottom:16px}
+.strengths-tradeoffs{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.s-card{border-radius:9px;padding:12px 14px}
+.s-card h4{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px}
+.s-card ul{list-style:none;display:flex;flex-direction:column;gap:5px}
+.s-card li{font-size:12px;line-height:1.5;display:flex;align-items:flex-start;gap:7px}
+.bestfor{background:var(--stone-50);border:1px solid var(--stone-200);border-radius:8px;padding:12px 14px;margin-top:12px;font-size:12.5px;color:var(--stone-600)}
+.bestfor b{color:var(--stone-800);font-weight:600}
+
+/* DECISION GUIDE -->*/
+.decision-section{padding:56px 0;background:var(--stone-50)}
+.decision-list{display:flex;flex-direction:column;gap:14px;margin-top:36px}
+.decision-card{background:var(--white);border:1.5px solid var(--stone-200);border-radius:var(--r);padding:22px;display:grid;grid-template-columns:40px 1fr;gap:16px}
+.decision-icon{font-size:26px}
+.decision-title{font-size:16px;font-weight:700;margin-bottom:5px;letter-spacing:-.01em}
+.decision-detail{font-size:13.5px;color:var(--stone-500);margin-bottom:12px;line-height:1.55}
+.picks{display:flex;flex-wrap:wrap;gap:7px}
+.pick{font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px;background:var(--stone-100);color:var(--stone-700)}
+.pick.highlight{background:var(--indigo-600);color:#fff}
+
+/* CTA */
+.cta{padding:64px 0;text-align:center}
+.cta h2{font-size:clamp(26px,4vw,38px);font-weight:800;letter-spacing:-.025em;margin-bottom:12px}
+.cta p{font-size:15px;color:var(--stone-500);max-width:400px;margin:0 auto 28px;line-height:1.6}
+.cta-btns{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap}
+.btn-big{height:48px;padding:0 24px;border-radius:12px;font-size:15px}
+
+footer{border-top:1px solid var(--stone-200);padding:24px 0}
+.footer-inner{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+.footer-links{display:flex;gap:16px;flex-wrap:wrap}
+.footer-links a{font-size:13px;color:var(--stone-400);transition:color .12s}
+.footer-links a:hover{color:var(--stone-700)}
+
+/* eyebrow */
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--stone-400);margin-bottom:12px}
+h2{font-size:clamp(26px,4vw,38px);font-weight:800;letter-spacing:-.03em;line-height:1.12}
+.section-sub{font-size:15px;color:var(--stone-500);max-width:520px;margin:12px auto 0;line-height:1.65}
+.text-center{text-align:center}
+
+@media(max-width:900px){
+  .tool-grid{grid-template-columns:repeat(2,1fr)}
+  .detail-grid{grid-template-columns:1fr}
+  .strengths-tradeoffs{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="container">
+    <div class="nav-inner">
+      <a href="/" class="nav-logo">
+        <div class="nav-mark"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="7" r="2"/><path d="M7 5h5a2 2 0 0 1 2 2v3"/><path d="M5 7v10"/></svg></div>
+        <span class="nav-wordmark">Conduct</span>
+      </a>
+      <div class="nav-links">
+        <a href="/marketplace" class="nav-link">Playbooks</a>
+        <a href="/guard-landing" class="nav-link">Guard</a>
+        <a href="/tools" class="nav-link">Tools</a>
+        <a href="/compare" class="nav-link" style="color:var(--stone-900);font-weight:600">Compare</a>
+        <a href="/docs" class="nav-link">Docs</a>
+        <a href="/sign-in" class="btn btn-ghost btn-sm" style="margin-left:6px">Sign in →</a>
+        <a href="/sign-in" class="btn btn-dark">Try Conduct free</a>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="container">
+    <div class="hero-badge">Last updated June 2026 · Based on public documentation</div>
+    <h1>AI engineering tools,<br><em>compared honestly.</em></h1>
+    <p class="hero-sub">There are excellent tools in this space. Each makes different trade-offs. This page breaks down what each tool actually does, who it's built for, and where the differences matter.</p>
+    <p class="hero-caveat">We built Conduct. We're clearly not neutral. We've tried to be as fair as possible — if anything is wrong, <a href="https://github.com/sseshachala/conductai/issues" target="_blank">open an issue</a> and we'll fix it.</p>
+
+    <!-- Tool cards -->
+    <div class="tool-grid">
+      <div class="tool-card conduct" id="conduct">
+        <div class="tool-header"><span class="tool-emoji">🎯</span><span class="tool-cat cat-orchestration">Orchestration</span></div>
+        <div><div class="tool-name">Conduct AI</div><div class="tool-maker">conductai.ai</div></div>
+        <div class="tool-oneliner">End-to-end AI agent workflows with human approval gates and team spend governance.</div>
+      </div>
+      <div class="tool-card" id="copilot">
+        <div class="tool-header"><span class="tool-emoji">🤖</span><span class="tool-cat cat-assistant">AI Assistant</span></div>
+        <div><div class="tool-name">GitHub Copilot</div><div class="tool-maker">GitHub / Microsoft</div></div>
+        <div class="tool-oneliner">Inline code completion and chat inside the editor. Copilot Workspace for multi-file tasks.</div>
+      </div>
+      <div class="tool-card" id="devin">
+        <div class="tool-header"><span class="tool-emoji">🧑‍💻</span><span class="tool-cat cat-orchestration">Agent</span></div>
+        <div><div class="tool-name">Devin</div><div class="tool-maker">Cognition</div></div>
+        <div class="tool-oneliner">Fully autonomous coding agent that takes issues end-to-end in a sandboxed environment.</div>
+      </div>
+      <div class="tool-card" id="coderabbit">
+        <div class="tool-header"><span class="tool-emoji">🐇</span><span class="tool-cat cat-review">Code Review</span></div>
+        <div><div class="tool-name">CodeRabbit</div><div class="tool-maker">CodeRabbit</div></div>
+        <div class="tool-oneliner">AI-powered PR review comments — line-by-line feedback and summary on every pull request.</div>
+      </div>
+      <div class="tool-card" id="linearb">
+        <div class="tool-header"><span class="tool-emoji">📊</span><span class="tool-cat cat-analytics">Analytics</span></div>
+        <div><div class="tool-name">LinearB</div><div class="tool-maker">LinearB</div></div>
+        <div class="tool-oneliner">Engineering metrics platform — cycle time, DORA metrics, and team health dashboards.</div>
+      </div>
+      <div class="tool-card" id="bito">
+        <div class="tool-header"><span class="tool-emoji">⚡</span><span class="tool-cat cat-assistant">AI Assistant</span></div>
+        <div><div class="tool-name">Bito</div><div class="tool-maker">Bito</div></div>
+        <div class="tool-oneliner">AI coding assistant with customisable org-level prompts and a security scanner plugin.</div>
+      </div>
+      <div class="tool-card" id="amazonq">
+        <div class="tool-header"><span class="tool-emoji">☁️</span><span class="tool-cat cat-assistant">AI Assistant</span></div>
+        <div><div class="tool-name">Amazon Q Developer</div><div class="tool-maker">Amazon Web Services</div></div>
+        <div class="tool-oneliner">AWS-integrated coding assistant with code review, security scanning, and CLI support.</div>
+      </div>
+      <div class="tool-card" id="xhawk">
+        <div class="tool-header"><span class="tool-emoji">🔒</span><span class="tool-cat cat-engineering">Security</span></div>
+        <div><div class="tool-name">xHawk</div><div class="tool-maker">xHawk Security</div></div>
+        <div class="tool-oneliner">SAST/DAST security scanning integrated into CI/CD with policy gates and compliance reporting.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURE MATRIX -->
+<section class="matrix-section">
+  <div class="container">
+    <div class="text-center">
+      <div class="eyebrow">Feature matrix</div>
+      <h2>Side-by-side comparison</h2>
+    </div>
+    <div class="matrix-legend" style="margin-top:16px">
+      <span><span style="font-size:15px">✅</span> Available</span>
+      <span><span style="font-size:15px">🟡</span> Partial / limited</span>
+      <span><span style="font-size:15px">❌</span> Not available</span>
+      <span style="font-size:11px;color:var(--stone-300)">Based on public docs · June 2026</span>
+    </div>
+    <div class="filter-row" id="filter-row" style="margin-top:12px">
+      <span style="font-size:12px;font-weight:600;color:var(--stone-400)">Filter:</span>
+    </div>
+    <div class="matrix-wrap">
+      <table id="matrix-table">
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th class="conduct-col">Conduct AI</th>
+            <th>Copilot</th>
+            <th>Devin</th>
+            <th>CodeRabbit</th>
+            <th>LinearB</th>
+            <th>Bito</th>
+            <th>Amazon Q</th>
+            <th>xHawk</th>
+          </tr>
+        </thead>
+        <tbody id="matrix-body">
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- DETAIL CARDS -->
+<section class="detail-section">
+  <div class="container">
+    <div class="text-center">
+      <div class="eyebrow">In depth</div>
+      <h2>Tool-by-tool breakdown</h2>
+    </div>
+    <div class="detail-grid" style="margin-top:36px" id="detail-grid"></div>
+  </div>
+</section>
+
+<!-- DECISION GUIDE -->
+<section class="decision-section">
+  <div class="container text-center">
+    <div class="eyebrow">Decision guide</div>
+    <h2>Which tool fits your situation?</h2>
+    <div class="decision-list text-left" id="decision-list"></div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta">
+  <div class="container">
+    <h2>Try Conduct free</h2>
+    <p>Sign in with Google, connect a GitHub repo, and install your first playbook. Running in under 5 minutes.</p>
+    <div class="cta-btns">
+      <a href="/sign-in" class="btn btn-dark btn-big">Get started — it's free →</a>
+      <a href="https://cal.com/conductai/demo" target="_blank" class="btn btn-ghost btn-big">Book a demo</a>
+    </div>
+    <p style="font-size:12px;color:var(--stone-400);margin-top:14px">No credit card · Connect your existing tools</p>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <span style="font-size:13px;font-weight:700;letter-spacing:-.01em">Conduct</span>
+      <div class="footer-links">
+        <a href="/marketplace">Playbooks</a>
+        <a href="/guard-landing">Guard</a>
+        <a href="/tools">Tools</a>
+        <a href="/benchmark">Benchmark</a>
+        <a href="/docs">Docs</a>
+        <a href="https://github.com/sseshachala/conductai" target="_blank">GitHub</a>
+        <a href="/privacy">Privacy</a>
+      </div>
+      <p style="font-size:12px;color:var(--stone-300)">© 2026 Conduct · MIT licensed · Houston</p>
+    </div>
+  </div>
+</footer>
+
+<script>
+// ---- Data ----
+const CATEGORIES = ["All","Agents / Automation","Code Review","Security","Spend & Governance","Analytics"];
+
+const MATRIX = [
+  { cat:"Agents / Automation",
+    rows:[
+      { f:"Issue-to-PR automation",      c:["✅","🟡","✅","❌","❌","❌","❌","❌"] },
+      { f:"Multi-step agent workflows",  c:["✅","🟡","✅","❌","❌","❌","🟡","❌"] },
+      { f:"Human approval gates",        c:["✅","❌","🟡","❌","❌","❌","❌","❌"] },
+      { f:"Playbook marketplace",        c:["✅","❌","❌","❌","❌","❌","❌","❌"] },
+      { f:"Agent memory / learning",     c:["✅","❌","🟡","❌","❌","❌","❌","❌"] },
+      { f:"Parallel tool orchestration", c:["✅","❌","✅","❌","❌","❌","🟡","❌"] },
+    ]
+  },
+  { cat:"Code Review",
+    rows:[
+      { f:"AI PR review comments",       c:["✅","🟡","✅","✅","❌","✅","✅","❌"] },
+      { f:"Diff-level code review",      c:["✅","🟡","✅","✅","❌","✅","✅","❌"] },
+      { f:"AI-authored PR detection",    c:["✅","❌","❌","❌","❌","❌","❌","❌"] },
+      { f:"Inline editor suggestions",   c:["❌","✅","🟡","❌","❌","✅","✅","❌"] },
+    ]
+  },
+  { cat:"Security",
+    rows:[
+      { f:"OWASP security scanning",     c:["✅","❌","❌","❌","❌","🟡","✅","✅"] },
+      { f:"Secret detection",            c:["✅","❌","❌","🟡","❌","❌","✅","✅"] },
+      { f:"Policy-as-code enforcement",  c:["✅","❌","❌","❌","❌","❌","❌","✅"] },
+      { f:"Compliance / SOC 2 audit",    c:["✅","❌","❌","❌","❌","❌","🟡","✅"] },
+    ]
+  },
+  { cat:"Spend & Governance",
+    rows:[
+      { f:"Per-developer spend tracking",c:["✅","❌","❌","❌","❌","❌","❌","❌"] },
+      { f:"Hard spend caps",             c:["✅","❌","❌","❌","❌","❌","❌","❌"] },
+      { f:"Tool-usage audit log",        c:["✅","❌","❌","❌","❌","❌","❌","❌"] },
+      { f:"Team policy enforcement",     c:["✅","❌","❌","❌","❌","❌","❌","❌"] },
+      { f:"RBAC (admin/editor/viewer)",  c:["✅","✅","❌","🟡","✅","🟡","✅","✅"] },
+    ]
+  },
+  { cat:"Analytics",
+    rows:[
+      { f:"DORA metrics",                c:["❌","❌","❌","❌","✅","❌","❌","❌"] },
+      { f:"Cycle time / throughput",     c:["❌","❌","❌","❌","✅","❌","❌","❌"] },
+      { f:"PR quality metrics",          c:["🟡","❌","❌","🟡","✅","❌","❌","❌"] },
+    ]
+  },
+];
+
+const TOOLS = [
+  {
+    id:"conduct", emoji:"🎯", name:"Conduct AI", maker:"conductai.ai", url:"https://conductai.ai",
+    cat:"Orchestration",
+    desc:"Conduct is an AI agent workflow platform that turns engineering operations — issue triage, PR review, incident response, release notes — into auditable, human-approved automations. Every run passes through ConductGuard for spend control and policy enforcement.",
+    strengths:["End-to-end workflow automation with human approval gate","18 pre-built playbooks, canvas editor, agent memory","ConductGuard: per-developer spend caps + policy enforcement","Full audit trail on every run — SOC 2 ready","Open source, MIT licensed"],
+    tradeoffs:["No inline editor experience (Copilot/Cursor)","Engineering analytics (DORA, cycle time) not included","Younger product — ecosystem still growing"],
+    bestFor:"Teams that want autonomous agents handling engineering operations with governance built in — not just a code suggestion layer.",
+    isConductAI: true
+  },
+  {
+    id:"copilot", emoji:"🤖", name:"GitHub Copilot", maker:"GitHub / Microsoft", url:"https://github.com/features/copilot",
+    cat:"AI Assistant",
+    desc:"GitHub Copilot is the dominant AI coding assistant. It provides inline code completion, chat, and Copilot Workspace for multi-file tasks. Deep GitHub integration makes it the default choice for GitHub-native teams.",
+    strengths:["Best-in-class inline completion in VS Code and JetBrains","Deep GitHub integration — PRs, issues, Actions","Copilot Workspace for multi-file reasoning","Enterprise: SSO, content filtering, policy controls"],
+    tradeoffs:["No human approval gate on agent actions","No per-developer spend visibility for CFO/VP Eng","Workspace still early — reliability varies","Limited to the coding layer, no workflow orchestration"],
+    bestFor:"Individual developers and teams that primarily want AI-assisted coding inside the editor."
+  },
+  {
+    id:"devin", emoji:"🧑‍💻", name:"Devin", maker:"Cognition", url:"https://cognition.ai",
+    cat:"Autonomous Agent",
+    desc:"Devin is a fully autonomous coding agent that takes issues end-to-end in a sandboxed browser+terminal environment. It can browse docs, write code, run tests, and open PRs with minimal human input.",
+    strengths:["Most capable end-to-end autonomous agent","Isolated sandbox — no access to production","Handles complex multi-step research and coding tasks","Detailed session logs"],
+    tradeoffs:["Very high cost per task — not for routine automation","No playbook marketplace — every task is custom","No team governance or spend controls","Limited integration with existing CI/CD workflows"],
+    bestFor:"High-value, complex one-off tasks where the premium cost is justified."
+  },
+  {
+    id:"coderabbit", emoji:"🐇", name:"CodeRabbit", maker:"CodeRabbit", url:"https://coderabbit.ai",
+    cat:"Code Review",
+    desc:"CodeRabbit specialises in AI-powered PR review. It posts line-by-line comments, summaries, and walk-through reports on every PR. Simple to install via GitHub App — no configuration required.",
+    strengths:["Exceptional PR review quality out of the box","Line-by-line comments with explanations","PR summary and walk-through auto-generated","Zero config — install the GitHub App and go"],
+    tradeoffs:["Purely PR review — no workflow automation","No spend governance or audit trail","No memory or learning across PRs","Single-purpose: doesn't cover triage, incidents, etc."],
+    bestFor:"Teams that want excellent automated PR review without building broader agent workflows."
+  },
+  {
+    id:"linearb", emoji:"📊", name:"LinearB", maker:"LinearB", url:"https://linearb.io",
+    cat:"Analytics",
+    desc:"LinearB is an engineering metrics and team intelligence platform. It tracks DORA metrics (lead time, deployment frequency, MTTR), cycle time, PR quality, and developer well-being — giving VPs visibility into team health.",
+    strengths:["Best DORA + engineering metrics platform","Git + project management data integration","Team benchmarks and trend analysis","Manager-level dashboards and OKR alignment"],
+    tradeoffs:["Pure analytics — no AI automation or coding assistance","No spend governance or agent workflows","Insight only — doesn't act on what it measures"],
+    bestFor:"Engineering managers and VPs who need data-driven visibility into team performance and delivery health."
+  },
+  {
+    id:"bito", emoji:"⚡", name:"Bito", maker:"Bito", url:"https://bito.ai",
+    cat:"AI Assistant",
+    desc:"Bito is an AI coding assistant with a focus on enterprise customisation — teams can define org-level prompt templates and best practices. Includes a basic security scanner and code review capabilities.",
+    strengths:["Org-level prompt customisation for consistency","IDE plugins for VS Code, JetBrains, and others","Basic security scanning included","Lower price point than Copilot"],
+    tradeoffs:["Smaller model quality gap vs. Copilot / Claude","No workflow orchestration or agent automation","No team governance or spend controls","Limited ecosystem and marketplace"],
+    bestFor:"Teams that want a customisable AI assistant with consistent org-level context at a lower cost."
+  },
+  {
+    id:"amazonq", emoji:"☁️", name:"Amazon Q Developer", maker:"AWS", url:"https://aws.amazon.com/q/developer/",
+    cat:"AI Assistant",
+    desc:"Amazon Q Developer is AWS's AI coding assistant. Deep AWS integration for infrastructure code, security scanning, CLI support, and code transformation (legacy migration). Best-in-class for AWS-heavy teams.",
+    strengths:["Exceptional AWS service + CDK code generation","Built-in security scanning (CodeGuru rules)","Legacy code transformation (Java, mainframe)","Enterprise governance via AWS IAM and SSO"],
+    tradeoffs:["Heavy AWS-specific — weaker for non-AWS stacks","No workflow orchestration beyond AWS services","UI/UX less polished than Copilot or Claude Code","Spend visibility tied to AWS billing, not per-developer AI usage"],
+    bestFor:"AWS-centric teams who want an AI assistant with deep integration into their existing AWS tooling and compliance requirements."
+  },
+  {
+    id:"xhawk", emoji:"🔒", name:"xHawk", maker:"xHawk Security", url:"#",
+    cat:"Security",
+    desc:"xHawk focuses on security scanning integrated into CI/CD — SAST, DAST, and IaC scanning with policy gates. Compliance reporting for SOC 2, PCI DSS, and ISO 27001.",
+    strengths:["Comprehensive SAST/DAST/IaC security scanning","CI/CD integration with policy gates and PR blocking","Compliance reporting (SOC 2, PCI, ISO 27001)","Detailed remediation guidance"],
+    tradeoffs:["Security-only — no AI coding assistance or automation","No spend governance","Manual remediation — doesn't auto-fix","Enterprise pricing"],
+    bestFor:"Security-conscious teams that need a dedicated SAST/DAST solution with compliance reporting for auditors."
+  },
+];
+
+const DECISIONS = [
+  {
+    icon:"🚀",
+    situation:"I want agents that do the work, not just suggest it",
+    detail:"You want AI that actually triage issues, opens PRs, posts incident diagnoses to Slack — not just autocomplete. Human approval before anything ships.",
+    picks:[{name:"Conduct AI",highlight:true},{name:"Devin"},{name:"GitHub Copilot Workspace"}]
+  },
+  {
+    icon:"💰",
+    situation:"My CFO is asking about AI spend and I have no answer",
+    detail:"Your team is using AI tools but you have no visibility into who's spending what. You need hard caps, real-time dashboards, and an audit trail.",
+    picks:[{name:"ConductGuard",highlight:true}]
+  },
+  {
+    icon:"✍️",
+    situation:"I primarily want better code suggestions inside my editor",
+    detail:"You want AI inline completions and chat while you code. You're not looking for autonomous automation — just a smarter pair programmer.",
+    picks:[{name:"GitHub Copilot",highlight:true},{name:"Amazon Q"},{name:"Bito"}]
+  },
+  {
+    icon:"🔍",
+    situation:"My team needs automated PR review on every pull request",
+    detail:"You want AI to review every PR for bugs, security issues, and style — without setting up a full workflow. Simple, targeted, zero config.",
+    picks:[{name:"CodeRabbit",highlight:true},{name:"Conduct AI"},{name:"Bito"}]
+  },
+  {
+    icon:"📊",
+    situation:"I'm a VP Eng who needs visibility into team delivery health",
+    detail:"You want DORA metrics, cycle time, PR quality, and team health dashboards to benchmark and improve engineering performance.",
+    picks:[{name:"LinearB",highlight:true}]
+  },
+  {
+    icon:"🔒",
+    situation:"My security team requires SAST/DAST and compliance reports",
+    detail:"You need dedicated security scanning with SOC 2 / PCI DSS / ISO 27001 compliance reporting that you can hand to auditors.",
+    picks:[{name:"xHawk",highlight:true},{name:"Amazon Q"},{name:"Conduct AI"}]
+  },
+  {
+    icon:"☁️",
+    situation:"My team is all-in on AWS and I want deep AWS integration",
+    detail:"You use AWS CDK, Lambda, and infrastructure-as-code heavily. You want an AI that deeply understands the AWS ecosystem.",
+    picks:[{name:"Amazon Q Developer",highlight:true}]
+  },
+  {
+    icon:"🏗️",
+    situation:"I need one platform that handles agents + governance + review",
+    detail:"You want automated workflows, PR review, security scanning, spend governance, and an audit trail from a single product your whole team uses.",
+    picks:[{name:"Conduct AI",highlight:true}]
+  },
+];
+
+// ---- Render matrix ----
+let activeFilter = "All";
+function renderMatrix() {
+  const tbody = document.getElementById("matrix-body");
+  tbody.innerHTML = "";
+  MATRIX.forEach(group => {
+    if (activeFilter !== "All" && group.cat !== activeFilter) return;
+    // Category header row
+    const catRow = document.createElement("tr");
+    catRow.innerHTML = `<td class="td-cat" colspan="9">${group.cat}</td>`;
+    tbody.appendChild(catRow);
+    group.rows.forEach(row => {
+      const tr = document.createElement("tr");
+      const cells = row.c.map((v,i) => {
+        const cls = i===0 ? "conduct-col" : "";
+        const inner = v==="✅"?`<span class="yes">✅</span>`:v==="🟡"?`<span class="partial">🟡</span>`:`<span class="no">—</span>`;
+        return `<td class="${cls}">${inner}</td>`;
+      });
+      tr.innerHTML = `<td>${row.f}</td>${cells.join("")}`;
+      tbody.appendChild(tr);
+    });
+  });
+}
+
+// ---- Render filter buttons ----
+function renderFilters() {
+  const row = document.getElementById("filter-row");
+  CATEGORIES.forEach(cat => {
+    const btn = document.createElement("button");
+    btn.className = "filter-btn" + (cat === activeFilter ? " active" : "");
+    btn.textContent = cat;
+    btn.addEventListener("click", () => {
+      activeFilter = cat;
+      document.querySelectorAll(".filter-btn").forEach(b => b.classList.toggle("active", b.textContent === cat));
+      renderMatrix();
+    });
+    row.appendChild(btn);
+  });
+}
+
+// ---- Render detail cards ----
+function renderDetails() {
+  const grid = document.getElementById("detail-grid");
+  TOOLS.forEach(t => {
+    const card = document.createElement("div");
+    card.className = "detail-card" + (t.isConductAI ? " conduct" : "");
+    card.id = t.id + "-detail";
+    card.innerHTML = `
+      <div class="detail-header">
+        <span class="detail-emoji">${t.emoji}</span>
+        <div>
+          <div class="detail-name">${t.name}</div>
+          <div class="detail-maker">by ${t.maker}</div>
+          ${t.url !== "#" ? `<a href="${t.url}" target="_blank" rel="noopener noreferrer" class="detail-url">${t.url} ↗</a>` : ""}
+        </div>
+      </div>
+      <p class="detail-desc">${t.desc}</p>
+      <div class="strengths-tradeoffs">
+        <div class="s-card" style="background:${t.isConductAI?"#ecfdf5":"#f0fdf4"};border:1px solid ${t.isConductAI?"#a7f3d0":"#bbf7d0"}">
+          <h4 style="color:#065f46">Strengths</h4>
+          <ul>${t.strengths.map(s=>`<li><span style="color:#16a34a;flex-shrink:0">✓</span>${s}</li>`).join("")}</ul>
+        </div>
+        <div class="s-card" style="background:#fffbeb;border:1px solid #fde68a">
+          <h4 style="color:#92400e">Trade-offs</h4>
+          <ul>${t.tradeoffs.map(s=>`<li><span style="color:var(--amber-600);flex-shrink:0">–</span>${s}</li>`).join("")}</ul>
+        </div>
+      </div>
+      <div class="bestfor"><b>Best for:</b> ${t.bestFor}</div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+// ---- Render decisions ----
+function renderDecisions() {
+  const list = document.getElementById("decision-list");
+  DECISIONS.forEach(d => {
+    const card = document.createElement("div");
+    card.className = "decision-card";
+    card.innerHTML = `
+      <div class="decision-icon">${d.icon}</div>
+      <div>
+        <div class="decision-title">${d.situation}</div>
+        <div class="decision-detail">${d.detail}</div>
+        <div class="picks">${d.picks.map(p=>`<span class="pick${p.highlight?" highlight":""}">${p.name}</span>`).join("")}</div>
+      </div>
+    `;
+    list.appendChild(card);
+  });
+}
+
+// ---- Init ----
+renderFilters();
+renderMatrix();
+renderDetails();
+renderDecisions();
+</script>
+</body>
+</html>

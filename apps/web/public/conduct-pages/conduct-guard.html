@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ConductGuard — AI tool fleet management for engineering teams</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#fafaf9;--white:#fff;
+  --stone-900:#1c1917;--stone-800:#292524;--stone-700:#44403c;
+  --stone-600:#57534e;--stone-500:#78716c;--stone-400:#a8a29e;
+  --stone-300:#d6d3d1;--stone-200:#e7e5e4;--stone-100:#f5f5f4;--stone-50:#fafaf9;
+  --violet-700:#6d28d9;--violet-600:#7c3aed;--violet-500:#8b5cf6;
+  --violet-400:#a78bfa;--violet-300:#c4b5fd;--violet-200:#ddd6fe;
+  --violet-100:#ede9fe;--violet-50:#f5f3ff;
+  --indigo-600:#4f46e5;--emerald-500:#10b981;
+  --red-600:#dc2626;--red-100:#fee2e2;--red-50:#fef2f2;
+  --amber-600:#d97706;--amber-50:#fffbeb;
+  --sans:"Inter",system-ui,sans-serif;--mono:"JetBrains Mono",monospace;
+  --r:14px;--shadow:0 4px 24px rgba(28,25,23,.08),0 1px 4px rgba(28,25,23,.04);
+  --shadow-lg:0 20px 60px rgba(28,25,23,.14),0 4px 12px rgba(28,25,23,.06);
+}
+html{scroll-behavior:smooth}
+body{font-family:var(--sans);background:var(--bg);color:var(--stone-900);-webkit-font-smoothing:antialiased;line-height:1.6}
+a{text-decoration:none;color:inherit}
+button{font-family:var(--sans);cursor:pointer;border:none}
+.mono{font-family:var(--mono)}
+.container{max-width:1120px;margin:0 auto;padding:0 24px}
+.btn{display:inline-flex;align-items:center;gap:7px;height:42px;padding:0 20px;border-radius:11px;font-size:14px;font-weight:600;transition:all .13s;white-space:nowrap}
+.btn-sm{height:34px;padding:0 14px;font-size:13px;border-radius:8px}
+.btn-white{background:#fff;color:var(--violet-700)}
+.btn-white:hover{background:#f5f3ff}
+.btn-ghost-white{border:1.5px solid rgba(255,255,255,.25);color:rgba(255,255,255,.9);background:transparent}
+.btn-ghost-white:hover{border-color:rgba(255,255,255,.5);color:#fff}
+.btn-violet{background:var(--violet-600);color:#fff}
+.btn-violet:hover{background:var(--violet-700)}
+.btn-ghost{border:1.5px solid var(--stone-200);color:var(--stone-700);background:#fff}
+.btn-ghost:hover{border-color:var(--stone-300);background:var(--stone-50)}
+.btn-dark{background:var(--stone-900);color:#fff}
+.btn-dark:hover{background:var(--stone-700)}
+
+/* NAV */
+nav{position:sticky;top:0;z-index:50;background:rgba(15,10,8,.94);backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,255,255,.06)}
+.nav-inner{display:flex;align-items:center;justify-content:space-between;height:58px}
+.nav-logo{display:flex;align-items:center;gap:9px;color:#fff}
+.nav-mark{width:28px;height:28px;border-radius:7px;background:var(--violet-600);display:grid;place-items:center;flex-shrink:0}
+.nav-wordmark{font-weight:750;font-size:15px;letter-spacing:-.02em}
+.nav-links{display:flex;align-items:center;gap:5px}
+.nav-link{font-size:13px;font-weight:500;color:rgba(255,255,255,.6);padding:5px 9px;border-radius:7px;transition:color .12s,background .12s}
+.nav-link:hover{color:#fff;background:rgba(255,255,255,.08)}
+.nav-link.active{color:#fff;font-weight:600}
+.nav-sep{width:1px;height:16px;background:rgba(255,255,255,.12);margin:0 4px}
+
+/* HERO */
+.hero{background:var(--stone-900);padding:96px 0 80px;text-align:center;position:relative;overflow:hidden}
+.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 800px 500px at 50% 0%,rgba(124,58,237,.22),transparent);pointer-events:none}
+.hero-badge{display:inline-flex;align-items:center;gap:8px;background:rgba(124,58,237,.2);border:1px solid rgba(124,58,237,.4);color:var(--violet-300);font-size:11.5px;font-weight:700;padding:5px 14px;border-radius:20px;margin-bottom:32px;letter-spacing:.06em;text-transform:uppercase}
+.hero h1{font-size:clamp(42px,6vw,68px);font-weight:900;letter-spacing:-.04em;line-height:1.06;color:#fff;max-width:760px;margin:0 auto}
+.hero h1 em{font-style:normal;color:var(--violet-400)}
+.hero-sub{font-size:18px;color:#a8a29e;max-width:580px;margin:20px auto 0;line-height:1.65}
+.hero-ctas{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:36px;flex-wrap:wrap}
+.hero-pills{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:20px}
+.hero-pill{font-size:12px;font-weight:500;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);color:#a8a29e;padding:5px 14px;border-radius:20px}
+
+/* PROBLEM */
+.problem-section{padding:80px 0;background:var(--white)}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--stone-400);margin-bottom:14px}
+.eyebrow.red{color:var(--red-600)}
+.eyebrow.violet{color:var(--violet-600)}
+h2{font-size:clamp(28px,4vw,44px);font-weight:800;letter-spacing:-.03em;line-height:1.1}
+.section-sub{font-size:16px;color:var(--stone-500);max-width:520px;margin-top:16px;line-height:1.65}
+.text-center .section-sub{margin:16px auto 0}
+.text-center{text-align:center}
+.cards-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:44px}
+.problem-card{border-radius:var(--r);padding:26px;display:flex;flex-direction:column;gap:12px}
+.problem-icon{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:22px}
+.problem-card h3{font-size:17px;font-weight:750;letter-spacing:-.01em}
+.problem-card p{font-size:13.5px;line-height:1.65;color:var(--stone-600)}
+
+/* HOW IT WORKS */
+.how-section{padding:80px 0;background:var(--stone-50)}
+.steps-3{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:44px}
+.step-card{background:var(--white);border:1.5px solid var(--stone-200);border-radius:var(--r);padding:26px;display:flex;flex-direction:column;gap:14px}
+.step-num{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--violet-100);color:var(--violet-700);font-size:12px;font-weight:800}
+.step-icon{font-size:26px}
+.step-card h3{font-size:16px;font-weight:700;letter-spacing:-.01em}
+.step-card p{font-size:13px;color:var(--stone-500);line-height:1.6}
+.code-chip{display:block;margin-top:auto;background:var(--stone-900);color:#4ade80;font-family:var(--mono);font-size:11.5px;padding:10px 13px;border-radius:9px;word-break:break-all;line-height:1.5}
+.works-with{display:flex;flex-wrap:wrap;gap:7px;margin-top:auto}
+.tool-chip{font-size:12px;font-weight:500;background:var(--stone-100);border:1px solid var(--stone-200);color:var(--stone-600);padding:4px 11px;border-radius:20px}
+
+/* POLICIES */
+.policy-section{padding:80px 0;background:var(--white)}
+.policy-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:44px}
+.policy-card{border-radius:var(--r);padding:24px;border:1.5px solid}
+.policy-card h3{font-size:16px;font-weight:750;margin-bottom:8px;letter-spacing:-.01em}
+.policy-card p{font-size:13px;color:var(--stone-500);line-height:1.6;margin-bottom:12px}
+.policy-examples{display:flex;flex-wrap:wrap;gap:6px}
+.policy-example{font-family:var(--mono);font-size:11px;background:var(--stone-100);color:var(--stone-600);padding:3px 8px;border-radius:5px}
+.enforcement-badge{display:inline-flex;align-items:center;height:22px;padding:0 10px;border-radius:20px;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:14px}
+
+/* AUDIT */
+.audit-section{padding:80px 0;background:var(--stone-50)}
+.audit-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:44px}
+.audit-card{border-radius:var(--r);padding:24px;border:1.5px solid;display:flex;flex-direction:column;gap:10px}
+.audit-card h3{font-size:16px;font-weight:750;letter-spacing:-.01em}
+.audit-tag{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.audit-list{list-style:none;display:flex;flex-direction:column;gap:7px}
+.audit-list li{font-size:12.5px;color:var(--stone-500);display:flex;align-items:flex-start;gap:8px}
+.audit-list li::before{content:'·';color:var(--stone-300);flex-shrink:0;margin-top:.5px}
+.audit-link-row{background:var(--white);border:1.5px solid var(--stone-200);border-radius:12px;padding:18px 22px;display:flex;align-items:center;gap:14px;margin-top:20px}
+.audit-link-row code{font-family:var(--mono);font-size:12px;background:var(--stone-100);padding:2px 7px;border-radius:4px;color:var(--stone-700)}
+
+/* WORKS WITH */
+.with-section{padding:60px 0;background:var(--white);text-align:center}
+.with-chips{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px;margin-top:20px}
+.with-chip{font-size:14px;font-weight:500;background:var(--white);border:1.5px solid var(--stone-200);color:var(--stone-700);padding:7px 18px;border-radius:20px;transition:border-color .12s}
+.with-chip:hover{border-color:var(--violet-300)}
+
+/* CTA */
+.cta-section{background:var(--violet-600);padding:80px 0;text-align:center}
+.cta-section h2{color:#fff;font-size:clamp(28px,4vw,44px)}
+.cta-sub{color:rgba(255,255,255,.7);font-size:16px;margin:14px auto 0;max-width:480px;line-height:1.6}
+.cta-btns{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:32px;flex-wrap:wrap}
+.cta-meta{font-size:12px;color:rgba(255,255,255,.45);margin-top:14px}
+
+/* FOOTER */
+footer{border-top:1px solid var(--stone-200);padding:28px 0}
+.footer-inner{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px}
+.footer-links{display:flex;gap:18px;flex-wrap:wrap}
+.footer-links a{font-size:13px;color:var(--stone-400);transition:color .12s}
+.footer-links a:hover{color:var(--stone-700)}
+
+/* STAT STRIP */
+.stat-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:52px}
+.stat-card{border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);border-radius:12px;padding:22px 24px}
+.stat-label{font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--violet-400);margin-bottom:8px}
+.stat-val{font-size:22px;font-weight:800;color:#fff;letter-spacing:-.02em;margin-bottom:5px}
+.stat-sub{font-size:12.5px;color:#78716c}
+
+@media(max-width:860px){
+  .cards-3,.steps-3,.policy-grid,.audit-grid,.stat-strip{grid-template-columns:1fr}
+  .hero h1{font-size:36px}
+  h2{font-size:26px}
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="container">
+    <div class="nav-inner">
+      <a href="/" class="nav-logo">
+        <div class="nav-mark">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4 3 7 7 9 4-2 7-5 7-9V6l-7-3Z"/></svg>
+        </div>
+        <span class="nav-wordmark">ConductGuard</span>
+      </a>
+      <div class="nav-links">
+        <a href="/" class="nav-link">Home</a>
+        <a href="/guard" class="nav-link active">Guard</a>
+        <a href="/marketplace" class="nav-link">Playbooks</a>
+        <a href="/tools" class="nav-link">Tools</a>
+        <a href="/docs" class="nav-link">Docs</a>
+        <div class="nav-sep"></div>
+        <a href="https://cal.com/conductai/demo" target="_blank" class="btn btn-ghost-white btn-sm">Book a demo</a>
+        <a href="/sign-in" class="btn btn-violet btn-sm">Set up Guard free</a>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="container">
+    <div class="hero-badge">ConductGuard — AI Governance for Engineering Teams</div>
+    <h1>Every AI tool.<br>Every developer.<br><em>One policy.</em></h1>
+    <p class="hero-sub">AI spend is now a board-level concern. Guard gives your VP Eng and CFO spend visibility, policy enforcement, and a full audit trail — across every AI coding tool your team uses.</p>
+    <div class="hero-ctas">
+      <a href="/sign-in" class="btn btn-white">Set up Guard free →</a>
+      <a href="https://cal.com/conductai/demo" target="_blank" class="btn btn-ghost-white">Book a demo</a>
+    </div>
+    <div class="hero-pills">
+      <span class="hero-pill">Works with 5+ AI coding tools</span>
+      <span class="hero-pill">BLOCK / WARN / AUDIT enforcement</span>
+      <span class="hero-pill">Real-time spend per developer</span>
+      <span class="hero-pill">Free during early access</span>
+    </div>
+    <!-- Stat strip (inside hero) -->
+    <div class="stat-strip">
+      <div class="stat-card">
+        <div class="stat-label">Spend visibility</div>
+        <div class="stat-val">Per developer</div>
+        <div class="stat-sub">Tokens + cost per dev, per tool, per day — not a monthly bill after the fact</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Policy enforcement</div>
+        <div class="stat-val">BLOCK / WARN / AUDIT</div>
+        <div class="stat-sub">Three modes — from hard stop before the model call to silent audit log</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Audit trail</div>
+        <div class="stat-val">Every AI call</div>
+        <div class="stat-sub">Linked to the run that triggered it — Guard check + run trace in one view</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PROBLEM -->
+<section class="problem-section">
+  <div class="container text-center">
+    <div class="eyebrow red">The problem</div>
+    <h2>Your team is spending thousands<br>on AI tools. You have no idea how.</h2>
+    <p class="section-sub">Every developer on your team is using AI coding tools. The bills arrive. The details don't.</p>
+    <div class="cards-3">
+      <div class="problem-card" style="background:var(--red-50);border:1.5px solid #fecaca">
+        <div class="problem-icon" style="background:#fee2e2;color:var(--red-600)">👁️</div>
+        <h3>No visibility</h3>
+        <p>Which developer spent $800 on Claude last month? Which project burned the budget? Which tool is causing your bill to spike? Today, you can't answer any of these questions.</p>
+      </div>
+      <div class="problem-card" style="background:#fff7ed;border:1.5px solid #fed7aa">
+        <div class="problem-icon" style="background:#ffedd5;color:#c2410c">🚫</div>
+        <h3>No policy</h3>
+        <p>Developers run <code class="mono" style="font-size:12px">rm -rf</code> in production environments, push secrets to AI context, and deploy without review. Each developer is on their own configuration.</p>
+      </div>
+      <div class="problem-card" style="background:var(--amber-50);border:1.5px solid #fde68a">
+        <div class="problem-icon" style="background:#fef3c7;color:var(--amber-600)">📋</div>
+        <h3>No audit</h3>
+        <p>When something goes wrong, there's no record of what the AI did, what command it issued, what was approved, or who authorised it. SOC 2 requires one.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="how-section">
+  <div class="container text-center">
+    <div class="eyebrow violet">How Guard works</div>
+    <h2>Set once. Enforced everywhere.</h2>
+    <p class="section-sub">Three steps. One team lead. Every developer covered. Policies propagate within 60 seconds of a change.</p>
+    <div class="steps-3">
+      <div class="step-card">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="step-num">1</span>
+          <span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--red-600);background:var(--red-50);border:1px solid #fecaca;padding:2px 8px;border-radius:20px">Team lead</span>
+        </div>
+        <div class="step-icon">🛡️</div>
+        <h3>Set team policy</h3>
+        <p>Define spend caps, blocked commands, approved tool list, and enforcement mode — BLOCK, WARN, or AUDIT. One config, pushed automatically to every developer on the team.</p>
+        <ul class="audit-list" style="margin-top:4px">
+          <li>Set daily/monthly spend limit per developer</li>
+          <li>Choose approved AI tools for the team</li>
+          <li>Block destructive or risky actions team-wide</li>
+          <li>Configure Slack alert channel</li>
+        </ul>
+      </div>
+      <div class="step-card">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="step-num">2</span>
+          <span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--indigo-600);background:var(--violet-50);border:1px solid var(--violet-200);padding:2px 8px;border-radius:20px">Developer</span>
+        </div>
+        <div class="step-icon">⚡</div>
+        <h3>Join in one command</h3>
+        <p>Accept the invite, run one command. Guard downloads your team's policies and applies them to the local environment automatically. No IT ticket. 30 seconds.</p>
+        <code class="code-chip"># One command to join<br>conduct guard join<br><br>✓ spend limit applied<br>✓ approved tools configured<br>✓ blocked actions enforced</code>
+      </div>
+      <div class="step-card">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="step-num">3</span>
+          <span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--violet-600);background:var(--violet-50);border:1px solid var(--violet-200);padding:2px 8px;border-radius:20px">MCP server</span>
+        </div>
+        <div class="step-icon">🔌</div>
+        <h3>Guard in every editor</h3>
+        <p>The <code class="mono" style="font-size:12.5px;background:var(--stone-100);padding:1px 5px;border-radius:4px">conductguard-mcp</code> server connects Guard to every MCP-compatible AI coding tool. Policies enforced where AI actually runs.</p>
+        <code class="code-chip">conductguard-mcp \<br>  --team &lt;team-id&gt; \<br>  --token &lt;member-token&gt;</code>
+        <div class="works-with">
+          <span class="tool-chip">Claude Code</span><span class="tool-chip">Cursor</span><span class="tool-chip">Windsurf</span><span class="tool-chip">Aider</span><span class="tool-chip">Cline</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- POLICY CATEGORIES -->
+<section class="policy-section">
+  <div class="container text-center">
+    <div class="eyebrow violet">What Guard enforces</div>
+    <h2>Policies your security team will recognise.</h2>
+    <p class="section-sub">Guard's policy categories map directly to the controls your InfoSec and compliance teams already care about.</p>
+    <div class="policy-grid">
+      <div class="policy-card" style="border-color:#fecaca;background:var(--red-50)">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+          <span style="font-size:24px">💥</span>
+          <h3>Destructive Operations</h3>
+        </div>
+        <span class="enforcement-badge" style="background:var(--red-100);color:var(--red-600);border:1px solid #fca5a5">BLOCK by default</span>
+        <p>Any AI-suggested command that could irrecoverably delete data, infrastructure, or configuration is blocked before it reaches the tool call.</p>
+        <div class="policy-examples">
+          <span class="policy-example">rm -rf</span><span class="policy-example">DROP TABLE</span><span class="policy-example">kubectl delete</span>
+        </div>
+      </div>
+      <div class="policy-card" style="border-color:#fecaca;background:var(--red-50)">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+          <span style="font-size:24px">🔑</span>
+          <h3>Secrets &amp; Credentials</h3>
+        </div>
+        <span class="enforcement-badge" style="background:var(--red-100);color:var(--red-600);border:1px solid #fca5a5">BLOCK by default</span>
+        <p>Guard detects when secrets are about to be sent to an AI model and blocks the call. Credentials never leave your machine via AI context.</p>
+        <div class="policy-examples">
+          <span class="policy-example">AWS keys</span><span class="policy-example">.env files</span><span class="policy-example">private tokens</span>
+        </div>
+      </div>
+      <div class="policy-card" style="border-color:#fde68a;background:var(--amber-50)">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+          <span style="font-size:24px">🚀</span>
+          <h3>Production Gates</h3>
+        </div>
+        <span class="enforcement-badge" style="background:#fef3c7;color:var(--amber-600);border:1px solid #fde68a">APPROVAL required</span>
+        <p>Production deployments and irreversible infrastructure changes require explicit human approval — even when triggered by an AI workflow.</p>
+        <div class="policy-examples">
+          <span class="policy-example">deploy --prod</span><span class="policy-example">terraform destroy</span><span class="policy-example">push --force</span>
+        </div>
+      </div>
+      <div class="policy-card" style="border-color:var(--violet-200);background:var(--violet-50)">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+          <span style="font-size:24px">💸</span>
+          <h3>Spend Controls</h3>
+        </div>
+        <span class="enforcement-badge" style="background:var(--violet-100);color:var(--violet-700);border:1px solid var(--violet-300)">AUDIT + hard cap</span>
+        <p>Hard caps per developer per month. When a developer hits their limit, the next AI call is blocked at the source — not just flagged after the fact.</p>
+        <div class="policy-examples">
+          <span class="policy-example">per-dev hard caps</span><span class="policy-example">alert thresholds</span><span class="policy-example">daily limits</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- AUDIT TRAIL -->
+<section class="audit-section">
+  <div class="container text-center">
+    <div class="eyebrow">Audit</div>
+    <h2>Three lenses. One audit trail.</h2>
+    <p class="section-sub">Every AI call linked to the run that triggered it. Guard check + run trace in one view.</p>
+    <div class="audit-grid">
+      <div class="audit-card" style="background:linear-gradient(135deg,var(--red-50),#fff);border-color:var(--red-100)">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:26px">🛡️</span>
+          <span class="audit-tag" style="color:var(--red-600)">Every AI tool call</span>
+        </div>
+        <h3>Guard audit</h3>
+        <ul class="audit-list">
+          <li>Every Claude Code, Cursor, and AI tool call logged</li>
+          <li>Decision: allowed / blocked / warned</li>
+          <li>Which policy rule triggered and why</li>
+          <li>Tokens and cost per call, per developer</li>
+          <li>Slack alert in real time on block</li>
+        </ul>
+      </div>
+      <div class="audit-card" style="background:linear-gradient(135deg,var(--violet-50),#fff);border-color:var(--violet-100)">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:26px">🔁</span>
+          <span class="audit-tag" style="color:var(--violet-600)">Per workflow run</span>
+        </div>
+        <h3>Run trace</h3>
+        <ul class="audit-list">
+          <li>Every block: started → completed → failed</li>
+          <li>Every LLM call and tool call inline</li>
+          <li>Guard policy check result in the trace</li>
+          <li>Live via Server-Sent Events while running</li>
+          <li>Immutable — append-only, never deleted</li>
+        </ul>
+      </div>
+      <div class="audit-card" style="background:linear-gradient(135deg,#f5f3ff,#fff);border-color:#ddd6fe">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:26px">🏢</span>
+          <span class="audit-tag" style="color:#6d28d9">Platform actions</span>
+        </div>
+        <h3>Workspace events</h3>
+        <ul class="audit-list">
+          <li>Credential added, rotated, or removed</li>
+          <li>Agent installed or deleted</li>
+          <li>Member invited or role changed</li>
+          <li>Environment created or reassigned</li>
+          <li>Policy updated and pushed</li>
+        </ul>
+      </div>
+    </div>
+    <div class="audit-link-row">
+      <span style="font-size:20px">🔗</span>
+      <p style="font-size:14px;color:var(--stone-500);text-align:left">A <code>guard_check</code> in a run trace links directly to the Guard audit entry — same moment, two lenses. Rules evaluated, verdict, and warnings alongside the other block events.</p>
+    </div>
+  </div>
+</section>
+
+<!-- WORKS WITH -->
+<section class="with-section">
+  <div class="container">
+    <h2 style="font-size:26px">Works with the tools your team already uses.</h2>
+    <p style="font-size:14px;color:var(--stone-500);margin-top:8px">No rip-and-replace. Guard wraps around your existing AI tool stack.</p>
+    <div class="with-chips">
+      <span class="with-chip">Claude Code</span>
+      <span class="with-chip">Cursor</span>
+      <span class="with-chip">Windsurf</span>
+      <span class="with-chip">Aider</span>
+      <span class="with-chip">Cline</span>
+      <span class="with-chip">GitHub</span>
+      <span class="with-chip">Slack</span>
+      <span class="with-chip">+ any MCP tool</span>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<div class="cta-section">
+  <div class="container">
+    <h2>Start governing your team's AI usage today.</h2>
+    <p class="cta-sub">Free during early access. No credit card. Set up in under 5 minutes.</p>
+    <div class="cta-btns">
+      <a href="/sign-in" class="btn btn-white" style="height:48px;font-size:15px">Set up Guard →</a>
+      <a href="https://cal.com/conductai/demo" target="_blank" class="btn btn-ghost-white" style="height:48px;font-size:15px">Book a demo</a>
+    </div>
+    <p class="cta-meta">For VP Eng · CFO · Security leads · No credit card required</p>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div style="display:flex;align-items:center;gap:9px">
+        <div class="nav-mark"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4 3 7 7 9 4-2 7-5 7-9V6l-7-3Z"/></svg></div>
+        <span style="font-weight:700;font-size:14px;letter-spacing:-.015em">ConductGuard</span>
+      </div>
+      <div class="footer-links">
+        <a href="/">Home</a>
+        <a href="/marketplace">Playbooks</a>
+        <a href="/tools">Tools</a>
+        <a href="/compare">Compare</a>
+        <a href="/docs">Docs</a>
+        <a href="https://github.com/sseshachala/conductai" target="_blank">GitHub</a>
+        <a href="/privacy">Privacy</a>
+      </div>
+      <p style="font-size:12px;color:var(--stone-300)">© 2026 Conduct · MIT licensed</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
