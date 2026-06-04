@@ -1046,20 +1046,45 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
           <>
             {/* Left panel — block palette (editors/admins only) */}
             {!isViewer && (
-              <div className={`relative flex shrink-0 transition-all duration-200 border-r border-stone-200 ${leftOpen ? "w-44" : "w-12"}`}>
-                <button
-                  onClick={() => setLeftOpen(v => !v)}
-                  className="absolute -right-3 top-1/2 -translate-y-1/2 z-10 w-6 h-6 rounded-full bg-white border border-stone-200 shadow-sm flex items-center justify-center text-stone-400 hover:text-stone-700 transition-colors"
-                  title={leftOpen ? "Collapse palette" : "Expand palette"}
-                >
-                  {leftOpen ? "‹" : "›"}
-                </button>
-                <BlockPalette getToken={getToken} collapsed={!leftOpen} />
+              <div
+                style={{
+                  flexBasis: leftOpen ? 176 : 0,
+                  width: leftOpen ? 176 : 0,
+                  maxWidth: leftOpen ? 176 : 0,
+                  minWidth: 0,
+                  flexGrow: 0,
+                  flexShrink: 0,
+                  overflow: "hidden",
+                  position: "relative",
+                  borderRight: leftOpen ? "1px solid #e7e5e4" : "none",
+                  background: "white",
+                }}
+              >
+                {leftOpen && (
+                  <button
+                    onClick={() => setLeftOpen(false)}
+                    className="absolute top-3 right-3 z-10 w-6 h-6 rounded-full bg-white border border-stone-200 shadow-sm flex items-center justify-center text-stone-400 hover:text-stone-700 transition-colors"
+                    title="Collapse palette"
+                  >
+                    ‹
+                  </button>
+                )}
+                <BlockPalette getToken={getToken} collapsed={false} />
               </div>
             )}
 
             {/* Center — canvas */}
             <div className="flex-1 relative min-w-0">
+              {/* Floating reopen button for block palette */}
+              {!isViewer && !leftOpen && (
+                <button
+                  onClick={() => setLeftOpen(true)}
+                  className="absolute top-3 left-3 z-10 flex items-center gap-1.5 px-3 py-1.5 bg-white border border-stone-200 rounded-full shadow-sm text-xs font-medium text-stone-600 hover:text-stone-900 hover:border-stone-300 transition-colors"
+                  title="Expand block palette"
+                >
+                  + Blocks
+                </button>
+              )}
               {runError && (
                 <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-red-50 border border-red-200 text-red-800 text-xs font-medium px-4 py-2.5 rounded-xl shadow-md max-w-sm">
                   <span className="shrink-0">✕</span>
@@ -1161,44 +1186,40 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
             </div>
 
             {/* Right panel — block config */}
-            <div className={`relative flex shrink-0 transition-all duration-200 border-l border-stone-200 bg-white ${rightOpen ? "w-72" : "w-8"}`}>
-              <button
-                onClick={() => setRightOpen(v => !v)}
-                className="absolute -left-3 top-1/2 -translate-y-1/2 z-10 w-6 h-6 rounded-full bg-white border border-stone-200 shadow-sm flex items-center justify-center text-stone-400 hover:text-stone-700 transition-colors"
-                title={rightOpen ? "Collapse config" : "Expand config"}
-              >
-                {rightOpen ? "›" : "‹"}
-              </button>
-              {rightOpen && (
-                selectedNode && selectedData ? (
-                  <div className="flex-1 overflow-y-auto min-w-0">
-                    <BlockEditor
-                      workflowId={workflowId}
-                      blockId={selectedNode.id}
-                      blockType={selectedData.type}
-                      label={selectedData.label}
-                      description={(selectedData.description as string) ?? ""}
-                      blockData={selectedNode.data as Record<string, unknown>}
-                      onChange={handleBlockChange}
-                      getToken={getToken}
-                      isAdmin={isAdmin}
-                      isViewer={isViewer}
-                      githubHookRepo={githubHookRepo}
-                      githubHookId={githubHookId}
-                      githubWebhook={githubWebhook}
-                      playbookSlug={playbookSlug}
-                      projectSlug={projectSlug}
-                      onWebhookChange={(id, repo) => { setGithubHookId(id); setGithubHookRepo(repo) }}
-                    />
-                  </div>
-                ) : (
-                  <EnvironmentPanel
-                    environments={environments}
-                    selectedEnvId={selectedEnvId}
-                    credentials={envCredentials}
-                    nodes={nodes}
+            <div
+              style={{
+                flexBasis: (rightOpen && selectedNode) ? 320 : 0,
+                width: (rightOpen && selectedNode) ? 320 : 0,
+                maxWidth: (rightOpen && selectedNode) ? 320 : 0,
+                minWidth: 0,
+                flexGrow: 0,
+                flexShrink: 0,
+                overflow: "hidden",
+                borderLeft: (rightOpen && selectedNode) ? "1px solid #e7e5e4" : "none",
+                background: "white",
+              }}
+            >
+              {rightOpen && selectedNode && selectedData && (
+                <div className="flex-1 overflow-y-auto min-w-0 w-80 h-full">
+                  <BlockEditor
+                    workflowId={workflowId}
+                    blockId={selectedNode.id}
+                    blockType={selectedData.type}
+                    label={selectedData.label}
+                    description={(selectedData.description as string) ?? ""}
+                    blockData={selectedNode.data as Record<string, unknown>}
+                    onChange={handleBlockChange}
+                    getToken={getToken}
+                    isAdmin={isAdmin}
+                    isViewer={isViewer}
+                    githubHookRepo={githubHookRepo}
+                    githubHookId={githubHookId}
+                    githubWebhook={githubWebhook}
+                    playbookSlug={playbookSlug}
+                    projectSlug={projectSlug}
+                    onWebhookChange={(id, repo) => { setGithubHookId(id); setGithubHookRepo(repo) }}
                   />
-                )
+                </div>
               )}
             </div>
           </>

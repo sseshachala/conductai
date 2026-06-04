@@ -1095,10 +1095,7 @@ export default function BlockEditor({
   const [promptOpen, setPromptOpen] = useState(false)
   const [streamedPrompt, setStreamedPrompt] = useState<string>("")
   const [isStreaming, setIsStreaming] = useState(false)
-  const [brainAdvanced, setBrainAdvanced] = useState(false)
-  const [toolAdvanced, setToolAdvanced] = useState(false)
-  const [configAdvanced, setConfigAdvanced] = useState(false)
-  const [memoryAdvanced, setMemoryAdvanced] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const style = BLOCK_STYLES[blockType]
 
@@ -1288,10 +1285,7 @@ export default function BlockEditor({
     setPromptOpen(false)
     setStreamedPrompt("")
     setIsStreaming(false)
-    setBrainAdvanced(false)
-    setToolAdvanced(false)
-    setConfigAdvanced(false)
-    setMemoryAdvanced(false)
+    setShowAdvanced(false)
   }, [blockId])
 
   const section = "px-4 py-3 space-y-3 border-b border-stone-100"
@@ -1338,15 +1332,18 @@ export default function BlockEditor({
 
           <button
             type="button"
-            onClick={() => setBrainAdvanced(v => !v)}
+            className="w-full flex items-center gap-2 bg-transparent border-none py-2 px-4 cursor-pointer text-stone-500 hover:text-stone-700 transition-colors mt-4"
+            onClick={() => setShowAdvanced(v => !v)}
             disabled={isViewer}
-            className="flex items-center gap-1.5 text-[11px] text-stone-400 hover:text-stone-600 transition-colors px-4 py-1"
           >
-            <span>{brainAdvanced ? "▾" : "▸"}</span>
-            <span>Advanced</span>
+            <span className="text-stone-400" style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.14s", display: "inline-block" }}>›</span>
+            <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Advanced</span>
+            <span className="text-[11px] text-stone-400 font-normal">5 settings</span>
+            <div className="flex-1 h-px bg-stone-200 ml-1" />
           </button>
+          {!showAdvanced && <p className="text-[11.5px] text-stone-400 pl-5 mt-1 mb-2">Power-user options — sensible defaults applied.</p>}
 
-          {brainAdvanced && (
+          {showAdvanced && (
             <>
               <div className={section}>
                 <div className="flex items-center justify-between">
@@ -1433,7 +1430,7 @@ export default function BlockEditor({
                 </p>
               )
             })()}
-            {!brainAdvanced && (() => {
+            {!showAdvanced && (() => {
               const providerValue = ((blockData.provider as string) || "auto").toLowerCase()
               const providerLabel = providerValue === "auto"
                 ? "Auto — let Conduct choose"
@@ -1444,7 +1441,7 @@ export default function BlockEditor({
                   {" "}·{" "}
                   <button
                     type="button"
-                    onClick={() => setBrainAdvanced(true)}
+                    onClick={() => setShowAdvanced(true)}
                     className="text-violet-600 hover:text-violet-700 underline"
                   >
                     change in Advanced
@@ -1454,7 +1451,7 @@ export default function BlockEditor({
             })()}
           </div>
 
-          {brainAdvanced && (
+          {showAdvanced && (
             <div className={section}>
               <div className="flex items-center justify-between">
                 <span className={sectionLabel}>Provider override</span>
@@ -1542,18 +1539,23 @@ export default function BlockEditor({
                     })}
 
                     {optionalActionFields.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setToolAdvanced(v => !v)}
-                        disabled={isViewer}
-                        className="flex items-center gap-1.5 text-[11px] text-stone-400 hover:text-stone-600 transition-colors pt-1"
-                      >
-                        <span>{toolAdvanced ? "▾" : "▸"}</span>
-                        <span>Advanced parameters</span>
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          className="w-full flex items-center gap-2 bg-transparent border-none py-2 cursor-pointer text-stone-500 hover:text-stone-700 transition-colors mt-3"
+                          onClick={() => setShowAdvanced(v => !v)}
+                          disabled={isViewer}
+                        >
+                          <span className="text-stone-400" style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.14s", display: "inline-block" }}>›</span>
+                          <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Advanced</span>
+                          <span className="text-[11px] text-stone-400 font-normal">{optionalActionFields.length} settings</span>
+                          <div className="flex-1 h-px bg-stone-200 ml-1" />
+                        </button>
+                        {!showAdvanced && <p className="text-[11.5px] text-stone-400 mt-1">Power-user options — sensible defaults applied.</p>}
+                      </>
                     )}
 
-                    {toolAdvanced && optionalActionFields.map(field => {
+                    {showAdvanced && optionalActionFields.map(field => {
                       const rendered = renderField(field)
                       if (rendered === null) return null
                       return (
@@ -1576,7 +1578,7 @@ export default function BlockEditor({
           )}
 
           {/* Secret warning */}
-          {toolAdvanced && (() => {
+          {showAdvanced && (() => {
             const leaked = findHardcodedSecrets(getNestedValue(blockData, "config.params"))
             return leaked.length > 0 ? (
               <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-800 mt-2">
@@ -1599,7 +1601,7 @@ export default function BlockEditor({
             {(() => {
               const requiredStaticFields = staticFields.filter(f => f.required)
               const basicStaticFields = requiredStaticFields.length > 0 ? requiredStaticFields : staticFields
-              const visibleStaticFields = configAdvanced ? staticFields : basicStaticFields
+              const visibleStaticFields = showAdvanced ? staticFields : basicStaticFields
               const hasAdvanced = requiredStaticFields.length > 0 && staticFields.length > basicStaticFields.length
 
               return (
@@ -1738,15 +1740,20 @@ export default function BlockEditor({
                   })}
 
                   {hasAdvanced && (
-                    <button
-                      type="button"
-                      onClick={() => setConfigAdvanced(v => !v)}
-                      disabled={isViewer}
-                      className="flex items-center gap-1.5 text-[11px] text-stone-400 hover:text-stone-600 transition-colors"
-                    >
-                      <span>{configAdvanced ? "▾" : "▸"}</span>
-                      <span>Advanced configuration</span>
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="w-full flex items-center gap-2 bg-transparent border-none py-2 cursor-pointer text-stone-500 hover:text-stone-700 transition-colors mt-3"
+                        onClick={() => setShowAdvanced(v => !v)}
+                        disabled={isViewer}
+                      >
+                        <span className="text-stone-400" style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.14s", display: "inline-block" }}>›</span>
+                        <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Advanced</span>
+                        <span className="text-[11px] text-stone-400 font-normal">{staticFields.length - basicStaticFields.length} settings</span>
+                        <div className="flex-1 h-px bg-stone-200 ml-1" />
+                      </button>
+                      {!showAdvanced && <p className="text-[11.5px] text-stone-400 mt-1">Power-user options — sensible defaults applied.</p>}
+                    </>
                   )}
                 </>
               )
@@ -1814,15 +1821,18 @@ export default function BlockEditor({
 
             <button
               type="button"
-              onClick={() => setMemoryAdvanced(v => !v)}
+              className="w-full flex items-center gap-2 bg-transparent border-none py-2 px-4 cursor-pointer text-stone-500 hover:text-stone-700 transition-colors mt-4"
+              onClick={() => setShowAdvanced(v => !v)}
               disabled={isViewer}
-              className="flex items-center gap-1.5 text-[11px] text-stone-400 hover:text-stone-600 transition-colors px-4 py-1"
             >
-              <span>{memoryAdvanced ? "▾" : "▸"}</span>
-              <span>Advanced</span>
+              <span className="text-stone-400" style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.14s", display: "inline-block" }}>›</span>
+              <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Advanced</span>
+              <span className="text-[11px] text-stone-400 font-normal">3 settings</span>
+              <div className="flex-1 h-px bg-stone-200 ml-1" />
             </button>
+            {!showAdvanced && <p className="text-[11.5px] text-stone-400 pl-5 mt-1">Power-user options — sensible defaults applied.</p>}
 
-            {memoryAdvanced && (
+            {showAdvanced && (
               <>
                 <div className={section}>
                   <span className={sectionLabel}>Key</span>
@@ -1899,7 +1909,7 @@ export default function BlockEditor({
       )}
 
       {/* ── Brain: compiled prompt preview (collapsed by default) ── */}
-      {blockType === "brain" && brainAdvanced && (
+      {blockType === "brain" && showAdvanced && (
         <div className="px-4 py-3">
           <button
             onClick={() => setPromptOpen(v => !v)}
