@@ -41,6 +41,14 @@ interface SpendStats {
   tokens_saved_today: number
 }
 
+interface ToolCoverageRow {
+  email: string
+  detected_tools: string[]
+  mcp_registered: string[]
+  hook_registered: string[]
+  reported_at: string
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const AI_TOOL_BADGES: Record<string, { label: string; bg: string; color: string }> = {
@@ -338,7 +346,7 @@ function formatTokensUsed(input: number | null, output: number | null): string |
 
 // ─── Stat card ────────────────────────────────────────────────────────────────
 
-type StatTone = "ok" | "err" | "accent" | "plain"
+type StatTone = "ok" | "err" | "warn" | "accent" | "plain"
 
 function GuardStatCard({
   label,
@@ -358,6 +366,7 @@ function GuardStatCard({
   const toneColor: Record<StatTone, string> = {
     accent: "var(--accent-text)",
     ok:     "var(--ok)",
+    warn:   "var(--warn)",
     err:    "var(--err)",
     plain:  "var(--text)",
   }
@@ -514,6 +523,7 @@ function GuardDashboard() {
   const [events, setEvents]           = useState<GuardEvent[]>([])
   const [stats, setStats]             = useState<SpendStats | null>(null)
   const [loading, setLoading]         = useState(true)
+  const [toolCoverage, setToolCoverage] = useState<ToolCoverageRow[]>([])
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore]         = useState(true)
   const [live, setLive]               = useState(false)
@@ -614,6 +624,20 @@ function GuardDashboard() {
     }
   }, [buildHeaders, teamId])
 
+  const loadToolCoverage = useCallback(async () => {
+    if (!teamId) return
+    const headers = await buildHeaders()
+    const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
+    const params  = new URLSearchParams()
+    params.set("workspace_id", teamId)
+    try {
+      const res = await fetch(`${base}/guard/developer-tools?${params}`, { headers })
+      if (res.ok) setToolCoverage(await res.json())
+    } catch {
+      // non-fatal
+    }
+  }, [buildHeaders, teamId])
+
   const connectSSE = useCallback(async () => {
     if (!teamId) return
     const token  = await getToken()
@@ -666,14 +690,17 @@ function GuardDashboard() {
     connectSSE()
     loadEvents()
     loadStats()
-    const statsInterval   = setInterval(() => { loadStats() }, 60_000)
-    const refreshInterval = setInterval(() => { refreshRecent() }, 10_000)
+    loadToolCoverage()
+    const statsInterval        = setInterval(() => { loadStats() }, 60_000)
+    const coverageInterval     = setInterval(() => { loadToolCoverage() }, 60_000)
+    const refreshInterval      = setInterval(() => { refreshRecent() }, 10_000)
     return () => {
       clearInterval(statsInterval)
+      clearInterval(coverageInterval)
       clearInterval(refreshInterval)
       esRef.current?.close()
     }
-  }, [connectSSE, loadEvents, loadStats, refreshRecent])
+  }, [connectSSE, loadEvents, loadStats, loadToolCoverage, refreshRecent])
 
   useEffect(() => {
     loadEvents(filterDecision !== "all" ? filterDecision : undefined, filterDateRange)
@@ -763,44 +790,119 @@ function GuardDashboard() {
         </div>
       )}
 
-      {/* 5 stat cards */}
-      {loading ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 16 }}>
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="card card-pad" style={{ height: 80 }} />
-          ))}
-        </div>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 16 }}>
-          <GuardStatCard
-            label="Active developers"
-            value={stats?.active_developers || derivedStats.active_developers}
-            tone="ok"
-            sub="sessions in range"
-          />
-          <GuardStatCard
-            label="Events today"
-            value={stats?.events_today || derivedStats.events_today}
-            tone="plain"
-            sub="tool calls logged"
-          />
-          <GuardStatCard
-            label="Blocked today"
-            value={blockedToday}
-            tone={blockedToday > 0 ? "err" : "plain"}
-            onClick={() => setFilterDecision(prev => prev === "blocked" ? "all" : "blocked")}
-            active={filterDecision === "blocked"}
-            sub={blockedToday > 0 ? "click to filter" : "none blocked"}
-          />
-          <GuardStatCard
-            label="Tokens saved"
-            value={formatTotalTokensSaved(stats?.tokens_saved_today || derivedStats.tokens_saved_today)}
-            tone="accent"
-            sub="vs unguarded calls"
-          />
-          <SavingsStatCard savings={savings} loading={savingsLoading} />
-        </div>
-      )}
+      {/* 6 stat cards */}
+      {(() => {
+        const coveredCount = toolCoverage.filter(dev =>
+          dev.detected_tools.every(t =>
+            dev.mcp_registered.includes(t) || dev.hook_registered.includes(t)
+          )
+        ).length
+        const totalDevs = toolCoverage.length
+        return (
+          <>
+            {loading ? (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12, marginBottom: 16 }}>
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className="card card-pad" style={{ height: 80 }} />
+                ))}
+              </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12, marginBottom: 16 }}>
+                <GuardStatCard
+                  label="Active developers"
+                  value={stats?.active_developers || derivedStats.active_developers}
+                  tone="ok"
+                  sub="sessions in range"
+                />
+                <GuardStatCard
+                  label="Events today"
+                  value={stats?.events_today || derivedStats.events_today}
+                  tone="plain"
+                  sub="tool calls logged"
+                />
+                <GuardStatCard
+                  label="Blocked today"
+                  value={blockedToday}
+                  tone={blockedToday > 0 ? "err" : "plain"}
+                  onClick={() => setFilterDecision(prev => prev === "blocked" ? "all" : "blocked")}
+                  active={filterDecision === "blocked"}
+                  sub={blockedToday > 0 ? "click to filter" : "none blocked"}
+                />
+                <GuardStatCard
+                  label="Tokens saved"
+                  value={formatTotalTokensSaved(stats?.tokens_saved_today || derivedStats.tokens_saved_today)}
+                  tone="accent"
+                  sub="vs unguarded calls"
+                />
+                <SavingsStatCard savings={savings} loading={savingsLoading} />
+                <GuardStatCard
+                  label="Tool coverage"
+                  value={totalDevs === 0 ? "—" : `${coveredCount}/${totalDevs}`}
+                  tone={totalDevs === 0 ? "plain" : coveredCount === totalDevs ? "ok" : "warn"}
+                  sub={totalDevs === 0 ? "no data yet" : coveredCount === totalDevs ? "all tools covered" : "run: conduct guard sync"}
+                />
+              </div>
+            )}
+
+            {/* Tool coverage panel */}
+            {!loading && toolCoverage.length > 0 && (() => {
+              const TOOL_LABEL: Record<string, string> = {
+                "claude-code": "Claude", "codex": "Codex", "cursor": "Cursor",
+                "windsurf": "Windsurf", "vscode": "VS Code",
+              }
+              return (
+                <div className="card" style={{ marginBottom: 20, padding: "16px 18px" }}>
+                  <div className="eyebrow" style={{ marginBottom: 12 }}>
+                    Tool coverage — {new Date().toLocaleDateString()}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {toolCoverage.map(dev => {
+                      const allCovered = dev.detected_tools.every(t =>
+                        dev.mcp_registered.includes(t) || dev.hook_registered.includes(t)
+                      )
+                      return (
+                        <div key={dev.email} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                          <span className="dot" style={{ background: allCovered ? "var(--ok)" : "var(--warn)", flexShrink: 0 }} />
+                          <span style={{ fontSize: 12.5, color: "var(--text-2)", width: 220, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {dev.email}
+                          </span>
+                          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                            {dev.detected_tools.map(tool => {
+                              const covered = dev.mcp_registered.includes(tool) || dev.hook_registered.includes(tool)
+                              return (
+                                <span key={tool} style={{
+                                  display: "inline-flex", alignItems: "center", gap: 3,
+                                  fontSize: 10.5, fontWeight: 600, padding: "2px 8px", borderRadius: 20,
+                                  background: covered ? "var(--ok-bg)" : "var(--warn-bg)",
+                                  color: covered ? "var(--ok)" : "var(--warn)",
+                                  border: `1px solid ${covered ? "var(--ok-bd)" : "var(--warn-bd)"}`,
+                                }}>
+                                  {covered ? "✓" : "!"} {TOOL_LABEL[tool] ?? tool}
+                                </span>
+                              )
+                            })}
+                            {dev.detected_tools.length === 0 && (
+                              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>no tools detected</span>
+                            )}
+                          </div>
+                          <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: "auto" }}>
+                            {new Date(dev.reported_at).toLocaleString()}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {coveredCount < totalDevs && (
+                    <div style={{ marginTop: 12, padding: "8px 12px", borderRadius: 8, background: "var(--warn-bg)", border: "1px solid var(--warn-bd)", fontSize: 12, color: "var(--warn)" }}>
+                      {totalDevs - coveredCount} developer{totalDevs - coveredCount > 1 ? "s" : ""} have uncovered tools — ask them to run: <code style={{ fontFamily: "monospace" }}>conduct guard sync</code>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+          </>
+        )
+      })()}
 
       {/* Cost trend chart */}
       {!loading && teamId && (
