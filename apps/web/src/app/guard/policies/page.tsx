@@ -839,9 +839,9 @@ function PoliciesContent() {
                   </div>
 
                   {!p.builtin && canWrite && confirmDeleteId === p.id && (
-                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
                       <p style={{ margin: 0, fontSize: 11, color: "var(--err)" }}>
-                        Type <strong>{p.rule_id}</strong> to delete.
+                        Type <strong>{p.rule_id}</strong> to confirm deletion.
                       </p>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <input
@@ -852,7 +852,7 @@ function PoliciesContent() {
                             if (e.key === "Escape") { setConfirmDeleteId(null); setConfirmDeleteValue("") }
                           }}
                           placeholder={p.rule_id}
-                          style={{ flex: 1, minWidth: 0, fontSize: 11.5, border: "1px solid var(--err-bd, #fecaca)", borderRadius: 8, padding: "5px 8px", outline: "none" }}
+                          style={{ flex: 1, minWidth: 0, fontSize: 11.5, border: "1px solid var(--err-bd, #fecaca)", borderRadius: 8, padding: "6px 10px", outline: "none", background: "var(--surface)", color: "var(--text)" }}
                         />
                         <button
                           onClick={() => handleDelete(p.id)}
@@ -860,13 +860,13 @@ function PoliciesContent() {
                           className="btn btn-sm"
                           style={{ background: "var(--err)", color: "#fff", border: "none", opacity: confirmDeleteValue !== p.rule_id ? 0.4 : 1 }}
                         >
-                          Delete
+                          Confirm
                         </button>
                         <button
                           onClick={() => { setConfirmDeleteId(null); setConfirmDeleteValue("") }}
                           className="btn btn-ghost btn-sm"
                         >
-                          Keep rule
+                          Cancel
                         </button>
                       </div>
                     </div>
