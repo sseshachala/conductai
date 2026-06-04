@@ -116,47 +116,70 @@ export default function AgentSettingsPage() {
 
   return (
     <AppShell noPadding>
-      <div className="flex-1 overflow-auto">
-        <div className="mx-auto max-w-2xl px-6 py-10">
-          <h2 className="text-xl font-semibold text-stone-900 mb-6">Agent Settings</h2>
+      <div style={{ flex: 1, overflow: "auto" }}>
+        <div style={{ maxWidth: 672, margin: "0 auto", padding: "40px 24px" }}>
+          <h2 style={{ fontSize: 20, fontWeight: 600, color: "var(--text)", marginBottom: 24 }}>Agent Settings</h2>
 
           {loading ? (
-            <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-16 rounded-xl bg-stone-100 animate-pulse" />)}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {[1, 2, 3].map(i => (
+                <div
+                  key={i}
+                  style={{
+                    height: 64,
+                    borderRadius: 12,
+                    background: "var(--surface-3)",
+                    animation: "pulse 1.5s ease-in-out infinite",
+                  }}
+                />
+              ))}
+            </div>
           ) : (
-            <div className="space-y-6">
+            <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
 
               {/* Name */}
-              <div className="rounded-xl border border-stone-200 bg-white px-5 py-4">
-                <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-1">Agent name</p>
-                <p className="text-stone-900 font-medium">{workflow?.name}</p>
-                <p className="text-xs text-stone-400 mt-1">Rename from the agents list or canvas header.</p>
+              <div className="card" style={{ padding: "16px 20px" }}>
+                <p className="eyebrow" style={{ marginBottom: 4 }}>Agent name</p>
+                <p style={{ color: "var(--text)", fontWeight: 500 }}>{workflow?.name}</p>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                  Rename from the agents list or canvas header.
+                </p>
               </div>
 
               {/* Mode */}
-              <div className="rounded-xl border border-stone-200 bg-white px-5 py-4">
-                <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-1">Execution mode</p>
-                <p className="text-stone-900 font-medium capitalize">{workflow?.default_mode ?? "dag"}</p>
-                <p className="text-xs text-stone-400 mt-1">dag = sequential blocks · agentic = AI decides order</p>
+              <div className="card" style={{ padding: "16px 20px" }}>
+                <p className="eyebrow" style={{ marginBottom: 4 }}>Execution mode</p>
+                <p style={{ color: "var(--text)", fontWeight: 500, textTransform: "capitalize" }}>
+                  {workflow?.default_mode ?? "dag"}
+                </p>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                  dag = sequential blocks · agentic = AI decides order
+                </p>
               </div>
 
               {/* Environment */}
-              <div className="rounded-xl border border-stone-200 bg-white px-5 py-4">
-                <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Environment</p>
+              <div className="card" style={{ padding: "16px 20px" }}>
+                <p className="eyebrow" style={{ marginBottom: 8 }}>Environment</p>
                 {environments.length === 0 ? (
-                  <p className="text-sm text-stone-400">No environments configured. Add one in workspace Settings.</p>
+                  <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                    No environments configured. Add one in workspace Settings.
+                  </p>
                 ) : (
-                  <div className="space-y-2">
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {environments.map(env => (
-                      <label key={env.id} className="flex items-center gap-3 cursor-pointer">
+                      <label
+                        key={env.id}
+                        style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}
+                      >
                         <input
                           type="radio"
                           name="environment"
                           value={env.id}
                           checked={workflow?.environment_id === env.id}
                           onChange={() => saveEnvironment(env.id)}
-                          className="accent-stone-900"
+                          style={{ accentColor: "var(--text)" }}
                         />
-                        <span className="text-sm text-stone-800">{env.name}</span>
+                        <span style={{ fontSize: 13, color: "var(--text)" }}>{env.name}</span>
                       </label>
                     ))}
                   </div>
@@ -164,14 +187,14 @@ export default function AgentSettingsPage() {
               </div>
 
               {/* Turn budget */}
-              <div className="rounded-xl border border-stone-200 bg-white px-5 py-4">
-                <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-1">Default turn budget</p>
-                <p className="text-xs text-stone-400 mb-3">
+              <div className="card" style={{ padding: "16px 20px" }}>
+                <p className="eyebrow" style={{ marginBottom: 4 }}>Default turn budget</p>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
                   Minimum AI turns for every run of this agent — webhook, scheduled, and manual.
                   Leave empty to use the per-run estimate (recommended for most agents).
                   Autopilot agents typically need 35–50.
                 </p>
-                <div className="flex items-center gap-3">
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <input
                     type="number"
                     min="1"
@@ -179,19 +202,29 @@ export default function AgentSettingsPage() {
                     placeholder="e.g. 35"
                     value={turnsInput}
                     onChange={e => setTurnsInput(e.target.value)}
-                    className="w-28 border border-stone-200 rounded-lg px-3 py-2 text-sm text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-violet-400"
+                    style={{
+                      width: 112,
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      padding: "8px 12px",
+                      fontSize: 13,
+                      background: "var(--surface)",
+                      color: "var(--text)",
+                      outline: "none",
+                    }}
                   />
                   <button
                     onClick={saveTurnBudget}
                     disabled={turnsSaving}
-                    className="px-4 py-2 text-xs font-medium bg-stone-900 text-white rounded-lg hover:bg-stone-700 transition-colors disabled:opacity-50"
+                    className="btn btn-primary btn-sm"
+                    style={{ opacity: turnsSaving ? 0.5 : 1 }}
                   >
-                    {turnsSaved ? "Saved ✓" : turnsSaving ? "Saving…" : "Save"}
+                    {turnsSaved ? "Saved \u2713" : turnsSaving ? "Saving\u2026" : "Save"}
                   </button>
                   {turnsInput.trim() !== "" && (
                     <button
-                      onClick={() => { setTurnsInput(""); }}
-                      className="text-xs text-stone-400 hover:text-stone-600 transition-colors"
+                      onClick={() => { setTurnsInput("") }}
+                      className="btn btn-ghost btn-sm"
                     >
                       Clear (use estimate)
                     </button>
@@ -200,15 +233,29 @@ export default function AgentSettingsPage() {
               </div>
 
               {/* Danger zone */}
-              <div className="rounded-xl border border-red-100 bg-red-50 px-5 py-4">
-                <p className="text-xs font-semibold text-red-400 uppercase tracking-wider mb-3">Danger zone</p>
-                <p className="text-sm text-red-700 mb-3">Deleting this agent removes all its runs and history permanently.</p>
+              <div
+                style={{
+                  borderRadius: 12,
+                  border: "1px solid var(--err-bd)",
+                  background: "var(--err-bg)",
+                  padding: "16px 20px",
+                }}
+              >
+                <p
+                  className="eyebrow"
+                  style={{ color: "var(--err)", marginBottom: 12 }}
+                >
+                  Danger zone
+                </p>
+                <p style={{ fontSize: 13, color: "var(--err)", marginBottom: 12 }}>
+                  Deleting this agent removes all its runs and history permanently.
+                </p>
                 {deleteConfirmOpen ? (
-                  <div className="space-y-2">
-                    <p className="text-xs text-red-700">
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <p style={{ fontSize: 12, color: "var(--err)" }}>
                       Type <strong>{workflow?.name ?? "this agent"}</strong> to permanently delete it.
                     </p>
-                    <div className="flex gap-2">
+                    <div style={{ display: "flex", gap: 8 }}>
                       <input
                         value={deleteConfirmValue}
                         onChange={e => setDeleteConfirmValue(e.target.value)}
@@ -221,14 +268,34 @@ export default function AgentSettingsPage() {
                           }
                         }}
                         placeholder={workflow?.name ?? "Agent name"}
-                        className="flex-1 border border-red-200 rounded-lg px-3 py-2 text-sm text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-red-300"
+                        style={{
+                          flex: 1,
+                          border: "1px solid var(--err-bd)",
+                          borderRadius: 8,
+                          padding: "8px 12px",
+                          fontSize: 13,
+                          background: "var(--surface)",
+                          color: "var(--text)",
+                          outline: "none",
+                        }}
                       />
                       <button
                         onClick={deleteAgent}
                         disabled={deleting || deleteConfirmValue !== (workflow?.name ?? "")}
-                        className="text-xs font-medium text-white bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition-colors disabled:opacity-40"
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 500,
+                          color: "#fff",
+                          background: "var(--err)",
+                          border: "none",
+                          borderRadius: 8,
+                          padding: "8px 16px",
+                          cursor: deleting || deleteConfirmValue !== (workflow?.name ?? "") ? "not-allowed" : "pointer",
+                          opacity: deleting || deleteConfirmValue !== (workflow?.name ?? "") ? 0.4 : 1,
+                          transition: "opacity 0.15s",
+                        }}
                       >
-                        {deleting ? "Deleting…" : "Delete"}
+                        {deleting ? "Deleting\u2026" : "Delete"}
                       </button>
                       <button
                         onClick={() => {
@@ -236,17 +303,29 @@ export default function AgentSettingsPage() {
                           setDeleteConfirmValue("")
                           setDeleteError(null)
                         }}
-                        className="text-xs font-medium text-stone-600 border border-stone-200 hover:bg-stone-50 px-4 py-2 rounded-lg transition-colors"
+                        className="btn btn-ghost btn-sm"
                       >
                         Cancel
                       </button>
                     </div>
-                    {deleteError && <p className="text-xs text-red-600">{deleteError}</p>}
+                    {deleteError && (
+                      <p style={{ fontSize: 12, color: "var(--err)" }}>{deleteError}</p>
+                    )}
                   </div>
                 ) : (
                   <button
                     onClick={() => { setDeleteConfirmOpen(true); setDeleteConfirmValue(""); setDeleteError(null) }}
-                    className="text-xs font-medium text-white bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition-colors"
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 500,
+                      color: "#fff",
+                      background: "var(--err)",
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "8px 16px",
+                      cursor: "pointer",
+                      transition: "opacity 0.15s",
+                    }}
                   >
                     Delete agent
                   </button>

@@ -19,16 +19,20 @@ interface Props {
   getToken?: (() => Promise<string | null>) | null
 }
 
-const ACTION_COLORS: Record<string, string> = {
-  "credential.upserted": "bg-blue-50 text-blue-700",
-  "credential.deleted":  "bg-red-50 text-red-700",
-  "workflow.created":    "bg-green-50 text-green-700",
-  "workflow.deleted":    "bg-red-50 text-red-700",
-  "run.triggered":       "bg-purple-50 text-purple-700",
-  "member.invited":      "bg-amber-50 text-amber-700",
-  "member.removed":      "bg-red-50 text-red-700",
-  "member.role_changed": "bg-orange-50 text-orange-700",
+type ActionStyle = { background: string; color: string }
+
+const ACTION_STYLES: Record<string, ActionStyle> = {
+  "credential.upserted": { background: "rgba(59,130,246,0.08)", color: "#1d4ed8" },
+  "credential.deleted":  { background: "rgba(239,68,68,0.08)",  color: "#b91c1c" },
+  "workflow.created":    { background: "rgba(34,197,94,0.08)",   color: "#15803d" },
+  "workflow.deleted":    { background: "rgba(239,68,68,0.08)",   color: "#b91c1c" },
+  "run.triggered":       { background: "rgba(168,85,247,0.08)",  color: "#7e22ce" },
+  "member.invited":      { background: "rgba(245,158,11,0.08)",  color: "#b45309" },
+  "member.removed":      { background: "rgba(239,68,68,0.08)",   color: "#b91c1c" },
+  "member.role_changed": { background: "rgba(249,115,22,0.08)",  color: "#c2410c" },
 }
+
+const ACTION_STYLE_DEFAULT: ActionStyle = { background: "var(--surface-3)", color: "var(--text-2)" }
 
 function fmt(ts: string | null) {
   if (!ts) return "—"
@@ -51,6 +55,7 @@ export default function AuditLog({ workspaceId, getToken }: Props) {
   const [actionFilter, setActionFilter] = useState("")
   const [page, setPage] = useState(0)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [hoveredId, setHoveredId] = useState<string | null>(null)
   const limit = 50
 
   async function load(offset = 0) {
@@ -102,14 +107,14 @@ export default function AuditLog({ workspaceId, getToken }: Props) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h3 className="text-sm font-semibold text-stone-800">Audit Log</h3>
-        <div className="flex items-center gap-2">
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <h3 style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Audit Log</h3>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <select
             value={actionFilter}
             onChange={e => { setActionFilter(e.target.value); setPage(0) }}
-            className="text-xs border border-stone-200 rounded-lg px-2 py-1.5 text-stone-600 bg-white"
+            style={{ fontSize: 12, border: "1px solid var(--border)", borderRadius: 8, padding: "5px 8px", color: "var(--text-2)", background: "var(--surface)", outline: "none" }}
           >
             <option value="">Action</option>
             <optgroup label="Credentials">
@@ -129,82 +134,111 @@ export default function AuditLog({ workspaceId, getToken }: Props) {
               <option value="member.role_changed">Role changed</option>
             </optgroup>
           </select>
-          <button
-            onClick={exportCsv}
-            className="text-xs text-stone-500 hover:text-stone-800 border border-stone-200 rounded-lg px-3 py-1.5 transition-colors"
-          >
+          <button onClick={exportCsv} className="btn btn-ghost btn-sm">
             Export
           </button>
         </div>
       </div>
 
-      {error && <p className="text-xs text-red-500">{error}</p>}
+      {error && <p style={{ fontSize: 12, color: "var(--err)" }}>{error}</p>}
 
       {loading ? (
-        <p className="text-xs text-stone-400 py-4 text-center">Loading…</p>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", padding: "16px 0", textAlign: "center" }}>Loading…</p>
       ) : entries.length === 0 ? (
-        <p className="text-xs text-stone-400 py-6 text-center">No audit events yet. Credential changes, agent runs, and member changes will appear here.</p>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", padding: "16px 0", textAlign: "center" }}>No audit events yet. Credential changes, agent runs, and member changes will appear here.</p>
       ) : (
-        <div className="divide-y divide-stone-100 border border-stone-200 rounded-xl overflow-hidden">
+        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
           {entries.map(e => {
             const isOpen = expandedId === e.id
+            const isHovered = hoveredId === e.id
             const meta = e.metadata ?? {}
             const metaEntries = Object.entries(meta)
+            const badgeStyle = ACTION_STYLES[e.action] ?? ACTION_STYLE_DEFAULT
             return (
               <div key={e.id}>
                 <button
                   onClick={() => setExpandedId(isOpen ? null : e.id)}
-                  className="w-full flex items-start gap-3 px-4 py-2.5 text-xs hover:bg-stone-50 text-left transition-colors"
+                  onMouseEnter={() => setHoveredId(e.id)}
+                  onMouseLeave={() => setHoveredId(null)}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 12,
+                    padding: "10px 16px",
+                    fontSize: 12,
+                    textAlign: "left",
+                    borderBottom: "1px solid var(--border)",
+                    background: isHovered ? "var(--surface-2)" : "none",
+                    border: "none",
+                    borderBottomWidth: 1,
+                    borderBottomStyle: "solid",
+                    borderBottomColor: "var(--border)",
+                    cursor: "pointer",
+                    transition: "background 0.15s",
+                  }}
                 >
-                  <span className="text-stone-400 whitespace-nowrap shrink-0 pt-0.5">{fmt(e.created_at)}</span>
-                  <span className={`shrink-0 px-1.5 py-0.5 rounded font-medium text-[10px] ${ACTION_COLORS[e.action] ?? "bg-stone-100 text-stone-600"}`}>
+                  <span style={{ color: "var(--text-muted)", whiteSpace: "nowrap", flexShrink: 0, paddingTop: 2 }}>
+                    {fmt(e.created_at)}
+                  </span>
+                  <span style={{
+                    flexShrink: 0,
+                    padding: "2px 6px",
+                    borderRadius: 4,
+                    fontWeight: 500,
+                    fontSize: 10,
+                    background: badgeStyle.background,
+                    color: badgeStyle.color,
+                  }}>
                     {actionLabel(e.action)}
                   </span>
-                  <span className="text-stone-600 truncate flex-1">
+                  <span style={{ color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
                     {e.actor_email ?? e.actor_id ?? "system"}
                     {meta.name != null ? (
-                      <span className="ml-1.5 font-medium text-stone-800">— {String(meta.name)}</span>
+                      <span style={{ marginLeft: 6, fontWeight: 500, color: "var(--text)" }}>— {String(meta.name)}</span>
                     ) : e.resource_id ? (
-                      <span className="ml-1.5 text-stone-400 font-mono">
+                      <span className="mono" style={{ marginLeft: 6, color: "var(--text-muted)" }}>
                         {e.resource_type} {e.resource_id.slice(0, 8)}
                       </span>
                     ) : null}
                   </span>
-                  <span className="ml-auto shrink-0 text-stone-300">{isOpen ? "▲" : "▼"}</span>
+                  <span style={{ marginLeft: "auto", flexShrink: 0, color: "var(--text-muted)" }}>
+                    {isOpen ? "▲" : "▼"}
+                  </span>
                 </button>
 
                 {isOpen && (
-                  <div className="px-4 pb-3 pt-1 bg-stone-50 border-t border-stone-100 text-xs space-y-2">
-                    <div className="grid grid-cols-[120px_1fr] gap-x-3 gap-y-1.5">
-                      <span className="text-stone-400 font-medium">Action</span>
-                      <span className="text-stone-700">{e.action}</span>
+                  <div style={{ padding: "4px 16px 12px", background: "var(--surface-2)", borderTop: "1px solid var(--border)", fontSize: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", columnGap: 12, rowGap: 6 }}>
+                      <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>Action</span>
+                      <span style={{ color: "var(--text-2)" }}>{e.action}</span>
 
                       {e.actor_email && <>
-                        <span className="text-stone-400 font-medium">Actor</span>
-                        <span className="text-stone-700">{e.actor_email}{e.actor_role ? ` (${e.actor_role})` : ""}</span>
+                        <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>Actor</span>
+                        <span style={{ color: "var(--text-2)" }}>{e.actor_email}{e.actor_role ? ` (${e.actor_role})` : ""}</span>
                       </>}
 
                       {e.resource_type && <>
-                        <span className="text-stone-400 font-medium">Resource</span>
-                        <span className="text-stone-700 font-mono">{e.resource_type}</span>
+                        <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>Resource</span>
+                        <span className="mono" style={{ color: "var(--text-2)" }}>{e.resource_type}</span>
                       </>}
 
                       {e.resource_id && <>
-                        <span className="text-stone-400 font-medium">Resource ID</span>
-                        <span className="text-stone-700 font-mono break-all">{e.resource_id}</span>
+                        <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>Resource ID</span>
+                        <span className="mono" style={{ color: "var(--text-2)", wordBreak: "break-all" }}>{e.resource_id}</span>
                       </>}
 
                       {e.created_at && <>
-                        <span className="text-stone-400 font-medium">Timestamp</span>
-                        <span className="text-stone-700">{new Date(e.created_at).toLocaleString()}</span>
+                        <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>Timestamp</span>
+                        <span style={{ color: "var(--text-2)" }}>{new Date(e.created_at).toLocaleString()}</span>
                       </>}
 
                       {metaEntries.length > 0 && <>
-                        <span className="text-stone-400 font-medium col-span-2 pt-1 border-t border-stone-200">Details</span>
+                        <span style={{ gridColumn: "1 / -1", paddingTop: 4, borderTop: "1px solid var(--border)", color: "var(--text-muted)", fontWeight: 500 }}>Details</span>
                         {metaEntries.map(([k, v]) => (
                           <>
-                            <span key={`k-${k}`} className="text-stone-400 pl-2">{k}</span>
-                            <span key={`v-${k}`} className="text-stone-700 font-mono break-all">{typeof v === "object" ? JSON.stringify(v) : String(v ?? "")}</span>
+                            <span key={`k-${k}`} style={{ color: "var(--text-muted)", paddingLeft: 8 }}>{k}</span>
+                            <span key={`v-${k}`} className="mono" style={{ color: "var(--text-2)", wordBreak: "break-all" }}>{typeof v === "object" ? JSON.stringify(v) : String(v ?? "")}</span>
                           </>
                         ))}
                       </>}
@@ -218,12 +252,12 @@ export default function AuditLog({ workspaceId, getToken }: Props) {
       )}
 
       {/* Pagination */}
-      <div className="flex items-center gap-3 justify-end text-xs text-stone-400">
+      <div style={{ display: "flex", alignItems: "center", gap: 12, justifyContent: "flex-end", fontSize: 12, color: "var(--text-muted)" }}>
         <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
-          className="disabled:opacity-40 hover:text-stone-700">← prev</button>
+          className="btn btn-ghost btn-sm">← prev</button>
         <span>page {page + 1}</span>
         <button onClick={() => setPage(p => p + 1)} disabled={entries.length < limit}
-          className="disabled:opacity-40 hover:text-stone-700">next →</button>
+          className="btn btn-ghost btn-sm">next →</button>
       </div>
     </div>
   )

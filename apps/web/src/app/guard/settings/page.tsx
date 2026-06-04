@@ -237,12 +237,30 @@ function SettingsContent() {
           Loading settings…
         </div>
       ) : error ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 mb-4">{error}</div>
+        <div style={{
+          borderRadius: 12,
+          border: "1px solid var(--err-bd)",
+          background: "var(--err-bg)",
+          padding: "12px 16px",
+          fontSize: 13,
+          color: "var(--err)",
+          marginBottom: 16,
+        }}>
+          {error}
+        </div>
       ) : (
         <>
           {/* View-only notice */}
           {!isAdmin && resolvedRole !== null && (
-            <div className="rounded-lg border border-stone-200 bg-stone-50 px-4 py-2.5 text-xs text-stone-500 mb-6">
+            <div style={{
+              borderRadius: 8,
+              border: "1px solid var(--border)",
+              background: "var(--surface-2)",
+              padding: "10px 16px",
+              fontSize: 12,
+              color: "var(--text-3)",
+              marginBottom: 24,
+            }}>
               View only — contact your admin to make changes.
             </div>
           )}

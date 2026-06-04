@@ -284,6 +284,42 @@ const EMPTY_FORM: AddRuleFormData = {
   message: "",
 }
 
+// Shared field styles
+const fieldStyle: React.CSSProperties = {
+  width: "100%",
+  borderRadius: 8,
+  border: "1px solid var(--border)",
+  padding: "6px 10px",
+  fontSize: 13,
+  color: "var(--text)",
+  background: "var(--surface)",
+  outline: "none",
+  boxSizing: "border-box",
+}
+
+const fieldErrStyle: React.CSSProperties = {
+  ...fieldStyle,
+  borderColor: "var(--err-bd)",
+}
+
+const fieldMonoStyle: React.CSSProperties = {
+  ...fieldStyle,
+  fontFamily: "var(--font-mono, monospace)",
+}
+
+const fieldMonoErrStyle: React.CSSProperties = {
+  ...fieldMonoStyle,
+  borderColor: "var(--err-bd)",
+}
+
+const labelStyle: React.CSSProperties = {
+  display: "block",
+  fontSize: 11.5,
+  fontWeight: 500,
+  color: "var(--text-2)",
+  marginBottom: 4,
+}
+
 function AddRuleModal({
   onClose,
   onSubmit,
@@ -317,43 +353,108 @@ function AddRuleModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-lg rounded-xl bg-white shadow-xl border border-stone-200">
-        <div className="px-6 py-4 border-b border-stone-100 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-stone-900">Add rule</h2>
-          <button type="button" onClick={onClose} className="text-stone-400 hover:text-stone-600 text-lg leading-none" aria-label="Close">✕</button>
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.3)",
+        backdropFilter: "blur(4px)",
+        zIndex: 50,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+      }}
+    >
+      <div
+        onClick={onClose}
+        style={{ position: "absolute", inset: 0 }}
+        aria-hidden="true"
+      />
+      <div
+        style={{
+          position: "relative",
+          zIndex: 10,
+          width: "100%",
+          maxWidth: 520,
+          borderRadius: 14,
+          background: "var(--surface)",
+          boxShadow: "var(--shadow-lg)",
+          border: "1px solid var(--border)",
+        }}
+      >
+        {/* Modal header */}
+        <div
+          style={{
+            padding: "16px 24px",
+            borderBottom: "1px solid var(--border)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "var(--text)" }}>Add rule</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontSize: 17,
+              lineHeight: 1,
+              color: "var(--text-muted)",
+              padding: 2,
+            }}
+          >
+            ✕
+          </button>
         </div>
-        <form onSubmit={handleSubmit} className="px-6 py-4 space-y-4">
+
+        {/* Modal form */}
+        <form onSubmit={handleSubmit} style={{ padding: "16px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+
+          {/* Rule ID */}
           <div>
-            <label className="block text-xs font-medium text-stone-700 mb-1">Rule ID <span className="text-red-500">*</span></label>
+            <label style={labelStyle}>
+              Rule ID <span style={{ color: "var(--err)" }}>*</span>
+            </label>
             <input
               type="text"
               value={form.rule_id}
               onChange={e => set("rule_id", e.target.value)}
               placeholder="no-rm-rf"
-              className={`w-full rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.rule_id ? "border-red-400" : "border-stone-200"}`}
+              style={errors.rule_id ? fieldErrStyle : fieldStyle}
             />
-            {errors.rule_id && <p className="mt-1 text-xs text-red-500">{errors.rule_id}</p>}
-            <p className="mt-1 text-xs text-stone-400">Slug format: lowercase letters, numbers, hyphens only.</p>
+            {errors.rule_id && (
+              <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "var(--err)" }}>{errors.rule_id}</p>
+            )}
+            <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "var(--text-muted)" }}>
+              Slug format: lowercase letters, numbers, hyphens only.
+            </p>
           </div>
+
+          {/* Description */}
           <div>
-            <label className="block text-xs font-medium text-stone-700 mb-1">Description</label>
+            <label style={labelStyle}>Description</label>
             <input
               type="text"
               value={form.description}
               onChange={e => set("description", e.target.value)}
               placeholder="Prevents recursive deletion of directories"
-              className="w-full rounded-md border border-stone-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              style={fieldStyle}
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+
+          {/* Match tool + Action */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
-              <label className="block text-xs font-medium text-stone-700 mb-1">Match tool</label>
+              <label style={labelStyle}>Match tool</label>
               <select
                 value={form.match_tool}
                 onChange={e => set("match_tool", e.target.value as MatchTool)}
-                className="w-full rounded-md border border-stone-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                style={fieldStyle}
               >
                 <option value="*">* (any)</option>
                 <option value="bash">bash</option>
@@ -363,11 +464,11 @@ function AddRuleModal({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-stone-700 mb-1">Action</label>
+              <label style={labelStyle}>Action</label>
               <select
                 value={form.action}
                 onChange={e => set("action", e.target.value as PolicyAction)}
-                className="w-full rounded-md border border-stone-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                style={fieldStyle}
               >
                 <option value="block">block</option>
                 <option value="warn">warn</option>
@@ -377,46 +478,65 @@ function AddRuleModal({
               </select>
             </div>
           </div>
+
+          {/* Match pattern */}
           <div>
-            <label className="block text-xs font-medium text-stone-700 mb-1">Match pattern (regex) <span className="text-red-500">*</span></label>
+            <label style={labelStyle}>
+              Match pattern (regex) <span style={{ color: "var(--err)" }}>*</span>
+            </label>
             <input
               type="text"
               value={form.match_pattern}
               onChange={e => set("match_pattern", e.target.value)}
               placeholder={String.raw`rm\s+-rf`}
-              className={`w-full rounded-md border px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.match_pattern ? "border-red-400" : "border-stone-200"}`}
+              style={errors.match_pattern ? fieldMonoErrStyle : fieldMonoStyle}
             />
-            {errors.match_pattern && <p className="mt-1 text-xs text-red-500">{errors.match_pattern}</p>}
+            {errors.match_pattern && (
+              <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "var(--err)" }}>{errors.match_pattern}</p>
+            )}
           </div>
+
+          {/* Match path pattern */}
           <div>
-            <label className="block text-xs font-medium text-stone-700 mb-1">Match path pattern (regex, optional)</label>
+            <label style={labelStyle}>Match path pattern (regex, optional)</label>
             <input
               type="text"
               value={form.match_path_pattern}
               onChange={e => set("match_path_pattern", e.target.value)}
               placeholder=".github/workflows/.*"
-              className="w-full rounded-md border border-stone-200 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              style={fieldMonoStyle}
             />
           </div>
+
+          {/* Message */}
           <div>
-            <label className="block text-xs font-medium text-stone-700 mb-1">Message</label>
+            <label style={labelStyle}>Message</label>
             <input
               type="text"
               value={form.message}
               onChange={e => set("message", e.target.value)}
               placeholder="This operation is not permitted by your team policy."
-              className="w-full rounded-md border border-stone-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              style={fieldStyle}
             />
-            <p className="mt-1 text-xs text-stone-400">Shown to the developer when the rule fires.</p>
+            <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "var(--text-muted)" }}>
+              Shown to the developer when the rule fires.
+            </p>
           </div>
-          <div className="flex items-center justify-end gap-3 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-1.5 rounded-md text-sm text-stone-600 hover:text-stone-900 hover:bg-stone-50 border border-stone-200 transition-colors">
+
+          {/* Footer actions */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, paddingTop: 4 }}>
+            <button
+              type="button"
+              onClick={onClose}
+              className="btn btn-ghost btn-sm"
+            >
               Cancel
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className="px-4 py-1.5 rounded-md text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="btn btn-primary btn-sm"
+              style={{ opacity: submitting ? 0.5 : 1, cursor: submitting ? "not-allowed" : "pointer" }}
             >
               {submitting ? "Adding…" : "Add rule"}
             </button>
@@ -591,7 +711,19 @@ function PoliciesContent() {
 
         {/* Error */}
         {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 mb-4">{error}</div>
+          <div
+            style={{
+              borderRadius: 10,
+              border: "1px solid var(--err-bd)",
+              background: "var(--err-bg)",
+              padding: "10px 16px",
+              fontSize: 13,
+              color: "var(--err)",
+              marginBottom: 16,
+            }}
+          >
+            {error}
+          </div>
         )}
 
         {/* Loading */}
@@ -622,82 +754,58 @@ function PoliciesContent() {
                   style={{
                     padding: "15px 18px",
                     display: "flex",
-                    alignItems: "center",
-                    gap: 16,
+                    flexDirection: "column",
+                    gap: 10,
                     opacity: p.enabled ? 1 : 0.62,
                   }}
                 >
-                  <ActionAvatar action={p.action} />
+                  <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                    <ActionAvatar action={p.action} />
 
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 3 }}>
-                      <span className="mono" style={{ fontWeight: 650, fontSize: 13.5 }}>{p.rule_id}</span>
-                      <ActionBadge action={p.action} />
-                    </div>
-                    <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>
-                      {p.description || p.message || "—"}
-                    </div>
-                  </div>
-
-                  {/* Match info */}
-                  <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 150 }}>
-                    <div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
-                      match <strong style={{ color: "var(--text-2)" }}>{p.match_tool}</strong>
-                    </div>
-                    <div
-                      className="mono"
-                      style={{ fontSize: 11.5, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
-                    >
-                      pattern <span style={{ color: "var(--err)" }}>{p.match_pattern}</span>
-                    </div>
-                  </div>
-
-                  {/* Hits + last triggered */}
-                  <div style={{ textAlign: "center", minWidth: 72 }}>
-                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                      {formatLastTriggered(p.last_triggered)}
-                    </div>
-                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 1 }}>last triggered</div>
-                  </div>
-
-                  {/* Delete (custom rules only) */}
-                  {!p.builtin && canWrite && (
-                    confirmDeleteId === p.id ? (
-                      <div style={{ minWidth: 220, display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
-                        <p style={{ margin: 0, fontSize: 11, color: "var(--err)" }}>
-                          Type <strong>{p.rule_id}</strong> to delete.
-                        </p>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <input
-                            value={confirmDeleteValue}
-                            onChange={e => setConfirmDeleteValue(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === "Enter") handleDelete(p.id)
-                              if (e.key === "Escape") { setConfirmDeleteId(null); setConfirmDeleteValue("") }
-                            }}
-                            placeholder={p.rule_id}
-                            style={{ flex: 1, minWidth: 0, fontSize: 11.5, border: "1px solid var(--err-bd, #fecaca)", borderRadius: 8, padding: "5px 8px", outline: "none" }}
-                          />
-                          <button
-                            onClick={() => handleDelete(p.id)}
-                            disabled={confirmDeleteValue !== p.rule_id}
-                            className="btn btn-sm"
-                            style={{ background: "var(--err)", color: "#fff", border: "none", opacity: confirmDeleteValue !== p.rule_id ? 0.4 : 1 }}
-                          >
-                            Delete
-                          </button>
-                          <button
-                            onClick={() => { setConfirmDeleteId(null); setConfirmDeleteValue("") }}
-                            className="btn btn-ghost btn-sm"
-                          >
-                            Cancel
-                          </button>
-                        </div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 3 }}>
+                        <span className="mono" style={{ fontWeight: 650, fontSize: 13.5 }}>{p.rule_id}</span>
+                        <ActionBadge action={p.action} />
                       </div>
-                    ) : (
+                      <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>
+                        {p.description || p.message || "—"}
+                      </div>
+                    </div>
+
+                    {/* Match info */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 150 }}>
+                      <div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
+                        match <strong style={{ color: "var(--text-2)" }}>{p.match_tool}</strong>
+                      </div>
+                      <div
+                        className="mono"
+                        style={{ fontSize: 11.5, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                      >
+                        pattern <span style={{ color: "var(--err)" }}>{p.match_pattern}</span>
+                      </div>
+                    </div>
+
+                    {/* Hits + last triggered */}
+                    <div style={{ textAlign: "center", minWidth: 72 }}>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                        {formatLastTriggered(p.last_triggered)}
+                      </div>
+                      <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 1 }}>last triggered</div>
+                    </div>
+
+                    {/* Delete trigger (custom rules only) */}
+                    {!p.builtin && canWrite && (
                       <button
                         type="button"
-                        onClick={() => { setConfirmDeleteId(p.id); setConfirmDeleteValue("") }}
+                        onClick={() => {
+                          if (confirmDeleteId === p.id) {
+                            setConfirmDeleteId(null)
+                            setConfirmDeleteValue("")
+                          } else {
+                            setConfirmDeleteId(p.id)
+                            setConfirmDeleteValue("")
+                          }
+                        }}
                         style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4, flexShrink: 0 }}
                         title="Delete rule"
                         aria-label={`Delete rule ${p.rule_id}`}
@@ -706,29 +814,63 @@ function PoliciesContent() {
                           <path fillRule="evenodd" d="M5 3.25V4H2.75a.75.75 0 0 0 0 1.5h.3l.815 8.15A1.5 1.5 0 0 0 5.357 15h5.285a1.5 1.5 0 0 0 1.493-1.35L12.95 5.5h.3a.75.75 0 0 0 0-1.5H11v-.75A2.25 2.25 0 0 0 8.75 1h-1.5A2.25 2.25 0 0 0 5 3.25Zm2.25-.75a.75.75 0 0 0-.75.75V4h3v-.75a.75.75 0 0 0-.75-.75h-1.5ZM6.05 6a.75.75 0 0 1 .787.713l.275 5.5a.75.75 0 0 1-1.498.075l-.275-5.5A.75.75 0 0 1 6.05 6Zm3.9 0a.75.75 0 0 1 .712.787l-.275 5.5a.75.75 0 0 1-1.498-.075l.275-5.5A.75.75 0 0 1 9.95 6Z" clipRule="evenodd" />
                         </svg>
                       </button>
-                    )
-                  )}
-                  {p.builtin && (
-                    <span style={{ color: "var(--border-2)", flexShrink: 0 }} title="Built-in rule — cannot be deleted">
-                      <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
-                        <path fillRule="evenodd" d="M8 1a3 3 0 0 0-3 3v1H4a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-1V4a3 3 0 0 0-3-3Zm0 1.5A1.5 1.5 0 0 1 9.5 4v1h-3V4A1.5 1.5 0 0 1 8 2.5Z" clipRule="evenodd" />
-                      </svg>
-                    </span>
-                  )}
+                    )}
+                    {p.builtin && (
+                      <span style={{ color: "var(--border-2)", flexShrink: 0 }} title="Built-in rule — cannot be deleted">
+                        <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+                          <path fillRule="evenodd" d="M8 1a3 3 0 0 0-3 3v1H4a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-1V4a3 3 0 0 0-3-3Zm0 1.5A1.5 1.5 0 0 1 9.5 4v1h-3V4A1.5 1.5 0 0 1 8 2.5Z" clipRule="evenodd" />
+                        </svg>
+                      </span>
+                    )}
 
-                  {/* Toggle */}
-                  {canWrite
-                    ? <Toggle enabled={p.enabled} onChange={() => handleToggle(p.id)} />
-                    : (
-                      <span
-                        style={{
-                          width: 40, height: 23, borderRadius: 20,
-                          background: p.enabled ? "var(--accent)" : "var(--border-2)",
-                          display: "inline-block", opacity: 0.5, flexShrink: 0,
-                        }}
-                      />
-                    )
-                  }
+                    {/* Toggle */}
+                    {canWrite
+                      ? <Toggle enabled={p.enabled} onChange={() => handleToggle(p.id)} />
+                      : (
+                        <span
+                          style={{
+                            width: 40, height: 23, borderRadius: 20,
+                            background: p.enabled ? "var(--accent)" : "var(--border-2)",
+                            display: "inline-block", opacity: 0.5, flexShrink: 0,
+                          }}
+                        />
+                      )
+                    }
+                  </div>
+
+                  {!p.builtin && canWrite && confirmDeleteId === p.id && (
+                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                      <p style={{ margin: 0, fontSize: 11, color: "var(--err)" }}>
+                        Type <strong>{p.rule_id}</strong> to delete.
+                      </p>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <input
+                          value={confirmDeleteValue}
+                          onChange={e => setConfirmDeleteValue(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Enter") handleDelete(p.id)
+                            if (e.key === "Escape") { setConfirmDeleteId(null); setConfirmDeleteValue("") }
+                          }}
+                          placeholder={p.rule_id}
+                          style={{ flex: 1, minWidth: 0, fontSize: 11.5, border: "1px solid var(--err-bd, #fecaca)", borderRadius: 8, padding: "5px 8px", outline: "none" }}
+                        />
+                        <button
+                          onClick={() => handleDelete(p.id)}
+                          disabled={confirmDeleteValue !== p.rule_id}
+                          className="btn btn-sm"
+                          style={{ background: "var(--err)", color: "#fff", border: "none", opacity: confirmDeleteValue !== p.rule_id ? 0.4 : 1 }}
+                        >
+                          Delete
+                        </button>
+                        <button
+                          onClick={() => { setConfirmDeleteId(null); setConfirmDeleteValue("") }}
+                          className="btn btn-ghost btn-sm"
+                        >
+                          Keep rule
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

@@ -175,61 +175,72 @@ export default function ApiKeysManager() {
           <div style={{ padding: "32px 20px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>No API keys yet.</div>
         ) : (
           keys.map((k, i) => (
-            <div key={k.id} style={{ display: "grid", gridTemplateColumns: "1.4fr 1.2fr 1fr 0.9fr 30px", gap: 14, padding: "14px 20px",
-              borderBottom: i < keys.length - 1 ? "1px solid var(--border)" : "none", alignItems: "center" }}>
-              <div style={{ fontWeight: 600, fontSize: 13.5 }}>{k.name}</div>
-              <div className="mono" style={{ fontSize: 12.5, color: "var(--text-3)" }}>{k.key_prefix}••••••••</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Created {fmt(k.created_at)}</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Used {fmt(k.last_used_at)}</div>
-              <div>
-                {isAdmin && (revokeConfirmId === k.id ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 220 }}>
-                    <p style={{ fontSize: 11.5, color: "var(--err)", margin: 0 }}>
-                      Type <strong>{k.name}</strong> to revoke this key.
-                    </p>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                      <input
-                        value={revokeConfirmValue}
-                        onChange={e => setRevokeConfirmValue(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === "Enter" && revokeConfirmValue === k.name) revoke(k.id)
-                          if (e.key === "Escape") { setRevokeConfirmId(null); setRevokeConfirmValue("") }
-                        }}
-                        placeholder={k.name}
-                        style={{
-                          flex: 1,
-                          minWidth: 0,
-                          fontSize: 12,
-                          border: "1px solid var(--err-bd, #fecaca)",
-                          borderRadius: 8,
-                          padding: "5px 8px",
-                          outline: "none",
-                        }}
-                      />
-                      <button
-                        onClick={() => revoke(k.id)}
-                        disabled={revoking === k.id || revokeConfirmValue !== k.name}
-                        className="btn btn-sm"
-                        style={{ background: "var(--err)", color: "#fff", border: "none", opacity: (revoking === k.id || revokeConfirmValue !== k.name) ? 0.4 : 1 }}
-                      >
-                        {revoking === k.id ? "Revoking…" : "Revoke"}
-                      </button>
-                      <button onClick={() => { setRevokeConfirmId(null); setRevokeConfirmValue("") }} className="btn btn-ghost btn-sm">
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    className="btn btn-ghost btn-sm btn-icon"
-                    style={{ color: "var(--err)" }}
-                    onClick={() => { setRevokeConfirmId(k.id); setRevokeConfirmValue("") }}
-                    disabled={revoking === k.id}
-                  >
-                    ×
-                  </button>
-                ))}
+            <div key={k.id} style={{ borderBottom: i < keys.length - 1 ? "1px solid var(--border)" : "none" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1.2fr 1fr 0.9fr 30px", gap: 14, padding: "14px 20px", alignItems: "center" }}>
+                <div style={{ fontWeight: 600, fontSize: 13.5 }}>{k.name}</div>
+                <div className="mono" style={{ fontSize: 12.5, color: "var(--text-3)" }}>{k.key_prefix}••••••••</div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Created {fmt(k.created_at)}</div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Used {fmt(k.last_used_at)}</div>
+                <div>
+                  {isAdmin && (
+                    <button
+                      className="btn btn-ghost btn-sm btn-icon"
+                      style={{ color: "var(--err)" }}
+                      onClick={() => {
+                        if (revokeConfirmId === k.id) {
+                          setRevokeConfirmId(null)
+                          setRevokeConfirmValue("")
+                        } else {
+                          setRevokeConfirmId(k.id)
+                          setRevokeConfirmValue("")
+                        }
+                      }}
+                      disabled={revoking === k.id}
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {isAdmin && revokeConfirmId === k.id && (
+                <div style={{ padding: "0 20px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
+                  <p style={{ fontSize: 11.5, color: "var(--err)", margin: 0 }}>
+                    Type <strong>{k.name}</strong> to revoke this key.
+                  </p>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <input
+                      value={revokeConfirmValue}
+                      onChange={e => setRevokeConfirmValue(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter" && revokeConfirmValue === k.name) revoke(k.id)
+                        if (e.key === "Escape") { setRevokeConfirmId(null); setRevokeConfirmValue("") }
+                      }}
+                      placeholder={k.name}
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        fontSize: 12,
+                        border: "1px solid var(--err-bd, #fecaca)",
+                        borderRadius: 8,
+                        padding: "5px 8px",
+                        outline: "none",
+                      }}
+                    />
+                    <button
+                      onClick={() => revoke(k.id)}
+                      disabled={revoking === k.id || revokeConfirmValue !== k.name}
+                      className="btn btn-sm"
+                      style={{ background: "var(--err)", color: "#fff", border: "none", opacity: (revoking === k.id || revokeConfirmValue !== k.name) ? 0.4 : 1 }}
+                    >
+                      {revoking === k.id ? "Revoking…" : "Revoke"}
+                    </button>
+                    <button onClick={() => { setRevokeConfirmId(null); setRevokeConfirmValue("") }} className="btn btn-ghost btn-sm">
+                      Keep key
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))
         )}

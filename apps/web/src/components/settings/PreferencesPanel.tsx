@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { usePreferences } from "@/lib/PreferencesContext"
 
 function ToggleRow({
@@ -14,51 +15,134 @@ function ToggleRow({
   onChange: (v: boolean) => void
 }) {
   return (
-    <div className="flex items-start justify-between gap-6 py-4 border-b border-stone-100 last:border-0">
-      <div className="flex-1">
-        <p className="text-sm font-medium text-stone-900">{label}</p>
-        <p className="text-xs text-stone-500 mt-0.5">{description}</p>
+    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 24, padding: "14px 0", borderBottom: "1px solid var(--border)" }}>
+      <div style={{ flex: 1 }}>
+        <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{label}</p>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{description}</p>
       </div>
       <button
         type="button"
         role="switch"
         aria-checked={checked}
         onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors mt-0.5 ${
-          checked ? "bg-indigo-500" : "bg-stone-200"
-        }`}
+        style={{ position: "relative", display: "inline-flex", width: 36, height: 20, flexShrink: 0, alignItems: "center", borderRadius: 10, border: "none", cursor: "pointer", marginTop: 2, background: checked ? "var(--accent)" : "var(--border-2, #d4d0cb)", transition: "background .15s" }}
       >
         <span
-          className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
-            checked ? "translate-x-4.5" : "translate-x-0.5"
-          }`}
+          style={{ display: "inline-block", width: 14, height: 14, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.2)", transition: "transform .15s", transform: checked ? "translateX(18px)" : "translateX(3px)" }}
         />
       </button>
     </div>
   )
 }
 
+function ThemePreview({ dark }: { dark: boolean }) {
+  const v = dark
+    ? { bg: "#0b0a09", side: "#141210", bd: "#2a2624", t: "#f5f3f0", t2: "#8c847d", card: "#1c1917", acc: "var(--accent)" }
+    : { bg: "#faf9f7", side: "#ffffff", bd: "#e7e5e4", t: "#1c1917", t2: "#a8a29e", card: "#ffffff", acc: "var(--accent)" }
+  return (
+    <div style={{ display: "flex", height: 96, borderRadius: 9, overflow: "hidden", border: "1px solid " + v.bd, background: v.bg }}>
+      <div style={{ width: 46, background: v.side, borderRight: "1px solid " + v.bd, padding: 8, display: "flex", flexDirection: "column", gap: 5 }}>
+        <div style={{ width: 16, height: 16, borderRadius: 5, background: v.acc }} />
+        <div style={{ height: 6, borderRadius: 3, background: v.acc, opacity: .9 }} />
+        <div style={{ height: 6, borderRadius: 3, background: v.t2, opacity: .4 }} />
+        <div style={{ height: 6, borderRadius: 3, background: v.t2, opacity: .4 }} />
+      </div>
+      <div style={{ flex: 1, padding: 10 }}>
+        <div style={{ height: 8, width: "55%", borderRadius: 3, background: v.t, marginBottom: 9 }} />
+        <div style={{ display: "flex", gap: 6 }}>
+          {[0, 1, 2].map(i => <div key={i} style={{ flex: 1, height: 30, borderRadius: 6, background: v.card, border: "1px solid " + v.bd }} />)}
+        </div>
+        <div style={{ height: 18, borderRadius: 5, background: v.card, border: "1px solid " + v.bd, marginTop: 8 }} />
+      </div>
+    </div>
+  )
+}
+
 export default function PreferencesPanel() {
   const { prefs, loading, update } = usePreferences()
+  const [look, setLookState] = useState("light")
+  const [accent, setAccentState] = useState("indigo")
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setLookState(localStorage.getItem("conduct-theme") ?? "light")
+      setAccentState(localStorage.getItem("conduct-accent") ?? "indigo")
+    }
+  }, [])
+
+  function setLook(k: string) {
+    setLookState(k)
+    if (typeof window !== "undefined") localStorage.setItem("conduct-theme", k)
+  }
+
+  function setAccent(k: string) {
+    setAccentState(k)
+    if (typeof window !== "undefined") localStorage.setItem("conduct-accent", k)
+  }
 
   if (loading) {
-    return <div className="text-sm text-stone-400 py-4">Loading preferences…</div>
+    return <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "16px 0" }}>Loading preferences…</div>
   }
 
   return (
-    <div className="bg-white rounded-xl border border-stone-200 divide-y divide-stone-100 px-5">
-      <ToggleRow
-        label="Show Test Trigger button"
-        description="Adds a 'Test Run' button to the canvas toolbar — fires a real run with a safe dummy payload."
-        checked={prefs.show_test_trigger}
-        onChange={v => update({ show_test_trigger: v })}
-      />
-      <ToggleRow
-        label="Show Dry Run button"
-        description="Adds a 'Dry Run' button to the canvas toolbar — simulates the workflow without calling any external APIs."
-        checked={prefs.show_dry_run}
-        onChange={v => update({ show_dry_run: v })}
-      />
+    <div style={{ maxWidth: 760 }}>
+      <div className="eyebrow" style={{ marginBottom: 12 }}>Theme</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 30 }}>
+        {[
+          { k: "light", title: "Light", sub: "The default developer-focused light theme." },
+          { k: "dark",  title: "Command Center", sub: "A bolder dark theme for dashboards and long sessions." },
+        ].map(o => {
+          const sel = look === o.k
+          return (
+            <div key={o.k} onClick={() => setLook(o.k)} className="card"
+              style={{ padding: 14, cursor: "pointer", borderColor: sel ? "var(--accent-ring)" : "var(--border)", boxShadow: sel ? "var(--shadow-md)" : "none" }}>
+              <ThemePreview dark={o.k === "dark"} />
+              <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 13 }}>
+                <span style={{ width: 17, height: 17, borderRadius: "50%", border: "2px solid " + (sel ? "var(--accent)" : "var(--border-2)"), display: "grid", placeItems: "center", flexShrink: 0 }}>
+                  {sel && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--accent)" }} />}
+                </span>
+                <div>
+                  <div style={{ fontWeight: 650, fontSize: 14 }}>{o.title}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-3)" }}>{o.sub}</div>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="eyebrow" style={{ marginBottom: 12 }}>Accent colour</div>
+      <div className="card" style={{ padding: "16px 18px", display: "flex", alignItems: "center", gap: 16, marginBottom: 30 }}>
+        <div style={{ display: "flex", gap: 11 }}>
+          {(Object.entries({ indigo: "#4f46e5", violet: "#7c3aed", emerald: "#059669", blue: "#2563eb", amber: "#d97706" }) as [string, string][]).map(([k, v]) => {
+            const sel = accent === k
+            return (
+              <button key={k} onClick={() => setAccent(k)} title={k}
+                style={{ width: 34, height: 34, borderRadius: 10, background: v, cursor: "pointer",
+                  border: sel ? "2.5px solid var(--text)" : "2.5px solid transparent",
+                  outline: sel ? "1px solid var(--border)" : "none",
+                  boxShadow: "inset 0 0 0 1.5px rgba(255,255,255,.35)" }} />
+            )
+          })}
+        </div>
+        <span style={{ fontSize: 12.5, color: "var(--text-muted)", textTransform: "capitalize" }}>Selected: {accent}</span>
+      </div>
+
+      <div className="eyebrow" style={{ marginBottom: 12 }}>Canvas options</div>
+      <div className="card" style={{ padding: "0 18px" }}>
+        <ToggleRow
+          label="Show Test Trigger button"
+          description="Adds a 'Test Run' button to the canvas toolbar — fires a real run with a safe dummy payload."
+          checked={prefs.show_test_trigger}
+          onChange={v => update({ show_test_trigger: v })}
+        />
+        <ToggleRow
+          label="Show Dry Run button"
+          description="Adds a 'Dry Run' button to the canvas toolbar — simulates the workflow without calling any external APIs."
+          checked={prefs.show_dry_run}
+          onChange={v => update({ show_dry_run: v })}
+        />
+      </div>
     </div>
   )
 }

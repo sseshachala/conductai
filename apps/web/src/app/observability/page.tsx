@@ -52,48 +52,6 @@ interface AgentStatus {
   last_run_status: string | null
 }
 
-const HEALTH_STYLES: Record<string, { label: string; dot: string; text: string; bg: string; border: string }> = {
-  healthy:  { label: "Healthy",  dot: "bg-green-400", text: "text-green-700", bg: "bg-green-50",  border: "border-green-200" },
-  degraded: { label: "Degraded", dot: "bg-amber-400", text: "text-amber-700", bg: "bg-amber-50",  border: "border-amber-200" },
-  stale:    { label: "Stale",    dot: "bg-red-400",   text: "text-red-700",   bg: "bg-red-50",    border: "border-red-200"   },
-  idle:     { label: "Idle",     dot: "bg-stone-300", text: "text-stone-500", bg: "bg-stone-100", border: "border-stone-200" },
-}
-
-const SEVERITY_STYLES: Record<string, string> = {
-  info:    "text-blue-700 bg-blue-50",
-  warning: "text-amber-700 bg-amber-50",
-  error:   "text-red-700 bg-red-50",
-}
-
-const EVENT_LABELS: Record<string, string> = {
-  stale_worker:      "Stale worker detected",
-  approval_timeout:  "Approval timeout",
-  repeated_failure:  "Repeated failures",
-  credential_expiry: "Credential expired (401)",
-  queue_backup:      "Queue backup",
-  silent_playbook:   "Silent playbook",
-}
-
-function HealthBadge({ health }: { health: string }) {
-  const s = HEALTH_STYLES[health] ?? HEALTH_STYLES.idle
-  return (
-    <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${s.bg} ${s.text} border ${s.border}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-      {s.label}
-    </span>
-  )
-}
-
-function StatCard({ label, value, sub, accent }: { label: string; value: number | string; sub?: string; accent?: string }) {
-  return (
-    <div className="bg-white rounded-xl border border-stone-200 px-5 py-4 flex flex-col gap-1">
-      <div className={`text-2xl font-bold ${accent ?? "text-stone-900"}`}>{value}</div>
-      <div className="text-xs font-medium text-stone-500 uppercase tracking-wide">{label}</div>
-      {sub && <div className="text-xs text-stone-400">{sub}</div>}
-    </div>
-  )
-}
-
 interface PlaybookStat {
   playbook_slug: string
   run_count: number
@@ -117,13 +75,34 @@ interface AnalyticsSummary {
   top_playbooks: PlaybookStat[]
 }
 
+const HEALTH_BADGE: Record<string, [string, string, string]> = {
+  healthy:  ["Healthy",  "var(--ok)",     "var(--ok-bg)"],
+  degraded: ["Degraded", "var(--warn)",   "var(--warn-bg)"],
+  stale:    ["Stale",    "var(--err)",    "var(--err-bg)"],
+  idle:     ["Idle",     "var(--text-3)", "var(--surface-3)"],
+}
+
+const EVENT_LABELS: Record<string, string> = {
+  stale_worker:      "Stale worker detected",
+  approval_timeout:  "Approval timeout",
+  repeated_failure:  "Repeated failures",
+  credential_expiry: "Credential expired (401)",
+  queue_backup:      "Queue backup",
+  silent_playbook:   "Silent playbook",
+}
+
+function fmt(n: number, decimals = 0): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
+  return n.toFixed(decimals)
+}
+
 export default function ObservabilityPage() {
   const { getToken } = useAuth()
   const [summary, setSummary] = useState<ObservabilitySummary | null>(null)
   const [agents, setAgents] = useState<AgentStatus[]>([])
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [live, setLive] = useState(false)
   const esRef = useRef<EventSource | null>(null)
 
@@ -172,21 +151,14 @@ export default function ObservabilityPage() {
     esRef.current = es
 
     es.onopen = () => setLive(true)
-    es.onerror = () => {
-      setLive(false)
-      // EventSource auto-reconnects; nothing extra needed
-    }
+    es.onerror = () => { setLive(false) }
     es.onmessage = (ev) => {
       try {
         const data = JSON.parse(ev.data)
-        if (data.kind === "stream_timeout") {
-          // Server closed — EventSource will reconnect
-          return
-        }
+        if (data.kind === "stream_timeout") return
         if (data.health) {
           setSummary(data as ObservabilitySummary)
           setLoading(false)
-          setError(null)
         }
       } catch {
         // malformed frame — ignore
@@ -212,237 +184,169 @@ export default function ObservabilityPage() {
 
   const h = summary?.health
 
+  const healthCards = [
+    { k: "Active runs",     v: h?.active_runs ?? 0,   tone: (h?.active_runs ?? 0) > 0 ? "var(--info)" : "var(--text)", sub: null },
+    { k: "Pending approval",v: h?.pending_approvals ?? 0, tone: (h?.pending_approvals ?? 0) > 0 ? "var(--warn)" : "var(--text)", sub: null },
+    { k: "Stale workers",   v: h?.stale_workers ?? 0, tone: (h?.stale_workers ?? 0) > 0 ? "var(--err)" : "var(--text)", sub: "Running >15 min without heartbeat" },
+    { k: "Error rate 24h",  v: h ? `${Math.round(h.error_rate_24h * 100)}%` : "—", tone: h && h.error_rate_24h > 0.2 ? "var(--err)" : h && h.error_rate_24h > 0.1 ? "var(--warn)" : "var(--text)", sub: h ? `${h.failed_last_24h} failed · ${h.total_last_24h} total` : null },
+  ]
+
   return (
     <AppShell>
-      <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
-        <div className="flex items-center justify-between">
+      <div style={{ maxWidth: 1180, margin: "0 auto", padding: "30px 34px 80px" }}>
+        {/* Header */}
+        <div className="page-head" style={{ display: "flex", alignItems: "flex-start" }}>
           <div>
-            <h1 className="text-xl font-semibold text-stone-900">Observability</h1>
-            <p className="text-sm text-stone-500 mt-1">
-              Live health of all agents and runs in this workspace.
-              {live && <span className="ml-2 text-green-600 text-xs">● live</span>}
-            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+              <h1 className="page-title">Observability</h1>
+              {live && (
+                <span className="sbadge ok" style={{ marginTop: 3, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <span className="dot pulse" style={{ background: "var(--ok)" }} />live
+                </span>
+              )}
+            </div>
+            <p className="page-sub">Live health of every agent and run in this workspace.</p>
           </div>
-          <div className="flex items-center gap-2">
-            <Link href="/observability/alerts" className="text-xs text-stone-500 hover:text-stone-700 border border-stone-200 rounded-lg px-3 py-1.5 hover:bg-stone-50 transition-colors">
-              Alert History
-            </Link>
-            <button
-              onClick={refresh}
-              className="text-xs text-stone-500 hover:text-stone-700 border border-stone-200 rounded-lg px-3 py-1.5 hover:bg-stone-50 transition-colors"
-            >
-              Refresh
-            </button>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 9 }}>
+            <Link href="/observability/alerts" className="btn btn-ghost" style={{ fontSize: 13 }}>Alert history</Link>
+            <button className="btn btn-ghost" onClick={refresh}>Refresh</button>
           </div>
         </div>
 
-        {error && (
-          <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>
-        )}
-
         {/* Health strip */}
-        {loading ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-pulse">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="bg-stone-100 rounded-xl h-24" />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 24 }}>
+          {healthCards.map((s) => (
+            <div key={s.k} className="card" style={{ padding: "16px 18px" }}>
+              <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-.02em", color: s.tone, lineHeight: 1.1 }}>{String(s.v)}</div>
+              <div className="eyebrow" style={{ marginTop: 8, fontSize: 9.5 }}>{s.k}</div>
+              {s.sub && <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 3 }}>{s.sub}</div>}
+            </div>
+          ))}
+        </div>
+
+        {/* Agent status */}
+        <div className="eyebrow" style={{ marginBottom: 11 }}>Agent status</div>
+        <div className="card" style={{ overflow: "hidden", marginBottom: 26 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1.8fr 1fr 0.7fr 0.9fr 1.1fr 1fr", gap: 14, padding: "10px 20px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+            {["Agent", "Status", "Active", "Approvals", "Success 24h", "Last run"].map((h, i) => (
+              <div key={i} className="eyebrow" style={{ fontSize: 10, textAlign: i >= 2 && i <= 4 ? "right" : "left" }}>{h}</div>
             ))}
           </div>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard
-              label="Active runs"
-              value={h?.active_runs ?? 0}
-              accent={h && h.active_runs > 0 ? "text-blue-700" : undefined}
-            />
-            <StatCard
-              label="Pending approval"
-              value={h?.pending_approvals ?? 0}
-              accent={h && h.pending_approvals > 0 ? "text-amber-600" : undefined}
-            />
-            <StatCard
-              label="Stale workers"
-              value={h?.stale_workers ?? 0}
-              sub="Running >15 min without heartbeat"
-              accent={h && h.stale_workers > 0 ? "text-red-600" : undefined}
-            />
-            <StatCard
-              label="Error rate (24h)"
-              value={h ? `${Math.round(h.error_rate_24h * 100)}%` : "—"}
-              sub={h ? `${h.failed_last_24h} failed / ${h.total_last_24h} total` : undefined}
-              accent={h && h.error_rate_24h > 0.2 ? "text-red-600" : h && h.error_rate_24h > 0.1 ? "text-amber-600" : undefined}
-            />
-          </div>
-        )}
-
-        {/* Agent status grid */}
-        <div>
-          <h2 className="text-sm font-semibold text-stone-700 mb-3">Agent Status</h2>
           {loading ? (
-            <div className="space-y-2 animate-pulse">
-              {[...Array(4)].map((_, i) => <div key={i} className="bg-stone-100 rounded-xl h-14" />)}
-            </div>
+            <div style={{ padding: "20px", color: "var(--text-muted)", fontSize: 13 }}>Loading…</div>
           ) : agents.length === 0 ? (
-            <div className="rounded-xl border border-stone-200 bg-white px-6 py-10 text-center text-sm text-stone-400">
+            <div style={{ padding: "32px 20px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
               No agents configured yet.{" "}
-              <Link href="/workflows" className="text-indigo-600 hover:underline">Create a workflow</Link> to get started.
+              <Link href="/workflows" style={{ color: "var(--accent)" }}>Create a workflow</Link> to get started.
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-stone-100 text-xs text-stone-400 uppercase tracking-wide">
-                    <th className="px-4 py-3 text-left font-medium">Agent</th>
-                    <th className="px-4 py-3 text-left font-medium">Status</th>
-                    <th className="px-4 py-3 text-right font-medium">Active</th>
-                    <th className="px-4 py-3 text-right font-medium">Approvals</th>
-                    <th className="px-4 py-3 text-right font-medium">Success 24h</th>
-                    <th className="px-4 py-3 text-left font-medium">Last run</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {agents.map((a) => (
-                    <tr
-                      key={a.workflow_id}
-                      className="border-b border-stone-100 last:border-0 hover:bg-stone-50 transition-colors cursor-pointer"
-                      onClick={() => window.location.href = `/workflows/${a.workflow_id}`}
-                    >
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-stone-900">{a.name}</div>
-                        {a.playbook_slug && (
-                          <div className="text-[11px] text-stone-400 mt-0.5">{a.playbook_slug}</div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <HealthBadge health={a.health} />
-                        {a.stale_runs > 0 && (
-                          <div className="text-[11px] text-red-500 mt-0.5">{a.stale_runs} stale</div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className={a.active_runs > 0 ? "text-blue-700 font-medium" : "text-stone-400"}>
-                          {a.active_runs}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className={a.pending_approvals > 0 ? "text-amber-600 font-medium" : "text-stone-400"}>
-                          {a.pending_approvals}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {a.succeeded_24h + a.failed_24h === 0 ? (
-                          <span className="text-stone-300">—</span>
-                        ) : (
-                          <span className={a.success_rate_24h >= 0.8 ? "text-green-700" : "text-red-600"}>
-                            {Math.round(a.success_rate_24h * 100)}%
-                            <span className="text-stone-400 font-normal"> ({a.succeeded_24h}/{a.succeeded_24h + a.failed_24h})</span>
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {a.last_run_at ? (
-                          <div>
-                            <span className="text-stone-600">{timeAgo(a.last_run_at)}</span>
-                            {a.last_run_status && (
-                              <span className={`ml-2 text-[11px] ${a.last_run_status === "succeeded" ? "text-green-600" : a.last_run_status === "failed" ? "text-red-500" : "text-stone-400"}`}>
-                                {a.last_run_status}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-stone-300">Never</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            agents.map((a) => {
+              const [lbl, c, bg] = HEALTH_BADGE[a.health] ?? ["Idle", "var(--text-3)", "var(--surface-3)"]
+              return (
+                <div
+                  key={a.workflow_id}
+                  onClick={() => window.location.href = `/workflows/${a.workflow_id}`}
+                  style={{ display: "grid", gridTemplateColumns: "1.8fr 1fr 0.7fr 0.9fr 1.1fr 1fr", gap: 14, padding: "12px 20px", borderBottom: "1px solid var(--border)", alignItems: "center", cursor: "pointer" }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
+                  onMouseLeave={e => (e.currentTarget.style.background = "")}
+                >
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13.5 }}>{a.name}</div>
+                    {a.playbook_slug && <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>{a.playbook_slug}</div>}
+                  </div>
+                  <div>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 22, padding: "0 9px", borderRadius: 20, fontSize: 11.5, fontWeight: 600, color: c, background: bg }}>
+                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: c }} />{lbl}
+                    </span>
+                    {a.stale_runs > 0 && <div style={{ fontSize: 10.5, color: "var(--err)", marginTop: 3 }}>{a.stale_runs} stale</div>}
+                  </div>
+                  <div className="mono" style={{ fontSize: 13, textAlign: "right", color: a.active_runs > 0 ? "var(--info)" : "var(--text-muted)", fontWeight: a.active_runs > 0 ? 700 : 400 }}>{a.active_runs}</div>
+                  <div className="mono" style={{ fontSize: 13, textAlign: "right", color: a.pending_approvals > 0 ? "var(--warn)" : "var(--text-muted)", fontWeight: a.pending_approvals > 0 ? 700 : 400 }}>{a.pending_approvals}</div>
+                  <div style={{ textAlign: "right" }}>
+                    {a.succeeded_24h + a.failed_24h === 0
+                      ? <span style={{ color: "var(--text-muted)" }}>—</span>
+                      : <span className="mono" style={{ fontSize: 12.5, color: a.success_rate_24h >= 0.8 ? "var(--ok)" : "var(--err)" }}>{Math.round(a.success_rate_24h * 100)}%</span>
+                    }
+                  </div>
+                  <div style={{ fontSize: 12 }}>
+                    {a.last_run_at
+                      ? <span style={{ color: "var(--text-3)" }}>{timeAgo(a.last_run_at)}{a.last_run_status && <span style={{ color: a.last_run_status === "succeeded" ? "var(--ok)" : a.last_run_status === "failed" ? "var(--err)" : "var(--info)", fontSize: 11 }}> · {a.last_run_status}</span>}</span>
+                      : <span style={{ color: "var(--text-muted)" }}>Never</span>
+                    }
+                  </div>
+                </div>
+              )
+            })
           )}
         </div>
 
-        {/* Cost summary — 30 day window */}
-        {analytics && (
-          <div>
-            <h2 className="text-sm font-semibold text-stone-700 mb-3">Cost Summary <span className="font-normal text-stone-400">(last 30 days)</span></h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-              <StatCard
-                label="Total cost"
-                value={`$${analytics.total_cost_usd.toFixed(4)}`}
-                accent="text-stone-900"
-              />
-              <StatCard
-                label="Total runs"
-                value={analytics.total_runs}
-                sub={`${analytics.succeeded} succeeded · ${analytics.failed} failed`}
-              />
-              <StatCard
-                label="Input tokens"
-                value={analytics.total_input_tokens.toLocaleString()}
-              />
-              <StatCard
-                label="Output tokens"
-                value={analytics.total_output_tokens.toLocaleString()}
-              />
+        {/* Cost summary */}
+        <div className="eyebrow" style={{ marginBottom: 11 }}>
+          Cost summary <span style={{ textTransform: "none", letterSpacing: 0, color: "var(--text-muted)", fontWeight: 500 }}>· last 30 days</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 14 }}>
+          {(analytics ? [
+            [`$${analytics.total_cost_usd.toFixed(4)}`, "Total cost", null],
+            [analytics.total_runs, "Total runs", `${analytics.succeeded} ok · ${analytics.failed} failed`],
+            [fmt(analytics.total_input_tokens), "Input tokens", null],
+            [fmt(analytics.total_output_tokens), "Output tokens", null],
+          ] as [string | number, string, string | null][] : [
+            ["—", "Total cost", null],
+            ["—", "Total runs", null],
+            ["—", "Input tokens", null],
+            ["—", "Output tokens", null],
+          ] as [string, string, null][]).map(([v, k, sub], i) => (
+            <div key={i} className="card" style={{ padding: "16px 18px" }}>
+              <div style={{ fontSize: 23, fontWeight: 700, letterSpacing: "-.02em" }}>{String(v)}</div>
+              <div className="eyebrow" style={{ marginTop: 7, fontSize: 9.5 }}>{k}</div>
+              {sub && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>{sub}</div>}
             </div>
-            {analytics.top_playbooks.length > 0 && (
-              <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-stone-100 text-xs text-stone-400 uppercase tracking-wide">
-                      <th className="px-4 py-3 text-left font-medium">Playbook</th>
-                      <th className="px-4 py-3 text-right font-medium">Runs</th>
-                      <th className="px-4 py-3 text-right font-medium">Success</th>
-                      <th className="px-4 py-3 text-right font-medium">Avg cost</th>
-                      <th className="px-4 py-3 text-right font-medium">Total cost</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {analytics.top_playbooks.map(p => (
-                      <tr key={p.playbook_slug} className="border-b border-stone-100 last:border-0">
-                        <td className="px-4 py-3 font-medium text-stone-800">{p.playbook_slug}</td>
-                        <td className="px-4 py-3 text-right text-stone-600">{p.run_count}</td>
-                        <td className="px-4 py-3 text-right">
-                          <span className={p.success_rate >= 0.8 ? "text-green-700" : "text-red-600"}>
-                            {Math.round(p.success_rate * 100)}%
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right text-stone-500 text-xs font-mono">
-                          {p.avg_cost_usd != null ? `$${p.avg_cost_usd.toFixed(4)}` : "—"}
-                        </td>
-                        <td className="px-4 py-3 text-right text-stone-700 text-xs font-mono font-medium">
-                          ${p.total_cost_usd.toFixed(4)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
+          ))}
+        </div>
 
-        {/* Watchdog events */}
-        {summary && summary.recent_events.length > 0 && (
-          <div>
-            <h2 className="text-sm font-semibold text-stone-700 mb-3">Recent Events</h2>
-            <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-              {summary.recent_events.map((ev) => (
-                <div key={ev.id} className="flex items-start gap-3 px-4 py-3 border-b border-stone-100 last:border-0">
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 mt-0.5 ${SEVERITY_STYLES[ev.severity] ?? "text-stone-500 bg-stone-100"}`}>
-                    {ev.severity}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm text-stone-800">{EVENT_LABELS[ev.event_type] ?? ev.event_type}</div>
-                    {ev.run_id && (
-                      <div className="text-[11px] text-stone-400 mt-0.5 font-mono truncate">run {ev.run_id}</div>
-                    )}
-                  </div>
-                  <div className="text-xs text-stone-400 shrink-0">{timeAgo(ev.created_at)}</div>
-                </div>
+        {/* By-playbook + events */}
+        <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 16 }}>
+          {/* By playbook */}
+          <div className="card" style={{ overflow: "hidden" }}>
+            <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--border)", fontWeight: 650, fontSize: 13.5 }}>By playbook</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1.6fr 0.6fr 0.7fr 0.9fr", gap: 12, padding: "9px 18px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+              {["Playbook", "Runs", "Success", "Total cost"].map((h, i) => (
+                <div key={i} className="eyebrow" style={{ fontSize: 9.5, textAlign: i > 0 ? "right" : "left" }}>{h}</div>
               ))}
             </div>
+            {(analytics?.top_playbooks ?? []).length === 0 ? (
+              <div style={{ padding: "20px 18px", fontSize: 12, color: "var(--text-muted)" }}>No playbook data yet.</div>
+            ) : (
+              (analytics?.top_playbooks ?? []).map(p => (
+                <div key={p.playbook_slug} style={{ display: "grid", gridTemplateColumns: "1.6fr 0.6fr 0.7fr 0.9fr", gap: 12, padding: "11px 18px", borderBottom: "1px solid var(--border)", alignItems: "center" }}>
+                  <div className="mono" style={{ fontSize: 12.5, fontWeight: 600 }}>{p.playbook_slug}</div>
+                  <div className="mono" style={{ fontSize: 12.5, color: "var(--text-3)", textAlign: "right" }}>{p.run_count}</div>
+                  <div className="mono" style={{ fontSize: 12.5, textAlign: "right", color: p.success_rate >= 0.8 ? "var(--ok)" : "var(--err)" }}>{Math.round(p.success_rate * 100)}%</div>
+                  <div className="mono" style={{ fontSize: 12.5, fontWeight: 700, textAlign: "right" }}>${p.total_cost_usd.toFixed(4)}</div>
+                </div>
+              ))
+            )}
           </div>
-        )}
+
+          {/* Recent events */}
+          <div className="card" style={{ overflow: "hidden" }}>
+            <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--border)", fontWeight: 650, fontSize: 13.5 }}>Recent events</div>
+            {(summary?.recent_events ?? []).length === 0 ? (
+              <div style={{ padding: "20px 18px", fontSize: 12, color: "var(--text-muted)" }}>No recent events.</div>
+            ) : (
+              (summary?.recent_events ?? []).map((ev, i, arr) => (
+                <div key={ev.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 18px", borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none" }}>
+                  <span className={`sbadge ${ev.severity === "error" ? "err" : ev.severity === "warning" ? "warn" : "run"}`} style={{ height: 18, fontSize: 9.5, textTransform: "capitalize", marginTop: 1 }}>{ev.severity}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>{EVENT_LABELS[ev.event_type] ?? ev.event_type}</div>
+                    {ev.run_id && <div className="mono" style={{ fontSize: 10.5, color: "var(--text-muted)" }}>run {ev.run_id}</div>}
+                  </div>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>{timeAgo(ev.created_at)}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       </div>
     </AppShell>
   )

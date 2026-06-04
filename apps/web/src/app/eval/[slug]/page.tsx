@@ -48,16 +48,27 @@ function getCookie(name: string): string | null {
   return m ? decodeURIComponent(m[1]) : null
 }
 
-const GRADE_STYLE: Record<string, { bg: string; text: string }> = {
-  A: { bg: "bg-emerald-50", text: "text-emerald-700" },
-  B: { bg: "bg-blue-50",    text: "text-blue-700"    },
-  C: { bg: "bg-amber-50",   text: "text-amber-700"   },
-  D: { bg: "bg-orange-50",  text: "text-orange-700"  },
-  F: { bg: "bg-red-50",     text: "text-red-700"     },
+const GRADE_BG: Record<string, string> = {
+  A: "var(--ok-bg)",
+  B: "#eff6ff",
+  C: "var(--warn-bg)",
+  D: "#fff7ed",
+  F: "var(--err-bg)",
 }
 
-function gradeStyle(grade: string) {
-  return GRADE_STYLE[grade] ?? { bg: "bg-stone-100", text: "text-stone-500" }
+const GRADE_C: Record<string, string> = {
+  A: "var(--ok)",
+  B: "#1d4ed8",
+  C: "var(--warn)",
+  D: "#c2410c",
+  F: "var(--err)",
+}
+
+function gradeColors(grade: string) {
+  return {
+    bg: GRADE_BG[grade] ?? "var(--surface-3)",
+    text: GRADE_C[grade] ?? "var(--text-3)",
+  }
 }
 
 // ─── Criterion row ────────────────────────────────────────────────────────────
@@ -66,35 +77,90 @@ function CriterionRow({ c }: { c: CriterionResult }) {
   const [open, setOpen] = useState(false)
 
   return (
-    <div className="border-b border-stone-100 last:border-0">
+    <div style={{ borderBottom: "1px solid var(--border)" }}>
       <button
-        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-stone-50 transition-colors text-left"
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          padding: "12px 16px",
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          textAlign: "left",
+          transition: "background 0.15s",
+        }}
+        onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
+        onMouseLeave={e => (e.currentTarget.style.background = "none")}
         onClick={() => setOpen(o => !o)}
       >
         {/* Pass/fail indicator */}
-        <span className={`flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
-          c.passed ? "bg-emerald-100 text-emerald-600" : "bg-red-100 text-red-500"
-        }`}>
+        <span
+          style={{
+            flexShrink: 0,
+            width: 20,
+            height: 20,
+            borderRadius: "50%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 10,
+            fontWeight: 700,
+            background: c.passed ? "var(--ok-bg)" : "var(--err-bg)",
+            color: c.passed ? "var(--ok)" : "var(--err)",
+          }}
+        >
           {c.passed ? "✓" : "✗"}
         </span>
 
         {/* Name */}
-        <span className="flex-1 font-mono text-xs text-stone-700">{c.name}</span>
+        <span className="mono" style={{ flex: 1, fontSize: 12, color: "var(--text-2)" }}>
+          {c.name}
+        </span>
 
         {/* Points */}
-        <span className={`text-xs tabular-nums font-medium ${c.passed ? "text-emerald-600" : "text-red-500"}`}>
+        <span
+          style={{
+            fontSize: 12,
+            fontVariantNumeric: "tabular-nums",
+            fontWeight: 500,
+            color: c.passed ? "var(--ok)" : "var(--err)",
+          }}
+        >
           {c.points_earned} / {c.points_possible}
         </span>
 
         {/* Expand chevron */}
         {c.detail && (
-          <span className={`text-stone-300 text-xs ml-1 transition-transform ${open ? "rotate-90" : ""}`}>›</span>
+          <span
+            style={{
+              color: "var(--text-muted)",
+              fontSize: 12,
+              marginLeft: 4,
+              display: "inline-block",
+              transition: "transform 0.15s",
+              transform: open ? "rotate(90deg)" : "none",
+            }}
+          >
+            ›
+          </span>
         )}
       </button>
 
       {open && c.detail && (
-        <div className="px-4 pb-3 ml-8">
-          <p className="text-xs text-stone-500 leading-relaxed whitespace-pre-wrap">{c.detail}</p>
+        <div style={{ padding: "0 16px 12px", marginLeft: 32 }}>
+          <p
+            style={{
+              fontSize: 12,
+              color: "var(--text-3)",
+              lineHeight: 1.6,
+              whiteSpace: "pre-wrap",
+              margin: 0,
+            }}
+          >
+            {c.detail}
+          </p>
         </div>
       )}
     </div>
@@ -104,50 +170,124 @@ function CriterionRow({ c }: { c: CriterionResult }) {
 // ─── Score summary strip ──────────────────────────────────────────────────────
 
 function ScoreSummary({ detail }: { detail: PlaybookEvalDetail }) {
-  const s = gradeStyle(detail.grade)
+  const g = gradeColors(detail.grade)
 
   return (
-    <div className="rounded-xl border border-stone-200 bg-white px-6 py-5 flex items-center gap-6">
+    <div
+      className="card"
+      style={{ padding: "20px 24px", display: "flex", alignItems: "center", gap: 24 }}
+    >
       {/* Big grade */}
-      <div className={`flex-shrink-0 flex items-center justify-center w-16 h-16 rounded-xl text-3xl font-black ${s.bg} ${s.text}`}>
+      <div
+        style={{
+          flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: 64,
+          height: 64,
+          borderRadius: 12,
+          fontSize: 30,
+          fontWeight: 900,
+          background: g.bg,
+          color: g.text,
+        }}
+      >
         {detail.grade}
       </div>
 
       {/* Score breakdown */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-baseline gap-2 mb-1">
-          <span className="text-2xl font-bold text-stone-900">{detail.pct.toFixed(0)}%</span>
-          <span className="text-sm text-stone-400">
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
+          <span style={{ fontSize: 24, fontWeight: 700, color: "var(--text)" }}>
+            {detail.pct.toFixed(0)}%
+          </span>
+          <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
             {detail.total_score} / {detail.total_max} pts
           </span>
         </div>
 
         {/* Mini bars */}
-        <div className="flex items-center gap-4 mt-2">
-          <ScorePill label="Structural" score={detail.structural_score} max={detail.structural_max} colour="bg-blue-400" />
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 8 }}>
+          <ScorePill
+            label="Structural"
+            score={detail.structural_score}
+            max={detail.structural_max}
+            colour="#60a5fa"
+          />
           {detail.quality_max > 0 && (
-            <ScorePill label="Quality" score={detail.quality_score} max={detail.quality_max} colour="bg-violet-400" />
+            <ScorePill
+              label="Quality"
+              score={detail.quality_score}
+              max={detail.quality_max}
+              colour="#a78bfa"
+            />
           )}
         </div>
       </div>
 
       {/* Slug */}
-      <span className="flex-shrink-0 font-mono text-sm text-stone-400 bg-stone-50 border border-stone-100 rounded-lg px-3 py-1.5">
+      <span
+        className="mono"
+        style={{
+          flexShrink: 0,
+          fontSize: 13,
+          color: "var(--text-muted)",
+          background: "var(--surface-2)",
+          border: "1px solid var(--border)",
+          borderRadius: 8,
+          padding: "6px 12px",
+        }}
+      >
         {detail.slug}
       </span>
     </div>
   )
 }
 
-function ScorePill({ label, score, max, colour }: { label: string; score: number; max: number; colour: string }) {
+function ScorePill({
+  label,
+  score,
+  max,
+  colour,
+}: {
+  label: string
+  score: number
+  max: number
+  colour: string
+}) {
   const pct = max > 0 ? (score / max) * 100 : 0
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-[10px] font-medium text-stone-400 uppercase tracking-wide">{label}</span>
-      <div className="w-20 h-1.5 rounded-full bg-stone-100 overflow-hidden">
-        <div className={`h-full rounded-full ${colour} transition-all`} style={{ width: `${pct}%` }} />
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <span className="eyebrow" style={{ fontSize: 10 }}>{label}</span>
+      <div
+        style={{
+          width: 80,
+          height: 6,
+          borderRadius: 999,
+          background: "var(--surface-3)",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            height: "100%",
+            borderRadius: 999,
+            background: colour,
+            width: `${pct}%`,
+            transition: "width 0.3s",
+          }}
+        />
       </div>
-      <span className="text-xs tabular-nums text-stone-500">{score}/{max}</span>
+      <span
+        style={{
+          fontSize: 12,
+          fontVariantNumeric: "tabular-nums",
+          color: "var(--text-3)",
+        }}
+      >
+        {score}/{max}
+      </span>
     </div>
   )
 }
@@ -166,14 +306,38 @@ function CollapsibleJson({
   return (
     <div>
       <button
-        className="text-xs text-stone-400 hover:text-stone-600 transition-colors"
+        style={{
+          fontSize: 12,
+          color: open ? "var(--text-3)" : "var(--text-muted)",
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          padding: 0,
+          transition: "color 0.15s",
+        }}
+        onMouseEnter={e => (e.currentTarget.style.color = "var(--text-3)")}
+        onMouseLeave={e => (e.currentTarget.style.color = open ? "var(--text-3)" : "var(--text-muted)")}
         onClick={() => setOpen(o => !o)}
         type="button"
       >
         {open ? `Hide ${label}` : `Show ${label}`}
       </button>
       {open && (
-        <pre className="mt-2 text-[11px] font-mono text-stone-600 bg-stone-50 rounded-lg p-3 overflow-x-auto max-h-64 overflow-y-auto whitespace-pre">
+        <pre
+          className="mono"
+          style={{
+            marginTop: 8,
+            fontSize: 11,
+            color: "var(--text-2)",
+            background: "var(--surface-2)",
+            borderRadius: 8,
+            padding: 12,
+            overflowX: "auto",
+            maxHeight: 256,
+            overflowY: "auto",
+            whiteSpace: "pre",
+          }}
+        >
           {JSON.stringify(data, null, 2)}
         </pre>
       )}
@@ -188,68 +352,97 @@ function FixtureSection({ fixture }: { fixture: EvalFixture }) {
 
   return (
     <div>
-      <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-widest mb-3">
+      <p className="eyebrow" style={{ marginBottom: 12 }}>
         Fixture
       </p>
 
-      <div className="rounded-xl border border-stone-200 bg-white px-5 py-4 space-y-4">
-        {/* Source + outcome type row */}
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Source badge */}
-          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide ${
-            isFile
-              ? "bg-blue-50 text-blue-600"
-              : "bg-stone-100 text-stone-500"
-          }`}>
-            {fixture.source}
-          </span>
+      <div className="card" style={{ padding: "16px 20px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Source + outcome type row */}
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
+            {/* Source badge */}
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                borderRadius: 999,
+                padding: "2px 8px",
+                fontSize: 10,
+                fontWeight: 600,
+                letterSpacing: "0.04em",
+                background: isFile ? "#eff6ff" : "var(--surface-3)",
+                color: isFile ? "#2563eb" : "var(--text-3)",
+              }}
+            >
+              {fixture.source}
+            </span>
 
-          {/* Expected outcome type */}
-          <span className="font-mono text-xs text-stone-600 bg-stone-50 border border-stone-100 rounded px-2 py-0.5">
-            {fixture.expected_outcome_type}
-          </span>
-        </div>
+            {/* Expected outcome type */}
+            <span
+              className="mono"
+              style={{
+                fontSize: 12,
+                color: "var(--text-2)",
+                background: "var(--surface-2)",
+                border: "1px solid var(--border)",
+                borderRadius: 4,
+                padding: "2px 8px",
+              }}
+            >
+              {fixture.expected_outcome_type}
+            </span>
+          </div>
 
-        {/* Artifact keys */}
-        <div>
-          <p className="text-[10px] font-medium text-stone-400 uppercase tracking-wide mb-1.5">
-            Expected artifact keys
-          </p>
-          {fixture.expected_artifact_keys.length === 0 ? (
-            <span className="font-mono text-xs text-stone-400">none</span>
-          ) : (
-            <div className="flex flex-wrap gap-1.5">
-              {fixture.expected_artifact_keys.map(key => (
-                <span
-                  key={key}
-                  className="font-mono text-xs text-stone-600 bg-stone-100 rounded px-2 py-0.5"
-                >
-                  {key}
-                </span>
-              ))}
+          {/* Artifact keys */}
+          <div>
+            <p className="eyebrow" style={{ fontSize: 10, marginBottom: 6 }}>
+              Expected artifact keys
+            </p>
+            {fixture.expected_artifact_keys.length === 0 ? (
+              <span className="mono" style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                none
+              </span>
+            ) : (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {fixture.expected_artifact_keys.map(key => (
+                  <span
+                    key={key}
+                    className="mono"
+                    style={{
+                      fontSize: 12,
+                      color: "var(--text-2)",
+                      background: "var(--surface-3)",
+                      borderRadius: 4,
+                      padding: "2px 8px",
+                    }}
+                  >
+                    {key}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Trigger payload */}
+          {fixture.trigger_payload && Object.keys(fixture.trigger_payload).length > 0 && (
+            <div>
+              <p className="eyebrow" style={{ fontSize: 10, marginBottom: 6 }}>
+                Trigger payload
+              </p>
+              <CollapsibleJson label="payload" data={fixture.trigger_payload} />
+            </div>
+          )}
+
+          {/* Initial state */}
+          {fixture.initial_state && Object.keys(fixture.initial_state).length > 0 && (
+            <div>
+              <p className="eyebrow" style={{ fontSize: 10, marginBottom: 6 }}>
+                Initial state
+              </p>
+              <CollapsibleJson label="initial state" data={fixture.initial_state} />
             </div>
           )}
         </div>
-
-        {/* Trigger payload */}
-        {fixture.trigger_payload && Object.keys(fixture.trigger_payload).length > 0 && (
-          <div>
-            <p className="text-[10px] font-medium text-stone-400 uppercase tracking-wide mb-1.5">
-              Trigger payload
-            </p>
-            <CollapsibleJson label="payload" data={fixture.trigger_payload} />
-          </div>
-        )}
-
-        {/* Initial state */}
-        {fixture.initial_state && Object.keys(fixture.initial_state).length > 0 && (
-          <div>
-            <p className="text-[10px] font-medium text-stone-400 uppercase tracking-wide mb-1.5">
-              Initial state
-            </p>
-            <CollapsibleJson label="initial state" data={fixture.initial_state} />
-          </div>
-        )}
       </div>
     </div>
   )
@@ -316,52 +509,104 @@ function EvalDetailContent({
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-3xl px-6 py-10">
+      <div style={{ maxWidth: 768, margin: "0 auto", padding: "40px 24px" }}>
 
         {/* Header row */}
-        <div className="flex items-center justify-between mb-6">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
           <Link
             href="/eval"
-            className="inline-flex items-center gap-1.5 text-xs text-stone-400 hover:text-stone-600 transition-colors"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              color: "var(--text-muted)",
+              textDecoration: "none",
+              transition: "color 0.15s",
+            }}
+            onMouseEnter={e => (e.currentTarget.style.color = "var(--text-3)")}
+            onMouseLeave={e => (e.currentTarget.style.color = "var(--text-muted)")}
           >
             ← Quality
           </Link>
         </div>
 
         {loading ? (
-          <div className="space-y-4">
-            <div className="h-24 rounded-xl bg-stone-100 animate-pulse" />
-            <div className="h-64 rounded-xl bg-stone-100 animate-pulse" />
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div
+              style={{
+                height: 96,
+                borderRadius: 12,
+                background: "var(--surface-3)",
+                animation: "pulse 1.5s ease-in-out infinite",
+              }}
+            />
+            <div
+              style={{
+                height: 256,
+                borderRadius: 12,
+                background: "var(--surface-3)",
+                animation: "pulse 1.5s ease-in-out infinite",
+              }}
+            />
           </div>
         ) : error ? (
-          <div className="rounded-xl border border-red-100 bg-red-50 px-5 py-4">
-            <p className="text-sm text-red-600">{error}</p>
+          <div
+            style={{
+              borderRadius: 12,
+              border: "1px solid var(--err-bg)",
+              background: "var(--err-bg)",
+              padding: "16px 20px",
+            }}
+          >
+            <p style={{ fontSize: 13, color: "var(--err)", margin: 0 }}>{error}</p>
           </div>
         ) : detail ? (
-          <div className="space-y-6">
+          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
 
             {/* Score summary */}
             <ScoreSummary detail={detail} />
 
             {/* Criteria list */}
             <div>
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-widest">
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 12,
+                }}
+              >
+                <p className="eyebrow" style={{ margin: 0 }}>
                   Criteria
                 </p>
-                <div className="flex items-center gap-3">
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   {passing > 0 && (
-                    <span className="text-xs text-emerald-600 font-medium">{passing} passing</span>
+                    <span style={{ fontSize: 12, color: "var(--ok)", fontWeight: 500 }}>
+                      {passing} passing
+                    </span>
                   )}
                   {failing > 0 && (
-                    <span className="text-xs text-red-500 font-medium">{failing} failing</span>
+                    <span style={{ fontSize: 12, color: "var(--err)", fontWeight: 500 }}>
+                      {failing} failing
+                    </span>
                   )}
                 </div>
               </div>
 
-              <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
+              <div
+                className="card"
+                style={{ overflow: "hidden", padding: 0 }}
+              >
                 {detail.criteria.length === 0 ? (
-                  <div className="px-6 py-8 text-center text-sm text-stone-400">
+                  <div
+                    style={{
+                      padding: "32px 24px",
+                      textAlign: "center",
+                      fontSize: 13,
+                      color: "var(--text-muted)",
+                    }}
+                  >
                     No criteria scored for this playbook.
                   </div>
                 ) : (

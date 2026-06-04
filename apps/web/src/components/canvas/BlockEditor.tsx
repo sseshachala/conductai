@@ -30,6 +30,7 @@ interface BlockEditorProps {
   playbookSlug?: string | null
   projectSlug?: string | null
   onWebhookChange?: (hookId: string | null, hookRepo: string | null) => void
+  onClose?: () => void
 }
 
 // ── Client-side model router preview (mirrors model_router.py) ────────────────
@@ -1091,6 +1092,7 @@ export default function BlockEditor({
   playbookSlug,
   projectSlug,
   onWebhookChange,
+  onClose,
 }: BlockEditorProps) {
   const [promptOpen, setPromptOpen] = useState(false)
   const [streamedPrompt, setStreamedPrompt] = useState<string>("")
@@ -1291,32 +1293,41 @@ export default function BlockEditor({
   const section = "px-4 py-3 space-y-3 border-b border-stone-100"
   const sectionLabel = "text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-2 block"
   const inputBase = "w-full border border-stone-200 rounded-lg px-2.5 py-1.5 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-200 bg-white"
-  const modePillBase = "text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
-  const basicModePill = `${modePillBase} bg-stone-100 text-stone-500`
-  const advancedModePill = `${modePillBase} bg-violet-100 text-violet-600`
 
   return (
     <div className="bg-white flex flex-col h-full overflow-y-auto">
 
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-stone-100 shrink-0">
+      <div style={{ padding: "15px 18px", borderBottom: "1px solid var(--border)" }} className="shrink-0">
+        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+          <span className={`chip bk-${blockType}`} style={{ height: 22, fontSize: 9.5, fontWeight: 800, letterSpacing: ".07em" }}>
+            {style.labelText}
+          </span>
+          <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: "auto" }}>#{blockId.slice(0, 8)}</span>
+          {onClose && (
+            <button className="btn btn-ghost btn-icon btn-sm" onClick={onClose}>×</button>
+          )}
+        </div>
         <input
           value={label}
           onChange={e => onChange(blockId, { ...blockData, label: e.target.value })}
           disabled={isViewer}
-          className="flex-1 text-sm font-semibold text-stone-900 bg-transparent border-0 outline-none focus:bg-stone-50 rounded px-1 -mx-1 min-w-0"
           placeholder="Block name"
+          style={{ marginTop: 11, width: "100%", border: "none", background: "transparent", color: "var(--text)", fontSize: 16.5, fontWeight: 650, letterSpacing: "-.01em", outline: "none", padding: 0 }}
         />
+      </div>
+
+      {/* Basic section header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 18px 0" }}>
+        <span className="eyebrow" style={{ fontSize: 10 }}>Basic</span>
+        <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
       </div>
 
       {/* ── Brain blocks ── */}
       {blockType === "brain" && (
         <>
           <div className={section}>
-            <div className="flex items-center justify-between">
-              <span className={sectionLabel}>What should this step do?</span>
-              <span className={basicModePill}>Basic</span>
-            </div>
+            <span className={sectionLabel}>What should this step do?</span>
             <textarea
               value={(blockData.custom_instructions as string) || ""}
               onChange={e => onChange(blockId, { ...blockData, custom_instructions: e.target.value })}
@@ -1329,52 +1340,6 @@ export default function BlockEditor({
               Use <code className="bg-stone-100 px-1 rounded">{"{{block_id.field}}"}</code> to reference outputs from earlier steps.
             </p>
           </div>
-
-          <button
-            type="button"
-            className="w-full flex items-center gap-2 bg-transparent border-none py-2 px-4 cursor-pointer text-stone-500 hover:text-stone-700 transition-colors mt-4"
-            onClick={() => setShowAdvanced(v => !v)}
-            disabled={isViewer}
-          >
-            <span className="text-stone-400" style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.14s", display: "inline-block" }}>›</span>
-            <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Advanced</span>
-            <span className="text-[11px] text-stone-400 font-normal">5 settings</span>
-            <div className="flex-1 h-px bg-stone-200 ml-1" />
-          </button>
-          {!showAdvanced && <p className="text-[11.5px] text-stone-400 pl-5 mt-1 mb-2">Power-user options — sensible defaults applied.</p>}
-
-          {showAdvanced && (
-            <>
-              <div className={section}>
-                <div className="flex items-center justify-between">
-                  <span className={sectionLabel}>System prompt</span>
-                  <span className={advancedModePill}>Advanced</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded mb-2">read-only</span>
-                </div>
-                <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 text-xs text-stone-600 leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto">
-                  <SystemPromptWithChips text={description} />
-                </div>
-              </div>
-
-              <div className={section}>
-                <span className={sectionLabel}>Prompt file</span>
-                <input
-                  type="text"
-                  value={((blockData.config as Record<string, unknown>)?.prompt_file as string) || ""}
-                  onChange={e => onChange(blockId, { ...blockData, config: { ...(blockData.config as object || {}), prompt_file: e.target.value } })}
-                  placeholder="prompts/fetch_issue.txt"
-                  className={inputBase}
-                  disabled={isViewer}
-                />
-                <p className="text-[10px] text-stone-400 mt-1">
-                  Path relative to repo root. Overrides system prompt when set.
-                </p>
-              </div>
-            </>
-          )}
-
 
           <div className={section}>
             <span className={sectionLabel}>Mode</span>
@@ -1402,10 +1367,7 @@ export default function BlockEditor({
           </div>
 
           <div className={section}>
-            <div className="flex items-center justify-between">
-              <span className={sectionLabel}>Model routing</span>
-              <span className={basicModePill}>Basic</span>
-            </div>
+            <span className={sectionLabel}>Model routing</span>
             <select
               value={(blockData.routingPreference as string) || "balanced"}
               onChange={e => onChange(blockId, { ...blockData, routingPreference: e.target.value })}
@@ -1451,26 +1413,64 @@ export default function BlockEditor({
             })()}
           </div>
 
+          <button
+            type="button"
+            style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", padding: "8px 18px", cursor: "pointer" }}
+            onClick={() => setShowAdvanced(v => !v)}
+            disabled={isViewer}
+          >
+            <span style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.14s", display: "inline-block", fontSize: 12, color: "var(--text-3)" }}>›</span>
+            <span className="eyebrow" style={{ fontSize: 10 }}>Advanced</span>
+            <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>5 settings</span>
+            <div style={{ flex: 1, height: 1, background: "var(--border)", marginLeft: 2 }} />
+          </button>
+
           {showAdvanced && (
-            <div className={section}>
-              <div className="flex items-center justify-between">
-                <span className={sectionLabel}>Provider override</span>
-                <span className={advancedModePill}>Advanced</span>
+            <>
+              <div className={section}>
+                <div className="flex items-center justify-between">
+                  <span className={sectionLabel}>System prompt</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded mb-2">read-only</span>
+                </div>
+                <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 text-xs text-stone-600 leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto">
+                  <SystemPromptWithChips text={description} />
+                </div>
               </div>
-              <select
-                value={(blockData.provider as string) || "auto"}
-                onChange={e => onChange(blockId, { ...blockData, provider: e.target.value === "auto" ? "" : e.target.value })}
-                className={cn(inputBase)}
-                disabled={isViewer}
-              >
-                <option value="auto">Auto — let Conduct choose</option>
-                <option value="anthropic">Anthropic</option>
-                <option value="openai">OpenAI</option>
-              </select>
-              <p className="text-[10px] text-stone-500 mt-1">
-                Use auto for policy-based routing, or pin a provider while still letting Conduct choose the safest model within it.
-              </p>
-            </div>
+
+              <div className={section}>
+                <span className={sectionLabel}>Prompt file</span>
+                <input
+                  type="text"
+                  value={((blockData.config as Record<string, unknown>)?.prompt_file as string) || ""}
+                  onChange={e => onChange(blockId, { ...blockData, config: { ...(blockData.config as object || {}), prompt_file: e.target.value } })}
+                  placeholder="prompts/fetch_issue.txt"
+                  className={inputBase}
+                  disabled={isViewer}
+                />
+                <p className="text-[10px] text-stone-400 mt-1">
+                  Path relative to repo root. Overrides system prompt when set.
+                </p>
+              </div>
+
+              <div className={section}>
+                <span className={sectionLabel}>Provider override</span>
+                <select
+                  value={(blockData.provider as string) || "auto"}
+                  onChange={e => onChange(blockId, { ...blockData, provider: e.target.value === "auto" ? "" : e.target.value })}
+                  className={cn(inputBase)}
+                  disabled={isViewer}
+                >
+                  <option value="auto">Auto — let Conduct choose</option>
+                  <option value="anthropic">Anthropic</option>
+                  <option value="openai">OpenAI</option>
+                </select>
+                <p className="text-[10px] text-stone-500 mt-1">
+                  Use auto for policy-based routing, or pin a provider while still letting Conduct choose the safest model within it.
+                </p>
+              </div>
+            </>
           )}
         </>
       )}
@@ -1478,10 +1478,7 @@ export default function BlockEditor({
       {/* ── Tool blocks: integration + action + params ── */}
       {isToolLike && (
         <div className={section}>
-          <div className="flex items-center justify-between">
-            <span className={sectionLabel}>Integration</span>
-            <span className={basicModePill}>Basic</span>
-          </div>
+          <span className={sectionLabel}>Integration</span>
           <div className="space-y-2">
             <select
               value={integration}
@@ -1542,16 +1539,18 @@ export default function BlockEditor({
                       <>
                         <button
                           type="button"
-                          className="w-full flex items-center gap-2 bg-transparent border-none py-2 cursor-pointer text-stone-500 hover:text-stone-700 transition-colors mt-3"
+                          className="w-full flex items-center gap-2 px-4 py-2 bg-transparent border-none cursor-pointer text-stone-500 hover:text-stone-700 transition-colors mt-2"
                           onClick={() => setShowAdvanced(v => !v)}
                           disabled={isViewer}
                         >
-                          <span className="text-stone-400" style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.14s", display: "inline-block" }}>›</span>
+                          <span style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.14s", display: "inline-block", fontSize: 12 }} className="text-stone-400">›</span>
                           <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Advanced</span>
                           <span className="text-[11px] text-stone-400 font-normal">{optionalActionFields.length} settings</span>
-                          <div className="flex-1 h-px bg-stone-200 ml-1" />
+                          <div className="flex-1 h-px bg-stone-100 ml-1" />
                         </button>
-                        {!showAdvanced && <p className="text-[11.5px] text-stone-400 mt-1">Power-user options — sensible defaults applied.</p>}
+                        {!showAdvanced && (
+                          <p className="text-[11px] text-stone-400 px-4 pb-2">Power-user options — sensible defaults applied.</p>
+                        )}
                       </>
                     )}
 
@@ -1593,10 +1592,7 @@ export default function BlockEditor({
       {/* ── Static config fields (trigger, logic, output, approval) ── */}
       {staticFields.length > 0 && !isToolLike && blockType !== "brain" && blockType !== "mcp" && (
         <div className={section}>
-          <div className="flex items-center justify-between">
-            <span className={sectionLabel}>Configuration</span>
-            <span className={basicModePill}>Basic</span>
-          </div>
+          <span className={sectionLabel}>Configuration</span>
           <div className="space-y-3">
             {(() => {
               const requiredStaticFields = staticFields.filter(f => f.required)
@@ -1743,16 +1739,15 @@ export default function BlockEditor({
                     <>
                       <button
                         type="button"
-                        className="w-full flex items-center gap-2 bg-transparent border-none py-2 cursor-pointer text-stone-500 hover:text-stone-700 transition-colors mt-3"
+                        style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", padding: "8px 18px", cursor: "pointer" }}
                         onClick={() => setShowAdvanced(v => !v)}
                         disabled={isViewer}
                       >
-                        <span className="text-stone-400" style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.14s", display: "inline-block" }}>›</span>
-                        <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Advanced</span>
-                        <span className="text-[11px] text-stone-400 font-normal">{staticFields.length - basicStaticFields.length} settings</span>
-                        <div className="flex-1 h-px bg-stone-200 ml-1" />
+                        <span style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.14s", display: "inline-block", fontSize: 12, color: "var(--text-3)" }}>›</span>
+                        <span className="eyebrow" style={{ fontSize: 10 }}>Advanced</span>
+                        <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>{staticFields.length - basicStaticFields.length} settings</span>
+                        <div style={{ flex: 1, height: 1, background: "var(--border)", marginLeft: 2 }} />
                       </button>
-                      {!showAdvanced && <p className="text-[11.5px] text-stone-400 mt-1">Power-user options — sensible defaults applied.</p>}
                     </>
                   )}
                 </>
@@ -1780,10 +1775,7 @@ export default function BlockEditor({
         return (
           <>
             <div className={section}>
-              <div className="flex items-center justify-between">
-                <span className={sectionLabel}>Action</span>
-                <span className={basicModePill}>Basic</span>
-              </div>
+              <span className={sectionLabel}>Action</span>
               <select
                 value={action}
                 onChange={e => handleFieldChange("config.action", e.target.value)}
@@ -1821,16 +1813,18 @@ export default function BlockEditor({
 
             <button
               type="button"
-              className="w-full flex items-center gap-2 bg-transparent border-none py-2 px-4 cursor-pointer text-stone-500 hover:text-stone-700 transition-colors mt-4"
+              className="w-full flex items-center gap-2 px-4 py-2 bg-transparent border-none cursor-pointer text-stone-500 hover:text-stone-700 transition-colors mt-2"
               onClick={() => setShowAdvanced(v => !v)}
               disabled={isViewer}
             >
-              <span className="text-stone-400" style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.14s", display: "inline-block" }}>›</span>
+              <span style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.14s", display: "inline-block", fontSize: 12 }} className="text-stone-400">›</span>
               <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Advanced</span>
               <span className="text-[11px] text-stone-400 font-normal">3 settings</span>
-              <div className="flex-1 h-px bg-stone-200 ml-1" />
+              <div className="flex-1 h-px bg-stone-100 ml-1" />
             </button>
-            {!showAdvanced && <p className="text-[11.5px] text-stone-400 pl-5 mt-1">Power-user options — sensible defaults applied.</p>}
+            {!showAdvanced && (
+              <p className="text-[11px] text-stone-400 px-4 pb-2">Power-user options — sensible defaults applied.</p>
+            )}
 
             {showAdvanced && (
               <>
@@ -1933,6 +1927,14 @@ export default function BlockEditor({
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Footer */}
+      {!isViewer && (
+        <div style={{ padding: "12px 18px", borderTop: "1px solid var(--border)", display: "flex", gap: 8 }} className="shrink-0 bg-white sticky bottom-0">
+          <button type="button" className="btn btn-accent btn-sm" style={{ flex: 1, justifyContent: "center" }}>Save block</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
         </div>
       )}
 

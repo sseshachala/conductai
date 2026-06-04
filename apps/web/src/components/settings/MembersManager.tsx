@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import React, { useState, useEffect } from "react"
 import { useAuth } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
@@ -28,11 +28,11 @@ interface MemberWorkspace {
   joined_at: string
 }
 
-const ROLE_COLORS: Record<string, string> = {
-  admin:     "bg-indigo-50 text-indigo-700",
-  developer: "bg-emerald-50 text-emerald-700",
-  security:  "bg-violet-50 text-violet-700",
-  viewer:    "bg-stone-100 text-stone-600",
+const ROLE_COLORS: Record<string, React.CSSProperties> = {
+  admin:     { background: "var(--accent-weak)", color: "var(--accent-text)" },
+  developer: { background: "var(--ok-bg)", color: "var(--ok)" },
+  security:  { background: "var(--info-bg, #ede9fe)", color: "var(--info, #7c3aed)" },
+  viewer:    { background: "var(--surface-3)", color: "var(--text-3)" },
 }
 
 const AVATAR_PALETTE = ["#4f46e5", "#7c3aed", "#059669", "#2563eb", "#d97706", "#dc2626", "#0e7490"]
@@ -312,59 +312,69 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
           <p className="eyebrow" style={{ marginBottom: 8 }}>Pending invites</p>
           <div className="card" style={{ padding: 0, overflow: "hidden", borderColor: "var(--warn-bd)", background: "var(--warn-bg)" }}>
             {invites.map((inv, idx) => (
-              <div key={inv.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderTop: idx ? "1px solid var(--warn-bd)" : "none" }}>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ fontSize: 13.5, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{inv.invited_email}</p>
-                  <p style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>
-                    Invited {new Date(inv.created_at).toLocaleDateString()} · awaiting sign-in
-                  </p>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0, marginLeft: 14 }}>
-                  <span className="chip" style={{ textTransform: "capitalize" }}>{inv.role}</span>
-                  {confirmInviteId === inv.id ? (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 230 }}>
-                      <p style={{ fontSize: 11.5, color: "var(--err)", margin: 0 }}>
-                        Type <strong>{inv.invited_email}</strong> to cancel invite.
-                      </p>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <input
-                          value={confirmInviteValue}
-                          onChange={e => setConfirmInviteValue(e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === "Enter" && confirmInviteValue === inv.invited_email) handleCancelInvite(inv.id)
-                            if (e.key === "Escape") { setConfirmInviteId(null); setConfirmInviteValue("") }
-                          }}
-                          placeholder={inv.invited_email}
-                          style={{ flex: 1, fontSize: 12, border: "1px solid var(--err-bd, #fecaca)", borderRadius: 8, padding: "5px 8px", outline: "none" }}
-                        />
-                        <button
-                          onClick={() => handleCancelInvite(inv.id)}
-                          disabled={cancelling === inv.id || confirmInviteValue !== inv.invited_email}
-                          className="btn btn-ghost btn-sm"
-                          style={{ fontSize: 12, color: "var(--err)", opacity: cancelling === inv.id || confirmInviteValue !== inv.invited_email ? 0.5 : 1 }}
-                        >
-                          {cancelling === inv.id ? "…" : "Confirm"}
-                        </button>
-                        <button
-                          onClick={() => { setConfirmInviteId(null); setConfirmInviteValue("") }}
-                          className="btn btn-ghost btn-sm"
-                          style={{ fontSize: 12 }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
+              <div key={inv.id} style={{ padding: "12px 16px", borderTop: idx ? "1px solid var(--warn-bd)" : "none" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ fontSize: 13.5, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{inv.invited_email}</p>
+                    <p style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>
+                      Invited {new Date(inv.created_at).toLocaleDateString()} · awaiting sign-in
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0, marginLeft: 14 }}>
+                    <span className="chip" style={{ textTransform: "capitalize" }}>{inv.role}</span>
                     <button
-                      onClick={() => { setConfirmInviteId(inv.id); setConfirmInviteValue("") }}
+                      onClick={() => {
+                        if (confirmInviteId === inv.id) {
+                          setConfirmInviteId(null)
+                          setConfirmInviteValue("")
+                        } else {
+                          setConfirmInviteId(inv.id)
+                          setConfirmInviteValue("")
+                        }
+                      }}
                       disabled={cancelling === inv.id}
                       className="btn btn-ghost btn-sm"
                       style={{ fontSize: 12, opacity: cancelling === inv.id ? 0.5 : 1 }}
                     >
                       {cancelling === inv.id ? "Cancelling…" : "Cancel"}
                     </button>
-                  )}
+                  </div>
                 </div>
+
+                {confirmInviteId === inv.id && (
+                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--warn-bd)", display: "flex", flexDirection: "column", gap: 6 }}>
+                    <p style={{ fontSize: 11.5, color: "var(--err)", margin: 0 }}>
+                      Type <strong>{inv.invited_email}</strong> to cancel invite.
+                    </p>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input
+                        value={confirmInviteValue}
+                        onChange={e => setConfirmInviteValue(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" && confirmInviteValue === inv.invited_email) handleCancelInvite(inv.id)
+                          if (e.key === "Escape") { setConfirmInviteId(null); setConfirmInviteValue("") }
+                        }}
+                        placeholder={inv.invited_email}
+                        style={{ flex: 1, fontSize: 12, border: "1px solid var(--err-bd, #fecaca)", borderRadius: 8, padding: "5px 8px", outline: "none" }}
+                      />
+                      <button
+                        onClick={() => handleCancelInvite(inv.id)}
+                        disabled={cancelling === inv.id || confirmInviteValue !== inv.invited_email}
+                        className="btn btn-ghost btn-sm"
+                        style={{ fontSize: 12, color: "var(--err)", opacity: cancelling === inv.id || confirmInviteValue !== inv.invited_email ? 0.5 : 1 }}
+                      >
+                        {cancelling === inv.id ? "…" : "Confirm"}
+                      </button>
+                      <button
+                        onClick={() => { setConfirmInviteId(null); setConfirmInviteValue("") }}
+                        className="btn btn-ghost btn-sm"
+                        style={{ fontSize: 12 }}
+                      >
+                        Keep invite
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -425,53 +435,57 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
                       <button className="btn btn-ghost btn-sm btn-icon" onClick={() => toggleMemberWorkspaces(m.clerk_user_id)}>⚙</button>
                     )}
                     {isAdmin && m.clerk_user_id !== currentClerkId && (
-                      confirmMemberId === m.clerk_user_id ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 240 }}>
-                          <p style={{ fontSize: 11.5, color: "var(--err)", margin: 0 }}>
-                            Type <strong>{m.email || m.name || m.clerk_user_id}</strong> to remove member.
-                          </p>
-                          <div style={{ display: "flex", gap: 6 }}>
-                            <input
-                              value={confirmMemberValue}
-                              onChange={e => setConfirmMemberValue(e.target.value)}
-                              onKeyDown={e => {
-                                const expected = m.email || m.name || m.clerk_user_id
-                                if (e.key === "Enter" && confirmMemberValue === expected) handleRemove(m.clerk_user_id)
-                                if (e.key === "Escape") { setConfirmMemberId(null); setConfirmMemberValue("") }
-                              }}
-                              placeholder={m.email || m.name || m.clerk_user_id}
-                              style={{ flex: 1, fontSize: 12, border: "1px solid var(--err-bd, #fecaca)", borderRadius: 8, padding: "5px 8px", outline: "none" }}
-                            />
-                            <button
-                              onClick={() => handleRemove(m.clerk_user_id)}
-                              disabled={removing === m.clerk_user_id || confirmMemberValue !== (m.email || m.name || m.clerk_user_id)}
-                              style={{ fontSize: 12, color: "var(--err)", background: "none", border: "none", cursor: "pointer", opacity: removing === m.clerk_user_id || confirmMemberValue !== (m.email || m.name || m.clerk_user_id) ? 0.5 : 1 }}
-                            >
-                              {removing === m.clerk_user_id ? "…" : "Confirm"}
-                            </button>
-                            <button
-                              onClick={() => { setConfirmMemberId(null); setConfirmMemberValue("") }}
-                              style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => {
+                      <button
+                        onClick={() => {
+                          if (confirmMemberId === m.clerk_user_id) {
+                            setConfirmMemberId(null)
+                            setConfirmMemberValue("")
+                          } else {
                             setConfirmMemberId(m.clerk_user_id)
                             setConfirmMemberValue("")
-                          }}
-                          disabled={removing === m.clerk_user_id}
-                          style={{ fontSize: 13, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", opacity: removing === m.clerk_user_id ? 0.4 : 1 }}
-                        >
-                          {removing === m.clerk_user_id ? "…" : "×"}
-                        </button>
-                      )
+                          }
+                        }}
+                        disabled={removing === m.clerk_user_id}
+                        style={{ fontSize: 13, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", opacity: removing === m.clerk_user_id ? 0.4 : 1 }}
+                      >
+                        {removing === m.clerk_user_id ? "…" : "×"}
+                      </button>
                     )}
                   </div>
                 </div>
+                {isAdmin && m.clerk_user_id !== currentClerkId && confirmMemberId === m.clerk_user_id && (
+                  <div style={{ padding: "0 20px 12px", borderBottom: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 6 }}>
+                    <p style={{ fontSize: 11.5, color: "var(--err)", margin: 0 }}>
+                      Type <strong>{m.email || m.name || m.clerk_user_id}</strong> to remove member.
+                    </p>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input
+                        value={confirmMemberValue}
+                        onChange={e => setConfirmMemberValue(e.target.value)}
+                        onKeyDown={e => {
+                          const expected = m.email || m.name || m.clerk_user_id
+                          if (e.key === "Enter" && confirmMemberValue === expected) handleRemove(m.clerk_user_id)
+                          if (e.key === "Escape") { setConfirmMemberId(null); setConfirmMemberValue("") }
+                        }}
+                        placeholder={m.email || m.name || m.clerk_user_id}
+                        style={{ flex: 1, fontSize: 12, border: "1px solid var(--err-bd, #fecaca)", borderRadius: 8, padding: "5px 8px", outline: "none" }}
+                      />
+                      <button
+                        onClick={() => handleRemove(m.clerk_user_id)}
+                        disabled={removing === m.clerk_user_id || confirmMemberValue !== (m.email || m.name || m.clerk_user_id)}
+                        style={{ fontSize: 12, color: "var(--err)", background: "none", border: "none", cursor: "pointer", opacity: removing === m.clerk_user_id || confirmMemberValue !== (m.email || m.name || m.clerk_user_id) ? 0.5 : 1 }}
+                      >
+                        {removing === m.clerk_user_id ? "…" : "Confirm"}
+                      </button>
+                      <button
+                        onClick={() => { setConfirmMemberId(null); setConfirmMemberValue("") }}
+                        style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
+                      >
+                        Keep member
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {isAdmin && expandedMember === m.clerk_user_id && (
                   <div style={{ padding: "12px 20px", background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
                     <p className="eyebrow" style={{ marginBottom: 8 }}>Workspaces</p>

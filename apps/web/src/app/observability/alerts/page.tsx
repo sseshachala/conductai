@@ -44,12 +44,12 @@ const EVENT_LABELS: Record<string, string> = {
   unknown:           "Unknown",
 }
 
-const SEVERITY_STYLES: Record<string, string> = {
-  info:    "text-blue-700 bg-blue-50 border-blue-200",
-  warning: "text-amber-700 bg-amber-50 border-amber-200",
-  error:   "text-red-700 bg-red-50 border-red-200",
+// Maps severity to sbadge class names
+function severityClass(severity: string): string {
+  if (severity === "error")   return "sbadge err"
+  if (severity === "warning") return "sbadge warn"
+  return "sbadge ok"
 }
-
 
 const PAGE_SIZE = 50
 
@@ -116,22 +116,38 @@ export default function AlertsPage() {
 
   return (
     <AppShell>
-      <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
+      <div style={{ maxWidth: 960, margin: "0 auto", padding: "32px 24px", display: "flex", flexDirection: "column", gap: 24 }}>
+
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
-            <div className="flex items-center gap-2 text-sm text-stone-400 mb-1">
-              <Link href="/observability" className="hover:text-stone-600 transition-colors">Observability</Link>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-muted)", marginBottom: 4 }}>
+              <Link
+                href="/observability"
+                style={{ color: "var(--text-muted)", textDecoration: "none" }}
+                onMouseEnter={e => (e.currentTarget.style.color = "var(--text-2)")}
+                onMouseLeave={e => (e.currentTarget.style.color = "var(--text-muted)")}
+              >
+                Observability
+              </Link>
               <span>/</span>
-              <span className="text-stone-600">Alert History</span>
+              <span style={{ color: "var(--text-2)" }}>Alert History</span>
             </div>
-            <h1 className="text-xl font-semibold text-stone-900">Alert History</h1>
-            <p className="text-sm text-stone-500 mt-0.5">Watchdog events from the last 30 days</p>
+            <h1 className="page-title">Alert History</h1>
+            <p className="page-sub" style={{ marginTop: 2 }}>Watchdog events from the last 30 days</p>
           </div>
           <select
             value={eventType}
             onChange={e => setEventType(e.target.value)}
-            className="text-sm border border-stone-200 rounded-lg px-3 py-1.5 bg-white text-stone-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            style={{
+              fontSize: 13,
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              padding: "6px 12px",
+              background: "var(--surface)",
+              color: "var(--text-2)",
+              outline: "none",
+            }}
           >
             {EVENT_TYPES_FILTER.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
@@ -139,32 +155,58 @@ export default function AlertsPage() {
 
         {/* Table */}
         {loading ? (
-          <div className="space-y-2 animate-pulse">
-            {[...Array(6)].map((_, i) => <div key={i} className="bg-stone-100 rounded-xl h-16" />)}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {[...Array(6)].map((_, i) => (
+              <div
+                key={i}
+                style={{
+                  background: "var(--surface-3)",
+                  borderRadius: 12,
+                  height: 64,
+                  opacity: 0.6,
+                }}
+              />
+            ))}
           </div>
         ) : alerts.length === 0 ? (
-          <div className="rounded-xl border border-stone-200 bg-white px-6 py-16 text-center">
-            <div className="text-stone-400 text-sm">No alerts in the last 30 days</div>
-            <Link href="/observability" className="text-xs text-indigo-600 hover:underline mt-2 inline-block">
+          <div
+            className="card"
+            style={{
+              padding: "64px 24px",
+              textAlign: "center",
+            }}
+          >
+            <div style={{ color: "var(--text-muted)", fontSize: 13 }}>No alerts in the last 30 days</div>
+            <Link
+              href="/observability"
+              style={{ fontSize: 12, color: "var(--accent)", marginTop: 8, display: "inline-block" }}
+            >
               Back to Observability
             </Link>
           </div>
         ) : (
-          <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="card" style={{ overflow: "hidden", padding: 0 }}>
+            <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
               <thead>
-                <tr className="border-b border-stone-100 text-xs text-stone-400 uppercase tracking-wide">
-                  <th className="px-4 py-3 text-left font-medium">Type</th>
-                  <th className="px-4 py-3 text-left font-medium">Agent</th>
-                  <th className="px-4 py-3 text-left font-medium">Detail</th>
-                  <th className="px-4 py-3 text-left font-medium">When</th>
-                  <th className="px-4 py-3 text-left font-medium">Status</th>
-                  <th className="px-4 py-3" />
+                <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                  {["Type", "Agent", "Detail", "When", "Status", ""].map((heading, i) => (
+                    <th
+                      key={i}
+                      className="eyebrow"
+                      style={{
+                        padding: "10px 16px",
+                        textAlign: "left",
+                        fontWeight: 500,
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      {heading}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {alerts.map(a => {
-                  const sevStyle = SEVERITY_STYLES[a.severity] ?? SEVERITY_STYLES.warning
+                {alerts.map((a, idx) => {
                   const label = EVENT_LABELS[a.event_type] ?? a.event_type.replace(/_/g, " ")
                   const workflowName = (a.payload.workflow_name as string) ?? "—"
                   const detail = a.event_type === "stale_worker"
@@ -181,37 +223,68 @@ export default function AlertsPage() {
                     ? `No runs in ${a.payload.silent_days ?? 7} days`
                     : ""
 
+                  const isLast = idx === alerts.length - 1
+
                   return (
-                    <tr key={a.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50 transition-colors">
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full border ${sevStyle}`}>
+                    <tr
+                      key={a.id}
+                      style={{ borderBottom: isLast ? "none" : "1px solid var(--border)" }}
+                      onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
+                      onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                    >
+                      <td style={{ padding: "10px 16px" }}>
+                        <span className={severityClass(a.severity)}>
                           {label}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
+                      <td style={{ padding: "10px 16px" }}>
                         {a.workflow_id ? (
-                          <Link href={`/workflows/${a.workflow_id}`} className="text-stone-800 hover:text-indigo-600 transition-colors font-medium">
+                          <Link
+                            href={`/workflows/${a.workflow_id}`}
+                            style={{ color: "var(--text)", textDecoration: "none", fontWeight: 500 }}
+                            onMouseEnter={e => (e.currentTarget.style.color = "var(--accent)")}
+                            onMouseLeave={e => (e.currentTarget.style.color = "var(--text)")}
+                          >
                             {workflowName}
                           </Link>
                         ) : (
-                          <span className="text-stone-500">{workflowName}</span>
+                          <span style={{ color: "var(--text-3)" }}>{workflowName}</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-stone-500 text-xs max-w-xs truncate">{detail}</td>
-                      <td className="px-4 py-3 text-stone-400 text-xs whitespace-nowrap">{timeAgo(a.created_at)}</td>
-                      <td className="px-4 py-3">
+                      <td
+                        style={{
+                          padding: "10px 16px",
+                          color: "var(--text-3)",
+                          fontSize: 12,
+                          maxWidth: 280,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {detail}
+                      </td>
+                      <td style={{ padding: "10px 16px", color: "var(--text-muted)", fontSize: 12, whiteSpace: "nowrap" }}>
+                        {timeAgo(a.created_at)}
+                      </td>
+                      <td style={{ padding: "10px 16px" }}>
                         {a.resolved_at ? (
-                          <span className="text-xs text-green-600">Resolved {timeAgo(a.resolved_at)}</span>
+                          <span style={{ fontSize: 12, color: "var(--ok)" }}>
+                            Resolved {timeAgo(a.resolved_at)}
+                          </span>
                         ) : (
-                          <span className="text-xs text-amber-600 font-medium">Open</span>
+                          <span style={{ fontSize: 12, color: "var(--warn)", fontWeight: 500 }}>
+                            Open
+                          </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td style={{ padding: "10px 16px", textAlign: "right" }}>
                         {!a.resolved_at && (
                           <button
+                            className="btn btn-ghost btn-sm"
                             onClick={() => resolve(a.id)}
                             disabled={resolving === a.id}
-                            className="text-xs text-stone-500 hover:text-stone-800 border border-stone-200 hover:border-stone-300 rounded-md px-2.5 py-1 transition-colors disabled:opacity-40"
+                            style={{ opacity: resolving === a.id ? 0.4 : 1 }}
                           >
                             {resolving === a.id ? "Resolving…" : "Resolve"}
                           </button>
@@ -224,10 +297,20 @@ export default function AlertsPage() {
             </table>
 
             {hasMore && (
-              <div className="px-4 py-3 border-t border-stone-100">
+              <div style={{ padding: "10px 16px", borderTop: "1px solid var(--border)" }}>
                 <button
                   onClick={loadMore}
-                  className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                  style={{
+                    fontSize: 12,
+                    color: "var(--accent)",
+                    fontWeight: 500,
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.color = "var(--accent-text)")}
+                  onMouseLeave={e => (e.currentTarget.style.color = "var(--accent)")}
                 >
                   Load more
                 </button>

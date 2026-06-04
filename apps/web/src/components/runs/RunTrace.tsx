@@ -114,15 +114,6 @@ function summariseOutput(output: Record<string, unknown>, blockType?: string): s
   return null
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  pending:    "bg-stone-100 text-stone-500",
-  running:    "bg-blue-100 text-blue-700",
-  succeeded:  "bg-green-100 text-green-700",
-  failed:     "bg-red-100 text-red-700",
-  paused:     "bg-orange-100 text-orange-700",
-  timed_out:  "bg-amber-100 text-amber-700",
-}
-
 /** Returns true when an error string indicates a timeout rather than a logic failure */
 function isTimeoutError(error: string | undefined): boolean {
   if (!error) return false
@@ -130,15 +121,36 @@ function isTimeoutError(error: string | undefined): boolean {
   return s.includes("timed out") || s.includes("timeouterror") || s.includes("did not become")
 }
 
-const TYPE_BADGE: Record<string, string> = {
-  trigger:  "bg-blue-50 text-blue-600",
-  brain:    "bg-purple-50 text-purple-600",
-  tool:     "bg-green-50 text-green-600",
-  logic:    "bg-gray-100 text-gray-600",
-  memory:   "bg-amber-50 text-amber-600",
-  approval: "bg-orange-50 text-orange-600",
-  output:   "bg-rose-50 text-rose-600",
-  cleanup:  "bg-yellow-50 text-yellow-600",
+// ── Design-token inline style helpers ────────────────────────────────────────
+
+function statusBadgeStyle(status: string): React.CSSProperties {
+  switch (status) {
+    case "running":   return { background: "var(--info-bg, #eff6ff)", color: "var(--info, #2563eb)" }
+    case "succeeded": return { background: "var(--ok-bg, #f0fdf4)",   color: "var(--ok, #16a34a)" }
+    case "failed":    return { background: "var(--err-bg, #fef2f2)",  color: "var(--err, #dc2626)" }
+    case "paused":    return { background: "var(--warn-bg, #fffbeb)", color: "var(--warn, #d97706)" }
+    case "timed_out": return { background: "var(--warn-bg, #fffbeb)", color: "var(--warn, #d97706)" }
+    default:          return { background: "var(--surface-3, #f5f5f4)", color: "var(--text-3, #78716c)" }
+  }
+}
+
+function typeChipStyle(type: string): React.CSSProperties {
+  switch (type) {
+    case "trigger":  return { background: "var(--blk-trigger-bg, #eff6ff)", color: "var(--blk-trigger-dot, #2563eb)" }
+    case "brain":    return { background: "var(--blk-brain-bg, #f5f3ff)",   color: "#7c3aed" }
+    case "tool":     return { background: "var(--blk-memory-bg, #fef9c3)",  color: "var(--warn, #d97706)" }
+    case "logic":    return { background: "var(--surface-3, #f5f5f4)",      color: "var(--text-3, #78716c)" }
+    case "approval": return { background: "var(--warn-bg, #fffbeb)",        color: "var(--warn, #d97706)" }
+    case "output":   return { background: "var(--err-bg, #fef2f2)",         color: "var(--err, #dc2626)" }
+    case "cleanup":  return { background: "var(--surface-2, #fafaf9)",      color: "var(--text-muted, #a8a29e)" }
+    default:         return { background: "var(--surface-3, #f5f5f4)",      color: "var(--text-3, #78716c)" }
+  }
+}
+
+const FILE_ACTION_COLOR: Record<string, string> = {
+  created:  "var(--ok, #16a34a)",
+  modified: "var(--info, #2563eb)",
+  deleted:  "var(--err, #dc2626)",
 }
 
 // ── Block row component ───────────────────────────────────────────────────────
@@ -190,10 +202,49 @@ function formatModelLabel(model: string): string {
   return model
 }
 
-const FILE_ACTION_COLOR: Record<string, string> = {
-  created:  "text-emerald-600",
-  modified: "text-blue-600",
-  deleted:  "text-red-500",
+function dotStyle(row: BlockRow, isSkipped: boolean): React.CSSProperties {
+  let borderColor: string
+  let background: string
+  let animation: string | undefined
+
+  if (row.status === "completed" && !isSkipped) {
+    borderColor = "var(--ok, #16a34a)"; background = "var(--ok, #16a34a)"
+  } else if (row.status === "failed" && row.timedOut) {
+    borderColor = "var(--warn, #d97706)"; background = "var(--warn, #d97706)"
+  } else if (row.status === "failed") {
+    borderColor = "var(--err, #dc2626)"; background = "var(--err, #dc2626)"
+  } else if (row.status === "running") {
+    borderColor = "var(--info, #2563eb)"; background = "var(--info, #2563eb)"; animation = "pulse 2s cubic-bezier(.4,0,.6,1) infinite"
+  } else if (isSkipped) {
+    borderColor = "var(--surface-3, #f5f5f4)"; background = "var(--surface-3, #f5f5f4)"
+  } else {
+    borderColor = "var(--surface-3, #f5f5f4)"; background = "var(--surface-3, #f5f5f4)"
+  }
+
+  return {
+    width: 13,
+    height: 13,
+    borderRadius: "50%",
+    border: `2px solid ${borderColor}`,
+    background,
+    display: "grid",
+    placeItems: "center",
+    boxShadow: "0 0 0 4px var(--bg, #fff)",
+    ...(animation ? { animation } : {}),
+  }
+}
+
+function cardStyle(row: BlockRow): React.CSSProperties {
+  if (row.status === "failed" && row.timedOut) {
+    return { flex: 1, padding: "12px 15px", background: "var(--warn-bg, #fffbeb)", borderColor: "var(--warn-bd, #fde68a)" }
+  }
+  if (row.status === "failed") {
+    return { flex: 1, padding: "12px 15px", background: "var(--err-bg, #fef2f2)", borderColor: "var(--err-bd, #fecaca)" }
+  }
+  if (row.output?.status === "approval_required") {
+    return { flex: 1, padding: "12px 15px", background: "var(--warn-bg, #fffbeb)", borderColor: "var(--warn-bd, #fde68a)" }
+  }
+  return { flex: 1, padding: "12px 15px" }
 }
 
 function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
@@ -205,67 +256,115 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
   const isSkipped = row.output?.skipped === true
   const prUrl = row.output?.pr_url as string | undefined
 
-  const dot =
-    row.status === "completed" && !isSkipped ? "bg-green-400" :
-    row.status === "failed" && isTimedOut     ? "bg-amber-400" :
-    row.status === "failed"                   ? "bg-red-400" :
-    row.status === "running"                  ? "bg-blue-400 animate-pulse" :
-    isSkipped                                 ? "bg-stone-200" :
-    "bg-stone-300"
+  const labelColor: string =
+    row.status === "failed" && isTimedOut ? "var(--warn, #d97706)" :
+    row.status === "failed"               ? "var(--err, #dc2626)" :
+    isSkipped                             ? "var(--text-muted, #a8a29e)" :
+    "var(--text, #1c1917)"
 
-  const failedBg = isTimedOut
-    ? "rounded-lg bg-amber-50 border border-amber-100 px-3 py-2.5 -ml-1 mb-1"
-    : "rounded-lg bg-red-50 border border-red-100 px-3 py-2.5 -ml-1 mb-1"
-
-  const labelColor =
-    row.status === "failed" && isTimedOut ? "text-amber-800" :
-    row.status === "failed"               ? "text-red-800" :
-    isSkipped                             ? "text-stone-400" :
-    "text-stone-800"
+  const rawOutputPreStyle: React.CSSProperties = {
+    fontFamily: "var(--font-mono, monospace)",
+    margin: "8px 0 0",
+    padding: "10px 12px",
+    background: "var(--surface-3, #f5f5f4)",
+    borderRadius: 8,
+    fontSize: 11.5,
+    overflowX: "auto",
+    lineHeight: 1.5,
+    whiteSpace: "pre-wrap",
+    maxHeight: 192,
+  }
 
   return (
-    <div className="relative">
-      {!isLast && <span className="absolute left-[-13px] top-4 w-px h-full bg-stone-100" />}
-      <span className={`absolute left-[-17px] top-1.5 w-2.5 h-2.5 rounded-full border-2 border-white ${dot}`} />
+    <div style={{ display: "flex", gap: 14, position: "relative", paddingBottom: 4 }}>
+      {/* Vertical connector */}
+      {!isLast && (
+        <span style={{
+          position: "absolute",
+          left: 13,
+          top: 10,
+          bottom: 30,
+          width: 2,
+          background: "var(--border, #e7e5e4)",
+          zIndex: 1,
+        }} />
+      )}
 
-      <div className={`pb-3 ${row.status === "failed" ? failedBg : ""}`}>
+      {/* Dot column */}
+      <div style={{ flexShrink: 0, width: 22, display: "flex", justifyContent: "center", paddingTop: 13, zIndex: 2 }}>
+        <span style={dotStyle(row, isSkipped)} />
+      </div>
+
+      {/* Card */}
+      <div className="card" style={cardStyle(row)}>
         {/* Header row */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className={`text-sm font-semibold ${labelColor}`}>
-            {isTimedOut && <span aria-hidden="true" className="mr-1">⏱</span>}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontWeight: 650, fontSize: 13.5, color: labelColor }}>
+            {isTimedOut && <span aria-hidden="true" style={{ marginRight: 4 }}>⏱</span>}
             {row.label}
           </span>
-          <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${TYPE_BADGE[row.type] ?? "bg-stone-100 text-stone-500"}`}>
+
+          {/* Type chip */}
+          <span
+            className="chip"
+            style={{
+              height: 18,
+              fontSize: 9,
+              fontWeight: 800,
+              letterSpacing: ".07em",
+              padding: "0 6px",
+              textTransform: "uppercase",
+              ...typeChipStyle(row.type),
+            }}
+          >
             {row.type}
           </span>
+
           {/* Cost badge for Brain blocks */}
           {row.type === "brain" && row.costUsd !== undefined && row.costUsd > 0 && (
-            <span className="text-[9px] text-stone-400 font-mono bg-stone-50 border border-stone-200 px-1.5 py-0.5 rounded ml-1">
+            <span className="mono" style={{ fontSize: 9, color: "var(--text-muted, #a8a29e)", background: "var(--surface-2, #fafaf9)", border: "1px solid var(--border, #e7e5e4)", padding: "1px 6px", borderRadius: 4, marginLeft: 4 }}>
               {row.inputTokens?.toLocaleString()} tok · ${row.costUsd.toFixed(4)}
             </span>
           )}
+
+          {/* Provider badge */}
           {row.type === "brain" && row.provider && (
-            <span className="text-[9px] text-sky-700 bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded font-medium cursor-default">
+            <span style={{ fontSize: 9, color: "#0369a1", background: "#f0f9ff", border: "1px solid #bae6fd", padding: "1px 6px", borderRadius: 4, fontWeight: 500, cursor: "default" }}>
               {PROVIDER_LABELS[row.provider] ?? row.provider}
             </span>
           )}
+
           {/* Model badge */}
           {row.type === "brain" && row.model && (
-            <span title={row.routingReason} className="text-[9px] text-violet-600 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded font-medium cursor-default">
+            <span
+              title={row.routingReason}
+              className="mono"
+              style={{ fontSize: 10.5, color: "var(--text-muted, #a8a29e)", cursor: "default" }}
+            >
               {formatModelLabel(row.model)}
             </span>
           )}
-          {dur && <span className="text-xs text-stone-400 ml-auto">{dur}</span>}
+
+          {dur && (
+            <span className="mono" style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--text-muted, #a8a29e)" }}>
+              {dur}
+            </span>
+          )}
           {row.status === "running" && (
-            <span className="text-xs text-blue-500 animate-pulse ml-auto">running…</span>
+            <span
+              className="mono"
+              style={{ fontSize: 11.5, color: "var(--info, #2563eb)", marginLeft: "auto", animation: "pulse 2s cubic-bezier(.4,0,.6,1) infinite" }}
+            >
+              running…
+            </span>
           )}
         </div>
 
         {/* Brain tool calls — live sub-steps */}
         {row.toolCalls && row.toolCalls.length > 0 && (
-          <div className="mt-1.5 space-y-0.5 border-l-2 border-violet-200 pl-2">
+          <div style={{ marginTop: 6, borderLeft: "2px solid #ddd6fe", paddingLeft: 8 }}>
             {row.toolCalls.map((tc, i) => (
-              <p key={i} className="text-[10px] font-mono text-stone-500 truncate">
+              <p key={i} className="mono" style={{ fontSize: 10, color: "var(--text-3, #78716c)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", margin: 0 }}>
                 {tc.summary}
               </p>
             ))}
@@ -274,19 +373,21 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
 
         {/* Budget exhausted warning */}
         {row.budgetExhausted && (
-          <p className="mt-1.5 text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 inline-block">
+          <p style={{ marginTop: 6, fontSize: 10, fontWeight: 500, color: "var(--warn, #d97706)", background: "var(--warn-bg, #fffbeb)", border: "1px solid var(--warn-bd, #fde68a)", borderRadius: 4, padding: "1px 6px", display: "inline-block" }}>
             ⚠ Turn budget exhausted ({row.budgetExhausted.turns} turns · ${row.budgetExhausted.costUsd.toFixed(4)})
           </p>
         )}
 
         {/* Error */}
         {row.status === "failed" && row.error && (
-          <p className={`mt-1 text-sm font-medium ${isTimedOut ? "text-amber-700" : "text-red-600"}`}>{row.error}</p>
+          <p style={{ marginTop: 4, fontSize: 12.5, color: isTimedOut ? "var(--warn, #d97706)" : "var(--err, #dc2626)", lineHeight: 1.4 }}>
+            {row.error}
+          </p>
         )}
 
         {/* Summary line */}
         {summary && row.status !== "failed" && (
-          <p className={`mt-0.5 text-xs ${isSkipped ? "text-stone-400 italic" : "text-stone-500"}`}>
+          <p style={{ marginTop: 4, fontSize: 12.5, color: isSkipped ? "var(--text-muted, #a8a29e)" : "var(--text-3, #78716c)", lineHeight: 1.4, fontStyle: isSkipped ? "italic" : undefined }}>
             {summary}
           </p>
         )}
@@ -294,42 +395,44 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
         {/* PR link — prominent */}
         {prUrl && (
           <a href={prUrl} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 mt-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-800 hover:underline">
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 6, fontSize: 12, fontWeight: 500, color: "var(--info, #2563eb)", textDecoration: "none" }}>
             View PR →
           </a>
         )}
 
         {/* Files changed (Brain block) */}
         {row.filesChanged && row.filesChanged.length > 0 && (
-          <div className="mt-2 space-y-0.5">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-stone-400 mb-1">Files changed</p>
+          <div style={{ marginTop: 8 }}>
+            <p style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".1em", color: "var(--text-muted, #a8a29e)", marginBottom: 4 }}>Files changed</p>
             {row.filesChanged.map((f, i) => (
-              <div key={i} className="flex items-center gap-1.5">
-                <span className={`text-[9px] font-bold uppercase w-12 shrink-0 ${FILE_ACTION_COLOR[f.action]}`}>{f.action}</span>
-                <span className="text-[10px] font-mono text-stone-600 truncate">{f.path}</span>
+              <div key={i} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <span className="mono" style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", width: 52, flexShrink: 0, color: FILE_ACTION_COLOR[f.action] }}>{f.action}</span>
+                <span className="mono" style={{ fontSize: 10, color: "var(--text-3, #78716c)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.path}</span>
               </div>
             ))}
             {row.diffStat && (
               <>
-                <button onClick={() => setDiffExpanded(d => !d)}
-                  className="mt-1 text-[10px] text-stone-400 hover:text-stone-600">
+                <button
+                  onClick={() => setDiffExpanded(d => !d)}
+                  style={{ marginTop: 4, fontSize: 11.5, color: "var(--text-muted, #a8a29e)", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: 0 }}
+                >
                   {diffExpanded ? "▾ hide diff" : "▸ show diff"}
                 </button>
                 {diffExpanded && (
-                  <div className="mt-1 rounded border border-stone-200 overflow-x-auto bg-stone-50">
+                  <pre className="mono" style={rawOutputPreStyle}>
                     {row.diffStat.split("\n").map((line, i) => {
-                      const cls =
-                        line.startsWith("+") && !line.startsWith("+++") ? "bg-emerald-50 text-emerald-700" :
-                        line.startsWith("-") && !line.startsWith("---") ? "bg-red-50 text-red-600" :
-                        line.startsWith("@@") ? "bg-blue-50 text-blue-600" :
-                        "text-stone-500"
+                      const lineColor =
+                        line.startsWith("+") && !line.startsWith("+++") ? "var(--ok, #16a34a)" :
+                        line.startsWith("-") && !line.startsWith("---") ? "var(--err, #dc2626)" :
+                        line.startsWith("@@") ? "var(--info, #2563eb)" :
+                        "var(--text-3, #78716c)"
                       return (
-                        <div key={i} className={`font-mono text-[10px] px-2 py-0.5 whitespace-pre ${cls}`}>
+                        <span key={i} style={{ display: "block", color: lineColor }}>
                           {line || " "}
-                        </div>
+                        </span>
                       )
                     })}
-                  </div>
+                  </pre>
                 )}
               </>
             )}
@@ -338,22 +441,25 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
 
         {/* Expand/collapse raw output */}
         {row.output && !isSkipped && row.status === "completed" && (
-          <button onClick={() => setExpanded(e => !e)}
-            className="mt-1 text-[10px] text-stone-400 hover:text-stone-600">
+          <button
+            onClick={() => setExpanded(e => !e)}
+            style={{ marginTop: 4, fontSize: 11.5, color: "var(--text-muted, #a8a29e)", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: 0 }}
+          >
             {expanded ? "▾ hide output" : "▸ raw output"}
           </button>
         )}
         {expanded && row.output && (
-          <pre className="mt-1.5 text-[10px] text-stone-500 bg-stone-50 border border-stone-200 rounded-lg p-2.5 overflow-x-auto whitespace-pre-wrap max-h-48">
+          <pre className="mono" style={rawOutputPreStyle}>
             {JSON.stringify(row.output, null, 2)}
           </pre>
         )}
         {expanded && row.error && row.status === "failed" && (
-          <pre className={`mt-1.5 text-[10px] rounded-lg p-2.5 overflow-x-auto whitespace-pre-wrap max-h-48 ${
-            isTimedOut
-              ? "text-amber-600 bg-amber-50 border border-amber-100"
-              : "text-red-400 bg-red-50 border border-red-100"
-          }`}>
+          <pre className="mono" style={{
+            ...rawOutputPreStyle,
+            color: isTimedOut ? "var(--warn, #d97706)" : "var(--err, #dc2626)",
+            background: isTimedOut ? "var(--warn-bg, #fffbeb)" : "var(--err-bg, #fef2f2)",
+            border: `1px solid ${isTimedOut ? "var(--warn-bd, #fde68a)" : "var(--err-bd, #fecaca)"}`,
+          }}>
             {row.error}
           </pre>
         )}
@@ -376,37 +482,52 @@ function RunTerminalRow({ runFailed, runCompleted }: {
   if (runFailed) {
     if (isReaped) {
       return (
-        <div className="relative pt-1">
-          <span className="absolute left-[-17px] top-2.5 w-2.5 h-2.5 rounded-full border-2 border-white bg-amber-400" />
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-sm font-semibold text-amber-800">
-              <span aria-hidden="true" className="mr-1">⏱</span>
-              Timed out
-            </p>
-            <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
-              reaped
-            </span>
+        <div style={{ display: "flex", gap: 14, position: "relative", paddingTop: 4 }}>
+          <div style={{ flexShrink: 0, width: 22, display: "flex", justifyContent: "center", paddingTop: 13, zIndex: 2 }}>
+            <span style={{ width: 13, height: 13, borderRadius: "50%", border: "2px solid var(--warn, #d97706)", background: "var(--warn, #d97706)", display: "grid", placeItems: "center", boxShadow: "0 0 0 4px var(--bg, #fff)" }} />
           </div>
-          {errMsg && (
-            <p className="mt-0.5 text-xs text-amber-600">{errMsg}</p>
-          )}
+          <div className="card" style={{ flex: 1, padding: "12px 15px", background: "var(--warn-bg, #fffbeb)", border: "1px solid var(--warn-bd, #fde68a)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <p style={{ fontWeight: 600, color: "var(--warn, #d97706)", margin: 0, fontSize: 13.5 }}>
+                <span aria-hidden="true" style={{ marginRight: 4 }}>⏱</span>
+                Timed out
+              </p>
+              <span
+                className="chip"
+                style={{ height: 18, fontSize: 9, fontWeight: 800, letterSpacing: ".07em", padding: "0 6px", textTransform: "uppercase", background: "var(--warn-bg, #fffbeb)", color: "var(--warn, #d97706)" }}
+              >
+                reaped
+              </span>
+            </div>
+            {errMsg && (
+              <p style={{ marginTop: 4, fontSize: 12.5, color: "var(--warn, #d97706)", lineHeight: 1.4 }}>{errMsg}</p>
+            )}
+          </div>
         </div>
       )
     }
     return (
-      <div className="relative pt-1">
-        <span className="absolute left-[-17px] top-2.5 w-2.5 h-2.5 rounded-full border-2 border-white bg-red-500" />
-        <p className="text-sm font-semibold text-red-700">
-          Run failed{errMsg ? ` — ${errMsg}` : ""}
-        </p>
+      <div style={{ display: "flex", gap: 14, position: "relative", paddingTop: 4 }}>
+        <div style={{ flexShrink: 0, width: 22, display: "flex", justifyContent: "center", paddingTop: 13, zIndex: 2 }}>
+          <span style={{ width: 13, height: 13, borderRadius: "50%", border: "2px solid var(--err, #dc2626)", background: "var(--err, #dc2626)", display: "grid", placeItems: "center", boxShadow: "0 0 0 4px var(--bg, #fff)" }} />
+        </div>
+        <div className="card" style={{ flex: 1, padding: "12px 15px", background: "var(--err-bg, #fef2f2)", border: "1px solid var(--err-bd, #fecaca)" }}>
+          <p style={{ fontWeight: 600, color: "var(--err, #dc2626)", margin: 0, fontSize: 13.5 }}>
+            Run failed{errMsg ? ` — ${errMsg}` : ""}
+          </p>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="relative pt-1">
-      <span className="absolute left-[-17px] top-2.5 w-2.5 h-2.5 rounded-full border-2 border-white bg-green-500" />
-      <p className="text-sm font-semibold text-green-700">Run completed successfully</p>
+    <div style={{ display: "flex", gap: 14, position: "relative", paddingTop: 4 }}>
+      <div style={{ flexShrink: 0, width: 22, display: "flex", justifyContent: "center", paddingTop: 13, zIndex: 2 }}>
+        <span style={{ width: 13, height: 13, borderRadius: "50%", border: "2px solid var(--ok, #16a34a)", background: "var(--ok, #16a34a)", display: "grid", placeItems: "center", boxShadow: "0 0 0 4px var(--bg, #fff)" }} />
+      </div>
+      <div className="card" style={{ flex: 1, padding: "12px 15px", background: "var(--ok-bg, #f0fdf4)", border: "1px solid var(--ok-bd, #bbf7d0)" }}>
+        <p style={{ fontWeight: 600, color: "var(--ok, #16a34a)", margin: 0, fontSize: 13.5 }}>Run completed successfully</p>
+      </div>
     </div>
   )
 }
@@ -607,60 +728,63 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
   }
 
   return (
-    <div className="space-y-5">
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
       {/* Dry run banner */}
       {events.some(e => e.payload?.output && (e.payload.output as Record<string,unknown>)?.dry_run) && (
-        <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700 font-medium">
-          <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
-          Dry run — no real API calls were made. Use <strong>Run</strong> to execute for real.
+        <div style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 8, background: "var(--warn-bg, #fffbeb)", border: "1px solid var(--warn-bd, #fde68a)", padding: "8px 12px", fontSize: 12, color: "var(--warn, #d97706)", fontWeight: 500 }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--warn, #d97706)", flexShrink: 0 }} />
+          Dry run — no real API calls were made. Use <strong style={{ marginLeft: 4 }}>Run</strong> to execute for real.
         </div>
       )}
 
       {/* Summary stats grid */}
-      <div className="grid grid-cols-5 gap-3 rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
+      <div className="card" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, padding: "12px 16px" }}>
         {(totalDur || !done) && (
-        <div>
-          <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-0.5">Duration</p>
-          <p className="text-sm font-semibold text-stone-800">{totalDur ?? "…"}</p>
-        </div>
+          <div>
+            <p style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted, #a8a29e)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 2, margin: "0 0 2px" }}>Duration</p>
+            <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text, #1c1917)", margin: 0 }}>{totalDur ?? "…"}</p>
+          </div>
         )}
         <div>
-          <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-0.5">Turns</p>
-          <p className="text-sm font-semibold text-stone-800">
+          <p style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted, #a8a29e)", textTransform: "uppercase", letterSpacing: ".07em", margin: "0 0 2px" }}>Turns</p>
+          <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text, #1c1917)", margin: 0 }}>
             {actualTurns > 0 ? (
               maxTurns ? (
                 <span>
                   {actualTurns}
-                  <span className="text-stone-400 font-normal"> / {maxTurns} est.</span>
+                  <span style={{ color: "var(--text-muted, #a8a29e)", fontWeight: 400 }}> / {maxTurns} est.</span>
                 </span>
               ) : actualTurns
             ) : "—"}
           </p>
         </div>
         <div>
-          <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-0.5">Tokens</p>
-          <p className="text-sm font-semibold text-stone-800">{totalTokens > 0 ? totalTokens.toLocaleString() : "—"}</p>
+          <p style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted, #a8a29e)", textTransform: "uppercase", letterSpacing: ".07em", margin: "0 0 2px" }}>Tokens</p>
+          <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text, #1c1917)", margin: 0 }}>{totalTokens > 0 ? totalTokens.toLocaleString() : "—"}</p>
         </div>
         <div>
-          <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-0.5">Est. cost</p>
-          <p className="text-sm font-semibold text-stone-800">{totalCost > 0 ? `$${totalCost.toFixed(4)}` : "—"}</p>
+          <p style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted, #a8a29e)", textTransform: "uppercase", letterSpacing: ".07em", margin: "0 0 2px" }}>Est. cost</p>
+          <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text, #1c1917)", margin: 0 }}>{totalCost > 0 ? `$${totalCost.toFixed(4)}` : "—"}</p>
         </div>
         <div>
-          <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-0.5">Triggered by</p>
-          <p className="text-sm font-semibold text-stone-800 truncate">{meta.triggered_by ?? "—"}</p>
+          <p style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted, #a8a29e)", textTransform: "uppercase", letterSpacing: ".07em", margin: "0 0 2px" }}>Triggered by</p>
+          <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text, #1c1917)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{meta.triggered_by ?? "—"}</p>
         </div>
       </div>
 
       {/* Status bar */}
-      <div className="flex items-center gap-3">
-        <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${STATUS_COLORS[status] ?? STATUS_COLORS.pending}`}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+        <span
+          className="sbadge"
+          style={{ fontSize: 12, fontWeight: 500, padding: "3px 10px", borderRadius: 999, ...statusBadgeStyle(status) }}
+        >
           {status}
         </span>
-        {totalDur && <span className="text-xs text-stone-400">{totalDur}</span>}
+        {totalDur && <span style={{ fontSize: 12, color: "var(--text-muted, #a8a29e)" }}>{totalDur}</span>}
         {!done && (
-          <span className="flex items-center gap-1.5 text-xs text-stone-400">
-            <span className="inline-block w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" />
+          <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted, #a8a29e)" }}>
+            <span className="dot pulse" style={{ display: "inline-block" }} />
             Live
           </span>
         )}
@@ -668,36 +792,78 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
 
       {/* Approval gate */}
       {approvalPending && (
-        <div className="rounded-xl border-2 border-orange-200 bg-orange-50 p-4">
-          <p className="text-sm font-semibold text-orange-800 mb-1">Awaiting Approval</p>
-          <p className="text-xs text-orange-600 mb-3">
-            Block <code className="font-mono bg-orange-100 px-1 rounded">{approvalBlockId}</code> is paused waiting for sign-off.
-          </p>
-          <div className="flex gap-2">
-            <button onClick={() => handleApproval("approved")} disabled={approvalSubmitting}
-              className="px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50">
-              {approvalSubmitting ? "…" : "Approve"}
-            </button>
-            <button onClick={() => handleApproval("rejected")} disabled={approvalSubmitting}
-              className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50">
-              {approvalSubmitting ? "…" : "Reject"}
-            </button>
+        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+          {/* Header */}
+          <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border, #e7e5e4)", display: "flex", alignItems: "center", gap: 10 }}>
+            <span
+              className="chip"
+              style={{ height: 21, fontSize: 9.5, fontWeight: 800, letterSpacing: ".07em", textTransform: "uppercase", background: "var(--warn-bg, #fffbeb)", color: "var(--warn, #d97706)" }}
+            >
+              APPROVAL
+            </span>
+            <span style={{ fontWeight: 650, fontSize: 14, color: "var(--text, #1c1917)" }}>Awaiting review</span>
+          </div>
+          {/* Body */}
+          <div style={{ padding: 18 }}>
+            {/* Pulse row */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <span className="dot pulse" />
+              <span style={{ fontSize: 13.5, color: "var(--text-2, #44403c)" }}>
+                Block is paused waiting for sign-off.
+              </span>
+            </div>
+            {/* Block ID info card */}
+            <div className="card" style={{ padding: "12px 14px", background: "var(--surface-2, #fafaf9)", marginBottom: 16 }}>
+              <span style={{ fontSize: 12, color: "var(--text-muted, #a8a29e)", display: "block", marginBottom: 2 }}>Block ID</span>
+              <code className="mono" style={{ fontSize: 12.5, color: "var(--text, #1c1917)" }}>{approvalBlockId}</code>
+            </div>
+            {/* Buttons */}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => handleApproval("approved")}
+                disabled={approvalSubmitting}
+                className="btn btn-accent"
+                style={{ opacity: approvalSubmitting ? 0.5 : 1 }}
+              >
+                {approvalSubmitting ? "…" : "Approve"}
+              </button>
+              <button
+                onClick={() => handleApproval("rejected")}
+                disabled={approvalSubmitting}
+                className="btn btn-ghost"
+                style={{ color: "var(--err, #dc2626)", borderColor: "var(--err-bd, #fecaca)", opacity: approvalSubmitting ? 0.5 : 1 }}
+              >
+                {approvalSubmitting ? "…" : "Reject"}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {/* Meta grid */}
-      <div className="grid grid-cols-2 gap-3 text-sm text-stone-500 border-b border-stone-100 pb-4">
-        <div><span className="text-xs text-stone-400 block mb-0.5">Triggered by</span>{meta.triggered_by ?? "—"}</div>
-        <div><span className="text-xs text-stone-400 block mb-0.5">Started</span>{fmt(meta.started_at)}</div>
-        <div><span className="text-xs text-stone-400 block mb-0.5">Completed</span>{fmt(meta.completed_at)}</div>
-        <div><span className="text-xs text-stone-400 block mb-0.5">Version</span><span className="font-mono text-xs">{meta.workflow_version_id?.slice(0, 8) ?? "—"}</span></div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 32px", fontSize: 13, color: "var(--text-3, #78716c)", borderBottom: "1px solid var(--border, #e7e5e4)", paddingBottom: 16, marginBottom: 20 }}>
+        <div>
+          <span style={{ fontSize: 11, color: "var(--text-muted, #a8a29e)", display: "block", marginBottom: 2 }}>Triggered by</span>
+          <span style={{ color: "var(--text, #1c1917)" }}>{meta.triggered_by ?? "—"}</span>
+        </div>
+        <div>
+          <span style={{ fontSize: 11, color: "var(--text-muted, #a8a29e)", display: "block", marginBottom: 2 }}>Started</span>
+          <span style={{ color: "var(--text, #1c1917)" }}>{fmt(meta.started_at)}</span>
+        </div>
+        <div>
+          <span style={{ fontSize: 11, color: "var(--text-muted, #a8a29e)", display: "block", marginBottom: 2 }}>Completed</span>
+          <span style={{ color: "var(--text, #1c1917)" }}>{fmt(meta.completed_at)}</span>
+        </div>
+        <div>
+          <span style={{ fontSize: 11, color: "var(--text-muted, #a8a29e)", display: "block", marginBottom: 2 }}>Version</span>
+          <span className="mono" style={{ color: "var(--text, #1c1917)", fontSize: 12 }}>{meta.workflow_version_id?.slice(0, 8) ?? "—"}</span>
+        </div>
       </div>
 
       {/* Block timeline */}
-      <div className="relative pl-5 space-y-0">
+      <div style={{ position: "relative" }}>
         {blockRows.length === 0 && !done && (
-          <p className="text-sm text-stone-400 py-4">Waiting for blocks to start…</p>
+          <p style={{ fontSize: 13, color: "var(--text-muted, #a8a29e)", padding: "16px 0" }}>Waiting for blocks to start…</p>
         )}
 
         {blockRows.map((row, i) => (

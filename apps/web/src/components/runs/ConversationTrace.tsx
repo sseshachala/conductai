@@ -39,11 +39,11 @@ async function buildHeaders(getToken?: (() => Promise<string | null>) | null): P
   return h
 }
 
-const ROLE_STYLES: Record<string, { bg: string; label: string; dot: string }> = {
-  user:        { bg: "bg-blue-50 border-blue-100",   label: "User",        dot: "bg-blue-400"   },
-  assistant:   { bg: "bg-purple-50 border-purple-100", label: "Assistant", dot: "bg-purple-400" },
-  tool_use:    { bg: "bg-amber-50 border-amber-100",  label: "Tool Call",  dot: "bg-amber-400"  },
-  tool_result: { bg: "bg-stone-50 border-stone-200",  label: "Result",     dot: "bg-stone-300"  },
+const ROLE_STYLES: Record<string, { background: string; borderColor: string; label: string; dot: string }> = {
+  user:        { background: "var(--blk-trigger-bg, #eff6ff)",   borderColor: "var(--blk-trigger-bd, #bfdbfe)", label: "USER",        dot: "var(--info, #2563eb)"   },
+  assistant:   { background: "var(--blk-brain-bg, #f5f3ff)",     borderColor: "var(--blk-brain-bd, #ddd6fe)",   label: "ASSISTANT",   dot: "#7c3aed"                },
+  tool_use:    { background: "var(--warn-bg)",                   borderColor: "var(--warn-bd)",                 label: "TOOL CALL",   dot: "var(--warn)"            },
+  tool_result: { background: "var(--surface-2)",                 borderColor: "var(--border)",                  label: "RESULT",      dot: "var(--text-muted)"      },
 }
 
 function TraceRow({ row }: { row: TraceRow }) {
@@ -52,22 +52,21 @@ function TraceRow({ row }: { row: TraceRow }) {
   const hasLongContent = (row.content?.length ?? 0) > 400
 
   return (
-    <div className={`rounded-lg border px-3 py-2 text-xs ${style.bg}`}>
-      <div className="flex items-center gap-2 mb-1">
-        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.dot}`} />
-        <span className="font-semibold text-stone-600 uppercase tracking-wider text-[9px]">{style.label}</span>
+    <div style={{ borderRadius: 8, border: `1px solid ${style.borderColor}`, padding: "10px 13px", background: style.background }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}>
+        <span style={{ width: 7, height: 7, borderRadius: "50%", background: style.dot, flexShrink: 0 }} />
+        <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".08em", color: "var(--text-2)", textTransform: "uppercase", whiteSpace: "nowrap" }}>{style.label}</span>
         {row.tool_name && (
-          <span className="font-mono text-amber-700 text-[10px]">{row.tool_name}</span>
+          <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 11.5, color: style.dot, fontWeight: 600, whiteSpace: "nowrap" }}>{row.tool_name}</span>
         )}
-        <span className="ml-auto text-stone-400 font-mono text-[9px]">turn {row.turn}</span>
-        {row.input_tokens != null && row.input_tokens > 0 && (
-          <span className="text-stone-400 font-mono text-[9px]">{row.input_tokens}↑ {row.output_tokens}↓</span>
-        )}
+        <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono, monospace)", fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap", flexShrink: 0 }}>
+          turn {row.turn}{row.input_tokens != null && row.input_tokens > 0 && <>&nbsp;&nbsp;<span style={{ color: "var(--text-3)" }}>{row.input_tokens}↑ {row.output_tokens}↓</span></>}
+        </span>
       </div>
 
       {/* Tool input */}
       {row.role === "tool_use" && row.tool_input && (
-        <pre className="font-mono text-[10px] text-stone-600 bg-white/60 rounded p-1.5 overflow-x-auto whitespace-pre-wrap max-h-40">
+        <pre style={{ margin: 0, padding: "9px 11px", background: "var(--surface-3)", borderRadius: 7, fontFamily: "var(--font-mono, monospace)", fontSize: 11.5, overflowX: "auto", lineHeight: 1.5, color: "var(--text-2)" }}>
           {JSON.stringify(row.tool_input, null, 2)}
         </pre>
       )}
@@ -75,16 +74,13 @@ function TraceRow({ row }: { row: TraceRow }) {
       {/* Content */}
       {row.content && (
         <>
-          <p className={`text-stone-700 leading-relaxed whitespace-pre-wrap ${!expanded && hasLongContent ? "line-clamp-4" : ""}`}>
+          <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5, whiteSpace: "pre-wrap", ...((!expanded && hasLongContent) ? { display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" } : {}) }}>
             {row.content}
-          </p>
+          </div>
           {hasLongContent && (
-            <button
-              onClick={() => setExpanded(e => !e)}
-              className="mt-1 text-[10px] text-stone-400 hover:text-stone-600"
-            >
+            <div onClick={() => setExpanded(e => !e)} style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 7, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
               {expanded ? "▾ collapse" : "▸ expand"}
-            </button>
+            </div>
           )}
         </>
       )}
@@ -117,10 +113,10 @@ export default function ConversationTrace({ workflowId, runId, getToken }: Props
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId, runId])
 
-  if (loading) return <p className="text-sm text-stone-400 py-6 text-center">Loading trace…</p>
-  if (error) return <p className="text-sm text-red-500 py-6 text-center">Failed to load trace: {error}</p>
+  if (loading) return <p style={{ fontSize: 13, color: "var(--text-muted)", padding: "24px 0", textAlign: "center" }}>Loading trace…</p>
+  if (error) return <p style={{ fontSize: 13, color: "var(--err)", padding: "24px 0", textAlign: "center" }}>Failed to load trace: {error}</p>
   if (rows.length === 0) return (
-    <p className="text-sm text-stone-400 py-6 text-center">
+    <p style={{ fontSize: 13, color: "var(--text-muted)", padding: "24px 0", textAlign: "center" }}>
       No trace data — only agentic brain blocks generate traces.
     </p>
   )
@@ -141,19 +137,17 @@ export default function ConversationTrace({ workflowId, runId, getToken }: Props
   const totalCost = ((totalInput * 3 + totalOutput * 15) / 1_000_000)
 
   return (
-    <div className="space-y-4">
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {/* Summary */}
-      <div className="flex items-center gap-4 text-xs text-stone-500 border-b border-stone-100 pb-3">
-        <span>{rows.length} trace rows</span>
-        {totalInput > 0 && <span>{(totalInput + totalOutput).toLocaleString()} tokens · ${totalCost.toFixed(4)}</span>}
+      <div style={{ display: "flex", alignItems: "center", gap: 18, paddingBottom: 14, marginBottom: 16, borderBottom: "1px solid var(--border)", fontSize: 13, color: "var(--text-3)" }}>
+        <span><b style={{ color: "var(--text)" }}>{rows.length}</b> trace rows</span>
+        {totalInput > 0 && <span style={{ fontFamily: "var(--font-mono, monospace)" }}>{(totalInput + totalOutput).toLocaleString()} tokens · ${totalCost.toFixed(4)}</span>}
       </div>
 
       {blocks.map(({ blockId, rows: blockRows }) => (
         <div key={blockId}>
-          <p className="text-[9px] font-bold uppercase tracking-widest text-stone-400 mb-2 font-mono">
-            {blockId}
-          </p>
-          <div className="space-y-1.5">
+          <p className="eyebrow mono" style={{ marginBottom: 12 }}>{blockId}</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {blockRows.map(row => <TraceRow key={row.id} row={row} />)}
           </div>
         </div>
