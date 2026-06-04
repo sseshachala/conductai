@@ -3,6 +3,28 @@
 import { useState, useEffect } from "react"
 import { usePreferences } from "@/lib/PreferencesContext"
 
+const ACCENTS: Record<string, { base: string; hover: string; ring: string; weak: string; weak2: string; text: string }> = {
+  indigo:  { base: "#4f46e5", hover: "#4338ca", ring: "#818cf8", weak: "#eef2ff", weak2: "#e0e7ff", text: "#4338ca" },
+  violet:  { base: "#7c3aed", hover: "#6d28d9", ring: "#a78bfa", weak: "#f5f3ff", weak2: "#ede9fe", text: "#6d28d9" },
+  emerald: { base: "#059669", hover: "#047857", ring: "#34d399", weak: "#ecfdf5", weak2: "#d1fae5", text: "#047857" },
+  blue:    { base: "#2563eb", hover: "#1d4ed8", ring: "#93c5fd", weak: "#eff6ff", weak2: "#dbeafe", text: "#1d4ed8" },
+  amber:   { base: "#d97706", hover: "#b45309", ring: "#fcd34d", weak: "#fffbeb", weak2: "#fef3c7", text: "#b45309" },
+}
+
+function applyTheme(look: string, accent: string) {
+  if (typeof document === "undefined") return
+  document.documentElement.setAttribute("data-theme", look === "dark" ? "dark" : "light")
+  const A = ACCENTS[accent] ?? ACCENTS.indigo
+  const dark = look === "dark"
+  const r = document.documentElement.style
+  r.setProperty("--accent",       A.base)
+  r.setProperty("--accent-hover", dark ? A.ring  : A.hover)
+  r.setProperty("--accent-ring",  A.ring)
+  r.setProperty("--accent-weak",  dark ? `color-mix(in srgb, ${A.base} 18%, transparent)` : A.weak)
+  r.setProperty("--accent-weak-2",dark ? `color-mix(in srgb, ${A.base} 30%, transparent)` : A.weak2)
+  r.setProperty("--accent-text",  dark ? A.ring  : A.text)
+}
+
 function ToggleRow({
   label,
   description,
@@ -73,11 +95,13 @@ export default function PreferencesPanel() {
   function setLook(k: string) {
     setLookState(k)
     if (typeof window !== "undefined") localStorage.setItem("conduct-theme", k)
+    applyTheme(k, accent)
   }
 
   function setAccent(k: string) {
     setAccentState(k)
     if (typeof window !== "undefined") localStorage.setItem("conduct-accent", k)
+    applyTheme(look, k)
   }
 
   if (loading) {
