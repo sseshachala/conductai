@@ -207,15 +207,15 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
         setError(err.detail ?? `Generation failed (${genRes.status})`)
         return
       }
-      const { name, yaml, required_credentials } = await genRes.json()
+      const { name, graph, required_credentials } = await genRes.json()
       setGeneratedCreds(required_credentials ?? [])
 
-      // Create the workflow with the generated YAML
+      // Create the workflow with the generated graph
       const createRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, {
         method: "POST", headers,
         body: JSON.stringify({
           name: agentName.trim() || name,
-          yaml_source: yaml,
+          graph,
           ...(selectedProjectId && { project_id: selectedProjectId }),
           ...(selectedEnvId     && { environment_id: selectedEnvId }),
         }),
