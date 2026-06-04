@@ -155,6 +155,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
   } | null>(null)
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
+  const [focusMode, setFocusMode] = useState(false)
   const [activeView, setActiveView] = useState<"canvas" | "yaml" | "runs">("canvas")
   const [runs, setRuns] = useState<{id:string;status:string;triggered_by:string|null;created_at:string}[]>([])
   const [runsLoading, setRunsLoading] = useState(false)
@@ -982,6 +983,30 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
             className="rounded-lg border border-indigo-200 px-3 py-1.5 text-xs font-medium text-indigo-500 hover:bg-indigo-50 transition-colors"
           >
             ⬡ Organize
+          </button>
+          <button
+            onClick={() => {
+              if (focusMode) {
+                setFocusMode(false)
+                setLeftOpen(true)
+                setRightOpen(true)
+              } else {
+                setFocusMode(true)
+                setLeftOpen(false)
+                setRightOpen(false)
+                const laid = autoLayout(nodes, edges)
+                setNodes(laid.nodes)
+                setTimeout(() => fitView({ padding: 0.2, minZoom: 0.5, duration: 400 }), 80)
+              }
+            }}
+            title={focusMode ? "Exit focus mode" : "Focus mode — show all blocks readable"}
+            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+              focusMode
+                ? "border-stone-400 bg-stone-900 text-white hover:bg-stone-700"
+                : "border-stone-300 text-stone-500 hover:bg-stone-50"
+            }`}
+          >
+            {focusMode ? "⊠ Exit Focus" : "⊡ Focus"}
           </button>
           {!isViewer && (
             <>
