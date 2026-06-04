@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import sys
 import uuid
+import importlib
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -45,6 +46,7 @@ _STUBS = [
     "app.models.workspace",
     "app.core.crypto",
 ]
+_ORIG_STUBS = {name: sys.modules.get(name) for name in _STUBS}
 for _mod in _STUBS:
     sys.modules.setdefault(_mod, MagicMock())
 
@@ -64,19 +66,19 @@ sys.modules.setdefault("app.core.config", _cfg_stub)
 _db_stub = MagicMock()
 sys.modules.setdefault("app.core.database", _db_stub)
 
-# Now stub the guard models module with a lightweight GuardPolicy class that
-# just records whatever kwargs it is constructed with as attributes.
-class _GuardPolicy:
-    def __init__(self, **kwargs):
-        for k, v in kwargs.items():
-            setattr(self, k, v)
-
-_guard_models_stub = MagicMock()
-_guard_models_stub.GuardPolicy = _GuardPolicy
-sys.modules["app.modules.guard.models"] = _guard_models_stub
-
 # Finally import the function under test
 from app.routers.projects import _seed_starter_policies  # noqa: E402
+
+# Restore leaked module entries after import so later tests can import the real
+# modules without seeing these collection-time stubs.
+sys.modules.pop("app.core.config", None)
+sys.modules.pop("app.core.database", None)
+for _mod, _orig in _ORIG_STUBS.items():
+    if _orig is not None:
+        sys.modules[_mod] = _orig
+    else:
+        sys.modules.pop(_mod, None)
+importlib.invalidate_caches()
 
 
 # ---------------------------------------------------------------------------
@@ -85,10 +87,26 @@ from app.routers.projects import _seed_starter_policies  # noqa: E402
 
 def _run_seed() -> list:
     """Call _seed_starter_policies with a mock DB and return added objects."""
+    class _GuardPolicy:
+        def __init__(self, **kwargs):
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+
+    _guard_models_stub = MagicMock()
+    _guard_models_stub.GuardPolicy = _GuardPolicy
+    original_guard_models = sys.modules.get("app.modules.guard.models")
+    sys.modules["app.modules.guard.models"] = _guard_models_stub
+
     db = MagicMock()
     added: list = []
     db.add.side_effect = lambda obj: added.append(obj)
-    _seed_starter_policies(db, uuid.uuid4(), datetime.now(timezone.utc))
+    try:
+        _seed_starter_policies(db, uuid.uuid4(), datetime.now(timezone.utc))
+    finally:
+        if original_guard_models is not None:
+            sys.modules["app.modules.guard.models"] = original_guard_models
+        else:
+            sys.modules.pop("app.modules.guard.models", None)
     return added
 
 
