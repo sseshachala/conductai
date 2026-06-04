@@ -184,6 +184,9 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
   // Guard install state
   const [guardInstalled, setGuardInstalled] = useState(false)
 
+  // Active runs count (for sidebar badge)
+  const [activeRunsCount, setActiveRunsCount] = useState<number | undefined>(undefined)
+
   // Projects state
   const [projects, setProjects] = useState<Project[]>([])
   const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null)
@@ -276,6 +279,24 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
       cancelled = true
       window.removeEventListener("conduct:org-name-changed", onOrgNameChange)
     }
+  }, [activeWorkspace?.id])
+
+  // Fetch active runs count for sidebar badge
+  useEffect(() => {
+    let cancelled = false
+    async function fetchRunsCount() {
+      if (!activeWorkspace?.id) return
+      try {
+        const h = await authHeaders()
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/runs?limit=500&offset=0`, { headers: h })
+        if (!res.ok || cancelled) return
+        const data: { status: string }[] = await res.json()
+        const active = data.filter(r => r.status === "running" || r.status === "paused").length
+        if (!cancelled) setActiveRunsCount(active > 0 ? active : undefined)
+      } catch {}
+    }
+    fetchRunsCount()
+    return () => { cancelled = true }
   }, [activeWorkspace?.id])
 
   // Guard install check
@@ -804,7 +825,6 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
               icon={<Icons.Board />}
               active={pathname.startsWith("/tasks")}
               collapsed={collapsed}
-              badge={9}
             />
             <SideNavItem
               href="/workflows/new"
@@ -819,7 +839,6 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
               icon={<Icons.Store />}
               active={pathname.startsWith("/marketplace")}
               collapsed={collapsed}
-              badge={18}
             />
           </div>
 
@@ -837,7 +856,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
               icon={<Icons.Pulse />}
               active={pathname.startsWith("/runs")}
               collapsed={collapsed}
-              badge={3}
+              badge={activeRunsCount}
             />
           </div>
         </nav>
