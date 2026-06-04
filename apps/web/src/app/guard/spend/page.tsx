@@ -18,6 +18,9 @@ interface DeveloperSpend {
   tokens_after: number
   cost_usd: number
   saved_usd: number
+  detected_tools: string[]
+  mcp_registered: string[]
+  hook_registered: string[]
 }
 
 interface AiToolBreakdown {
@@ -117,6 +120,16 @@ function GuardShell({ children }: { children: React.ReactNode }) {
       {children}
     </div>
   )
+}
+
+// ─── Tool coverage ────────────────────────────────────────────────────────────
+
+const TOOL_LABELS: Record<string, string> = {
+  "claude-code": "Claude",
+  "codex":       "Codex",
+  "cursor":      "Cursor",
+  "windsurf":    "Windsurf",
+  "vscode":      "VS Code",
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -769,8 +782,8 @@ function SpendContent() {
           By developer
         </div>
         {/* Header row */}
-        <div style={{ display: "grid", gridTemplateColumns: "1.8fr 0.8fr 0.9fr 0.9fr 0.9fr 1.3fr", gap: 14, padding: "10px 20px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
-          {["Developer", "Sessions", "Tokens", "Est. cost", "Saved", "Budget"].map((h, i) => (
+        <div style={{ display: "grid", gridTemplateColumns: "1.8fr 0.8fr 0.9fr 0.9fr 0.9fr 1.4fr 1.3fr", gap: 14, padding: "10px 20px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+          {["Developer", "Sessions", "Tokens", "Est. cost", "Saved", "Coverage", "Budget"].map((h, i) => (
             <div key={i} className="eyebrow" style={{ fontSize: 10 }}>{h}</div>
           ))}
         </div>
@@ -792,7 +805,7 @@ function SpendContent() {
             return (
               <div key={dev.email}>
                 <div
-                  style={{ display: "grid", gridTemplateColumns: "1.8fr 0.8fr 0.9fr 0.9fr 0.9fr 1.3fr", gap: 14, padding: "12px 20px", borderBottom: "1px solid var(--border)", alignItems: "center", cursor: "pointer" }}
+                  style={{ display: "grid", gridTemplateColumns: "1.8fr 0.8fr 0.9fr 0.9fr 0.9fr 1.4fr 1.3fr", gap: 14, padding: "12px 20px", borderBottom: "1px solid var(--border)", alignItems: "center", cursor: "pointer" }}
                   onClick={() => setExpandedDev(isExpanded ? null : dev.email)}
                 >
                   <div className="mono" style={{ fontSize: 12.5, fontWeight: 550 }}>{dev.email}</div>
@@ -803,6 +816,26 @@ function SpendContent() {
                   </div>
                   <div className="mono" style={{ fontSize: 12.5, color: "var(--ok)" }}>
                     {CURRENCY_SYMBOLS[currency]}{fromUsd(dev.saved_usd, currency).toFixed(2)}
+                  </div>
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                    {(dev.detected_tools ?? []).map(tool => {
+                      const covered = (dev.mcp_registered ?? []).includes(tool)
+                      return (
+                        <span key={tool} style={{
+                          display: "inline-flex", alignItems: "center", gap: 3,
+                          fontSize: 10.5, fontWeight: 600, padding: "2px 7px",
+                          borderRadius: 20,
+                          background: covered ? "var(--ok-bg)" : "var(--warn-bg)",
+                          color: covered ? "var(--ok)" : "var(--warn)",
+                          border: `1px solid ${covered ? "var(--ok-bd)" : "var(--warn-bd)"}`,
+                        }}>
+                          {covered ? "✓" : "!"} {TOOL_LABELS[tool] ?? tool}
+                        </span>
+                      )
+                    })}
+                    {(dev.detected_tools ?? []).length === 0 && (
+                      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>—</span>
+                    )}
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <BudgetBar used={dev.cost_usd} limit={budgetLimit} />

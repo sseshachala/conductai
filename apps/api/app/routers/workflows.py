@@ -25,6 +25,9 @@ from app.models.workflow import Workflow, WorkflowVersion
 from app.schemas.workflow import WorkflowCreate, WorkflowUpdate, WorkflowOut, WorkflowDetailOut
 from app.compiler.compiler import compile_workflow
 from app.compiler.stream import stream_compile_block
+from app.runtime.model_router import resolve as resolve_model
+from app.runtime.pricing import freeze_pricing_snapshot, get_model_rates, pricing_note
+from app.runtime.input_contract import InputContractError, validate_run_start_inputs
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
 
@@ -1172,7 +1175,7 @@ def estimate_workflow_cost(
     Estimate token usage and cost for this workflow.
     Uses actual historical run data when available; falls back to static estimates.
     ?issues=N multiplies cost by number of matching GitHub issues.
-    Pricing: Claude Sonnet 4.6 — $3/1M input, $15/1M output.
+    Pricing is resolved from the runtime pricing registry.
     """
     workflow = db.query(Workflow).filter(
         Workflow.id == workflow_id,
@@ -1191,10 +1194,8 @@ def estimate_workflow_cost(
     artifacts = version.compiled_artifacts or {}
     nodes     = graph.get("nodes", [])
 
-    # Pricing constants (Claude Sonnet 4.6)
-    INPUT_PRICE_PER_TOKEN  = 3.00  / 1_000_000
-    OUTPUT_PRICE_PER_TOKEN = 15.00 / 1_000_000
     CHARS_PER_TOKEN        = 4
+    pricing_snapshot = freeze_pricing_snapshot()
 
     # ── Pull historical actuals from past succeeded runs ──────────────────────
     # RunEvent.payload shape for block_completed:
@@ -1240,6 +1241,8 @@ def estimate_workflow_cost(
     total_input_tokens  = 0
     total_output_tokens = 0
     integrations_used: set[str] = set()
+    llm_models_used: set[str] = set()
+    llm_pricing_note: str | None = None
     has_actuals = False
 
     for node in nodes:
@@ -1301,7 +1304,23 @@ def estimate_workflow_cost(
             output_tokens = 200
             note = ""
 
-        cost = (input_tokens * INPUT_PRICE_PER_TOKEN) + (output_tokens * OUTPUT_PRICE_PER_TOKEN)
+        provider = None
+        model = None
+        rates = None
+        if mode in ("agentic", "brain", "logic"):
+            routing_pref = data.get("routingPreference") or "balanced"
+            explicit_model = data.get("model") or None
+            explicit_provider = data.get("provider") or None
+            provider, model, _ = resolve_model(workflow.playbook_slug, routing_pref, explicit_model, explicit_provider)
+            rates, pricing_version = get_model_rates(provider, model, pricing_snapshot)
+            llm_models_used.add(f"{provider}:{model}")
+            if llm_pricing_note is None:
+                llm_pricing_note = pricing_note(provider, model, rates, pricing_version)
+
+        if rates:
+            cost = (input_tokens * rates["input"] + output_tokens * rates["output"]) / 1_000_000
+        else:
+            cost = 0.0
 
         blocks.append({
             "block_id":      nid,
@@ -1309,6 +1328,8 @@ def estimate_workflow_cost(
             "type":          btype,
             "mode":          mode,
             "integration":   integration,
+            "provider":      provider,
+            "model":         model,
             "input_tokens":  input_tokens,
             "output_tokens": output_tokens,
             "cost_usd":      round(cost, 6),
@@ -1318,7 +1339,8 @@ def estimate_workflow_cost(
         total_input_tokens  += input_tokens
         total_output_tokens += output_tokens
 
-    per_run_cost = (total_input_tokens * INPUT_PRICE_PER_TOKEN) + (total_output_tokens * OUTPUT_PRICE_PER_TOKEN)
+    # Sum from block-level costs so multi-model/provider workflows estimate correctly.
+    per_run_cost = sum(float(b.get("cost_usd", 0.0) or 0.0) for b in blocks)
     issues       = max(1, issues)
     total_cost   = per_run_cost * issues
 
@@ -1333,8 +1355,10 @@ def estimate_workflow_cost(
         "issues_count":         issues,
         "total_cost_usd":       round(total_cost, 4),
         "integrations_used":    sorted(integrations_used),
-        "model":                "claude-sonnet-4-6",
-        "pricing_note":         "$3/1M input · $15/1M output",
+        "model":                sorted(llm_models_used)[0] if llm_models_used else None,
+        "models_used":          sorted(llm_models_used),
+        "pricing_version":      pricing_snapshot.get("version"),
+        "pricing_note":         llm_pricing_note or "No LLM-cost blocks in this workflow",
         "based_on_actuals":     has_actuals,
     }
 
@@ -1721,6 +1745,11 @@ def test_trigger(
     else:
         # Non-GitHub trigger — keep raw payload as _trigger
         _initial_state["_trigger"] = payload
+
+    try:
+        _initial_state = validate_run_start_inputs(_initial_state)
+    except InputContractError as err:
+        raise HTTPException(status_code=422, detail=str(err))
 
     run = Run(
         workflow_version_id=version.id,
