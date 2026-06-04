@@ -585,7 +585,7 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
   const [filterOpen, setFilterOpen] = useState(false)
   const [selectedRepository, setSelectedRepository] = useState<string | null>(null)
   const [selectedPlaybook, setSelectedPlaybook] = useState<string | null>(null)
-  const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRangeLabel>("Last 7 days")
+  const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRangeLabel>("All time")
 
   async function buildHeaders() {
     const headers: Record<string, string> = {}
@@ -712,7 +712,7 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
   function handleResetFilters() {
     setSelectedRepository(null)
     setSelectedPlaybook(null)
-    setSelectedTimeRange("Last 7 days")
+    setSelectedTimeRange("All time")
     setFilterOpen(false)
   }
 

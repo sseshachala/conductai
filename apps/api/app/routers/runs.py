@@ -597,12 +597,17 @@ def list_all_runs(
         q = q.filter(Workflow.name == workflow_name)
     if created_after is not None:
         try:
-            # Try to parse as Unix timestamp first
-            after_dt = datetime.fromtimestamp(created_after, tz=timezone.utc)
+            # Try ISO datetime string first (e.g., "2026-05-28T12:34:56Z")
+            if isinstance(created_after, str):
+                after_dt = datetime.fromisoformat(created_after.replace('Z', '+00:00'))
+            else:
+                # Try Unix timestamp
+                after_dt = datetime.fromtimestamp(created_after, tz=timezone.utc)
         except (ValueError, TypeError, OSError):
-            # Fall back to treating as seconds offset from now
-            after_dt = datetime.now(timezone.utc)
-        q = q.filter(Run.created_at >= after_dt)
+            # Fall back to no filter if parsing fails
+            after_dt = None
+        if after_dt:
+            q = q.filter(Run.created_at >= after_dt)
     
     # Filter by repository - requires checking the state JSON
     # Only include runs where repo matches (extracted from _trigger.repository.full_name)
