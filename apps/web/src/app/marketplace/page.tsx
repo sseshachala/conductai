@@ -14,6 +14,9 @@ interface Playbook {
   tags: string[]
   category: string
   featured: boolean
+  trigger?: string
+  block_count?: number
+  install_count?: number
 }
 
 interface PlaybookScore {
@@ -87,6 +90,33 @@ const CATEGORY_ORDER = [
   "Platform & Infra",
 ]
 
+// Display labels for category chips — maps internal category to design label
+const CATEGORY_LABELS: Record<string, string> = {
+  "Issue to PR": "Issue → PR",
+  "Issue Triage": "Triage",
+  "Release Management": "Release",
+  "Incidents & Ops": "Incidents",
+  "Platform & Infra": "Infra",
+}
+
+const CAT_BLOCK: Record<string, string> = {
+  "Issue to PR":       "brain",
+  "Issue → PR":        "brain",
+  "Code Review":       "tool",
+  "Issue Triage":      "trigger",
+  "Triage":            "trigger",
+  "CI/CD":             "logic",
+  "Release Management":"output",
+  "Release":           "output",
+  "Incidents & Ops":   "approval",
+  "Incidents":         "approval",
+  "Security":          "guard",
+  "Docs":              "memory",
+  "Platform & Infra":  "mcp",
+  "Infra":             "mcp",
+  "Testing":           "cleanup",
+}
+
 function getWorkspaceId(): string | null {
   if (typeof document === "undefined") return null
   return document.cookie.split("; ").find(r => r.startsWith("delegator_project_id="))?.split("=")[1] ?? null
@@ -128,6 +158,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   const [playbooks, setPlaybooks] = useState<Playbook[]>([])
   const [loading, setLoading] = useState(true)
   const [activeCategory, setActiveCategory] = useState("All")
+  const [search, setSearch] = useState("")
   const [installing, setInstalling] = useState(false)
   const [installedCount, setInstalledCount] = useState<Map<string, number>>(new Map())
   const [scores, setScores] = useState<Map<string, PlaybookScore>>(new Map())
@@ -350,75 +381,113 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
     c !== "All" && playbooks.some(p => p.category === c)
   )]
 
-  const filtered = activeCategory === "All"
-    ? playbooks
-    : playbooks.filter(p => p.category === activeCategory)
+  // Search filter
+  const searchActive = search.trim().length > 0
+  const searchFiltered = searchActive
+    ? playbooks.filter(p =>
+        (FRIENDLY_NAMES[p.slug] ?? p.name).toLowerCase().includes(search.toLowerCase()) ||
+        p.description.toLowerCase().includes(search.toLowerCase())
+      )
+    : playbooks
 
-  // Group filtered playbooks by category for "All" view
-  const grouped: Record<string, Playbook[]> = {}
-  if (activeCategory === "All") {
-    for (const cat of CATEGORY_ORDER.filter(c => c !== "All")) {
-      const items = playbooks.filter(p => p.category === cat)
-      if (items.length > 0) grouped[cat] = items
-    }
-  }
+  // Category filter (applied after search)
+  const filtered = activeCategory === "All"
+    ? searchFiltered
+    : searchFiltered.filter(p => p.category === activeCategory)
+
+  // Featured playbooks (shown only when no category filter and no search)
+  const featuredPlaybooks = playbooks.filter(p => p.featured)
+  const showFeatured = activeCategory === "All" && !searchActive && featuredPlaybooks.length > 0
 
   return (
     <AppShell>
       <div className="mx-auto max-w-5xl px-6 py-10">
 
-        {/* Header */}
-        <div className="mb-8 flex items-start justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-stone-900">Playbooks</h1>
-            <p className="text-xs text-stone-400 mt-0.5">YAML-based agent recipes — install one into a project, configure it, and run it.</p>
+        {/* Page header */}
+        <div style={{ marginBottom: 28 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", letterSpacing: "-.02em", marginBottom: 5 }}>
+            Marketplace
+          </h1>
+          <p style={{ fontSize: 13.5, color: "var(--text-3)", lineHeight: 1.5 }}>
+            18 ready-made playbooks. Install in one click, connect credentials, and run.
+          </p>
+        </div>
+
+        {/* Search + submit row */}
+        <div style={{ display: "flex", gap: 10, marginBottom: 22, alignItems: "center" }}>
+          <div style={{ position: "relative", maxWidth: 420, flex: "0 0 420px" }}>
+            <svg
+              width={16} height={16}
+              viewBox="0 0 16 16"
+              fill="none"
+              style={{ position: "absolute", left: 12, top: 11, color: "var(--text-muted)", pointerEvents: "none" }}
+            >
+              <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M10 10l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search playbooks…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{
+                width: "100%",
+                height: 38,
+                padding: "0 12px 0 36px",
+                borderRadius: 9,
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                color: "var(--text)",
+                fontSize: 13.5,
+                outline: "none",
+              }}
+            />
           </div>
           <Link
             href="/playbooks/submit"
-            className="text-sm text-indigo-600 border border-indigo-200 rounded-lg px-4 py-2 hover:bg-indigo-50 transition-colors whitespace-nowrap"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              height: 38,
+              padding: "0 14px",
+              fontSize: 13,
+              fontWeight: 600,
+              color: "var(--text-2)",
+              border: "1px solid var(--border)",
+              borderRadius: 9,
+              background: "transparent",
+              textDecoration: "none",
+              transition: "background .12s, color .12s",
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)"; (e.currentTarget as HTMLAnchorElement).style.color = "var(--text)" }}
+            onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.background = "transparent"; (e.currentTarget as HTMLAnchorElement).style.color = "var(--text-2)" }}
           >
-            + Submit a playbook
+            <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
+            Submit playbook
           </Link>
         </div>
 
-        {/* Category tabs */}
-        <div className="flex flex-wrap gap-1.5 mb-8 border-b border-stone-100 pb-4">
-          {availableCategories.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setActiveCategory(cat)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                activeCategory === cat
-                  ? "bg-stone-900 text-white"
-                  : "bg-stone-100 text-stone-500 hover:bg-stone-200"
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-
         {loading ? (
-          <div className="grid grid-cols-3 gap-4">
-            {[1,2,3,4,5,6,7,8,9].map(i => <div key={i} className="h-48 rounded-xl bg-stone-100 animate-pulse" />)}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))", gap: 14 }}>
+            {[1,2,3,4,5,6].map(i => (
+              <div key={i} style={{ height: 190, borderRadius: 12, background: "var(--surface-3)", animation: "pulse 2s cubic-bezier(0.4,0,0.6,1) infinite" }} />
+            ))}
           </div>
-        ) : activeCategory === "All" ? (
-          // Grouped by category
-          <div className="flex flex-col gap-10">
-            {Object.entries(grouped).map(([cat, items]) => (
-              <div key={cat}>
-                <div className="flex items-center gap-3 mb-4">
-                  <h2 className="text-xs font-semibold text-stone-500 uppercase tracking-wider">{cat}</h2>
-                  <div className="flex-1 h-px bg-stone-100" />
-                  <span className="text-[10px] text-stone-300">{items.length}</span>
-                </div>
-                <div className="grid grid-cols-3 gap-4">
-                  {items.map(p => (
+        ) : (
+          <>
+            {/* Featured section */}
+            {showFeatured && (
+              <div style={{ marginBottom: 30 }}>
+                <div className="eyebrow" style={{ marginBottom: 11 }}>Featured · Issue → PR</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+                  {featuredPlaybooks.map(p => (
                     <PlaybookCard
                       key={p.slug}
                       playbook={p}
-                      installing={false}
+                      installing={installing}
                       installCount={installedCount.get(p.slug) ?? 0}
+                      isInstalled={(installedCount.get(p.slug) ?? 0) > 0}
                       grade={scores.get(p.slug)?.grade}
                       onInstall={openInstallModal}
                       onViewYaml={openYamlModal}
@@ -426,23 +495,58 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                   ))}
                 </div>
               </div>
-            ))}
-          </div>
-        ) : (
-          // Single category flat grid
-          <div className="grid grid-cols-3 gap-4">
-            {filtered.map(p => (
-              <PlaybookCard
-                key={p.slug}
-                playbook={p}
-                installing={false}
-                installCount={installedCount.get(p.slug) ?? 0}
-                grade={scores.get(p.slug)?.grade}
-                onInstall={openInstallModal}
-                onViewYaml={openYamlModal}
-              />
-            ))}
-          </div>
+            )}
+
+            {/* Category chips */}
+            <div style={{ display: "flex", gap: 7, marginBottom: 18, flexWrap: "wrap" }}>
+              {availableCategories.map(cat => {
+                const isActive = activeCategory === cat
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => setActiveCategory(cat)}
+                    style={{
+                      height: 30,
+                      padding: "0 13px",
+                      borderRadius: 20,
+                      border: `1px solid ${isActive ? "var(--accent-ring)" : "var(--border)"}`,
+                      background: isActive ? "var(--accent-weak)" : "var(--surface)",
+                      color: isActive ? "var(--accent-text)" : "var(--text-2)",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      transition: "all .12s",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {CATEGORY_LABELS[cat] ?? cat}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Playbooks grid */}
+            {filtered.length === 0 ? (
+              <div style={{ padding: "48px 0", textAlign: "center", color: "var(--text-muted)", fontSize: 13.5 }}>
+                No playbooks match your search.
+              </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))", gap: 14 }}>
+                {filtered.map(p => (
+                  <PlaybookCard
+                    key={p.slug}
+                    playbook={p}
+                    installing={installing}
+                    installCount={installedCount.get(p.slug) ?? 0}
+                    isInstalled={(installedCount.get(p.slug) ?? 0) > 0}
+                    grade={scores.get(p.slug)?.grade}
+                    onInstall={openInstallModal}
+                    onViewYaml={openYamlModal}
+                  />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -615,8 +719,6 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
               </div>
             )}
 
-
-
             {webhookError && (
               <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-3">
                 <p className="text-xs font-semibold text-red-700 mb-1">Webhook not registered</p>
@@ -649,60 +751,184 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   )
 }
 
-function PlaybookCard({ playbook, installing, installCount, grade, onInstall, onViewYaml }: {
+function PlaybookCard({
+  playbook,
+  installing,
+  installCount,
+  isInstalled,
+  grade,
+  onInstall,
+  onViewYaml,
+}: {
   playbook: Playbook
   installing: boolean
   installCount: number
+  isInstalled: boolean
   grade?: string
   onInstall: (slug: string) => void
   onViewYaml: (slug: string) => void
 }) {
+  const blockType = CAT_BLOCK[playbook.category] ?? "brain"
+  const displayName = FRIENDLY_NAMES[playbook.slug] ?? playbook.name
+  const catLabel = CATEGORY_LABELS[playbook.category] ?? playbook.category
+  const blockCount = playbook.block_count ?? playbook.tags?.length ?? 0
+  const installCountDisplay = playbook.install_count ?? installCount
+
   return (
-    <div className="rounded-xl border border-stone-200 bg-white p-5 flex flex-col gap-3 hover:border-stone-300 transition-colors">
-      <div className="flex items-start justify-between gap-2">
-        <span className="text-2xl leading-none">{playbook.icon}</span>
-        <div className="flex items-center gap-1.5">
-          {grade && (
-            <span
-              className={`text-[10px] px-1.5 py-0.5 rounded font-semibold tabular-nums ${GRADE_STYLES[grade] ?? "bg-stone-100 text-stone-500"}`}
-              title={`Quality grade: ${grade}`}
-            >
-              {grade}
-            </span>
-          )}
-          {installCount > 0 && (
-            <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-medium">
-              {installCount} installed
-            </span>
-          )}
-          <Link
-            href={`/playbooks/${playbook.slug}`}
-            className="text-[10px] bg-stone-100 text-stone-500 hover:bg-stone-200 px-1.5 py-0.5 rounded font-medium transition-colors"
-            title="Public shareable page"
-          >
-            ↗ Share
-          </Link>
-        </div>
-      </div>
-      <div>
-        <p className="text-sm font-semibold text-stone-900 mb-1">
-          {FRIENDLY_NAMES[playbook.slug] ?? playbook.name}
-        </p>
-        <p className="text-xs text-stone-500 leading-relaxed">{playbook.description}</p>
-      </div>
-      <div className="mt-auto flex gap-2">
-        <button
-          onClick={() => onViewYaml(playbook.slug)}
-          className="flex-1 rounded-lg px-3 py-2 text-xs font-medium border border-stone-200 text-stone-600 hover:bg-stone-50 transition-colors"
+    <div
+      className="card"
+      style={{
+        padding: "16px 18px",
+        display: "flex",
+        flexDirection: "column",
+        transition: "border-color .14s, box-shadow .14s",
+        position: "relative",
+      }}
+      onMouseEnter={e => {
+        (e.currentTarget as HTMLDivElement).style.boxShadow = "var(--shadow-md)"
+        ;(e.currentTarget as HTMLDivElement).style.borderColor = "var(--border-2)"
+      }}
+      onMouseLeave={e => {
+        (e.currentTarget as HTMLDivElement).style.boxShadow = ""
+        ;(e.currentTarget as HTMLDivElement).style.borderColor = "var(--border)"
+      }}
+    >
+      {/* Grade badge — top right */}
+      {grade && (
+        <span
+          className={`text-[10px] px-1.5 py-0.5 rounded font-semibold tabular-nums ${GRADE_STYLES[grade] ?? "bg-stone-100 text-stone-500"}`}
+          title={`Quality grade: ${grade}`}
+          style={{ position: "absolute", top: 14, right: 14 }}
         >
-          View YAML
-        </button>
+          {grade}
+        </span>
+      )}
+
+      {/* Category chip + popular badge */}
+      <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 10 }}>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            height: 21,
+            padding: "0 9px",
+            borderRadius: 20,
+            fontSize: 9.5,
+            fontWeight: 700,
+            letterSpacing: ".05em",
+            textTransform: "uppercase",
+            background: `var(--blk-${blockType}-bg)`,
+            color: `var(--blk-${blockType}-tx)`,
+            border: `1px solid var(--blk-${blockType}-bd)`,
+          }}
+        >
+          {catLabel}
+        </span>
+        {playbook.featured && (
+          <span style={{ fontSize: 9.5, fontWeight: 800, color: "var(--accent-text)", letterSpacing: ".05em" }}>
+            ★ POPULAR
+          </span>
+        )}
+      </div>
+
+      {/* Name */}
+      <div style={{ fontWeight: 650, fontSize: 15, marginBottom: 5, letterSpacing: "-.01em", color: "var(--text)", paddingRight: grade ? 32 : 0 }}>
+        {displayName}
+      </div>
+
+      {/* Description */}
+      <p style={{ fontSize: 12.5, color: "var(--text-3)", lineHeight: 1.45, margin: "0 0 14px", flex: 1 }}>
+        {playbook.description}
+      </p>
+
+      {/* Meta row: trigger · blocks · installs */}
+      <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 11.5, color: "var(--text-muted)", marginBottom: 13 }}>
+        {playbook.trigger && (
+          <span style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0, overflow: "hidden" }}>
+            <svg width={13} height={13} viewBox="0 0 13 13" fill="none" style={{ flexShrink: 0 }}>
+              <path d="M7 1L3 7.5h4L5.5 12 10 5.5H6.5L7 1z" fill="currentColor" />
+            </svg>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "ui-monospace, monospace", fontSize: 11 }}>
+              {playbook.trigger}
+            </span>
+          </span>
+        )}
+        {blockCount > 0 && (
+          <span style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+            <svg width={13} height={13} viewBox="0 0 13 13" fill="none">
+              <rect x="1" y="1" width="4.5" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+              <rect x="7.5" y="1" width="4.5" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+              <rect x="1" y="7.5" width="4.5" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+              <rect x="7.5" y="7.5" width="4.5" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+            </svg>
+            {blockCount} blocks
+          </span>
+        )}
+        {installCountDisplay > 0 && (
+          <span style={{ marginLeft: "auto", whiteSpace: "nowrap", flexShrink: 0 }}>
+            {installCountDisplay} installs
+          </span>
+        )}
+      </div>
+
+      {/* Action buttons */}
+      <div style={{ display: "flex", gap: 8 }}>
         <button
           onClick={() => onInstall(playbook.slug)}
           disabled={installing}
-          className="flex-1 rounded-lg px-3 py-2 text-xs font-medium bg-stone-900 text-white hover:bg-stone-700 disabled:opacity-40 transition-colors"
+          style={{
+            flex: 1,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 5,
+            height: 32,
+            borderRadius: 7,
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: installing ? "not-allowed" : "pointer",
+            opacity: installing ? 0.5 : 1,
+            transition: "all .12s",
+            border: isInstalled ? "1px solid var(--ok-bd)" : "1px solid var(--accent)",
+            background: isInstalled ? "transparent" : "var(--accent)",
+            color: isInstalled ? "var(--ok)" : "#fff",
+          }}
         >
-          {installing ? "Installing…" : "+ Install"}
+          {isInstalled ? (
+            <>
+              <svg width={13} height={13} viewBox="0 0 13 13" fill="none">
+                <path d="M2.5 6.5l3 3 5-5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              Installed — open
+            </>
+          ) : (
+            "Install"
+          )}
+        </button>
+        <button
+          onClick={() => onViewYaml(playbook.slug)}
+          title="Preview YAML"
+          style={{
+            width: 32,
+            height: 32,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 7,
+            border: "1px solid var(--border)",
+            background: "transparent",
+            color: "var(--text-2)",
+            cursor: "pointer",
+            flexShrink: 0,
+            transition: "all .12s",
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-2)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text)" }}
+          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text-2)" }}
+        >
+          <svg width={15} height={15} viewBox="0 0 15 15" fill="none">
+            <path d="M3 4.5h9M3 7.5h6M3 10.5h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            <path d="M11.5 10l1.5 1.5-1.5 1.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
         </button>
       </div>
     </div>
