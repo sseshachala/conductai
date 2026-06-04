@@ -1013,6 +1013,7 @@ def _execute_brain(
         text = next((b.text for b in response.content if isinstance(b, LLMTextBlock)), "")
         result = {
             "output": text,
+            "turns": 1,
             "input_tokens": response.usage.input_tokens,
             "output_tokens": response.usage.output_tokens,
             "cost_usd": response.cost_usd,

@@ -5,6 +5,7 @@ import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
+import { duration } from "@/lib/runUtils"
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
@@ -166,6 +167,9 @@ export default function RunsPage() {
                         est. {run.max_turns} turns
                       </span>
                     )}
+                    <span className="mono" style={{ fontSize: 12, color: "var(--text-2)" }}>
+                      {duration(run.started_at, run.completed_at)}
+                    </span>
                     <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
                       {new Date(run.created_at).toLocaleString()}
                     </span>
