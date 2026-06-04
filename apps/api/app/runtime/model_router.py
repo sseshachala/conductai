@@ -103,6 +103,27 @@ _CATEGORY_DEFAULT: dict[str, tuple[str, str, str]] = {
 
 _GLOBAL_DEFAULT = (ANTHROPIC, SONNET, "default: balanced model")
 
+_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {
+    ANTHROPIC: {
+        "code_implementation": (SONNET, "anthropic override: balanced default for code implementation"),
+        "code_review":         (SONNET, "anthropic override: balanced default for code review"),
+        "security":            (OPUS,   "anthropic override: strongest model for security"),
+        "triage":              (SONNET, "anthropic override: balanced default for triage"),
+        "summarization":       (SONNET, "anthropic override: balanced default for summarization"),
+        "reasoning":           (SONNET, "anthropic override: balanced default for reasoning"),
+        "unknown":             (SONNET, "anthropic override: balanced default model"),
+    },
+    OPENAI: {
+        "code_implementation": (GPT_41_M, "openai override: efficient model for code implementation"),
+        "code_review":         (GPT_41_M, "openai override: efficient model for code review"),
+        "security":            (GPT_41,   "openai override: strongest available OpenAI model for security"),
+        "triage":              (GPT_41_M, "openai override: efficient model for triage"),
+        "summarization":       (GPT_41_M, "openai override: efficient model for summarization"),
+        "reasoning":           (GPT_41,   "openai override: strongest available OpenAI model for reasoning"),
+        "unknown":             (GPT_41_M, "openai override: balanced default model"),
+    },
+}
+
 
 def _infer_provider(model: str) -> str:
     m = (model or "").lower()
@@ -115,15 +136,17 @@ def resolve(
     playbook_slug: str | None,
     routing_preference: str | None,
     explicit_model: str | None = None,
+    explicit_provider: str | None = None,
 ) -> tuple[str, str]:
     """
     Return (provider, model_id, routing_reason).
 
     Priority:
     1. explicit_model on the block — user pinned a specific model
-    2. Static policy lookup: (task_category, routing_preference)
-    3. Category default
-    4. Global default (sonnet)
+    2. explicit_provider on the block — user pinned a provider, router picks a safe model for it
+    3. Static policy lookup: (task_category, routing_preference)
+    4. Category default
+    5. Global default (sonnet)
     """
     try:
         # 1. Pinned model
@@ -136,6 +159,23 @@ def resolve(
 
         # 2. Resolve category from slug
         category = _SLUG_TO_CATEGORY.get(playbook_slug or "", "") if playbook_slug else ""
+
+        requested_provider = (explicit_provider or "").lower().strip()
+        if requested_provider in (ANTHROPIC, OPENAI):
+            category_key = category or "unknown"
+            model, reason = _PROVIDER_MODEL_DEFAULTS[requested_provider].get(
+                category_key,
+                _PROVIDER_MODEL_DEFAULTS[requested_provider]["unknown"],
+            )
+            log.debug(
+                "model_router.provider_override",
+                slug=playbook_slug,
+                pref=pref,
+                category=category_key,
+                provider=requested_provider,
+                model=model,
+            )
+            return requested_provider, model, reason
 
         if category:
             provider, model, reason = _POLICY.get((category, pref), _CATEGORY_DEFAULT.get(category, _GLOBAL_DEFAULT))

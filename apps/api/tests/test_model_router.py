@@ -25,6 +25,14 @@ def test_resolve_infers_provider_from_pinned_model():
     assert reason == "user-pinned model"
 
 
+def test_resolve_honors_explicit_provider_override_without_pinned_model():
+    provider, model, reason = resolve("pr_reviewer", "balanced", None, "openai")
+
+    assert provider == "openai"
+    assert model == "gpt-4.1-mini"
+    assert reason == "openai override: efficient model for code review"
+
+
 def test_resolve_falls_back_for_unknown_slug_by_preference():
     provider, model, reason = resolve("unknown_slug", "speed")
 

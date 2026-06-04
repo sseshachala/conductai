@@ -170,9 +170,21 @@ interface BlockRow {
   diffStat?: string
   toolCalls?: ToolCall[]
   budgetExhausted?: { turns: number; costUsd: number }
+  provider?: string
   model?: string
   routingReason?: string
   timedOut?: boolean
+}
+
+const PROVIDER_LABELS: Record<string, string> = {
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+}
+
+function formatModelLabel(model: string): string {
+  if (model === "gpt-4.1") return "GPT-4.1"
+  if (model === "gpt-4.1-mini") return "GPT-4.1 Mini"
+  return model.replace("claude-", "").replace(/-\d{8}$/, "")
 }
 
 const FILE_ACTION_COLOR: Record<string, string> = {
@@ -229,10 +241,15 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
               {row.inputTokens?.toLocaleString()} tok · ${row.costUsd.toFixed(4)}
             </span>
           )}
+          {row.type === "brain" && row.provider && (
+            <span className="text-[9px] text-sky-700 bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded font-medium cursor-default">
+              {PROVIDER_LABELS[row.provider] ?? row.provider}
+            </span>
+          )}
           {/* Model badge */}
           {row.type === "brain" && row.model && (
             <span title={row.routingReason} className="text-[9px] text-violet-600 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded font-medium cursor-default">
-              {row.model.replace("claude-", "").replace(/-\d{8}$/, "")}
+              {formatModelLabel(row.model)}
             </span>
           )}
           {dur && <span className="text-xs text-stone-400 ml-auto">{dur}</span>}
@@ -509,6 +526,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
         if (typeof out.cost_usd === "number") blockMap[ev.block_id].costUsd = out.cost_usd
         if (typeof out.input_tokens === "number") blockMap[ev.block_id].inputTokens = out.input_tokens
         if (typeof out.output_tokens === "number") blockMap[ev.block_id].outputTokens = out.output_tokens
+        if (typeof out.provider === "string") blockMap[ev.block_id].provider = out.provider
         if (typeof out.model === "string") blockMap[ev.block_id].model = out.model
         if (typeof out.routing_reason === "string") blockMap[ev.block_id].routingReason = out.routing_reason
         if (Array.isArray(out.files_changed)) blockMap[ev.block_id].filesChanged = out.files_changed as FileChanged[]

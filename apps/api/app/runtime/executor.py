@@ -708,7 +708,8 @@ def _execute_brain(
     # Model selection via router
     routing_pref = block["data"].get("routingPreference") or "balanced"
     explicit_model = block["data"].get("model") or None
-    provider, model_id, routing_reason = _router_resolve(playbook_slug, routing_pref, explicit_model)
+    explicit_provider = block["data"].get("provider") or None
+    provider, model_id, routing_reason = _router_resolve(playbook_slug, routing_pref, explicit_model, explicit_provider)
     log.debug("brain.model_selected", block_id=block["id"], provider=provider, model=model_id, reason=routing_reason)
 
     # Resolve remote host (if the YAML's `runs_on:` was set on this block).
