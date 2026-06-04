@@ -182,9 +182,12 @@ const PROVIDER_LABELS: Record<string, string> = {
 }
 
 function formatModelLabel(model: string): string {
+  if (model === "claude-opus-4-7") return "Claude Opus 4.7"
+  if (model === "claude-sonnet-4-6") return "Claude Sonnet 4.6"
+  if (model === "claude-haiku-4-5-20251001") return "Claude Haiku 4.5"
   if (model === "gpt-4.1") return "GPT-4.1"
   if (model === "gpt-4.1-mini") return "GPT-4.1 Mini"
-  return model.replace("claude-", "").replace(/-\d{8}$/, "")
+  return model
 }
 
 const FILE_ACTION_COLOR: Record<string, string> = {
