@@ -423,23 +423,10 @@ def cmd_mcp_install(args):
     registered = []
 
     # --- Claude Code ---
-    if shutil.which("claude"):
-        try:
-            result = subprocess.run(
-                ["claude", "mcp", "add", "conduct", "conduct-mcp"],
-                capture_output=True, text=True, timeout=15,
-            )
-            if result.returncode == 0:
-                registered.append("Claude Code")
-            else:
-                _write_claude_mcp_settings()
-                registered.append("Claude Code (settings.json)")
-        except Exception:
-            _write_claude_mcp_settings()
-            registered.append("Claude Code (settings.json)")
-    else:
-        if _write_claude_mcp_settings():
-            registered.append("Claude Code (settings.json)")
+    # Write directly to ~/.claude/settings.json — `claude mcp add` without --global
+    # writes to the project-level .claude/settings.json which _detect_ai_tools won't find.
+    if _write_claude_mcp_settings():
+        registered.append("Claude Code")
 
     # --- Codex CLI ---
     if _write_codex_mcp_config():
