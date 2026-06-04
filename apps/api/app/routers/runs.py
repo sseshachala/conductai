@@ -554,9 +554,20 @@ def list_all_runs(
     project_id: str | None = None,
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    repository: str | None = None,
+    workflow_name: str | None = None,
+    created_after: float | None = None,
 ):
-    """All runs across all agents in the workspace, newest first."""
-    from sqlalchemy import text as _text
+    """All runs across all agents in the workspace, newest first.
+    
+    Filters:
+    - status: pending/running/paused/succeeded/failed/cancelled
+    - project_id: filter by project
+    - repository: filter by repository (e.g., "owner/repo")
+    - workflow_name: filter by workflow/playbook name
+    - created_after: filter by creation timestamp (unix seconds or ISO datetime)
+    """
+    from sqlalchemy import text as _text, and_
     effective_workspace_id = workspace_id
     if project_id and user_id != DEV_USER_ID:
         proj = db.query(Project).filter(Project.id == project_id).first()
@@ -582,6 +593,24 @@ def list_all_runs(
         q = q.filter(Run.status == status)
     if project_id:
         q = q.filter(Workflow.project_id == project_id)
+    if workflow_name:
+        q = q.filter(Workflow.name == workflow_name)
+    if created_after is not None:
+        try:
+            # Try to parse as Unix timestamp first
+            after_dt = datetime.fromtimestamp(created_after, tz=timezone.utc)
+        except (ValueError, TypeError, OSError):
+            # Fall back to treating as seconds offset from now
+            after_dt = datetime.now(timezone.utc)
+        q = q.filter(Run.created_at >= after_dt)
+    
+    # Filter by repository - requires checking the state JSON
+    # Only include runs where repo matches (extracted from _trigger.repository.full_name)
+    if repository:
+        q = q.filter(
+            Run.state["_trigger"]["repository"]["full_name"].astext == repository
+        )
+    
     results = []
     for run, wf_id, wf_name, proj_id, proj_name in q.offset(offset).limit(limit).all():
         out = RunWithWorkflowOut(
@@ -598,6 +627,7 @@ def list_all_runs(
             workflow_name=wf_name,
             project_id=str(proj_id) if proj_id else None,
             project_name=proj_name,
+            state=run.state,
         )
         results.append(out)
     return results

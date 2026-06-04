@@ -149,15 +149,255 @@ function FilterChip({ label, count, active, onClick }: FilterChipProps) {
   )
 }
 
+interface FilterPanelProps {
+  isOpen: boolean
+  onClose: () => void
+  repositories: string[]
+  playbooks: string[]
+  selectedRepository: string | null
+  selectedPlaybook: string | null
+  selectedTimeRange: TimeRangeLabel
+  onRepositoryChange: (repo: string | null) => void
+  onPlaybookChange: (playbook: string | null) => void
+  onTimeRangeChange: (range: TimeRangeLabel) => void
+  onReset: () => void
+}
+
+function FilterPanel({
+  isOpen,
+  onClose,
+  repositories,
+  playbooks,
+  selectedRepository,
+  selectedPlaybook,
+  selectedTimeRange,
+  onRepositoryChange,
+  onPlaybookChange,
+  onTimeRangeChange,
+  onReset,
+}: FilterPanelProps) {
+  if (!isOpen) return null
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0, 0, 0, 0.5)",
+        zIndex: 40,
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          position: "fixed",
+          top: 60,
+          right: 24,
+          width: 340,
+          background: "var(--surface)",
+          borderRadius: 12,
+          border: "1px solid var(--border)",
+          boxShadow: "var(--shadow-lg)",
+          zIndex: 50,
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Panel header */}
+        <div
+          style={{
+            padding: "16px 20px",
+            borderBottom: "1px solid var(--border)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <h3 style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", margin: 0 }}>Filter runs</h3>
+          <button
+            onClick={onClose}
+            style={{
+              background: "none",
+              border: "none",
+              color: "var(--text-muted)",
+              cursor: "pointer",
+              fontSize: 16,
+              padding: "2px 6px",
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Panel body */}
+        <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 20 }}>
+          {/* Repository */}
+          <div>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Repository
+            </label>
+            <select
+              value={selectedRepository || "All repositories"}
+              onChange={e => onRepositoryChange(e.target.value === "All repositories" ? null : e.target.value)}
+              style={{
+                width: "100%",
+                padding: "8px 12px",
+                fontSize: 13,
+                borderRadius: 6,
+                border: "1px solid var(--border)",
+                background: "var(--surface-2)",
+                color: "var(--text)",
+                cursor: "pointer",
+                outline: "none",
+              }}
+            >
+              <option value="All repositories">All repositories</option>
+              {repositories.map(repo => (
+                <option key={repo} value={repo}>
+                  {repo || "Unknown"}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Playbook */}
+          <div>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Playbook
+            </label>
+            <select
+              value={selectedPlaybook || "All playbooks"}
+              onChange={e => onPlaybookChange(e.target.value === "All playbooks" ? null : e.target.value)}
+              style={{
+                width: "100%",
+                padding: "8px 12px",
+                fontSize: 13,
+                borderRadius: 6,
+                border: "1px solid var(--border)",
+                background: "var(--surface-2)",
+                color: "var(--text)",
+                cursor: "pointer",
+                outline: "none",
+              }}
+            >
+              <option value="All playbooks">All playbooks</option>
+              {playbooks.map(playbook => (
+                <option key={playbook} value={playbook}>
+                  {playbook}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Time Range */}
+          <div>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Time range
+            </label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {TIME_RANGES.map(range => (
+                <button
+                  key={range}
+                  onClick={() => onTimeRangeChange(range)}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 6,
+                    border: `1px solid ${selectedTimeRange === range ? "var(--accent-ring)" : "var(--border)"}`,
+                    background: selectedTimeRange === range ? "var(--accent-weak)" : "var(--surface-2)",
+                    color: selectedTimeRange === range ? "var(--accent-text)" : "var(--text-2)",
+                    fontSize: 13,
+                    cursor: "pointer",
+                    textAlign: "left",
+                    fontWeight: selectedTimeRange === range ? 600 : 500,
+                    transition: "background .12s, border-color .12s",
+                    outline: "none",
+                  }}
+                >
+                  {range}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Panel footer */}
+        <div
+          style={{
+            padding: "12px 20px",
+            borderTop: "1px solid var(--border)",
+            display: "flex",
+            gap: 8,
+            justifyContent: "flex-end",
+          }}
+        >
+          <button
+            onClick={onReset}
+            style={{
+              padding: "6px 14px",
+              borderRadius: 6,
+              border: "1px solid var(--border)",
+              background: "var(--surface-2)",
+              color: "var(--text-2)",
+              fontSize: 12,
+              fontWeight: 500,
+              cursor: "pointer",
+              transition: "background .12s",
+              outline: "none",
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-3)")}
+            onMouseLeave={e => (e.currentTarget.style.background = "var(--surface-2)")}
+          >
+            Reset
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 type FilterLabel = "All" | "Running" | "Awaiting" | "Failed"
+type TimeRangeLabel = "Last 24 hours" | "Last 7 days" | "Last 30 days" | "All time"
 
 const FILTERS: FilterLabel[] = ["All", "Running", "Awaiting", "Failed"]
+const TIME_RANGES: TimeRangeLabel[] = ["Last 24 hours", "Last 7 days", "Last 30 days", "All time"]
 
 function matchesFilter(run: Run, filter: FilterLabel): boolean {
   if (filter === "All") return true
   if (filter === "Running") return run.status === "running"
   if (filter === "Awaiting") return run.status === "paused"
   if (filter === "Failed") return run.status === "failed" || run.status === "cancelled"
+  return true
+}
+
+function getTimeRangeStart(range: TimeRangeLabel): Date | null {
+  const now = new Date()
+  if (range === "Last 24 hours") {
+    return new Date(now.getTime() - 24 * 60 * 60 * 1000)
+  }
+  if (range === "Last 7 days") {
+    return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+  }
+  if (range === "Last 30 days") {
+    return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+  }
+  return null
+}
+
+function matchesTimeRange(run: Run, range: TimeRangeLabel): boolean {
+  const startDate = getTimeRangeStart(range)
+  if (!startDate) return true
+  const runDate = new Date(run.created_at)
+  return runDate >= startDate
+}
+
+function matchesAdvancedFilters(
+  run: Run,
+  repository: string | null,
+  playbook: string | null,
+  timeRange: TimeRangeLabel
+): boolean {
+  if (repository && repository !== "All repositories" && run.repo !== repository) return false
+  if (playbook && playbook !== "All playbooks" && run.workflow_name !== playbook) return false
+  if (!matchesTimeRange(run, timeRange)) return false
   return true
 }
 
@@ -342,6 +582,10 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
   const [hasMore, setHasMore] = useState(false)
   const [offset, setOffset] = useState(0)
   const [activeFilter, setActiveFilter] = useState<FilterLabel>("All")
+  const [filterOpen, setFilterOpen] = useState(false)
+  const [selectedRepository, setSelectedRepository] = useState<string | null>(null)
+  const [selectedPlaybook, setSelectedPlaybook] = useState<string | null>(null)
+  const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRangeLabel>("Last 7 days")
 
   async function buildHeaders() {
     const headers: Record<string, string> = {}
@@ -354,11 +598,39 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
     return headers
   }
 
+  function buildRunsUrl(baseOffset: number = 0): string {
+    const params = new URLSearchParams()
+    params.append("limit", PAGE_SIZE.toString())
+    params.append("offset", baseOffset.toString())
+    
+    // Add advanced filters
+    if (selectedRepository && selectedRepository !== "All repositories") {
+      params.append("repository", selectedRepository)
+    }
+    if (selectedPlaybook && selectedPlaybook !== "All playbooks") {
+      params.append("workflow_name", selectedPlaybook)
+    }
+    
+    // Convert time range to created_after timestamp
+    if (selectedTimeRange !== "All time") {
+      const now = new Date()
+      let daysBack = 7 // default
+      if (selectedTimeRange === "Last 24 hours") daysBack = 1
+      else if (selectedTimeRange === "Last 7 days") daysBack = 7
+      else if (selectedTimeRange === "Last 30 days") daysBack = 30
+      const afterDate = new Date(now.getTime() - daysBack * 24 * 60 * 60 * 1000)
+      params.append("created_after", afterDate.toISOString())
+    }
+    
+    return `${process.env.NEXT_PUBLIC_API_URL}/runs?${params.toString()}`
+  }
+
   useEffect(() => {
     async function load() {
       const headers = await buildHeaders()
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/runs?limit=${PAGE_SIZE}&offset=0`, { headers })
+        const url = buildRunsUrl(0)
+        const res = await fetch(url, { headers })
         if (res.ok) {
           const data: Run[] = await res.json()
           setRuns(data)
@@ -371,13 +643,14 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
     }
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [selectedRepository, selectedPlaybook, selectedTimeRange])
 
   async function loadMore() {
     setLoadingMore(true)
     try {
       const headers = await buildHeaders()
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/runs?limit=${PAGE_SIZE}&offset=${offset}`, { headers })
+      const url = buildRunsUrl(offset)
+      const res = await fetch(url, { headers })
       if (res.ok) {
         const data: Run[] = await res.json()
         setRuns(prev => [...prev, ...data])
@@ -396,7 +669,8 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
     setHasMore(false)
     const headers = await buildHeaders()
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/runs?limit=${PAGE_SIZE}&offset=0`, { headers })
+      const url = buildRunsUrl(0)
+      const res = await fetch(url, { headers })
       if (res.ok) {
         const data: Run[] = await res.json()
         setRuns(data)
@@ -412,7 +686,16 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
     router.push(`/workflows/${run.workflow_id}/runs/${run.id}`)
   }
 
-  const shownRuns = runs.filter(r => matchesFilter(r, activeFilter))
+  // Extract unique repositories and playbooks
+  const repositories = Array.from(new Set(runs.map(r => r.repo).filter(Boolean))).sort() as string[]
+  const playbooks = Array.from(new Set(runs.map(r => r.workflow_name))).sort()
+
+  // Apply all filters
+  const shownRuns = runs.filter(r => {
+    if (!matchesFilter(r, activeFilter)) return false
+    if (!matchesAdvancedFilters(r, selectedRepository, selectedPlaybook, selectedTimeRange)) return false
+    return true
+  })
 
   // Count badges for chips
   const countFor = (f: FilterLabel) => {
@@ -425,6 +708,13 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
   void _needsReview
   const _activeRuns = runs.filter(r => isActive(r.status)).length
   void _activeRuns
+
+  function handleResetFilters() {
+    setSelectedRepository(null)
+    setSelectedPlaybook(null)
+    setSelectedTimeRange("Last 7 days")
+    setFilterOpen(false)
+  }
 
   return (
     <AppShell>
@@ -465,6 +755,7 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
           <div style={{ marginLeft: "auto", display: "flex", gap: 9 }}>
             {/* Filter button (placeholder — filter is done by chips) */}
             <button
+              onClick={() => setFilterOpen(true)}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -592,6 +883,21 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
             </button>
           </div>
         )}
+
+        {/* Filter Panel */}
+        <FilterPanel
+          isOpen={filterOpen}
+          onClose={() => setFilterOpen(false)}
+          repositories={repositories}
+          playbooks={playbooks}
+          selectedRepository={selectedRepository}
+          selectedPlaybook={selectedPlaybook}
+          selectedTimeRange={selectedTimeRange}
+          onRepositoryChange={setSelectedRepository}
+          onPlaybookChange={setSelectedPlaybook}
+          onTimeRangeChange={setSelectedTimeRange}
+          onReset={handleResetFilters}
+        />
       </div>
     </AppShell>
   )
