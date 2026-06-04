@@ -116,13 +116,17 @@ def _extract_credentials(raw_yaml: str) -> list[str]:
 
 
 def _resolve_anthropic_key(workspace_id: str, environment_id: str | None, db: Session) -> str | None:
-    """Resolve ANTHROPIC_API_KEY from the workspace credential vault, same as executor."""
+    """Resolve ANTHROPIC_API_KEY from the credential vault.
+
+    ANTHROPIC_API_KEY is saved under handle='anthropic', field='api_key'.
+    Also checks handle='env_vars' for any key stored with lowercase name.
+    Falls back to Default environment.
+    """
     from app.models.environment import Environment as _Env
 
     env_ids: list[str] = []
     if environment_id:
         env_ids.append(environment_id)
-    # Always include Default environment as fallback
     default_env = db.query(_Env).filter(
         _Env.workspace_id == workspace_id,
         _Env.name == "Default",
@@ -134,13 +138,16 @@ def _resolve_anthropic_key(workspace_id: str, environment_id: str | None, db: Se
         rows = db.query(Integration).filter(
             Integration.workspace_id == workspace_id,
             Integration.environment_id == eid,
-            Integration.handle == "env_vars",
+            Integration.handle.in_(["anthropic", "env_vars"]),
         ).all()
         for row in rows:
             if not row.encrypted_credentials:
                 continue
-            env_vars = decrypt(row.encrypted_credentials) or {}
-            key = env_vars.get("ANTHROPIC_API_KEY") or env_vars.get("anthropic_api_key")
+            creds = decrypt(row.encrypted_credentials) or {}
+            if row.handle == "anthropic":
+                key = creds.get("api_key")
+            else:
+                key = creds.get("ANTHROPIC_API_KEY") or creds.get("anthropic_api_key")
             if key:
                 return key
 
