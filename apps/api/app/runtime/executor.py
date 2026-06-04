@@ -414,6 +414,11 @@ def _classify_failure(exc: Exception, block_id: str | None = None) -> dict[str, 
         category = "reliability"
         stop_reason = "max_turns_reached"
         next_action = "Tighten the task scope or increase the run turn budget for this workflow."
+    elif isinstance(exc, RuntimeError) and "Cost budget exhausted" in msg:
+        code = "COST_BUDGET_EXHAUSTED"
+        category = "reliability"
+        stop_reason = "max_cost_reached"
+        next_action = "Reduce task scope or raise the cost cap for this workflow run."
     elif isinstance(exc, ValueError) and msg.startswith("NEEDS_CLARIFICATION:"):
         code = "INSUFFICIENT_INPUT_CONTEXT"
         category = "input_contract"
@@ -878,10 +883,13 @@ def _execute_brain(
     pricing_rates, pricing_version = get_model_rates(provider, model_id, pricing_snapshot)
 
     if is_agentic:
-        # Bounded agentic loop — max_turns from run state, default 20
+        # Bounded agentic loop — deterministic retry boundaries from run state
         messages: list[dict] = [{"role": "user", "content": user_message}]
         turns = 0
         max_turns = int(state.get("__max_turns", 20))
+        max_turns = max(1, max_turns)
+        max_cost_usd = float(state.get("__max_cost_usd", 5.0) or 5.0)
+        max_cost_usd = max(0.01, max_cost_usd)
         total_input_tokens = 0
         total_output_tokens = 0
         total_cache_read_tokens = 0
@@ -911,6 +919,35 @@ def _execute_brain(
             total_cache_read_tokens  += response.usage.cache_read_tokens
             total_cache_write_tokens += response.usage.cache_write_tokens
             total_cost_usd           += response.cost_usd
+
+            if total_cost_usd >= max_cost_usd:
+                cost_usd = round(total_cost_usd, 6)
+                files_changed, diff_stat = session.capture_artifacts()
+                if db and run_id:
+                    _emit(db, run_id, block_id, "brain_budget_exhausted", {
+                        "reason": "max_cost_reached",
+                        "stop_reason": "max_cost_reached",
+                        "turns": turns,
+                        "max_turns": max_turns,
+                        "max_cost_usd": max_cost_usd,
+                        "input_tokens": total_input_tokens,
+                        "output_tokens": total_output_tokens,
+                        "cache_read_tokens": total_cache_read_tokens,
+                        "cache_write_tokens": total_cache_write_tokens,
+                        "cost_usd": cost_usd,
+                        "files_changed": files_changed,
+                        "diff_stat": diff_stat,
+                        "provider": provider,
+                        "model": model_id,
+                        "pricing_version": pricing_version,
+                        "pricing_rates": pricing_rates,
+                        "next_action": "Reduce scope or raise max_cost_usd before retrying.",
+                    })
+                _close_session()
+                raise RuntimeError(
+                    f"Cost budget exhausted: agent reached ${cost_usd:.4f} with cap ${max_cost_usd:.4f} "
+                    f"after {turns} turns"
+                )
 
             # Collect tool calls from response
             tool_calls  = [b for b in response.content if isinstance(b, LLMToolUseBlock)]
@@ -1034,7 +1071,11 @@ def _execute_brain(
                     "turn": max_turns,
                 })
             _emit(db, run_id, block_id, "brain_budget_exhausted", {
+                "reason": "max_turns_reached",
+                "stop_reason": "max_turns_reached",
                 "turns": max_turns,
+                "max_turns": max_turns,
+                "max_cost_usd": max_cost_usd,
                 "input_tokens": total_input_tokens,
                 "output_tokens": total_output_tokens,
                 "cache_read_tokens": total_cache_read_tokens,
@@ -1046,6 +1087,7 @@ def _execute_brain(
                 "model": model_id,
                 "pricing_version": pricing_version,
                 "pricing_rates": pricing_rates,
+                "next_action": "Reduce scope or increase max_turns before retrying.",
             })
         _close_session()
         raise RuntimeError(

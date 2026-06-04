@@ -190,7 +190,15 @@ interface BlockRow {
   filesChanged?: FileChanged[]
   diffStat?: string
   toolCalls?: ToolCall[]
-  budgetExhausted?: { turns: number; costUsd: number }
+  budgetExhausted?: {
+    turns: number
+    costUsd: number
+    reason?: string
+    stopReason?: string
+    nextAction?: string
+    maxTurns?: number
+    maxCostUsd?: number
+  }
   provider?: string
   model?: string
   routingReason?: string
@@ -395,9 +403,17 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
 
         {/* Budget exhausted warning */}
         {row.budgetExhausted && (
-          <p style={{ marginTop: 6, fontSize: 10, fontWeight: 500, color: "var(--warn, #d97706)", background: "var(--warn-bg, #fffbeb)", border: "1px solid var(--warn-bd, #fde68a)", borderRadius: 4, padding: "1px 6px", display: "inline-block" }}>
-            ⚠ Turn budget exhausted ({row.budgetExhausted.turns} turns · ${row.budgetExhausted.costUsd.toFixed(4)})
-          </p>
+          <div style={{ marginTop: 6 }}>
+            <p style={{ fontSize: 10, fontWeight: 500, color: "var(--warn, #d97706)", background: "var(--warn-bg, #fffbeb)", border: "1px solid var(--warn-bd, #fde68a)", borderRadius: 4, padding: "1px 6px", display: "inline-block", margin: 0 }}>
+              ⚠ Budget exhausted ({row.budgetExhausted.reason ?? row.budgetExhausted.stopReason ?? "max_turns_reached"})
+              {` · ${row.budgetExhausted.turns} turns · $${row.budgetExhausted.costUsd.toFixed(4)}`}
+            </p>
+            {row.budgetExhausted.nextAction && (
+              <p style={{ marginTop: 2, fontSize: 12, color: "var(--text-3, #78716c)", lineHeight: 1.35 }}>
+                Next: {row.budgetExhausted.nextAction}
+              </p>
+            )}
+          </div>
         )}
 
         {/* Error */}
@@ -741,6 +757,11 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
       blockMap[ev.block_id].budgetExhausted = {
         turns: ev.payload.turns as number,
         costUsd: ev.payload.cost_usd as number,
+        reason: ev.payload.reason as string | undefined,
+        stopReason: ev.payload.stop_reason as string | undefined,
+        nextAction: ev.payload.next_action as string | undefined,
+        maxTurns: ev.payload.max_turns as number | undefined,
+        maxCostUsd: ev.payload.max_cost_usd as number | undefined,
       }
     } else if (ev.kind === "brain_tool_call" && blockMap[ev.block_id]) {
       const call: ToolCall = {
