@@ -153,6 +153,8 @@ function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promi
   const [revealing, setRevealing] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [confirmHandle, setConfirmHandle] = useState<string | null>(null)
+  const [confirmValue, setConfirmValue] = useState("")
   const [error, setError] = useState("")
 
   const connectedServices = new Set(credentials.map(c => c.service))
@@ -317,13 +319,46 @@ function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promi
                   </button>
                 )}
                 {isAdmin && isConnected && cred && (
-                  <button
-                    onClick={() => handleRemove(cred.handle)}
-                    disabled={deleting === cred.handle}
-                    className="text-xs text-stone-400 hover:text-red-500 disabled:opacity-50 transition-colors"
-                  >
-                    {deleting === cred.handle ? "Removing…" : "Remove"}
-                  </button>
+                  confirmHandle === cred.handle ? (
+                    <div className="flex flex-col gap-1.5 min-w-[230px]">
+                      <p className="text-[11px] text-red-600 m-0">
+                        Type <strong>{svc.label}</strong> to remove credential.
+                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          value={confirmValue}
+                          onChange={e => setConfirmValue(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Enter" && confirmValue === svc.label) handleRemove(cred.handle)
+                            if (e.key === "Escape") { setConfirmHandle(null); setConfirmValue("") }
+                          }}
+                          placeholder={svc.label}
+                          className="flex-1 min-w-0 border border-red-200 rounded-lg px-2 py-1 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-red-100"
+                        />
+                        <button
+                          onClick={() => handleRemove(cred.handle)}
+                          disabled={deleting === cred.handle || confirmValue !== svc.label}
+                          className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50 transition-colors"
+                        >
+                          {deleting === cred.handle ? "…" : "Confirm"}
+                        </button>
+                        <button
+                          onClick={() => { setConfirmHandle(null); setConfirmValue("") }}
+                          className="text-xs text-stone-400 hover:text-stone-600 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => { setConfirmHandle(cred.handle); setConfirmValue("") }}
+                      disabled={deleting === cred.handle}
+                      className="text-xs text-stone-400 hover:text-red-500 disabled:opacity-50 transition-colors"
+                    >
+                      {deleting === cred.handle ? "Removing…" : "Remove"}
+                    </button>
+                  )
                 )}
                 {isAdmin && (
                   <button

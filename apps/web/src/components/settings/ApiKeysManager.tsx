@@ -31,8 +31,10 @@ export default function ApiKeysManager() {
   const [newKey, setNewKey] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [revoking, setRevoking] = useState<string | null>(null)
-  const [revokeConfirm, setRevokeConfirm] = useState<string | null>(null)
+  const [revokeConfirmId, setRevokeConfirmId] = useState<string | null>(null)
+  const [revokeConfirmValue, setRevokeConfirmValue] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [showCreate, setShowCreate] = useState(false)
 
   const headers = useCallback(async (): Promise<Record<string, string>> => {
     const h: Record<string, string> = { "Content-Type": "application/json" }
@@ -68,6 +70,7 @@ export default function ApiKeysManager() {
         const data = await r.json()
         setNewKey(data.key)
         setNewName("")
+        setShowCreate(false)
         await load()
       } else {
         const body = await r.json().catch(() => ({}))
@@ -78,7 +81,8 @@ export default function ApiKeysManager() {
   }
 
   async function revoke(id: string) {
-    setRevokeConfirm(null)
+    setRevokeConfirmId(null)
+    setRevokeConfirmValue("")
     setRevoking(id)
     setError(null)
     try {
@@ -102,132 +106,136 @@ export default function ApiKeysManager() {
 
   function fmt(dateStr: string | null) {
     if (!dateStr) return "—"
-    return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    return new Date(dateStr).toLocaleDateString("en-GB", { month: "short", day: "numeric", year: "numeric" })
   }
 
   return (
-    <div className="space-y-6">
-      {/* Error banner */}
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 flex items-center justify-between gap-3">
-          <p className="text-xs text-red-700">{error}</p>
-          <button onClick={() => setError(null)} aria-label="Dismiss" className="text-xs text-red-400 hover:text-red-700">✕</button>
+        <div className="card" style={{ padding: "12px 16px", background: "var(--err-bg)", borderColor: "var(--err-bd)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <p style={{ fontSize: 12.5, color: "var(--err)" }}>{error}</p>
+          <button onClick={() => setError(null)} style={{ fontSize: 13, color: "var(--err)", background: "none", border: "none", cursor: "pointer", opacity: 0.7 }}>✕</button>
         </div>
       )}
 
-      {/* New key — shown once after creation */}
       {newKey && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
-          <p className="text-sm font-semibold text-amber-800">Copy your API key — it won&apos;t be shown again.</p>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 bg-white border border-amber-200 rounded px-3 py-2 text-xs font-mono text-stone-800 break-all select-all">
+        <div className="card" style={{ padding: "16px 18px", background: "var(--warn-bg)", borderColor: "var(--warn-bd)", display: "flex", flexDirection: "column", gap: 10 }}>
+          <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--warn)" }}>Copy your API key — it won&apos;t be shown again.</p>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <code className="mono" style={{ flex: 1, background: "var(--surface)", border: "1px solid var(--warn-bd)", borderRadius: 7, padding: "8px 12px", fontSize: 12, color: "var(--text)", wordBreak: "break-all", userSelect: "all" }}>
               {newKey}
             </code>
-            <button
-              onClick={copy}
-              className={`shrink-0 px-3 py-2 rounded text-xs font-medium transition-colors ${
-                copied
-                  ? "bg-green-100 text-green-700 border border-green-300"
-                  : "bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200"
-              }`}
-            >
+            <button onClick={copy} className="btn btn-sm" style={{ flexShrink: 0, background: copied ? "var(--ok)" : "var(--warn)", color: "#fff", border: "none" }}>
               {copied ? "Copied!" : "Copy"}
             </button>
           </div>
-          <p className="text-xs text-amber-600">
-            Use this key with <code className="bg-amber-100 px-1 rounded">X-Api-Key</code> header or{" "}
-            <code className="bg-amber-100 px-1 rounded">conduct login --api-key</code>.
+          <p style={{ fontSize: 12, color: "var(--text-2)" }}>
+            Use this key with <code className="mono" style={{ background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4 }}>X-Api-Key</code> header or{" "}
+            <code className="mono" style={{ background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4 }}>conduct login --api-key</code>.
           </p>
-          <button
-            onClick={() => setNewKey(null)}
-            className="text-xs text-amber-500 hover:text-amber-700 underline"
-          >
+          <button onClick={() => setNewKey(null)} style={{ fontSize: 12, color: "var(--warn)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", textAlign: "left", padding: 0 }}>
             I&apos;ve saved it, dismiss
           </button>
         </div>
       )}
 
-      {/* Create form — admin + developer */}
-      {canGenerateKey && (
-        <div className="flex gap-2">
+      {canGenerateKey && showCreate && (
+        <div style={{ display: "flex", gap: 8 }}>
           <input
             type="text"
             value={newName}
             onChange={e => setNewName(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && create()}
+            onKeyDown={e => { if (e.key === "Enter") create(); if (e.key === "Escape") setShowCreate(false) }}
             placeholder="Key name (e.g. My laptop, CI pipeline)"
-            className="flex-1 border border-stone-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300"
+            autoFocus
+            style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 9, padding: "8px 12px", fontSize: 13.5, color: "var(--text)", background: "var(--surface)", outline: "none" }}
           />
-          <button
-            onClick={create}
-            disabled={creating || !newName.trim()}
-            className="px-4 py-2 bg-stone-900 text-white text-sm rounded-lg hover:bg-stone-700 disabled:opacity-40 transition-colors"
-          >
+          <button onClick={create} disabled={creating || !newName.trim()} className="btn btn-primary btn-sm" style={{ opacity: (creating || !newName.trim()) ? 0.4 : 1 }}>
             {creating ? "Generating…" : "Generate key"}
           </button>
+          <button onClick={() => setShowCreate(false)} className="btn btn-ghost btn-sm">Cancel</button>
         </div>
       )}
 
-      {/* Keys table */}
-      {loading ? (
-        <p className="text-sm text-stone-400">Loading…</p>
-      ) : keys.length === 0 ? (
-        <p className="text-sm text-stone-400">No API keys yet. Generate one above.</p>
-      ) : (
-        <div className="border border-stone-200 rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-stone-50 text-stone-500 text-xs">
-              <tr>
-                <th className="text-left px-4 py-2 font-medium">Name</th>
-                <th className="text-left px-4 py-2 font-medium">Prefix</th>
-                <th className="text-left px-4 py-2 font-medium">Created</th>
-                <th className="text-left px-4 py-2 font-medium">Last used</th>
-                <th className="px-4 py-2" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-100">
-              {keys.map(k => (
-                <tr key={k.id} className="hover:bg-stone-50">
-                  <td className="px-4 py-3 font-medium text-stone-800">{k.name}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-stone-500">{k.key_prefix}…</td>
-                  <td className="px-4 py-3 text-stone-500">{fmt(k.created_at)}</td>
-                  <td className="px-4 py-3 text-stone-500">{fmt(k.last_used_at)}</td>
-                  <td className="px-4 py-3 text-right">
-                    {isAdmin && (revokeConfirm === k.id ? (
-                      <span className="inline-flex items-center gap-2">
-                        <span className="text-xs text-stone-500">Revoke?</span>
-                        <button
-                          onClick={() => revoke(k.id)}
-                          disabled={revoking === k.id}
-                          className="text-xs font-medium text-red-600 hover:text-red-800 disabled:opacity-40 transition-colors"
-                        >
-                          {revoking === k.id ? "Revoking…" : "Yes, revoke"}
-                        </button>
-                        <button
-                          onClick={() => setRevokeConfirm(null)}
-                          className="text-xs text-stone-400 hover:text-stone-600 transition-colors"
-                        >
-                          Cancel
-                        </button>
-                      </span>
-                    ) : (
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
+        <span style={{ fontSize: 13.5, color: "var(--text-3)" }}>
+          Keys authenticate the CLI and CI. Scope <code className="mono">cond_live_…</code> per use, rotate freely.
+        </span>
+        {canGenerateKey && !showCreate && (
+          <button className="btn btn-primary btn-sm" style={{ marginLeft: "auto" }} onClick={() => setShowCreate(true)}>
+            + Create key
+          </button>
+        )}
+      </div>
+
+      <div className="card" style={{ overflow: "hidden" }}>
+        {loading ? (
+          <div style={{ padding: "32px 20px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>Loading…</div>
+        ) : keys.length === 0 ? (
+          <div style={{ padding: "32px 20px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>No API keys yet.</div>
+        ) : (
+          keys.map((k, i) => (
+            <div key={k.id} style={{ display: "grid", gridTemplateColumns: "1.4fr 1.2fr 1fr 0.9fr 30px", gap: 14, padding: "14px 20px",
+              borderBottom: i < keys.length - 1 ? "1px solid var(--border)" : "none", alignItems: "center" }}>
+              <div style={{ fontWeight: 600, fontSize: 13.5 }}>{k.name}</div>
+              <div className="mono" style={{ fontSize: 12.5, color: "var(--text-3)" }}>{k.key_prefix}••••••••</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Created {fmt(k.created_at)}</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Used {fmt(k.last_used_at)}</div>
+              <div>
+                {isAdmin && (revokeConfirmId === k.id ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 220 }}>
+                    <p style={{ fontSize: 11.5, color: "var(--err)", margin: 0 }}>
+                      Type <strong>{k.name}</strong> to revoke this key.
+                    </p>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <input
+                        value={revokeConfirmValue}
+                        onChange={e => setRevokeConfirmValue(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" && revokeConfirmValue === k.name) revoke(k.id)
+                          if (e.key === "Escape") { setRevokeConfirmId(null); setRevokeConfirmValue("") }
+                        }}
+                        placeholder={k.name}
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          fontSize: 12,
+                          border: "1px solid var(--err-bd, #fecaca)",
+                          borderRadius: 8,
+                          padding: "5px 8px",
+                          outline: "none",
+                        }}
+                      />
                       <button
-                        onClick={() => setRevokeConfirm(k.id)}
-                        disabled={revoking === k.id}
-                        className="text-xs text-stone-400 hover:text-red-500 disabled:opacity-40 transition-colors"
+                        onClick={() => revoke(k.id)}
+                        disabled={revoking === k.id || revokeConfirmValue !== k.name}
+                        className="btn btn-sm"
+                        style={{ background: "var(--err)", color: "#fff", border: "none", opacity: (revoking === k.id || revokeConfirmValue !== k.name) ? 0.4 : 1 }}
                       >
-                        Revoke
+                        {revoking === k.id ? "Revoking…" : "Revoke"}
                       </button>
-                    ))}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+                      <button onClick={() => { setRevokeConfirmId(null); setRevokeConfirmValue("") }} className="btn btn-ghost btn-sm">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    className="btn btn-ghost btn-sm btn-icon"
+                    style={{ color: "var(--err)" }}
+                    onClick={() => { setRevokeConfirmId(k.id); setRevokeConfirmValue("") }}
+                    disabled={revoking === k.id}
+                  >
+                    ×
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
 
-      <p className="text-xs text-stone-400">
+      <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
         Keys are stored as SHA-256 hashes — Conduct never sees your key again after generation.
         Admins and developers can generate keys. Only admins can revoke keys.
       </p>

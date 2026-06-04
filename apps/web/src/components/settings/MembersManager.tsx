@@ -35,6 +35,31 @@ const ROLE_COLORS: Record<string, string> = {
   viewer:    "bg-stone-100 text-stone-600",
 }
 
+const AVATAR_PALETTE = ["#4f46e5", "#7c3aed", "#059669", "#2563eb", "#d97706", "#dc2626", "#0e7490"]
+
+function getInitials(name: string | null, email: string | null): string {
+  if (name) {
+    const parts = name.trim().split(/\s+/)
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    return parts[0].slice(0, 2).toUpperCase()
+  }
+  if (email) return email[0].toUpperCase()
+  return "?"
+}
+
+function getAvatarColor(initials: string): string {
+  let hash = 0
+  for (let i = 0; i < initials.length; i++) hash = (hash * 31 + initials.charCodeAt(i)) & 0xffffffff
+  return AVATAR_PALETTE[Math.abs(hash) % AVATAR_PALETTE.length]
+}
+
+function getGuardAccess(role: string): string {
+  if (role === "admin") return "Full"
+  if (role === "security") return "Policies + activity"
+  if (role === "developer") return "View · own spend"
+  return "Own activity"
+}
+
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
   return document.cookie.split("; ").find(r => r.startsWith(`${name}=`))?.split("=")[1] ?? null
@@ -62,6 +87,10 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
   const [saving, setSaving] = useState(false)
   const [removing, setRemoving] = useState<string | null>(null)
   const [cancelling, setCancelling] = useState<string | null>(null)
+  const [confirmMemberId, setConfirmMemberId] = useState<string | null>(null)
+  const [confirmMemberValue, setConfirmMemberValue] = useState("")
+  const [confirmInviteId, setConfirmInviteId] = useState<string | null>(null)
+  const [confirmInviteValue, setConfirmInviteValue] = useState("")
   const [error, setError] = useState("")
   const [emailWarning, setEmailWarning] = useState("")
   const [expandedMember, setExpandedMember] = useState<string | null>(null)
@@ -149,7 +178,6 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
       body: JSON.stringify({ role }),
     })
     if (!res.ok) {
-      // revert on failure
       setMembers(prev => prev.map(m => m.clerk_user_id === clerk_user_id ? { ...m, role: prev_role as Member["role"] } : m))
       const body = await res.json().catch(() => ({}))
       setError(body.detail ?? "Failed to update role")
@@ -219,41 +247,40 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
   const isAdmin = currentUserRole === "admin"
 
   if (!activeWorkspace) {
-    return <p className="text-sm text-stone-400">No active workspace selected.</p>
+    return <p style={{ fontSize: 13, color: "var(--text-muted)" }}>No active workspace selected.</p>
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-stone-500">Members of <span className="font-medium text-stone-800">{activeWorkspace.name}</span></p>
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
+        <span style={{ fontSize: 13.5, color: "var(--text-3)" }}>
+          <b style={{ color: "var(--text)" }}>{members.length} members</b> · roles control Guard access and approval rights
+        </span>
         {isAdmin && (
-          <button
-            onClick={() => { setAddOpen(v => !v); setError("") }}
-            className="text-xs font-medium bg-stone-900 text-white px-3 py-1.5 rounded-lg hover:bg-stone-700 transition-colors"
-          >
+          <button className="btn btn-primary btn-sm" style={{ marginLeft: "auto" }}
+            onClick={() => { setAddOpen(v => !v); setError("") }}>
             + Invite member
           </button>
         )}
       </div>
 
-      {/* Invite form — admin only */}
       {isAdmin && addOpen && (
-        <div className="rounded-xl border border-stone-200 bg-white px-4 py-4 space-y-3">
-          <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Invite by email</p>
-          <div className="flex gap-2">
+        <div className="card" style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+          <p className="eyebrow">Invite by email</p>
+          <div style={{ display: "flex", gap: 8 }}>
             <input
               type="email"
               value={inviteEmail}
               onChange={e => setInviteEmail(e.target.value)}
               onKeyDown={e => e.key === "Enter" && handleInvite()}
               placeholder="colleague@company.com"
-              className="flex-1 border border-stone-200 rounded-lg px-3 py-2 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 9, padding: "8px 12px", fontSize: 13.5, color: "var(--text)", background: "var(--surface)", outline: "none" }}
               autoFocus
             />
             <select
               value={inviteRole}
               onChange={e => setInviteRole(e.target.value as typeof inviteRole)}
-              className="border border-stone-200 rounded-lg px-3 py-2 text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              style={{ border: "1px solid var(--border)", borderRadius: 9, padding: "8px 12px", fontSize: 13, color: "var(--text)", background: "var(--surface)", outline: "none" }}
             >
               <option value="admin">Admin</option>
               <option value="developer">Developer</option>
@@ -261,58 +288,82 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
               <option value="viewer">Viewer</option>
             </select>
           </div>
-          <p className="text-[11px] text-stone-500 bg-stone-50 border border-stone-200 rounded-md px-2 py-1.5">
-            They'll be added automatically when they sign in to Conduct AI with this email address.
+          <p style={{ fontSize: 11.5, color: "var(--text-muted)", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "6px 10px" }}>
+            They&apos;ll be added automatically when they sign in to Conduct AI with this email address.
           </p>
-          {error && <p className="text-xs text-red-500">{error}</p>}
-          <div className="flex gap-2">
-            <button
-              onClick={handleInvite}
-              disabled={saving}
-              className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700 disabled:opacity-50 transition-colors"
-            >
+          {error && <p style={{ fontSize: 12, color: "var(--err)" }}>{error}</p>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={handleInvite} disabled={saving} className="btn btn-primary btn-sm" style={{ opacity: saving ? 0.5 : 1 }}>
               {saving ? "Sending…" : "Send invite"}
             </button>
-            <button
-              onClick={() => { setAddOpen(false); setError("") }}
-              className="rounded-lg border border-stone-200 px-4 py-2 text-sm text-stone-600 hover:bg-stone-50 transition-colors"
-            >
-              Cancel
-            </button>
+            <button onClick={() => { setAddOpen(false); setError("") }} className="btn btn-ghost btn-sm">Cancel</button>
           </div>
         </div>
       )}
 
       {emailWarning && (
-        <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-xs text-amber-800">
+        <div className="card" style={{ padding: "12px 16px", background: "var(--warn-bg)", borderColor: "var(--warn-bd)", fontSize: 12.5, color: "var(--warn)" }}>
           {emailWarning}
         </div>
       )}
 
-      {/* Pending invites — admin only */}
       {isAdmin && invites.length > 0 && (
         <div>
-          <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Pending invites</p>
-          <div className="rounded-xl border border-amber-200 bg-amber-50 divide-y divide-amber-100 overflow-hidden">
-            {invites.map(inv => (
-              <div key={inv.id} className="flex items-center justify-between px-4 py-3">
-                <div className="min-w-0">
-                  <p className="text-sm text-stone-700 truncate">{inv.invited_email}</p>
-                  <p className="text-xs text-stone-400">
+          <p className="eyebrow" style={{ marginBottom: 8 }}>Pending invites</p>
+          <div className="card" style={{ padding: 0, overflow: "hidden", borderColor: "var(--warn-bd)", background: "var(--warn-bg)" }}>
+            {invites.map((inv, idx) => (
+              <div key={inv.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderTop: idx ? "1px solid var(--warn-bd)" : "none" }}>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontSize: 13.5, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{inv.invited_email}</p>
+                  <p style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>
                     Invited {new Date(inv.created_at).toLocaleDateString()} · awaiting sign-in
                   </p>
                 </div>
-                <div className="flex items-center gap-3 shrink-0 ml-4">
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ROLE_COLORS[inv.role]}`}>
-                    {inv.role}
-                  </span>
-                  <button
-                    onClick={() => handleCancelInvite(inv.id)}
-                    disabled={cancelling === inv.id}
-                    className="text-xs text-stone-400 hover:text-red-500 disabled:opacity-50 transition-colors"
-                  >
-                    {cancelling === inv.id ? "Cancelling…" : "Cancel"}
-                  </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0, marginLeft: 14 }}>
+                  <span className="chip" style={{ textTransform: "capitalize" }}>{inv.role}</span>
+                  {confirmInviteId === inv.id ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 230 }}>
+                      <p style={{ fontSize: 11.5, color: "var(--err)", margin: 0 }}>
+                        Type <strong>{inv.invited_email}</strong> to cancel invite.
+                      </p>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <input
+                          value={confirmInviteValue}
+                          onChange={e => setConfirmInviteValue(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Enter" && confirmInviteValue === inv.invited_email) handleCancelInvite(inv.id)
+                            if (e.key === "Escape") { setConfirmInviteId(null); setConfirmInviteValue("") }
+                          }}
+                          placeholder={inv.invited_email}
+                          style={{ flex: 1, fontSize: 12, border: "1px solid var(--err-bd, #fecaca)", borderRadius: 8, padding: "5px 8px", outline: "none" }}
+                        />
+                        <button
+                          onClick={() => handleCancelInvite(inv.id)}
+                          disabled={cancelling === inv.id || confirmInviteValue !== inv.invited_email}
+                          className="btn btn-ghost btn-sm"
+                          style={{ fontSize: 12, color: "var(--err)", opacity: cancelling === inv.id || confirmInviteValue !== inv.invited_email ? 0.5 : 1 }}
+                        >
+                          {cancelling === inv.id ? "…" : "Confirm"}
+                        </button>
+                        <button
+                          onClick={() => { setConfirmInviteId(null); setConfirmInviteValue("") }}
+                          className="btn btn-ghost btn-sm"
+                          style={{ fontSize: 12 }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => { setConfirmInviteId(inv.id); setConfirmInviteValue("") }}
+                      disabled={cancelling === inv.id}
+                      className="btn btn-ghost btn-sm"
+                      style={{ fontSize: 12, opacity: cancelling === inv.id ? 0.5 : 1 }}
+                    >
+                      {cancelling === inv.id ? "Cancelling…" : "Cancel"}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -320,80 +371,120 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
         </div>
       )}
 
-      {/* Active members */}
       {loading ? (
-        <p className="text-sm text-stone-400">Loading…</p>
+        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Loading…</p>
       ) : members.length === 0 ? (
-        <p className="text-sm text-stone-400">No active members yet.</p>
+        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>No active members yet.</p>
       ) : (
-        <div>
-          <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Active members</p>
-          <div className="rounded-xl border border-stone-200 bg-white divide-y divide-stone-100 overflow-hidden">
-            {members.map(m => (
-              <div key={m.clerk_user_id} className="divide-y divide-stone-100">
-                <div className="flex items-center justify-between px-4 py-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-stone-700 truncate">
-                      {m.name || m.email || m.clerk_user_id}
-                    </p>
-                    {m.email && m.name && (
-                      <p className="text-xs text-stone-400 truncate">{m.email}</p>
-                    )}
-                    <p className="text-xs text-stone-400">Joined {new Date(m.joined_at).toLocaleDateString()}</p>
-                    {isAdmin && (
-                      <button
-                        onClick={() => toggleMemberWorkspaces(m.clerk_user_id)}
-                        className="text-xs text-indigo-500 hover:text-indigo-700 mt-0.5 transition-colors"
-                      >
-                        {expandedMember === m.clerk_user_id ? "Hide workspaces" : "Show workspaces"}
-                      </button>
-                    )}
+        <div className="card" style={{ overflow: "hidden" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1.8fr 1fr 1fr 90px", gap: 14, padding: "11px 20px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+            {["Member", "Role", "Guard access", ""].map((h, i) => (
+              <div key={i} className="eyebrow" style={{ fontSize: 10 }}>{h}</div>
+            ))}
+          </div>
+          {members.map(m => {
+            const initials = getInitials(m.name, m.email)
+            const avatarColor = getAvatarColor(initials)
+            return (
+              <div key={m.clerk_user_id}>
+                <div style={{ display: "grid", gridTemplateColumns: "1.8fr 1fr 1fr 90px", gap: 14, padding: "12px 20px", borderBottom: "1px solid var(--border)", alignItems: "center" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                    <div className="avatar" style={{ background: avatarColor }}>{initials}</div>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13.5 }}>{m.name || m.email || m.clerk_user_id}</div>
+                      {m.email && <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>{m.email}</div>}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 shrink-0 ml-4">
+                  <div>
                     {isAdmin ? (
-                      <>
-                        <select
-                          value={m.role}
-                          onChange={e => handleRoleChange(m.clerk_user_id, e.target.value)}
-                          className={`text-xs font-medium px-2 py-1 rounded-full border-0 focus:outline-none focus:ring-2 focus:ring-indigo-200 cursor-pointer ${ROLE_COLORS[m.role]}`}
-                        >
-                          <option value="admin">Admin</option>
-                          <option value="developer">Developer</option>
-                          <option value="security">Security</option>
-                          <option value="viewer">Viewer</option>
-                        </select>
-                        {m.clerk_user_id !== currentClerkId && (
-                          <button
-                            onClick={() => handleRemove(m.clerk_user_id)}
-                            disabled={removing === m.clerk_user_id}
-                            className="text-xs text-stone-400 hover:text-red-500 disabled:opacity-50 transition-colors"
-                          >
-                            {removing === m.clerk_user_id ? "Removing…" : "Remove"}
-                          </button>
-                        )}
-                      </>
+                      <select
+                        value={m.role}
+                        onChange={e => handleRoleChange(m.clerk_user_id, e.target.value)}
+                        className="chip"
+                        style={{ height: 22, textTransform: "capitalize", fontSize: 12,
+                          color: m.role === "admin" ? "var(--accent-text)" : m.role === "security" ? "var(--ok)" : "var(--text-2)",
+                          borderColor: m.role === "admin" ? "var(--accent-ring)" : m.role === "security" ? "var(--ok-bd)" : "var(--border)",
+                          border: "1px solid", background: "transparent", cursor: "pointer", padding: "0 8px" }}
+                      >
+                        <option value="admin">admin</option>
+                        <option value="developer">developer</option>
+                        <option value="security">security</option>
+                        <option value="viewer">viewer</option>
+                      </select>
                     ) : (
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ROLE_COLORS[m.role]}`}>
+                      <span className="chip" style={{ height: 22, textTransform: "capitalize",
+                        color: m.role === "admin" ? "var(--accent-text)" : m.role === "security" ? "var(--ok)" : "var(--text-2)",
+                        borderColor: m.role === "admin" ? "var(--accent-ring)" : m.role === "security" ? "var(--ok-bd)" : "var(--border)" }}>
                         {m.role}
                       </span>
                     )}
                   </div>
+                  <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>{getGuardAccess(m.role)}</div>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    {isAdmin && (
+                      <button className="btn btn-ghost btn-sm btn-icon" onClick={() => toggleMemberWorkspaces(m.clerk_user_id)}>⚙</button>
+                    )}
+                    {isAdmin && m.clerk_user_id !== currentClerkId && (
+                      confirmMemberId === m.clerk_user_id ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 240 }}>
+                          <p style={{ fontSize: 11.5, color: "var(--err)", margin: 0 }}>
+                            Type <strong>{m.email || m.name || m.clerk_user_id}</strong> to remove member.
+                          </p>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <input
+                              value={confirmMemberValue}
+                              onChange={e => setConfirmMemberValue(e.target.value)}
+                              onKeyDown={e => {
+                                const expected = m.email || m.name || m.clerk_user_id
+                                if (e.key === "Enter" && confirmMemberValue === expected) handleRemove(m.clerk_user_id)
+                                if (e.key === "Escape") { setConfirmMemberId(null); setConfirmMemberValue("") }
+                              }}
+                              placeholder={m.email || m.name || m.clerk_user_id}
+                              style={{ flex: 1, fontSize: 12, border: "1px solid var(--err-bd, #fecaca)", borderRadius: 8, padding: "5px 8px", outline: "none" }}
+                            />
+                            <button
+                              onClick={() => handleRemove(m.clerk_user_id)}
+                              disabled={removing === m.clerk_user_id || confirmMemberValue !== (m.email || m.name || m.clerk_user_id)}
+                              style={{ fontSize: 12, color: "var(--err)", background: "none", border: "none", cursor: "pointer", opacity: removing === m.clerk_user_id || confirmMemberValue !== (m.email || m.name || m.clerk_user_id) ? 0.5 : 1 }}
+                            >
+                              {removing === m.clerk_user_id ? "…" : "Confirm"}
+                            </button>
+                            <button
+                              onClick={() => { setConfirmMemberId(null); setConfirmMemberValue("") }}
+                              style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setConfirmMemberId(m.clerk_user_id)
+                            setConfirmMemberValue("")
+                          }}
+                          disabled={removing === m.clerk_user_id}
+                          style={{ fontSize: 13, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", opacity: removing === m.clerk_user_id ? 0.4 : 1 }}
+                        >
+                          {removing === m.clerk_user_id ? "…" : "×"}
+                        </button>
+                      )
+                    )}
+                  </div>
                 </div>
                 {isAdmin && expandedMember === m.clerk_user_id && (
-                  <div className="px-4 py-3 bg-stone-50">
-                    <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Workspaces</p>
+                  <div style={{ padding: "12px 20px", background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
+                    <p className="eyebrow" style={{ marginBottom: 8 }}>Workspaces</p>
                     {loadingWorkspaces === m.clerk_user_id ? (
-                      <p className="text-xs text-stone-400">Loading…</p>
+                      <p style={{ fontSize: 12, color: "var(--text-muted)" }}>Loading…</p>
                     ) : (memberWorkspaces[m.clerk_user_id] ?? []).length === 0 ? (
-                      <p className="text-xs text-stone-400">No workspaces found.</p>
+                      <p style={{ fontSize: 12, color: "var(--text-muted)" }}>No workspaces found.</p>
                     ) : (
-                      <div className="space-y-1">
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         {(memberWorkspaces[m.clerk_user_id] ?? []).map(ws => (
-                          <div key={ws.id} className="flex items-center justify-between">
-                            <p className="text-xs text-stone-700">{ws.name}</p>
-                            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ROLE_COLORS[ws.role] ?? "bg-stone-100 text-stone-600"}`}>
-                              {ws.role}
-                            </span>
+                          <div key={ws.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <p style={{ fontSize: 12.5, color: "var(--text-2)" }}>{ws.name}</p>
+                            <span className="chip" style={{ textTransform: "capitalize", fontSize: 11 }}>{ws.role}</span>
                           </div>
                         ))}
                       </div>
@@ -401,17 +492,16 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
                   </div>
                 )}
               </div>
-            ))}
-          </div>
+            )
+          })}
         </div>
       )}
 
-      <div className="rounded-lg bg-stone-50 border border-stone-200 px-4 py-3 text-xs text-stone-500 space-y-1">
-        <p><span className="font-medium text-stone-700">Admin</span> — full access: manage members, credentials, environments, workflows, and runs</p>
-        <p><span className="font-medium text-stone-700">Developer</span> — run agents, edit workflows, manage credentials and environments; cannot manage members</p>
-        <p><span className="font-medium text-stone-700">Viewer</span> — read-only across all screens: view runs, workflows, credentials, and settings</p>
+      <div className="card" style={{ padding: "12px 16px", background: "var(--surface-2)", display: "flex", flexDirection: "column", gap: 5 }}>
+        <p style={{ fontSize: 12, color: "var(--text-2)" }}><span style={{ fontWeight: 600, color: "var(--text)" }}>Admin</span> — full access: manage members, credentials, environments, workflows, and runs</p>
+        <p style={{ fontSize: 12, color: "var(--text-2)" }}><span style={{ fontWeight: 600, color: "var(--text)" }}>Developer</span> — run agents, edit workflows, manage credentials and environments; cannot manage members</p>
+        <p style={{ fontSize: 12, color: "var(--text-2)" }}><span style={{ fontWeight: 600, color: "var(--text)" }}>Viewer</span> — read-only across all screens: view runs, workflows, credentials, and settings</p>
       </div>
-
     </div>
   )
 }
