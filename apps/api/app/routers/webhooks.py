@@ -24,6 +24,7 @@ from app.core.database import get_db
 from app.models.project import Project
 from app.models.run import Run, RunEvent
 from app.models.workflow import Workflow, WorkflowVersion
+from app.runtime.input_contract import InputContractError, validate_run_start_inputs
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -328,6 +329,11 @@ async def inbound_webhook(
         "__triggered_by": "webhook:inbound",
         "__max_turns": suggested_turns,
     }
+    try:
+        initial_state = validate_run_start_inputs(initial_state)
+    except InputContractError as err:
+        raise HTTPException(status_code=422, detail=str(err))
+
     run = Run(
         workflow_version_id=version.id,
         triggered_by="webhook:inbound",
@@ -769,11 +775,18 @@ def _trigger_github_workflows(
         if not matched:
             continue
 
+        run_state = {**initial_state, "__triggered_by": f"github:{event_type}"}
+        try:
+            run_state = validate_run_start_inputs(run_state)
+        except InputContractError as err:
+            log.warning("github.input_contract_failed", event_type=event_type, error=str(err))
+            continue
+
         run = Run(
             workflow_version_id=version.id,
             triggered_by=f"github:{event_type}",
             status="pending",
-            state={**initial_state, "__triggered_by": f"github:{event_type}"},
+            state=run_state,
         )
         db.add(run)
         queued_runs.append(run)
@@ -891,11 +904,20 @@ async def github_webhook_by_slug(
     except Exception:
         suggested_turns = 20
 
+    try:
+        run_state = validate_run_start_inputs({
+            **initial_state,
+            "__triggered_by": "github:github_issue",
+            "__max_turns": suggested_turns,
+        })
+    except InputContractError as err:
+        raise HTTPException(status_code=422, detail=str(err))
+
     run = Run(
         workflow_version_id=version.id,
         triggered_by=f"github:github_issue:{normalized['label']}",
         status="pending",
-        state={**initial_state, "__triggered_by": "github:github_issue", "__max_turns": suggested_turns},
+        state=run_state,
         max_turns=suggested_turns,
     )
     db.add(run)
