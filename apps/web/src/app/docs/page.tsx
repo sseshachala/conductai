@@ -390,7 +390,7 @@ jobs:
         <SectionHeading id="cli-mcp">MCP Server</SectionHeading>
         <p className="text-stone-500 text-sm mb-4 leading-relaxed">
           <Code>conduct-mcp</Code> is a zero-dependency MCP server that ships inside <Code>conduct-cli</Code>.
-          It exposes your Conduct workspace as tools that Claude Code, Codex, Cursor, and Windsurf can call directly —
+          It exposes your Conduct workspace as tools that Claude Code, Codex, Cursor, Windsurf, and VS Code (Copilot) can call directly —
           no copy-pasting workflow IDs or run commands.
         </p>
 
@@ -457,10 +457,11 @@ conduct mcp install`}</Pre>
             </thead>
             <tbody className="divide-y divide-stone-100">
               {[
-                ["Claude Code", "conduct login  /  conduct mcp install", "~/.claude/settings.json"],
-                ["Codex CLI",   "conduct login  /  conduct mcp install", "~/.codex/config.toml"],
-                ["Cursor",      "Manual — add conduct-mcp in Cursor MCP settings", "Cursor UI"],
-                ["Windsurf",    "Manual — add conduct-mcp in Windsurf MCP settings", "Windsurf UI"],
+                ["Claude Code",      "conduct login  /  conduct mcp install", "~/.claude/settings.json"],
+                ["Codex CLI",        "conduct login  /  conduct mcp install", "~/.codex/config.toml"],
+                ["Cursor",           "conduct login  /  conduct mcp install", "~/.cursor/mcp.json"],
+                ["Windsurf",         "conduct login  /  conduct mcp install", "~/.codeium/windsurf/mcp_config.json"],
+                ["VS Code (Copilot)","conduct login  /  conduct mcp install", "VS Code settings.json → mcp.servers"],
               ].map(([tool, how, cfg]) => (
                 <tr key={tool}>
                   <td className="px-4 py-3 text-xs font-medium text-stone-800">{tool}</td>
