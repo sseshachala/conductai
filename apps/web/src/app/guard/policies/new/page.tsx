@@ -55,11 +55,24 @@ function getTeamId(): string {
 
 function FieldLabel({ children, hint }: { children: React.ReactNode; hint?: string }) {
   return (
-    <div className="mb-1">
-      <label className="block text-xs font-medium text-stone-600">{children}</label>
-      {hint && <p className="text-[11px] text-stone-400 mt-0.5">{hint}</p>}
+    <div style={{ marginBottom: 4 }}>
+      <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "var(--text-3)" }}>{children}</label>
+      {hint && <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{hint}</p>}
     </div>
   )
+}
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  height: 36,
+  border: "1px solid var(--border)",
+  borderRadius: 8,
+  padding: "0 12px",
+  fontSize: 13,
+  background: "var(--surface)",
+  color: "var(--text)",
+  outline: "none",
+  boxSizing: "border-box",
 }
 
 function TextInput({
@@ -79,7 +92,7 @@ function TextInput({
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
-      className={`w-full rounded-md border border-stone-200 px-3 py-1.5 text-sm text-stone-900 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${mono ? "font-mono" : ""}`}
+      style={{ ...inputStyle, fontFamily: mono ? "var(--font-mono, monospace)" : undefined }}
     />
   )
 }
@@ -106,18 +119,40 @@ function ReviewCard({
   }
 
   return (
-    <div className="rounded-xl border border-stone-200 bg-white shadow-sm">
-      <div className="px-5 py-4 border-b border-stone-100 flex items-center justify-between">
+    <div className="card">
+      <div style={{
+        padding: "16px 20px",
+        borderBottom: "1px solid var(--border)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+      }}>
         <div>
-          <h2 className="text-sm font-semibold text-stone-900">Review generated rule</h2>
-          <p className="text-xs text-stone-400 mt-0.5">Edit any field before saving.</p>
+          <h2 style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Review generated rule</h2>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>Edit any field before saving.</p>
         </div>
-        <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold tracking-wide bg-indigo-100 text-indigo-700 border border-indigo-200">
+        <span style={{
+          display: "inline-block",
+          padding: "2px 8px",
+          borderRadius: 9999,
+          fontSize: 11,
+          fontWeight: 600,
+          letterSpacing: "0.04em",
+          background: "var(--accent-weak)",
+          color: "var(--accent-text)",
+          border: "1px solid var(--accent)",
+        }}>
           AI-generated
         </span>
       </div>
 
-      <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+      <div style={{
+        padding: "16px 20px",
+        display: "grid",
+        gridTemplateColumns: "repeat(2, 1fr)",
+        columnGap: 24,
+        rowGap: 16,
+      }}>
         {/* rule_id */}
         <div>
           <FieldLabel hint="Slug format: lowercase letters, numbers, hyphens only.">Rule ID</FieldLabel>
@@ -144,7 +179,7 @@ function ReviewCard({
           <select
             value={policy.match_tool}
             onChange={e => set("match_tool", e.target.value as MatchTool)}
-            className="w-full rounded-md border border-stone-200 px-3 py-1.5 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            style={inputStyle}
           >
             <option value="*">* (any)</option>
             <option value="bash">bash</option>
@@ -160,7 +195,7 @@ function ReviewCard({
           <select
             value={policy.action}
             onChange={e => set("action", e.target.value as PolicyAction)}
-            className="w-full rounded-md border border-stone-200 px-3 py-1.5 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            style={inputStyle}
           >
             <option value="block">block</option>
             <option value="warn">warn</option>
@@ -193,7 +228,7 @@ function ReviewCard({
         </div>
 
         {/* message — full width */}
-        <div className="sm:col-span-2">
+        <div style={{ gridColumn: "1 / -1" }}>
           <FieldLabel>Message shown to developer</FieldLabel>
           <TextInput
             value={policy.message}
@@ -204,15 +239,30 @@ function ReviewCard({
       </div>
 
       {saveError && (
-        <div className="mx-5 mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
+        <div style={{
+          margin: "0 20px 16px",
+          borderRadius: 8,
+          border: "1px solid var(--err-bd)",
+          background: "var(--err-bg)",
+          padding: "10px 16px",
+          fontSize: 13,
+          color: "var(--err)",
+        }}>
           {saveError}
         </div>
       )}
 
-      <div className="px-5 py-4 border-t border-stone-100 flex items-center justify-end gap-3">
+      <div style={{
+        padding: "16px 20px",
+        borderTop: "1px solid var(--border)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        gap: 12,
+      }}>
         <Link
           href="/guard/policies"
-          className="px-4 py-1.5 rounded-md text-sm text-stone-600 hover:text-stone-900 hover:bg-stone-50 border border-stone-200 transition-colors"
+          className="btn btn-ghost btn-sm"
         >
           Discard
         </Link>
@@ -220,13 +270,14 @@ function ReviewCard({
           type="button"
           onClick={onSave}
           disabled={saving}
-          className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="btn btn-primary btn-sm"
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, opacity: saving ? 0.5 : 1, cursor: saving ? "not-allowed" : undefined }}
         >
           {saving ? (
             <>
-              <svg className="animate-spin w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              <svg style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
               </svg>
               Saving…
             </>
@@ -353,31 +404,46 @@ export default function NewPolicyPage() {
 
   return (
     <AppShell>
-      <div className="max-w-2xl mx-auto px-6 py-8 space-y-6">
-        {/* Back link + page title */}
-        <div className="flex items-center gap-2">
+      <div style={{
+        maxWidth: 672,
+        margin: "0 auto",
+        padding: "32px 24px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 24,
+      }}>
+        {/* Back link */}
+        <div>
           <Link
             href="/guard/policies"
-            className="inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-800 transition-colors"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              fontSize: 13,
+              color: "var(--text-3)",
+              textDecoration: "none",
+            }}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" style={{ width: 14, height: 14 }}>
               <path fillRule="evenodd" d="M9.78 4.22a.75.75 0 0 1 0 1.06L7.06 8l2.72 2.72a.75.75 0 1 1-1.06 1.06L5.47 8.53a.75.75 0 0 1 0-1.06l3.25-3.25a.75.75 0 0 1 1.06 0Z" clipRule="evenodd" />
             </svg>
             Back to policies
           </Link>
         </div>
 
+        {/* Page heading */}
         <div>
-          <h2 className="text-base font-semibold text-stone-900">Create a rule with AI</h2>
-          <p className="text-sm text-stone-500 mt-1">
+          <h2 style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Create a rule with AI</h2>
+          <p style={{ fontSize: 13, color: "var(--text-3)", marginTop: 4 }}>
             Describe what you want to control in plain English — the AI will suggest the rule fields for you to review and save.
           </p>
         </div>
 
         {/* Template chips */}
-        <div className="space-y-2">
-          <p className="text-xs font-medium text-stone-500">Start from a template</p>
-          <div className="flex flex-wrap gap-2">
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <p style={{ fontSize: 12, fontWeight: 500, color: "var(--text-3)" }}>Start from a template</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {TEMPLATES.map((t) => (
               <button
                 key={t.label}
@@ -389,7 +455,16 @@ export default function NewPolicyPage() {
                   setSaveError(null)
                   setGenerateError(null)
                 }}
-                className="text-xs px-3 py-1.5 rounded-full border border-stone-200 bg-white text-stone-600 hover:border-indigo-300 hover:text-indigo-700 hover:bg-indigo-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{
+                  fontSize: 12,
+                  padding: "6px 12px",
+                  borderRadius: 9999,
+                  border: "1px solid var(--border)",
+                  background: "var(--surface)",
+                  color: "var(--text-3)",
+                  cursor: generating ? "not-allowed" : "pointer",
+                  opacity: generating ? 0.4 : 1,
+                }}
               >
                 {t.label}
               </button>
@@ -398,8 +473,11 @@ export default function NewPolicyPage() {
         </div>
 
         {/* Prompt input card */}
-        <div className="rounded-xl border border-stone-200 bg-white shadow-sm px-5 py-4 space-y-3">
-          <label htmlFor="policy-prompt" className="block text-xs font-medium text-stone-600">
+        <div className="card" style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
+          <label
+            htmlFor="policy-prompt"
+            style={{ display: "block", fontSize: 12, fontWeight: 500, color: "var(--text-3)" }}
+          >
             Describe your policy
           </label>
           <textarea
@@ -411,21 +489,41 @@ export default function NewPolicyPage() {
             onKeyDown={handleKeyDown}
             disabled={generating}
             placeholder="e.g. block anyone from running rm -rf, or require approval before prod deploys"
-            className="w-full rounded-lg border border-stone-200 px-3 py-2.5 text-sm text-stone-900 placeholder-stone-400 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              width: "100%",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              padding: "10px 12px",
+              fontSize: 13,
+              color: "var(--text)",
+              background: "var(--surface)",
+              resize: "none",
+              outline: "none",
+              opacity: generating ? 0.5 : 1,
+              cursor: generating ? "not-allowed" : "auto",
+              boxSizing: "border-box",
+            }}
           />
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-stone-400">Press Enter to generate, or Shift+Enter for a new line.</p>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <p style={{ fontSize: 12, color: "var(--text-muted)" }}>Press Enter to generate, or Shift+Enter for a new line.</p>
             <button
               type="button"
               onClick={handleGenerate}
               disabled={generating || !prompt.trim()}
-              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="btn btn-primary btn-sm"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                opacity: generating || !prompt.trim() ? 0.5 : 1,
+                cursor: generating || !prompt.trim() ? "not-allowed" : undefined,
+              }}
             >
               {generating ? (
                 <>
-                  <svg className="animate-spin w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  <svg style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                   </svg>
                   Generating…
                 </>
@@ -436,22 +534,32 @@ export default function NewPolicyPage() {
 
         {/* Generating pulse skeleton */}
         {generating && (
-          <div className="rounded-xl border border-stone-200 bg-white shadow-sm px-5 py-4 animate-pulse space-y-3">
-            <div className="h-3 w-48 rounded bg-stone-100" />
-            <div className="grid grid-cols-2 gap-4">
-              <div className="h-8 rounded bg-stone-50" />
-              <div className="h-8 rounded bg-stone-50" />
-              <div className="h-8 rounded bg-stone-50" />
-              <div className="h-8 rounded bg-stone-50" />
-              <div className="col-span-2 h-8 rounded bg-stone-50" />
+          <div className="card" style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 12, animation: "pulse 1.5s ease-in-out infinite" }}>
+            <div style={{ height: 12, width: 192, borderRadius: 4, background: "var(--surface-3)" }} />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16 }}>
+              <div style={{ height: 32, borderRadius: 4, background: "var(--surface-2)" }} />
+              <div style={{ height: 32, borderRadius: 4, background: "var(--surface-2)" }} />
+              <div style={{ height: 32, borderRadius: 4, background: "var(--surface-2)" }} />
+              <div style={{ height: 32, borderRadius: 4, background: "var(--surface-2)" }} />
+              <div style={{ gridColumn: "1 / -1", height: 32, borderRadius: 4, background: "var(--surface-2)" }} />
             </div>
           </div>
         )}
 
         {/* Generate error */}
         {generateError && !generating && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-start gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 mt-0.5 shrink-0">
+          <div style={{
+            borderRadius: 8,
+            border: "1px solid var(--err-bd)",
+            background: "var(--err-bg)",
+            padding: "12px 16px",
+            fontSize: 13,
+            color: "var(--err)",
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 8,
+          }}>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" style={{ width: 16, height: 16, marginTop: 1, flexShrink: 0 }}>
               <path fillRule="evenodd" d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1ZM7.25 4.75a.75.75 0 0 1 1.5 0v3.5a.75.75 0 0 1-1.5 0v-3.5Zm.75 7a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z" clipRule="evenodd" />
             </svg>
             <span>{generateError}</span>

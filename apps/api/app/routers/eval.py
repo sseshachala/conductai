@@ -38,6 +38,7 @@ router = APIRouter(prefix="/eval", tags=["eval"])
 
 _cache: dict[str, Any] = {}
 _CACHE_TTL = 300  # seconds
+_cache_lock = threading.Lock()
 
 
 def _cached_report() -> dict[str, Any]:
@@ -46,17 +47,23 @@ def _cached_report() -> dict[str, Any]:
     if "report" in _cache and (now - _cache.get("computed_at", 0)) < _CACHE_TTL:
         return _cache["report"]
 
-    try:
-        from eval.runner import run_all
-        report = run_all(live=False)
-        data = report._to_dict()
-        _cache["report"] = data
-        _cache["computed_at"] = now
-        log.info("eval.report_computed", playbooks=data["summary"]["total_playbooks"])
-        return data
-    except Exception as e:
-        log.error("eval.report_failed", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Eval computation failed: {e}")
+    with _cache_lock:
+        # Double-check inside lock so only one request recomputes when stale.
+        now = time.monotonic()
+        if "report" in _cache and (now - _cache.get("computed_at", 0)) < _CACHE_TTL:
+            return _cache["report"]
+
+        try:
+            from eval.runner import run_all
+            report = run_all(live=False)
+            data = report._to_dict()
+            _cache["report"] = data
+            _cache["computed_at"] = now
+            log.info("eval.report_computed", playbooks=data["summary"]["total_playbooks"])
+            return data
+        except Exception as e:
+            log.error("eval.report_failed", error=str(e))
+            raise HTTPException(status_code=500, detail=f"Eval computation failed: {e}")
 
 
 def _enrich_summary(report: dict[str, Any]) -> dict[str, Any]:

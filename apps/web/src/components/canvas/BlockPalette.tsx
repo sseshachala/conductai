@@ -65,12 +65,11 @@ export default function BlockPalette({
   }
 
   return (
-    <aside className="w-44 bg-white border-r border-stone-100 flex flex-col overflow-y-auto shrink-0 h-full">
+    <aside className="w-[212px] bg-white border-r border-stone-100 flex flex-col overflow-y-auto shrink-0 h-full">
       <div className="px-3 pt-3 pb-2">
         <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-2">Blocks</p>
         <div className="flex flex-col gap-1">
           {BLOCK_LIBRARY.map((block) => {
-            const style = BLOCK_STYLES[block.type]
             return (
               <div
                 key={block.type}
@@ -80,10 +79,7 @@ export default function BlockPalette({
                   e.dataTransfer.setData("application/marshal-block-title", block.title)
                   e.dataTransfer.effectAllowed = "move"
                 }}
-                className={cn(
-                  "flex items-center gap-2.5 px-2.5 py-2 rounded-lg border cursor-grab active:cursor-grabbing select-none transition-all hover:shadow-sm",
-                  style.buttonClass
-                )}
+                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 cursor-grab active:cursor-grabbing select-none transition-shadow hover:shadow-sm bk-${block.type}`}
               >
                 <div className="shrink-0">
                   <BlockIcon type={block.type} />
@@ -91,7 +87,7 @@ export default function BlockPalette({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <p className="text-[12px] font-semibold leading-none text-stone-800">{block.title}</p>
-                    {block.preferred && <span className="text-[8px] font-bold uppercase tracking-wide px-1 py-0.5 rounded bg-cyan-100 text-cyan-700 leading-none">preferred</span>}
+                    {block.preferred && <span className="text-[8px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded leading-none" style={{ color: "var(--accent-text)", background: "var(--accent-weak)" }}>NEW</span>}
                   </div>
                   <p className="text-[10px] leading-none mt-0.5 opacity-60">{block.sub}</p>
                 </div>

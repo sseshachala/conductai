@@ -1048,9 +1048,9 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
             {!isViewer && (
               <div
                 style={{
-                  flexBasis: leftOpen ? 176 : 0,
-                  width: leftOpen ? 176 : 0,
-                  maxWidth: leftOpen ? 176 : 0,
+                  flexBasis: leftOpen ? 212 : 0,
+                  width: leftOpen ? 212 : 0,
+                  maxWidth: leftOpen ? 212 : 0,
                   minWidth: 0,
                   flexGrow: 0,
                   flexShrink: 0,
@@ -1188,9 +1188,9 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
             {/* Right panel — block config */}
             <div
               style={{
-                flexBasis: (rightOpen && selectedNode) ? 320 : 0,
-                width: (rightOpen && selectedNode) ? 320 : 0,
-                maxWidth: (rightOpen && selectedNode) ? 320 : 0,
+                flexBasis: (rightOpen && selectedNode) ? 344 : 0,
+                width: (rightOpen && selectedNode) ? 344 : 0,
+                maxWidth: (rightOpen && selectedNode) ? 344 : 0,
                 minWidth: 0,
                 flexGrow: 0,
                 flexShrink: 0,
@@ -1200,7 +1200,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
               }}
             >
               {rightOpen && selectedNode && selectedData && (
-                <div className="flex-1 overflow-y-auto min-w-0 w-80 h-full">
+                <div className="flex-1 overflow-y-auto min-w-0 w-[344px] h-full">
                   <BlockEditor
                     workflowId={workflowId}
                     blockId={selectedNode.id}
@@ -1218,6 +1218,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                     playbookSlug={playbookSlug}
                     projectSlug={projectSlug}
                     onWebhookChange={(id, repo) => { setGithubHookId(id); setGithubHookRepo(repo) }}
+                    onClose={() => setSelectedNode(null)}
                   />
                 </div>
               )}

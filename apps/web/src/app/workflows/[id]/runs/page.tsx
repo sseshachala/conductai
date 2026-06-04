@@ -23,12 +23,14 @@ interface Run {
   trigger_summary: string | null
 }
 
-const STATUS_STYLES: Record<string, string> = {
-  pending:   "bg-stone-100 text-stone-500",
-  running:   "bg-blue-100 text-blue-700",
-  succeeded: "bg-green-100 text-green-700",
-  failed:    "bg-red-100 text-red-700",
-  cancelled: "bg-stone-100 text-stone-400",
+function statusBadgeClass(status: string): string {
+  switch (status) {
+    case "succeeded": return "sbadge ok"
+    case "running":   return "sbadge run"
+    case "failed":    return "sbadge err"
+    case "cancelled": return "sbadge warn"
+    default:          return "sbadge idle"
+  }
 }
 
 export default function RunsPage() {
@@ -38,6 +40,7 @@ export default function RunsPage() {
   const [runs, setRuns] = useState<Run[]>([])
   const [workflowName, setWorkflowName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [hoveredRunId, setHoveredRunId] = useState<string | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -68,68 +71,110 @@ export default function RunsPage() {
 
   return (
     <AppShell noPadding>
-      <div className="flex-1 overflow-auto">
-      <div className="mx-auto max-w-3xl px-6 py-10">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <h2 className="text-xl font-semibold text-stone-900">Runs</h2>
-          </div>
-          <Link
-            href={`/workflows/${workflowId}`}
-            className="rounded-lg bg-stone-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-stone-700 transition-colors"
-          >
-            Edit agent
-          </Link>
-        </div>
-
-        {loading ? (
-          <p className="text-stone-400 text-sm">Loading…</p>
-        ) : runs.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-stone-300 p-16 text-center">
-            <p className="text-stone-500 text-sm">No runs yet.</p>
+      <div style={{ flex: 1, overflow: "auto" }}>
+        <div style={{ maxWidth: 672, margin: "0 auto", padding: "40px 24px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <h2 className="page-title">Runs</h2>
+            </div>
             <Link
               href={`/workflows/${workflowId}`}
-              className="mt-4 inline-block text-sm font-medium text-indigo-600 hover:underline"
+              className="btn btn-primary btn-sm"
             >
-              Open canvas to start a test run
+              Edit agent
             </Link>
           </div>
-        ) : (
-          <div className="grid gap-2">
-            {runs.map((run) => (
+
+          {loading ? (
+            <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading…</p>
+          ) : runs.length === 0 ? (
+            <div
+              style={{
+                borderRadius: 12,
+                border: "1px dashed var(--border-2)",
+                padding: "64px 32px",
+                textAlign: "center",
+              }}
+            >
+              <p style={{ color: "var(--text-3)", fontSize: 13 }}>No runs yet.</p>
               <Link
-                key={run.id}
-                href={`/workflows/${workflowId}/runs/${run.id}`}
-                className="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-5 py-4 hover:border-stone-300 hover:shadow-sm transition-all"
+                href={`/workflows/${workflowId}`}
+                style={{
+                  marginTop: 16,
+                  display: "inline-block",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  color: "var(--accent-text)",
+                  textDecoration: "none",
+                }}
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_STYLES[run.status] ?? STATUS_STYLES.pending}`}>
-                    {run.status}
-                  </span>
-                  {run.trigger_summary ? (
-                    <span className="text-sm text-stone-800 truncate">{run.trigger_summary}</span>
-                  ) : (
-                    <span className="text-sm text-stone-400 font-mono">{run.id.slice(0, 8)}…</span>
-                  )}
-                  {run.triggered_by && (
-                    <span className="shrink-0 text-xs text-stone-400">{run.triggered_by}</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-4">
-                  {run.max_turns != null && (
-                    <span className="text-xs text-stone-400 font-mono">
-                      est. {run.max_turns} turns
-                    </span>
-                  )}
-                  <span className="text-xs text-stone-400">
-                    {new Date(run.created_at).toLocaleString()}
-                  </span>
-                </div>
+                Open canvas to start a test run
               </Link>
-            ))}
-          </div>
-        )}
-      </div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {runs.map((run) => (
+                <Link
+                  key={run.id}
+                  href={`/workflows/${workflowId}/runs/${run.id}`}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    borderRadius: 12,
+                    border: "1px solid var(--border)",
+                    background: "var(--surface)",
+                    padding: "16px 20px",
+                    textDecoration: "none",
+                    transition: "box-shadow 0.15s, border-color 0.15s",
+                    boxShadow: hoveredRunId === run.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
+                    borderColor: hoveredRunId === run.id ? "var(--border)" : "var(--border)",
+                  }}
+                  onMouseEnter={() => setHoveredRunId(run.id)}
+                  onMouseLeave={() => setHoveredRunId(null)}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                    <span className={statusBadgeClass(run.status)}>
+                      {run.status}
+                    </span>
+                    {run.trigger_summary ? (
+                      <span
+                        style={{
+                          fontSize: 13,
+                          color: "var(--text)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {run.trigger_summary}
+                      </span>
+                    ) : (
+                      <span className="mono" style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                        {run.id.slice(0, 8)}…
+                      </span>
+                    )}
+                    {run.triggered_by && (
+                      <span style={{ flexShrink: 0, fontSize: 12, color: "var(--text-muted)" }}>
+                        {run.triggered_by}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                    {run.max_turns != null && (
+                      <span className="mono" style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                        est. {run.max_turns} turns
+                      </span>
+                    )}
+                    <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                      {new Date(run.created_at).toLocaleString()}
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </AppShell>
   )

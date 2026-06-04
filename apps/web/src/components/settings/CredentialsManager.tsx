@@ -133,11 +133,11 @@ function CredentialsManagerWithAuth({ isAdmin }: { isAdmin: boolean }) {
 
 function EyeIcon({ open }: { open: boolean }) {
   return open ? (
-    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg xmlns="http://www.w3.org/2000/svg" style={{ width: 16, height: 16 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
     </svg>
   ) : (
-    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg xmlns="http://www.w3.org/2000/svg" style={{ width: 16, height: 16 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
     </svg>
@@ -274,7 +274,7 @@ function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promi
   }
 
   return (
-    <div className="space-y-3">
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {SERVICES.map(svc => {
         const isConnected = connectedServices.has(svc.value)
         const isOpen = openService === svc.value
@@ -283,108 +283,126 @@ function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promi
         return (
           <div
             key={svc.value}
-            className={`rounded-xl border bg-white transition-all ${
-              isOpen ? "border-stone-300 shadow-sm" : "border-stone-200"
-            }`}
+            className="card"
+            style={isOpen ? { borderColor: "var(--border)", boxShadow: "var(--shadow-sm)" } : undefined}
           >
             {/* Card header */}
-            <div className="flex items-center justify-between px-4 py-3.5">
-              <div className="flex items-center gap-3">
-                <span className={`w-9 h-9 rounded-lg text-xs font-bold flex items-center justify-center shrink-0 ${svc.color}`}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span
+                  className={svc.color}
+                  style={{ width: 36, height: 36, borderRadius: 8, fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+                >
                   {svc.abbr}
                 </span>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-stone-900">{svc.label}</p>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <p style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", margin: 0 }}>{svc.label}</p>
                     {isConnected && (
-                      <span className="flex items-center gap-1 text-[10px] font-medium text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                      <span className="sbadge ok" style={{ fontSize: 10 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--ok)", display: "inline-block" }} />
                         Connected
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-stone-400">{svc.description}</p>
+                  <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>{svc.description}</p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {isAdmin && isConnected && cred && (
                   <button
                     onClick={() => revealCredential(cred.handle)}
                     disabled={revealing === cred.handle}
                     title={revealedValues[cred.handle] ? "Hide" : "Reveal credential"}
-                    className="text-stone-300 hover:text-stone-600 disabled:opacity-50 transition-colors"
+                    className="btn btn-ghost btn-sm btn-icon"
+                    style={{ color: "var(--text-muted)" }}
                   >
                     <EyeIcon open={!!revealedValues[cred.handle]} />
                   </button>
                 )}
                 {isAdmin && isConnected && cred && (
-                  confirmHandle === cred.handle ? (
-                    <div className="flex flex-col gap-1.5 min-w-[230px]">
-                      <p className="text-[11px] text-red-600 m-0">
-                        Type <strong>{svc.label}</strong> to remove credential.
-                      </p>
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          value={confirmValue}
-                          onChange={e => setConfirmValue(e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === "Enter" && confirmValue === svc.label) handleRemove(cred.handle)
-                            if (e.key === "Escape") { setConfirmHandle(null); setConfirmValue("") }
-                          }}
-                          placeholder={svc.label}
-                          className="flex-1 min-w-0 border border-red-200 rounded-lg px-2 py-1 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-red-100"
-                        />
-                        <button
-                          onClick={() => handleRemove(cred.handle)}
-                          disabled={deleting === cred.handle || confirmValue !== svc.label}
-                          className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50 transition-colors"
-                        >
-                          {deleting === cred.handle ? "…" : "Confirm"}
-                        </button>
-                        <button
-                          onClick={() => { setConfirmHandle(null); setConfirmValue("") }}
-                          className="text-xs text-stone-400 hover:text-stone-600 transition-colors"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => { setConfirmHandle(cred.handle); setConfirmValue("") }}
-                      disabled={deleting === cred.handle}
-                      className="text-xs text-stone-400 hover:text-red-500 disabled:opacity-50 transition-colors"
-                    >
-                      {deleting === cred.handle ? "Removing…" : "Remove"}
-                    </button>
-                  )
+                  <button
+                    onClick={() => {
+                      if (confirmHandle === cred.handle) {
+                        setConfirmHandle(null)
+                        setConfirmValue("")
+                      } else {
+                        setConfirmHandle(cred.handle)
+                        setConfirmValue("")
+                      }
+                    }}
+                    disabled={deleting === cred.handle}
+                    className="btn btn-ghost btn-sm"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    {deleting === cred.handle ? "Removing…" : "Remove"}
+                  </button>
                 )}
                 {isAdmin && (
                   <button
                     onClick={() => toggleService(svc.value)}
-                    className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
-                      isConnected
-                        ? "border border-stone-200 text-stone-500 hover:bg-stone-50"
-                        : "bg-stone-900 text-white hover:bg-stone-700"
-                    }`}
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 500,
+                      padding: "6px 12px",
+                      borderRadius: 8,
+                      border: isConnected ? "1px solid var(--border)" : "none",
+                      background: isConnected ? "transparent" : "var(--accent)",
+                      color: isConnected ? "var(--text-2)" : "var(--accent-text)",
+                      cursor: "pointer",
+                    }}
                   >
                     {isConnected ? "Update" : "Connect"}
                   </button>
                 )}
                 {!isAdmin && isConnected && (
-                  <span className="text-xs text-stone-400">Connected</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Connected</span>
                 )}
               </div>
             </div>
 
+            {isAdmin && isConnected && cred && confirmHandle === cred.handle && (
+              <div style={{ padding: "0 16px 12px", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 6 }}>
+                <p style={{ fontSize: 11, color: "var(--err)", margin: 0, paddingTop: 10 }}>
+                  Type <strong>{svc.label}</strong> to remove credential.
+                </p>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <input
+                    value={confirmValue}
+                    onChange={e => setConfirmValue(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter" && confirmValue === svc.label) handleRemove(cred.handle)
+                      if (e.key === "Escape") { setConfirmHandle(null); setConfirmValue("") }
+                    }}
+                    placeholder={svc.label}
+                    style={{ flex: 1, minWidth: 0, border: "1px solid var(--err-bd)", borderRadius: 6, padding: "4px 8px", fontSize: 12, color: "var(--text)", background: "var(--surface)", outline: "none" }}
+                  />
+                  <button
+                    onClick={() => handleRemove(cred.handle)}
+                    disabled={deleting === cred.handle || confirmValue !== svc.label}
+                    className="btn btn-sm"
+                    style={{ color: "var(--err)", fontSize: 12 }}
+                  >
+                    {deleting === cred.handle ? "…" : "Confirm"}
+                  </button>
+                  <button
+                    onClick={() => { setConfirmHandle(null); setConfirmValue("") }}
+                    className="btn btn-ghost btn-sm"
+                  >
+                    Keep credential
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Revealed values panel */}
             {cred && revealedValues[cred.handle] && (
-              <div className="px-4 pb-3 pt-2 border-t border-stone-100 bg-stone-50 rounded-b-xl space-y-1">
+              <div style={{ padding: "8px 16px 12px", borderTop: "1px solid var(--border)", background: "var(--surface-2)", display: "flex", flexDirection: "column", gap: 4 }}>
                 {Object.entries(revealedValues[cred.handle]).map(([k, v]) => (
-                  <div key={k} className="flex items-center gap-2 group">
-                    <span className="text-[10px] font-medium text-stone-400 w-24 shrink-0">{k}</span>
-                    <span className="text-xs font-mono text-stone-700 break-all blur-sm group-hover:blur-none transition-all select-all">{v as string}</span>
+                  <div key={k} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 10, fontWeight: 500, color: "var(--text-muted)", width: 96, flexShrink: 0 }}>{k}</span>
+                    <span className="mono" style={{ fontSize: 12, color: "var(--text-2)", wordBreak: "break-all" }}>{v as string}</span>
                   </div>
                 ))}
               </div>
@@ -392,20 +410,20 @@ function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promi
 
             {/* Inline connect form — admin only */}
             {isAdmin && isOpen && (
-              <div className="px-4 pb-4 pt-1 border-t border-stone-100 space-y-3">
+              <div style={{ padding: "4px 16px 16px", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 12 }}>
                 {svc.fields.map((f, i) => (
                   <div key={f.key}>
-                    <label className="text-xs font-medium text-stone-500 block mb-1">
+                    <label style={{ fontSize: 12, fontWeight: 500, color: "var(--text-3)", display: "block", marginBottom: 4 }}>
                       {f.label}
-                      {f.optional && <span className="ml-1 text-stone-300 font-normal">optional</span>}
+                      {f.optional && <span style={{ marginLeft: 4, color: "var(--text-muted)", fontWeight: 400 }}>optional</span>}
                     </label>
-                    <div className="relative">
+                    <div style={{ position: "relative" }}>
                       {f.options ? (
                         <select
                           autoFocus={i === 0}
                           value={fieldValues[f.key] ?? f.options[0].value}
                           onChange={e => setFieldValues(prev => ({ ...prev, [f.key]: e.target.value }))}
-                          className="w-full border border-stone-200 rounded-lg px-3 py-2 text-sm text-stone-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                          style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "var(--text)", background: "var(--surface)", outline: "none" }}
                         >
                           {f.options.map(o => (
                             <option key={o.value} value={o.value}>{o.label}</option>
@@ -420,13 +438,13 @@ function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promi
                             onChange={e => setFieldValues(prev => ({ ...prev, [f.key]: e.target.value }))}
                             onKeyDown={e => e.key === "Enter" && handleSave(svc)}
                             placeholder={f.placeholder}
-                            className="w-full border border-stone-200 rounded-lg px-3 py-2 pr-9 text-sm font-mono text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                            style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", paddingRight: 36, fontSize: 13, color: "var(--text)", background: "var(--surface)", outline: "none", fontFamily: "var(--font-mono, monospace)" }}
                           />
                           {f.secret !== false && (
                             <button
                               type="button"
                               onClick={() => setShowFields(prev => ({ ...prev, [f.key]: !prev[f.key] }))}
-                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-300 hover:text-stone-600 transition-colors"
+                              style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
                             >
                               <EyeIcon open={!!showFields[f.key]} />
                             </button>
@@ -435,26 +453,26 @@ function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promi
                       )}
                     </div>
                     {f.tip && (
-                      <p className="mt-1 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1 leading-relaxed">
-                        💡 {f.tip}
+                      <p style={{ marginTop: 4, fontSize: 11, color: "var(--warn)", background: "var(--warn-bg)", border: "1px solid var(--warn-bd)", borderRadius: 6, padding: "4px 8px", lineHeight: 1.5 }}>
+                        {f.tip}
                       </p>
                     )}
                   </div>
                 ))}
 
-                {error && <p className="text-xs text-red-500">{error}</p>}
+                {error && <p style={{ fontSize: 12, color: "var(--err)" }}>{error}</p>}
 
-                <div className="flex gap-2 pt-1">
+                <div style={{ display: "flex", gap: 8, paddingTop: 4 }}>
                   <button
                     onClick={() => handleSave(svc)}
                     disabled={saving}
-                    className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700 disabled:opacity-50 transition-colors"
+                    className="btn btn-primary btn-sm"
                   >
                     {saving ? "Saving…" : "Save"}
                   </button>
                   <button
                     onClick={() => { setOpenService(null); setError("") }}
-                    className="rounded-lg border border-stone-200 px-4 py-2 text-sm text-stone-600 hover:bg-stone-50 transition-colors"
+                    className="btn btn-ghost btn-sm"
                   >
                     Cancel
                   </button>

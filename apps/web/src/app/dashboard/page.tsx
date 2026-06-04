@@ -113,6 +113,456 @@ function DashboardWithAuth() {
   return <DashboardContent getToken={getToken} />
 }
 
+/* ── Helpers ── */
+
+function SectionLabel({
+  children,
+  action,
+  href,
+}: {
+  children: React.ReactNode
+  action?: string
+  href?: string
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", marginBottom: 13 }}>
+      <span className="eyebrow" style={{ fontSize: 10 }}>{children}</span>
+      {action && href && (
+        <a
+          href={href}
+          style={{
+            marginLeft: "auto",
+            fontSize: 12,
+            color: "var(--accent-text)",
+            fontWeight: 600,
+            textDecoration: "none",
+          }}
+        >
+          {action} →
+        </a>
+      )}
+    </div>
+  )
+}
+
+function KPI({
+  label,
+  value,
+  tone,
+  sub,
+  onClick,
+}: {
+  label: string
+  value: string | number
+  tone?: "ok" | "warn" | "err" | "info" | "plain"
+  sub?: string
+  onClick?: () => void
+}) {
+  const color =
+    tone === "ok" ? "var(--ok)"
+    : tone === "warn" ? "var(--warn)"
+    : tone === "err" ? "var(--err)"
+    : tone === "info" ? "var(--info)"
+    : "var(--text)"
+  return (
+    <div
+      className="card"
+      style={{ padding: "16px 18px", cursor: onClick ? "pointer" : "default", flex: 1 }}
+      onClick={onClick}
+      onMouseEnter={e => { if (onClick) (e.currentTarget as HTMLElement).style.boxShadow = "var(--shadow-md)" }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = "" }}
+    >
+      <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-.02em", color, lineHeight: 1 }}>{value}</div>
+      <div className="eyebrow" style={{ marginTop: 8, fontSize: 9.5 }}>{label}</div>
+      {sub && <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 3 }}>{sub}</div>}
+    </div>
+  )
+}
+
+function PriorityItem({ run }: { run: AttentionRun }) {
+  const [acted, setAct] = useState<string | null>(null)
+
+  const isWaiting = run.status === "waiting_approval" || run.status === "waiting"
+  const tone =
+    run.status === "failed" ? "var(--err)"
+    : isWaiting ? "var(--warn)"
+    : "var(--info)"
+
+  const badgeClass =
+    run.status === "failed" ? "sbadge err"
+    : isWaiting ? "sbadge warn"
+    : "sbadge run"
+
+  const badgeLabel =
+    run.status === "failed" ? "failed"
+    : isWaiting ? "awaiting"
+    : run.status
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 12,
+        padding: "13px 16px",
+        borderBottom: "1px solid var(--border)",
+      }}
+    >
+      <span
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          background: tone,
+          flexShrink: 0,
+          marginTop: 5,
+        }}
+      />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.2 }}>{run.workflow_name}</div>
+        <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 3, lineHeight: 1.4 }}>
+          {run.trigger_summary ?? formatTrigger(run.triggered_by)}
+          {run.repo && ` · ${run.repo}`}
+        </div>
+        <span className={badgeClass} style={{ marginTop: 7, height: 18, fontSize: 9.5, display: "inline-flex" }}>
+          {badgeLabel}
+        </span>
+      </div>
+      {acted ? (
+        <span
+          className={"sbadge " + (acted === "Approve" ? "ok" : "err")}
+          style={{ flexShrink: 0, fontSize: 11.5 }}
+        >
+          {acted === "Approve" ? "Approved" : "Rejected"}
+        </span>
+      ) : isWaiting ? (
+        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+          <button
+            className="btn btn-sm btn-accent"
+            onClick={() => setAct("Approve")}
+          >
+            Approve
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => setAct("Reject")}
+            style={{ color: "var(--err)", borderColor: "var(--err-bd)" }}
+          >
+            Reject
+          </button>
+          <a
+            href={`/workflows/${run.workflow_id}/runs/${run.run_id}`}
+            className="btn btn-ghost btn-sm btn-icon"
+            title="View run"
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+          >
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 18l6-6-6-6" />
+            </svg>
+          </a>
+        </div>
+      ) : (
+        <a
+          href={`/workflows/${run.workflow_id}/runs/${run.run_id}`}
+          className="btn btn-ghost btn-sm btn-icon"
+          title="View run"
+          style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+        >
+          <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 18l6-6-6-6" />
+          </svg>
+        </a>
+      )}
+    </div>
+  )
+}
+
+function GuardSnapshot({ tokenUsage }: { tokenUsage: TokenUsage | null }) {
+  const spent = tokenUsage?.estimated_cost_usd ?? null
+  const cap = 500
+  const pct = spent !== null ? Math.round((spent / cap) * 100) : null
+
+  return (
+    <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+      {/* Header */}
+      <div
+        style={{
+          padding: "13px 16px",
+          borderBottom: "1px solid var(--border)",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+        }}
+      >
+        <svg
+          width={16}
+          height={16}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="var(--accent-text)"
+          strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        </svg>
+        <span style={{ fontWeight: 650, fontSize: 14 }}>ConductGuard</span>
+        <span className="sbadge ok" style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <span className="dot pulse" style={{ background: "var(--ok)" }} />
+          live
+        </span>
+        <a
+          href="/guard"
+          className="btn btn-ghost btn-sm"
+          style={{ textDecoration: "none" }}
+        >
+          Full dashboard →
+        </a>
+      </div>
+
+      {/* Body 3-col grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 0 }}>
+        {/* Spend vs cap */}
+        <div style={{ padding: "13px 16px", borderRight: "1px solid var(--border)" }}>
+          <div className="eyebrow" style={{ fontSize: 9.5, marginBottom: 9 }}>Spend vs cap</div>
+          {spent !== null ? (
+            <>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
+                <span style={{ fontSize: 20, fontWeight: 700 }}>${spent.toFixed(2)}</span>
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>of ${cap}</span>
+              </div>
+              <div
+                style={{
+                  height: 6,
+                  borderRadius: 6,
+                  background: "var(--surface-3)",
+                  margin: "8px 0 5px",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    width: `${Math.min(pct!, 100)}%`,
+                    height: "100%",
+                    borderRadius: 6,
+                    background: pct! > 80 ? "var(--warn)" : "var(--accent)",
+                  }}
+                />
+              </div>
+              <span style={{ fontSize: 11, color: pct! > 80 ? "var(--warn)" : "var(--text-muted)" }}>
+                {pct}% used this month
+              </span>
+            </>
+          ) : (
+            <span style={{ fontSize: 20, fontWeight: 700, color: "var(--text-muted)" }}>—</span>
+          )}
+        </div>
+
+        {/* Top policy hits */}
+        <div style={{ padding: "13px 16px", borderRight: "1px solid var(--border)" }}>
+          <div className="eyebrow" style={{ fontSize: 9.5, marginBottom: 9 }}>Top policy hits (30d)</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            {[1, 2, 3].map(i => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span className="mono" style={{ fontSize: 11.5, fontWeight: 600, flex: 1, color: "var(--text-muted)" }}>—</span>
+                <span className="sbadge run" style={{ height: 17, fontSize: 9, padding: "0 6px" }}>—</span>
+                <span className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)", minWidth: 22, textAlign: "right" }}>—</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Developer near limit */}
+        <div style={{ padding: "13px 16px" }}>
+          <div className="eyebrow" style={{ fontSize: 9.5, marginBottom: 9 }}>Developer near limit</div>
+          <span style={{ fontSize: 12, color: "var(--ok)" }}>All developers within limits</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AgentHealthRow({ agent }: { agent: AgentHealth }) {
+  const healthLabel =
+    agent.last_run_status === null ? "Idle"
+    : agent.run_count === 0 ? "Idle"
+    : agent.success_rate >= 80 ? "Healthy"
+    : agent.success_rate >= 50 ? "Degraded"
+    : "Stale"
+
+  const healthColor =
+    healthLabel === "Healthy" ? "var(--ok)"
+    : healthLabel === "Degraded" ? "var(--warn)"
+    : healthLabel === "Stale" ? "var(--err)"
+    : "var(--text-3)"
+
+  const healthBg =
+    healthLabel === "Healthy" ? "var(--ok-bg)"
+    : healthLabel === "Degraded" ? "var(--warn-bg)"
+    : healthLabel === "Stale" ? "var(--err-bg)"
+    : "var(--surface-3)"
+
+  const successRate = agent.run_count === 0 ? null : agent.success_rate / 100
+  const barColor =
+    successRate === null ? "var(--surface-3)"
+    : successRate >= 0.8 ? "var(--ok)"
+    : successRate >= 0.5 ? "var(--warn)"
+    : "var(--err)"
+
+  const spendText = "—"
+
+  return (
+    <a
+      href={`/workflows/${agent.workflow_id}`}
+      style={{
+        display: "grid",
+        gridTemplateColumns: "2fr 1fr 1fr 0.9fr 0.8fr",
+        gap: 12,
+        padding: "11px 16px",
+        borderBottom: "1px solid var(--border)",
+        alignItems: "center",
+        cursor: "pointer",
+        textDecoration: "none",
+        color: "inherit",
+      }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--surface-2)" }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "" }}
+    >
+      {/* Agent name + slug */}
+      <div>
+        <div style={{ fontWeight: 600, fontSize: 13.5 }}>{agent.name}</div>
+        <div
+          className="mono"
+          style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}
+        >
+          {agent.playbook_slug ?? agent.workflow_id.slice(0, 8)}
+        </div>
+      </div>
+
+      {/* Status badge */}
+      <div>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            height: 21,
+            padding: "0 8px",
+            borderRadius: 20,
+            fontSize: 11,
+            fontWeight: 600,
+            color: healthColor,
+            background: healthBg,
+          }}
+        >
+          <span style={{ width: 5, height: 5, borderRadius: "50%", background: healthColor }} />
+          {healthLabel}
+        </span>
+      </div>
+
+      {/* Success rate bar + % */}
+      <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+        <div
+          style={{
+            width: 52,
+            height: 5,
+            borderRadius: 5,
+            background: "var(--surface-3)",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              width: successRate !== null ? `${Math.round(successRate * 100)}%` : "0%",
+              height: "100%",
+              borderRadius: 5,
+              background: barColor,
+            }}
+          />
+        </div>
+        <span
+          className="mono"
+          style={{
+            fontSize: 12,
+            color: successRate === null ? "var(--text-muted)" : barColor,
+          }}
+        >
+          {successRate !== null ? `${Math.round(successRate * 100)}%` : "—"}
+        </span>
+      </div>
+
+      {/* Quality grade placeholder */}
+      <div>
+        <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
+      </div>
+
+      {/* Spend */}
+      <div
+        className="mono"
+        style={{ fontSize: 12, color: "var(--text-3)", textAlign: "right" }}
+      >
+        {spendText}
+      </div>
+    </a>
+  )
+}
+
+function EmptyChecklist() {
+  const steps = [
+    { label: "Install a starter playbook", href: "/marketplace", cta: "Browse playbooks →" },
+    { label: "Add credentials (GitHub token, Slack)", href: "/settings/integrations", cta: "Open integrations →" },
+    { label: "Run a test trigger", href: "/runs", cta: "Go to Runs →" },
+    { label: "Review the AI trace", href: "/runs", cta: "Open a run →" },
+  ]
+  return (
+    <div
+      className="card"
+      style={{ padding: "32px 36px", maxWidth: 480, margin: "32px auto 0" }}
+    >
+      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Get started with Conduct</div>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 22 }}>
+        No agents yet. Follow these steps to automate your first engineering task.
+      </div>
+      <ol style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 16 }}>
+        {steps.map((s, i) => (
+          <li key={i} style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <span
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: "50%",
+                background: "var(--surface-2)",
+                color: "var(--text-muted)",
+                fontSize: 11,
+                fontWeight: 700,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              {i + 1}
+            </span>
+            <div style={{ flex: 1, fontSize: 13, color: "var(--text)" }}>{s.label}</div>
+            <a
+              href={s.href}
+              style={{
+                fontSize: 12,
+                color: "var(--accent-text)",
+                fontWeight: 600,
+                textDecoration: "none",
+                flexShrink: 0,
+              }}
+            >
+              {s.cta}
+            </a>
+          </li>
+        ))}
+      </ol>
+    </div>
+  )
+}
+
+/* ── Main content ── */
+
 function DashboardContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -137,459 +587,274 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const lastUpdated = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+
   return (
     <AppShell>
-      <div className="mx-auto max-w-4xl px-6 py-10">
-        <div className="flex items-center justify-between mb-8">
+      <div className="page fade-in" style={{ maxWidth: 1080 }}>
+        {/* Page header */}
+        <div className="page-head" style={{ display: "flex", alignItems: "flex-end" }}>
           <div>
-            <h1 className="text-xl font-semibold text-stone-900">Dashboard</h1>
-            <p className="text-xs text-stone-400 mt-0.5">Last 7 days</p>
+            <h1 className="page-title">Dashboard</h1>
+            <p className="page-sub">Runs, Guard, and spend — the whole picture at a glance. Last 7 days.</p>
           </div>
-          <div className="flex items-center gap-2">
-            {data && data.token_usage.total_tokens > 0 && (
-              <a
-                href="#token-usage"
-                className="flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 transition-colors"
-                title="Jump to token usage breakdown"
-              >
-                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                {fmtTokens(data.token_usage.total_tokens)} tokens · ${data.token_usage.estimated_cost_usd.toFixed(2)}
-              </a>
-            )}
-            <Link href="/workflows/new" className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700 transition-colors">
-              + New agent
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Updated {lastUpdated}</span>
+            <Link href="/workflows/new" className="btn btn-primary">
+              <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} style={{ display: "inline", verticalAlign: "middle", marginRight: 5 }}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
+              </svg>
+              New agent
             </Link>
           </div>
         </div>
 
         {loading ? (
-          <div className="space-y-6">
-            <div className="h-24 rounded-xl bg-stone-100 animate-pulse" />
-            <div className="grid grid-cols-3 gap-3">
-              {[1,2,3,4,5,6].map(i => <div key={i} className="h-20 rounded-xl bg-stone-100 animate-pulse" />)}
+          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+            {/* KPI skeleton */}
+            <div style={{ display: "flex", gap: 12 }}>
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="card" style={{ flex: 1, height: 80, opacity: 0.4 }} />
+              ))}
             </div>
-            <div className="h-48 rounded-xl bg-stone-100 animate-pulse" />
+            <div
+              className="card"
+              style={{ height: 200, opacity: 0.4 }}
+            />
+            <div
+              className="card"
+              style={{ height: 280, opacity: 0.4 }}
+            />
           </div>
         ) : !data ? (
-          <p className="text-stone-400 text-sm">Could not load dashboard.</p>
+          <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Could not load dashboard.</p>
         ) : data.agent_health.length === 0 ? (
           <EmptyChecklist />
         ) : (
-          <div className="space-y-10">
+          <>
+            {/* KPI strip */}
+            <div style={{ display: "flex", gap: 12, marginBottom: 26 }}>
+              <KPI
+                label="Active runs"
+                value={data.recent_activity.filter(r => r.status === "running").length}
+                tone="info"
+                sub="across agents"
+                onClick={() => window.location.assign("/runs")}
+              />
+              <KPI
+                label="Needs attention"
+                value={data.needs_attention.length}
+                tone="warn"
+                sub="approvals + failures"
+                onClick={() => {
+                  const el = document.querySelector("#priority-feed")
+                  if (el) el.scrollIntoView({ behavior: "smooth" })
+                }}
+              />
+              <KPI
+                label="Spend today"
+                value={data.token_usage.estimated_cost_usd > 0
+                  ? `$${data.token_usage.estimated_cost_usd.toFixed(2)}`
+                  : "—"}
+                tone="plain"
+                sub="est. Claude tokens"
+                onClick={() => window.location.assign("/guard/spend")}
+              />
+              <KPI
+                label="Policy blocks today"
+                value="—"
+                tone="err"
+                sub="no Guard data"
+              />
+            </div>
 
-            {/* 1 — Needs Attention */}
-            {data.needs_attention.length > 0 && (
-              <section>
-                <SectionHeader label="Needs Attention" href="/runs?view=needs-attention" linkLabel="View all →" />
-                <AttentionList runs={data.needs_attention} />
-              </section>
-            )}
+            {/* 2-column grid */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1.6fr 1fr",
+                gap: 22,
+                alignItems: "start",
+              }}
+            >
+              {/* LEFT column */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
 
-            {/* 2 — Outcomes This Week */}
-            <section>
-              <SectionHeader label="Outcomes" sub="Last 7 days" />
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <OutcomeCard label="PRs opened"             value={data.outcomes.prs_opened}             />
-                <OutcomeCard label="Issues triaged"         value={data.outcomes.issues_triaged}         />
-                <OutcomeCard label="Reviews completed"      value={data.outcomes.reviews_completed}      />
-                <OutcomeCard label="Incidents investigated" value={data.outcomes.incidents_investigated}  />
-                <OutcomeCard
-                  label="Successful automations"
-                  value={data.outcomes.successful_automations}
-                  highlight="green"
-                />
-                <OutcomeCard
-                  label="Failed automations"
-                  value={data.outcomes.failed_automations}
-                  highlight={data.outcomes.failed_automations > 0 ? "red" : undefined}
-                  href={data.outcomes.failed_automations > 0 ? "/runs" : undefined}
-                />
-              </div>
-            </section>
-
-            {/* 3 — Agent Health */}
-            <section>
-              <SectionHeader label="Agent Health" sub="All time" />
-              {data.agent_health.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-stone-300 p-10 text-center">
-                  <p className="text-stone-400 text-sm">
-                    <Link href="/workflows/new" className="underline hover:text-stone-700">Create your first agent</Link> to see health here.
-                  </p>
-                </div>
-              ) : (
-                <div className="rounded-xl border border-stone-200 bg-white overflow-hidden divide-y divide-stone-100">
-                  {data.agent_health.map(agent => {
-                    const rateColor =
-                      agent.run_count === 0 ? "text-stone-300"
-                      : agent.success_rate >= 80 ? "text-emerald-600"
-                      : agent.success_rate >= 50 ? "text-amber-600"
-                      : "text-red-600"
-                    const dot = agent.last_run_status
-                      ? statusStyle(agent.last_run_status).dot
-                      : "bg-stone-200"
-                    return (
-                      <div key={agent.workflow_id} className="flex items-center justify-between px-4 py-3 hover:bg-stone-50 transition-colors">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
-                          <Link
-                            href={`/workflows/${agent.workflow_id}`}
-                            className="text-sm font-medium text-stone-900 hover:text-indigo-600 truncate transition-colors"
-                          >
-                            {agent.name}
-                          </Link>
-                        </div>
-                        <div className="flex items-center gap-5 ml-4 shrink-0 text-xs text-stone-400">
-                          <span className={`font-semibold text-sm ${rateColor}`}>
-                            {agent.run_count === 0 ? "—" : `${agent.success_rate}%`}
-                          </span>
-                          {agent.failed_count > 0 && (
-                            <span className="text-red-500">{agent.failed_count} failed</span>
-                          )}
-                          <span>{agent.run_count} run{agent.run_count !== 1 ? "s" : ""}</span>
-                          {agent.last_run_at
-                            ? <span>{timeAgo(agent.last_run_at)}</span>
-                            : <span className="italic">never run</span>}
-                          <Link href={`/workflows/${agent.workflow_id}/runs`} className="text-stone-400 hover:text-stone-700 transition-colors">History →</Link>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </section>
-
-            {/* 4 — Token Usage */}
-            {data.token_usage.total_tokens > 0 && (
-              <section id="token-usage">
-                <SectionHeader label="Token Usage" sub="All time" />
-                <div className="grid grid-cols-3 gap-3 mb-3">
-                  <div className="rounded-xl border border-stone-200 bg-white px-4 py-4">
-                    <p className="text-xs text-stone-400 mb-1.5">Total tokens</p>
-                    <p className="text-2xl font-bold text-stone-900">{fmtTokens(data.token_usage.total_tokens)}</p>
-                    <p className="text-xs text-stone-400 mt-1">{fmtTokens(data.token_usage.total_input_tokens)} in · {fmtTokens(data.token_usage.total_output_tokens)} out</p>
-                  </div>
-                  <div className="rounded-xl border border-stone-200 bg-white px-4 py-4">
-                    <p className="text-xs text-stone-400 mb-1.5">Est. cost</p>
-                    <p className="text-2xl font-bold text-stone-900">${data.token_usage.estimated_cost_usd.toFixed(2)}</p>
-                    <p className="text-xs text-stone-400 mt-1">Sonnet pricing · approximate</p>
-                  </div>
-                  <div className="rounded-xl border border-stone-200 bg-white px-4 py-4">
-                    <p className="text-xs text-stone-400 mb-1.5">Output ratio</p>
-                    <p className="text-2xl font-bold text-stone-900">
-                      {data.token_usage.total_tokens > 0
-                        ? `${Math.round((data.token_usage.total_output_tokens / data.token_usage.total_tokens) * 100)}%`
-                        : "—"}
-                    </p>
-                    <p className="text-xs text-stone-400 mt-1">of total are output tokens</p>
-                  </div>
-                </div>
-                <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-stone-100">
-                        <th className="text-left px-4 py-2.5 text-stone-400 font-medium">Agent</th>
-                        <th className="text-right px-4 py-2.5 text-stone-400 font-medium">Input</th>
-                        <th className="text-right px-4 py-2.5 text-stone-400 font-medium">Output</th>
-                        <th className="text-right px-4 py-2.5 text-stone-400 font-medium">Total</th>
-                        <th className="text-right px-4 py-2.5 text-stone-400 font-medium">Est. cost</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-stone-100">
-                      {data.token_usage.by_agent.map(agent => (
-                        <tr key={agent.workflow_id} className="hover:bg-stone-50 transition-colors">
-                          <td className="px-4 py-2.5 font-medium text-stone-900">{agent.name}</td>
-                          <td className="px-4 py-2.5 text-right text-stone-500">{fmtTokens(agent.input_tokens)}</td>
-                          <td className="px-4 py-2.5 text-right text-stone-500">{fmtTokens(agent.output_tokens)}</td>
-                          <td className="px-4 py-2.5 text-right text-stone-700 font-medium">{fmtTokens(agent.total_tokens)}</td>
-                          <td className="px-4 py-2.5 text-right text-stone-500">${agent.estimated_cost_usd.toFixed(3)}</td>
-                        </tr>
+                {/* Priority feed */}
+                <div id="priority-feed">
+                  <SectionLabel action="View all runs" href="/runs">
+                    Needs attention · {data.needs_attention.length}
+                  </SectionLabel>
+                  {data.needs_attention.length === 0 ? (
+                    <div
+                      className="card"
+                      style={{ padding: "20px 18px", color: "var(--ok)", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}
+                    >
+                      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="var(--ok)" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                      All clear — no runs need attention.
+                    </div>
+                  ) : (
+                    <div className="card" style={{ overflow: "hidden", padding: 0 }}>
+                      {data.needs_attention.map(run => (
+                        <PriorityItem key={run.run_id} run={run} />
                       ))}
-                    </tbody>
-                  </table>
+                    </div>
+                  )}
                 </div>
-              </section>
-            )}
 
-            {/* 5 — Recent Activity */}
-            <section>
-              <SectionHeader label="Recent Activity" href="/runs" linkLabel="View all runs →" />
-              {data.recent_activity.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-stone-300 p-10 text-center">
-                  <p className="text-stone-400 text-sm">
-                    No runs yet — <Link href="/workflows" className="underline hover:text-stone-700">open an agent</Link> and hit Run.
-                  </p>
-                </div>
-              ) : (
-                <div className="rounded-xl border border-stone-200 bg-white overflow-hidden divide-y divide-stone-100">
-                  {data.recent_activity.map(run => {
-                    const s = statusStyle(run.status)
-                    return (
-                      <Link
-                        key={run.run_id}
-                        href={`/workflows/${run.workflow_id}/runs/${run.run_id}`}
-                        className="flex items-center justify-between px-4 py-3 hover:bg-stone-50 transition-colors"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-sm font-medium text-stone-900 shrink-0">{run.workflow_name}</span>
-                          {run.repo && (
-                            <span className="text-[10px] font-medium text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded truncate max-w-[160px]">
-                              {run.repo}
-                            </span>
-                          )}
-                          <span className="text-xs text-stone-400 shrink-0">{formatTrigger(run.triggered_by)}</span>
+                {/* Outcomes */}
+                <div>
+                  <SectionLabel>Outcomes · last 7 days</SectionLabel>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(3, 1fr)",
+                      gap: 11,
+                    }}
+                  >
+                    {[
+                      { k: "PRs opened",              v: data.outcomes.prs_opened,              tone: "plain" },
+                      { k: "Issues triaged",          v: data.outcomes.issues_triaged,          tone: "plain" },
+                      { k: "Reviews completed",       v: data.outcomes.reviews_completed,       tone: "plain" },
+                      { k: "Incidents investigated",  v: data.outcomes.incidents_investigated,  tone: "plain" },
+                      { k: "Successful automations",  v: data.outcomes.successful_automations,  tone: "ok" },
+                      { k: "Failed automations",      v: data.outcomes.failed_automations,      tone: data.outcomes.failed_automations > 0 ? "err" : "plain" },
+                    ].map(o => (
+                      <div key={o.k} className="card" style={{ padding: "14px 15px" }}>
+                        <div
+                          style={{
+                            fontSize: 22,
+                            fontWeight: 700,
+                            color: o.tone === "ok" ? "var(--ok)" : o.tone === "err" ? "var(--err)" : "var(--text)",
+                            letterSpacing: "-.015em",
+                          }}
+                        >
+                          {o.v}
                         </div>
-                        <div className="flex items-center gap-3">
-                          <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-                            {s.label}
-                          </span>
-                          <span className="text-xs text-stone-400">{timeAgo(run.started_at ?? run.created_at)}</span>
-                        </div>
-                      </Link>
-                    )
-                  })}
+                        <div className="eyebrow" style={{ marginTop: 6, fontSize: 9 }}>{o.k}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              )}
-            </section>
 
-          </div>
+                {/* Recent activity */}
+                <div>
+                  <SectionLabel action="All runs" href="/runs">Recent activity</SectionLabel>
+                  {data.recent_activity.length === 0 ? (
+                    <div
+                      className="card"
+                      style={{ padding: "20px 18px", fontSize: 13, color: "var(--text-muted)" }}
+                    >
+                      No runs yet —{" "}
+                      <a href="/workflows" style={{ color: "var(--accent-text)", textDecoration: "none", fontWeight: 600 }}>
+                        open an agent
+                      </a>{" "}
+                      and hit Run.
+                    </div>
+                  ) : (
+                    <div className="card" style={{ overflow: "hidden", padding: 0 }}>
+                      {data.recent_activity.slice(0, 6).map(run => {
+                        const statusBadge =
+                          run.status === "succeeded" ? "sbadge ok"
+                          : run.status === "failed" ? "sbadge err"
+                          : run.status === "running" ? "sbadge run"
+                          : run.status === "waiting_approval" || run.status === "waiting" ? "sbadge warn"
+                          : "sbadge idle"
+
+                        const statusLabel =
+                          run.status === "succeeded" ? "Succeeded"
+                          : run.status === "failed" ? "Failed"
+                          : run.status === "running" ? "Running"
+                          : run.status === "waiting_approval" || run.status === "waiting" ? "Awaiting"
+                          : run.status
+
+                        return (
+                          <a
+                            key={run.run_id}
+                            href={`/workflows/${run.workflow_id}/runs/${run.run_id}`}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 12,
+                              padding: "10px 16px",
+                              borderBottom: "1px solid var(--border)",
+                              cursor: "pointer",
+                              textDecoration: "none",
+                              color: "inherit",
+                            }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--surface-2)" }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "" }}
+                          >
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontWeight: 600, fontSize: 13 }}>{run.workflow_name}</div>
+                              <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                                {run.repo ? `${run.repo} · ` : ""}{formatTrigger(run.triggered_by)}
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span className={statusBadge} style={{ height: 19, fontSize: 11 }}>
+                                {statusLabel}
+                              </span>
+                              <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
+                                {timeAgo(run.started_at ?? run.created_at)}
+                              </span>
+                            </div>
+                          </a>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* RIGHT column */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+
+                {/* Guard snapshot */}
+                <div>
+                  <SectionLabel>Guard</SectionLabel>
+                  <GuardSnapshot
+                    tokenUsage={data.token_usage.total_tokens > 0 ? data.token_usage : null}
+                  />
+                </div>
+
+                {/* Agent health table */}
+                <div>
+                  <SectionLabel action="Manage agents" href="/workflows">Agent health</SectionLabel>
+                  <div className="card" style={{ overflow: "hidden", padding: 0 }}>
+                    {/* Table header */}
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "2fr 1fr 1fr 0.9fr 0.8fr",
+                        gap: 12,
+                        padding: "9px 16px",
+                        borderBottom: "1px solid var(--border)",
+                        background: "var(--surface-2)",
+                      }}
+                    >
+                      {["Agent", "Status", "Success", "Quality", "Spend"].map((h, i) => (
+                        <div
+                          key={i}
+                          className="eyebrow"
+                          style={{ fontSize: 9, textAlign: i >= 3 ? "right" : "left" }}
+                        >
+                          {h}
+                        </div>
+                      ))}
+                    </div>
+                    {data.agent_health.map(agent => (
+                      <AgentHealthRow key={agent.workflow_id} agent={agent} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
         )}
       </div>
     </AppShell>
   )
-}
-
-function AttentionList({ runs }: { runs: AttentionRun[] }) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const [cancelledOpen, setCancelledOpen] = useState(false)
-
-  const activeRuns = runs.filter(r => r.status !== "cancelled")
-  const cancelledRuns = runs.filter(r => r.status === "cancelled")
-
-  // Group active runs by agent_name + status
-  const groups: { key: string; name: string; wfId: string; status: string; runs: AttentionRun[] }[] = []
-  const seen = new Map<string, number>()
-  for (const run of activeRuns) {
-    const key = `${run.workflow_id}::${run.status}`
-    if (seen.has(key)) {
-      groups[seen.get(key)!].runs.push(run)
-    } else {
-      seen.set(key, groups.length)
-      groups.push({ key, name: run.workflow_name, wfId: run.workflow_id, status: run.status, runs: [run] })
-    }
-  }
-
-  function toggle(key: string) {
-    setExpanded(prev => {
-      const next = new Set(prev)
-      next.has(key) ? next.delete(key) : next.add(key)
-      return next
-    })
-  }
-
-  if (activeRuns.length === 0 && cancelledRuns.length === 0) return null
-
-  return (
-    <div className="space-y-2">
-    {activeRuns.length > 0 && (
-    <div className="rounded-xl border border-red-100 bg-red-50 overflow-hidden divide-y divide-red-100">
-      {groups.map(group => {
-        const s = statusStyle(group.status)
-        const isOpen = expanded.has(group.key)
-        const singular = group.runs.length === 1
-
-        if (singular) {
-          const run = group.runs[0]
-          return (
-            <Link
-              key={group.key}
-              href={`/workflows/${run.workflow_id}/runs/${run.run_id}`}
-              className="flex items-center justify-between px-4 py-3 hover:bg-red-100/60 transition-colors"
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-sm font-medium text-stone-900 shrink-0">{group.name}</span>
-                {run.repo && (
-                  <span className="text-[10px] font-medium text-stone-400 bg-red-100 px-1.5 py-0.5 rounded truncate max-w-[140px]">
-                    {run.repo}
-                  </span>
-                )}
-                {run.trigger_summary && (
-                  <span className="text-xs text-stone-400 truncate hidden sm:block">{run.trigger_summary}</span>
-                )}
-              </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-                  {s.label}
-                </span>
-                <span className="text-xs text-stone-400">{timeAgo(run.created_at)}</span>
-              </div>
-            </Link>
-          )
-        }
-
-        return (
-          <div key={group.key}>
-            {/* Group header — click to expand */}
-            <button
-              onClick={() => toggle(group.key)}
-              className="w-full flex items-center justify-between px-4 py-3 hover:bg-red-100/60 transition-colors text-left"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-stone-900">{group.name}</span>
-                <span className="text-[10px] font-semibold bg-red-200/70 text-red-700 px-1.5 py-0.5 rounded-full">
-                  {group.runs.length}
-                </span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-                  {s.label}
-                </span>
-                <span className="text-xs text-stone-400">
-                  {timeAgo(group.runs[0].created_at)} – {timeAgo(group.runs[group.runs.length - 1].created_at)}
-                </span>
-                <svg
-                  className={`w-3.5 h-3.5 text-stone-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
-                  fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
-            </button>
-
-            {/* Expanded individual runs */}
-            {isOpen && (
-              <div className="divide-y divide-red-100/70 border-t border-red-100">
-                {group.runs.map(run => (
-                  <Link
-                    key={run.run_id}
-                    href={`/workflows/${run.workflow_id}/runs/${run.run_id}`}
-                    className="flex items-center justify-between pl-8 pr-4 py-2.5 hover:bg-red-100/40 transition-colors"
-                  >
-                    <span className="text-xs text-stone-600 truncate max-w-[60%]">
-                      {run.trigger_summary ?? formatTrigger(run.triggered_by)}
-                    </span>
-                    <span className="text-xs text-stone-400 shrink-0">{timeAgo(run.created_at)}</span>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
-        )
-      })}
-    </div>
-    )}
-
-    {/* Cancelled runs — collapsed by default */}
-    {cancelledRuns.length > 0 && (
-      <div className="rounded-xl border border-stone-200 overflow-hidden">
-        <button
-          onClick={() => setCancelledOpen(o => !o)}
-          className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-stone-50 transition-colors text-left"
-        >
-          <span className="text-xs text-stone-400">
-            {cancelledRuns.length} cancelled run{cancelledRuns.length !== 1 ? "s" : ""}
-          </span>
-          <svg
-            className={`w-3 h-3 text-stone-300 transition-transform ${cancelledOpen ? "rotate-180" : ""}`}
-            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-        {cancelledOpen && (
-          <div className="divide-y divide-stone-100 border-t border-stone-100">
-            {cancelledRuns.map(run => (
-              <Link
-                key={run.run_id}
-                href={`/workflows/${run.workflow_id}/runs/${run.run_id}`}
-                className="flex items-center justify-between px-4 py-2 hover:bg-stone-50 transition-colors"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-xs text-stone-500 shrink-0">{run.workflow_name}</span>
-                  {run.repo && (
-                    <span className="text-[10px] text-stone-300 bg-stone-100 px-1.5 py-0.5 rounded truncate max-w-[120px]">
-                      {run.repo}
-                    </span>
-                  )}
-                </div>
-                <span className="text-xs text-stone-300 shrink-0">{timeAgo(run.created_at)}</span>
-              </Link>
-            ))}
-          </div>
-        )}
-      </div>
-    )}
-    </div>
-  )
-}
-
-function SectionHeader({ label, sub, href, linkLabel }: {
-  label: string
-  sub?: string
-  href?: string
-  linkLabel?: string
-}) {
-  return (
-    <div className="flex items-center justify-between mb-3">
-      <div className="flex items-center gap-2">
-        <p className="text-xs font-semibold text-stone-500 uppercase tracking-widest">{label}</p>
-        {sub && <p className="text-xs text-stone-300">{sub}</p>}
-      </div>
-      {href && linkLabel && (
-        <Link href={href} className="text-xs text-stone-400 hover:text-stone-700 transition-colors">{linkLabel}</Link>
-      )}
-    </div>
-  )
-}
-
-function EmptyChecklist() {
-  const steps = [
-    { label: "Install a starter playbook", href: "/marketplace", cta: "Browse playbooks →" },
-    { label: "Add credentials (GitHub token, Slack)", href: "/settings/integrations", cta: "Open integrations →" },
-    { label: "Run a test trigger", href: "/runs", cta: "Go to Runs →" },
-    { label: "Review the AI trace", href: "/runs", cta: "Open a run →" },
-  ]
-  return (
-    <div className="rounded-xl border border-stone-200 bg-white px-8 py-10 max-w-lg mx-auto mt-8">
-      <h2 className="text-sm font-semibold text-stone-900 mb-1">Get started with Conduct</h2>
-      <p className="text-xs text-stone-400 mb-6">No agents yet. Follow these steps to automate your first engineering task.</p>
-      <ol className="space-y-4">
-        {steps.map((s, i) => (
-          <li key={i} className="flex items-center gap-4">
-            <span className="w-6 h-6 rounded-full bg-stone-100 text-stone-400 text-xs font-bold flex items-center justify-center shrink-0">
-              {i + 1}
-            </span>
-            <div className="flex-1">
-              <p className="text-sm text-stone-700">{s.label}</p>
-            </div>
-            <Link href={s.href} className="text-xs text-stone-500 hover:text-stone-900 transition-colors shrink-0">{s.cta}</Link>
-          </li>
-        ))}
-      </ol>
-    </div>
-  )
-}
-
-function OutcomeCard({ label, value, highlight, href }: {
-  label: string
-  value: number
-  highlight?: "green" | "red"
-  href?: string
-}) {
-  const valueClass =
-    highlight === "green" ? "text-emerald-700"
-    : highlight === "red" ? "text-red-600"
-    : "text-stone-900"
-
-  const card = (
-    <div className="rounded-xl border border-stone-200 bg-white px-4 py-4 hover:border-stone-300 transition-colors">
-      <p className="text-xs text-stone-400 mb-1.5">{label}</p>
-      <p className={`text-2xl font-bold ${valueClass}`}>{value}</p>
-    </div>
-  )
-  return href ? <Link href={href}>{card}</Link> : card
 }

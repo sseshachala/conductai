@@ -103,6 +103,7 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
   if (pathname.startsWith('/observability')) return ['Observability']
   if (pathname.startsWith('/eval')) return ['Quality']
   if (pathname.startsWith('/benchmark')) return ['Benchmark']
+  if (pathname === '/workflows') return ['Agents']
   if (pathname.startsWith('/workflows/new')) return ['Canvas', 'New agent']
   if (pathname.startsWith('/workflows/')) return ['Canvas']
   if (pathname.startsWith('/tasks')) return ['Tasks']
@@ -870,6 +871,13 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
             )}
 
             <SideNavItem
+              href="/workflows"
+              label="Agents"
+              icon={<Icons.Flow />}
+              active={pathname === "/workflows"}
+              collapsed={collapsed}
+            />
+            <SideNavItem
               href="/tasks"
               label="Tasks"
               icon={<Icons.Board />}
@@ -880,7 +888,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
               href="/workflows/new"
               label="Canvas"
               icon={<Icons.Flow />}
-              active={pathname.startsWith("/workflows")}
+              active={pathname.startsWith("/workflows/") || pathname.startsWith("/workflows/new")}
               collapsed={collapsed}
             />
             <SideNavItem

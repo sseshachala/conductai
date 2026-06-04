@@ -390,7 +390,7 @@ function BudgetInput({
         title="Set budget"
         aria-label={`Set budget for ${email}`}
       >
-        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
           <path d="M11.5 2.5a1.414 1.414 0 0 1 2 2L5 13H3v-2L11.5 2.5z" strokeLinejoin="round" />
         </svg>
       </button>
@@ -441,33 +441,69 @@ function MonthPicker({ value, onChange }: { value: string; onChange: (v: string)
   }
 
   return (
-    <div className="relative">
+    <div style={{ position: "relative" }}>
       <button
         onClick={() => setOpen(o => !o)}
-        className="text-xs border border-stone-200 rounded-lg px-3 py-1.5 text-stone-600 hover:bg-stone-50 transition-colors flex items-center gap-1.5"
+        style={{
+          fontSize: 12,
+          border: "1px solid var(--border)",
+          borderRadius: 8,
+          padding: "5px 12px",
+          color: "var(--text-3)",
+          background: "var(--surface)",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+        }}
       >
         {label}
-        <svg className="w-3 h-3 text-stone-400" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
           <path d="M2 4l4 4 4-4" />
         </svg>
       </button>
       {open && (
-        <div className="absolute right-0 mt-1 bg-white border border-stone-200 rounded-xl shadow-lg p-3 z-10 min-w-[160px]">
-          <div className="flex items-center justify-between mb-2">
-            <button onClick={() => onChange(`${year - 1}-${String(month).padStart(2, "0")}`)} className="text-stone-400 hover:text-stone-600 text-xs px-1">
+        <div style={{
+          position: "absolute",
+          right: 0,
+          marginTop: 4,
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 12,
+          boxShadow: "var(--shadow-lg)",
+          padding: 12,
+          zIndex: 10,
+          minWidth: 160,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <button
+              onClick={() => onChange(`${year - 1}-${String(month).padStart(2, "0")}`)}
+              style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", fontSize: 12, padding: "0 4px" }}
+            >
               &lsaquo; {year - 1}
             </button>
-            <span className="text-xs font-medium text-stone-700">{year}</span>
-            <button onClick={() => onChange(`${year + 1}-${String(month).padStart(2, "0")}`)} className="text-stone-400 hover:text-stone-600 text-xs px-1">
+            <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text-2)" }}>{year}</span>
+            <button
+              onClick={() => onChange(`${year + 1}-${String(month).padStart(2, "0")}`)}
+              style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", fontSize: 12, padding: "0 4px" }}
+            >
               {year + 1} &rsaquo;
             </button>
           </div>
-          <div className="grid grid-cols-3 gap-1">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 4 }}>
             {MONTHS.map((m, i) => (
               <button
                 key={m}
                 onClick={() => select(i + 1)}
-                className={`text-xs rounded px-1.5 py-1 transition-colors ${i + 1 === month ? "bg-indigo-600 text-white" : "text-stone-600 hover:bg-stone-100"}`}
+                style={{
+                  fontSize: 12,
+                  borderRadius: 5,
+                  padding: "4px 6px",
+                  border: "none",
+                  cursor: "pointer",
+                  background: i + 1 === month ? "var(--accent)" : "none",
+                  color: i + 1 === month ? "#fff" : "var(--text-3)",
+                }}
               >
                 {m}
               </button>
@@ -612,7 +648,7 @@ function SpendContent() {
   if (!canViewSpend) {
     return (
       <GuardShell>
-        <div className="rounded-xl border border-stone-200 bg-white px-6 py-16 text-center text-sm text-stone-400">
+        <div className="card" style={{ padding: "64px 24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
           You don&apos;t have access to spend data. Contact your admin.
         </div>
       </GuardShell>
@@ -626,7 +662,16 @@ function SpendContent() {
         <select
           value={currency}
           onChange={e => setCurrency(e.target.value as Currency)}
-          className="text-xs border border-stone-200 rounded-lg px-2.5 py-1.5 text-stone-600 bg-white focus:outline-none"
+          style={{
+            fontSize: 12,
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            padding: "5px 10px",
+            color: "var(--text-3)",
+            background: "var(--surface)",
+            outline: "none",
+            cursor: "pointer",
+          }}
         >
           <option value="USD">$ USD</option>
           <option value="EUR">€ EUR</option>
@@ -636,7 +681,17 @@ function SpendContent() {
       </div>
 
       {error && (
-        <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 mb-4">{error}</div>
+        <div style={{
+          borderRadius: 8,
+          background: "var(--err-bg)",
+          border: "1px solid var(--err-bd)",
+          padding: "10px 16px",
+          fontSize: 13,
+          color: "var(--err)",
+          marginBottom: 16,
+        }}>
+          {error}
+        </div>
       )}
 
       {/* Spend controls card */}
@@ -646,7 +701,7 @@ function SpendContent() {
       {loading ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 22 }}>
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="card card-pad animate-pulse" style={{ height: 80 }} />
+            <div key={i} className="card" style={{ height: 80, opacity: 0.5 }} />
           ))}
         </div>
       ) : data ? (
@@ -659,7 +714,7 @@ function SpendContent() {
               [`${CURRENCY_SYMBOLS[currency]}${fromUsd(data.total_cost_usd + data.total_saved_usd, currency).toFixed(0)}`, "Est. cost without Guard", "plain"],
               [`${CURRENCY_SYMBOLS[currency]}${fromUsd(data.total_saved_usd, currency).toFixed(0)}`, "Est. savings", "accent"],
             ].map(([v, k, tone], i) => (
-              <div key={i} className="card card-pad">
+              <div key={i} className="card" style={{ padding: "16px 20px" }}>
                 <div style={{
                   fontSize: 24,
                   fontWeight: 700,
@@ -676,23 +731,32 @@ function SpendContent() {
           {/* RTK + Agent Booster savings */}
           {!savingsLoading && savings &&
             (savings.team_total.rtk_saved_tokens > 0 || savings.team_total.booster_saved_tokens > 0) && (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 mb-6">
-              <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-3">Token savings from developer tools</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div style={{
+              borderRadius: 12,
+              border: "1px solid var(--ok-bd)",
+              background: "var(--ok-bg)",
+              padding: "16px 20px",
+              marginBottom: 24,
+            }}>
+              <p className="eyebrow" style={{ color: "var(--ok)", marginBottom: 12 }}>
+                Token savings from developer tools
+              </p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
                 {[
-                  [formatTokens(savings.team_total.rtk_saved_tokens), "RTK — tokens saved", "text-emerald-700"],
-                  [`$${savings.team_total.rtk_saved_usd.toFixed(2)}`, "RTK — cost saved", "text-emerald-700"],
-                  [formatTokens(savings.team_total.booster_saved_tokens), "Booster — tokens saved", "text-emerald-700"],
-                  [`$${(savings.team_total.rtk_saved_usd + savings.team_total.booster_saved_usd).toFixed(2)}`, "Combined savings", "text-emerald-800"],
-                ].map(([v, k, accent], i) => (
-                  <div key={i} className="bg-white rounded-xl border border-emerald-100 px-4 py-3">
-                    <div className={`text-xl font-bold ${accent}`}>{v}</div>
-                    <div className="text-xs font-medium text-stone-500 uppercase tracking-wide mt-1">{k}</div>
+                  [formatTokens(savings.team_total.rtk_saved_tokens), "RTK — tokens saved", false],
+                  [`$${savings.team_total.rtk_saved_usd.toFixed(2)}`, "RTK — cost saved", false],
+                  [formatTokens(savings.team_total.booster_saved_tokens), "Booster — tokens saved", false],
+                  [`$${(savings.team_total.rtk_saved_usd + savings.team_total.booster_saved_usd).toFixed(2)}`, "Combined savings", true],
+                ].map(([v, k, bold], i) => (
+                  <div key={i} className="card" style={{ padding: "12px 16px", borderColor: "var(--ok-bd)" }}>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: bold ? "var(--ok)" : "var(--ok)" }}>{v}</div>
+                    <div className="eyebrow" style={{ marginTop: 4, fontSize: 10, color: "var(--text-3)" }}>{k}</div>
                   </div>
                 ))}
               </div>
-              <p className="text-xs text-emerald-600 mt-3">
-                Reported by {savings.by_member.length} developer{savings.by_member.length !== 1 ? "s" : ""} via <span className="font-mono">conduct guard sync</span>
+              <p style={{ fontSize: 12, color: "var(--ok)", marginTop: 12 }}>
+                Reported by {savings.by_member.length} developer{savings.by_member.length !== 1 ? "s" : ""} via{" "}
+                <span className="mono">conduct guard sync</span>
               </p>
             </div>
           )}
@@ -712,9 +776,9 @@ function SpendContent() {
         </div>
 
         {loading ? (
-          <div style={{ padding: "20px" }}>
+          <div style={{ padding: 20 }}>
             {[...Array(3)].map((_, i) => (
-              <div key={i} className="animate-pulse" style={{ height: 40, background: "var(--surface-2)", borderRadius: 6, marginBottom: 8 }} />
+              <div key={i} style={{ height: 40, background: "var(--surface-2)", borderRadius: 6, marginBottom: 8, opacity: 0.6 }} />
             ))}
           </div>
         ) : !data || data.by_developer.length === 0 ? (

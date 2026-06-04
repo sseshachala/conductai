@@ -268,206 +268,249 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
     }
   }
 
+  const ni: React.CSSProperties = { width: "100%", height: 38, padding: "0 12px", borderRadius: 9, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", fontSize: 13.5, outline: "none" }
+
+  const tpl = TEMPLATES.find(t => t.id === template)
+
   return (
     <AppShell>
-      <div className="mx-auto max-w-md px-6 py-10">
-        <h1 className="text-base font-semibold text-stone-900 mb-1">New agent</h1>
-        <p className="text-xs text-stone-400 mb-8">Choose a playbook and configure it — webhook registered automatically on create.</p>
+      <div style={{ maxWidth: 560, margin: "0 auto", padding: "30px 34px 80px" }}>
 
-        {/* Playbook mode */}
-        {true && <div className="flex flex-col gap-5">
+        {/* back link */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18, fontSize: 13, color: "var(--text-3)", cursor: "pointer" }}
+          onClick={() => router.push("/workflows")}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: "rotate(180deg)" }}>
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+          Agents
+        </div>
 
-          {/* Template picker — rich dropdown */}
-          <div className="flex flex-col gap-1.5" ref={templateRef}>
-            <label className="text-xs font-medium text-stone-500">Playbook</label>
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setTemplateOpen(o => !o)}
-                className="w-full flex items-center justify-between rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400 hover:border-stone-300 transition-colors"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-medium truncate">{TEMPLATES.find(t => t.id === template)?.label}</span>
-                  <span className="text-stone-300">·</span>
-                  <span className="text-xs text-stone-400 truncate">{TEMPLATES.find(t => t.id === template)?.description}</span>
-                </div>
-                <svg className={`w-4 h-4 text-stone-400 shrink-0 ml-2 transition-transform ${templateOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        <h1 className="page-title" style={{ fontSize: 22 }}>New agent</h1>
+        <p className="page-sub" style={{ marginBottom: 22 }}>Choose a playbook and configure it — the webhook is registered automatically on create.</p>
+
+        {/* mode toggle */}
+        <div style={{ display: "flex", background: "var(--surface-3)", borderRadius: 10, padding: 3, marginBottom: 24, width: "fit-content" }}>
+          {([["playbook", "Start from playbook"], ["describe", "Describe it"]] as const).map(([v, l]) => (
+            <button key={v} onClick={() => setMode(v)} style={{ border: "none", background: mode === v ? "var(--surface)" : "transparent", color: mode === v ? "var(--text)" : "var(--text-3)", fontSize: 13, fontWeight: 600, padding: "7px 16px", borderRadius: 8, cursor: "pointer", boxShadow: mode === v ? "var(--shadow-sm)" : "none", display: "flex", alignItems: "center", gap: 7 }}>
+              {v === "describe" && (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" /><path d="M19 15l.75 2.25L22 18l-2.25.75L19 21l-.75-2.25L16 18l2.25-.75z" />
                 </svg>
-              </button>
-
-              {templateOpen && (
-                <div className="absolute z-20 mt-1 w-full rounded-xl border border-stone-200 bg-white shadow-lg overflow-hidden">
-                  {TEMPLATES.map(t => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => { setTemplate(t.id); setTemplateOpen(false) }}
-                      className={`w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-stone-50 transition-colors border-b border-stone-100 last:border-0 ${template === t.id ? "bg-stone-50" : ""}`}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className={`text-sm font-medium ${template === t.id ? "text-stone-900" : "text-stone-700"}`}>{t.label}</span>
-                          <div className="flex gap-1">
-                            {t.tags.map(tag => (
-                              <span key={tag} className="text-[10px] bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded">{tag}</span>
-                            ))}
-                          </div>
-                        </div>
-                        <p className="text-xs text-stone-400 mt-0.5">{t.description}</p>
-                      </div>
-                      {template === t.id && (
-                        <svg className="w-4 h-4 text-stone-900 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </button>
-                  ))}
-                </div>
               )}
-            </div>
-          </div>
+              {l}
+            </button>
+          ))}
+        </div>
 
-          {bootstrapping ? (
-            <div className="space-y-3">
-              {[1,2,3].map(i => <div key={i} className="h-9 rounded-lg bg-stone-100 animate-pulse" />)}
-            </div>
-          ) : (
-            <>
-              {/* Agent name */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-stone-500">Agent name</label>
-                <input
-                  value={agentName}
-                  onChange={e => setAgentName(e.target.value)}
-                  placeholder={FRIENDLY_NAMES[template] ?? template}
-                  className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
-                />
-                <p className="text-[10px] text-stone-400">Give this instance a name — e.g. "Autopilot — conductai prod"</p>
+        {mode === "playbook" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+
+            {/* Playbook picker */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>Playbook</label>
+              <div style={{ position: "relative" }} ref={templateRef}>
+                <button type="button" onClick={() => setTemplateOpen(o => !o)}
+                  style={{ ...ni, display: "flex", alignItems: "center", gap: 8, textAlign: "left", cursor: "pointer" }}>
+                  <span style={{ fontWeight: 600 }}>{tpl?.label}</span>
+                  <span style={{ color: "var(--text-muted)" }}>·</span>
+                  <span style={{ fontSize: 12.5, color: "var(--text-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>{tpl?.description}</span>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                    style={{ color: "var(--text-muted)", flexShrink: 0, transform: templateOpen ? "rotate(180deg)" : "none", transition: "transform .15s" }}>
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
+                {templateOpen && (
+                  <div style={{ position: "absolute", zIndex: 20, top: "calc(100% + 5px)", left: 0, right: 0, maxHeight: 340, overflowY: "auto", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 13, boxShadow: "var(--shadow-lg)" }}>
+                    {TEMPLATES.map(t => (
+                      <button key={t.id} type="button" onClick={() => { setTemplate(t.id); setTemplateOpen(false) }}
+                        style={{ width: "100%", textAlign: "left", padding: "11px 14px", display: "flex", alignItems: "flex-start", gap: 10, border: "none", borderBottom: "1px solid var(--border)", background: t.id === template ? "var(--surface-2)" : "transparent", cursor: "pointer" }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                            <span style={{ fontSize: 13.5, fontWeight: 600 }}>{t.label}</span>
+                            <div style={{ display: "flex", gap: 4 }}>
+                              {t.tags.map(tag => (
+                                <span key={tag} style={{ fontSize: 9.5, fontWeight: 600, background: "var(--surface-3)", color: "var(--text-3)", borderRadius: 4, padding: "1px 5px" }}>{tag}</span>
+                              ))}
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>{t.description}</div>
+                        </div>
+                        {t.id === template && (
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                            style={{ color: "var(--accent)", flexShrink: 0, marginTop: 2 }}>
+                            <path d="M20 6L9 17l-5-5" />
+                          </svg>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
+            </div>
 
-              {/* Project */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-stone-500">Project</label>
-                <select
-                  value={selectedProjectId}
-                  onChange={e => setSelectedProjectId(e.target.value)}
-                  className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
-                >
+            {bootstrapping ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {[1, 2, 3].map(i => <div key={i} style={{ height: 38, borderRadius: 9, background: "var(--surface-3)" }} />)}
+              </div>
+            ) : (
+              <>
+                {/* Agent name */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>
+                    Agent name <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>— e.g. &ldquo;Autopilot — conductai prod&rdquo;</span>
+                  </label>
+                  <input value={agentName} onChange={e => setAgentName(e.target.value)}
+                    placeholder={FRIENDLY_NAMES[template] ?? template} style={ni} />
+                </div>
+
+                {/* Project + Environment — 2-col */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>Project</label>
+                    <select value={selectedProjectId} onChange={e => setSelectedProjectId(e.target.value)} style={ni}>
+                      {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>Environment</label>
+                    {environments.length === 0 ? (
+                      <div style={{ fontSize: 12, color: "var(--warn)", background: "var(--warn-bg)", border: "1px solid var(--warn-bd)", borderRadius: 9, padding: "8px 12px" }}>
+                        No environments. <a href="/settings" style={{ textDecoration: "underline", fontWeight: 600 }}>Create one first</a>.
+                      </div>
+                    ) : (
+                      <select value={selectedEnvId} onChange={e => setSelectedEnvId(e.target.value)} style={ni}>
+                        {environments.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                      </select>
+                    )}
+                  </div>
+                </div>
+
+                {/* Dynamic playbook inputs */}
+                {Object.entries(playbookInputs).map(([key, input]) => (
+                  <div key={key} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>
+                      {input.label ?? key}
+                      {input.hint && <span style={{ fontWeight: 400, color: "var(--text-muted)" }}> — {input.hint}</span>}
+                    </label>
+                    {input.type === "select" && input.options ? (
+                      <>
+                        <select value={inputValues[key] ?? String(input.default ?? "")}
+                          onChange={e => setInputValues(prev => ({ ...prev, [key]: e.target.value }))} style={ni}>
+                          {input.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                        </select>
+                        {key === "model" && (
+                          <p style={{ fontSize: 11.5, color: "var(--text-muted)", margin: "2px 0 0", lineHeight: 1.45 }}>
+                            {MODEL_HINTS[inputValues["model"] ?? String(input.default ?? "")] ?? ""}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <input type="text" value={inputValues[key] ?? String(input.default ?? "")}
+                        onChange={e => setInputValues(prev => ({ ...prev, [key]: e.target.value }))}
+                        className={key === "trigger_label" || key === "label" ? "mono" : ""}
+                        style={{ ...ni, ...(key === "trigger_label" || key === "label" ? { fontSize: 13 } : {}) }} />
+                    )}
+                  </div>
+                ))}
+
+                {/* GitHub repo */}
+                {GITHUB_WEBHOOK_SLUGS.has(template) && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>
+                      GitHub repo <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>— webhook registered automatically on create</span>
+                    </label>
+                    {reposLoading ? (
+                      <div style={{ height: 38, borderRadius: 9, background: "var(--surface-3)" }} />
+                    ) : repos.length === 0 ? (
+                      <div style={{ fontSize: 12, color: "var(--warn)", background: "var(--warn-bg)", border: "1px solid var(--warn-bd)", borderRadius: 9, padding: "8px 12px" }}>
+                        No repos found. Connect GitHub in <a href="/settings" style={{ textDecoration: "underline", fontWeight: 600 }}>Settings → Environments</a>.
+                      </div>
+                    ) : (
+                      <select value={selectedRepo} onChange={e => setSelectedRepo(e.target.value)} style={ni}>
+                        {repos.map(r => <option key={r.full_name} value={r.full_name}>{r.full_name}</option>)}
+                      </select>
+                    )}
+                  </div>
+                )}
+
+                {/* Manual webhook note */}
+                {MANUAL_WEBHOOK_SLUGS.has(template) && (
+                  <div className="card" style={{ padding: "13px 15px", background: "var(--surface-2)" }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 3 }}>Manual webhook setup required</div>
+                    <div style={{ fontSize: 12, color: "var(--text-3)", lineHeight: 1.5 }}>
+                      After creating, copy the webhook URL from agent settings and paste it into your{" "}
+                      {template === "incident_responder" ? "PagerDuty or OpsGenie" : "GitHub Actions"} configuration.
+                    </div>
+                  </div>
+                )}
+
+                {webhookError && (
+                  <div className="card" style={{ padding: "13px 15px", borderColor: "var(--err-bd)", background: "var(--err-bg)" }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--err)", marginBottom: 3 }}>Webhook not registered</div>
+                    <div style={{ fontSize: 12, color: "var(--err)", lineHeight: 1.5 }}>{webhookError}</div>
+                    <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 6 }}>The agent was created — add the webhook once the token is updated.</div>
+                  </div>
+                )}
+
+                {error && (
+                  <div style={{ fontSize: 12.5, color: "var(--err)", background: "var(--err-bg)", border: "1px solid var(--err-bd)", borderRadius: 9, padding: "10px 12px" }}>{error}</div>
+                )}
+
+                <button className="btn btn-primary" style={{ height: 42, justifyContent: "center", marginTop: 4 }}
+                  onClick={handleCreate}
+                  disabled={loading || (GITHUB_WEBHOOK_SLUGS.has(template) && !selectedRepo)}>
+                  {loading ? "Creating…" : "Create agent"}
+                </button>
+              </>
+            )}
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+            <div className="card" style={{ padding: "13px 15px", display: "flex", gap: 11, background: "var(--accent-weak)", borderColor: "var(--accent-ring)" }}>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                style={{ color: "var(--accent-text)", flexShrink: 0, marginTop: 1 }}>
+                <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" /><path d="M19 15l.75 2.25L22 18l-2.25.75L19 21l-.75-2.25L16 18l2.25-.75z" />
+              </svg>
+              <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>
+                Describe what the agent should do in plain English. Conduct drafts the block graph and flags the credentials it needs — you can refine it on the canvas.
+              </div>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>Describe your agent</label>
+              <textarea value={nlPrompt} onChange={e => setNlPrompt(e.target.value)} rows={5}
+                placeholder="When a PR is labeled needs-review, have an agent review the diff for security issues and post a summary to #eng-reviews. Require a human approval before it can be merged."
+                style={{ ...ni, height: "auto", padding: "10px 12px", resize: "vertical", lineHeight: 1.5 }} />
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>Project</label>
+                <select value={selectedProjectId} onChange={e => setSelectedProjectId(e.target.value)} style={ni}>
                   {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
-
-              {/* Environment */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-stone-500">Environment</label>
-                {environments.length === 0 ? (
-                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                    No environments found. <a href="/settings/environments" className="underline font-medium">Create one first</a>.
-                  </div>
-                ) : (
-                  <select
-                    value={selectedEnvId}
-                    onChange={e => setSelectedEnvId(e.target.value)}
-                    className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
-                  >
-                    {environments.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                  </select>
-                )}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>Environment</label>
+                <select value={selectedEnvId} onChange={e => setSelectedEnvId(e.target.value)} style={ni}>
+                  {environments.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                </select>
               </div>
+            </div>
 
-              {/* Dynamic playbook inputs (trigger label, model, clone depth…) */}
-              {Object.entries(playbookInputs).map(([key, input]) => (
-                <div key={key} className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium text-stone-500">
-                    {input.label ?? key}
-                    {input.hint && <span className="ml-1 font-normal text-stone-400">— {input.hint}</span>}
-                  </label>
-                  {input.type === "select" && input.options ? (
-                    <>
-                      <select
-                        value={inputValues[key] ?? String(input.default ?? "")}
-                        onChange={e => setInputValues(prev => ({ ...prev, [key]: e.target.value }))}
-                        className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
-                      >
-                        {input.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                      </select>
-                      {key === "model" && (
-                        <p className="text-xs text-stone-400">{MODEL_HINTS[inputValues["model"] ?? String(input.default ?? "")] ?? ""}</p>
-                      )}
-                    </>
-                  ) : (
-                    <input
-                      type="text"
-                      value={inputValues[key] ?? String(input.default ?? "")}
-                      onChange={e => setInputValues(prev => ({ ...prev, [key]: e.target.value }))}
-                      className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
-                    />
-                  )}
-                </div>
-              ))}
+            {error && (
+              <div style={{ fontSize: 12.5, color: "var(--err)", background: "var(--err-bg)", border: "1px solid var(--err-bd)", borderRadius: 9, padding: "10px 12px" }}>{error}</div>
+            )}
 
-              {/* GitHub repo */}
-              {GITHUB_WEBHOOK_SLUGS.has(template) && (
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium text-stone-500">
-                    GitHub repo
-                    <span className="ml-1 text-stone-400 font-normal">— webhook registered automatically on create</span>
-                  </label>
-                  {reposLoading ? (
-                    <div className="h-9 rounded-lg bg-stone-100 animate-pulse" />
-                  ) : repos.length === 0 ? (
-                    <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                      No repos found. Connect GitHub in <a href="/settings/environments" className="underline font-medium">Settings → Environments</a>.
-                    </div>
-                  ) : (
-                    <select
-                      value={selectedRepo}
-                      onChange={e => setSelectedRepo(e.target.value)}
-                      className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
-                    >
-                      {repos.map(r => <option key={r.full_name} value={r.full_name}>{r.full_name}</option>)}
-                    </select>
-                  )}
-                </div>
-              )}
-
-              {/* Manual webhook note */}
-              {MANUAL_WEBHOOK_SLUGS.has(template) && (
-                <div className="bg-stone-50 border border-stone-200 rounded-lg px-3 py-3">
-                  <p className="text-xs font-medium text-stone-700 mb-1">Manual webhook setup required</p>
-                  <p className="text-xs text-stone-500 leading-relaxed">
-                    After creating, copy the webhook URL from agent settings and paste it into your{" "}
-                    {template === "incident_responder" ? "PagerDuty or OpsGenie" : "GitHub Actions"} configuration.
-                  </p>
-                </div>
-              )}
-
-              {webhookError && (
-                <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-3">
-                  <p className="text-xs font-semibold text-red-700 mb-1">Webhook not registered</p>
-                  <p className="text-xs text-red-600 leading-relaxed">{webhookError}</p>
-                  <p className="text-xs text-stone-400 mt-2">The agent was installed — the webhook can be added once the token is updated.</p>
-                </div>
-              )}
-
-              {error && (
-                <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                  <p className="text-xs text-red-600">{error}</p>
-                </div>
-              )}
-
-              <button
-                onClick={handleCreate}
-                disabled={loading || (GITHUB_WEBHOOK_SLUGS.has(template) && !selectedRepo)}
-                className="w-full rounded-xl bg-stone-900 px-4 py-3 text-sm font-medium text-white hover:bg-stone-700 transition-colors disabled:opacity-40"
-              >
-                {loading ? "Creating…" : "Create agent"}
-              </button>
-            </>
-          )}
-        </div>
-        }
+            <button className="btn btn-accent" style={{ height: 42, justifyContent: "center", marginTop: 4, opacity: nlPrompt.trim() ? 1 : 0.5, cursor: nlPrompt.trim() ? "pointer" : "not-allowed" }}
+              onClick={handleGenerate} disabled={!nlPrompt.trim() || generating}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" />
+              </svg>
+              {generating ? "Generating…" : "Generate agent"}
+            </button>
+          </div>
+        )}
       </div>
     </AppShell>
   )

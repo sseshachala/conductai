@@ -9,10 +9,35 @@ export default function AuditPage() {
 
   return (
     <AppShell>
-      <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
+      <div
+        style={{
+          maxWidth: 960,
+          margin: "0 auto",
+          padding: "32px 24px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 24,
+        }}
+      >
         <div>
-          <h1 className="text-xl font-semibold text-stone-900">Audit Log</h1>
-          <p className="text-sm text-stone-500 mt-1">
+          <h1
+            style={{
+              fontSize: 20,
+              fontWeight: 600,
+              color: "var(--text)",
+              margin: 0,
+            }}
+          >
+            Audit Log
+          </h1>
+          <p
+            style={{
+              fontSize: 13,
+              color: "var(--text-3)",
+              marginTop: 4,
+              marginBottom: 0,
+            }}
+          >
             All workspace activity — credential changes, agent runs, and member events.
           </p>
         </div>

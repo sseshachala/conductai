@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
@@ -20,7 +20,6 @@ interface EvalSummary {
   passing?: number
   failing?: number
   average_pct: number
-  /** Not present in baseline manifests — only in live eval responses. */
   grade_counts?: GradeCounts
   generated_at?: string
 }
@@ -33,11 +32,9 @@ interface PlaybookRow {
   total_max: number
   structural_score: number
   quality_score: number
-  /** Not stored in baseline snapshots — present only from live eval. */
   failing_criteria?: number
 }
 
-/** Shape returned by GET /eval/benchmark/editions/{slug} */
 interface EditionManifest {
   edition: string
   published_at: string
@@ -63,345 +60,63 @@ function getCookie(name: string): string | null {
 }
 
 const GRADE_ORDER = ["A", "B", "C", "D", "F"] as const
+const GRADE_C: Record<string, string> = { A: "#059669", B: "#2563eb", C: "#d97706", D: "#ea580c", F: "#dc2626" }
+const GRADE_BG: Record<string, string> = { A: "#ecfdf5", B: "#eff6ff", C: "#fffbeb", D: "#fff7ed", F: "#fef2f2" }
+const GRADE_SCALE: [string, string][] = [["A","90–100%"],["B","75–89%"],["C","60–74%"],["D","40–59%"],["F","0–39%"]]
 
-const GRADE_STYLE: Record<string, { bg: string; text: string; bar: string; dot: string; border: string }> = {
-  A: { bg: "bg-emerald-50",  text: "text-emerald-700", bar: "bg-emerald-500", dot: "bg-emerald-400", border: "border-emerald-200" },
-  B: { bg: "bg-blue-50",     text: "text-blue-700",    bar: "bg-blue-400",    dot: "bg-blue-400",    border: "border-blue-200"    },
-  C: { bg: "bg-amber-50",    text: "text-amber-700",   bar: "bg-amber-400",   dot: "bg-amber-400",   border: "border-amber-200"   },
-  D: { bg: "bg-orange-50",   text: "text-orange-700",  bar: "bg-orange-400",  dot: "bg-orange-400",  border: "border-orange-200"  },
-  F: { bg: "bg-red-50",      text: "text-red-700",     bar: "bg-red-400",     dot: "bg-red-400",     border: "border-red-200"     },
-}
-
-function gs(grade: string) {
-  return GRADE_STYLE[grade] ?? { bg: "bg-stone-100", text: "text-stone-500", bar: "bg-stone-300", dot: "bg-stone-300", border: "border-stone-200" }
-}
+function gradeC(g: string) { return GRADE_C[g] ?? "var(--text-3)" }
+function gradeBg(g: string) { return GRADE_BG[g] ?? "var(--surface-3)" }
 
 function fmt(date: string) {
-  try {
-    return new Date(date).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
-  } catch { return date }
+  try { return new Date(date).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) }
+  catch { return date }
 }
 
-// ─── Grade badge ──────────────────────────────────────────────────────────────
+// ─── Shared grade components ──────────────────────────────────────────────────
 
-function GradeBadge({ grade, size = "sm" }: { grade: string; size?: "sm" | "lg" }) {
-  const s = gs(grade)
-  const cls = size === "lg"
-    ? `w-12 h-12 rounded-xl text-xl font-black`
-    : `w-7 h-7 rounded-lg text-xs font-bold`
+function GradeBadge({ grade }: { grade: string }) {
   return (
-    <span className={`inline-flex items-center justify-center shrink-0 ${cls} ${s.bg} ${s.text}`}>
+    <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 8, fontSize: 13, fontWeight: 800, background: gradeBg(grade), color: gradeC(grade) }}>
       {grade}
     </span>
   )
 }
 
-// ─── Inline score bar ─────────────────────────────────────────────────────────
-
-function ScoreBar({ pct, grade }: { pct: number; grade: string }) {
-  const s = gs(grade)
+function PctBar({ pct, grade, w = 72 }: { pct: number; grade: string; w?: number }) {
   return (
-    <div className="flex items-center gap-2">
-      <div className="w-20 h-1.5 rounded-full bg-stone-100 overflow-hidden">
-        <div className={`h-full rounded-full ${s.bar} transition-all`} style={{ width: `${Math.min(pct, 100)}%` }} />
+    <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+      <div style={{ width: w, height: 6, borderRadius: 6, background: "var(--surface-3)", overflow: "hidden" }}>
+        <div style={{ width: `${Math.min(pct, 100)}%`, height: "100%", borderRadius: 6, background: gradeC(grade) }} />
       </div>
-      <span className="text-xs tabular-nums text-stone-600 font-medium">{pct.toFixed(0)}%</span>
+      <span className="mono" style={{ fontSize: 12, color: "var(--text-3)", width: 32, textAlign: "right" }}>{Math.round(pct)}%</span>
     </div>
   )
 }
 
-// ─── Grade distribution card ──────────────────────────────────────────────────
-
-const EMPTY_COUNTS: GradeCounts = { A: 0, B: 0, C: 0, D: 0, F: 0 }
-
-function DistributionCard({ summary }: { summary: EvalSummary }) {
-  const counts = summary.grade_counts ?? EMPTY_COUNTS
-  const total = GRADE_ORDER.reduce((s, g) => s + counts[g], 0)
+function GradeStrip({ counts, height = 10 }: { counts: GradeCounts; height?: number }) {
+  const total = GRADE_ORDER.reduce((s, g) => s + (counts[g] ?? 0), 0) || 1
   return (
-    <div className="rounded-xl border border-stone-200 bg-white px-6 py-5">
-      <div className="flex items-start justify-between mb-4">
-        <div>
-          <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-widest mb-1">Grade distribution</p>
-          <p className="text-xs text-stone-400">{total} playbooks scored</p>
-        </div>
-        <div className="text-right">
-          <p className="text-2xl font-black text-stone-900">{summary.average_pct.toFixed(0)}%</p>
-          <p className="text-[10px] text-stone-400">average score</p>
-        </div>
-      </div>
-
-      {/* Segmented bar */}
-      {total > 0 && (
-        <div className="flex h-2.5 rounded-full overflow-hidden gap-px mb-4">
-          {GRADE_ORDER.map(g => {
-            const pct = (counts[g] / total) * 100
-            if (pct === 0) return null
-            return (
-              <div key={g} className={`${gs(g).bar} transition-all`} style={{ width: `${pct}%` }} title={`${g}: ${counts[g]}`} />
-            )
-          })}
-        </div>
-      )}
-
-      {/* Legend */}
-      <div className="flex items-center gap-5">
-        {GRADE_ORDER.map(g => (
-          <div key={g} className="flex items-center gap-1.5">
-            <span className={`w-2 h-2 rounded-full ${gs(g).dot}`} />
-            <span className="text-xs text-stone-500">
-              <span className="font-semibold text-stone-700">{g}</span> {counts[g]}
-            </span>
-          </div>
-        ))}
-      </div>
+    <div style={{ display: "flex", height, borderRadius: 20, overflow: "hidden", gap: 2 }}>
+      {GRADE_ORDER.map(g => {
+        const pct = ((counts[g] ?? 0) / total) * 100
+        return pct > 0 ? <div key={g} title={`${g}: ${counts[g]}`} style={{ width: `${pct}%`, background: gradeC(g) }} /> : null
+      })}
     </div>
   )
 }
 
-// ─── Leaderboard ──────────────────────────────────────────────────────────────
-
-function Leaderboard({ playbooks, edition, editionSlug }: { playbooks: PlaybookRow[]; edition: BenchmarkEdition; editionSlug: string }) {
-  const sorted = [...playbooks].sort((a, b) => {
-    const go = { A: 0, B: 1, C: 2, D: 3, F: 4 } as Record<string, number>
-    const gd = (go[a.grade] ?? 5) - (go[b.grade] ?? 5)
-    return gd !== 0 ? gd : b.pct - a.pct
-  })
-
-  if (sorted.length === 0) {
-    return (
-      <div className="rounded-xl border border-stone-200 bg-white px-6 py-12 text-center">
-        <p className="text-sm text-stone-400">No playbook scores available yet.</p>
-      </div>
-    )
-  }
-
+function GradeLegend({ counts }: { counts: GradeCounts }) {
   return (
-    <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
-      {/* Model label strip */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-stone-100 bg-stone-50">
-        <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-widest">Leaderboard</p>
-        <span className="inline-flex items-center gap-1.5 text-[10px] text-stone-500 bg-white border border-stone-200 rounded-full px-2.5 py-1 font-medium">
-          <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
-          {edition.modelLabel}
+    <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
+      {GRADE_ORDER.map(g => (
+        <span key={g} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text-3)" }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: gradeC(g) }} />
+          <b style={{ color: "var(--text-2)" }}>{g}</b> {counts[g] ?? 0}
         </span>
-      </div>
-
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-stone-100 text-left">
-            <th className="px-4 py-2.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide w-6">#</th>
-            <th className="px-4 py-2.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide">Playbook</th>
-            <th className="px-4 py-2.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide">Grade</th>
-            <th className="px-4 py-2.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide">Score</th>
-            <th className="px-4 py-2.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide">Structural</th>
-            <th className="px-4 py-2.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide">Quality</th>
-            <th className="px-4 py-2.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide text-right">Issues</th>
-            <th className="px-2 py-2.5 w-6" />
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((p, i) => {
-            const s = gs(p.grade)
-            // Show each sub-score as a proportion of total_max so the bar
-            // widths reflect how structural and quality points contribute.
-            const structPct = p.total_max > 0 ? Math.min((p.structural_score / p.total_max) * 100, 100) : 0
-            const qualPct   = p.total_max > 0 ? Math.min((p.quality_score   / p.total_max) * 100, 100) : 0
-            return (
-              <tr key={p.slug} className="border-b border-stone-100 last:border-0 hover:bg-stone-50 transition-colors group">
-                <td className="px-4 py-3 text-xs text-stone-300 tabular-nums">{i + 1}</td>
-                <td className="px-4 py-3">
-                  <p className="text-sm font-medium text-stone-900">{playbookDisplayName(p.slug)}</p>
-                  <p className="font-mono text-[10px] text-stone-400 mt-0.5">{p.slug}</p>
-                </td>
-                <td className="px-4 py-3">
-                  <GradeBadge grade={p.grade} />
-                </td>
-                <td className="px-4 py-3">
-                  <ScoreBar pct={p.pct} grade={p.grade} />
-                </td>
-                <td className="px-4 py-3">
-                  <span className="text-xs tabular-nums text-stone-500">
-                    {p.structural_score}
-                    <span className="text-stone-300"> / </span>
-                    {p.total_max}
-                  </span>
-                  <div className="w-16 h-1 rounded-full bg-stone-100 overflow-hidden mt-1">
-                    <div className="h-full bg-blue-300 rounded-full" style={{ width: `${structPct}%` }} />
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <span className="text-xs tabular-nums text-stone-500">
-                    {p.quality_score}
-                    <span className="text-stone-300"> pts</span>
-                  </span>
-                  {p.quality_score > 0 && (
-                    <div className="w-16 h-1 rounded-full bg-stone-100 overflow-hidden mt-1">
-                      <div className="h-full bg-violet-300 rounded-full" style={{ width: `${qualPct}%` }} />
-                    </div>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-right">
-                  {(p.failing_criteria ?? 0) > 0 ? (
-                    <span className={`inline-flex items-center gap-1 text-xs font-medium ${s.text}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-                      {p.failing_criteria}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-emerald-500">✓</span>
-                  )}
-                </td>
-                <td className="px-2 py-3">
-                  <Link
-                    href={`/benchmark/${editionSlug}/${p.slug}`}
-                    className="text-stone-300 hover:text-indigo-500 transition-colors opacity-0 group-hover:opacity-100 text-sm"
-                    title="View playbook deep-dive"
-                  >
-                    →
-                  </Link>
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+      ))}
     </div>
   )
 }
-
-// ─── Editorial findings ───────────────────────────────────────────────────────
-
-function EditorialFindings({ edition }: { edition: BenchmarkEdition }) {
-  if (edition.findings.length === 0) return null
-  return (
-    <section>
-      <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-widest mb-4">
-        Key findings
-      </p>
-      <div className="space-y-3">
-        {edition.findings.map((f, i) => (
-          <div key={i} className="rounded-xl border border-stone-200 bg-white px-5 py-4 flex gap-4">
-            <span className="shrink-0 text-[10px] font-black text-stone-300 tabular-nums mt-0.5 w-4">
-              {String(i + 1).padStart(2, "0")}
-            </span>
-            <div>
-              <p className="text-sm font-semibold text-stone-900 mb-1">{f.headline}</p>
-              <p className="text-xs text-stone-500 leading-relaxed">{f.detail}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  )
-}
-
-// ─── Methodology ─────────────────────────────────────────────────────────────
-
-function Methodology() {
-  return (
-    <section>
-      <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-widest mb-4">
-        Methodology
-      </p>
-      <div className="rounded-xl border border-stone-200 bg-white px-6 py-5 space-y-4 text-xs text-stone-500 leading-relaxed">
-        <div>
-          <p className="font-semibold text-stone-700 mb-1">Scoring approach</p>
-          <p>
-            Each playbook is scored against a fixed set of structural and quality criteria. Structural
-            criteria check that required fields are present and correctly wired (trigger, brain blocks,
-            output blocks, parameter completeness). Quality criteria assess description completeness,
-            output clarity, and documentation. Every criterion is pass/fail; the score is the sum of
-            points earned divided by points possible.
-          </p>
-        </div>
-        <div>
-          <p className="font-semibold text-stone-700 mb-1">Grade scale</p>
-          <div className="flex flex-wrap gap-2 mt-2">
-            {[
-              { grade: "A", range: "90–100%" },
-              { grade: "B", range: "75–89%"  },
-              { grade: "C", range: "60–74%"  },
-              { grade: "D", range: "40–59%"  },
-              { grade: "F", range: "0–39%"   },
-            ].map(({ grade, range }) => {
-              const s = gs(grade)
-              return (
-                <span key={grade} className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium ${s.bg} ${s.text} ${s.border}`}>
-                  <span className="font-black">{grade}</span>
-                  <span className="font-normal opacity-70">{range}</span>
-                </span>
-              )
-            })}
-          </div>
-        </div>
-        <div>
-          <p className="font-semibold text-stone-700 mb-1">Scoring model</p>
-          <p>
-            Edition 001 uses two scoring layers: structural scoring (100 pts, offline, static YAML
-            analysis) and quality scoring (70 pts, controlled execution across Claude Haiku, Sonnet, and
-            Opus with an LLM-as-judge pass for correctness, completeness, and actionability).
-            All three models averaged 92.9% across 19 playbooks.
-          </p>
-        </div>
-        <div>
-          <p className="font-semibold text-stone-700 mb-1">Reproducibility</p>
-          <p>
-            Structural scores are deterministic and fully reproducible from the playbook YAML. To
-            reproduce any result, run{" "}
-            <code className="font-mono text-[11px] bg-stone-100 px-1.5 py-0.5 rounded">
-              conduct eval --playbook &lt;slug&gt;
-            </code>{" "}
-            against the same playbook version. Click any row arrow to see the full criteria
-            breakdown for that playbook.
-          </p>
-        </div>
-      </div>
-    </section>
-  )
-}
-
-// ─── Edition nav ──────────────────────────────────────────────────────────────
-
-function EditionNav({ edition }: { edition: BenchmarkEdition }) {
-  return (
-    <div className="flex items-center gap-2 text-xs">
-      {edition.prevEditionSlug ? (
-        <Link
-          href={`/benchmark/${edition.prevEditionSlug}`}
-          className="text-stone-400 hover:text-stone-700 transition-colors"
-        >
-          ← Previous edition
-        </Link>
-      ) : (
-        <span className="text-stone-200">← Previous edition</span>
-      )}
-      <span className="text-stone-200">·</span>
-      {edition.nextEditionSlug ? (
-        <Link
-          href={`/benchmark/${edition.nextEditionSlug}`}
-          className="text-stone-400 hover:text-stone-700 transition-colors"
-        >
-          Next edition →
-        </Link>
-      ) : (
-        <span className="text-stone-200">Next edition →</span>
-      )}
-    </div>
-  )
-}
-
-// ─── Loading skeleton ─────────────────────────────────────────────────────────
-
-function LoadingSkeleton() {
-  return (
-    <div className="space-y-6">
-      <div className="h-28 rounded-xl bg-stone-100 animate-pulse" />
-      <div className="h-72 rounded-xl bg-stone-100 animate-pulse" />
-      <div className="h-40 rounded-xl bg-stone-100 animate-pulse" />
-    </div>
-  )
-}
-
-// ─── Share button ─────────────────────────────────────────────────────────────
 
 function ShareButton() {
   const [copied, setCopied] = useState(false)
@@ -412,15 +127,9 @@ function ShareButton() {
     })
   }, [])
   return (
-    <button
-      onClick={copy}
-      className="inline-flex items-center gap-1.5 text-[10px] font-medium text-stone-500 hover:text-stone-800 border border-stone-200 hover:border-stone-300 rounded-full px-3 py-1 transition-colors bg-white"
-    >
-      {copied ? (
-        <><span className="text-emerald-500">✓</span> Copied</>
-      ) : (
-        <><span>↗</span> Share</>
-      )}
+    <button onClick={copy} className="btn btn-ghost" style={{ fontSize: 12 }}>
+      <span style={{ transform: "rotate(-45deg)", display: "inline-block" }}>↗</span>
+      {copied ? "Copied" : "Share"}
     </button>
   )
 }
@@ -434,7 +143,6 @@ function BenchmarkContent({
   editionSlug: string
   getToken: (() => Promise<string | null>) | null
 }) {
-  const router = useRouter()
   const edition = getEdition(editionSlug)
 
   const [summary, setSummary] = useState<EvalSummary | null>(null)
@@ -444,15 +152,12 @@ function BenchmarkContent({
 
   useEffect(() => {
     if (!edition) return
-    // Capture a non-nullable snapshot so the async function can reference it
-    // without TypeScript losing the narrowing across await boundaries.
     const ed = edition
     let cancelled = false
 
     async function load() {
       setLoading(true)
       setError(null)
-
       const base = process.env.NEXT_PUBLIC_API_URL
       const headers: Record<string, string> = {}
       try {
@@ -463,58 +168,31 @@ function BenchmarkContent({
         const workspaceId = getCookie("delegator_project_id")
         if (workspaceId) headers["X-Workspace-Id"] = workspaceId
 
-        // ── Try frozen baseline first ──────────────────────────────────────
-        // Editions with a committed baseline use the dedicated endpoint so
-        // scores are immutable per edition, not re-evaluated on every view.
         if (ed.apiEditionSlug) {
-          const manifestRes = await fetch(
-            `${base}/eval/benchmark/editions/${ed.apiEditionSlug}`,
-            { headers }
-          )
+          const manifestRes = await fetch(`${base}/eval/benchmark/editions/${ed.apiEditionSlug}`, { headers })
           if (cancelled) return
-
           if (manifestRes.ok) {
             const manifest: EditionManifest = await manifestRes.json()
             setSummary(manifest.summary)
-            setPlaybooks(
-              manifest.playbooks.map(p => ({ ...p, failing_criteria: undefined }))
-            )
+            setPlaybooks(manifest.playbooks.map(p => ({ ...p, failing_criteria: undefined })))
             return
           }
-
-          // 404 = edition not yet committed, fall through to live eval.
-          // Any other non-OK status (401/403/500) is a real error.
           if (manifestRes.status !== 404) {
             const status = manifestRes.status
-            setError(
-              status === 401 ? "Not authorised — check your session." :
-              status === 403 ? "Forbidden — workspace role insufficient." :
-              `Benchmark endpoint returned ${status}.`
-            )
+            setError(status === 401 ? "Not authorised." : status === 403 ? "Forbidden." : `Benchmark endpoint returned ${status}.`)
             return
           }
         }
 
-        // ── Fall back to live eval endpoints ───────────────────────────────
-        // Used when no committed baseline exists for this edition yet.
         const [summaryRes, playbooksRes] = await Promise.all([
           fetch(`${base}/eval/summary`, { headers }),
           fetch(`${base}/eval/playbooks`, { headers }),
         ])
-
         if (cancelled) return
-
         if (!summaryRes.ok && !playbooksRes.ok) {
-          const status = summaryRes.status
-          setError(
-            status === 401 ? "Not authorised — check your session." :
-            status === 403 ? "Forbidden — workspace role insufficient." :
-            status === 500 ? "Eval runner returned an error (500). Check the API logs." :
-            `Both eval endpoints returned ${status}.`
-          )
+          setError(`Both eval endpoints returned ${summaryRes.status}.`)
           return
         }
-
         if (summaryRes.ok) setSummary(await summaryRes.json())
         if (playbooksRes.ok) setPlaybooks(await playbooksRes.json())
       } catch {
@@ -529,135 +207,186 @@ function BenchmarkContent({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editionSlug])
 
-  // Unknown edition
   if (!edition) {
     return (
       <AppShell>
-        <div className="mx-auto max-w-4xl px-6 py-10">
-          <Link href="/benchmark" className="text-xs text-stone-400 hover:text-stone-600 transition-colors">
-            ← Benchmark
-          </Link>
-          <div className="mt-8 rounded-xl border border-stone-200 bg-white px-6 py-10 text-center">
-            <p className="text-sm font-medium text-stone-700">Edition not found</p>
-            <p className="text-xs text-stone-400 mt-1">
-              No benchmark edition exists for <code className="font-mono">{editionSlug}</code>.
-            </p>
-            <Link href="/benchmark" className="mt-4 inline-block text-xs text-indigo-600 hover:text-indigo-800 transition-colors">
-              View latest edition →
-            </Link>
+        <div style={{ maxWidth: 1080, margin: "0 auto", padding: "30px 34px 80px" }}>
+          <div className="card" style={{ padding: "32px", textAlign: "center" }}>
+            <p style={{ fontWeight: 600, fontSize: 14 }}>Edition not found</p>
+            <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>No benchmark edition exists for <code className="mono">{editionSlug}</code>.</p>
+            <Link href="/benchmark" style={{ fontSize: 12, color: "var(--accent)", marginTop: 12, display: "inline-block" }}>View latest edition →</Link>
           </div>
         </div>
       </AppShell>
     )
   }
 
+  const sorted = [...playbooks].sort((a, b) => {
+    const go: Record<string, number> = { A: 0, B: 1, C: 2, D: 3, F: 4 }
+    const gd = (go[a.grade] ?? 5) - (go[b.grade] ?? 5)
+    return gd !== 0 ? gd : b.pct - a.pct
+  })
+
+  const counts: GradeCounts = summary?.grade_counts ?? { A: 0, B: 0, C: 0, D: 0, F: 0 }
+
   return (
     <AppShell>
-      <div className="mx-auto max-w-5xl px-6 py-10">
+      <div style={{ maxWidth: 1080, margin: "0 auto", padding: "30px 34px 80px" }}>
 
-        {/* Page header */}
-        <div className="mb-8">
-          <div className="flex items-start justify-between mb-1">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-full px-2.5 py-0.5">
-                {edition.label}
-              </span>
-              <span className="text-[10px] text-stone-400">{edition.period}</span>
-            </div>
-            <div className="flex items-center gap-3">
+        {/* Edition header */}
+        <div style={{ marginBottom: 26 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
+            <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--accent-text)", background: "var(--accent-weak)", border: "1px solid var(--accent-ring)", borderRadius: 20, padding: "2px 10px" }}>{edition.label}</span>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{edition.period}</span>
+            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14, fontSize: 12, color: "var(--text-muted)" }}>
+              {edition.prevEditionSlug
+                ? <Link href={`/benchmark/${edition.prevEditionSlug}`} style={{ color: "var(--text-3)", textDecoration: "none" }}>← Previous</Link>
+                : <span style={{ opacity: 0.4 }}>← Previous</span>}
+              {edition.nextEditionSlug
+                ? <Link href={`/benchmark/${edition.nextEditionSlug}`} style={{ color: "var(--text-3)", textDecoration: "none" }}>Next →</Link>
+                : <span style={{ opacity: 0.4 }}>Next →</span>}
               <ShareButton />
-              <EditionNav edition={edition} />
             </div>
           </div>
-          <h1 className="text-2xl font-black text-stone-900 mt-2">Conduct AI Benchmark</h1>
-          <p className="text-sm text-stone-400 mt-1">
-            {edition.totalPlaybooks} playbooks · {edition.modelLabel}
-            {summary && (
-              <> · published {fmt(edition.publishedAt)}</>
-            )}
+          <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-.025em", margin: "4px 0 0" }}>Conduct AI Benchmark</h1>
+          <p className="page-sub" style={{ marginTop: 6 }}>
+            {edition.totalPlaybooks} playbooks · {edition.modelLabel}{summary && ` · published ${fmt(edition.publishedAt)}`}
           </p>
         </div>
 
         {loading ? (
-          <LoadingSkeleton />
+          <div style={{ color: "var(--text-muted)", fontSize: 13, padding: "40px 0" }}>Loading…</div>
         ) : error ? (
-          <div className="rounded-xl border border-red-100 bg-red-50 px-5 py-4">
-            <p className="text-sm text-red-600">{error}</p>
-          </div>
+          <div className="card" style={{ padding: "16px 18px", color: "var(--err)", fontSize: 13 }}>{error}</div>
         ) : (
-          <div className="space-y-10">
-
-            {/* Grade distribution — only rendered when grade_counts is present.
-                Baseline manifests omit grade_counts; live eval responses include it. */}
-            {summary && summary.grade_counts && (
-              <section>
-                <DistributionCard summary={summary} />
-              </section>
-            )}
-
-            {/* Fallback stats strip when grade_counts is absent (baseline mode) */}
-            {summary && !summary.grade_counts && (
-              <section>
-                <div className="rounded-xl border border-stone-200 bg-white px-6 py-5 flex items-center gap-8">
-                  <div className="text-center">
-                    <p className="text-2xl font-black text-stone-900">{summary.total_playbooks}</p>
-                    <p className="text-[10px] text-stone-400">playbooks</p>
-                  </div>
-                  <div className="w-px h-8 bg-stone-100" />
-                  <div className="text-center">
-                    <p className="text-2xl font-black text-stone-900">{summary.average_pct.toFixed(0)}%</p>
-                    <p className="text-[10px] text-stone-400">average score</p>
-                  </div>
-                  {summary.passing != null && (
-                    <>
-                      <div className="w-px h-8 bg-stone-100" />
-                      <div className="text-center">
-                        <p className="text-2xl font-black text-emerald-700">{summary.passing}</p>
-                        <p className="text-[10px] text-stone-400">passing</p>
-                      </div>
-                    </>
-                  )}
-                  {summary.failing != null && summary.failing > 0 && (
-                    <>
-                      <div className="w-px h-8 bg-stone-100" />
-                      <div className="text-center">
-                        <p className="text-2xl font-black text-red-600">{summary.failing}</p>
-                        <p className="text-[10px] text-stone-400">failing</p>
-                      </div>
-                    </>
-                  )}
+          <>
+            {/* Grade distribution */}
+            <div className="card" style={{ padding: "20px 22px", marginBottom: 28 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", marginBottom: 16 }}>
+                <div>
+                  <div className="eyebrow" style={{ marginBottom: 3 }}>Grade distribution</div>
+                  <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{edition.totalPlaybooks} playbooks scored</div>
                 </div>
-              </section>
-            )}
+                <div style={{ marginLeft: "auto", textAlign: "right" }}>
+                  <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-.02em" }}>{summary ? `${summary.average_pct.toFixed(0)}%` : "—"}</div>
+                  <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>average score</div>
+                </div>
+              </div>
+              <div style={{ marginBottom: 14 }}><GradeStrip counts={counts} height={10} /></div>
+              <GradeLegend counts={counts} />
+            </div>
 
             {/* Leaderboard */}
-            <section>
-              <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-widest mb-3">
-                Leaderboard
-              </p>
-              <Leaderboard playbooks={playbooks} edition={edition} editionSlug={editionSlug} />
-              <p className="text-[10px] text-stone-300 mt-2 text-right">
-                Click the arrow on any row to view the playbook deep-dive.
-              </p>
-            </section>
+            <div className="eyebrow" style={{ marginBottom: 11 }}>Leaderboard</div>
+            <div className="card" style={{ overflow: "hidden", marginBottom: 28 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 18px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+                <span className="eyebrow" style={{ fontSize: 9.5 }}>Ranked by grade</span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 10.5, color: "var(--text-2)", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 20, padding: "3px 9px", fontWeight: 600 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)" }} />{edition.modelLabel}
+                </span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "24px 1.8fr 0.6fr 1.1fr 1fr 0.8fr 0.5fr", gap: 12, padding: "9px 18px", borderBottom: "1px solid var(--border)" }}>
+                {["#", "Playbook", "Grade", "Score", "Structural", "Quality", "Issues"].map((h, i) => (
+                  <div key={i} className="eyebrow" style={{ fontSize: 9.5, textAlign: i >= 4 ? "right" : "left" }}>{h}</div>
+                ))}
+              </div>
+              {sorted.length === 0 ? (
+                <div style={{ padding: "32px 18px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>No playbook scores available yet.</div>
+              ) : (
+                sorted.map((p, i) => {
+                  const structPct = p.total_max > 0 ? Math.min((p.structural_score / p.total_max) * 100, 100) : 0
+                  const qualPct = p.total_max > 0 ? Math.min((p.quality_score / p.total_max) * 100, 100) : 0
+                  return (
+                    <div key={p.slug} style={{ display: "grid", gridTemplateColumns: "24px 1.8fr 0.6fr 1.1fr 1fr 0.8fr 0.5fr", gap: 12, padding: "11px 18px", borderBottom: i < sorted.length - 1 ? "1px solid var(--border)" : "none", alignItems: "center" }}
+                      onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
+                      onMouseLeave={e => (e.currentTarget.style.background = "")}>
+                      <div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{i + 1}</div>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>{playbookDisplayName(p.slug)}</div>
+                        <div className="mono" style={{ fontSize: 10, color: "var(--text-muted)" }}>{p.slug}</div>
+                      </div>
+                      <div><GradeBadge grade={p.grade} /></div>
+                      <div><PctBar pct={p.pct} grade={p.grade} w={72} /></div>
+                      <div style={{ textAlign: "right" }}>
+                        <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)" }}>{p.structural_score}<span style={{ color: "var(--text-muted)" }}> / {p.total_max}</span></div>
+                        <div style={{ width: 60, height: 4, borderRadius: 4, background: "var(--surface-3)", overflow: "hidden", marginLeft: "auto", marginTop: 4 }}>
+                          <div style={{ width: `${structPct}%`, height: "100%", background: "#60a5fa" }} />
+                        </div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)" }}>{p.quality_score}<span style={{ color: "var(--text-muted)" }}> pts</span></div>
+                        <div style={{ width: 60, height: 4, borderRadius: 4, background: "var(--surface-3)", overflow: "hidden", marginLeft: "auto", marginTop: 4 }}>
+                          <div style={{ width: `${qualPct}%`, height: "100%", background: "#a78bfa" }} />
+                        </div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        {(p.failing_criteria ?? 0) > 0
+                          ? <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: gradeC(p.grade) }}>
+                              <span style={{ width: 6, height: 6, borderRadius: "50%", background: gradeC(p.grade) }} />{p.failing_criteria}
+                            </span>
+                          : <span style={{ fontSize: 13, color: "var(--ok)" }}>✓</span>
+                        }
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
 
-            {/* Editorial findings */}
-            <EditorialFindings edition={edition} />
+            {/* Key findings */}
+            {edition.findings.length > 0 && (
+              <>
+                <div className="eyebrow" style={{ marginBottom: 14 }}>Key findings</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 11, marginBottom: 28 }}>
+                  {edition.findings.map((f, i) => (
+                    <div key={i} className="card" style={{ padding: "15px 18px", display: "flex", gap: 15 }}>
+                      <span className="mono" style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", marginTop: 1 }}>{String(i + 1).padStart(2, "0")}</span>
+                      <div>
+                        <div style={{ fontWeight: 650, fontSize: 14, marginBottom: 4 }}>{f.headline}</div>
+                        <div style={{ fontSize: 12.5, color: "var(--text-3)", lineHeight: 1.55 }}>{f.detail}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
 
             {/* Methodology */}
-            <Methodology />
-
-          </div>
+            <div className="eyebrow" style={{ marginBottom: 14 }}>Methodology</div>
+            <div className="card card-pad" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div>
+                <div style={{ fontWeight: 650, fontSize: 13.5, marginBottom: 5 }}>Scoring approach</div>
+                <p style={{ fontSize: 12.5, color: "var(--text-3)", lineHeight: 1.6, margin: 0 }}>
+                  Each playbook is scored against a fixed set of structural and quality criteria. Structural criteria check that required fields are present and correctly wired (trigger, brain blocks, output blocks, parameter completeness). Quality criteria assess description completeness, output clarity, and documentation. Every criterion is pass/fail.
+                </p>
+              </div>
+              <div>
+                <div style={{ fontWeight: 650, fontSize: 13.5, marginBottom: 8 }}>Grade scale</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {GRADE_SCALE.map(([g, r]) => (
+                    <span key={g} style={{ display: "inline-flex", alignItems: "center", gap: 7, borderRadius: 8, padding: "4px 10px", fontSize: 12, fontWeight: 600, background: gradeBg(g), color: gradeC(g) }}>
+                      <b style={{ fontWeight: 800 }}>{g}</b><span style={{ opacity: 0.7, fontWeight: 500 }}>{r}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontWeight: 650, fontSize: 13.5, marginBottom: 5 }}>Reproducibility</div>
+                <p style={{ fontSize: 12.5, color: "var(--text-3)", lineHeight: 1.6, margin: 0 }}>
+                  Structural scores are deterministic and fully reproducible from the playbook YAML. To reproduce any result, run{" "}
+                  <code className="mono" style={{ background: "var(--surface-3)", padding: "1px 6px", borderRadius: 4 }}>conduct eval --playbook &lt;slug&gt;</code>
+                  {" "}against the same playbook version.
+                </p>
+              </div>
+            </div>
+          </>
         )}
-
       </div>
     </AppShell>
   )
 }
 
-// ─── Auth wrapper (optional — benchmark is public) ────────────────────────────
-// Signed-in users get a token attached to requests for workspace context;
-// anonymous users see the same frozen baseline data without redirection.
+// ─── Auth wrapper ─────────────────────────────────────────────────────────────
 
 function BenchmarkWithAuth({ editionSlug }: { editionSlug: string }) {
   const { getToken, isLoaded } = useAuth()

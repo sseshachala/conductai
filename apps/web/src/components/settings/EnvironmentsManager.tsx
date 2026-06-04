@@ -780,31 +780,48 @@ function EnvironmentDetail({
           <p style={{ fontSize: 13, color: "var(--text-muted)", padding: "20px 16px" }}>No variables yet — add one or import a .env file.</p>
         ) : (
           vars.map((v, i) => (
-            <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", borderBottom: i < vars.length - 1 ? "1px solid var(--border)" : "none", padding: "8px 16px", alignItems: "center" }}>
-              <input
-                value={v.key}
-                onChange={e => updateVar(i, "key", e.target.value)}
-                onBlur={() => saveAll(vars, [v.key])}
-                className="mono"
-                style={{ fontSize: 12, color: "var(--text)", background: "transparent", border: "none", outline: "none", width: "100%", paddingRight: 16 }}
-              />
-              <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+            <div key={i} style={{ borderBottom: i < vars.length - 1 ? "1px solid var(--border)" : "none" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", padding: "8px 16px", alignItems: "center" }}>
                 <input
-                  type={showValues[i] ? "text" : "password"}
-                  value={v.value}
-                  onChange={e => updateVar(i, "value", e.target.value)}
+                  value={v.key}
+                  onChange={e => updateVar(i, "key", e.target.value)}
                   onBlur={() => saveAll(vars, [v.key])}
                   className="mono"
-                  style={{ fontSize: 12, color: "var(--text-2)", background: "transparent", border: "none", outline: "none", width: "100%", paddingRight: 28 }}
+                  style={{ fontSize: 12, color: "var(--text)", background: "transparent", border: "none", outline: "none", width: "100%", paddingRight: 16 }}
                 />
-                <button type="button" onClick={() => setShowValues(prev => ({ ...prev, [i]: !prev[i] }))}
-                  style={{ position: "absolute", right: 4, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center" }}>
-                  <EyeIcon open={!!showValues[i]} />
+                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                  <input
+                    type={showValues[i] ? "text" : "password"}
+                    value={v.value}
+                    onChange={e => updateVar(i, "value", e.target.value)}
+                    onBlur={() => saveAll(vars, [v.key])}
+                    className="mono"
+                    style={{ fontSize: 12, color: "var(--text-2)", background: "transparent", border: "none", outline: "none", width: "100%", paddingRight: 28 }}
+                  />
+                  <button type="button" onClick={() => setShowValues(prev => ({ ...prev, [i]: !prev[i] }))}
+                    style={{ position: "absolute", right: 4, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center" }}>
+                    <EyeIcon open={!!showValues[i]} />
+                  </button>
+                </div>
+                <button
+                  onClick={() => {
+                    if (confirmVarIndex === i) {
+                      setConfirmVarIndex(null)
+                      setConfirmVarValue("")
+                    } else {
+                      setConfirmVarIndex(i)
+                      setConfirmVarValue("")
+                    }
+                  }}
+                  style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", width: 64, textAlign: "right" }}
+                >
+                  Remove
                 </button>
               </div>
-              {confirmVarIndex === i ? (
-                <div style={{ minWidth: 230, display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
-                  <p style={{ margin: 0, fontSize: 11, color: "var(--err)", textAlign: "right" }}>
+
+              {confirmVarIndex === i && (
+                <div style={{ padding: "0 16px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
+                  <p style={{ margin: 0, fontSize: 11, color: "var(--err)" }}>
                     Type <strong>{v.key || "key"}</strong> to remove.
                   </p>
                   <div style={{ display: "flex", gap: 6, width: "100%" }}>
@@ -831,17 +848,10 @@ function EnvironmentDetail({
                       onClick={() => { setConfirmVarIndex(null); setConfirmVarValue("") }}
                       className="btn btn-ghost btn-sm"
                     >
-                      Cancel
+                      Keep variable
                     </button>
                   </div>
                 </div>
-              ) : (
-                <button
-                  onClick={() => { setConfirmVarIndex(i); setConfirmVarValue("") }}
-                  style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", width: 64, textAlign: "right" }}
-                >
-                  Remove
-                </button>
               )}
             </div>
           ))

@@ -53,6 +53,18 @@
   --blk-mcp-bg:#ecfeff;     --blk-mcp-bd:#a5f3fc;     --blk-mcp-tx:#0e7490;
 }
 
+/* Block type card classes — applied to .card and palette items */
+.bk-trigger  { background: var(--blk-trigger-bg);  border-color: var(--blk-trigger-bd);  color: var(--blk-trigger-tx); }
+.bk-brain    { background: var(--blk-brain-bg);    border-color: var(--blk-brain-bd);    color: var(--blk-brain-tx); }
+.bk-tool     { background: var(--blk-tool-bg);     border-color: var(--blk-tool-bd);     color: var(--blk-tool-tx); }
+.bk-logic    { background: var(--blk-logic-bg);    border-color: var(--blk-logic-bd);    color: var(--blk-logic-tx); }
+.bk-memory   { background: var(--blk-memory-bg);   border-color: var(--blk-memory-bd);   color: var(--blk-memory-tx); }
+.bk-approval { background: var(--blk-approval-bg); border-color: var(--blk-approval-bd); color: var(--blk-approval-tx); }
+.bk-output   { background: var(--blk-output-bg);   border-color: var(--blk-output-bd);   color: var(--blk-output-tx); }
+.bk-cleanup  { background: var(--blk-cleanup-bg);  border-color: var(--blk-cleanup-bd);  color: var(--blk-cleanup-tx); }
+.bk-guard    { background: var(--blk-guard-bg);    border-color: var(--blk-guard-bd);    color: var(--blk-guard-tx); }
+.bk-mcp      { background: var(--blk-mcp-bg);      border-color: var(--blk-mcp-bd);      color: var(--blk-mcp-tx); }
+
 body {
   background: var(--background);
   color: var(--foreground);
@@ -205,4 +217,43 @@ body {
 .guard-tab.active {
   color: var(--text);
   border-bottom-color: var(--accent);
+}
+
+/* Page layout helpers */
+.page-head { margin-bottom: 24px; }
+.page-title { font-size: 25px; font-weight: 680; letter-spacing: -.02em; margin: 0; }
+.page-sub { color: var(--text-3); font-size: 14px; margin-top: 5px; }
+
+/* Dot + pulse */
+.dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+@keyframes conduct-dot-pulse { 0%,100%{ opacity:1 } 50%{ opacity:.35 } }
+.pulse { animation: conduct-dot-pulse 1.6s ease-in-out infinite; }
+
+/* sbadge run / idle variants */
+.sbadge.run  { color: var(--info);      background: var(--info-bg);  border: 1px solid var(--info-bd);  }
+.sbadge.idle { color: var(--text-muted); background: var(--surface-3); border: 1px solid var(--border); }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Avatar */
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* Icon-only button */
+.btn-icon {
+  padding: 5px 7px;
+  min-width: 0;
 }

@@ -126,14 +126,13 @@ function BlockNode({ data, selected }: NodeProps) {
 
   return (
     <div
-      style={{ width: 196 }}
+      style={{ width: 212 }}
       className={cn(
         "group rounded-xl border-2 px-3 py-2.5 cursor-pointer transition-all shadow-sm",
-        style.bg,
-        style.border,
+        `bk-${nodeData.type}`,
         selected
-          ? "ring-1 ring-indigo-400 shadow-md"
-          : "hover:shadow-md hover:ring-1 hover:ring-stone-200"
+          ? "ring-1 ring-[var(--accent)] shadow-md"
+          : "hover:shadow-md hover:ring-1 hover:ring-[var(--border-2)]"
       )}
     >
       {/* Target handle */}
@@ -146,7 +145,7 @@ function BlockNode({ data, selected }: NodeProps) {
 
       {/* Type badge row */}
       <div className="flex items-center gap-1.5 mb-1.5">
-        <span className={cn("inline-flex items-center gap-1 text-[8px] font-bold tracking-widest uppercase px-1.5 py-0.5 rounded", style.label)}>
+        <span className={cn("inline-flex items-center gap-1 text-[8px] font-bold tracking-widest uppercase px-1.5 py-0.5 rounded", `bk-${nodeData.type}`)}>
           <BlockIcon type={nodeData.type} />
           {style.labelText}
         </span>

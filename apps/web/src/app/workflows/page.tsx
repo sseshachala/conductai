@@ -5,7 +5,6 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
-import { statusStyle } from "@/lib/runUtils"
 
 interface Workflow {
   id: string
@@ -14,7 +13,6 @@ interface Workflow {
   last_run_status: string | null
   last_run_at: string | null
 }
-
 
 function timeAgo(ts: string): string {
   const diff = Date.now() - new Date(ts).getTime()
@@ -33,6 +31,55 @@ function getActiveProject(): { id: string; name: string } | null {
   const nameMatch = document.cookie.match(/(?:^|;\s*)delegator_project_name=([^;]+)/)
   return { id: idMatch[1], name: nameMatch ? decodeURIComponent(nameMatch[1]) : "Project" }
 }
+
+function mapStatus(s: string | null): string {
+  if (!s) return "idle"
+  const l = s.toLowerCase()
+  if (l === "running") return "run"
+  if (l === "waiting" || l === "pending" || l === "awaiting") return "wait"
+  if (l === "succeeded" || l === "success") return "ok"
+  if (l === "failed" || l === "error") return "err"
+  if (l === "warn" || l === "degraded") return "warn"
+  return "idle"
+}
+
+function statusKey(label: string): string {
+  return ({ Running: "run", Awaiting: "wait", Succeeded: "ok", Failed: "err", "Never run": "idle" } as Record<string, string>)[label] ?? "idle"
+}
+
+function AgentStatusPill({ s }: { s: string }) {
+  const m = ({ ok: ["ok", "Succeeded"], wait: ["warn", "Awaiting approval"], run: ["run", "Running"], err: ["err", "Failed"], idle: ["idle", "Never run"], warn: ["warn", "Degraded"] } as Record<string, [string, string]>)[s] || ["idle", "Never run"]
+  return (
+    <span className={"sbadge " + m[0]}>
+      {(s === "run" || s === "wait") && (
+        <span className="dot pulse" style={{ background: m[0] === "warn" ? "var(--warn)" : "var(--info)" }} />
+      )}
+      {m[1]}
+    </span>
+  )
+}
+
+function MiniSpark({ pct, runs }: { pct: number; runs: number }) {
+  if (runs === 0) return <span style={{ fontSize: 12, color: "var(--text-muted)" }}>—</span>
+  const c = pct >= 0.9 ? "var(--ok)" : pct >= 0.75 ? "var(--info)" : pct >= 0.5 ? "var(--warn)" : "var(--err)"
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+      <div style={{ width: 64, height: 6, borderRadius: 6, background: "var(--surface-3)", overflow: "hidden" }}>
+        <div style={{ width: `${pct * 100}%`, height: "100%", borderRadius: 6, background: c }} />
+      </div>
+      <span className="mono" style={{ fontSize: 12, color: "var(--text-3)", width: 30, textAlign: "right" }}>{Math.round(pct * 100)}%</span>
+    </div>
+  )
+}
+
+const Toggle = ({ on, onClick }: { on: boolean; onClick: () => void }) => (
+  <span
+    onClick={(e) => { e.stopPropagation(); onClick() }}
+    style={{ width: 36, height: 21, borderRadius: 20, background: on ? "var(--accent)" : "var(--border-2)", position: "relative", cursor: "pointer", flexShrink: 0, transition: "background .15s", display: "inline-block" }}
+  >
+    <span style={{ position: "absolute", top: 2.5, left: on ? 17.5 : 2.5, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left .15s", boxShadow: "var(--shadow-sm)" }} />
+  </span>
+)
 
 export default function WorkflowsPage() {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
@@ -54,10 +101,24 @@ function WorkflowsWithAuth() {
 
 function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promise<string | null>) | null; currentUserId: string | null }) {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  const router = useRouter()
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [project, setProject] = useState<{ id: string; name: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(!clerkEnabled)
+  const [q, setQ] = useState("")
+  const [status, setStatus] = useState("All")
+  const [sort, setSort] = useState("recent")
+  const [view, setView] = useState<"list" | "grid">("list")
+  const [enabled, setEnabled] = useState<Record<string, boolean>>({})
+  const [confirming, setConfirming] = useState<string | null>(null)
+  const [confirmValue, setConfirmValue] = useState("")
+  const [menuOpen, setMenuOpen] = useState<string | null>(null)
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState("")
+  const menuRef = useRef<HTMLDivElement>(null)
+  const confirmInputRef = useRef<HTMLInputElement>(null)
+  const renameInputRef = useRef<HTMLInputElement>(null)
 
   async function authHeaders(): Promise<Record<string, string>> {
     const h: Record<string, string> = {}
@@ -75,6 +136,22 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
     if (clerkEnabled && p?.id && currentUserId) loadRole(p.id)
   }, [currentUserId])
 
+  useEffect(() => {
+    if (confirming !== null) confirmInputRef.current?.focus()
+  }, [confirming])
+
+  useEffect(() => {
+    if (renaming !== null) renameInputRef.current?.focus()
+  }, [renaming])
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(null)
+    }
+    document.addEventListener("mousedown", handleClick)
+    return () => document.removeEventListener("mousedown", handleClick)
+  }, [])
+
   async function loadRole(projectId: string) {
     try {
       const h = await authHeaders()
@@ -83,7 +160,7 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
       if (!res.ok) return
       const members: { clerk_user_id: string; role: string }[] = await res.json()
       setIsAdmin(members.find(m => m.clerk_user_id === currentUserId)?.role === "admin")
-    } catch { /* stay false */ }
+    } catch { }
   }
 
   async function loadWorkflows(pid: string | null) {
@@ -91,7 +168,13 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
       const headers = await authHeaders()
       if (pid) headers["X-Workspace-ID"] = pid
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, { headers })
-      if (res.ok) setWorkflows(await res.json())
+      if (res.ok) {
+        const data: Workflow[] = await res.json()
+        setWorkflows(data)
+        const init: Record<string, boolean> = {}
+        data.forEach(w => { init[w.id] = true })
+        setEnabled(init)
+      }
     } finally {
       setLoading(false)
     }
@@ -115,198 +198,272 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
     if (project?.id) h["X-Workspace-ID"] = project.id
     await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${id}`, { method: "DELETE", headers: h })
     setWorkflows(prev => prev.filter(w => w.id !== id))
+    setConfirming(null)
+    setConfirmValue("")
   }
+
+  const filtered = workflows.filter(w => {
+    const matchQ = w.name.toLowerCase().includes(q.toLowerCase())
+    const matchStatus = status === "All" || mapStatus(w.last_run_status) === statusKey(status)
+    return matchQ && matchStatus
+  })
+
+  const rows = [...filtered].sort((a, b) => {
+    if (sort === "name") return a.name.localeCompare(b.name)
+    if (sort === "status") return mapStatus(a.last_run_status).localeCompare(mapStatus(b.last_run_status))
+    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+  })
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-3xl px-6 py-10">
-        <div className="flex items-center justify-between mb-5">
-          <h1 className="text-xl font-semibold text-stone-900">Agents</h1>
-          <span className="text-xs text-stone-400">{workflows.length} agent{workflows.length !== 1 ? "s" : ""}</span>
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "30px 34px 80px" }}>
+
+        <div className="page-head" style={{ display: "flex", alignItems: "flex-end" }}>
+          <div>
+            <h1 className="page-title">Agents</h1>
+            <p className="page-sub">Every workflow in this workspace — status, triggers, and 30-day reliability at a glance.</p>
+          </div>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 9 }}>
+            <Link href="/workflows/new" className="btn btn-primary"><span>+</span> New agent</Link>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+          <div style={{ position: "relative", flex: 1, minWidth: 220, maxWidth: 340 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ position: "absolute", left: 11, top: 10, color: "var(--text-muted)" }}>
+              <path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zm4.15-2.85 3.7 3.7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            <input
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              placeholder="Search agents…"
+              style={{ width: "100%", height: 36, padding: "0 12px 0 33px", borderRadius: 9, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", fontSize: 13.5, outline: "none" }}
+            />
+          </div>
+          <select
+            value={sort}
+            onChange={e => setSort(e.target.value)}
+            className="btn btn-ghost"
+            style={{ height: 36, fontWeight: 600 }}
+          >
+            <option value="recent">Sort: Recently edited</option>
+            <option value="status">Sort: Status</option>
+            <option value="name">Sort: Name</option>
+          </select>
+          <div style={{ marginLeft: "auto", display: "flex", background: "var(--surface-3)", borderRadius: 8, padding: 3 }}>
+            {(["list", "grid"] as const).map(v => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                style={{ border: "none", background: view === v ? "var(--surface)" : "transparent", borderRadius: 6, padding: "5px 9px", cursor: "pointer", color: view === v ? "var(--text)" : "var(--text-3)", boxShadow: view === v ? "var(--shadow-sm)" : "none" }}
+              >
+                {v === "list" ? (
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <rect x="0" y="1" width="14" height="2" rx="1" fill="currentColor" />
+                    <rect x="0" y="6" width="14" height="2" rx="1" fill="currentColor" />
+                    <rect x="0" y="11" width="14" height="2" rx="1" fill="currentColor" />
+                  </svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <rect x="0" y="0" width="6" height="6" rx="1" fill="currentColor" />
+                    <rect x="8" y="0" width="6" height="6" rx="1" fill="currentColor" />
+                    <rect x="0" y="8" width="6" height="6" rx="1" fill="currentColor" />
+                    <rect x="8" y="8" width="6" height="6" rx="1" fill="currentColor" />
+                  </svg>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 7, marginBottom: 16, flexWrap: "wrap" }}>
+          {["All", "Running", "Awaiting", "Succeeded", "Failed", "Never run"].map(s => {
+            const n = s === "All" ? workflows.length : workflows.filter(w => mapStatus(w.last_run_status) === statusKey(s)).length
+            const on = status === s
+            return (
+              <button
+                key={s}
+                onClick={() => setStatus(s)}
+                className="chip"
+                style={{ height: 30, cursor: "pointer", fontWeight: 600, background: on ? "var(--accent-weak)" : "var(--surface)", borderColor: on ? "var(--accent-ring)" : "var(--border)", color: on ? "var(--accent-text)" : "var(--text-2)" }}
+              >
+                {s}<span style={{ opacity: .6, marginLeft: 1 }}>· {n}</span>
+              </button>
+            )
+          })}
         </div>
 
         {loading ? (
-          <div className="space-y-2">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {[1, 2, 3].map(i => (
-              <div key={i} className="h-20 rounded-xl border border-stone-200 bg-white animate-pulse" />
+              <div key={i} style={{ height: 60, borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface)", opacity: 0.5 }} />
             ))}
           </div>
-        ) : workflows.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-stone-300 px-8 py-10 text-center">
-            <p className="text-stone-800 font-semibold mb-2">No agents yet</p>
-            <p className="text-stone-400 text-sm mb-6 max-w-sm mx-auto leading-relaxed">
-              Pick a template below and you&apos;ll land on a pre-wired canvas ready to configure.
-            </p>
-            <div className="grid grid-cols-3 gap-2 mb-6 text-left">
-              {[
-                { icon: "⚡", name: "Autopilot", desc: "GitHub issue → PR" },
-                { icon: "🔍", name: "PR Reviewer", desc: "PR opened → AI review comment" },
-                { icon: "🚨", name: "Incident Responder", desc: "Alert fires → Slack hypothesis" },
-              ].map(t => (
-                <div key={t.name} className="rounded-lg border border-stone-200 bg-white px-3 py-3">
-                  <span className="text-lg">{t.icon}</span>
-                  <p className="text-xs font-semibold text-stone-800 mt-1">{t.name}</p>
-                  <p className="text-[11px] text-stone-400 leading-snug mt-0.5">{t.desc}</p>
+        ) : !loading && workflows.length === 0 ? (
+          <div style={{ padding: "60px 20px", textAlign: "center" }}>
+            <p style={{ fontWeight: 650, fontSize: 16, color: "var(--text)", marginBottom: 8 }}>No agents yet</p>
+            <p style={{ fontSize: 13.5, color: "var(--text-3)", marginBottom: 20 }}>Pick a playbook template to create your first agent.</p>
+            <Link href="/workflows/new" className="btn btn-primary">+ New agent</Link>
+          </div>
+        ) : (
+          <>
+            {view === "list" && (
+              <div className="card" style={{ overflow: "hidden" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "2.2fr 1.3fr 1.2fr 0.8fr 64px", gap: 14, padding: "10px 18px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+                  {["Agent", "Last run", "Success 30d", "Enabled", ""].map((h, i) => (
+                    <div key={i} className="eyebrow" style={{ fontSize: 9.5, textAlign: i === 3 ? "center" : "left" }}>{h}</div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <Link
-              href="/workflows/new"
-              className="inline-block rounded-lg bg-stone-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-stone-700 transition-colors"
-            >
-              Choose a template →
-            </Link>
-          </div>
-        ) : (
-          <div className="grid gap-2">
-            {workflows.map((w) => (
-              <AgentCard
-                key={w.id}
-                workflow={w}
-                isAdmin={isAdmin}
-                onRename={(name) => renameAgent(w.id, name)}
-                onDelete={() => deleteAgent(w.id)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </AppShell>
-  )
-}
-
-function AgentCard({
-  workflow, isAdmin, onRename, onDelete,
-}: {
-  workflow: Workflow
-  isAdmin: boolean
-  onRename: (name: string) => Promise<void>
-  onDelete: () => Promise<void>
-}) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [renaming, setRenaming] = useState(false)
-  const [nameValue, setNameValue] = useState(workflow.name)
-  const [confirmValue, setConfirmValue] = useState<string | null>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const confirmInputRef = useRef<HTMLInputElement>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (renaming) inputRef.current?.focus()
-  }, [renaming])
-
-  useEffect(() => {
-    if (confirmValue !== null) confirmInputRef.current?.focus()
-  }, [confirmValue])
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
-    }
-    document.addEventListener("mousedown", handleClick)
-    return () => document.removeEventListener("mousedown", handleClick)
-  }, [])
-
-  async function submitRename() {
-    const name = nameValue.trim()
-    if (name && name !== workflow.name) await onRename(name)
-    else setNameValue(workflow.name)
-    setRenaming(false)
-  }
-
-  const status = workflow.last_run_status ? statusStyle(workflow.last_run_status) : null
-
-  if (confirmValue !== null) {
-    return (
-      <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4">
-        <p className="text-sm text-red-700 mb-2">
-          Type <strong>{workflow.name}</strong> to permanently delete this agent and all its data.
-        </p>
-        <div className="flex gap-2">
-          <input
-            ref={confirmInputRef}
-            value={confirmValue}
-            onChange={e => setConfirmValue(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === "Enter" && confirmValue === workflow.name) onDelete()
-              if (e.key === "Escape") setConfirmValue(null)
-            }}
-            placeholder={workflow.name}
-            className="flex-1 text-sm border border-red-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-red-300 bg-white"
-          />
-          <button
-            onClick={() => onDelete()}
-            disabled={confirmValue !== workflow.name}
-            className="text-xs font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-40 px-3 py-1.5 rounded-lg transition-colors"
-          >Delete</button>
-          <button
-            onClick={() => setConfirmValue(null)}
-            className="text-xs font-medium text-stone-600 border border-stone-200 hover:bg-stone-50 px-3 py-1.5 rounded-lg transition-colors"
-          >Cancel</button>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-5 py-4 hover:border-stone-300 hover:shadow-sm transition-all group">
-      <Link href={renaming ? "#" : `/workflows/${workflow.id}`} className="flex-1 min-w-0" onClick={renaming ? (e) => e.preventDefault() : undefined}>
-        {renaming ? (
-          <input
-            ref={inputRef}
-            value={nameValue}
-            onChange={e => setNameValue(e.target.value)}
-            onBlur={submitRename}
-            onKeyDown={e => { if (e.key === "Enter") submitRename(); if (e.key === "Escape") { setNameValue(workflow.name); setRenaming(false) } }}
-            onClick={e => e.preventDefault()}
-            className="text-sm font-semibold text-stone-900 bg-transparent border-b border-indigo-400 outline-none w-full"
-          />
-        ) : (
-          <p className="font-semibold text-stone-900 group-hover:text-stone-700 transition-colors truncate" title={workflow.name}>{workflow.name}</p>
-        )}
-        <p className="text-xs text-stone-400 mt-0.5">edited {timeAgo(workflow.updated_at)}</p>
-      </Link>
-
-      <div className="flex items-center gap-3 ml-3 shrink-0">
-        {status ? (
-          <span className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${status.bg} ${status.text}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
-            {status.label}
-          </span>
-        ) : (
-          <span className="text-xs text-stone-400 italic">never run</span>
-        )}
-        {workflow.last_run_at && <span className="text-xs text-stone-400">{timeAgo(workflow.last_run_at)}</span>}
-
-        {isAdmin && (
-          <div className="relative" ref={menuRef}>
-            <button
-              onClick={e => { e.preventDefault(); setMenuOpen(v => !v) }}
-              className="p-1.5 rounded-lg text-stone-300 hover:text-stone-600 hover:bg-stone-100 transition-colors opacity-0 group-hover:opacity-100"
-            >
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M10 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4z" />
-              </svg>
-            </button>
-            {menuOpen && (
-              <div className="absolute right-0 top-8 z-20 w-36 bg-white rounded-xl border border-stone-200 shadow-lg py-1">
-                <button
-                  onClick={() => { setMenuOpen(false); setRenaming(true) }}
-                  className="w-full text-left px-4 py-2 text-sm text-stone-700 hover:bg-stone-50"
-                >
-                  Rename
-                </button>
-                <button
-                  onClick={() => { setMenuOpen(false); setConfirmValue("") }}
-                  className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                >
-                  Delete
-                </button>
+                {rows.length === 0 && (
+                  <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>No agents match.</div>
+                )}
+                {rows.map(w => {
+                  if (confirming === w.id) {
+                    return (
+                      <div key={w.id} style={{ padding: "12px 18px", borderBottom: "1px solid var(--border)", background: "var(--err-weak, #fff5f5)" }}>
+                        <p style={{ fontSize: 13, color: "var(--err, #dc2626)", marginBottom: 8 }}>
+                          Type <strong>{w.name}</strong> to permanently delete this agent and all its data.
+                        </p>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <input
+                            ref={confirmInputRef}
+                            value={confirmValue}
+                            onChange={e => setConfirmValue(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === "Enter" && confirmValue === w.name) deleteAgent(w.id)
+                              if (e.key === "Escape") { setConfirming(null); setConfirmValue("") }
+                            }}
+                            placeholder={w.name}
+                            style={{ flex: 1, fontSize: 13, border: "1px solid var(--err, #fca5a5)", borderRadius: 7, padding: "5px 10px", outline: "none", background: "var(--surface)" }}
+                          />
+                          <button
+                            onClick={() => deleteAgent(w.id)}
+                            disabled={confirmValue !== w.name}
+                            className="btn btn-sm"
+                            style={{ background: "var(--err, #dc2626)", color: "#fff", opacity: confirmValue !== w.name ? 0.4 : 1, cursor: confirmValue !== w.name ? "not-allowed" : "pointer" }}
+                          >Delete</button>
+                          <button
+                            onClick={() => { setConfirming(null); setConfirmValue("") }}
+                            className="btn btn-ghost btn-sm"
+                          >Cancel</button>
+                        </div>
+                      </div>
+                    )
+                  }
+                  return (
+                    <div
+                      key={w.id}
+                      style={{ display: "grid", gridTemplateColumns: "2.2fr 1.3fr 1.2fr 0.8fr 64px", gap: 14, padding: "13px 18px", borderBottom: "1px solid var(--border)", alignItems: "center", cursor: "pointer", opacity: enabled[w.id] ? 1 : .65, transition: "background .12s" }}
+                      onClick={() => router.push(`/workflows/${w.id}`)}
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        {renaming === w.id ? (
+                          <input
+                            ref={renameInputRef}
+                            value={renameValue}
+                            onChange={e => setRenameValue(e.target.value)}
+                            onClick={e => e.stopPropagation()}
+                            onBlur={() => {
+                              const name = renameValue.trim()
+                              if (name && name !== w.name) renameAgent(w.id, name)
+                              setRenaming(null)
+                              setRenameValue("")
+                            }}
+                            onKeyDown={e => {
+                              e.stopPropagation()
+                              if (e.key === "Enter") {
+                                const name = renameValue.trim()
+                                if (name && name !== w.name) renameAgent(w.id, name)
+                                setRenaming(null)
+                                setRenameValue("")
+                              }
+                              if (e.key === "Escape") { setRenaming(null); setRenameValue("") }
+                            }}
+                            style={{ fontWeight: 650, fontSize: 14, background: "transparent", border: "none", borderBottom: "1px solid var(--accent)", outline: "none", width: "100%" }}
+                          />
+                        ) : (
+                          <div style={{ fontWeight: 650, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.name}</div>
+                        )}
+                        <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>edited {timeAgo(w.updated_at)}</div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <AgentStatusPill s={mapStatus(w.last_run_status)} />
+                        <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{w.last_run_at ? timeAgo(w.last_run_at) : ""}</span>
+                      </div>
+                      <MiniSpark pct={0} runs={0} />
+                      <div style={{ display: "grid", placeItems: "center" }}>
+                        <Toggle on={!!enabled[w.id]} onClick={() => setEnabled(s => ({ ...s, [w.id]: !s[w.id] }))} />
+                      </div>
+                      <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", position: "relative" }}>
+                        <button
+                          className="btn btn-ghost btn-icon btn-sm"
+                          title="Open"
+                          onClick={e => { e.stopPropagation(); router.push(`/workflows/${w.id}`) }}
+                        >→</button>
+                        {isAdmin && (
+                          <div ref={menuRef} style={{ position: "relative" }}>
+                            <button
+                              className="btn btn-ghost btn-icon btn-sm"
+                              title="More"
+                              onClick={e => { e.stopPropagation(); setMenuOpen(menuOpen === w.id ? null : w.id) }}
+                            >⋯</button>
+                            {menuOpen === w.id && (
+                              <div style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, zIndex: 20, minWidth: 130, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, boxShadow: "var(--shadow-md)", padding: "4px 0" }}>
+                                <button
+                                  onClick={e => { e.stopPropagation(); setMenuOpen(null); setRenaming(w.id); setRenameValue(w.name) }}
+                                  style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--text)", background: "none", border: "none", cursor: "pointer" }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}
+                                >Rename</button>
+                                <button
+                                  onClick={e => { e.stopPropagation(); setMenuOpen(null); setConfirming(w.id); setConfirmValue("") }}
+                                  style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--err, #dc2626)", background: "none", border: "none", cursor: "pointer" }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}
+                                >Delete</button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )}
-          </div>
+
+            {view === "grid" && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
+                {rows.map(w => (
+                  <div
+                    key={w.id}
+                    onClick={() => router.push(`/workflows/${w.id}`)}
+                    className="card"
+                    style={{ padding: "16px 18px", cursor: "pointer", opacity: enabled[w.id] ? 1 : .65 }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow = "var(--shadow-md)"; (e.currentTarget as HTMLElement).style.borderColor = "var(--border-2)" }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = ""; (e.currentTarget as HTMLElement).style.borderColor = "var(--border)" }}
+                  >
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 12 }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontWeight: 650, fontSize: 15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.name}</div>
+                        <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>edited {timeAgo(w.updated_at)}</div>
+                      </div>
+                      <Toggle on={!!enabled[w.id]} onClick={() => setEnabled(s => ({ ...s, [w.id]: !s[w.id] }))} />
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+                      <AgentStatusPill s={mapStatus(w.last_run_status)} />
+                      <MiniSpark pct={0} runs={0} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
+
       </div>
-    </div>
+    </AppShell>
   )
 }

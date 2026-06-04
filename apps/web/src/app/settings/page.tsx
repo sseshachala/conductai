@@ -2,21 +2,22 @@
 
 import { useState, useEffect, useRef } from "react"
 import { useAuth } from "@clerk/nextjs"
-import Link from "next/link"
 import AppShell from "@/components/AppShell"
 import EnvironmentsManager from "@/components/settings/EnvironmentsManager"
 import MembersManager from "@/components/settings/MembersManager"
 import PreferencesPanel from "@/components/settings/PreferencesPanel"
 import ApiKeysManager from "@/components/settings/ApiKeysManager"
+import ModulesManager from "@/components/settings/ModulesManager"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
-type Tab = "credentials" | "members" | "preferences" | "api-keys"
+type Tab = "credentials" | "members" | "preferences" | "api-keys" | "modules"
 
 const TAB_LABELS: Record<Tab, string> = {
   credentials: "Environments",
   preferences: "Appearance",
   members: "Members & roles",
   "api-keys": "API Keys",
+  modules: "Modules",
 }
 
 export default function SettingsPage() {
@@ -119,11 +120,14 @@ function OrgNameEditor({ getToken }: { getToken: (() => Promise<string | null>) 
   const isDirty = inputValue !== orgName
 
   return (
-    <div className="mb-8 pb-8 border-b border-stone-200">
-      <h2 className="text-sm font-semibold text-stone-700 mb-4">Organisation</h2>
-      <div className="flex items-center gap-3">
-        <div className="flex flex-col gap-1 flex-1 max-w-sm">
-          <label htmlFor="org-name-input" className="text-xs font-medium text-stone-500">
+    <div style={{ marginBottom: 32, paddingBottom: 32, borderBottom: "1px solid var(--border)" }}>
+      <h2 style={{ fontSize: 13, fontWeight: 600, color: "var(--text-2)", marginBottom: 16, marginTop: 0 }}>Organisation</h2>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, maxWidth: 384 }}>
+          <label
+            htmlFor="org-name-input"
+            style={{ fontSize: 13, fontWeight: 500, color: "var(--text-2)" }}
+          >
             Organisation name
           </label>
           <input
@@ -132,23 +136,27 @@ function OrgNameEditor({ getToken }: { getToken: (() => Promise<string | null>) 
             value={inputValue}
             onChange={e => { setInputValue(e.target.value); setStatus("idle"); setErrorMsg("") }}
             onKeyDown={e => { if (e.key === "Enter" && isDirty) handleSave() }}
-            className="w-full border border-stone-200 rounded-lg px-3 py-2 text-sm text-stone-900 bg-white outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition-colors"
+            style={{ height: 36, border: "1px solid var(--border)", borderRadius: 8, padding: "0 12px", fontSize: 13, background: "var(--surface)", color: "var(--text)", outline: "none", width: "100%" }}
             placeholder="Your organisation name"
           />
+          <span style={{ fontSize: 12, color: "var(--text-3)" }}>
+            This name appears across your workspace and shared playbooks.
+          </span>
         </div>
         <button
           onClick={handleSave}
           disabled={!isDirty || status === "saving"}
-          className="mt-5 px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="btn btn-primary btn-sm"
+          style={{ marginTop: 20 }}
         >
           {status === "saving" ? "Saving…" : "Save"}
         </button>
       </div>
       {status === "saved" && (
-        <p className="mt-2 text-xs text-green-600 font-medium">Saved</p>
+        <p style={{ marginTop: 8, fontSize: 12, fontWeight: 500, color: "var(--ok)" }}>Saved</p>
       )}
       {status === "error" && errorMsg && (
-        <p className="mt-2 text-xs text-red-600">{errorMsg}</p>
+        <p style={{ marginTop: 8, fontSize: 12, color: "var(--err)" }}>{errorMsg}</p>
       )}
     </div>
   )
@@ -157,7 +165,7 @@ function OrgNameEditor({ getToken }: { getToken: (() => Promise<string | null>) 
 // ── Main settings page ────────────────────────────────────────────────────────
 
 function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolean; workspaceId: string; getToken: (() => Promise<string | null>) | null }) {
-  const tabs = (["credentials", "preferences", ...(isAdmin ? ["members", "api-keys"] : [])] as Tab[])
+  const tabs = (["credentials", "preferences", ...(isAdmin ? ["members", "api-keys"] : []), "modules"] as Tab[])
   const [activeTab, setActiveTab] = useState<Tab>("credentials")
   const [showTip, setShowTip] = useState(false)
 
@@ -178,22 +186,23 @@ function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolea
   return (
     <AppShell>
       {showTip && (
-        <div className="fixed bottom-6 right-6 z-50 max-w-sm w-full rounded-xl bg-amber-50 border border-amber-200 shadow-lg px-4 py-3 flex items-start gap-3">
-          <span className="text-amber-500 text-base leading-none mt-0.5 shrink-0">⚠</span>
-          <p className="text-sm text-amber-800 leading-relaxed flex-1">
-            <span className="font-semibold">Add credentials before running agents.</span>{" "}
+        <div style={{ position: "fixed", bottom: 24, right: 24, zIndex: 50, maxWidth: 380, width: "100%", borderRadius: 12, background: "var(--warn-bg)", border: "1px solid var(--warn-bd)", padding: "12px 16px", display: "flex", alignItems: "flex-start", gap: 12 }}>
+          <span style={{ color: "var(--warn)", flexShrink: 0 }}>⚠</span>
+          <p style={{ color: "var(--warn)", fontSize: 13, flex: 1, margin: 0, lineHeight: 1.5 }}>
+            <span style={{ fontWeight: 600, color: "var(--warn)" }}>Add credentials before running agents.</span>{" "}
             Go to Credentials, add your GitHub token, Slack token, and any other API keys. Agents pick them up automatically — no extra config needed.
           </p>
           <button
             onClick={dismissTip}
-            className="shrink-0 text-amber-400 hover:text-amber-700 transition-colors ml-1 text-base leading-none"
+            className="btn btn-ghost btn-sm btn-icon"
+            style={{ color: "var(--warn)" }}
             aria-label="Dismiss"
           >
             ✕
           </button>
         </div>
       )}
-      <div className="mx-auto max-w-5xl px-6 py-10">
+      <div style={{ maxWidth: 960, margin: "0 auto", padding: "40px 24px" }}>
         <div style={{ marginBottom: 20 }}>
           <h1 style={{ fontSize: 25, fontWeight: 680, letterSpacing: "-.02em", color: "var(--text)", margin: 0 }}>
             Settings
@@ -225,30 +234,13 @@ function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolea
               {TAB_LABELS[tab]}
             </button>
           ))}
-          <Link
-            href="/settings/modules"
-            style={{
-              background: "none",
-              border: "none",
-              padding: "9px 14px",
-              fontSize: 13.5,
-              fontWeight: 600,
-              cursor: "pointer",
-              marginBottom: -1,
-              color: "var(--text-3)",
-              borderBottom: "2px solid transparent",
-              textDecoration: "none",
-              display: "inline-block",
-            }}
-          >
-            Modules
-          </Link>
         </div>
 
         {activeTab === "credentials" && <EnvironmentsManager isAdmin={isAdmin} />}
         {activeTab === "preferences" && <PreferencesPanel />}
         {activeTab === "members" && isAdmin && <MembersManager />}
         {activeTab === "api-keys" && isAdmin && <ApiKeysManager />}
+        {activeTab === "modules" && <ModulesManager />}
       </div>
     </AppShell>
   )

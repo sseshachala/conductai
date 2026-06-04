@@ -165,6 +165,19 @@ function exportCsv(events: AuditEvent[]) {
 
 const PAGE_SIZE = 100
 
+// ─── Shared select style ──────────────────────────────────────────────────────
+
+const selectStyle: React.CSSProperties = {
+  fontSize: 12,
+  border: "1px solid var(--border)",
+  borderRadius: 8,
+  padding: "5px 10px",
+  color: "var(--text-2)",
+  background: "var(--surface)",
+  outline: "none",
+  cursor: "pointer",
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function ActivityPage() {
@@ -266,7 +279,17 @@ function ActivityContent() {
     <GuardShell>
       {/* Viewer-scoped notice */}
       {!permissions.canViewAllActivity && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800 mb-4">
+        <div
+          style={{
+            borderRadius: 8,
+            border: "1px solid var(--warn-bd)",
+            background: "var(--warn-bg)",
+            padding: "8px 16px",
+            fontSize: 12,
+            color: "var(--warn)",
+            marginBottom: 16,
+          }}
+        >
           You can view your own activity only. Contact your admin to request broader access.
         </div>
       )}
@@ -300,7 +323,7 @@ function ActivityContent() {
           <select
             value={filterDeveloper}
             onChange={e => setFilterDeveloper(e.target.value)}
-            className="text-xs border border-stone-200 rounded-lg px-3 py-1.5 text-stone-600 bg-white focus:outline-none"
+            style={selectStyle}
           >
             <option value="">All developers</option>
             {developers.map(d => <option key={d} value={d}>{d}</option>)}
@@ -310,7 +333,7 @@ function ActivityContent() {
         <select
           value={filterTool}
           onChange={e => setFilterTool(e.target.value)}
-          className="text-xs border border-stone-200 rounded-lg px-3 py-1.5 text-stone-600 bg-white focus:outline-none"
+          style={selectStyle}
         >
           <option value="">All tools</option>
           {tools.map(t => <option key={t} value={t}>{t}</option>)}
@@ -320,14 +343,14 @@ function ActivityContent() {
           type="date"
           value={filterSince}
           onChange={e => setFilterSince(e.target.value)}
-          className="text-xs border border-stone-200 rounded-lg px-3 py-1.5 text-stone-600 bg-white focus:outline-none"
+          style={selectStyle}
           aria-label="From date"
         />
         <input
           type="date"
           value={filterUntil}
           onChange={e => setFilterUntil(e.target.value)}
-          className="text-xs border border-stone-200 rounded-lg px-3 py-1.5 text-stone-600 bg-white focus:outline-none"
+          style={selectStyle}
           aria-label="To date"
         />
 
@@ -363,14 +386,34 @@ function ActivityContent() {
       </div>
 
       {error && (
-        <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 mb-4">{error}</div>
+        <div
+          style={{
+            borderRadius: 8,
+            border: "1px solid var(--err-bd)",
+            background: "var(--err-bg)",
+            padding: "10px 16px",
+            fontSize: 13,
+            color: "var(--err)",
+            marginBottom: 16,
+          }}
+        >
+          {error}
+        </div>
       )}
 
       {/* Events table */}
       {loading ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {[...Array(6)].map((_, i) => (
-            <div key={i} className="animate-pulse" style={{ height: 44, background: "var(--surface-2)", borderRadius: 8 }} />
+            <div
+              key={i}
+              style={{
+                height: 44,
+                background: "var(--surface-2)",
+                borderRadius: 8,
+                opacity: 0.6,
+              }}
+            />
           ))}
         </div>
       ) : events.length === 0 ? (
@@ -435,7 +478,7 @@ function ActivityContent() {
               {/* Decision */}
               <div>
                 {ev.conductai_run_id ? (
-                  <Link href={`/runs/${ev.conductai_run_id}`} className="hover:opacity-80 transition-opacity">
+                  <Link href={`/runs/${ev.conductai_run_id}`} style={{ opacity: 1, transition: "opacity 0.15s" }}>
                     <DecisionBadge decision={ev.decision} />
                   </Link>
                 ) : (

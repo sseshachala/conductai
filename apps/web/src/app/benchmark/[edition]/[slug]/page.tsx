@@ -79,20 +79,44 @@ function getCookie(name: string): string | null {
   return m ? decodeURIComponent(m[1]) : null
 }
 
-const GRADE_STYLE: Record<string, {
-  bg: string; text: string; bar: string; border: string; dot: string
-}> = {
-  A: { bg: "bg-emerald-50", text: "text-emerald-700", bar: "bg-emerald-500", border: "border-emerald-200", dot: "bg-emerald-400" },
-  B: { bg: "bg-blue-50",    text: "text-blue-700",    bar: "bg-blue-400",    border: "border-blue-200",    dot: "bg-blue-400"    },
-  C: { bg: "bg-amber-50",   text: "text-amber-700",   bar: "bg-amber-400",   border: "border-amber-200",   dot: "bg-amber-400"   },
-  D: { bg: "bg-orange-50",  text: "text-orange-700",  bar: "bg-orange-400",  border: "border-orange-200",  dot: "bg-orange-400"  },
-  F: { bg: "bg-red-50",     text: "text-red-700",     bar: "bg-red-400",     border: "border-red-200",     dot: "bg-red-400"     },
+const GRADE_BG: Record<string, string> = {
+  A: "var(--ok-bg)",
+  B: "#eff6ff",
+  C: "var(--warn-bg)",
+  D: "#fff7ed",
+  F: "var(--err-bg)",
 }
 
-function gs(grade: string) {
-  return GRADE_STYLE[grade] ?? {
-    bg: "bg-stone-100", text: "text-stone-500",
-    bar: "bg-stone-300", border: "border-stone-200", dot: "bg-stone-300",
+const GRADE_C: Record<string, string> = {
+  A: "var(--ok)",
+  B: "#1d4ed8",
+  C: "var(--warn)",
+  D: "#c2410c",
+  F: "var(--err)",
+}
+
+const GRADE_BORDER: Record<string, string> = {
+  A: "#6ee7b7",
+  B: "#bfdbfe",
+  C: "#fde68a",
+  D: "#fed7aa",
+  F: "#fecaca",
+}
+
+const GRADE_BAR: Record<string, string> = {
+  A: "var(--ok)",
+  B: "#60a5fa",
+  C: "var(--warn)",
+  D: "#fb923c",
+  F: "var(--err)",
+}
+
+function gradeStyles(grade: string) {
+  return {
+    bg: GRADE_BG[grade] ?? "var(--surface-3)",
+    text: GRADE_C[grade] ?? "var(--text-3)",
+    bar: GRADE_BAR[grade] ?? "var(--border)",
+    border: GRADE_BORDER[grade] ?? "var(--border)",
   }
 }
 
@@ -114,55 +138,113 @@ function ScoreCard({
   model: string
   publishedAt: string
 }) {
-  const s = gs(baseline.grade)
+  const s = gradeStyles(baseline.grade)
   const structPct = baseline.total_max > 0 ? (baseline.structural_score / baseline.total_max) * 100 : 0
   const qualPct   = baseline.total_max > 0 ? (baseline.quality_score   / baseline.total_max) * 100 : 0
 
   return (
-    <div className="rounded-xl border border-stone-200 bg-white px-6 py-5">
-      <div className="flex items-start gap-5">
+    <div className="card" style={{ padding: "20px 24px" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 20 }}>
         {/* Grade */}
-        <div className={`flex-shrink-0 flex items-center justify-center w-16 h-16 rounded-xl text-3xl font-black ${s.bg} ${s.text}`}>
+        <div style={{
+          flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: 64,
+          height: 64,
+          borderRadius: 12,
+          fontSize: 30,
+          fontWeight: 900,
+          background: s.bg,
+          color: s.text,
+        }}>
           {baseline.grade}
         </div>
 
         {/* Score and bars */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-baseline gap-2 mb-2">
-            <span className="text-2xl font-bold text-stone-900">{baseline.pct.toFixed(0)}%</span>
-            <span className="text-sm text-stone-400">{baseline.total_score} / {baseline.total_max} pts</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
+            <span style={{ fontSize: 24, fontWeight: 700, color: "var(--text)" }}>
+              {baseline.pct.toFixed(0)}%
+            </span>
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              {baseline.total_score} / {baseline.total_max} pts
+            </span>
           </div>
 
-          <div className="space-y-2">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {/* Structural bar */}
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] font-medium text-stone-400 uppercase tracking-wide w-16 shrink-0">Structural</span>
-              <div className="w-32 h-1.5 rounded-full bg-stone-100 overflow-hidden">
-                <div className="h-full bg-blue-400 rounded-full transition-all" style={{ width: `${Math.min(structPct, 100)}%` }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span className="eyebrow" style={{ width: 64, flexShrink: 0, color: "var(--text-muted)" }}>
+                Structural
+              </span>
+              <div style={{
+                width: 128,
+                height: 6,
+                borderRadius: 999,
+                background: "var(--surface-3)",
+                overflow: "hidden",
+              }}>
+                <div style={{
+                  height: "100%",
+                  background: "#60a5fa",
+                  borderRadius: 999,
+                  transition: "width 0.3s ease",
+                  width: `${Math.min(structPct, 100)}%`,
+                }} />
               </div>
-              <span className="text-xs tabular-nums text-stone-500">{baseline.structural_score} pts</span>
+              <span className="mono" style={{ fontSize: 12, color: "var(--text-3)" }}>
+                {baseline.structural_score} pts
+              </span>
             </div>
 
             {/* Quality bar (only if non-zero) */}
             {baseline.quality_score > 0 && (
-              <div className="flex items-center gap-3">
-                <span className="text-[10px] font-medium text-stone-400 uppercase tracking-wide w-16 shrink-0">Quality</span>
-                <div className="w-32 h-1.5 rounded-full bg-stone-100 overflow-hidden">
-                  <div className="h-full bg-violet-400 rounded-full transition-all" style={{ width: `${Math.min(qualPct, 100)}%` }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span className="eyebrow" style={{ width: 64, flexShrink: 0, color: "var(--text-muted)" }}>
+                  Quality
+                </span>
+                <div style={{
+                  width: 128,
+                  height: 6,
+                  borderRadius: 999,
+                  background: "var(--surface-3)",
+                  overflow: "hidden",
+                }}>
+                  <div style={{
+                    height: "100%",
+                    background: "#a78bfa",
+                    borderRadius: 999,
+                    transition: "width 0.3s ease",
+                    width: `${Math.min(qualPct, 100)}%`,
+                  }} />
                 </div>
-                <span className="text-xs tabular-nums text-stone-500">{baseline.quality_score} pts</span>
+                <span className="mono" style={{ fontSize: 12, color: "var(--text-3)" }}>
+                  {baseline.quality_score} pts
+                </span>
               </div>
             )}
           </div>
         </div>
 
         {/* Edition meta */}
-        <div className="flex-shrink-0 text-right">
-          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold border ${s.bg} ${s.text} ${s.border}`}>
+        <div style={{ flexShrink: 0, textAlign: "right" }}>
+          <span style={{
+            display: "inline-flex",
+            alignItems: "center",
+            borderRadius: 999,
+            padding: "2px 10px",
+            fontSize: 10,
+            fontWeight: 600,
+            border: `1px solid ${s.border}`,
+            background: s.bg,
+            color: s.text,
+          }}>
             {editionLabel}
           </span>
-          <p className="text-[10px] text-stone-400 mt-1.5">{fmt(publishedAt)}</p>
-          <p className="text-[10px] text-stone-300 mt-0.5 font-mono">{model}</p>
+          <p style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 6 }}>{fmt(publishedAt)}</p>
+          <p className="mono" style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2, opacity: 0.6 }}>{model}</p>
         </div>
       </div>
     </div>
@@ -174,40 +256,54 @@ function ScoreCard({
 function ScenarioCoverage({ scenarios }: { scenarios: ScenarioSet }) {
   const [expanded, setExpanded] = useState(false)
 
-  const tagColour = (tag: string): string => {
-    if (tag === "positive") return "bg-emerald-50 text-emerald-700 border-emerald-200"
-    if (tag === "negative") return "bg-red-50 text-red-600 border-red-200"
-    return "bg-stone-100 text-stone-500 border-stone-200"
+  function tagStyle(tag: string): React.CSSProperties {
+    if (tag === "positive") return {
+      background: "var(--ok-bg)",
+      color: "var(--ok)",
+      borderColor: "#6ee7b7",
+    }
+    if (tag === "negative") return {
+      background: "var(--err-bg)",
+      color: "var(--err)",
+      borderColor: "#fca5a5",
+    }
+    return {
+      background: "var(--surface-3)",
+      color: "var(--text-3)",
+      borderColor: "var(--border)",
+    }
   }
 
   return (
     <section>
-      <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-widest mb-3">
+      <p className="eyebrow" style={{ color: "var(--text-muted)", marginBottom: 12 }}>
         Scenario coverage
       </p>
 
-      <div className="rounded-xl border border-stone-200 bg-white px-5 py-4 space-y-4">
+      <div className="card" style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
 
         {/* Summary row */}
-        <div className="flex items-center gap-6">
-          <div className="text-center">
-            <p className="text-2xl font-black text-stone-900">{scenarios.scenario_count}</p>
-            <p className="text-[10px] text-stone-400">total</p>
+        <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
+          <div style={{ textAlign: "center" }}>
+            <p style={{ fontSize: 24, fontWeight: 900, color: "var(--text)" }}>{scenarios.scenario_count}</p>
+            <p style={{ fontSize: 10, color: "var(--text-muted)" }}>total</p>
           </div>
-          <div className="w-px h-8 bg-stone-100" />
-          <div className="text-center">
-            <p className="text-xl font-bold text-emerald-700">{scenarios.positive_count}</p>
-            <p className="text-[10px] text-stone-400">positive</p>
+          <div style={{ width: 1, height: 32, background: "var(--surface-3)" }} />
+          <div style={{ textAlign: "center" }}>
+            <p style={{ fontSize: 20, fontWeight: 700, color: "var(--ok)" }}>{scenarios.positive_count}</p>
+            <p style={{ fontSize: 10, color: "var(--text-muted)" }}>positive</p>
           </div>
-          <div className="w-px h-8 bg-stone-100" />
-          <div className="text-center">
-            <p className="text-xl font-bold text-red-600">{scenarios.negative_count}</p>
-            <p className="text-[10px] text-stone-400">negative</p>
+          <div style={{ width: 1, height: 32, background: "var(--surface-3)" }} />
+          <div style={{ textAlign: "center" }}>
+            <p style={{ fontSize: 20, fontWeight: 700, color: "var(--err)" }}>{scenarios.negative_count}</p>
+            <p style={{ fontSize: 10, color: "var(--text-muted)" }}>negative</p>
           </div>
           {scenarios.description && (
             <>
-              <div className="w-px h-8 bg-stone-100" />
-              <p className="text-xs text-stone-400 leading-relaxed flex-1">{scenarios.description}</p>
+              <div style={{ width: 1, height: 32, background: "var(--surface-3)" }} />
+              <p style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.6, flex: 1 }}>
+                {scenarios.description}
+              </p>
             </>
           )}
         </div>
@@ -216,30 +312,65 @@ function ScenarioCoverage({ scenarios }: { scenarios: ScenarioSet }) {
         <button
           type="button"
           onClick={() => setExpanded(e => !e)}
-          className="text-xs text-stone-400 hover:text-stone-600 transition-colors"
+          style={{
+            background: "none",
+            border: "none",
+            padding: 0,
+            cursor: "pointer",
+            fontSize: 12,
+            color: "var(--text-muted)",
+            textAlign: "left",
+          }}
         >
           {expanded ? "Hide scenarios" : `Show ${scenarios.scenario_count} scenarios`}
         </button>
 
         {expanded && (
-          <div className="space-y-2 pt-1">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 4 }}>
             {scenarios.scenarios.map((s, i) => (
-              <div key={s.id} className="flex items-start gap-3 py-2 border-t border-stone-50 first:border-0">
-                <span className="text-[10px] font-black text-stone-300 tabular-nums mt-0.5 w-4 shrink-0">
+              <div
+                key={s.id}
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 12,
+                  padding: "8px 0",
+                  borderTop: i === 0 ? "none" : "1px solid var(--border)",
+                }}
+              >
+                <span className="mono" style={{
+                  fontSize: 10,
+                  fontWeight: 900,
+                  color: "var(--text-muted)",
+                  marginTop: 2,
+                  width: 16,
+                  flexShrink: 0,
+                }}>
                   {String(i + 1).padStart(2, "0")}
                 </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-stone-800 font-medium">{s.label}</p>
-                  <p className="font-mono text-[10px] text-stone-400 mt-0.5">{s.id}</p>
-                  <p className="text-[10px] text-stone-400 mt-0.5">
-                    expected: <span className="font-mono">{s.expected_outcome_type}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 13, color: "var(--text)", fontWeight: 500 }}>{s.label}</p>
+                  <p className="mono" style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{s.id}</p>
+                  <p style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+                    expected: <span className="mono">{s.expected_outcome_type}</span>
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-1 mt-0.5 shrink-0">
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 2, flexShrink: 0 }}>
                   {s.tags.map(tag => (
                     <span
                       key={tag}
-                      className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${tagColour(tag)}`}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        borderRadius: 999,
+                        border: "1px solid",
+                        padding: "2px 6px",
+                        fontSize: 9,
+                        fontWeight: 600,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.06em",
+                        ...tagStyle(tag),
+                      }}
                     >
                       {tag}
                     </span>
@@ -260,29 +391,69 @@ function CriterionRow({ c }: { c: CriterionResult }) {
   const [open, setOpen] = useState(false)
 
   return (
-    <div className="border-b border-stone-100 last:border-0">
+    <div style={{ borderBottom: "1px solid var(--border)" }}>
       <button
-        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-stone-50 transition-colors text-left"
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          padding: "12px 16px",
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          textAlign: "left",
+          transition: "background 0.15s",
+        }}
+        onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
+        onMouseLeave={e => (e.currentTarget.style.background = "none")}
         onClick={() => setOpen(o => !o)}
         type="button"
       >
-        <span className={`flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
-          c.passed ? "bg-emerald-100 text-emerald-600" : "bg-red-100 text-red-500"
-        }`}>
+        <span style={{
+          flexShrink: 0,
+          width: 20,
+          height: 20,
+          borderRadius: "50%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 10,
+          fontWeight: 700,
+          background: c.passed ? "var(--ok-bg)" : "var(--err-bg)",
+          color: c.passed ? "var(--ok)" : "var(--err)",
+        }}>
           {c.passed ? "✓" : "✗"}
         </span>
-        <span className="flex-1 font-mono text-xs text-stone-700">{c.name}</span>
-        <span className={`text-xs tabular-nums font-medium ${c.passed ? "text-emerald-600" : "text-red-500"}`}>
+        <span className="mono" style={{ flex: 1, fontSize: 12, color: "var(--text-2)" }}>{c.name}</span>
+        <span style={{
+          fontSize: 12,
+          fontVariantNumeric: "tabular-nums",
+          fontWeight: 500,
+          color: c.passed ? "var(--ok)" : "var(--err)",
+        }}>
           {c.points_earned} / {c.points_possible}
         </span>
         {c.detail && (
-          <span className={`text-stone-300 text-xs ml-1 transition-transform ${open ? "rotate-90" : ""}`}>›</span>
+          <span style={{
+            color: "var(--text-muted)",
+            fontSize: 12,
+            marginLeft: 4,
+            display: "inline-block",
+            transition: "transform 0.15s",
+            transform: open ? "rotate(90deg)" : "none",
+          }}>›</span>
         )}
       </button>
 
       {open && c.detail && (
-        <div className="px-4 pb-3 ml-8">
-          <p className="text-xs text-stone-500 leading-relaxed whitespace-pre-wrap">{c.detail}</p>
+        <div style={{ padding: "0 16px 12px", marginLeft: 32 }}>
+          <p style={{
+            fontSize: 12,
+            color: "var(--text-3)",
+            lineHeight: 1.6,
+            whiteSpace: "pre-wrap",
+          }}>{c.detail}</p>
         </div>
       )}
     </div>
@@ -295,24 +466,26 @@ function CriteriaSection({ live }: { live: PlaybookLiveDetail }) {
 
   return (
     <section>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-widest">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <p className="eyebrow" style={{ color: "var(--text-muted)" }}>
           Criteria breakdown
-          <span className="ml-2 normal-case font-normal text-stone-300">(current)</span>
+          <span style={{ marginLeft: 8, textTransform: "none", fontWeight: 400, color: "var(--text-muted)", opacity: 0.6 }}>
+            (current)
+          </span>
         </p>
-        <div className="flex items-center gap-3">
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           {passing > 0 && (
-            <span className="text-xs text-emerald-600 font-medium">{passing} passing</span>
+            <span style={{ fontSize: 12, color: "var(--ok)", fontWeight: 500 }}>{passing} passing</span>
           )}
           {failing > 0 && (
-            <span className="text-xs text-red-500 font-medium">{failing} failing</span>
+            <span style={{ fontSize: 12, color: "var(--err)", fontWeight: 500 }}>{failing} failing</span>
           )}
         </div>
       </div>
 
-      <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
+      <div className="card" style={{ overflow: "hidden", padding: 0 }}>
         {live.criteria.length === 0 ? (
-          <div className="px-6 py-8 text-center text-sm text-stone-400">
+          <div style={{ padding: "32px 24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
             No criteria available for this playbook yet.
           </div>
         ) : (
@@ -320,7 +493,7 @@ function CriteriaSection({ live }: { live: PlaybookLiveDetail }) {
         )}
       </div>
 
-      <p className="text-[10px] text-stone-300 mt-2 text-right">
+      <p style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 8, textAlign: "right", opacity: 0.7 }}>
         Criteria reflect the latest published quality data, not necessarily the frozen edition score.
       </p>
     </section>
@@ -331,10 +504,10 @@ function CriteriaSection({ live }: { live: PlaybookLiveDetail }) {
 
 function LoadingSkeleton() {
   return (
-    <div className="space-y-6">
-      <div className="h-24 rounded-xl bg-stone-100 animate-pulse" />
-      <div className="h-40 rounded-xl bg-stone-100 animate-pulse" />
-      <div className="h-64 rounded-xl bg-stone-100 animate-pulse" />
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+      <div style={{ height: 96, borderRadius: 12, background: "var(--surface-3)", animation: "pulse 1.5s ease-in-out infinite" }} />
+      <div style={{ height: 160, borderRadius: 12, background: "var(--surface-3)", animation: "pulse 1.5s ease-in-out infinite" }} />
+      <div style={{ height: 256, borderRadius: 12, background: "var(--surface-3)", animation: "pulse 1.5s ease-in-out infinite" }} />
     </div>
   )
 }
@@ -352,10 +525,23 @@ function ShareButton() {
   return (
     <button
       onClick={copy}
-      className="inline-flex items-center gap-1.5 text-[10px] font-medium text-stone-500 hover:text-stone-800 border border-stone-200 hover:border-stone-300 rounded-full px-3 py-1 transition-colors bg-white"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        fontSize: 10,
+        fontWeight: 500,
+        color: "var(--text-3)",
+        border: "1px solid var(--border)",
+        borderRadius: 999,
+        padding: "4px 12px",
+        background: "var(--surface)",
+        cursor: "pointer",
+        transition: "color 0.15s, border-color 0.15s",
+      }}
     >
       {copied ? (
-        <><span className="text-emerald-500">✓</span> Copied</>
+        <><span style={{ color: "var(--ok)" }}>✓</span> Copied</>
       ) : (
         <><span>↗</span> Share</>
       )}
@@ -465,16 +651,22 @@ function DeepDiveContent({
   if (!edition) {
     return (
       <AppShell>
-        <div className="mx-auto max-w-3xl px-6 py-10">
-          <Link href="/benchmark" className="text-xs text-stone-400 hover:text-stone-600 transition-colors">
+        <div style={{ maxWidth: 768, margin: "0 auto", padding: "40px 24px" }}>
+          <Link
+            href="/benchmark"
+            style={{ fontSize: 12, color: "var(--text-muted)", textDecoration: "none" }}
+          >
             ← Benchmark
           </Link>
-          <div className="mt-8 rounded-xl border border-stone-200 bg-white px-6 py-10 text-center">
-            <p className="text-sm font-medium text-stone-700">Edition not found</p>
-            <p className="text-xs text-stone-400 mt-1">
-              No edition exists for <code className="font-mono">{editionSlug}</code>.
+          <div className="card" style={{ marginTop: 32, padding: "40px 24px", textAlign: "center" }}>
+            <p style={{ fontSize: 13, fontWeight: 500, color: "var(--text-2)" }}>Edition not found</p>
+            <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+              No edition exists for <code className="mono">{editionSlug}</code>.
             </p>
-            <Link href="/benchmark" className="mt-4 inline-block text-xs text-indigo-600 hover:text-indigo-800">
+            <Link
+              href="/benchmark"
+              style={{ display: "inline-block", marginTop: 16, fontSize: 12, color: "var(--accent)", textDecoration: "none" }}
+            >
               View latest edition →
             </Link>
           </div>
@@ -487,41 +679,54 @@ function DeepDiveContent({
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-3xl px-6 py-10">
+      <div style={{ maxWidth: 768, margin: "0 auto", padding: "40px 24px" }}>
 
         {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-xs text-stone-400 mb-6">
-          <Link href="/benchmark" className="hover:text-stone-600 transition-colors">Benchmark</Link>
-          <span className="text-stone-200">›</span>
-          <Link href={`/benchmark/${editionSlug}`} className="hover:text-stone-600 transition-colors">{edition.label}</Link>
-          <span className="text-stone-200">›</span>
-          <span className="text-stone-600 font-medium">{displayName}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-muted)", marginBottom: 24 }}>
+          <Link href="/benchmark" style={{ color: "var(--text-muted)", textDecoration: "none" }}>Benchmark</Link>
+          <span style={{ color: "var(--border)" }}>›</span>
+          <Link href={`/benchmark/${editionSlug}`} style={{ color: "var(--text-muted)", textDecoration: "none" }}>{edition.label}</Link>
+          <span style={{ color: "var(--border)" }}>›</span>
+          <span style={{ color: "var(--text-2)", fontWeight: 500 }}>{displayName}</span>
         </div>
 
         {/* Page header */}
-        <div className="mb-8">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-full px-2.5 py-0.5">
+        <div style={{ marginBottom: 32 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <span style={{
+              fontSize: 10,
+              fontWeight: 600,
+              color: "var(--accent)",
+              background: "color-mix(in srgb, var(--accent) 10%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)",
+              borderRadius: 999,
+              padding: "2px 10px",
+            }}>
               {edition.label}
             </span>
-            <span className="text-[10px] text-stone-400">{edition.period}</span>
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{edition.period}</span>
           </div>
-          <h1 className="text-2xl font-black text-stone-900">{displayName}</h1>
-          <p className="font-mono text-sm text-stone-400 mt-0.5">{playbookSlug}</p>
+          <h1 style={{ fontSize: 24, fontWeight: 900, color: "var(--text)", margin: 0 }}>{displayName}</h1>
+          <p className="mono" style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>{playbookSlug}</p>
         </div>
 
         {loading ? (
           <LoadingSkeleton />
         ) : error ? (
-          <div className="rounded-xl border border-red-100 bg-red-50 px-5 py-4">
-            <p className="text-sm text-red-600">{error}</p>
+          <div style={{
+            borderRadius: 12,
+            border: "1px solid var(--err-bg)",
+            background: "var(--err-bg)",
+            padding: "16px 20px",
+          }}>
+            <p style={{ fontSize: 13, color: "var(--err)" }}>{error}</p>
           </div>
         ) : baseline ? (
-          <div className="space-y-8">
+          <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
 
             {/* Baseline score */}
             <section>
-              <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-widest mb-3">
+              <p className="eyebrow" style={{ color: "var(--text-muted)", marginBottom: 12 }}>
                 Edition score
               </p>
               <ScoreCard
@@ -543,18 +748,24 @@ function DeepDiveContent({
             )}
 
             {/* Footer links */}
-            <div className="flex items-center justify-between pt-2 border-t border-stone-100">
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              paddingTop: 8,
+              borderTop: "1px solid var(--border)",
+            }}>
               <Link
                 href={`/benchmark/${editionSlug}`}
-                className="text-xs text-stone-400 hover:text-stone-600 transition-colors"
+                style={{ fontSize: 12, color: "var(--text-muted)", textDecoration: "none" }}
               >
                 ← Back to {edition.label} leaderboard
               </Link>
-              <div className="flex items-center gap-4">
+              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                 <ShareButton />
                 <Link
                   href={`/eval/${encodeURIComponent(playbookSlug)}`}
-                  className="text-xs text-indigo-600 hover:text-indigo-800 transition-colors font-medium"
+                  style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none", fontWeight: 500 }}
                 >
                   View quality details →
                 </Link>

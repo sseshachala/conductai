@@ -43,22 +43,22 @@ interface SpendStats {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const AI_TOOL_BADGES: Record<string, { label: string; bg: string; text: string }> = {
-  claude_code: { label: "Claude Code", bg: "bg-indigo-100", text: "text-indigo-700" },
-  codex:       { label: "Codex",       bg: "bg-green-100",  text: "text-green-700"  },
-  cursor:      { label: "Cursor",      bg: "bg-purple-100", text: "text-purple-700" },
-  windsurf:    { label: "Windsurf",    bg: "bg-sky-100",    text: "text-sky-700"    },
-  gemini:      { label: "Gemini",      bg: "bg-orange-100", text: "text-orange-700" },
+const AI_TOOL_BADGES: Record<string, { label: string; bg: string; color: string }> = {
+  claude_code: { label: "Claude Code", bg: "var(--accent-weak)",                color: "var(--accent-text)"       },
+  codex:       { label: "Codex",       bg: "var(--ok-bg)",                      color: "var(--ok)"                },
+  cursor:      { label: "Cursor",      bg: "rgba(147,51,234,0.10)",             color: "rgb(126,34,206)"          },
+  windsurf:    { label: "Windsurf",    bg: "rgba(14,165,233,0.10)",             color: "rgb(2,132,199)"           },
+  gemini:      { label: "Gemini",      bg: "rgba(249,115,22,0.10)",             color: "rgb(234,88,12)"           },
 }
 
 const DECISION_CONFIG: Record<
   string,
-  { label: string; dot?: string; bg?: string; text?: string; icon?: string }
+  { label: string; dotColor?: string; bg?: string; color?: string }
 > = {
-  allowed:  { label: "allowed",          dot: "bg-green-400"                                       },
-  blocked:  { label: "blocked",          bg: "bg-red-100",   text: "text-red-700"                  },
-  warned:   { label: "warned",           bg: "bg-amber-100", text: "text-amber-700"                },
-  approval: { label: "approval pending", bg: "bg-blue-100",  text: "text-blue-700"                 },
+  allowed:  { label: "allowed",          dotColor: "var(--ok)"                                    },
+  blocked:  { label: "blocked",          bg: "var(--err-bg)",   color: "var(--err)"               },
+  warned:   { label: "warned",           bg: "var(--warn-bg)",  color: "var(--warn)"              },
+  approval: { label: "approval pending", bg: "var(--info-bg)",  color: "var(--info)"              },
 }
 
 const ALL_TOOLS     = ["claude_code", "codex", "cursor", "windsurf", "gemini"]
@@ -144,13 +144,31 @@ function AiToolBadge({ tool }: { tool: string }) {
   const cfg = AI_TOOL_BADGES[normTool(tool)]
   if (!cfg) {
     return (
-      <span className="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full bg-stone-100 text-stone-600">
+      <span style={{
+        display: "inline-flex",
+        alignItems: "center",
+        fontSize: 12,
+        fontWeight: 500,
+        padding: "2px 8px",
+        borderRadius: 999,
+        background: "var(--surface-3)",
+        color: "var(--text-2)",
+      }}>
         {tool}
       </span>
     )
   }
   return (
-    <span className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full ${cfg.bg} ${cfg.text}`}>
+    <span style={{
+      display: "inline-flex",
+      alignItems: "center",
+      fontSize: 12,
+      fontWeight: 500,
+      padding: "2px 8px",
+      borderRadius: 999,
+      background: cfg.bg,
+      color: cfg.color,
+    }}>
       {cfg.label}
     </span>
   )
@@ -158,17 +176,26 @@ function AiToolBadge({ tool }: { tool: string }) {
 
 function DecisionBadge({ decision }: { decision: string }) {
   const cfg = DECISION_CONFIG[decision]
-  if (!cfg) return <span className="text-xs text-stone-400">{decision}</span>
+  if (!cfg) return <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{decision}</span>
 
   if (decision === "allowed") {
     return (
-      <span className="inline-flex items-center gap-1 text-xs text-green-700">
-        <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--ok)" }}>
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: cfg.dotColor, display: "inline-block" }} />
       </span>
     )
   }
   return (
-    <span className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full ${cfg.bg} ${cfg.text}`}>
+    <span style={{
+      display: "inline-flex",
+      alignItems: "center",
+      fontSize: 12,
+      fontWeight: 500,
+      padding: "2px 8px",
+      borderRadius: 999,
+      background: cfg.bg,
+      color: cfg.color,
+    }}>
       {cfg.label}
     </span>
   )
@@ -236,9 +263,11 @@ function CostTrendChart({
       </div>
 
       {loading ? (
-        <div className="h-40 bg-stone-50 rounded-lg animate-pulse" />
+        <div style={{ height: 160, background: "var(--surface-2)", borderRadius: 8 }} />
       ) : !hasData ? (
-        <div className="h-40 flex items-center justify-center text-sm text-stone-400">No cost data yet</div>
+        <div style={{ height: 160, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "var(--text-muted)" }}>
+          No cost data yet
+        </div>
       ) : (
         <>
           <ResponsiveContainer width="100%" height={160}>
@@ -258,7 +287,7 @@ function CostTrendChart({
               />
               <Tooltip
                 formatter={(val, name) => [`$${Number(val ?? 0).toFixed(4)}`, String(name)]}
-                contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e7e5e4" }}
+                contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid var(--border)" }}
               />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="claude" name="Claude" stackId="a" fill="var(--accent)" radius={[0, 0, 0, 0]} />
@@ -454,6 +483,18 @@ function ByToolTable({ events }: { events: GuardEvent[] }) {
       ))}
     </div>
   )
+}
+
+// ─── Select style helper ──────────────────────────────────────────────────────
+
+const selectStyle: React.CSSProperties = {
+  fontSize: 13,
+  border: "1px solid var(--border)",
+  borderRadius: 8,
+  padding: "6px 12px",
+  background: "var(--surface)",
+  color: "var(--text-2)",
+  outline: "none",
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -709,7 +750,15 @@ function GuardDashboard() {
 
       {/* Viewer-scoped notice */}
       {!loading && !permissionsLoading && !permissions.canViewAllActivity && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800 mb-4">
+        <div style={{
+          borderRadius: 8,
+          border: "1px solid var(--warn-bd)",
+          background: "var(--warn-bg)",
+          padding: "10px 16px",
+          fontSize: 12,
+          color: "var(--warn)",
+          marginBottom: 16,
+        }}>
           You can view your own activity only. Contact your admin to request broader access.
         </div>
       )}
@@ -718,7 +767,7 @@ function GuardDashboard() {
       {loading ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 16 }}>
           {[...Array(5)].map((_, i) => (
-            <div key={i} className="card card-pad animate-pulse" style={{ height: 80 }} />
+            <div key={i} className="card card-pad" style={{ height: 80 }} />
           ))}
         </div>
       ) : (
@@ -770,11 +819,11 @@ function GuardDashboard() {
       )}
 
       {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-3" style={{ marginBottom: 12 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, marginBottom: 12 }}>
         <select
           value={filterDateRange}
           onChange={e => setFilterDateRange(e.target.value)}
-          className="text-sm border border-stone-200 rounded-lg px-3 py-1.5 bg-white text-stone-700 outline-none focus:ring-2 focus:ring-indigo-200"
+          style={selectStyle}
         >
           <option value="today">Today</option>
           <option value="7d">Last 7 days</option>
@@ -785,7 +834,7 @@ function GuardDashboard() {
         <select
           value={filterTool}
           onChange={e => setFilterTool(e.target.value)}
-          className="text-sm border border-stone-200 rounded-lg px-3 py-1.5 bg-white text-stone-700 outline-none focus:ring-2 focus:ring-indigo-200"
+          style={selectStyle}
         >
           <option value="all">All tools</option>
           {ALL_TOOLS.map(t => (
@@ -796,7 +845,7 @@ function GuardDashboard() {
         <select
           value={filterDecision}
           onChange={e => setFilterDecision(e.target.value)}
-          className="text-sm border border-stone-200 rounded-lg px-3 py-1.5 bg-white text-stone-700 outline-none focus:ring-2 focus:ring-indigo-200"
+          style={selectStyle}
         >
           <option value="all">All decisions</option>
           {ALL_DECISIONS.map(d => (
@@ -807,7 +856,7 @@ function GuardDashboard() {
         <select
           value={filterDev}
           onChange={e => setFilterDev(e.target.value)}
-          className="text-sm border border-stone-200 rounded-lg px-3 py-1.5 bg-white text-stone-700 outline-none focus:ring-2 focus:ring-indigo-200"
+          style={selectStyle}
         >
           <option value="all">All developers</option>
           {developerEmails.map(email => (
@@ -815,18 +864,34 @@ function GuardDashboard() {
           ))}
         </select>
 
-        <div className="relative">
+        <div style={{ position: "relative" }}>
           <input
             type="text"
             value={filterSearch}
             onChange={e => setFilterSearch(e.target.value)}
             placeholder="Search rule or email…"
-            className="text-sm border border-stone-200 rounded-lg pl-3 pr-7 py-1.5 bg-white text-stone-700 outline-none focus:ring-2 focus:ring-indigo-200 w-48"
+            style={{
+              ...selectStyle,
+              paddingRight: 28,
+              width: 192,
+            }}
           />
           {filterSearch && (
             <button
               onClick={() => setFilterSearch("")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 text-xs"
+              style={{
+                position: "absolute",
+                right: 8,
+                top: "50%",
+                transform: "translateY(-50%)",
+                background: "none",
+                border: "none",
+                color: "var(--text-muted)",
+                fontSize: 12,
+                cursor: "pointer",
+                padding: 0,
+                lineHeight: 1,
+              }}
             >✕</button>
           )}
         </div>
@@ -834,20 +899,36 @@ function GuardDashboard() {
         {(filterTool !== "all" || filterDecision !== "all" || filterDev !== "all" || filterSearch) && (
           <button
             onClick={() => { setFilterTool("all"); setFilterDecision("all"); setFilterDev("all"); setFilterSearch("") }}
-            className="text-xs text-stone-400 hover:text-stone-700 border border-stone-200 rounded-lg px-3 py-1.5 hover:bg-stone-50 transition-colors"
+            style={{
+              fontSize: 12,
+              color: "var(--text-muted)",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              padding: "6px 12px",
+              background: "var(--surface)",
+              cursor: "pointer",
+            }}
           >
             Clear filters
           </button>
         )}
 
-        <span className="ml-auto text-xs text-stone-400">
+        <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" }}>
           {filteredEvents.length} event{filteredEvents.length !== 1 ? "s" : ""}
         </span>
 
         {filteredEvents.length > 0 && (
           <button
             onClick={exportCSV}
-            className="text-xs text-stone-500 hover:text-stone-800 border border-stone-200 rounded-lg px-3 py-1.5 hover:bg-stone-50 transition-colors"
+            style={{
+              fontSize: 12,
+              color: "var(--text-2)",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              padding: "6px 12px",
+              background: "var(--surface)",
+              cursor: "pointer",
+            }}
           >
             Export CSV
           </button>
@@ -856,62 +937,90 @@ function GuardDashboard() {
 
       {/* Activity feed */}
       {loading ? (
-        <div className="space-y-2 animate-pulse">
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {[...Array(6)].map((_, i) => (
-            <div key={i} className="bg-stone-100 rounded-xl h-12" />
+            <div key={i} style={{ background: "var(--surface-3)", borderRadius: 12, height: 48 }} />
           ))}
         </div>
       ) : filteredEvents.length === 0 ? (
-        <div className="rounded-xl border border-stone-200 bg-white px-6 py-10 text-center text-sm text-stone-400">
+        <div style={{
+          borderRadius: 12,
+          border: "1px solid var(--border)",
+          background: "var(--surface)",
+          padding: "40px 24px",
+          textAlign: "center",
+          fontSize: 13,
+          color: "var(--text-muted)",
+        }}>
           No events match the current filters.
         </div>
       ) : (
         <>
-          <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-            <table className="w-full text-sm">
+          <div style={{ background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
+            <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
               <thead>
-                <tr className="border-b border-stone-100 text-xs text-stone-400 uppercase tracking-wide">
-                  <th className="px-4 py-3 text-left font-medium w-20">Time</th>
-                  <th className="px-4 py-3 text-left font-medium">User</th>
-                  <th className="px-4 py-3 text-left font-medium">AI tool</th>
-                  <th className="px-4 py-3 text-left font-medium">Call</th>
-                  <th className="px-4 py-3 text-left font-medium">Input</th>
-                  <th className="px-4 py-3 text-left font-medium">Decision</th>
-                  <th className="px-4 py-3 text-right font-medium">Tokens</th>
+                <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                  {[
+                    { label: "Time",     w: 80,   align: "left"  as const },
+                    { label: "User",     w: undefined, align: "left"  as const },
+                    { label: "AI tool",  w: undefined, align: "left"  as const },
+                    { label: "Call",     w: undefined, align: "left"  as const },
+                    { label: "Input",    w: undefined, align: "left"  as const },
+                    { label: "Decision", w: undefined, align: "left"  as const },
+                    { label: "Tokens",   w: undefined, align: "right" as const },
+                  ].map(col => (
+                    <th
+                      key={col.label}
+                      style={{
+                        padding: "12px 16px",
+                        textAlign: col.align,
+                        fontWeight: 500,
+                        fontSize: 11,
+                        color: "var(--text-muted)",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                        width: col.w,
+                      }}
+                    >
+                      {col.label}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {filteredEvents.map(ev => (
+                {filteredEvents.map((ev, idx) => (
                   <tr
                     key={ev.id}
-                    className="border-b border-stone-100 last:border-0 hover:bg-stone-50 transition-colors"
-                    style={{ background: ev.decision === "blocked" ? "var(--err-bg)" : undefined }}
+                    style={{
+                      borderBottom: idx < filteredEvents.length - 1 ? "1px solid var(--border)" : undefined,
+                      background: ev.decision === "blocked" ? "var(--err-bg)" : undefined,
+                    }}
                   >
-                    <td className="px-4 py-3 text-stone-400 text-xs tabular-nums whitespace-nowrap">
+                    <td style={{ padding: "12px 16px", color: "var(--text-muted)", fontSize: 12, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
                       {timeAgo(ev.ts)}
                     </td>
-                    <td className="px-4 py-3 max-w-[160px]">
+                    <td style={{ padding: "12px 16px", maxWidth: 160 }}>
                       {ev.user_email ? (
                         <>
-                          <div className="text-xs font-medium text-stone-700 truncate">
+                          <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {ev.user_email.split("@")[0]}
                           </div>
-                          <div className="text-[11px] text-stone-400 truncate" title={ev.user_email}>
+                          <div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={ev.user_email}>
                             {ev.user_email}
                           </div>
                         </>
                       ) : (
-                        <span className="text-xs text-stone-400">—</span>
+                        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td style={{ padding: "12px 16px" }}>
                       <AiToolBadge tool={ev.ai_tool} />
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs text-stone-600 whitespace-nowrap">
+                    <td style={{ padding: "12px 16px", fontFamily: "var(--font-mono, monospace)", fontSize: 12, color: "var(--text-2)", whiteSpace: "nowrap" }}>
                       {ev.tool_call}
                     </td>
                     <td
-                      className="px-4 py-3 text-xs text-stone-500 max-w-[200px] truncate cursor-copy select-none"
+                      style={{ padding: "12px 16px", fontSize: 12, color: "var(--text-3)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "copy", userSelect: "none" }}
                       title={ev.input_summary ? "Double-click to copy" : undefined}
                       onDoubleClick={() => {
                         if (!ev.input_summary) return
@@ -920,21 +1029,21 @@ function GuardDashboard() {
                     >
                       {ev.input_summary ?? "—"}
                     </td>
-                    <td className="px-4 py-3">
+                    <td style={{ padding: "12px 16px" }}>
                       <DecisionBadge decision={ev.decision} />
                       {ev.rule_message && ev.decision !== "allowed" && (
-                        <div className="text-[11px] text-stone-400 mt-0.5 truncate max-w-[120px]" title={ev.rule_message}>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 120 }} title={ev.rule_message}>
                           {ev.rule_message}
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right text-xs tabular-nums whitespace-nowrap">
+                    <td style={{ padding: "12px 16px", textAlign: "right", fontSize: 12, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
                       {(() => {
                         const used = formatTokensUsed(ev.tokens_before, ev.tokens_after)
-                        if (used) return <span className="text-stone-500">{used}</span>
+                        if (used) return <span style={{ color: "var(--text-2)" }}>{used}</span>
                         if (ev.tokens_saved && ev.tokens_saved > 0)
-                          return <span className="text-green-700">{formatTokensSaved(ev.tokens_saved)} saved</span>
-                        return <span className="text-stone-300">—</span>
+                          return <span style={{ color: "var(--ok)" }}>{formatTokensSaved(ev.tokens_saved)} saved</span>
+                        return <span style={{ color: "var(--border)" }}>—</span>
                       })()}
                     </td>
                   </tr>
@@ -943,11 +1052,19 @@ function GuardDashboard() {
             </table>
           </div>
           {hasMore && (
-            <div className="flex justify-center pt-4 pb-2">
+            <div style={{ display: "flex", justifyContent: "center", paddingTop: 16, paddingBottom: 8 }}>
               <button
                 onClick={loadMore}
                 disabled={loadingMore}
-                className="text-sm text-indigo-600 hover:text-indigo-800 disabled:text-stone-400 font-medium"
+                style={{
+                  fontSize: 13,
+                  fontWeight: 500,
+                  color: loadingMore ? "var(--text-muted)" : "var(--accent-text)",
+                  background: "none",
+                  border: "none",
+                  cursor: loadingMore ? "default" : "pointer",
+                  padding: 0,
+                }}
               >
                 {loadingMore ? "Loading…" : "Load more"}
               </button>

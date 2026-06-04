@@ -32,8 +32,14 @@ interface RunMeta {
 type Tab = "summary" | "trace" | "ai-trace" | "files" | "approvals" | "cost"
 
 function Pill({ children, color = "stone" }: { children: React.ReactNode; color?: "stone"|"blue"|"amber"|"green"|"red" }) {
-  const map = { stone: "bg-stone-100 text-stone-600", blue: "bg-blue-50 text-blue-700", amber: "bg-amber-50 text-amber-700", green: "bg-green-50 text-green-700", red: "bg-red-50 text-red-600" }
-  return <span className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full ${map[color]}`}>{children}</span>
+  const map: Record<string, { background: string; color: string }> = {
+    stone: { background: "var(--surface-3)", color: "var(--text-2)" },
+    blue:  { background: "var(--info-bg, #eff6ff)", color: "var(--info, #2563eb)" },
+    amber: { background: "var(--warn-bg)", color: "var(--warn)" },
+    green: { background: "var(--ok-bg)", color: "var(--ok)" },
+    red:   { background: "var(--err-bg)", color: "var(--err)" },
+  }
+  return <span style={{ ...map[color], fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", padding: "2px 8px", borderRadius: 999 }}>{children}</span>
 }
 
 export default function RunDetailPage() {
@@ -49,6 +55,8 @@ export default function RunDetailPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [stopping, setStopping] = useState(false)
   const [activeTab, setActiveTab] = useState<Tab>("trace")
+  const [approvalDecision, setApprovalDecision] = useState<"approved" | "rejected" | null>(null)
+  const [approvingRun, setApprovingRun] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   async function buildHeaders() {
@@ -81,6 +89,23 @@ export default function RunDetailPage() {
       setRun(prev => prev ? { ...prev, status: "cancelled" } : prev)
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
     } finally { setStopping(false) }
+  }
+
+  async function handleApproval(decision: "approved" | "rejected") {
+    setApprovingRun(true)
+    try {
+      const headers = await buildHeaders()
+      headers["Content-Type"] = "application/json"
+      await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}/approve`,
+        { method: "POST", headers, body: JSON.stringify({ decision }) }
+      )
+      setApprovalDecision(decision)
+      setRun(prev => prev ? { ...prev, status: decision === "approved" ? "running" : "cancelled" } : prev)
+    } catch {
+      // non-fatal — show decision optimistically
+      setApprovalDecision(decision)
+    } finally { setApprovingRun(false) }
   }
 
   useEffect(() => {
@@ -116,8 +141,8 @@ export default function RunDetailPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId, runId, isLoaded])
 
-  if (loading) return <AppShell><div className="flex items-center justify-center h-64"><p className="text-stone-400 text-sm">Loading…</p></div></AppShell>
-  if (!run) return <AppShell><div className="flex items-center justify-center h-64"><p className="text-stone-500">Run not found.</p></div></AppShell>
+  if (loading) return <AppShell><div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 256 }}><p style={{ fontSize: 14, color: "var(--text-muted)" }}>Loading…</p></div></AppShell>
+  if (!run) return <AppShell><div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 256 }}><p style={{ fontSize: 14, color: "var(--text-3)" }}>Run not found.</p></div></AppShell>
 
   const s = statusStyle(run.status)
   const tabs: { id: Tab; label: string }[] = [
@@ -148,61 +173,69 @@ export default function RunDetailPage() {
   const statTokensDisplay = statTotalTokens > 0 ? statTotalTokens.toLocaleString() : "—"
   const statCostDisplay   = statTotalCost   > 0 ? `$${statTotalCost.toFixed(2)}`   : "—"
 
+  const sKey = statusKey(run.status)
+
   return (
     <AppShell>
-      <div className="mx-auto max-w-5xl px-6 py-8">
+      <div style={{ maxWidth: 900, margin: "0 auto", padding: "28px 24px" }}>
         {/* Breadcrumb */}
-        <nav className="flex items-center gap-1.5 text-xs text-stone-400 mb-5">
-          <Link href="/projects" className="hover:text-stone-600">Projects</Link>
-          {projectId && projectName && (<><span>/</span><Link href={`/projects/${projectId}`} className="hover:text-stone-600 max-w-[100px] truncate">{projectName}</Link></>)}
+        <nav style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-3)", marginBottom: 16 }}>
+          <Link href="/projects" style={{ color: "var(--text-3)", textDecoration: "none" }}>Projects</Link>
+          {projectId && projectName && (<><span>/</span><Link href={`/projects/${projectId}`} style={{ color: "var(--text-3)", textDecoration: "none", maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "inline-block" }}>{projectName}</Link></>)}
           <span>/</span>
-          <Link href={`/workflows/${workflowId}`} className="hover:text-stone-600 max-w-[120px] truncate">{workflowName ?? workflowId.slice(0,8)}</Link>
+          <Link href={`/workflows/${workflowId}`} style={{ color: "var(--text-3)", textDecoration: "none", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "inline-block" }}>{workflowName ?? workflowId.slice(0,8)}</Link>
           <span>/</span>
-          <span className="font-mono text-stone-500">{run.id.slice(0,8)}…</span>
+          <span className="mono" style={{ color: "var(--text-2)", fontSize: 11 }}>{run.id.slice(0,8)}…</span>
         </nav>
 
         {/* Header */}
-        <div className="mb-6 flex items-start justify-between gap-4">
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 22 }}>
           <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-xl font-semibold text-stone-900">{workflowName ?? "Run"}</h2>
-              {projectName && <Pill>{projectName}</Pill>}
+            {/* Line 1: title + project chip + status badge */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+              <h2 className="page-title" style={{ fontSize: 24, margin: 0 }}>{workflowName ?? "Run"}</h2>
+              {projectName && <span className="chip" style={{ textTransform: "uppercase", letterSpacing: ".06em", fontSize: 10, height: 21 }}>{projectName}</span>}
               {agentModel && (
-                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-purple-50 text-purple-600 border border-purple-100">
+                <span className="chip" style={{ background: "var(--accent-weak)", color: "var(--accent-text)" }}>
                   {agentModel.replace("claude-","").replace(/-\d{10,}$/,"")}
                 </span>
               )}
-            </div>
-            <div className="flex items-center gap-3 mt-2 flex-wrap">
-              <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${s.bg} ${s.text}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+              <span className={`sbadge ${sKey}`} style={{ height: 24, fontSize: 12.5 }}>
+                {(sKey === "run" || sKey === "wait") && <span className="dot pulse" style={{ background: "var(--info)" }} />}
                 {s.label}
               </span>
-              <span className="text-xs text-stone-400">{formatTrigger(run.triggered_by)}</span>
-              {run.trigger_summary && <span className="text-xs text-stone-500">{run.trigger_summary}</span>}
-              {issueNum && <span className="text-xs text-stone-500 bg-stone-100 px-2 py-0.5 rounded">Issue #{issueNum}{issueTitle ? ` — ${issueTitle}` : ""}</span>}
-              {prNum && prUrl && <a href={prUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 hover:underline font-medium">PR #{prNum} →</a>}
             </div>
-            <p className="text-[11px] text-stone-400 mt-1.5 font-mono">{run.id}</p>
+            {/* Line 2: issue chip + issue text / trigger */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text-3)" }}>
+              {issueNum ? (
+                <>
+                  <span className="chip" style={{ height: 20, fontSize: 10.5, flexShrink: 0 }}>Issue</span>
+                  <span>{issueTitle ? `${run.triggered_by?.split(":")[0] ?? ""}:${issueNum?.toString() ?? ""} — ${issueTitle}` : formatTrigger(run.triggered_by)}</span>
+                  {prNum && prUrl && <a href={prUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "var(--accent-text)", fontWeight: 600, textDecoration: "none" }}>PR #{prNum} →</a>}
+                </>
+              ) : (
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{run.trigger_summary ?? formatTrigger(run.triggered_by)}</span>
+              )}
+            </div>
+            {/* Line 3: run UUID */}
+            <p className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 7, margin: "7px 0 0" }}>{run.id}</p>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
             {isActive(run.status) && (
-              <button onClick={stopRun} disabled={stopping}
-                className="text-xs text-red-500 hover:text-red-700 border border-red-200 hover:border-red-300 bg-red-50 hover:bg-red-100 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-40 font-medium">
+              <button onClick={stopRun} disabled={stopping} className="btn btn-ghost btn-sm" style={{ color: "var(--err)", borderColor: "var(--err-bd)" }}>
                 {stopping ? "Stopping…" : "⏹ Stop"}
               </button>
             )}
-            <button onClick={refresh} disabled={refreshing} title="Refresh"
-              className="text-xs text-stone-400 hover:text-stone-700 border border-stone-200 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-40">
-              <svg className={`w-3.5 h-3.5 inline-block mr-1 ${refreshing || isActive(run.status) ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <button onClick={refresh} disabled={refreshing} className="btn btn-ghost btn-sm" title="Refresh">
+              <svg style={{ width: 13, height: 13, display: "inline", marginRight: 4, animation: (refreshing || isActive(run.status)) ? "spin 1s linear infinite" : "none" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
               {isActive(run.status) ? "Live" : "Refresh"}
             </button>
             <button
               onClick={() => { const b = new Blob([JSON.stringify(run,null,2)],{type:"application/json"}); const u=URL.createObjectURL(b); const a=document.createElement("a"); a.href=u; a.download=`run-${run.id.slice(0,8)}.json`; a.click(); URL.revokeObjectURL(u) }}
-              className="text-xs text-stone-400 hover:text-stone-700 border border-stone-200 rounded-lg px-3 py-1.5 transition-colors">
+              className="btn btn-ghost btn-sm">
               ↓ Export
             </button>
           </div>
@@ -222,8 +255,8 @@ export default function RunDetailPage() {
               padding: "16px 20px",
               borderLeft: i ? "1px solid var(--border)" : "none",
             }}>
-              <div style={{ fontSize: 9.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".07em", color: "var(--text-muted)", marginBottom: 7 }}>{label}</div>
-              <div style={{ fontSize: mono ? 14 : 18, fontWeight: 680, letterSpacing: "-.01em", fontFamily: mono ? "var(--font-mono, monospace)" : undefined }}>{value}</div>
+              <div className="eyebrow" style={{ marginBottom: 7 }}>{label}</div>
+              <div style={{ fontSize: mono ? 14 : 18, fontWeight: 680, letterSpacing: "-.01em", fontFamily: mono ? "var(--font-mono, monospace)" : undefined, color: "var(--text)" }}>{value}</div>
             </div>
           ))}
         </div>
@@ -250,53 +283,46 @@ export default function RunDetailPage() {
         </div>
 
         <div>
-
           {/* Summary */}
           {activeTab === "summary" && (
             <div>
-              {/* Summary stat grid — horizontal card with vertical-border cells */}
-              {(() => {
-                const summaryItems: [string, string, boolean][] = [
-                  ["Status",       s.label,                                                   false],
-                  ["Workflow",     workflowName ?? "—",                                        false],
-                  ["Project",      projectName ?? "—",                                         false],
-                  ["Trigger",      formatTrigger(run.triggered_by),                            true ],
+              {/* 2-col meta grid */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 40px", maxWidth: 720 }}>
+                {([
+                  ["Triggered by", formatTrigger(run.triggered_by), true],
                   ["Started",      run.started_at ? new Date(run.started_at).toLocaleString() : "—", false],
-                  ["Elapsed",      duration(run.started_at, run.completed_at),                 false],
-                ]
-                return (
-                  <div className="card" style={{ display: "flex", flexWrap: "wrap", padding: 0, overflow: "hidden", marginBottom: 24 }}>
-                    {summaryItems.map(([label, value, mono], i) => (
-                      <div key={label} style={{
-                        flex: "1 1 160px",
-                        padding: "16px 20px",
-                        borderLeft: i ? "1px solid var(--border)" : "none",
-                        borderTop: i >= 3 ? "1px solid var(--border)" : "none",
-                      }}>
-                        <div style={{ fontSize: 9.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".07em", color: "var(--text-muted)", marginBottom: 7 }}>{label}</div>
-                        <div style={{ fontSize: mono ? 13 : 14, fontWeight: 550, fontFamily: mono ? "var(--font-mono, monospace)" : undefined, color: "var(--text)" }}>
-                          {label === "Status" ? (
-                            <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${s.bg} ${s.text}`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-                              {s.label}
-                            </span>
-                          ) : value}
-                        </div>
-                      </div>
-                    ))}
+                  ["Completed",    run.completed_at ? new Date(run.completed_at).toLocaleString() : "—", false],
+                  ["Version",      run.workflow_version_id?.slice(0, 8) ?? "—", true],
+                  ["Project",      projectName ?? "—", false],
+                  ["Repository",   ((t.repo ?? (triggerCtx as Record<string,unknown> | null | undefined)?.repo) as string | undefined) ?? "—", true],
+                ] as [string, string, boolean][]).map(([label, value, mono]) => (
+                  <div key={label} style={{ borderBottom: "1px solid var(--border)", paddingBottom: 12 }}>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>{label}</div>
+                    <div className={mono ? "mono" : ""} style={{ fontSize: 13.5, fontWeight: 550 }}>{value}</div>
                   </div>
-                )
-              })()}
-              {run.trigger_summary && (
-                <div className="pt-4 border-t border-stone-100 mt-2">
-                  <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-1">Trigger context</p>
-                  <p className="text-sm text-stone-700">{run.trigger_summary}</p>
+                ))}
+              </div>
+
+              {/* Approval notice */}
+              {(run.status === "paused" || run.status === "waiting_approval" || run.status === "waiting") && (
+                <div className="card" style={{ marginTop: 24, padding: "16px 18px", display: "flex", gap: 13, alignItems: "flex-start", maxWidth: 720 }}>
+                  <span style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, display: "grid", placeItems: "center", background: "var(--warn-bg)", color: "var(--warn)" }}>
+                    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <circle cx={12} cy={12} r={10} /><polyline points="12 6 12 12 16 14" />
+                    </svg>
+                  </span>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13.5, marginBottom: 2 }}>Paused on approval</div>
+                    <div style={{ fontSize: 12.5, color: "var(--text-3)", lineHeight: 1.5 }}>This run is waiting on a human decision in the <b>Approvals</b> tab before it merges to main.</div>
+                  </div>
                 </div>
               )}
+
+              {/* PR links */}
               {(issueNum || (prNum && prUrl)) && (
-                <div className="pt-4 border-t border-stone-100 mt-2 flex flex-wrap gap-3">
-                  {issueNum && <span className="text-xs text-stone-500 bg-stone-100 px-2 py-0.5 rounded">Issue #{issueNum}{issueTitle ? ` — ${issueTitle}` : ""}</span>}
-                  {prNum && prUrl && <a href={prUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 hover:underline font-medium">PR #{prNum} →</a>}
+                <div style={{ marginTop: 20, display: "flex", flexWrap: "wrap", gap: 10 }}>
+                  {issueNum && <span className="chip">{`Issue #${issueNum}${issueTitle ? ` — ${issueTitle}` : ""}`}</span>}
+                  {prNum && prUrl && <a href={prUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "var(--accent-text)", fontWeight: 600, textDecoration: "none" }}>PR #{prNum} →</a>}
                 </div>
               )}
             </div>
@@ -321,7 +347,7 @@ export default function RunDetailPage() {
             />
           )}
 
-          {/* AI Trace (conversation) */}
+          {/* AI Trace */}
           {activeTab === "ai-trace" && (
             <ConversationTrace workflowId={workflowId} runId={runId} getToken={getToken} />
           )}
@@ -329,7 +355,6 @@ export default function RunDetailPage() {
           {/* Files */}
           {activeTab === "files" && (() => {
             const state = (run.state ?? {}) as Record<string, unknown>
-            // Collect all block outputs that have pr_url, files_changed, or diff_stat
             const blocks = Object.entries(state).filter(([k]) => !k.startsWith("__") && !k.startsWith("_"))
             const allPrUrls: {url: string; num?: number; block: string}[] = []
             const allFiles: {file: string; block: string}[] = []
@@ -342,47 +367,53 @@ export default function RunDetailPage() {
               }
               if (v?.diff_stat && !diffStat) diffStat = v.diff_stat as string
             }
-            // Also check top-level trigger state
             if (prUrl && !allPrUrls.find(p => p.url === prUrl)) allPrUrls.push({ url: prUrl, num: prNum, block: "trigger" })
 
             if (allPrUrls.length === 0 && allFiles.length === 0 && !diffStat) return (
-              <div className="text-center py-12">
-                <p className="text-stone-500 font-medium mb-1">No file artifacts yet</p>
-                <p className="text-stone-400 text-sm">PRs opened and files changed will appear here once the run completes.</p>
+              <div style={{ textAlign: "center", padding: "48px 0" }}>
+                <p style={{ fontSize: 14, fontWeight: 600, color: "var(--text-2)", marginBottom: 6 }}>No file artifacts yet</p>
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>PRs opened and files changed will appear here once the run completes.</p>
               </div>
             )
             return (
-              <div className="space-y-5">
+              <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
                 {allPrUrls.length > 0 && (
                   <div>
-                    <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-2">Pull Requests</p>
-                    <div className="divide-y divide-stone-100 rounded-xl border border-stone-200 overflow-hidden">
-                      {allPrUrls.map((pr, i) => (
-                        <a key={i} href={pr.url} target="_blank" rel="noopener noreferrer"
-                          className="flex items-center justify-between px-4 py-3 hover:bg-stone-50 transition-colors group">
-                          <span className="text-sm text-stone-700 font-medium group-hover:text-indigo-600">
-                            {pr.num ? `PR #${pr.num}` : "Pull Request"}
-                          </span>
-                          <span className="text-xs text-indigo-500">Open →</span>
-                        </a>
-                      ))}
-                    </div>
+                    <p className="eyebrow" style={{ marginBottom: 10 }}>Pull request</p>
+                    {allPrUrls.map((pr, i) => (
+                      <div key={i} className="card" style={{ padding: "15px 18px", display: "flex", alignItems: "center", gap: 12, marginBottom: i < allPrUrls.length - 1 ? 8 : 0 }}>
+                        <span style={{ width: 32, height: 32, borderRadius: 8, background: "var(--text)", color: "var(--surface)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx={18} cy={18} r={3}/><circle cx={6} cy={6} r={3}/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1={6} y1={9} x2={6} y2={21}/></svg>
+                        </span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 650, fontSize: 14 }}>{pr.num ? `#${pr.num} · Pull Request` : "Pull Request"}</div>
+                          <div className="mono" style={{ fontSize: 12, color: "var(--text-muted)" }}>draft</div>
+                        </div>
+                        <a href={pr.url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm" style={{ color: "var(--accent-text)", borderColor: "var(--accent-ring, var(--border))", textDecoration: "none" }}>Open →</a>
+                      </div>
+                    ))}
                   </div>
                 )}
                 {allFiles.length > 0 && (
                   <div>
-                    <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-2">Files Changed ({allFiles.length})</p>
-                    <div className="rounded-xl border border-stone-200 overflow-hidden divide-y divide-stone-100">
+                    <p className="eyebrow" style={{ marginBottom: 10 }}>Diff summary</p>
+                    <div className="card" style={{ overflow: "hidden" }}>
                       {allFiles.map(({ file }, i) => (
-                        <div key={i} className="px-4 py-2 font-mono text-xs text-stone-700">{file}</div>
+                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 16px", borderBottom: i < allFiles.length - 1 ? "1px solid var(--border)" : "none" }}>
+                          <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ color: "var(--text-muted)", flexShrink: 0 }}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                          <span className="mono" style={{ fontSize: 12.5, flex: 1 }}>{file}</span>
+                        </div>
                       ))}
+                      {diffStat && (
+                        <div style={{ padding: "10px 16px", fontSize: 12, color: "var(--text-muted)", background: "var(--surface-2)" }}>{diffStat}</div>
+                      )}
                     </div>
                   </div>
                 )}
-                {diffStat && (
+                {!allFiles.length && diffStat && (
                   <div>
-                    <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-2">Diff Summary</p>
-                    <pre className="bg-stone-900 text-stone-200 rounded-xl px-4 py-3 text-xs font-mono overflow-x-auto whitespace-pre-wrap">{diffStat}</pre>
+                    <p className="eyebrow" style={{ marginBottom: 8 }}>Diff Summary</p>
+                    <pre className="card mono" style={{ background: "var(--surface-3)", fontSize: 12, padding: "14px 16px", overflowX: "auto", whiteSpace: "pre-wrap", color: "var(--text-2)" }}>{diffStat}</pre>
                   </div>
                 )}
               </div>
@@ -392,10 +423,55 @@ export default function RunDetailPage() {
           {/* Approvals */}
           {activeTab === "approvals" && (
             <div>
-              {run.status === "paused" ? (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
-                  <p className="font-semibold mb-1">Waiting for approval</p>
-                  <p className="text-amber-700">This run is paused and waiting for a human decision before continuing.</p>
+              {run.status === "paused" && !approvalDecision ? (
+                <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+                  <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
+                    <span className="chip" style={{ height: 21, fontSize: 9.5, fontWeight: 800, letterSpacing: ".07em", textTransform: "uppercase" }}>Approval</span>
+                    <span style={{ fontWeight: 650, fontSize: 14 }}>Awaiting review</span>
+                  </div>
+                  <div style={{ padding: 18 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 16 }}>
+                      <span className="dot pulse" style={{ background: "var(--warn)" }} />
+                      <span style={{ fontSize: 13.5, color: "var(--text-2)" }}>The run is paused and waiting for a human decision before it continues.</span>
+                    </div>
+                    {run.trigger_summary && (
+                      <div className="card" style={{ padding: "12px 14px", background: "var(--surface-2)", marginBottom: 16 }}>
+                        <div style={{ fontSize: 12.5, color: "var(--text-3)", lineHeight: 1.5 }}>{run.trigger_summary}</div>
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: 9 }}>
+                      <button
+                        className="btn btn-accent"
+                        disabled={approvingRun}
+                        onClick={() => handleApproval("approved")}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                      >
+                        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><polyline points="20 6 9 17 4 12"/></svg>
+                        Approve &amp; continue
+                      </button>
+                      <button
+                        className="btn btn-ghost"
+                        disabled={approvingRun}
+                        onClick={() => handleApproval("rejected")}
+                        style={{ color: "var(--err)", borderColor: "var(--err-bd)", display: "inline-flex", alignItems: "center", gap: 6 }}
+                      >
+                        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : approvalDecision ? (
+                <div className="card" style={{ padding: "16px 18px", display: "flex", alignItems: "center", gap: 12 }}>
+                  <span style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, display: "grid", placeItems: "center", background: approvalDecision === "approved" ? "var(--ok-bg)" : "var(--err-bg)", color: approvalDecision === "approved" ? "var(--ok)" : "var(--err)" }}>
+                    {approvalDecision === "approved"
+                      ? <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4}><polyline points="20 6 9 17 4 12"/></svg>
+                      : <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>}
+                  </span>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13.5, textTransform: "capitalize" }}>{approvalDecision}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>just now</div>
+                  </div>
                 </div>
               ) : (() => {
                 const state = run.state as Record<string, unknown> | null
@@ -403,19 +479,17 @@ export default function RunDetailPage() {
                   .filter(([k]) => k.startsWith("__approval_"))
                   .map(([k, v]) => ({ blockId: k.replace("__approval_", ""), decision: v as string }))
                 return approvals.length > 0 ? (
-                  <div className="divide-y divide-stone-100">
-                    {approvals.map(({ blockId, decision }) => (
-                      <div key={blockId} className="flex items-center justify-between py-3">
-                        <span className="text-sm text-stone-600 font-mono">{blockId}</span>
-                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${decision === "approved" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
-                          {decision}
-                        </span>
+                  <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+                    {approvals.map(({ blockId, decision }, i) => (
+                      <div key={blockId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderTop: i ? "1px solid var(--border)" : "none" }}>
+                        <span className="mono" style={{ fontSize: 12.5, color: "var(--text-2)" }}>{blockId}</span>
+                        <span className={`sbadge ${decision === "approved" ? "ok" : "err"}`}>{decision}</span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-12">
-                    <p className="text-stone-400 text-sm">No approval decisions recorded for this run.</p>
+                  <div style={{ textAlign: "center", padding: "48px 0" }}>
+                    <p style={{ fontSize: 13, color: "var(--text-muted)" }}>No approval decisions recorded for this run.</p>
                   </div>
                 )
               })()}
@@ -442,54 +516,47 @@ export default function RunDetailPage() {
               }
             }
             if (rows.length === 0) return (
-              <div className="text-center py-12">
-                <p className="text-stone-500 font-medium mb-1">No cost data yet</p>
-                <p className="text-stone-400 text-sm">Token usage is recorded once the run completes.</p>
+              <div style={{ textAlign: "center", padding: "48px 0" }}>
+                <p style={{ fontSize: 14, fontWeight: 600, color: "var(--text-2)", marginBottom: 6 }}>No cost data yet</p>
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Token usage is recorded once the run completes.</p>
               </div>
             )
             return (
-              <div className="space-y-5">
-                {/* Totals */}
-                <div className="grid grid-cols-3 gap-3">
+              <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                {/* Totals grid */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
                   {[
-                    { label: "Total cost",      value: `$${totalCost.toFixed(4)}`,                        color: "text-stone-900" },
-                    { label: "Input tokens",    value: totalInput.toLocaleString(),                        color: "text-blue-700"  },
-                    { label: "Output tokens",   value: totalOutput.toLocaleString(),                       color: "text-purple-700"},
+                    { label: "Total cost",    value: `$${totalCost.toFixed(4)}`,         color: "var(--text)"     },
+                    { label: "Input tokens",  value: totalInput.toLocaleString(),          color: "var(--accent-text)" },
+                    { label: "Output tokens", value: totalOutput.toLocaleString(),         color: "var(--text-2)"  },
                   ].map(({ label, value, color }) => (
-                    <div key={label} className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3">
-                      <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-1">{label}</p>
-                      <p className={`text-xl font-bold ${color}`}>{value}</p>
+                    <div key={label} className="card" style={{ padding: "14px 18px" }}>
+                      <p className="eyebrow" style={{ marginBottom: 8 }}>{label}</p>
+                      <p style={{ fontSize: 20, fontWeight: 700, color, letterSpacing: "-.01em" }}>{value}</p>
                     </div>
                   ))}
                 </div>
                 {/* Per-block breakdown */}
                 <div>
-                  <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-2">Per block</p>
-                  <div className="rounded-xl border border-stone-200 overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-stone-100 bg-stone-50">
-                          <th className="text-left px-4 py-2.5 text-xs font-medium text-stone-400">Block</th>
-                          <th className="text-right px-4 py-2.5 text-xs font-medium text-stone-400">Input</th>
-                          <th className="text-right px-4 py-2.5 text-xs font-medium text-stone-400">Output</th>
-                          <th className="text-right px-4 py-2.5 text-xs font-medium text-stone-400">Turns</th>
-                          <th className="text-right px-4 py-2.5 text-xs font-medium text-stone-400">Cost</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-stone-100">
-                        {rows.map(r => (
-                          <tr key={r.block}>
-                            <td className="px-4 py-2.5 font-mono text-xs text-stone-700">{r.block}</td>
-                            <td className="px-4 py-2.5 text-xs text-stone-500 text-right">{r.input.toLocaleString()}</td>
-                            <td className="px-4 py-2.5 text-xs text-stone-500 text-right">{r.output.toLocaleString()}</td>
-                            <td className="px-4 py-2.5 text-xs text-stone-500 text-right">{r.turns}</td>
-                            <td className="px-4 py-2.5 text-xs text-stone-700 text-right font-medium">${r.cost.toFixed(4)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <p className="eyebrow" style={{ marginBottom: 8 }}>Per block</p>
+                  <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+                    {/* Header row */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 1fr 0.7fr 1fr", padding: "10px 16px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+                      {["Block", "Input", "Output", "Turns", "Cost"].map((h, i) => (
+                        <span key={h} className="eyebrow" style={{ textAlign: i ? "right" : "left" }}>{h}</span>
+                      ))}
+                    </div>
+                    {rows.map((r, i) => (
+                      <div key={r.block} style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 1fr 0.7fr 1fr", padding: "10px 16px", borderTop: i ? "1px solid var(--border)" : "none" }}>
+                        <span className="mono" style={{ fontSize: 12, color: "var(--text-2)" }}>{r.block}</span>
+                        <span style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "right" }}>{r.input.toLocaleString()}</span>
+                        <span style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "right" }}>{r.output.toLocaleString()}</span>
+                        <span style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "right" }}>{r.turns}</span>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", textAlign: "right" }}>${r.cost.toFixed(4)}</span>
+                      </div>
+                    ))}
                   </div>
-                  <p className="text-[10px] text-stone-400 mt-2">Pricing: $3/1M input · $15/1M output (claude-sonnet-4-6)</p>
+                  <p style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 8 }}>Pricing: $3/1M input · $15/1M output (claude-sonnet-4-6)</p>
                 </div>
               </div>
             )
@@ -498,4 +565,13 @@ export default function RunDetailPage() {
       </div>
     </AppShell>
   )
+}
+
+function statusKey(status: string): string {
+  if (status === "running") return "run"
+  if (status === "succeeded") return "ok"
+  if (status === "failed") return "err"
+  if (status === "paused") return "warn"
+  if (status === "cancelled") return "idle"
+  return "idle"
 }

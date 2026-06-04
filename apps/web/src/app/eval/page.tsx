@@ -31,7 +31,7 @@ interface PlaybookEval {
   grade: string
   pct: number
   failing_criteria: number
-  total_criteria?: number  // added by API when available — len(criteria)
+  total_criteria?: number
   total_max: number
   total_score: number
   structural_score?: number
@@ -46,18 +46,60 @@ function getCookie(name: string): string | null {
   return m ? decodeURIComponent(m[1]) : null
 }
 
-const GRADE_ORDER: (keyof GradeCounts)[] = ["A", "B", "C", "D", "F"]
+const GRADE_ORDER = ["A", "B", "C", "D", "F"] as const
+const GRADE_C: Record<string, string> = { A: "#059669", B: "#2563eb", C: "#d97706", D: "#ea580c", F: "#dc2626" }
+const GRADE_BG: Record<string, string> = { A: "#ecfdf5", B: "#eff6ff", C: "#fffbeb", D: "#fff7ed", F: "#fef2f2" }
 
-const GRADE_STYLE: Record<string, { bg: string; text: string; bar: string; dot: string }> = {
-  A: { bg: "bg-emerald-50",  text: "text-emerald-700", bar: "bg-emerald-500", dot: "bg-emerald-400" },
-  B: { bg: "bg-blue-50",     text: "text-blue-700",    bar: "bg-blue-400",    dot: "bg-blue-400"    },
-  C: { bg: "bg-amber-50",    text: "text-amber-700",   bar: "bg-amber-400",   dot: "bg-amber-400"   },
-  D: { bg: "bg-orange-50",   text: "text-orange-700",  bar: "bg-orange-400",  dot: "bg-orange-400"  },
-  F: { bg: "bg-red-50",      text: "text-red-700",     bar: "bg-red-400",     dot: "bg-red-400"     },
+function gradeC(g: string) { return GRADE_C[g] ?? "var(--text-3)" }
+function gradeBg(g: string) { return GRADE_BG[g] ?? "var(--surface-3)" }
+
+// ─── Shared grade components ──────────────────────────────────────────────────
+
+function GradeBadge({ grade, lg }: { grade: string; lg?: boolean }) {
+  const s = lg ? 46 : 28
+  const f = lg ? 20 : 13
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: s, height: s, borderRadius: lg ? 12 : 8, fontSize: f, fontWeight: 800, background: gradeBg(grade), color: gradeC(grade) }}>
+      {grade}
+    </span>
+  )
 }
 
-function gradeStyle(grade: string) {
-  return GRADE_STYLE[grade] ?? { bg: "bg-stone-100", text: "text-stone-500", bar: "bg-stone-300", dot: "bg-stone-300" }
+function PctBar({ pct }: { pct: number }) {
+  const c = pct >= 90 ? "var(--ok)" : pct >= 75 ? "var(--info)" : pct >= 60 ? "var(--warn)" : pct >= 40 ? "#ea580c" : "var(--err)"
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+      <div style={{ width: 96, height: 6, borderRadius: 6, background: "var(--surface-3)", overflow: "hidden" }}>
+        <div style={{ width: `${Math.min(pct, 100)}%`, height: "100%", borderRadius: 6, background: c }} />
+      </div>
+      <span className="mono" style={{ fontSize: 12, color: "var(--text-3)", width: 32, textAlign: "right" }}>{Math.round(pct)}%</span>
+    </div>
+  )
+}
+
+function GradeStrip({ counts }: { counts: GradeCounts }) {
+  const total = GRADE_ORDER.reduce((s, g) => s + (counts[g] ?? 0), 0) || 1
+  return (
+    <div style={{ display: "flex", height: 12, borderRadius: 20, overflow: "hidden", gap: 2 }}>
+      {GRADE_ORDER.map(g => {
+        const pct = ((counts[g] ?? 0) / total) * 100
+        return pct > 0 ? <div key={g} title={`${g}: ${counts[g]}`} style={{ width: `${pct}%`, background: gradeC(g) }} /> : null
+      })}
+    </div>
+  )
+}
+
+function GradeLegend({ counts }: { counts: GradeCounts }) {
+  return (
+    <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
+      {GRADE_ORDER.map(g => (
+        <span key={g} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text-3)" }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: gradeC(g) }} />
+          <b style={{ color: "var(--text-2)" }}>{g}</b> {counts[g] ?? 0}
+        </span>
+      ))}
+    </div>
+  )
 }
 
 function ShareButton() {
@@ -69,232 +111,25 @@ function ShareButton() {
     })
   }, [])
   return (
-    <button
-      onClick={copy}
-      className="inline-flex items-center gap-1.5 text-[10px] font-medium text-stone-500 hover:text-stone-800 border border-stone-200 hover:border-stone-300 rounded-full px-3 py-1 transition-colors bg-white"
-    >
-      {copied ? <><span className="text-emerald-500">✓</span> Copied</> : <><span>↗</span> Share</>}
+    <button onClick={copy} className="btn btn-ghost" style={{ fontSize: 12 }}>
+      <span style={{ transform: "rotate(-45deg)", display: "inline-block" }}>↗</span>
+      {copied ? "Copied" : "Share"}
     </button>
-  )
-}
-
-function GradeBadge({ grade }: { grade: string }) {
-  const s = gradeStyle(grade)
-  return (
-    <span className={`inline-flex items-center justify-center w-7 h-7 rounded-lg text-xs font-bold ${s.bg} ${s.text}`}>
-      {grade}
-    </span>
-  )
-}
-
-function PassBar({ pct }: { pct: number }) {
-  const colour =
-    pct >= 90 ? "bg-emerald-400" :
-    pct >= 70 ? "bg-blue-400"    :
-    pct >= 50 ? "bg-amber-400"   :
-    pct >= 30 ? "bg-orange-400"  :
-                "bg-red-400"
-  return (
-    <div className="flex items-center gap-2">
-      <div className="w-24 h-1.5 rounded-full bg-stone-100 overflow-hidden">
-        <div className={`h-full rounded-full ${colour} transition-all`} style={{ width: `${Math.min(pct, 100)}%` }} />
-      </div>
-      <span className="text-xs tabular-nums text-stone-500">{pct.toFixed(0)}%</span>
-    </div>
-  )
-}
-
-// ─── Grade distribution bar ───────────────────────────────────────────────────
-
-function GradeDistributionCard({ counts }: { counts: GradeCounts }) {
-  const total = GRADE_ORDER.reduce((s, g) => s + counts[g], 0)
-  const overall =
-    total === 0 ? null :
-    counts.A / total >= 0.7 ? "A" :
-    counts.F / total >= 0.3 ? "F" :
-    (counts.A + counts.B) / total >= 0.7 ? "B" :
-    (counts.D + counts.F) / total >= 0.4 ? "D" :
-    "C"
-
-  return (
-    <div className="rounded-xl border border-stone-200 bg-white px-6 py-5">
-      <div className="flex items-start justify-between mb-4">
-        <div>
-          <p className="text-xs font-semibold text-stone-500 uppercase tracking-widest mb-0.5">
-            Overall quality
-          </p>
-          <p className="text-xs text-stone-400">
-            {total === 0 ? "No evals run yet" : `${total} playbook${total === 1 ? "" : "s"} evaluated`}
-          </p>
-        </div>
-        {overall && (
-          <div className={`flex items-center justify-center w-12 h-12 rounded-xl text-2xl font-black ${gradeStyle(overall).bg} ${gradeStyle(overall).text}`}>
-            {overall}
-          </div>
-        )}
-      </div>
-
-      {/* Segmented bar */}
-      {total > 0 && (
-        <div className="mb-4">
-          <div className="flex h-3 rounded-full overflow-hidden gap-px">
-            {GRADE_ORDER.map(g => {
-              const pct = (counts[g] / total) * 100
-              if (pct === 0) return null
-              return (
-                <div
-                  key={g}
-                  className={`${gradeStyle(g).bar} transition-all`}
-                  style={{ width: `${pct}%` }}
-                  title={`${g}: ${counts[g]}`}
-                />
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Legend */}
-      <div className="flex items-center gap-5">
-        {GRADE_ORDER.map(g => (
-          <div key={g} className="flex items-center gap-1.5">
-            <span className={`w-2 h-2 rounded-full ${gradeStyle(g).dot}`} />
-            <span className="text-xs text-stone-500">
-              <span className="font-semibold text-stone-700">{g}</span>
-              {" "}{counts[g]}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ─── Top playbooks strip ──────────────────────────────────────────────────────
-
-function TopPlaybooksStrip({ playbooks }: { playbooks: TopPlaybook[] }) {
-  if (playbooks.length === 0) return null
-  return (
-    <div>
-      <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-widest mb-2">Top rated</p>
-      <div className="flex flex-wrap gap-2">
-        {playbooks.map(p => {
-          const s = gradeStyle(p.grade)
-          return (
-            <Link
-              key={p.slug}
-              href={`/eval/${encodeURIComponent(p.slug)}`}
-              className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 ${s.bg} border-transparent hover:opacity-80 transition-opacity`}
-            >
-              <span className={`text-xs font-bold ${s.text}`}>{p.grade}</span>
-              <span className="text-xs font-mono text-stone-700">{p.slug}</span>
-              <span className="text-[11px] text-stone-400">{p.pct.toFixed(0)}%</span>
-            </Link>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-// ─── Quality table ────────────────────────────────────────────────────────────
-
-function QualityTable({ playbooks }: { playbooks: PlaybookEval[] }) {
-  const sorted = [...playbooks].sort((a, b) => {
-    const order = { A: 0, B: 1, C: 2, D: 3, F: 4 }
-    return (order[a.grade as keyof typeof order] ?? 5) - (order[b.grade as keyof typeof order] ?? 5)
-  })
-
-  if (sorted.length === 0) {
-    return (
-      <div className="rounded-xl border border-stone-200 bg-white px-6 py-12 text-center">
-        <p className="text-sm text-stone-400">No published playbook evals available yet.</p>
-        <p className="text-xs text-stone-300 mt-1">Published quality results appear here after controlled evaluation runs.</p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-stone-100 text-left">
-            <th className="px-4 py-3 text-xs font-medium text-stone-400">Playbook</th>
-            <th className="px-4 py-3 text-xs font-medium text-stone-400">Grade</th>
-            <th className="px-4 py-3 text-xs font-medium text-stone-400">Pass rate</th>
-            <th className="px-4 py-3 text-xs font-medium text-stone-400 text-right">Failing criteria</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map(p => (
-            <tr key={p.slug} className="border-b border-stone-100 last:border-0 hover:bg-stone-50 transition-colors cursor-pointer">
-              <td className="px-4 py-3">
-                <Link href={`/eval/${encodeURIComponent(p.slug)}`} className="block">
-                  <span className="font-mono text-xs text-stone-700 bg-stone-100 px-2 py-0.5 rounded hover:bg-stone-200 transition-colors">
-                    {p.slug}
-                  </span>
-                </Link>
-              </td>
-              <td className="px-4 py-3">
-                <Link href={`/eval/${encodeURIComponent(p.slug)}`} className="block">
-                  <GradeBadge grade={p.grade} />
-                </Link>
-              </td>
-              <td className="px-4 py-3">
-                <Link href={`/eval/${encodeURIComponent(p.slug)}`} className="block">
-                  <PassBar pct={p.pct} />
-                </Link>
-              </td>
-              <td className="px-4 py-3 text-right">
-                <Link href={`/eval/${encodeURIComponent(p.slug)}`} className="block">
-                  {p.failing_criteria > 0 ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600">
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
-                      {p.failing_criteria}
-                      {p.total_criteria != null && (
-                        <span className="text-stone-400 font-normal"> / {p.total_criteria}</span>
-                      )}
-                      {" "}criteria
-                    </span>
-                  ) : (
-                    <span className="text-xs text-emerald-600 font-medium">All passing</span>
-                  )}
-                </Link>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-// ─── Loading skeleton ─────────────────────────────────────────────────────────
-
-function LoadingSkeleton() {
-  return (
-    <div className="space-y-6">
-      <div className="h-32 rounded-xl bg-stone-100 animate-pulse" />
-      <div className="h-48 rounded-xl bg-stone-100 animate-pulse" />
-    </div>
   )
 }
 
 // ─── Page content ─────────────────────────────────────────────────────────────
 
 function EvalContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
-  const [summary, setSummary] = useState<EvalSummary | null>(null)
   const [playbooks, setPlaybooks] = useState<PlaybookEval[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
-
     async function load() {
       setLoading(true)
       setError(null)
-
       const headers: Record<string, string> = {}
       try {
         if (getToken) {
@@ -304,85 +139,138 @@ function EvalContent({ getToken }: { getToken: (() => Promise<string | null>) | 
         const workspaceId = getCookie("delegator_project_id")
         if (workspaceId) headers["X-Workspace-Id"] = workspaceId
 
-        const [summaryRes, playbooksRes] = await Promise.all([
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/eval/summary`, { headers }),
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/eval/playbooks`, { headers }),
-        ])
+        const playbooksRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/eval/playbooks`, { headers })
 
         if (cancelled) return
 
-        if (!summaryRes.ok && !playbooksRes.ok) {
-          const status = summaryRes.status
-          const hint =
+        if (!playbooksRes.ok) {
+          const status = playbooksRes.status
+          setError(
             status === 401 ? "Not authorised — check your session." :
             status === 403 ? "Forbidden — workspace role may be insufficient." :
             status === 500 ? "The eval runner returned an error (500). Check the API logs." :
-            `Both eval endpoints returned ${status}.`
-          setError(hint)
+            `Eval endpoint returned ${status}.`
+          )
           return
         }
 
-        if (summaryRes.ok) setSummary(await summaryRes.json())
-        if (playbooksRes.ok) setPlaybooks(await playbooksRes.json())
+        setPlaybooks(await playbooksRes.json())
       } catch {
         if (!cancelled) setError("Network error — could not reach the API.")
       } finally {
         if (!cancelled) setLoading(false)
       }
     }
-
     load()
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const sorted = [...playbooks].sort((a, b) => {
+    const order: Record<string, number> = { A: 0, B: 1, C: 2, D: 3, F: 4 }
+    return (order[a.grade] ?? 5) - (order[b.grade] ?? 5)
+  })
+
+  const counts: GradeCounts = sorted.reduce(
+    (acc, p) => {
+      const g = p.grade as keyof GradeCounts
+      if (g in acc) acc[g] += 1
+      return acc
+    },
+    { A: 0, B: 0, C: 0, D: 0, F: 0 }
+  )
+  const total = GRADE_ORDER.reduce((s, g) => s + (counts[g] ?? 0), 0)
+  const overall = counts.A / (total || 1) >= 0.5 ? "A" : "B"
+
+  const top = sorted.slice(0, 6)
+
   return (
     <AppShell>
-      <div className="mx-auto max-w-4xl px-6 py-10">
-
+      <div style={{ maxWidth: 920, margin: "0 auto", padding: "30px 34px 80px" }}>
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="page-head" style={{ display: "flex", alignItems: "flex-start" }}>
           <div>
-            <h1 className="text-xl font-semibold text-stone-900">Quality</h1>
-            <p className="text-xs text-stone-400 mt-0.5">Playbook quality grades and failing criteria</p>
+            <h1 className="page-title">Quality</h1>
+            <p className="page-sub">Playbook quality grades and failing criteria.</p>
           </div>
-
-          <ShareButton />
+          <div style={{ marginLeft: "auto" }}><ShareButton /></div>
         </div>
 
         {loading ? (
-          <LoadingSkeleton />
+          <div style={{ color: "var(--text-muted)", fontSize: 13, padding: "40px 0" }}>Loading…</div>
         ) : error ? (
-          <div className="rounded-xl border border-red-100 bg-red-50 px-5 py-4">
-            <p className="text-sm text-red-600">{error}</p>
-          </div>
+          <div className="card" style={{ padding: "16px 18px", color: "var(--err)", fontSize: 13 }}>{error}</div>
         ) : (
-          <div className="space-y-8">
+          <>
+            {/* Distribution card */}
+            <div className="card" style={{ padding: "20px 22px", marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", marginBottom: 16 }}>
+                <div>
+                  <div className="eyebrow" style={{ marginBottom: 3 }}>Overall quality</div>
+                  <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{total} playbooks evaluated</div>
+                </div>
+                <div style={{ marginLeft: "auto" }}><GradeBadge grade={overall} lg /></div>
+              </div>
+              <div style={{ marginBottom: 14 }}><GradeStrip counts={counts} /></div>
+              <GradeLegend counts={counts} />
+            </div>
 
-            {/* Grade distribution card */}
-            {summary && (
-              <section>
-                <GradeDistributionCard counts={summary.grade_counts} />
-                {summary.top_playbooks.length > 0 && (
-                  <div className="mt-4">
-                    <TopPlaybooksStrip playbooks={summary.top_playbooks} />
-                  </div>
-                )}
-              </section>
+            {/* Top rated */}
+            {top.length > 0 && (
+              <>
+                <div className="eyebrow" style={{ marginBottom: 10 }}>Top rated</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 26 }}>
+                  {top.map(p => (
+                    <Link key={p.slug} href={`/eval/${encodeURIComponent(p.slug)}`}
+                      style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 9, padding: "6px 11px", background: gradeBg(p.grade), textDecoration: "none" }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 800, color: gradeC(p.grade) }}>{p.grade}</span>
+                      <span className="mono" style={{ fontSize: 12, color: "var(--text-2)" }}>{p.slug}</span>
+                      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{p.pct}%</span>
+                    </Link>
+                  ))}
+                </div>
+              </>
             )}
 
-            {/* Per-playbook quality table */}
-            <section>
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-widest">
-                  Playbook quality
-                </p>
-                <p className="text-xs text-stone-300">{playbooks.length} playbook{playbooks.length === 1 ? "" : "s"}</p>
+            {/* Quality table */}
+            <div style={{ display: "flex", alignItems: "center", marginBottom: 11 }}>
+              <span className="eyebrow">Playbook quality</span>
+              <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" }}>{sorted.length} playbooks</span>
+            </div>
+            <div className="card" style={{ overflow: "hidden" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1.6fr 0.6fr 1.2fr 1fr", gap: 14, padding: "10px 20px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+                {["Playbook", "Grade", "Pass rate", "Failing criteria"].map((h, i) => (
+                  <div key={i} className="eyebrow" style={{ fontSize: 10, textAlign: i === 3 ? "right" : "left" }}>{h}</div>
+                ))}
               </div>
-              <QualityTable playbooks={playbooks} />
-            </section>
-
-          </div>
+              {sorted.length === 0 ? (
+                <div style={{ padding: "32px 20px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>No published playbook evals available yet.</div>
+              ) : (
+                sorted.map(p => (
+                  <Link key={p.slug} href={`/eval/${encodeURIComponent(p.slug)}`}
+                    style={{ display: "grid", gridTemplateColumns: "1.6fr 0.6fr 1.2fr 1fr", gap: 14, padding: "11px 20px", borderBottom: "1px solid var(--border)", alignItems: "center", textDecoration: "none" }}
+                    onMouseEnter={e => ((e.currentTarget as HTMLElement).style.background = "var(--surface-2)")}
+                    onMouseLeave={e => ((e.currentTarget as HTMLElement).style.background = "")}>
+                    <div>
+                      <span className="mono" style={{ fontSize: 12, color: "var(--text-2)", background: "var(--surface-3)", padding: "2px 7px", borderRadius: 5 }}>{p.slug}</span>
+                    </div>
+                    <div><GradeBadge grade={p.grade} /></div>
+                    <div><PctBar pct={p.pct} /></div>
+                    <div style={{ textAlign: "right" }}>
+                      {p.failing_criteria > 0
+                        ? <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: "var(--err)" }}>
+                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--err)" }} />
+                            {p.failing_criteria}
+                            {p.total_criteria != null && <span style={{ color: "var(--text-muted)", fontWeight: 400 }}> / {p.total_criteria}</span>}
+                          </span>
+                        : <span style={{ fontSize: 12, fontWeight: 600, color: "var(--ok)" }}>All passing</span>
+                      }
+                    </div>
+                  </Link>
+                ))
+              )}
+            </div>
+          </>
         )}
       </div>
     </AppShell>
