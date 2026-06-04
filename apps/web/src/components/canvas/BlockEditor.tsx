@@ -1095,6 +1095,7 @@ export default function BlockEditor({
   const [promptOpen, setPromptOpen] = useState(false)
   const [streamedPrompt, setStreamedPrompt] = useState<string>("")
   const [isStreaming, setIsStreaming] = useState(false)
+  const [brainAdvanced, setBrainAdvanced] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const style = BLOCK_STYLES[blockType]
 
@@ -1302,46 +1303,62 @@ export default function BlockEditor({
         />
       </div>
 
-      {/* ── Brain blocks: system prompt + custom instructions ── */}
+      {/* ── Brain blocks ── */}
       {blockType === "brain" && (
         <>
           <div className={section}>
-            <div className="flex items-center justify-between">
-              <span className={sectionLabel}>Agent instructions</span>
-              <span className="text-[10px] text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded mb-2">read-only</span>
-            </div>
-            <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 text-xs text-stone-600 leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto">
-              <SystemPromptWithChips text={description} />
-            </div>
-            <p className="text-[10px] text-stone-400 mt-1">
-              Use <code className="bg-stone-100 px-1 rounded">{"{{block_id.field}}"}</code> to reference earlier outputs.
-            </p>
-          </div>
-
-          <div className={section}>
-            <span className={sectionLabel}>Prompt file</span>
-            <input
-              type="text"
-              value={((blockData.config as Record<string, unknown>)?.prompt_file as string) || ""}
-              onChange={e => onChange(blockId, { ...blockData, config: { ...(blockData.config as object || {}), prompt_file: e.target.value } })}
-              placeholder="prompts/fetch_issue.txt"
-              className={inputBase}
-            />
-            <p className="text-[10px] text-stone-400 mt-1">
-              Path relative to repo root. When set, overrides the agent instructions above. Store prompts in a <code className="bg-stone-100 px-1 rounded">prompts/</code> folder.
-            </p>
-          </div>
-
-          <div className={section}>
-            <span className={sectionLabel}>Your instructions</span>
+            <span className={sectionLabel}>What should this step do?</span>
             <textarea
               value={(blockData.custom_instructions as string) || ""}
               onChange={e => onChange(blockId, { ...blockData, custom_instructions: e.target.value })}
-              rows={3}
-              placeholder="Add constraints or focus areas. Avoid overriding steps from the system prompt above."
+              rows={5}
+              placeholder="Describe what this AI step should do in plain English. e.g. &quot;Review the PR diff for security issues and post a summary comment.&quot;"
               className={cn(inputBase, "resize-none")}
+              disabled={isViewer}
             />
+            <p className="text-[10px] text-stone-400 mt-1">
+              Use <code className="bg-stone-100 px-1 rounded">{"{{block_id.field}}"}</code> to reference outputs from earlier steps.
+            </p>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setBrainAdvanced(v => !v)}
+            className="flex items-center gap-1.5 text-[11px] text-stone-400 hover:text-stone-600 transition-colors px-4 py-1"
+          >
+            <span>{brainAdvanced ? "▾" : "▸"}</span>
+            <span>Advanced</span>
+          </button>
+
+          {brainAdvanced && (
+            <>
+              <div className={section}>
+                <div className="flex items-center justify-between">
+                  <span className={sectionLabel}>System prompt</span>
+                  <span className="text-[10px] text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded mb-2">read-only</span>
+                </div>
+                <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 text-xs text-stone-600 leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto">
+                  <SystemPromptWithChips text={description} />
+                </div>
+              </div>
+
+              <div className={section}>
+                <span className={sectionLabel}>Prompt file</span>
+                <input
+                  type="text"
+                  value={((blockData.config as Record<string, unknown>)?.prompt_file as string) || ""}
+                  onChange={e => onChange(blockId, { ...blockData, config: { ...(blockData.config as object || {}), prompt_file: e.target.value } })}
+                  placeholder="prompts/fetch_issue.txt"
+                  className={inputBase}
+                  disabled={isViewer}
+                />
+                <p className="text-[10px] text-stone-400 mt-1">
+                  Path relative to repo root. Overrides system prompt when set.
+                </p>
+              </div>
+            </>
+          )}
+
 
           <div className={section}>
             <span className={sectionLabel}>Mode</span>
