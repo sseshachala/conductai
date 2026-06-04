@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
 } from "recharts"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { useAuth, useUser } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { timeAgo } from "@/lib/runUtils"
@@ -11,12 +13,6 @@ import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useGuardSavings, type GuardSavingsSummary } from "@/hooks/useGuardSavings"
 import { useWorkspace } from "@/lib/WorkspaceContext"
-
-function getCookie(name: string): string | null {
-  if (typeof document === "undefined") return null
-  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
-  return m ? decodeURIComponent(m[1]) : null
-}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -59,14 +55,86 @@ const DECISION_CONFIG: Record<
   string,
   { label: string; dot?: string; bg?: string; text?: string; icon?: string }
 > = {
-  allowed:  { label: "allowed",         dot: "bg-green-400"                                        },
-  blocked:  { label: "blocked",         bg: "bg-red-100",   text: "text-red-700"                   },
-  warned:   { label: "warned",          bg: "bg-amber-100", text: "text-amber-700"                 },
+  allowed:  { label: "allowed",          dot: "bg-green-400"                                       },
+  blocked:  { label: "blocked",          bg: "bg-red-100",   text: "text-red-700"                  },
+  warned:   { label: "warned",           bg: "bg-amber-100", text: "text-amber-700"                },
   approval: { label: "approval pending", bg: "bg-blue-100",  text: "text-blue-700"                 },
 }
 
-const ALL_TOOLS    = ["claude_code", "codex", "cursor", "windsurf", "gemini"]
+const ALL_TOOLS     = ["claude_code", "codex", "cursor", "windsurf", "gemini"]
 const ALL_DECISIONS = ["allowed", "blocked", "warned", "approval"]
+
+// ─── Guard Shell ──────────────────────────────────────────────────────────────
+
+const GUARD_TABS = [
+  { href: "/guard",          label: "Overview"  },
+  { href: "/guard/spend",    label: "Spend"     },
+  { href: "/guard/policies", label: "Policies"  },
+  { href: "/guard/activity", label: "Activity"  },
+  { href: "/guard/settings", label: "Settings"  },
+]
+
+function GuardShell({
+  children,
+  live,
+  lastUpdated,
+}: {
+  children: React.ReactNode
+  live?: boolean
+  lastUpdated?: Date | null
+}) {
+  const pathname = usePathname()
+
+  return (
+    <div style={{ maxWidth: 1240, margin: "0 auto", padding: "28px 24px 48px" }}>
+      {/* Page head */}
+      <div style={{ display: "flex", alignItems: "flex-start", marginBottom: 20 }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", letterSpacing: "-.02em", margin: 0 }}>
+              Guard
+            </h1>
+            <span className="sbadge ok" style={{ marginTop: 2 }}>
+              <span className="conduct-pulse-dot" />
+              live
+            </span>
+          </div>
+          <p style={{ fontSize: 13, color: "var(--text-3)", marginTop: 5 }}>
+            MDM for AI coding tools — policies and spend limits enforced on every Claude Code, Codex, and Cursor call.
+          </p>
+        </div>
+        <div style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)", paddingTop: 4 }}>
+          {lastUpdated
+            ? <>last updated: {timeAgo(lastUpdated.toISOString())}</>
+            : live !== undefined
+              ? (live ? "last updated: just now" : "connecting…")
+              : null
+          }
+        </div>
+      </div>
+
+      {/* Tab nav */}
+      <div className="guard-tab-nav">
+        {GUARD_TABS.map(tab => {
+          const isActive = tab.href === "/guard"
+            ? pathname === "/guard"
+            : pathname?.startsWith(tab.href)
+          return (
+            <Link
+              key={tab.href}
+              href={tab.href}
+              className={`guard-tab${isActive ? " active" : ""}`}
+            >
+              {tab.label}
+            </Link>
+          )
+        })}
+      </div>
+
+      {children}
+    </div>
+  )
+}
 
 // ─── Helper components ────────────────────────────────────────────────────────
 
@@ -106,85 +174,112 @@ function DecisionBadge({ decision }: { decision: string }) {
   )
 }
 
-type TrendPeriod = "daily" | "weekly" | "monthly"
+type TrendPeriod = "Daily" | "Weekly" | "Monthly"
 interface TrendPoint { date: string; claude: number; codex: number; other: number }
 
-function CostTrendChart({ apiBase, workspaceId, token }: { apiBase: string; workspaceId: string; token: string | null }) {
-  const [period, setPeriod] = useState<TrendPeriod>("daily")
+function CostTrendChart({
+  apiBase,
+  workspaceId,
+  token,
+}: {
+  apiBase: string
+  workspaceId: string
+  token: string | null
+}) {
+  const [scale, setScale] = useState<TrendPeriod>("Daily")
   const [data, setData] = useState<TrendPoint[]>([])
   const [loading, setLoading] = useState(true)
+
+  const periodParam = scale.toLowerCase() as "daily" | "weekly" | "monthly"
 
   useEffect(() => {
     setLoading(true)
     const headers: Record<string, string> = {}
     if (token) headers["Authorization"] = `Bearer ${token}`
     const tzOffset = new Date().getTimezoneOffset()
-    fetch(`${apiBase}/guard/events/cost-trend?period=${period}&workspace_id=${workspaceId}&tz_offset=${tzOffset}`, { headers })
+    fetch(
+      `${apiBase}/guard/events/cost-trend?period=${periodParam}&workspace_id=${workspaceId}&tz_offset=${tzOffset}`,
+      { headers }
+    )
       .then(r => r.json())
       .then(setData)
       .catch(() => setData([]))
       .finally(() => setLoading(false))
-  }, [period, apiBase, workspaceId, token])
+  }, [periodParam, apiBase, workspaceId, token])
 
   const hasData = data.some(d => d.claude > 0 || d.codex > 0 || d.other > 0)
 
   return (
-    <div className="bg-white rounded-xl border border-stone-200 px-5 py-4">
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-sm font-medium text-stone-700">Est. cost trend</span>
-        <div className="flex gap-1">
-          {(["daily", "weekly", "monthly"] as TrendPeriod[]).map(p => (
+    <div className="card" style={{ padding: "20px 22px", marginBottom: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 22 }}>
+        <div style={{ fontWeight: 650, fontSize: 15 }}>Est. cost trend</div>
+        <div style={{ marginLeft: "auto", display: "flex", background: "var(--surface-3)", borderRadius: 8, padding: 3 }}>
+          {(["Daily", "Weekly", "Monthly"] as TrendPeriod[]).map(s => (
             <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className={`text-xs px-2.5 py-1 rounded-md font-medium transition-colors ${
-                period === p
-                  ? "bg-stone-900 text-white"
-                  : "text-stone-500 hover:text-stone-700"
-              }`}
+              key={s}
+              onClick={() => setScale(s)}
+              style={{
+                border: "none",
+                background: scale === s ? "var(--inverse)" : "transparent",
+                color: scale === s ? "var(--on-inverse)" : "var(--text-3)",
+                fontSize: 12,
+                fontWeight: 600,
+                padding: "5px 12px",
+                borderRadius: 6,
+                cursor: "pointer",
+              }}
             >
-              {p[0].toUpperCase() + p.slice(1)}
+              {s}
             </button>
           ))}
         </div>
       </div>
+
       {loading ? (
         <div className="h-40 bg-stone-50 rounded-lg animate-pulse" />
       ) : !hasData ? (
         <div className="h-40 flex items-center justify-center text-sm text-stone-400">No cost data yet</div>
       ) : (
-        <ResponsiveContainer width="100%" height={160}>
-          <BarChart data={data} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-            <XAxis dataKey="date" tick={{ fontSize: 10 }} tickLine={false} axisLine={false}
-              tickFormatter={v => period === "monthly" ? v.slice(0, 7) : v.slice(5)} />
-            <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false}
-              tickFormatter={v => `$${v}`} />
-            <Tooltip
-              formatter={(val, name) => [`$${Number(val ?? 0).toFixed(4)}`, String(name)]}
-              contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e7e5e4" }}
-            />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Bar dataKey="claude" name="Claude" stackId="a" fill="#6366f1" radius={[0, 0, 0, 0]} />
-            <Bar dataKey="codex"  name="Codex"  stackId="a" fill="#10b981" radius={[3, 3, 0, 0]} />
-            {data.some(d => d.other > 0) && (
-              <Bar dataKey="other" name="Other" stackId="a" fill="#a8a29e" radius={[3, 3, 0, 0]} />
-            )}
-          </BarChart>
-        </ResponsiveContainer>
+        <>
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={data} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+              <XAxis
+                dataKey="date"
+                tick={{ fontSize: 10 }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={v => periodParam === "monthly" ? v.slice(0, 7) : v.slice(5)}
+              />
+              <YAxis
+                tick={{ fontSize: 10 }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={v => `$${v}`}
+              />
+              <Tooltip
+                formatter={(val, name) => [`$${Number(val ?? 0).toFixed(4)}`, String(name)]}
+                contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e7e5e4" }}
+              />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey="claude" name="Claude" stackId="a" fill="var(--accent)" radius={[0, 0, 0, 0]} />
+              <Bar dataKey="codex"  name="Codex"  stackId="a" fill="var(--ok)"     radius={[3, 3, 0, 0]} />
+              {data.some(d => d.other > 0) && (
+                <Bar dataKey="other" name="Other" stackId="a" fill="var(--text-muted)" radius={[3, 3, 0, 0]} />
+              )}
+            </BarChart>
+          </ResponsiveContainer>
+          <div style={{ display: "flex", gap: 18, justifyContent: "center", marginTop: 14, fontSize: 12 }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 11, height: 11, borderRadius: 3, background: "var(--accent)", display: "inline-block" }} />
+              <span style={{ color: "var(--text-2)" }}>Claude</span>
+            </span>
+            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 11, height: 11, borderRadius: 3, background: "var(--ok)", display: "inline-block" }} />
+              <span style={{ color: "var(--text-2)" }}>Codex</span>
+            </span>
+          </div>
+        </>
       )}
-    </div>
-  )
-}
-
-function StatCard({ label, value, accent, sub, onClick, active }: { label: string; value: number | string; accent?: string; sub?: React.ReactNode; onClick?: () => void; active?: boolean }) {
-  return (
-    <div
-      className={`bg-white rounded-xl border px-5 py-4 flex flex-col gap-1 ${onClick ? "cursor-pointer hover:border-stone-400 transition-colors" : ""} ${active ? "border-stone-900 ring-1 ring-stone-900" : "border-stone-200"}`}
-      onClick={onClick}
-    >
-      <div className={`text-2xl font-bold ${accent ?? "text-stone-900"}`}>{value}</div>
-      <div className="text-xs font-medium text-stone-500 uppercase tracking-wide">{label}</div>
-      {sub && <div className="text-xs text-stone-400 mt-0.5">{sub}</div>}
     </div>
   )
 }
@@ -212,6 +307,49 @@ function formatTokensUsed(input: number | null, output: number | null): string |
   return parts.join(" / ") || null
 }
 
+// ─── Stat card ────────────────────────────────────────────────────────────────
+
+type StatTone = "ok" | "err" | "accent" | "plain"
+
+function GuardStatCard({
+  label,
+  value,
+  sub,
+  tone = "plain",
+  onClick,
+  active,
+}: {
+  label: string
+  value: number | string
+  sub?: React.ReactNode
+  tone?: StatTone
+  onClick?: () => void
+  active?: boolean
+}) {
+  const toneColor: Record<StatTone, string> = {
+    accent: "var(--accent-text)",
+    ok:     "var(--ok)",
+    err:    "var(--err)",
+    plain:  "var(--text)",
+  }
+  return (
+    <div
+      className="card card-pad"
+      style={{
+        cursor: onClick ? "pointer" : undefined,
+        outline: active ? "2px solid var(--accent)" : undefined,
+      }}
+      onClick={onClick}
+    >
+      <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-.02em", color: toneColor[tone], lineHeight: 1.1 }}>
+        {value}
+      </div>
+      <div className="eyebrow" style={{ marginTop: 8, fontSize: 9.5 }}>{label}</div>
+      {sub && <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 3 }}>{sub}</div>}
+    </div>
+  )
+}
+
 function SavingsStatCard({
   savings,
   loading,
@@ -220,7 +358,7 @@ function SavingsStatCard({
   loading: boolean
 }) {
   if (loading) {
-    return <div className="bg-stone-100 rounded-xl h-24 animate-pulse" />
+    return <div className="card card-pad" style={{ height: 80 }} />
   }
 
   const hasSavings =
@@ -228,54 +366,92 @@ function SavingsStatCard({
     (savings.team_total.rtk_saved_tokens > 0 || savings.team_total.booster_saved_tokens > 0)
 
   if (hasSavings && savings !== null) {
-    const totalTokens =
-      savings.team_total.rtk_saved_tokens + savings.team_total.booster_saved_tokens
-    const totalUsd =
-      savings.team_total.rtk_saved_usd + savings.team_total.booster_saved_usd
-
-    const TOOL_LINKS: Record<string, { label: string; href: string }> = {
-      rtk:     { label: "RTK",          href: "https://pypi.org/project/rtk/" },
-      booster: { label: "Agent Booster", href: "https://pypi.org/project/agent-booster/" },
-    }
-
-    const installed = savings.tools_installed?.length > 0
-      ? savings.tools_installed
-      : ["rtk", "booster"]
-
-    const toolLinks = installed.map((t, i) => {
-      const info = TOOL_LINKS[t] ?? { label: t.toUpperCase(), href: `https://pypi.org/project/${t}/` }
-      return (
-        <span key={t}>
-          {i > 0 && " + "}
-          <a href={info.href} target="_blank" rel="noopener noreferrer"
-             className="underline underline-offset-2 hover:text-emerald-700">
-            {info.label}
-          </a>
-        </span>
-      )
-    })
-
+    const totalTokens = savings.team_total.rtk_saved_tokens + savings.team_total.booster_saved_tokens
+    const totalUsd    = savings.team_total.rtk_saved_usd + savings.team_total.booster_saved_usd
     return (
-      <StatCard
+      <GuardStatCard
         label="Est. savings"
         value={formatTotalTokensSaved(totalTokens) + " tokens"}
-        accent="text-emerald-700"
-        sub={<>${totalUsd.toFixed(2)} saved · {toolLinks}</>}
+        tone="accent"
+        sub={<>${totalUsd.toFixed(2)} saved</>}
       />
     )
   }
 
-  // Empty state — no savings data yet
   return (
-    <div className="bg-white rounded-xl border border-stone-200 px-5 py-4 flex flex-col gap-1">
-      <div className="text-2xl font-bold text-stone-300">—</div>
-      <div className="text-xs font-medium text-stone-500 uppercase tracking-wide">Est. savings</div>
-      <div className="mt-1 text-[11px] text-stone-400 leading-relaxed space-y-0.5">
-        <div className="font-medium text-stone-500">Save 60–99% on tokens with:</div>
-        <div>· <a href="https://pypi.org/project/rtk/" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-stone-600">RTK</a> <span className="font-mono">pip install rtk</span></div>
-        <div>· <a href="https://pypi.org/project/agent-booster/" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-stone-600">Agent Booster</a> <span className="font-mono">pip install agent-booster</span></div>
-        <div className="mt-1 text-stone-400">Run <span className="font-mono">conduct guard sync</span> to start tracking.</div>
+    <div className="card card-pad">
+      <div style={{ fontSize: 26, fontWeight: 700, color: "var(--text-muted)", lineHeight: 1.1 }}>—</div>
+      <div className="eyebrow" style={{ marginTop: 8, fontSize: 9.5 }}>Est. savings</div>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, lineHeight: 1.5 }}>
+        <a href="https://pypi.org/project/rtk/" target="_blank" rel="noopener noreferrer"
+           style={{ color: "var(--accent-text)", textDecoration: "underline" }}>RTK</a>
+        {" + "}
+        <a href="https://pypi.org/project/agent-booster/" target="_blank" rel="noopener noreferrer"
+           style={{ color: "var(--accent-text)", textDecoration: "underline" }}>Agent Booster</a>
       </div>
+    </div>
+  )
+}
+
+// ─── By AI tool table ─────────────────────────────────────────────────────────
+
+function ByToolTable({ events }: { events: GuardEvent[] }) {
+  const byTool = useMemo(() => {
+    const map = new Map<string, { tokens: number; cost: number }>()
+    for (const ev of events) {
+      const key = ev.ai_tool || "unknown"
+      const prev = map.get(key) ?? { tokens: 0, cost: 0 }
+      map.set(key, {
+        tokens: prev.tokens + ((ev.tokens_after ?? ev.tokens_input ?? 0)),
+        cost:   prev.cost   + (ev.cost_usd_after ?? 0),
+      })
+    }
+    const total = Array.from(map.values()).reduce((s, v) => s + v.tokens, 0)
+    return Array.from(map.entries())
+      .map(([tool, { tokens, cost }]) => ({
+        tool,
+        tokens,
+        cost,
+        pct: total > 0 ? Math.round((tokens / total) * 100) : 0,
+      }))
+      .sort((a, b) => b.tokens - a.tokens)
+  }, [events])
+
+  const fmtTokens = (n: number) => {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+    if (n >= 1_000)     return `${(n / 1_000).toFixed(0)}k`
+    return String(n)
+  }
+
+  if (byTool.length === 0) return null
+
+  return (
+    <div className="card" style={{ overflow: "hidden" }}>
+      <div style={{ padding: "15px 20px 13px", borderBottom: "1px solid var(--border)", fontWeight: 650, fontSize: 14.5 }}>
+        By AI tool
+      </div>
+      {/* Header */}
+      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1.6fr", gap: 14, padding: "10px 20px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+        {["Tool", "Tokens used", "Est. cost", "% of total"].map((h, i) => (
+          <div key={i} className="eyebrow" style={{ fontSize: 10 }}>{h}</div>
+        ))}
+      </div>
+      {byTool.map(t => (
+        <div
+          key={t.tool}
+          style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1.6fr", gap: 14, padding: "13px 20px", borderBottom: "1px solid var(--border)", alignItems: "center" }}
+        >
+          <div className="mono" style={{ fontWeight: 600, fontSize: 13 }}>{t.tool}</div>
+          <div className="mono" style={{ fontSize: 13, color: "var(--text-2)" }}>{fmtTokens(t.tokens)}</div>
+          <div className="mono" style={{ fontSize: 13, color: "var(--text-2)" }}>${t.cost.toFixed(4)}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+            <div style={{ flex: 1, height: 8, borderRadius: 6, background: "var(--surface-3)", overflow: "hidden" }}>
+              <div style={{ width: `${t.pct}%`, height: "100%", background: "var(--accent)", borderRadius: 6 }} />
+            </div>
+            <span className="mono" style={{ fontSize: 12, color: "var(--text-3)", width: 34, textAlign: "right" }}>{t.pct}%</span>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -323,7 +499,6 @@ function GuardDashboard() {
     return h
   }, [getToken])
 
-  // Clear skeleton when team resolution finishes with no result
   useEffect(() => {
     if (!teamLoading && !teamId) setLoading(false)
   }, [teamLoading, teamId])
@@ -336,7 +511,7 @@ function GuardDashboard() {
     }
     if (range === "7d")  { const d = new Date(now); d.setDate(d.getDate() - 7);  return d.toISOString() }
     if (range === "30d") { const d = new Date(now); d.setDate(d.getDate() - 30); return d.toISOString() }
-    return null // "all"
+    return null
   }, [])
 
   const loadEvents = useCallback(async (decision?: string, dateRange?: string) => {
@@ -357,11 +532,11 @@ function GuardDashboard() {
         setLastUpdated(new Date())
       }
     } catch {
-      // non-fatal — keep last known state
+      // non-fatal
     } finally {
       setLoading(false)
     }
-  }, [buildHeaders, teamId, PAGE_SIZE])
+  }, [buildHeaders, teamId, PAGE_SIZE, filterDateRange, dateRangeToSince])
 
   const loadMore = useCallback(async () => {
     if (!teamId || loadingMore) return
@@ -405,33 +580,28 @@ function GuardDashboard() {
     const params = new URLSearchParams()
     if (token) params.set("token", token)
     params.set("workspace_id", teamId)
-    const url = `${base}/guard/events/stream?${params}`
 
     if (esRef.current) esRef.current.close()
-    const es = new EventSource(url)
+    const es = new EventSource(`${base}/guard/events/stream?${params}`)
     esRef.current = es
 
-    es.onopen = () => setLive(true)
-    es.onerror = () => setLive(false)
+    es.onopen    = () => setLive(true)
+    es.onerror   = () => setLive(false)
     es.onmessage = (ev) => {
       try {
         const data = JSON.parse(ev.data)
         if (data.kind === "stream_timeout") return
         if (data.id && data.decision) {
           setEvents(prev => {
-            // Prepend; deduplicate by id; cap at 200
             const merged = [data as GuardEvent, ...prev.filter(e => e.id !== data.id)]
             return merged.slice(0, 200)
           })
           setLastUpdated(new Date())
         }
-      } catch {
-        // malformed frame — ignore
-      }
+      } catch { /* malformed frame */ }
     }
   }, [getToken, teamId])
 
-  // Periodic merge of recent events — picks up PostToolUse token backfills
   const refreshRecent = useCallback(async () => {
     if (!teamId) return
     const headers = await buildHeaders()
@@ -455,7 +625,7 @@ function GuardDashboard() {
     connectSSE()
     loadEvents()
     loadStats()
-    const statsInterval  = setInterval(() => { loadStats() }, 60_000)
+    const statsInterval   = setInterval(() => { loadStats() }, 60_000)
     const refreshInterval = setInterval(() => { refreshRecent() }, 10_000)
     return () => {
       clearInterval(statsInterval)
@@ -468,7 +638,6 @@ function GuardDashboard() {
     loadEvents(filterDecision !== "all" ? filterDecision : undefined, filterDateRange)
   }, [filterDecision, filterDateRange, loadEvents])
 
-  // Fetch chart token once when teamId resolves
   useEffect(() => {
     if (!teamId) return
     getToken().then(t => { if (t) setChartToken(t) })
@@ -482,20 +651,25 @@ function GuardDashboard() {
   )
 
   const derivedStats = useMemo(() => {
-    // Use local date so "today" matches the user's timezone, not UTC
     const localToday = (d: Date) =>
       `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
-    const todayStr = localToday(new Date())
+    const todayStr    = localToday(new Date())
     const todayEvents = events.filter(e => localToday(new Date(e.ts)) === todayStr)
     const distinctDevs = new Set(events.map(e => e.user_email).filter(Boolean)).size
     return {
       active_developers: distinctDevs > 0 ? distinctDevs : events.length > 0 ? 1 : 0,
-      events_today: todayEvents.length,
-      blocked_today: todayEvents.filter(e => e.decision === "blocked").length,
-      tokens_saved_today: todayEvents.reduce((s, e) => s + Math.max(0, (e.tokens_before ?? 0) - (e.tokens_after ?? 0)), 0),
-      est_cost_today: todayEvents.reduce((s, e) => s + (e.cost_usd_after ?? 0), 0),
-      claude_cost_today: todayEvents.filter(e => normTool(e.ai_tool).includes("claude")).reduce((s, e) => s + (e.cost_usd_after ?? 0), 0),
-      codex_cost_today: todayEvents.filter(e => normTool(e.ai_tool).includes("codex")).reduce((s, e) => s + (e.cost_usd_after ?? 0), 0),
+      events_today:      todayEvents.length,
+      blocked_today:     todayEvents.filter(e => e.decision === "blocked").length,
+      tokens_saved_today: todayEvents.reduce(
+        (s, e) => s + Math.max(0, (e.tokens_before ?? 0) - (e.tokens_after ?? 0)), 0
+      ),
+      est_cost_today:     todayEvents.reduce((s, e) => s + (e.cost_usd_after ?? 0), 0),
+      claude_cost_today:  todayEvents
+        .filter(e => normTool(e.ai_tool).includes("claude"))
+        .reduce((s, e) => s + (e.cost_usd_after ?? 0), 0),
+      codex_cost_today:   todayEvents
+        .filter(e => normTool(e.ai_tool).includes("codex"))
+        .reduce((s, e) => s + (e.cost_usd_after ?? 0), 0),
     }
   }, [events])
 
@@ -506,8 +680,8 @@ function GuardDashboard() {
     return events.filter(ev => {
       if (!permissions.canViewAllActivity && ev.user_email !== currentUserEmail) return false
       if (filterTool !== "all"     && normTool(ev.ai_tool) !== filterTool) return false
-      if (filterDecision !== "all" && ev.decision   !== filterDecision) return false
-      if (filterDev !== "all"      && ev.user_email !== filterDev)      return false
+      if (filterDecision !== "all" && ev.decision   !== filterDecision)    return false
+      if (filterDev !== "all"      && ev.user_email !== filterDev)         return false
       if (q && !ev.user_email?.toLowerCase().includes(q) && !ev.rule_id?.toLowerCase().includes(q)) return false
       return true
     })
@@ -528,277 +702,259 @@ function GuardDashboard() {
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
+  const blockedToday = stats?.blocked_today || derivedStats.blocked_today
+
   return (
-    <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
+    <GuardShell live={live} lastUpdated={lastUpdated}>
 
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-stone-900">Guard</h1>
-            <p className="text-sm text-stone-500 mt-1">
-              AI tool activity across your team.
-              {live
-                ? <span className="ml-2 text-green-600 text-xs">● live</span>
-                : <span className="ml-2 text-stone-400 text-xs">connecting...</span>
-              }
-            </p>
-          </div>
-          <div className="text-xs text-stone-400">
-            {lastUpdated
-              ? <>last updated: {timeAgo(lastUpdated.toISOString())}</>
-              : "—"
-            }
-          </div>
+      {/* Viewer-scoped notice */}
+      {!loading && !permissionsLoading && !permissions.canViewAllActivity && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800 mb-4">
+          You can view your own activity only. Contact your admin to request broader access.
         </div>
+      )}
 
-        {/* Viewer-scoped notice */}
-        {!loading && !permissionsLoading && !permissions.canViewAllActivity && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
-            You can view your own activity only. Contact your admin to request broader access.
-          </div>
-        )}
-
-        {/* Stats cards */}
-        {loading ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 animate-pulse">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="bg-stone-100 rounded-xl h-24" />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            <StatCard
-              label="Active developers"
-              value={stats?.active_developers || derivedStats.active_developers}
-              accent="text-indigo-700"
-            />
-            <StatCard
-              label="Events today"
-              value={stats?.events_today || derivedStats.events_today}
-            />
-            <StatCard
-              label="Blocked today"
-              value={stats?.blocked_today || derivedStats.blocked_today}
-              accent={(stats?.blocked_today || derivedStats.blocked_today) > 0 ? "text-red-600" : undefined}
-              onClick={() => setFilterDecision(prev => prev === "blocked" ? "all" : "blocked")}
-              active={filterDecision === "blocked"}
-            />
-            <StatCard
-              label="Tokens used today (est.)"
-              value={formatTotalTokensSaved(stats?.tokens_saved_today || derivedStats.tokens_saved_today)}
-              accent="text-green-700"
-            />
-            <StatCard
-              label="Est. cost today"
-              value={`$${derivedStats.est_cost_today.toFixed(2)}`}
-              accent="text-stone-700"
-              sub={<>Claude ${derivedStats.claude_cost_today.toFixed(2)} · Codex ${derivedStats.codex_cost_today.toFixed(2)}</>}
-            />
-            <SavingsStatCard savings={savings} loading={savingsLoading} />
-          </div>
-        )}
-
-        {/* Cost trend chart */}
-        {!loading && teamId && (
-          <CostTrendChart
-            apiBase={process.env.NEXT_PUBLIC_API_URL ?? ""}
-            workspaceId={teamId}
-            token={chartToken}
+      {/* 5 stat cards */}
+      {loading ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 16 }}>
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="card card-pad animate-pulse" style={{ height: 80 }} />
+          ))}
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 16 }}>
+          <GuardStatCard
+            label="Active developers"
+            value={stats?.active_developers || derivedStats.active_developers}
+            tone="ok"
+            sub="sessions in range"
           />
+          <GuardStatCard
+            label="Events today"
+            value={stats?.events_today || derivedStats.events_today}
+            tone="plain"
+            sub="tool calls logged"
+          />
+          <GuardStatCard
+            label="Blocked today"
+            value={blockedToday}
+            tone={blockedToday > 0 ? "err" : "plain"}
+            onClick={() => setFilterDecision(prev => prev === "blocked" ? "all" : "blocked")}
+            active={filterDecision === "blocked"}
+            sub={blockedToday > 0 ? "click to filter" : "none blocked"}
+          />
+          <GuardStatCard
+            label="Tokens saved"
+            value={formatTotalTokensSaved(stats?.tokens_saved_today || derivedStats.tokens_saved_today)}
+            tone="accent"
+            sub="vs unguarded calls"
+          />
+          <SavingsStatCard savings={savings} loading={savingsLoading} />
+        </div>
+      )}
+
+      {/* Cost trend chart */}
+      {!loading && teamId && (
+        <CostTrendChart
+          apiBase={process.env.NEXT_PUBLIC_API_URL ?? ""}
+          workspaceId={teamId}
+          token={chartToken}
+        />
+      )}
+
+      {/* By AI tool table */}
+      {!loading && events.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <ByToolTable events={events} />
+        </div>
+      )}
+
+      {/* Filter bar */}
+      <div className="flex flex-wrap items-center gap-3" style={{ marginBottom: 12 }}>
+        <select
+          value={filterDateRange}
+          onChange={e => setFilterDateRange(e.target.value)}
+          className="text-sm border border-stone-200 rounded-lg px-3 py-1.5 bg-white text-stone-700 outline-none focus:ring-2 focus:ring-indigo-200"
+        >
+          <option value="today">Today</option>
+          <option value="7d">Last 7 days</option>
+          <option value="30d">Last 30 days</option>
+          <option value="all">All time</option>
+        </select>
+
+        <select
+          value={filterTool}
+          onChange={e => setFilterTool(e.target.value)}
+          className="text-sm border border-stone-200 rounded-lg px-3 py-1.5 bg-white text-stone-700 outline-none focus:ring-2 focus:ring-indigo-200"
+        >
+          <option value="all">All tools</option>
+          {ALL_TOOLS.map(t => (
+            <option key={t} value={t}>{AI_TOOL_BADGES[t]?.label ?? t}</option>
+          ))}
+        </select>
+
+        <select
+          value={filterDecision}
+          onChange={e => setFilterDecision(e.target.value)}
+          className="text-sm border border-stone-200 rounded-lg px-3 py-1.5 bg-white text-stone-700 outline-none focus:ring-2 focus:ring-indigo-200"
+        >
+          <option value="all">All decisions</option>
+          {ALL_DECISIONS.map(d => (
+            <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>
+          ))}
+        </select>
+
+        <select
+          value={filterDev}
+          onChange={e => setFilterDev(e.target.value)}
+          className="text-sm border border-stone-200 rounded-lg px-3 py-1.5 bg-white text-stone-700 outline-none focus:ring-2 focus:ring-indigo-200"
+        >
+          <option value="all">All developers</option>
+          {developerEmails.map(email => (
+            <option key={email} value={email}>{email}</option>
+          ))}
+        </select>
+
+        <div className="relative">
+          <input
+            type="text"
+            value={filterSearch}
+            onChange={e => setFilterSearch(e.target.value)}
+            placeholder="Search rule or email…"
+            className="text-sm border border-stone-200 rounded-lg pl-3 pr-7 py-1.5 bg-white text-stone-700 outline-none focus:ring-2 focus:ring-indigo-200 w-48"
+          />
+          {filterSearch && (
+            <button
+              onClick={() => setFilterSearch("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 text-xs"
+            >✕</button>
+          )}
+        </div>
+
+        {(filterTool !== "all" || filterDecision !== "all" || filterDev !== "all" || filterSearch) && (
+          <button
+            onClick={() => { setFilterTool("all"); setFilterDecision("all"); setFilterDev("all"); setFilterSearch("") }}
+            className="text-xs text-stone-400 hover:text-stone-700 border border-stone-200 rounded-lg px-3 py-1.5 hover:bg-stone-50 transition-colors"
+          >
+            Clear filters
+          </button>
         )}
 
-        {/* Filter bar */}
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Date range */}
-          <select
-            value={filterDateRange}
-            onChange={e => setFilterDateRange(e.target.value)}
-            className="text-sm border border-stone-200 rounded-lg px-3 py-1.5 bg-white text-stone-700 outline-none focus:ring-2 focus:ring-indigo-200"
+        <span className="ml-auto text-xs text-stone-400">
+          {filteredEvents.length} event{filteredEvents.length !== 1 ? "s" : ""}
+        </span>
+
+        {filteredEvents.length > 0 && (
+          <button
+            onClick={exportCSV}
+            className="text-xs text-stone-500 hover:text-stone-800 border border-stone-200 rounded-lg px-3 py-1.5 hover:bg-stone-50 transition-colors"
           >
-            <option value="today">Today</option>
-            <option value="7d">Last 7 days</option>
-            <option value="30d">Last 30 days</option>
-            <option value="all">All time</option>
-          </select>
-
-          <select
-            value={filterTool}
-            onChange={e => setFilterTool(e.target.value)}
-            className="text-sm border border-stone-200 rounded-lg px-3 py-1.5 bg-white text-stone-700 outline-none focus:ring-2 focus:ring-indigo-200"
-          >
-            <option value="all">All tools</option>
-            {ALL_TOOLS.map(t => (
-              <option key={t} value={t}>{AI_TOOL_BADGES[t]?.label ?? t}</option>
-            ))}
-          </select>
-
-          <select
-            value={filterDecision}
-            onChange={e => setFilterDecision(e.target.value)}
-            className="text-sm border border-stone-200 rounded-lg px-3 py-1.5 bg-white text-stone-700 outline-none focus:ring-2 focus:ring-indigo-200"
-          >
-            <option value="all">All decisions</option>
-            {ALL_DECISIONS.map(d => (
-              <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>
-            ))}
-          </select>
-
-          <select
-            value={filterDev}
-            onChange={e => setFilterDev(e.target.value)}
-            className="text-sm border border-stone-200 rounded-lg px-3 py-1.5 bg-white text-stone-700 outline-none focus:ring-2 focus:ring-indigo-200"
-          >
-            <option value="all">All developers</option>
-            {developerEmails.map(email => (
-              <option key={email} value={email}>{email}</option>
-            ))}
-          </select>
-
-          {/* Search */}
-          <div className="relative">
-            <input
-              type="text"
-              value={filterSearch}
-              onChange={e => setFilterSearch(e.target.value)}
-              placeholder="Search rule or email…"
-              className="text-sm border border-stone-200 rounded-lg pl-3 pr-7 py-1.5 bg-white text-stone-700 outline-none focus:ring-2 focus:ring-indigo-200 w-48"
-            />
-            {filterSearch && (
-              <button onClick={() => setFilterSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 text-xs">✕</button>
-            )}
-          </div>
-
-          {(filterTool !== "all" || filterDecision !== "all" || filterDev !== "all" || filterSearch) && (
-            <button
-              onClick={() => { setFilterTool("all"); setFilterDecision("all"); setFilterDev("all"); setFilterSearch("") }}
-              className="text-xs text-stone-400 hover:text-stone-700 border border-stone-200 rounded-lg px-3 py-1.5 hover:bg-stone-50 transition-colors"
-            >
-              Clear filters
-            </button>
-          )}
-
-          <span className="ml-auto text-xs text-stone-400">
-            {filteredEvents.length} event{filteredEvents.length !== 1 ? "s" : ""}
-          </span>
-
-          {filteredEvents.length > 0 && (
-            <button
-              onClick={exportCSV}
-              className="text-xs text-stone-500 hover:text-stone-800 border border-stone-200 rounded-lg px-3 py-1.5 hover:bg-stone-50 transition-colors"
-            >
-              Export CSV
-            </button>
-          )}
-        </div>
-
-        {/* Activity feed */}
-        <div>
-          {loading ? (
-            <div className="space-y-2 animate-pulse">
-              {[...Array(6)].map((_, i) => (
-                <div key={i} className="bg-stone-100 rounded-xl h-12" />
-              ))}
-            </div>
-          ) : filteredEvents.length === 0 ? (
-            <div className="rounded-xl border border-stone-200 bg-white px-6 py-10 text-center text-sm text-stone-400">
-              No events match the current filters.
-            </div>
-          ) : (
-            <>
-            <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-stone-100 text-xs text-stone-400 uppercase tracking-wide">
-                    <th className="px-4 py-3 text-left font-medium w-20">Time</th>
-                    <th className="px-4 py-3 text-left font-medium">User</th>
-                    <th className="px-4 py-3 text-left font-medium">AI tool</th>
-                    <th className="px-4 py-3 text-left font-medium">Call</th>
-                    <th className="px-4 py-3 text-left font-medium">Input</th>
-                    <th className="px-4 py-3 text-left font-medium">Decision</th>
-                    <th className="px-4 py-3 text-right font-medium">Tokens</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredEvents.map(ev => (
-                    <tr
-                      key={ev.id}
-                      className="border-b border-stone-100 last:border-0 hover:bg-stone-50 transition-colors"
-                    >
-                      <td className="px-4 py-3 text-stone-400 text-xs tabular-nums whitespace-nowrap">
-                        {timeAgo(ev.ts)}
-                      </td>
-                      <td className="px-4 py-3 max-w-[160px]">
-                        {ev.user_email ? (
-                          <>
-                            <div className="text-xs font-medium text-stone-700 truncate">
-                              {ev.user_email.split("@")[0]}
-                            </div>
-                            <div className="text-[11px] text-stone-400 truncate" title={ev.user_email}>
-                              {ev.user_email}
-                            </div>
-                          </>
-                        ) : (
-                          <span className="text-xs text-stone-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <AiToolBadge tool={ev.ai_tool} />
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-stone-600 whitespace-nowrap">
-                        {ev.tool_call}
-                      </td>
-                      <td
-                        className="px-4 py-3 text-xs text-stone-500 max-w-[200px] truncate cursor-copy select-none"
-                        title={ev.input_summary ? "Double-click to copy" : undefined}
-                        onDoubleClick={() => {
-                          if (!ev.input_summary) return
-                          navigator.clipboard.writeText(ev.input_summary)
-                            .then(() => {
-                              const el = document.activeElement as HTMLElement
-                              el?.blur()
-                            })
-                            .catch(() => {})
-                        }}
-                      >
-                        {ev.input_summary ?? "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <DecisionBadge decision={ev.decision} />
-                        {ev.rule_message && ev.decision !== "allowed" && (
-                          <div className="text-[11px] text-stone-400 mt-0.5 truncate max-w-[120px]" title={ev.rule_message}>
-                            {ev.rule_message}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right text-xs tabular-nums whitespace-nowrap">
-                        {(() => {
-                          const used = formatTokensUsed(ev.tokens_before, ev.tokens_after)
-                          if (used) return <span className="text-stone-500">{used}</span>
-                          if (ev.tokens_saved && ev.tokens_saved > 0)
-                            return <span className="text-green-700">{formatTokensSaved(ev.tokens_saved)} saved</span>
-                          return <span className="text-stone-300">—</span>
-                        })()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {hasMore && (
-              <div className="flex justify-center pt-4 pb-2">
-                <button
-                  onClick={loadMore}
-                  disabled={loadingMore}
-                  className="text-sm text-indigo-600 hover:text-indigo-800 disabled:text-stone-400 font-medium"
-                >
-                  {loadingMore ? "Loading…" : "Load more"}
-                </button>
-              </div>
-            )}
-            </>
-          )}
-        </div>
-
+            Export CSV
+          </button>
+        )}
       </div>
+
+      {/* Activity feed */}
+      {loading ? (
+        <div className="space-y-2 animate-pulse">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="bg-stone-100 rounded-xl h-12" />
+          ))}
+        </div>
+      ) : filteredEvents.length === 0 ? (
+        <div className="rounded-xl border border-stone-200 bg-white px-6 py-10 text-center text-sm text-stone-400">
+          No events match the current filters.
+        </div>
+      ) : (
+        <>
+          <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-stone-100 text-xs text-stone-400 uppercase tracking-wide">
+                  <th className="px-4 py-3 text-left font-medium w-20">Time</th>
+                  <th className="px-4 py-3 text-left font-medium">User</th>
+                  <th className="px-4 py-3 text-left font-medium">AI tool</th>
+                  <th className="px-4 py-3 text-left font-medium">Call</th>
+                  <th className="px-4 py-3 text-left font-medium">Input</th>
+                  <th className="px-4 py-3 text-left font-medium">Decision</th>
+                  <th className="px-4 py-3 text-right font-medium">Tokens</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredEvents.map(ev => (
+                  <tr
+                    key={ev.id}
+                    className="border-b border-stone-100 last:border-0 hover:bg-stone-50 transition-colors"
+                    style={{ background: ev.decision === "blocked" ? "var(--err-bg)" : undefined }}
+                  >
+                    <td className="px-4 py-3 text-stone-400 text-xs tabular-nums whitespace-nowrap">
+                      {timeAgo(ev.ts)}
+                    </td>
+                    <td className="px-4 py-3 max-w-[160px]">
+                      {ev.user_email ? (
+                        <>
+                          <div className="text-xs font-medium text-stone-700 truncate">
+                            {ev.user_email.split("@")[0]}
+                          </div>
+                          <div className="text-[11px] text-stone-400 truncate" title={ev.user_email}>
+                            {ev.user_email}
+                          </div>
+                        </>
+                      ) : (
+                        <span className="text-xs text-stone-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <AiToolBadge tool={ev.ai_tool} />
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-stone-600 whitespace-nowrap">
+                      {ev.tool_call}
+                    </td>
+                    <td
+                      className="px-4 py-3 text-xs text-stone-500 max-w-[200px] truncate cursor-copy select-none"
+                      title={ev.input_summary ? "Double-click to copy" : undefined}
+                      onDoubleClick={() => {
+                        if (!ev.input_summary) return
+                        navigator.clipboard.writeText(ev.input_summary).catch(() => {})
+                      }}
+                    >
+                      {ev.input_summary ?? "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <DecisionBadge decision={ev.decision} />
+                      {ev.rule_message && ev.decision !== "allowed" && (
+                        <div className="text-[11px] text-stone-400 mt-0.5 truncate max-w-[120px]" title={ev.rule_message}>
+                          {ev.rule_message}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right text-xs tabular-nums whitespace-nowrap">
+                      {(() => {
+                        const used = formatTokensUsed(ev.tokens_before, ev.tokens_after)
+                        if (used) return <span className="text-stone-500">{used}</span>
+                        if (ev.tokens_saved && ev.tokens_saved > 0)
+                          return <span className="text-green-700">{formatTokensSaved(ev.tokens_saved)} saved</span>
+                        return <span className="text-stone-300">—</span>
+                      })()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {hasMore && (
+            <div className="flex justify-center pt-4 pb-2">
+              <button
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="text-sm text-indigo-600 hover:text-indigo-800 disabled:text-stone-400 font-medium"
+              >
+                {loadingMore ? "Loading…" : "Load more"}
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </GuardShell>
   )
 }
