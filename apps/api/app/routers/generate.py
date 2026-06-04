@@ -15,7 +15,7 @@ from app.core.auth import get_workspace_id
 from app.core.config import settings
 from app.core.crypto import decrypt
 from app.core.database import get_db
-from app.dsl.loader import load_workflow_yaml, yaml_to_graph
+from app.dsl.loader import yaml_to_graph
 from app.models.integration import Integration
 from app.runtime.llm_client import AnthropicClient, LLMTextBlock
 
@@ -191,7 +191,18 @@ async def generate_workflow(
     try:
         parsed = _yaml.safe_load(raw)
         name = parsed.get("name", "generated-agent")
-        dsl = load_workflow_yaml(raw)
+
+        # Claude naturally emits blocks as a list; DSL expects a dict keyed by block id
+        if isinstance(parsed.get("blocks"), list):
+            blocks_dict = {}
+            for i, block in enumerate(parsed["blocks"]):
+                block = dict(block)
+                block_id = block.pop("id", f"block_{i}")
+                blocks_dict[block_id] = block
+            parsed["blocks"] = blocks_dict
+
+        from app.dsl.schema import Workflow as _Workflow
+        dsl = _Workflow.model_validate(parsed)
         graph = yaml_to_graph(dsl)
     except Exception as exc:
         log.error("generate.parse_error", error=str(exc), yaml=raw[:500])
