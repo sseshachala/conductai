@@ -86,6 +86,12 @@ output — send notification
 - Logic blocks use: next: {pass: id, fail: id}
 - Prefer mcp over tool for Vercel, Linear, Railway, Jira, GitHub, Slack
 - End with a comment: # requires: ENV_VAR1, ENV_VAR2
+- CRITICAL: Any description, message, or condition field containing a colon (:), newline,
+  or special character MUST use YAML block scalar style (|). Example:
+    description: |
+      Extract the error title, message, and stack trace.
+      Output as JSON with fields: title, message, stack_trace.
+  Never put such text on a single inline line — it breaks YAML parsing.
 
 Output ONLY the YAML. No markdown. No explanation."""
 
@@ -187,6 +193,26 @@ async def generate_workflow(
         raise HTTPException(status_code=502, detail=f"Generation failed: {exc}")
 
     raw = _strip_fences(raw)
+
+    # If Claude produced invalid YAML (e.g. bare colons in strings), ask it to fix once
+    try:
+        _yaml.safe_load(raw)
+    except _yaml.YAMLError:
+        log.warning("generate.yaml_syntax_error_retrying")
+        try:
+            fix_response = llm.create(
+                model="claude-sonnet-4-6",
+                system="You are a YAML expert. Fix the YAML syntax errors in the user's input. "
+                       "Use block scalars (|) for any string values containing colons, newlines, or special characters. "
+                       "Output ONLY the corrected YAML, no explanation.",
+                messages=[{"role": "user", "content": raw}],
+                max_tokens=4096,
+            )
+            raw = _strip_fences(next(
+                (b.text for b in fix_response.content if isinstance(b, LLMTextBlock)), raw
+            ).strip())
+        except Exception:
+            pass  # fall through to validation which will surface the error
 
     try:
         parsed = _yaml.safe_load(raw)
