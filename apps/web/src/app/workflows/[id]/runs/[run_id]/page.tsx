@@ -54,7 +54,7 @@ export default function RunDetailPage() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [stopping, setStopping] = useState(false)
-  const [activeTab, setActiveTab] = useState<Tab>("trace")
+  const [activeTab, setActiveTab] = useState<Tab>("summary")
   const [approvalDecision, setApprovalDecision] = useState<"approved" | "rejected" | null>(null)
   const [approvingRun, setApprovingRun] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -177,7 +177,7 @@ export default function RunDetailPage() {
 
   return (
     <AppShell>
-      <div style={{ maxWidth: 900, margin: "0 auto", padding: "28px 24px" }}>
+      <div style={{ maxWidth: 1120, margin: "0 auto", padding: "28px 24px" }}>
         {/* Breadcrumb */}
         <nav style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-3)", marginBottom: 16 }}>
           <Link href="/projects" style={{ color: "var(--text-3)", textDecoration: "none" }}>Projects</Link>
@@ -201,7 +201,7 @@ export default function RunDetailPage() {
                 </span>
               )}
               <span className={`sbadge ${sKey}`} style={{ height: 24, fontSize: 12.5 }}>
-                {(sKey === "run" || sKey === "wait") && <span className="dot pulse" style={{ background: "var(--info)" }} />}
+                {(sKey === "run" || sKey === "wait") && <span className="dot pulse" style={{ background: sKey === "wait" ? "var(--warn)" : "var(--info)" }} />}
                 {s.label}
               </span>
             </div>
@@ -209,7 +209,7 @@ export default function RunDetailPage() {
             <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text-3)" }}>
               {issueNum ? (
                 <>
-                  <span className="chip" style={{ height: 20, fontSize: 10.5, flexShrink: 0 }}>Issue</span>
+                  <span className="chip bk-trigger" style={{ height: 20, fontSize: 10.5, flexShrink: 0 }}>Issue</span>
                   <span>{issueTitle ? `${run.triggered_by?.split(":")[0] ?? ""}:${issueNum?.toString() ?? ""} — ${issueTitle}` : formatTrigger(run.triggered_by)}</span>
                   {prNum && prUrl && <a href={prUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "var(--accent-text)", fontWeight: 600, textDecoration: "none" }}>PR #{prNum} →</a>}
                 </>
@@ -426,7 +426,7 @@ export default function RunDetailPage() {
               {run.status === "paused" && !approvalDecision ? (
                 <div className="card" style={{ padding: 0, overflow: "hidden" }}>
                   <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-                    <span className="chip" style={{ height: 21, fontSize: 9.5, fontWeight: 800, letterSpacing: ".07em", textTransform: "uppercase" }}>Approval</span>
+                    <span className="chip bk-approval" style={{ height: 21, fontSize: 9.5, fontWeight: 800, letterSpacing: ".07em", textTransform: "uppercase" }}>Approval</span>
                     <span style={{ fontWeight: 650, fontSize: 14 }}>Awaiting review</span>
                   </div>
                   <div style={{ padding: 18 }}>
@@ -526,13 +526,13 @@ export default function RunDetailPage() {
                 {/* Totals grid */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
                   {[
-                    { label: "Total cost",    value: `$${totalCost.toFixed(4)}`,         color: "var(--text)"     },
-                    { label: "Input tokens",  value: totalInput.toLocaleString(),          color: "var(--accent-text)" },
-                    { label: "Output tokens", value: totalOutput.toLocaleString(),         color: "var(--text-2)"  },
+                    { label: "Total cost",    value: `$${totalCost.toFixed(2)}`,         color: "var(--text)"     },
+                    { label: "Input tokens",  value: totalInput.toLocaleString(),          color: "var(--info)" },
+                    { label: "Output tokens", value: totalOutput.toLocaleString(),         color: "var(--accent-text)"  },
                   ].map(({ label, value, color }) => (
                     <div key={label} className="card" style={{ padding: "14px 18px" }}>
                       <p className="eyebrow" style={{ marginBottom: 8 }}>{label}</p>
-                      <p style={{ fontSize: 20, fontWeight: 700, color, letterSpacing: "-.01em" }}>{value}</p>
+                      <p style={{ fontSize: 26, fontWeight: 700, color, letterSpacing: "-.01em" }}>{value}</p>
                     </div>
                   ))}
                 </div>
@@ -549,10 +549,10 @@ export default function RunDetailPage() {
                     {rows.map((r, i) => (
                       <div key={r.block} style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 1fr 0.7fr 1fr", padding: "10px 16px", borderTop: i ? "1px solid var(--border)" : "none" }}>
                         <span className="mono" style={{ fontSize: 12, color: "var(--text-2)" }}>{r.block}</span>
-                        <span style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "right" }}>{r.input.toLocaleString()}</span>
-                        <span style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "right" }}>{r.output.toLocaleString()}</span>
-                        <span style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "right" }}>{r.turns}</span>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", textAlign: "right" }}>${r.cost.toFixed(4)}</span>
+                        <span className="mono" style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "right" }}>{r.input.toLocaleString()}</span>
+                        <span className="mono" style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "right" }}>{r.output.toLocaleString()}</span>
+                        <span className="mono" style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "right" }}>{r.turns}</span>
+                        <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", textAlign: "right" }}>${r.cost.toFixed(2)}</span>
                       </div>
                     ))}
                   </div>

@@ -66,7 +66,7 @@ function TraceRow({ row }: { row: TraceRow }) {
 
       {/* Tool input */}
       {row.role === "tool_use" && row.tool_input && (
-        <pre style={{ margin: 0, padding: "9px 11px", background: "var(--surface-3)", borderRadius: 7, fontFamily: "var(--font-mono, monospace)", fontSize: 11.5, overflowX: "auto", lineHeight: 1.5, color: "var(--text-2)" }}>
+        <pre style={{ margin: 0, padding: "9px 11px", background: "var(--inverse)", borderRadius: 7, fontFamily: "var(--font-mono, monospace)", fontSize: 11.5, overflowX: "auto", lineHeight: 1.5, color: "var(--on-inverse)" }}>
           {JSON.stringify(row.tool_input, null, 2)}
         </pre>
       )}
@@ -142,6 +142,18 @@ export default function ConversationTrace({ workflowId, runId, getToken }: Props
       <div style={{ display: "flex", alignItems: "center", gap: 18, paddingBottom: 14, marginBottom: 16, borderBottom: "1px solid var(--border)", fontSize: 13, color: "var(--text-3)" }}>
         <span><b style={{ color: "var(--text)" }}>{rows.length}</b> trace rows</span>
         {totalInput > 0 && <span style={{ fontFamily: "var(--font-mono, monospace)" }}>{(totalInput + totalOutput).toLocaleString()} tokens · ${totalCost.toFixed(4)}</span>}
+        {rows.length > 0 && (() => {
+          const lastRow = rows[rows.length - 1]
+          const activeBlock = (lastRow as TraceRow & { block_name?: string }).block_name ?? lastRow.block_id
+          return activeBlock ? (
+            <span
+              className="chip"
+              style={{ marginLeft: "auto", background: "var(--blk-brain-bg)", borderColor: "var(--blk-brain-bd)", color: "var(--blk-brain-tx)", fontFamily: "monospace", fontSize: 11 }}
+            >
+              {activeBlock}
+            </span>
+          ) : null
+        })()}
       </div>
 
       {blocks.map(({ blockId, rows: blockRows }) => (

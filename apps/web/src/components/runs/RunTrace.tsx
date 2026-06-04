@@ -317,7 +317,18 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
               ...typeChipStyle(row.type),
             }}
           >
-            {row.type}
+            {({
+              brain: "BRAIN",
+              tool: "TOOL CALL",
+              mcp: "MCP",
+              logic: "LOGIC",
+              memory: "MEMORY",
+              guard: "GUARD",
+              approval: "APPROVAL",
+              output: "OUTPUT",
+              cleanup: "CLEANUP",
+              trigger: "TRIGGER",
+            } as Record<string, string>)[row.type] ?? row.type.toUpperCase()}
           </span>
 
           {/* Cost badge for Brain blocks */}
