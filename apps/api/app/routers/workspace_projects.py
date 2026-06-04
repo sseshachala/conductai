@@ -17,6 +17,7 @@ from app.core.database import get_db
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/projects", tags=["workspace-projects"])
 preferences_router = APIRouter(prefix="/workspaces/{workspace_id}/preferences", tags=["workspace-preferences"])
+notifications_router = APIRouter(prefix="/workspaces/{workspace_id}/notifications", tags=["notifications"])
 
 
 class ProjectOut(BaseModel):
@@ -30,6 +31,88 @@ class ProjectOut(BaseModel):
 
 class ProjectCreate(BaseModel):
     name: str
+
+
+def _to_relative_time(dt: datetime | None) -> str:
+    if not dt:
+        return ""
+    now = datetime.now(timezone.utc)
+    delta = now - dt
+    seconds = int(max(delta.total_seconds(), 0))
+    if seconds < 60:
+        return "now"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes}m"
+    hours = minutes // 60
+    if hours < 24:
+        return f"{hours}h"
+    days = hours // 24
+    return f"{days}d"
+
+
+def _notification_tone(action: str) -> str:
+    a = (action or "").lower()
+    if any(x in a for x in ["failed", "error", "denied", "blocked", "deleted"]):
+        return "err"
+    if any(x in a for x in ["approval", "warn", "paused"]):
+        return "warn"
+    return "ok"
+
+
+@notifications_router.get("")
+def list_notifications(
+    workspace_id: str,
+    active_workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    db: Session = Depends(get_db),
+    limit: int = 10,
+):
+    """Return recent notification-like events from audit_log for the workspace."""
+    _enforce_workspace(workspace_id, active_workspace_id)
+    rows = db.execute(
+        text(
+            """
+            SELECT id, action, resource_type, resource_id, metadata AS meta, created_at
+            FROM audit_log
+            WHERE workspace_id = :ws
+            ORDER BY created_at DESC
+            LIMIT :limit
+            """
+        ),
+        {"ws": workspace_id, "limit": min(max(limit, 1), 50)},
+    ).fetchall()
+
+    items = []
+    for r in rows:
+        action = r.action or "activity"
+        title = action.replace(".", " ").replace("_", " ").strip().title()
+        meta = r.meta if isinstance(r.meta, dict) else {}
+        resource = r.resource_id or ""
+        desc_parts = []
+        if r.resource_type:
+            desc_parts.append(str(r.resource_type))
+        if resource:
+            desc_parts.append(str(resource))
+        if not desc_parts and meta:
+            # Small, safe summary fallback from metadata keys.
+            keys = [k for k in ["workflow_id", "run_id", "credential_id", "project_id"] if k in meta]
+            desc_parts.extend([str(meta[k]) for k in keys[:2]])
+
+        items.append(
+            {
+                "id": str(r.id),
+                "title": title,
+                "tone": _notification_tone(action),
+                "desc": " · ".join(desc_parts) if desc_parts else "Workspace activity",
+                "time": _to_relative_time(r.created_at),
+                # Until we store read state per user, treat recent items as unread in UI.
+                "unread": True,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+        )
+
+    return {"items": items, "unread_count": len(items)}
 
 
 def _slugify(name: str) -> str:

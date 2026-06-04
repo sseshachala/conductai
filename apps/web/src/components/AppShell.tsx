@@ -14,6 +14,16 @@ interface Project { id: string; name: string; agent_count: number }
 
 type UserRole = "admin" | "security" | "developer" | "viewer" | null
 
+interface NotificationItem {
+  id: string
+  title: string
+  tone: "warn" | "err" | "ok" | "info"
+  desc: string
+  time: string
+  unread: boolean
+  created_at?: string | null
+}
+
 // ── SVG Icon helpers ──────────────────────────────────────────────────────────
 
 function Icon({ d, children, size = 16, strokeWidth = 1.5, className = "" }: {
@@ -107,19 +117,6 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
   return ['Conduct']
 }
 
-// ── Static notification data ──────────────────────────────────────────────────
-
-const NOTIFICATIONS = [
-  { id: 1, title: "Awaiting your approval", tone: "warn" as const, desc: "Autopilot + Approval · PROJ-482", time: "now", unread: true },
-  { id: 2, title: "Policy block", tone: "err" as const, desc: "sam@ blocked by no-rm in claude-code", time: "6m", unread: true },
-  { id: 3, title: "Run failed", tone: "err" as const, desc: "Autopilot Full · 3 retries exhausted", time: "1h", unread: true },
-  { id: 4, title: "Budget at 78%", tone: "warn" as const, desc: "maya@ near personal $75 cap", time: "2h", unread: false },
-  { id: 5, title: "Review posted", tone: "ok" as const, desc: "PR Reviewer · conductai/web #1291", time: "6m", unread: false },
-  { id: 6, title: "PR opened", tone: "ok" as const, desc: "Dependency Updater · #1280", time: "3h", unread: false },
-]
-
-const UNREAD_COUNT = NOTIFICATIONS.filter(n => n.unread).length
-
 // ── Command palette commands ──────────────────────────────────────────────────
 
 const PALETTE_COMMANDS = [
@@ -170,6 +167,8 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
   // Notifications popover
   const [notifOpen, setNotifOpen] = useState(false)
   const notifRef = useRef<HTMLDivElement>(null)
+  const [notifications, setNotifications] = useState<NotificationItem[]>([])
+  const [notificationsLoading, setNotificationsLoading] = useState(false)
 
   // Command palette
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -244,6 +243,33 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
     if (id) h["X-Workspace-ID"] = id
     return h
   }
+
+  const unreadCount = notifications.filter(n => n.unread).length
+
+  useEffect(() => {
+    let cancelled = false
+    async function fetchNotifications() {
+      if (!activeWorkspace?.id) return
+      setNotificationsLoading(true)
+      try {
+        const h = await authHeaders()
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${activeWorkspace.id}/notifications?limit=8`,
+          { headers: h }
+        )
+        if (!res.ok || cancelled) return
+        const data = await res.json()
+        const items = Array.isArray(data?.items) ? data.items : []
+        if (!cancelled) setNotifications(items)
+      } catch {
+        if (!cancelled) setNotifications([])
+      } finally {
+        if (!cancelled) setNotificationsLoading(false)
+      }
+    }
+    fetchNotifications()
+    return () => { cancelled = true }
+  }, [activeWorkspace?.id])
 
   // Fetch user role from members API
   useEffect(() => {
@@ -1012,7 +1038,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
                 onMouseLeave={e => (e.currentTarget.style.background = "var(--surface-2)")}
               >
                 <Icons.Bell />
-                {UNREAD_COUNT > 0 && (
+                {unreadCount > 0 && (
                   <span style={{
                     position: "absolute", top: 5, right: 5, width: 7, height: 7,
                     borderRadius: "50%", background: "var(--err)",
@@ -1032,15 +1058,19 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
                 }}>
                   <div style={{ padding: "12px 16px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid var(--border)" }}>
                     <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>Notifications</span>
-                    {UNREAD_COUNT > 0 && (
+                    {unreadCount > 0 && (
                       <span style={{
                         fontSize: 10.5, fontWeight: 700, padding: "1px 7px", borderRadius: 20,
                         background: "var(--err-bg)", color: "var(--err)",
-                      }}>{UNREAD_COUNT} unread</span>
+                      }}>{unreadCount} unread</span>
                     )}
                   </div>
                   <div style={{ overflowY: "auto", maxHeight: 340 }}>
-                    {NOTIFICATIONS.map(n => {
+                    {notificationsLoading ? (
+                      <div style={{ padding: "16px", fontSize: 12, color: "var(--text-muted)" }}>Loading activity...</div>
+                    ) : notifications.length === 0 ? (
+                      <div style={{ padding: "16px", fontSize: 12, color: "var(--text-muted)" }}>No recent activity.</div>
+                    ) : notifications.map(n => {
                       const toneColors: Record<string, { bg: string; color: string }> = {
                         warn: { bg: "var(--warn-bg)", color: "var(--warn)" },
                         err: { bg: "var(--err-bg)", color: "var(--err)" },
