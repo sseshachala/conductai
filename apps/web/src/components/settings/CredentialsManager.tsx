@@ -363,9 +363,9 @@ function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promi
             </div>
 
             {isAdmin && isConnected && cred && confirmHandle === cred.handle && (
-              <div style={{ padding: "0 16px 12px", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 6 }}>
-                <p style={{ fontSize: 11, color: "var(--err)", margin: 0, paddingTop: 10 }}>
-                  Type <strong>{svc.label}</strong> to remove credential.
+              <div style={{ margin: "0 16px 12px", padding: "10px 12px", border: "1px solid var(--err-bd)", borderRadius: 10, background: "var(--err-bg)", display: "flex", flexDirection: "column", gap: 8 }}>
+                <p style={{ fontSize: 11, color: "var(--err)", margin: 0 }}>
+                  Type <strong>{svc.label}</strong> to confirm credential removal.
                 </p>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <input
@@ -376,13 +376,13 @@ function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promi
                       if (e.key === "Escape") { setConfirmHandle(null); setConfirmValue("") }
                     }}
                     placeholder={svc.label}
-                    style={{ flex: 1, minWidth: 0, border: "1px solid var(--err-bd)", borderRadius: 6, padding: "4px 8px", fontSize: 12, color: "var(--text)", background: "var(--surface)", outline: "none" }}
+                    style={{ flex: 1, minWidth: 0, border: "1px solid var(--err-bd)", borderRadius: 8, padding: "6px 10px", fontSize: 12, color: "var(--text)", background: "var(--surface)", outline: "none" }}
                   />
                   <button
                     onClick={() => handleRemove(cred.handle)}
                     disabled={deleting === cred.handle || confirmValue !== svc.label}
                     className="btn btn-sm"
-                    style={{ color: "var(--err)", fontSize: 12 }}
+                    style={{ fontSize: 12, background: "var(--err)", color: "#fff", border: "none" }}
                   >
                     {deleting === cred.handle ? "…" : "Confirm"}
                   </button>
@@ -390,7 +390,7 @@ function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promi
                     onClick={() => { setConfirmHandle(null); setConfirmValue("") }}
                     className="btn btn-ghost btn-sm"
                   >
-                    Keep credential
+                    Cancel
                   </button>
                 </div>
               </div>

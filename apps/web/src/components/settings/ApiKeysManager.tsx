@@ -204,9 +204,9 @@ export default function ApiKeysManager() {
               </div>
 
               {isAdmin && revokeConfirmId === k.id && (
-                <div style={{ padding: "0 20px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ margin: "0 20px 12px", padding: "10px 12px", border: "1px solid var(--err-bd)", borderRadius: 10, background: "var(--err-bg)", display: "flex", flexDirection: "column", gap: 8 }}>
                   <p style={{ fontSize: 11.5, color: "var(--err)", margin: 0 }}>
-                    Type <strong>{k.name}</strong> to revoke this key.
+                    Type <strong>{k.name}</strong> to confirm key revocation.
                   </p>
                   <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                     <input
@@ -223,8 +223,10 @@ export default function ApiKeysManager() {
                         fontSize: 12,
                         border: "1px solid var(--err-bd, #fecaca)",
                         borderRadius: 8,
-                        padding: "5px 8px",
+                        padding: "6px 10px",
                         outline: "none",
+                        background: "var(--surface)",
+                        color: "var(--text)",
                       }}
                     />
                     <button
@@ -233,10 +235,10 @@ export default function ApiKeysManager() {
                       className="btn btn-sm"
                       style={{ background: "var(--err)", color: "#fff", border: "none", opacity: (revoking === k.id || revokeConfirmValue !== k.name) ? 0.4 : 1 }}
                     >
-                      {revoking === k.id ? "Revoking…" : "Revoke"}
+                      {revoking === k.id ? "Revoking…" : "Confirm"}
                     </button>
                     <button onClick={() => { setRevokeConfirmId(null); setRevokeConfirmValue("") }} className="btn btn-ghost btn-sm">
-                      Keep key
+                      Cancel
                     </button>
                   </div>
                 </div>

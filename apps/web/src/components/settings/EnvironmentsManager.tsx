@@ -820,9 +820,9 @@ function EnvironmentDetail({
               </div>
 
               {confirmVarIndex === i && (
-                <div style={{ padding: "0 16px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ margin: "0 16px 10px", padding: "10px 12px", border: "1px solid var(--err-bd)", borderRadius: 10, background: "var(--err-bg)", display: "flex", flexDirection: "column", gap: 8 }}>
                   <p style={{ margin: 0, fontSize: 11, color: "var(--err)" }}>
-                    Type <strong>{v.key || "key"}</strong> to remove.
+                    Type <strong>{v.key || "key"}</strong> to confirm removal.
                   </p>
                   <div style={{ display: "flex", gap: 6, width: "100%" }}>
                     <input
@@ -834,7 +834,7 @@ function EnvironmentDetail({
                       }}
                       placeholder={v.key || "key"}
                       className="mono"
-                      style={{ flex: 1, minWidth: 0, fontSize: 11.5, border: "1px solid var(--err-bd, #fecaca)", borderRadius: 8, padding: "5px 8px", outline: "none" }}
+                      style={{ flex: 1, minWidth: 0, fontSize: 11.5, border: "1px solid var(--err-bd, #fecaca)", borderRadius: 8, padding: "6px 10px", outline: "none", background: "var(--surface)", color: "var(--text)" }}
                     />
                     <button
                       onClick={() => removeVar(i)}
@@ -842,13 +842,13 @@ function EnvironmentDetail({
                       className="btn btn-sm"
                       style={{ background: "var(--err)", color: "#fff", border: "none", opacity: confirmVarValue !== v.key ? 0.4 : 1 }}
                     >
-                      Remove
+                      Confirm
                     </button>
                     <button
                       onClick={() => { setConfirmVarIndex(null); setConfirmVarValue("") }}
                       className="btn btn-ghost btn-sm"
                     >
-                      Keep variable
+                      Cancel
                     </button>
                   </div>
                 </div>
@@ -911,7 +911,7 @@ function EnvironmentDetail({
           {isAdmin && confirmHost && (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <p style={{ margin: 0, fontSize: 12, color: "var(--err)" }}>
-                Type <strong>{confirmHost}</strong> to remove allowed host.
+                Type <strong>{confirmHost}</strong> to confirm allowed host removal.
               </p>
               <div style={{ display: "flex", gap: 8 }}>
                 <input
@@ -940,7 +940,7 @@ function EnvironmentDetail({
                   disabled={confirmHostValue !== confirmHost}
                   style={{ background: "var(--err)", color: "#fff", border: "none", opacity: confirmHostValue !== confirmHost ? 0.4 : 1 }}
                 >
-                  Remove
+                  Confirm
                 </button>
                 <button className="btn btn-ghost btn-sm" onClick={() => { setConfirmHost(null); setConfirmHostValue("") }}>
                   Cancel

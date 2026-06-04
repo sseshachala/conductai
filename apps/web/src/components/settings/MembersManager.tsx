@@ -342,9 +342,9 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
                 </div>
 
                 {confirmInviteId === inv.id && (
-                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--warn-bd)", display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ marginTop: 10, padding: "10px 12px", border: "1px solid var(--err-bd)", borderRadius: 10, background: "var(--err-bg)", display: "flex", flexDirection: "column", gap: 8 }}>
                     <p style={{ fontSize: 11.5, color: "var(--err)", margin: 0 }}>
-                      Type <strong>{inv.invited_email}</strong> to cancel invite.
+                      Type <strong>{inv.invited_email}</strong> to confirm invite cancellation.
                     </p>
                     <div style={{ display: "flex", gap: 6 }}>
                       <input
@@ -355,13 +355,13 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
                           if (e.key === "Escape") { setConfirmInviteId(null); setConfirmInviteValue("") }
                         }}
                         placeholder={inv.invited_email}
-                        style={{ flex: 1, fontSize: 12, border: "1px solid var(--err-bd, #fecaca)", borderRadius: 8, padding: "5px 8px", outline: "none" }}
+                        style={{ flex: 1, fontSize: 12, border: "1px solid var(--err-bd, #fecaca)", borderRadius: 8, padding: "6px 10px", outline: "none", background: "var(--surface)", color: "var(--text)" }}
                       />
                       <button
                         onClick={() => handleCancelInvite(inv.id)}
                         disabled={cancelling === inv.id || confirmInviteValue !== inv.invited_email}
-                        className="btn btn-ghost btn-sm"
-                        style={{ fontSize: 12, color: "var(--err)", opacity: cancelling === inv.id || confirmInviteValue !== inv.invited_email ? 0.5 : 1 }}
+                        className="btn btn-sm"
+                        style={{ fontSize: 12, background: "var(--err)", color: "#fff", border: "none", opacity: cancelling === inv.id || confirmInviteValue !== inv.invited_email ? 0.5 : 1 }}
                       >
                         {cancelling === inv.id ? "…" : "Confirm"}
                       </button>
@@ -370,7 +370,7 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
                         className="btn btn-ghost btn-sm"
                         style={{ fontSize: 12 }}
                       >
-                        Keep invite
+                        Cancel
                       </button>
                     </div>
                   </div>
@@ -454,9 +454,9 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
                   </div>
                 </div>
                 {isAdmin && m.clerk_user_id !== currentClerkId && confirmMemberId === m.clerk_user_id && (
-                  <div style={{ padding: "0 20px 12px", borderBottom: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ padding: "10px 20px 12px", borderBottom: "1px solid var(--border)", background: "var(--err-bg)", display: "flex", flexDirection: "column", gap: 8 }}>
                     <p style={{ fontSize: 11.5, color: "var(--err)", margin: 0 }}>
-                      Type <strong>{m.email || m.name || m.clerk_user_id}</strong> to remove member.
+                      Type <strong>{m.email || m.name || m.clerk_user_id}</strong> to confirm member removal.
                     </p>
                     <div style={{ display: "flex", gap: 6 }}>
                       <input
@@ -468,12 +468,13 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
                           if (e.key === "Escape") { setConfirmMemberId(null); setConfirmMemberValue("") }
                         }}
                         placeholder={m.email || m.name || m.clerk_user_id}
-                        style={{ flex: 1, fontSize: 12, border: "1px solid var(--err-bd, #fecaca)", borderRadius: 8, padding: "5px 8px", outline: "none" }}
+                        style={{ flex: 1, fontSize: 12, border: "1px solid var(--err-bd, #fecaca)", borderRadius: 8, padding: "6px 10px", outline: "none", background: "var(--surface)", color: "var(--text)" }}
                       />
                       <button
                         onClick={() => handleRemove(m.clerk_user_id)}
                         disabled={removing === m.clerk_user_id || confirmMemberValue !== (m.email || m.name || m.clerk_user_id)}
-                        style={{ fontSize: 12, color: "var(--err)", background: "none", border: "none", cursor: "pointer", opacity: removing === m.clerk_user_id || confirmMemberValue !== (m.email || m.name || m.clerk_user_id) ? 0.5 : 1 }}
+                        className="btn btn-sm"
+                        style={{ fontSize: 12, background: "var(--err)", color: "#fff", border: "none", opacity: removing === m.clerk_user_id || confirmMemberValue !== (m.email || m.name || m.clerk_user_id) ? 0.5 : 1 }}
                       >
                         {removing === m.clerk_user_id ? "…" : "Confirm"}
                       </button>
@@ -481,7 +482,7 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
                         onClick={() => { setConfirmMemberId(null); setConfirmMemberValue("") }}
                         style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
                       >
-                        Keep member
+                        Cancel
                       </button>
                     </div>
                   </div>
