@@ -272,96 +272,10 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
     <AppShell>
       <div className="mx-auto max-w-md px-6 py-10">
         <h1 className="text-base font-semibold text-stone-900 mb-1">New agent</h1>
-        <p className="text-xs text-stone-400 mb-6">Build from a playbook template, or describe what you want in plain English.</p>
-
-        {/* Mode toggle */}
-        <div className="flex rounded-lg border border-stone-200 p-0.5 mb-6 bg-stone-50">
-          <button
-            type="button"
-            onClick={() => setMode("playbook")}
-            className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-colors ${mode === "playbook" ? "bg-white text-stone-900 shadow-sm" : "text-stone-400 hover:text-stone-600"}`}
-          >From playbook</button>
-          <button
-            type="button"
-            onClick={() => setMode("describe")}
-            className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-colors ${mode === "describe" ? "bg-white text-stone-900 shadow-sm" : "text-stone-400 hover:text-stone-600"}`}
-          >Describe it</button>
-        </div>
-
-        {/* Describe mode */}
-        {mode === "describe" && (
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-stone-500">What should this agent do?</label>
-              <textarea
-                rows={5}
-                value={nlPrompt}
-                onChange={e => setNlPrompt(e.target.value)}
-                placeholder={"Watch my Vercel logs for errors, create a GitHub issue for each new one, and notify Slack."}
-                className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-200 resize-none"
-              />
-              <p className="text-[10px] text-stone-400">Be specific — mention integrations, triggers, and what should happen on each outcome.</p>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-stone-500">Agent name</label>
-              <input
-                value={agentName}
-                onChange={e => setAgentName(e.target.value)}
-                placeholder="My generated agent"
-                className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-stone-500">Environment</label>
-              {environments.length === 0 ? (
-                <p className="text-xs text-stone-400">
-                  No environments found. <a href="/settings/environments" className="underline font-medium">Create one first</a>.
-                </p>
-              ) : (
-                <select
-                  value={selectedEnvId}
-                  onChange={e => setSelectedEnvId(e.target.value)}
-                  className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
-                >
-                  <option value="">— select environment —</option>
-                  {environments.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                </select>
-              )}
-              <p className="text-[10px] text-stone-400">
-                ANTHROPIC_API_KEY is read from this environment&apos;s keys.{" "}
-                <a href="/settings/environments" className="underline hover:text-stone-600">Manage keys</a>
-              </p>
-            </div>
-
-            {generatedCreds.length > 0 && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
-                <p className="text-xs font-semibold text-amber-800 mb-1">Credentials needed</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {generatedCreds.map(c => (
-                    <span key={c} className="text-[11px] font-mono bg-amber-100 text-amber-700 px-2 py-0.5 rounded">{c}</span>
-                  ))}
-                </div>
-                <p className="text-[10px] text-amber-700 mt-1.5">Add these in <a href="/settings/environments" className="underline">Settings → Environments</a> before running.</p>
-              </div>
-            )}
-
-            {error && <p className="text-xs text-red-600">{error}</p>}
-
-            <button
-              type="button"
-              onClick={handleGenerate}
-              disabled={generating || !nlPrompt.trim()}
-              className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {generating ? "Generating…" : "Generate agent"}
-            </button>
-          </div>
-        )}
+        <p className="text-xs text-stone-400 mb-8">Choose a playbook and configure it — webhook registered automatically on create.</p>
 
         {/* Playbook mode */}
-        {mode === "playbook" && <div className="flex flex-col gap-5">
+        {true && <div className="flex flex-col gap-5">
 
           {/* Template picker — rich dropdown */}
           <div className="flex flex-col gap-1.5" ref={templateRef}>
