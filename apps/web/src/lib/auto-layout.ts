@@ -18,7 +18,7 @@ export type LayoutDirection = "LR" | "TB"
 export function autoLayout(
   nodes: Node[],
   edges: Edge[],
-  direction: LayoutDirection = "TB",
+  direction: LayoutDirection = "LR",
 ): { nodes: Node[]; edges: Edge[] } {
   if (nodes.length === 0) return { nodes, edges }
 
