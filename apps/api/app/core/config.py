@@ -82,6 +82,9 @@ class Settings(BaseSettings):
     # Fixture promotion — fallback repo if not derivable from the run's workflow
     github_promotion_repo: str = ""
 
+    # Runtime deterministic execution budgets (phase 2 reliability defaults)
+    default_max_cost_usd: float = 5.0
+
     # Watchdog — tunable thresholds
     # Slack alerts are per-workspace: token from the workspace's Slack integration,
     # channel from workspace.preferences["watchdog_channel"].

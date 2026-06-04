@@ -25,6 +25,7 @@ from app.models.project import Project
 from app.models.run import Run, RunEvent
 from app.models.workflow import Workflow, WorkflowVersion
 from app.runtime.input_contract import InputContractError, validate_run_start_inputs
+from app.runtime.run_contract import enrich_run_state_contract
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -327,8 +328,15 @@ async def inbound_webhook(
     initial_state = {
         "_trigger": payload,
         "__triggered_by": "webhook:inbound",
-        "__max_turns": suggested_turns,
     }
+    initial_state = enrich_run_state_contract(
+        initial_state,
+        source="webhook:inbound",
+        trigger_provider=git_provider,
+        workflow_id=str(workflow_id),
+        workspace_id=str(workflow.workspace_id),
+        max_turns=suggested_turns,
+    )
     try:
         initial_state = validate_run_start_inputs(initial_state)
     except InputContractError as err:
@@ -775,7 +783,18 @@ def _trigger_github_workflows(
         if not matched:
             continue
 
-        run_state = {**initial_state, "__triggered_by": f"github:{event_type}"}
+        wf_obj = getattr(version, "workflow", None)
+        wf_id = str(getattr(wf_obj, "id", "unknown"))
+        ws_id = str(getattr(wf_obj, "workspace_id", "unknown"))
+
+        run_state = enrich_run_state_contract(
+            {**initial_state, "__triggered_by": f"github:{event_type}"},
+            source=f"github:{event_type}",
+            trigger_provider="github",
+            workflow_id=wf_id,
+            workspace_id=ws_id,
+            max_turns=20,
+        )
         try:
             run_state = validate_run_start_inputs(run_state)
         except InputContractError as err:
@@ -904,12 +923,19 @@ async def github_webhook_by_slug(
     except Exception:
         suggested_turns = 20
 
-    try:
-        run_state = validate_run_start_inputs({
+    run_state = enrich_run_state_contract(
+        {
             **initial_state,
             "__triggered_by": "github:github_issue",
-            "__max_turns": suggested_turns,
-        })
+        },
+        source="github:github_issue",
+        trigger_provider="github",
+        workflow_id=str(workflow.id),
+        workspace_id=str(workflow.workspace_id),
+        max_turns=suggested_turns,
+    )
+    try:
+        run_state = validate_run_start_inputs(run_state)
     except InputContractError as err:
         raise HTTPException(status_code=422, detail=str(err))
 

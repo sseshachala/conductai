@@ -24,6 +24,7 @@ from app.models.workflow import Workflow, WorkflowVersion
 from app.models.project import Project
 from app.schemas.run import RunCreate, RunDetailOut, RunOut, RunWithWorkflowOut
 from app.runtime.input_contract import InputContractError, validate_run_start_inputs
+from app.runtime.run_contract import enrich_run_state_contract
 
 router = APIRouter(prefix="/workflows/{workflow_id}/runs", tags=["runs"])
 
@@ -238,7 +239,15 @@ def create_run(
         except Exception:
             max_turns = 20
 
-    initial_state["__max_turns"] = max_turns
+    initial_state = enrich_run_state_contract(
+        initial_state,
+        source="manual",
+        trigger_provider="manual",
+        workflow_id=str(workflow_id),
+        workspace_id=workspace_id,
+        max_turns=max_turns,
+    )
+
     run = Run(
         workflow_version_id=workflow.current_version_id,
         triggered_by=body.triggered_by,
