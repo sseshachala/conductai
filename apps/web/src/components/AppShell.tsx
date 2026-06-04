@@ -61,6 +61,9 @@ const Icons = {
     </Icon>
   ),
   Pulse: () => <Icon><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></Icon>,
+  Eye: () => <Icon><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></Icon>,
+  Star: () => <Icon><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></Icon>,
+  Trophy: () => <Icon><path d="M6 9H3V3h18v6h-3" /><path d="M12 15a6 6 0 006-6V3H6v6a6 6 0 006 6z" /><path d="M12 15v6M8 21h8" /></Icon>,
   Gear: () => (
     <Icon>
       <circle cx="12" cy="12" r="3" />
@@ -87,6 +90,9 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
   if (pathname.startsWith('/settings')) return ['Settings']
   if (pathname.startsWith('/marketplace')) return ['Marketplace']
   if (pathname.startsWith('/runs')) return ['Runs']
+  if (pathname.startsWith('/observability')) return ['Observability']
+  if (pathname.startsWith('/eval')) return ['Quality']
+  if (pathname.startsWith('/benchmark')) return ['Benchmark']
   if (pathname.startsWith('/workflows/new')) return ['Canvas', 'New agent']
   if (pathname.startsWith('/workflows/')) return ['Canvas']
   if (pathname.startsWith('/tasks')) return ['Tasks']
@@ -186,6 +192,9 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
 
   // Active runs count (for sidebar badge)
   const [activeRunsCount, setActiveRunsCount] = useState<number | undefined>(undefined)
+
+  // Marketplace playbook count (for sidebar badge)
+  const [playbookCount, setPlaybookCount] = useState<number | undefined>(undefined)
 
   // Projects state
   const [projects, setProjects] = useState<Project[]>([])
@@ -298,6 +307,21 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
     fetchRunsCount()
     return () => { cancelled = true }
   }, [activeWorkspace?.id])
+
+  // Fetch marketplace playbook count for sidebar badge
+  useEffect(() => {
+    let cancelled = false
+    async function fetchPlaybookCount() {
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/playbooks`)
+        if (!res.ok || cancelled) return
+        const data: unknown[] = await res.json()
+        if (!cancelled) setPlaybookCount(Array.isArray(data) && data.length > 0 ? data.length : undefined)
+      } catch {}
+    }
+    fetchPlaybookCount()
+    return () => { cancelled = true }
+  }, [])
 
   // Guard install check
   useEffect(() => {
@@ -839,6 +863,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
               icon={<Icons.Store />}
               active={pathname.startsWith("/marketplace")}
               collapsed={collapsed}
+              badge={playbookCount}
             />
           </div>
 
@@ -857,6 +882,27 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
               active={pathname.startsWith("/runs")}
               collapsed={collapsed}
               badge={activeRunsCount}
+            />
+            <SideNavItem
+              href="/observability"
+              label="Observability"
+              icon={<Icons.Eye />}
+              active={pathname.startsWith("/observability")}
+              collapsed={collapsed}
+            />
+            <SideNavItem
+              href="/eval"
+              label="Quality"
+              icon={<Icons.Star />}
+              active={pathname.startsWith("/eval")}
+              collapsed={collapsed}
+            />
+            <SideNavItem
+              href="/benchmark"
+              label="Benchmark"
+              icon={<Icons.Trophy />}
+              active={pathname.startsWith("/benchmark")}
+              collapsed={collapsed}
             />
           </div>
         </nav>
