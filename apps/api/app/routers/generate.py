@@ -4,6 +4,7 @@ POST /workflows/generate  — natural language → Conduct-compliant YAML + grap
 API key resolved from the workspace's credential vault (env_vars handle),
 same pattern as the executor. Falls back to settings.anthropic_api_key.
 """
+import pathlib
 import re
 import structlog
 import yaml as _yaml
@@ -22,78 +23,8 @@ from app.runtime.llm_client import AnthropicClient, LLMTextBlock
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/workflows", tags=["generate"])
 
-_SYSTEM_PROMPT = """You are an expert at writing Conduct playbook YAML files.
-Conduct is a YAML-based agent automation platform. Given a plain-English description,
-output ONLY valid Conduct YAML — no prose, no markdown fences, no explanation.
-
-## YAML structure
-
-name: <short slug, snake_case>
-description: <one sentence>
-trigger:
-  type: <webhook|schedule|manual>
-  # webhook needs: event: push|pull_request|issues|issue_comment
-  # schedule needs: cron: "0 9 * * 1"
-
-blocks:
-  - id: <snake_case_id>
-    type: <trigger|brain|tool|logic|memory|approval|output|mcp>
-    label: <Human readable label>
-    description: <for brain blocks this is the system prompt>
-
-## Block types
-
-brain — LLM reasoning step
-  description: <system prompt>
-  mode: single | agentic   (agentic = can use tools)
-  model: claude-haiku-4-5-20251001 | claude-sonnet-4-6 | claude-opus-4-7
-
-mcp — MCP server call (PREFERRED over tool when provider has MCP support)
-  config:
-    provider: vercel | linear | railway | jira | github | slack | custom
-    server_url: <MCP server URL>
-    credential_key: <env var name e.g. VERCEL_TOKEN>
-    tool_name: <MCP tool name>
-    transport: http | sse | auto
-
-tool — direct API action (use only when no MCP available)
-  integration: github | slack | linear | jira | vercel | railway
-  action: <action name>
-  params: {key: "{{ref}}" or literal}
-
-logic — conditional branch
-  condition: "{{block_id.field}} == 'value'"
-  next: {pass: <block_id>, fail: <block_id>}
-
-memory — read/write context
-  action: read | write
-  key: <key>
-  scope: repo | workspace
-
-approval — pause for human
-  via: slack | email | both
-  channel: <slack channel>
-  message: <message>
-
-output — send notification
-  integration: slack | email | github
-  action: post_message | send_email | post_comment
-  params: {channel: "#channel", message: "{{ref}}"}
-
-## Rules
-- Use {{block_id.field}} to reference previous outputs
-- Every block except last needs: next: <next_block_id>
-- Logic blocks use: next: {pass: id, fail: id}
-- Prefer mcp over tool for Vercel, Linear, Railway, Jira, GitHub, Slack
-- End with a comment: # requires: ENV_VAR1, ENV_VAR2
-- CRITICAL: Any description, message, or condition field containing a colon (:), newline,
-  or special character MUST use YAML block scalar style (|). Example:
-    description: |
-      Extract the error title, message, and stack trace.
-      Output as JSON with fields: title, message, stack_trace.
-  Never put such text on a single inline line — it breaks YAML parsing.
-
-Output ONLY the YAML. No markdown. No explanation."""
+_PROMPTS_DIR = pathlib.Path(__file__).parent.parent.parent / "prompts"
+_SYSTEM_PROMPT = (_PROMPTS_DIR / "generate_workflow.txt").read_text(encoding="utf-8")
 
 
 class GenerateRequest(BaseModel):
