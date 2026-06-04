@@ -217,7 +217,7 @@ def _write_codex_mcp_config() -> bool:
     try:
         content = config_path.read_text() if config_path.exists() else ""
         if "conduct-mcp" in content:
-            return True  # already registered
+            return True
         mcp_block = '\n[[mcp_servers]]\nname = "conduct"\ncommand = "conduct-mcp"\nargs = []\n'
         config_path.write_text(content + mcp_block)
         return True
@@ -225,8 +225,66 @@ def _write_codex_mcp_config() -> bool:
         return False
 
 
+def _write_cursor_mcp_config() -> bool:
+    """Write conduct-mcp into ~/.cursor/mcp.json. Returns True if written."""
+    cursor_dir = Path.home() / ".cursor"
+    if not cursor_dir.exists():
+        return False
+    config_path = cursor_dir / "mcp.json"
+    try:
+        existing = json.loads(config_path.read_text()) if config_path.exists() else {}
+        servers = existing.setdefault("mcpServers", {})
+        if "conduct" in servers:
+            return True
+        servers["conduct"] = {"command": "conduct-mcp", "args": []}
+        config_path.write_text(json.dumps(existing, indent=2))
+        return True
+    except Exception:
+        return False
+
+
+def _write_windsurf_mcp_config() -> bool:
+    """Write conduct-mcp into ~/.codeium/windsurf/mcp_config.json. Returns True if written."""
+    config_path = Path.home() / ".codeium" / "windsurf" / "mcp_config.json"
+    if not config_path.parent.exists():
+        return False
+    try:
+        existing = json.loads(config_path.read_text()) if config_path.exists() else {}
+        servers = existing.setdefault("mcpServers", {})
+        if "conduct" in servers:
+            return True
+        servers["conduct"] = {"command": "conduct-mcp", "args": []}
+        config_path.write_text(json.dumps(existing, indent=2))
+        return True
+    except Exception:
+        return False
+
+
+def _write_vscode_mcp_config() -> bool:
+    """Write conduct-mcp into VS Code settings.json (mcp.servers). Returns True if written."""
+    # Check both standard locations
+    candidates = [
+        Path.home() / ".vscode" / "settings.json",
+        Path.home() / "Library" / "Application Support" / "Code" / "User" / "settings.json",
+        Path.home() / ".config" / "Code" / "User" / "settings.json",
+    ]
+    settings_path = next((p for p in candidates if p.exists()), None)
+    if not settings_path:
+        return False
+    try:
+        existing = json.loads(settings_path.read_text()) if settings_path.exists() else {}
+        servers = existing.setdefault("mcp", {}).setdefault("servers", {})
+        if "conduct" in servers:
+            return True
+        servers["conduct"] = {"command": "conduct-mcp", "args": []}
+        settings_path.write_text(json.dumps(existing, indent=2))
+        return True
+    except Exception:
+        return False
+
+
 def cmd_mcp_install(args):
-    """Register conduct-mcp in Claude Code and Codex CLI."""
+    """Register conduct-mcp in Claude Code, Codex, Cursor, Windsurf, and VS Code."""
     import shutil
     import subprocess
 
@@ -242,29 +300,38 @@ def cmd_mcp_install(args):
             if result.returncode == 0:
                 registered.append("Claude Code")
             else:
-                # claude mcp add is idempotent; also try writing settings.json directly as fallback
                 _write_claude_mcp_settings()
                 registered.append("Claude Code (settings.json)")
         except Exception:
             _write_claude_mcp_settings()
             registered.append("Claude Code (settings.json)")
     else:
-        # claude CLI not found but .claude/ might exist (IDE extension)
-        written = _write_claude_mcp_settings()
-        if written:
+        if _write_claude_mcp_settings():
             registered.append("Claude Code (settings.json)")
 
     # --- Codex CLI ---
-    written = _write_codex_mcp_config()
-    if written:
+    if _write_codex_mcp_config():
         registered.append("Codex")
+
+    # --- Cursor ---
+    if _write_cursor_mcp_config():
+        registered.append("Cursor")
+
+    # --- Windsurf ---
+    if _write_windsurf_mcp_config():
+        registered.append("Windsurf")
+
+    # --- VS Code (Copilot) ---
+    if _write_vscode_mcp_config():
+        registered.append("VS Code (Copilot)")
 
     if registered:
         print(f"{GREEN}✓ conduct-mcp registered in: {', '.join(registered)}{RESET}")
-        print(f"{GRAY}  Restart Claude Code / Codex to pick up the new MCP server.{RESET}")
+        print(f"{GRAY}  Restart your AI tools to pick up the new MCP server.{RESET}")
     else:
-        print(f"{YELLOW}⚠ No supported AI tools detected. Install Claude Code or Codex first.{RESET}")
-        print(f"{GRAY}  Then re-run: conduct mcp install{RESET}")
+        print(f"{YELLOW}⚠ No supported AI tools detected on this machine.{RESET}")
+        print(f"{GRAY}  Supported: Claude Code, Codex, Cursor, Windsurf, VS Code{RESET}")
+        print(f"{GRAY}  After installing any of these, re-run: conduct mcp install{RESET}")
 
 
 def cmd_login(args):
