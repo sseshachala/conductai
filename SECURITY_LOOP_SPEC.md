@@ -297,4 +297,28 @@ Dedicated view in the Conduct console showing:
 
 ---
 
-*Conduct AI · SECURITY_LOOP_SPEC.md · v0.1*
+---
+
+## 13. Architecture (Revised)
+
+```
+Claude Code / Codex CLI
+        ↓
+Security Loop CLI  ← new tool; wraps both, classifies output, emits findings
+        ↓
+ConductGuard  ← already hooked in; routes the event to Conduct API
+        ↓
+/security console page  ← findings feed inside Conduct dashboard
+```
+
+**Three things to build:**
+
+1. **`/tools/security-loop`** — module page on conductai.ai (same pattern as `/tools/agent-booster`)
+2. **`/security` console page** — findings feed inside the Conduct app (captured findings, status per finding, MTTF, tool breakdown)
+3. **Security Loop CLI** — standalone tool package that wraps Claude Code + Codex CLI, runs the finding classifier, and emits structured events to ConductGuard
+
+**`/tools` page** gets a third card (Security Loop, Early Access) linking to `/tools/security-loop`.
+
+---
+
+*Conduct AI · SECURITY_LOOP_SPEC.md · v0.2*
