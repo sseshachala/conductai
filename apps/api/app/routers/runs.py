@@ -47,7 +47,11 @@ def get_workspace_id_sse(
     if not _clerk_enabled():
         return x_ws or DEV_WORKSPACE_ID
 
-    api_key_hdr = request.headers.get("x-api-key")
+    # Accept api_key from header OR query param (CLI streams can't always set headers)
+    api_key_hdr = (
+        request.headers.get("x-api-key")
+        or request.query_params.get("api_key")
+    )
 
     # Master server-level CLI key
     cli_key = settings.cli_api_key
