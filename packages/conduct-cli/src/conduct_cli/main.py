@@ -1084,8 +1084,12 @@ def cmd_install(args):
         proj = _resolve_project(server, workspace_id, hdrs, args.project)
         project_id = proj["id"]
 
-    # Agent name — use friendly name, fall back to playbook API name
-    agent_name = args.name or _FRIENDLY_NAMES.get(slug) or pb["name"]
+    # Agent name — explicit --name wins; otherwise auto-suffix with 4-char ID
+    # e.g. "Security Autopilot Fix [A4B2]" so multiple installs are distinguishable
+    import random, string
+    _base = _FRIENDLY_NAMES.get(slug) or pb["name"]
+    _uid  = "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
+    agent_name = args.name or f"{_base} [{_uid}]"
 
     # Repo input — inject into inputs if playbook expects github_repo
     if args.repo:
