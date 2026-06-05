@@ -549,32 +549,66 @@ Everything downstream of `POST /security-findings` can be built in parallel once
 
 ## 16. Run Trigger Modes
 
+### The safety boundary — always PR, never merge
+
+Regardless of draft or autopilot mode, **the agent never merges code**. It stops at opening a PR. The merge is always a human decision.
+
+```
+Agent does:                          Human does:
+  classify finding                     review PR diff
+  validate (security-scanner)          run / wait for CI
+  fork → clone → fix                   request changes if needed
+  push branch                          merge when satisfied
+  open PR  ← agent stops here  →      merge  ← always manual
+```
+
+This means even autopilot is safe — worst case is a PR with a bad fix that gets rejected. Nothing ships to main without a human merge.
+
+**Risk model:**
+
+| Step | Risk | Mitigation |
+|---|---|---|
+| Finding classification | False positive | security-scanner validates before fix runs |
+| Fix quality | Wrong or incomplete fix | PR review + CI catches it before merge |
+| PR target branch | Wrong base branch | `fork_upstream.default_branch` used |
+| Merge | Bad code ships | Always manual — agent never merges |
+
 ### Phase 1 — Draft mode (build first)
 
-Finding lands → draft agent created in Security project → human reviews → clicks Run in UI or fires `conduct run <agent>` from CLI.
+Finding lands → draft agent created in Security project → human reviews finding → clicks Run (UI or CLI) → agent runs → PR opened.
 
-Human is in the loop before any code is touched. Default for all workspaces.
+Human approves *before* the agent runs. Default for all workspaces.
+
+```
+finding captured → draft agent → human clicks Run → fix → PR opened → human merges
+```
 
 ### Phase 2 — Autopilot mode (future workspace setting)
 
-Finding lands → runs immediately if severity meets the configured threshold. No human approval step.
+Finding lands → agent runs immediately if severity meets threshold → PR opened → human merges.
 
-| Severity | Default behaviour |
+Human approves *after* — by reviewing and merging the PR. No approval needed to start the run.
+
+```
+finding captured → agent runs immediately → PR opened → human merges
+```
+
+| Severity | Default autopilot behaviour |
 |---|---|
 | critical | auto-run immediately |
 | high | auto-run immediately |
-| medium | draft — human approves |
+| medium | draft — human approves run |
 | low / info | draft — or auto-close |
 
-Controlled by a workspace setting: **Security Loop run mode** — `draft` (default) or `autopilot`. When autopilot is on, a severity threshold slider sets the cutoff.
+Controlled by a workspace setting: **Security Loop run mode** — `draft` (default) or `autopilot`.
 
 ### Trigger surfaces (both modes)
 
-| Surface | Command |
+| Surface | How |
 |---|---|
 | Conduct console | Click Run on draft agent in /security page |
 | CLI | `conduct run <agent-name> --project Security` |
-| Autopilot | Fires automatically on finding ingest — no human action |
+| Autopilot | Fires automatically on finding ingest — no human action needed |
 
 ---
 
