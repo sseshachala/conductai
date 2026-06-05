@@ -320,16 +320,37 @@ Dedicated view in the Conduct console showing:
         ↓
 6. /security console page surfaces the finding in real-time
         ↓
-7. Platform auto-creates a draft Agent in the "Security" project
-   - Agent is based on thirdparty-autopilot-fix template
-   - Pre-filled with repo, issue details from the finding
-   - Status: draft (not running yet)
+7. GitHub issue auto-created in the target repo
+   - Title: "[severity] finding-type in file" 
+   - Body: description + suggested fix + tool source
+   - Labels: security, severity-high (etc.)
         ↓
-8. Slack notification → #security channel
-   "New finding captured: [severity] [type] in [repo] — view in Conduct"
+8. issue-triage playbook fires automatically
+   - Classifies type and priority
+   - Adds labels
+   - Posts clarifying comment if description is thin
         ↓
-9. Security engineer reviews the draft agent in the console,
-   approves → run triggers → triage → fix → PR pipeline fires
+9. Draft Agent auto-created in "Security" project
+   - Template: thirdparty-autopilot-fix
+   - Pre-filled: upstream_owner, upstream_repo, issue_number (from step 7)
+   - Status: draft — does NOT run automatically
+        ↓
+10. Slack notification → #security channel
+    "🐛 [HIGH] path-traversal in owner/repo — issue #N created, draft agent ready → [View in Conduct]"
+        ↓
+11. Security engineer reviews finding + draft agent in /security console
+    Approves → clicks Run
+        ↓
+12. security-scanner playbook validates the finding
+        ↓
+13. thirdparty-autopilot-fix fires
+    fork → clone → fix → push branch → open PR
+        ↓
+14. Slack notification → #security
+    "✅ PR opened: fix/issue-N in owner/repo → [PR link]"
+        ↓
+15. Full run trace in Conduct dashboard
+    tool → finding → issue → triage → fix → PR → cost → duration
 ```
 
 ### Component breakdown
@@ -409,16 +430,25 @@ Real-time feed of all captured findings across all tools:
 | Agent | link to the auto-created draft agent |
 | Time | when captured |
 
-**E. Auto-create draft Agent**
+**E. Issue creation + triage**
 
-When a finding lands:
+Immediately after a finding is stored:
+1. `github/create_issue` action fires — creates issue in the target repo with severity label and structured body
+2. `issue-triage` playbook fires on the new issue — classifies, labels, posts comment
+3. Issue number returned and stored against the finding record
+
+**F. Auto-create draft Agent**
+
+After issue is created and triaged:
 1. Look up or create a "Security" project in the workspace
 2. Instantiate `thirdparty-autopilot-fix` template as a new agent
-3. Pre-fill inputs: `upstream_owner`, `upstream_repo`, `issue_number` (from finding)
+3. Pre-fill inputs: `upstream_owner`, `upstream_repo`, `issue_number` (from step E)
 4. Set agent status to `draft` — does NOT run automatically
 5. Link agent ID back to the finding record
 
 The engineer reviews the draft in the console and clicks Run when ready. This keeps humans in the loop before any code is changed.
+
+The draft agent Run fires: security-scanner → thirdparty-autopilot-fix → PR opened.
 
 **F. Slack notification**
 
