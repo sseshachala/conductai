@@ -1303,7 +1303,7 @@ conduct guard audit --since 7d`}</Pre>
             ))}
           </div>
           <div className="ml-10 mb-4">
-            <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">What it looks like in Claude Code (live session, 2026-06-02)</p>
+            <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">What it looks like in Claude Code (live session, 2026-06-05)</p>
             <Screenshot
               src="/guard-docs/budget-cap-bash-blocked.png"
               alt="Claude Code terminal showing ConductGuard budget hard cap blocking a bash tool call"
@@ -1314,6 +1314,21 @@ conduct guard audit --since 7d`}</Pre>
               alt="Claude Code response showing Guard budget hard cap hit and instructions to raise the workspace budget"
               caption="Claude Code itself reports the block. Guard stops the entire session cold — no workaround from inside the agent."
             />
+          </div>
+          <div className="ml-10 mb-4">
+            <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">Slack notification when the cap is hit (live, 2026-06-05)</p>
+            <pre className="bg-stone-900 text-green-400 rounded-xl px-4 py-3 text-xs font-mono overflow-x-auto leading-relaxed">{`🛑 BUDGET CAP HIT by budget-hard-cap in claude-code
+Developer: sudhi@b2bsphere.com
+Your team's monthly AI budget of $500.00 has been reached.
+New tool calls are paused until the limit is raised. Contact your security team.
+
+🛑 BUDGET CAP HIT by budget-hard-cap in codex
+Developer: sudhi@b2bsphere.com
+Your team's monthly AI budget of $500.00 has been reached.
+New tool calls are paused until the limit is raised. Contact your security team.`}</pre>
+            <p className="text-xs text-stone-400 mt-2 leading-relaxed">
+              The alert fires once per tool when the cap is first hit — not on every blocked call. Guard blocks <strong className="text-stone-600">all registered tools simultaneously</strong>: Claude Code, Codex, Cursor. Each fires its own notification so your security team knows which sessions are affected.
+            </p>
           </div>
           <div className="ml-10 rounded-xl bg-stone-50 border border-stone-200 px-4 py-2.5 text-xs text-stone-500">
             <strong className="text-stone-700">Teardown:</strong> Raise the budget above current spend → Save. Run conduct guard sync &amp;&amp; rm ~/.conductguard/budget_cache.json.

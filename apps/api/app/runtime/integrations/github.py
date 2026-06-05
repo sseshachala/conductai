@@ -178,6 +178,63 @@ def read_file(token: str, owner: str, repo: str, path: str, ref: str | None = No
     }
 
 
+def fork_repo(token: str, owner: str, repo: str) -> dict:
+    """Fork a repo into the authenticated user's account and return fork metadata."""
+    import time
+
+    r = httpx.post(f"{BASE}/repos/{owner}/{repo}/forks", headers=_headers(token), json={}, timeout=30)
+    r.raise_for_status()
+    d = r.json()
+
+    user_r = httpx.get(f"{BASE}/user", headers=_headers(token), timeout=10)
+    user_r.raise_for_status()
+    fork_owner = user_r.json()["login"]
+
+    # GitHub fork creation is async — wait briefly before callers try to clone
+    time.sleep(4)
+
+    return {
+        "fork_owner": fork_owner,
+        "fork_full_name": f"{fork_owner}/{repo}",
+        "default_branch": d.get("default_branch", "main"),
+        "html_url": d.get("html_url", f"https://github.com/{fork_owner}/{repo}"),
+    }
+
+
+def update_file(
+    token: str,
+    owner: str,
+    repo: str,
+    path: str,
+    content: str,
+    message: str,
+    branch: str,
+    sha: str = "",
+) -> dict:
+    """Create or update a single file in a repo (one commit per call)."""
+    import base64
+
+    encoded = base64.b64encode(content.encode("utf-8")).decode()
+    payload: dict = {"message": message, "content": encoded, "branch": branch}
+    if sha:
+        payload["sha"] = sha
+
+    r = httpx.put(
+        f"{BASE}/repos/{owner}/{repo}/contents/{path}",
+        headers=_headers(token),
+        json=payload,
+        timeout=30,
+    )
+    r.raise_for_status()
+    d = r.json()
+    return {
+        "path": path,
+        "commit_sha": d["commit"]["sha"],
+        "branch": branch,
+        "url": d["content"]["html_url"],
+    }
+
+
 def add_repo_secret(token: str, owner: str, repo: str, secret_name: str, secret_value: str) -> dict:
     """Add or update a GitHub Actions secret in a repo (requires nacl for encryption)."""
     try:
@@ -214,6 +271,8 @@ TOOL_MAP = {
     "create_repo": create_repo,
     "add_repo_secret": add_repo_secret,
     "read_file": read_file,
+    "fork_repo": fork_repo,
+    "update_file": update_file,
 }
 
 
