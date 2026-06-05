@@ -15,7 +15,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import func, text
+from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_user_id, get_workspace_id, require_workspace_role
@@ -91,7 +91,7 @@ def _playbook_stats(db: Session, ws_hash: str, cutoff: datetime) -> list[Playboo
             RunAnalyticsEvent.playbook_slug,
             func.count(RunAnalyticsEvent.id).label("run_count"),
             func.sum(
-                func.cast(RunAnalyticsEvent.outcome == "succeeded", text("int"))
+                case((RunAnalyticsEvent.outcome == "succeeded", 1), else_=0)
             ).label("succeeded"),
             func.avg(RunAnalyticsEvent.duration_ms).label("avg_duration_ms"),
             func.avg(RunAnalyticsEvent.cost_usd).label("avg_cost_usd"),
