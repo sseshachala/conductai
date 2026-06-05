@@ -375,35 +375,17 @@ function SettingsContent() {
               </div>
             </div>
 
-            {/* RIGHT — Sync + Enforcement + Re-sync */}
+            {/* RIGHT — Agent guard + Re-sync */}
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
-              {/* Sync status */}
+              {/* Agent guard */}
               <div className="card" style={{ padding: "18px 20px" }}>
-                <div className="eyebrow" style={{ marginBottom: 12 }}>Sync status</div>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                  <span style={{ fontSize: 26, fontWeight: 700, color: "var(--accent-text)" }}>
-                    {/* Static — will reflect real data once a sync endpoint is wired */}
-                    —
-                  </span>
-                  <span style={{ fontSize: 13, color: "var(--text-3)" }}>machines in sync</span>
-                </div>
-                <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 4 }}>
-                  Policies propagate within <strong style={{ color: "var(--text-2)" }}>60s</strong> of a change.
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 14, fontSize: 12.5, color: "var(--ok)" }}>
-                  <span className="conduct-pulse-dot" style={{ background: "var(--ok)" }} />
-                  All developers up to date
-                </div>
-              </div>
-
-              {/* Enforcement mode */}
-              <div className="card" style={{ padding: "18px 20px" }}>
-                <div className="eyebrow" style={{ marginBottom: 12 }}>Enforcement mode</div>
+                <div className="eyebrow" style={{ marginBottom: 4 }}>Agent guard</div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>Enforce policy before every agentic AI step</div>
                 {([
-                  ["block", "Block",      "Hook exits non-zero — the call never reaches the model"],
-                  ["warn",  "Warn",       "Logged and flagged, call proceeds"],
-                  ["audit", "Audit only", "Silent logging for review"],
+                  ["block", "Block",      "Run halts — the AI step never executes"],
+                  ["warn",  "Warn",       "Flagged in the run trace, step proceeds"],
+                  ["audit", "Audit only", "Recorded silently, no visible interruption"],
                 ] as const).map(([k, t, d], i) => (
                   <label
                     key={k}

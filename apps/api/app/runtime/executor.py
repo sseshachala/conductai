@@ -1967,6 +1967,37 @@ def _execute_dag(
                     result["github_trigger"] = state["github_trigger"]
 
             elif block_type == "brain":
+                # Auto-guard hook: run guard before every agentic brain block
+                if block.get("data", {}).get("isAgentic", False):
+                    if state.get("__guard_enabled", True):
+                        try:
+                            import uuid as _uuid
+                            from app.modules.guard.models import GuardConfig as _GuardConfig
+                            _ws_str = str(workspace_id_str)
+                            _gc = (
+                                db.query(_GuardConfig)
+                                .filter(_GuardConfig.workspace_id == _uuid.UUID(_ws_str))
+                                .first()
+                            ) if _ws_str else None
+                            if _gc:
+                                _guard_block = {
+                                    "id": f"__guard_{block_id}",
+                                    "config": {"enforcement_mode": _gc.enforcement_mode},
+                                }
+                                _guard_result = _execute_guard(_guard_block, state, _ws_str, db)
+                                state[f"__guard_{block_id}"] = _guard_result
+                                _emit(db, run_id, f"__guard_{block_id}", "guard_check", {
+                                    "status": _guard_result.get("status"),
+                                    "rules_checked": _guard_result.get("rules_checked", 0),
+                                    "violations": _guard_result.get("violations", 0),
+                                    "enforcement_mode": _guard_result.get("enforcement_mode"),
+                                    "warnings": _guard_result.get("warnings", []),
+                                })
+                        except RuntimeError:
+                            raise  # guard blocked — propagate
+                        except Exception as _ge:
+                            log.warning("guard.auto_hook_failed", block_id=block_id, error=str(_ge))
+
                 slug = getattr(getattr(version, "workflow", None), "playbook_slug", None)
                 result = _execute_brain(block, state, compiled, credentials=credentials,
                                         db=db, run_id=run_id, block_id=block_id,
