@@ -1184,10 +1184,39 @@ def _execute_tool(block: dict, state: dict, credentials: dict, allowed_hosts: li
     if dry_run:
         creds = credentials.get(integration, {})
         if not creds:
-            return {"dry_run": True, "warning": f"No credentials for {integration} — would fail in a real run", "action": action}
+            env_vars = credentials.get("env_vars") or {}
+            _FLAT_FALLBACKS_DRY: dict[str, list[str]] = {
+                "github": ["GITHUB_TOKEN", "GIT_TOKEN"],
+                "slack": ["SLACK_BOT_TOKEN"],
+                "linear": ["LINEAR_API_KEY"],
+                "digitalocean": ["DIGITALOCEAN_TOKEN", "DO_TOKEN"],
+                "vercel": ["VERCEL_TOKEN"],
+                "railway": ["RAILWAY_TOKEN"],
+            }
+            has_flat = any(env_vars.get(k) for k in _FLAT_FALLBACKS_DRY.get(integration, []))
+            if not has_flat:
+                return {"dry_run": True, "warning": f"No credentials for {integration} — would fail in a real run", "action": action}
         return _dry_run_mock(integration, action, params)
 
     creds = credentials.get(integration, {})
+    if not creds:
+        # Fall back to flat env_vars — users store keys like GITHUB_TOKEN, SLACK_BOT_TOKEN
+        # as plain key=value pairs rather than under a named integration handle.
+        env_vars = credentials.get("env_vars") or {}
+        _FLAT_FALLBACKS: dict[str, list[str]] = {
+            "github":       ["GITHUB_TOKEN", "GIT_TOKEN"],
+            "slack":        ["SLACK_BOT_TOKEN"],
+            "linear":       ["LINEAR_API_KEY"],
+            "digitalocean": ["DIGITALOCEAN_TOKEN", "DO_TOKEN"],
+            "vercel":       ["VERCEL_TOKEN"],
+            "railway":      ["RAILWAY_TOKEN"],
+        }
+        for key in _FLAT_FALLBACKS.get(integration, []):
+            val = env_vars.get(key)
+            if val:
+                creds = {"token": val, "api_key": val}
+                break
+
     if not creds:
         return {"skipped": True, "reason": f"No credentials for {integration}"}
 
