@@ -31,11 +31,44 @@ import time
 import urllib.request
 from pathlib import Path
 
-GUARD_DIR         = Path.home() / ".conductguard"
-POLICY_PATH       = GUARD_DIR / "policy.json"
-CONFIG_PATH       = GUARD_DIR / "config.json"
-BUDGET_CACHE_PATH = GUARD_DIR / "budget_cache.json"
-BUDGET_CACHE_TTL  = 300  # 5 minutes
+GUARD_DIR           = Path.home() / ".conductguard"
+POLICY_PATH         = GUARD_DIR / "policy.json"
+CONFIG_PATH         = GUARD_DIR / "config.json"
+BUDGET_CACHE_PATH   = GUARD_DIR / "budget_cache.json"
+BUDGET_CACHE_TTL    = 300  # 5 minutes
+VERSION_CACHE_PATH  = GUARD_DIR / "version_cache.json"
+VERSION_CACHE_TTL   = 60   # 1 minute — matches server poll window
+
+
+def _maybe_sync_policy():
+    """Check server policy version once per minute; re-download if stale. Never raises."""
+    try:
+        cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
+        workspace_id = cfg.get("workspace_id")
+        api_key      = cfg.get("api_key", "")
+        api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+        if not workspace_id:
+            return
+        # Check cache TTL
+        if VERSION_CACHE_PATH.exists():
+            cache = json.loads(VERSION_CACHE_PATH.read_text())
+            if time.time() - cache.get("ts", 0) < VERSION_CACHE_TTL:
+                return
+        # Fetch current version from server
+        url = f"{api_url}/guard/policies/sync?workspace_id={workspace_id}"
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {api_key}"} if api_key else {})
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            remote = json.loads(resp.read())
+        remote_version = remote.get("version", "")
+        # Compare to local
+        local_version = ""
+        if POLICY_PATH.exists():
+            local_version = json.loads(POLICY_PATH.read_text()).get("version", "")
+        if remote_version != local_version:
+            POLICY_PATH.write_text(json.dumps(remote, indent=2))
+        VERSION_CACHE_PATH.write_text(json.dumps({"ts": time.time(), "version": remote_version}))
+    except Exception:
+        pass  # Never block a tool call due to sync failure
 
 
 def _load_budget_cache():
@@ -365,6 +398,9 @@ def main():
         data = json.load(sys.stdin)
     except Exception:
         sys.exit(0)
+
+    # Policy version check (cached 60s) — auto-syncs if server version differs
+    _maybe_sync_policy()
 
     # Hard budget cap (cached 5 min)
     hard_blocked, reason = _load_budget_cache()
