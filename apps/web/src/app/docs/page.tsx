@@ -905,17 +905,18 @@ conduct guard status`}</Pre>
       <section id="guard-sync">
         <SectionHeading id="guard-sync">Sync &amp; re-sync</SectionHeading>
         <p className="text-stone-500 text-sm mb-4 leading-relaxed">
-          Each developer machine caches a local copy of the workspace policy file. The CLI polls{" "}
-          <Code>GET /guard/policies/sync</Code> every 60 seconds and automatically re-syncs when the server version
-          changes — no manual action needed under normal operation.
+          Each developer machine caches a local copy of the workspace policy file at{" "}
+          <Code>~/.conductguard/policy.json</Code>. The Guard hook checks the server version on every tool call,
+          throttled to one network request per 60 seconds. If the version has changed, the hook silently
+          re-downloads the policy before evaluating the current call — no manual action needed.
         </p>
 
         <SubHeading>When a re-sync is triggered</SubHeading>
         <div className="rounded-xl border border-stone-200 divide-y divide-stone-100 text-sm mb-6">
           {[
-            ["Policy created / edited / deleted", "The server version timestamp updates — all machines re-sync within 60s."],
-            ["Re-sync button (Guard → Settings)",  "Bumps a resync_requested_at timestamp on the workspace. Machines pick it up on the next poll cycle."],
-            ["conduct guard sync (CLI)",           "Forces an immediate pull regardless of cached version. Useful after a network gap or machine restore."],
+            ["Policy created / edited / deleted", "Server version timestamp updates. Each machine re-syncs on the next tool call after its 60s window expires."],
+            ["Re-sync button (Guard → Settings)",  "Bumps resync_requested_at on the workspace. Machines pick it up on the next tool call after the 60s cache window."],
+            ["conduct guard sync (CLI)",           "Forces an immediate pull regardless of cached version. Useful after a network gap, machine restore, or when you need instant propagation."],
           ].map(([trigger, detail]) => (
             <div key={trigger} className="px-4 py-3">
               <p className="font-medium text-stone-800 text-xs mb-0.5">{trigger}</p>
