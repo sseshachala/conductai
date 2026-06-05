@@ -18,7 +18,6 @@ function BlockIcon({ type, className }: { type: BlockType; className?: string })
     case "output":   return <Bell {...props} />
     case "cleanup":  return <RefreshCw {...props} />
     case "memory":   return <Database {...props} />
-    case "guard":    return <ShieldCheck {...props} />
     case "mcp":      return <Network {...props} />
   }
 }

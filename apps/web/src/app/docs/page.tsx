@@ -95,7 +95,6 @@ const TAB_NAV: Record<TabId, { href: string; label: string }[]> = {
   ],
   "blocks": [
     { href: "#memory-block", label: "Memory block" },
-    { href: "#guard-block",  label: "Guard block" },
   ],
   "guard": [
     { href: "#guard",             label: "Overview" },
@@ -690,63 +689,6 @@ function TabBlocks() {
         </div>
       </section>
 
-      <section id="guard-block">
-        <SectionHeading id="guard-block">Guard block</SectionHeading>
-        <p className="text-stone-500 text-sm mb-6 leading-relaxed">
-          The Guard block evaluates your team's policies mid-workflow. Place it before sensitive operations
-          (file writes, deployments, external API calls) to enforce spend limits, blocked actions, and custom regex rules.
-        </p>
-
-        <SubHeading>YAML reference</SubHeading>
-        <Pre>{`blocks:
-  check_policies:
-    type: guard
-    label: Check team policies
-    enforcement_mode: block    # block | warn | audit (default: block)
-    context_keys:              # optional — subset of state to evaluate
-      - fetch_issue
-      - brain
-    next: deploy_fix`}</Pre>
-
-        <SubHeading>Fields</SubHeading>
-        <div className="rounded-xl border border-stone-200 overflow-hidden mb-6">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-stone-50 border-b border-stone-200">
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider w-40">Field</th>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Description</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-100 text-sm">
-              {[
-                ["enforcement_mode", "block — halt the run on violation. warn — add to warnings, continue. audit — record silently, continue. Default: block."],
-                ["context_keys",     "Optional list of block IDs whose state to serialize for policy evaluation. Omit to send the full run state."],
-                ["rule_ids",         "Optional list of policy UUIDs to evaluate. Omit to evaluate all active policies."],
-              ].map(([field, desc]) => (
-                <tr key={field}>
-                  <td className="px-4 py-3 font-mono text-xs text-stone-800 align-top">{field}</td>
-                  <td className="px-4 py-3 text-xs text-stone-500 leading-relaxed">{desc}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <SubHeading>Output</SubHeading>
-        <Pre>{`# Available as {{check_policies.*}} in downstream blocks
-{
-  "status": "passed",      # passed | violated
-  "rules_checked": 4,
-  "violations": 0,
-  "warnings": []
-}`}</Pre>
-
-        <div className="mt-3 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
-          <strong>Guard block requires Guard to be installed.</strong> If no Guard config is found, the block fails
-          with installation instructions. Use <code className="font-mono text-xs">warn</code> or{" "}
-          <code className="font-mono text-xs">audit</code> mode if you want the workflow to continue without Guard.
-        </div>
-      </section>
     </div>
   )
 }
@@ -761,7 +703,7 @@ function TabGuard() {
         </p>
         <div className="rounded-xl border border-stone-200 divide-y divide-stone-100 text-sm mb-8">
           {[
-            { label: "Workflow enforcement (Guard block)", detail: "Evaluates policies mid-run inside Conduct workflows. The Guard block checks active team policies against the run state and halts, warns, or audits based on enforcement_mode." },
+            { label: "Workflow enforcement (Agent guard)", detail: "Automatic policy check before every agentic AI step. No YAML block needed — the executor hook evaluates active policies against the run state and halts, warns, or audits based on the workspace enforcement mode." },
             { label: "Local enforcement (hook + MCP)",     detail: "Intercepts AI tool calls in Claude Code, Cursor, and other editors before they reach the model. Checks hard caps, evaluates policies, and blocks or warns at call time. No workflow required." },
           ].map(({ label, detail }) => (
             <div key={label} className="px-4 py-3">
