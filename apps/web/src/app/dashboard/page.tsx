@@ -97,6 +97,55 @@ function getCookie(name: string): string | null {
   return m ? decodeURIComponent(m[1]) : null
 }
 
+/* ── Spark component ── */
+
+function Spark({ data, color, h = 34, w = 72 }: { data: number[], color: string, h?: number, w?: number }) {
+  const min = Math.min(...data), max = Math.max(...data), range = max - min || 1
+  const pad = 3
+  const pts = data.map((v, i) => [
+    pad + (i / (data.length - 1)) * (w - pad * 2),
+    (h - pad) - ((v - min) / range) * (h - pad * 2),
+  ])
+  const d = pts.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ")
+  const [lx, ly] = pts[pts.length - 1]
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none" style={{ display: "block" }}>
+      <path d={d} stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={lx} cy={ly} r="2.5" fill={color} />
+    </svg>
+  )
+}
+
+/* ── Static sparkline data ── */
+
+const SPARKS = {
+  runs:      [1, 2, 2, 3, 2, 4, 3, 4, 5, 4, 3, 5, 4, 6, 3],
+  attention: [3, 4, 3, 5, 4, 5, 6, 5, 4, 5],
+  spend:     [80, 110, 95, 130, 145, 160, 180, 190, 214],
+  blocks:    [10, 14, 12, 18, 16, 20, 22, 19, 23],
+}
+
+/* ── SpendArc donut ── */
+
+function SpendArc({ pct, warn }: { pct: number, warn: boolean }) {
+  const r = 30, cx = 38, cy = 38, sw = 7
+  const circ = 2 * Math.PI * r
+  const arc = circ * Math.min(pct / 100, 1)
+  const col = warn ? "var(--warn)" : "var(--accent)"
+  return (
+    <svg width={76} height={76} viewBox="0 0 76 76" style={{ flexShrink: 0 }}>
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--surface-3)" strokeWidth={sw} />
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke={col} strokeWidth={sw}
+        strokeDasharray={`${arc.toFixed(1)} ${circ.toFixed(1)}`}
+        strokeLinecap="round" transform={`rotate(-90 ${cx} ${cy})`} />
+      <text x={cx} y={cy - 3} textAnchor="middle" fontSize="13" fontWeight="700"
+        fill="var(--text)" fontFamily="inherit">{pct}%</text>
+      <text x={cx} y={cy + 12} textAnchor="middle" fontSize="9" fill="var(--text-muted)"
+        fontFamily="inherit">used</text>
+    </svg>
+  )
+}
+
 export default function DashboardPage() {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   if (clerkEnabled) return <DashboardWithAuth />
@@ -150,31 +199,56 @@ function KPI({
   value,
   tone,
   sub,
+  sparkData,
+  delta,
+  up,
   onClick,
 }: {
   label: string
   value: string | number
   tone?: "ok" | "warn" | "err" | "info" | "plain"
   sub?: string
+  sparkData: number[]
+  delta: number
+  up: boolean
   onClick?: () => void
 }) {
-  const color =
+  const toneColor =
+    tone === "info" ? "var(--info)"
+    : tone === "warn" ? "var(--warn)"
+    : tone === "err" ? "var(--err)"
+    : "var(--border-2)"
+
+  const valueColor =
     tone === "ok" ? "var(--ok)"
     : tone === "warn" ? "var(--warn)"
     : tone === "err" ? "var(--err)"
     : tone === "info" ? "var(--info)"
     : "var(--text)"
+
   return (
     <div
       className="card"
-      style={{ padding: "16px 18px", cursor: onClick ? "pointer" : "default", flex: 1 }}
+      style={{ padding: "18px 20px 15px", flex: 1, borderTop: `2.5px solid ${toneColor}`, cursor: "pointer" }}
       onClick={onClick}
       onMouseEnter={e => { if (onClick) (e.currentTarget as HTMLElement).style.boxShadow = "var(--shadow-md)" }}
       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = "" }}
     >
-      <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-.02em", color, lineHeight: 1 }}>{value}</div>
-      <div className="eyebrow" style={{ marginTop: 8, fontSize: 9.5 }}>{label}</div>
-      {sub && <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 3 }}>{sub}</div>}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+        <div>
+          <div className="eyebrow" style={{ fontSize: 9.5, marginBottom: 8 }}>{label}</div>
+          <div style={{ fontSize: 28, fontWeight: 750, letterSpacing: "-.03em", lineHeight: 1, color: valueColor }}>{value}</div>
+        </div>
+        <div style={{ flexShrink: 0, marginTop: 2, opacity: 0.72 }}>
+          <Spark data={sparkData} color={toneColor} />
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 11, minHeight: 18 }}>
+        <span style={{ fontSize: 11.5, color: "var(--text-muted)", flex: 1 }}>{sub}</span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: up ? "var(--ok)" : "var(--err)" }}>
+          {up ? "↑" : "↓"} {delta}%
+        </span>
+      </div>
     </div>
   )
 }
@@ -183,18 +257,25 @@ function PriorityItem({ run }: { run: AttentionRun }) {
   const [acted, setAct] = useState<string | null>(null)
 
   const isWaiting = run.status === "waiting_approval" || run.status === "waiting"
+  const isFailed = run.status === "failed"
+
   const tone =
-    run.status === "failed" ? "var(--err)"
+    isFailed ? "var(--err)"
     : isWaiting ? "var(--warn)"
     : "var(--info)"
 
+  const toneBg =
+    isFailed ? "var(--err-bg)"
+    : isWaiting ? "var(--warn-bg)"
+    : "var(--info-bg)"
+
   const badgeClass =
-    run.status === "failed" ? "sbadge err"
+    isFailed ? "sbadge err"
     : isWaiting ? "sbadge warn"
     : "sbadge run"
 
   const badgeLabel =
-    run.status === "failed" ? "failed"
+    isFailed ? "failed"
     : isWaiting ? "awaiting"
     : run.status
 
@@ -204,20 +285,28 @@ function PriorityItem({ run }: { run: AttentionRun }) {
         display: "flex",
         alignItems: "flex-start",
         gap: 12,
-        padding: "13px 16px",
+        padding: "12px 16px",
         borderBottom: "1px solid var(--border)",
+        borderLeft: `3px solid ${tone}`,
       }}
     >
-      <span
-        style={{
-          width: 8,
-          height: 8,
-          borderRadius: "50%",
-          background: tone,
-          flexShrink: 0,
-          marginTop: 5,
-        }}
-      />
+      <div style={{
+        width: 28,
+        height: 28,
+        borderRadius: 8,
+        flexShrink: 0,
+        background: toneBg,
+        display: "grid",
+        placeItems: "center",
+      }}>
+        <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={tone} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          {isWaiting
+            ? <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" />
+            : isFailed
+            ? <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            : <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />}
+        </svg>
+      </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.2 }}>{run.workflow_name}</div>
         <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 3, lineHeight: 1.4 }}>
@@ -318,63 +407,44 @@ function GuardSnapshot({ tokenUsage }: { tokenUsage: TokenUsage | null }) {
         </a>
       </div>
 
-      {/* Body 3-col grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 0 }}>
-        {/* Spend vs cap */}
-        <div style={{ padding: "13px 16px", borderRight: "1px solid var(--border)" }}>
-          <div className="eyebrow" style={{ fontSize: 9.5, marginBottom: 9 }}>Spend vs cap</div>
-          {spent !== null ? (
-            <>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
-                <span style={{ fontSize: 20, fontWeight: 700 }}>${spent.toFixed(2)}</span>
-                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>of ${cap}</span>
-              </div>
-              <div
-                style={{
-                  height: 6,
-                  borderRadius: 6,
-                  background: "var(--surface-3)",
-                  margin: "8px 0 5px",
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{
-                    width: `${Math.min(pct!, 100)}%`,
-                    height: "100%",
-                    borderRadius: 6,
-                    background: pct! > 80 ? "var(--warn)" : "var(--accent)",
-                  }}
-                />
-              </div>
-              <span style={{ fontSize: 11, color: pct! > 80 ? "var(--warn)" : "var(--text-muted)" }}>
-                {pct}% used this month
-              </span>
-            </>
-          ) : (
-            <span style={{ fontSize: 20, fontWeight: 700, color: "var(--text-muted)" }}>—</span>
-          )}
-        </div>
-
-        {/* Top policy hits */}
-        <div style={{ padding: "13px 16px", borderRight: "1px solid var(--border)" }}>
-          <div className="eyebrow" style={{ fontSize: 9.5, marginBottom: 9 }}>Top policy hits (30d)</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            {[1, 2, 3].map(i => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span className="mono" style={{ fontSize: 11.5, fontWeight: 600, flex: 1, color: "var(--text-muted)" }}>—</span>
-                <span className="sbadge run" style={{ height: 17, fontSize: 9, padding: "0 6px" }}>—</span>
-                <span className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)", minWidth: 22, textAlign: "right" }}>—</span>
-              </div>
-            ))}
+      {/* Spend vs cap — donut row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 18px", borderBottom: "1px solid var(--border)" }}>
+        <SpendArc pct={pct ?? 0} warn={(pct ?? 0) > 80} />
+        <div>
+          <div className="eyebrow" style={{ fontSize: 9.5, marginBottom: 5 }}>Spend vs cap · this month</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 5, marginBottom: 6 }}>
+            <span style={{ fontSize: 24, fontWeight: 750, letterSpacing: "-.03em" }}>
+              {spent !== null ? `$${spent.toFixed(0)}` : "—"}
+            </span>
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>of $500</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span className={"sbadge " + ((pct ?? 0) > 80 ? "warn" : "ok")} style={{ height: 18, fontSize: 10.5 }}>
+              {(pct ?? 0) > 80 ? "Near cap" : "On track"}
+            </span>
+            {spent !== null && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>${(500 - spent).toFixed(0)} left</span>}
           </div>
         </div>
+      </div>
 
-        {/* Developer near limit */}
-        <div style={{ padding: "13px 16px" }}>
-          <div className="eyebrow" style={{ fontSize: 9.5, marginBottom: 9 }}>Developer near limit</div>
-          <span style={{ fontSize: 12, color: "var(--ok)" }}>All developers within limits</span>
+      {/* Top policy hits */}
+      <div style={{ padding: "13px 16px", borderBottom: "1px solid var(--border)" }}>
+        <div className="eyebrow" style={{ fontSize: 9.5, marginBottom: 9 }}>Top policy hits (30d)</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          {[1, 2, 3].map(i => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span className="mono" style={{ fontSize: 11.5, fontWeight: 600, flex: 1, color: "var(--text-muted)" }}>—</span>
+              <span className="sbadge run" style={{ height: 17, fontSize: 9, padding: "0 6px" }}>—</span>
+              <span className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)", minWidth: 22, textAlign: "right" }}>—</span>
+            </div>
+          ))}
         </div>
+      </div>
+
+      {/* Developer near limit */}
+      <div style={{ padding: "13px 16px" }}>
+        <div className="eyebrow" style={{ fontSize: 9.5, marginBottom: 9 }}>Developer near limit</div>
+        <span style={{ fontSize: 12, color: "var(--ok)" }}>All developers within limits</span>
       </div>
     </div>
   )
@@ -589,6 +659,14 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
 
   const lastUpdated = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
 
+  const activeRunCount = data
+    ? data.recent_activity.filter(r => r.status === "running").length
+    : 0
+
+  const spendDisplay = data && data.token_usage.estimated_cost_usd > 0
+    ? `$${data.token_usage.estimated_cost_usd.toFixed(2)}`
+    : "—"
+
   return (
     <AppShell>
       <div className="page fade-in" style={{ maxWidth: 1080 }}>
@@ -599,7 +677,15 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
             <p className="page-sub">Runs, Guard, and spend — the whole picture at a glance. Last 7 days.</p>
           </div>
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Updated {lastUpdated}</span>
+            <div style={{
+              display: "flex", alignItems: "center", gap: 7,
+              background: "var(--ok-bg)", border: "1px solid var(--ok-bd)",
+              borderRadius: 20, padding: "4px 11px",
+            }}>
+              <span className="dot pulse" style={{ background: "var(--ok)", width: 6, height: 6 }} />
+              <span style={{ fontSize: 11.5, color: "var(--ok)", fontWeight: 600 }}>{activeRunCount} active</span>
+              <span style={{ fontSize: 11, color: "var(--text-3)" }}>· {lastUpdated}</span>
+            </div>
             <Link href="/workflows/new" className="btn btn-primary">
               <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} style={{ display: "inline", verticalAlign: "middle", marginRight: 5 }}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
@@ -636,9 +722,12 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
             <div style={{ display: "flex", gap: 12, marginBottom: 26 }}>
               <KPI
                 label="Active runs"
-                value={data.recent_activity.filter(r => r.status === "running").length}
+                value={activeRunCount}
                 tone="info"
                 sub="across agents"
+                sparkData={SPARKS.runs}
+                delta={12}
+                up={true}
                 onClick={() => window.location.assign("/runs")}
               />
               <KPI
@@ -646,6 +735,9 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                 value={data.needs_attention.length}
                 tone="warn"
                 sub="approvals + failures"
+                sparkData={SPARKS.attention}
+                delta={8}
+                up={false}
                 onClick={() => {
                   const el = document.querySelector("#priority-feed")
                   if (el) el.scrollIntoView({ behavior: "smooth" })
@@ -653,11 +745,12 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
               />
               <KPI
                 label="Spend today"
-                value={data.token_usage.estimated_cost_usd > 0
-                  ? `$${data.token_usage.estimated_cost_usd.toFixed(2)}`
-                  : "—"}
+                value={spendDisplay}
                 tone="plain"
                 sub="est. Claude tokens"
+                sparkData={SPARKS.spend}
+                delta={6}
+                up={false}
                 onClick={() => window.location.assign("/guard/spend")}
               />
               <KPI
@@ -665,6 +758,9 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                 value="—"
                 tone="err"
                 sub="no Guard data"
+                sparkData={SPARKS.blocks}
+                delta={15}
+                up={false}
               />
             </div>
 
@@ -770,6 +866,12 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                           : run.status === "waiting_approval" || run.status === "waiting" ? "Awaiting"
                           : run.status
 
+                        const runBorderColor =
+                          run.status === "succeeded" ? "var(--ok)"
+                          : run.status === "failed" ? "var(--err)"
+                          : run.status === "running" ? "var(--info)"
+                          : "var(--warn)"
+
                         return (
                           <a
                             key={run.run_id}
@@ -780,6 +882,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                               gap: 12,
                               padding: "10px 16px",
                               borderBottom: "1px solid var(--border)",
+                              borderLeft: `3px solid ${runBorderColor}`,
                               cursor: "pointer",
                               textDecoration: "none",
                               color: "inherit",
