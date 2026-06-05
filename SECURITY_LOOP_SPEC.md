@@ -484,4 +484,67 @@ ConductGuard  ← already hooked in; routes the event to Conduct API
 
 ---
 
+## 15. Build vs Reuse Map
+
+### Already exists on Conduct — use as-is
+
+| What | Where |
+|---|---|
+| `issue-triage` playbook | fires on new GitHub issue → labels + triage |
+| `security-scanner` playbook | validates a finding |
+| `thirdparty-autopilot-fix` playbook | fork → clone → fix → PR |
+| `github/open_pull_request` action | open PR tool block |
+| Slack output block | notifications |
+| Webhook ingestion | already accepts external events |
+| Run trace + SSE | full audit trail, real-time console updates |
+| ConductGuard hooks | already wired inside Claude Code + Codex CLI |
+| Credential vault + environments | auth for GitHub, Slack |
+| `fork_repo` action (all 3 fork cases) | generic fork handling |
+| `thirdparty-autopilot-fix` playbook | end-to-end fix pipeline |
+
+### Needs to be built — new
+
+| What | Layer | Effort |
+|---|---|---|
+| `github/create_issue` action | API — `github.py` | Small |
+| `POST /security-findings` endpoint | API — new router | Medium |
+| `security_findings` DB table + model | API — DB + migration | Small |
+| Draft agent auto-creation on finding ingest | API — business logic | Medium |
+| `security_finding` trigger shape | API — `input_contract.py` | Small |
+| Security Loop playbook YAML | Playbook | Small |
+| `/security` console page | Frontend | Medium |
+| Finding classifier — fast path (regex) | Guard CLI — Python | Small |
+| Finding classifier — slow path (Haiku) | Guard CLI — Python | Medium |
+| `conductguard emit` CLI command | Guard CLI | Small |
+| CBH structured output parser | Guard CLI | Small |
+| Codex raw output → classifier pipe | Guard CLI | Medium |
+| `/tools/security-loop` module page | Marketing site | Small |
+| Tools page — Security Loop card | Marketing site | Small |
+
+### Critical path (what blocks what)
+
+```
+github/create_issue action (github.py)
+        ↓
+POST /security-findings endpoint + DB table
+        ↓
+draft agent auto-creation logic (API)
+        ↓
+/security console page (Frontend)
+
+— parallel track —
+
+conductguard emit CLI command
+        ↓
+classifier fast path (regex)
+        ↓
+classifier slow path (Haiku)
+        ↓
+CBH parser + Codex pipe
+```
+
+Everything downstream of `POST /security-findings` can be built in parallel once the endpoint and DB table exist. The classifier and CLI emit command are independent of the API work and can be built simultaneously.
+
+---
+
 *Conduct AI · SECURITY_LOOP_SPEC.md · v0.2*
