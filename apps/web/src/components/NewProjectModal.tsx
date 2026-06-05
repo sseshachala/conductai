@@ -24,6 +24,7 @@ export default function NewProjectModal({ getToken, onClose, onCreate }: Props) 
         if (token) headers["Authorization"] = `Bearer ${token}`
       }
       const workspaceId = document.cookie.match(/delegator_project_id=([^;]+)/)?.[1] ?? ""
+      if (workspaceId) headers["X-Workspace-Id"] = workspaceId
       const endpoint = workspaceId
         ? `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/projects`
         : `${process.env.NEXT_PUBLIC_API_URL}/projects`

@@ -111,10 +111,13 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
     try {
       const headers = await authHeaders()
       const workspaceId = document.cookie.match(/delegator_project_id=([^;]+)/)?.[1] ?? ""
-      const url = workspaceId
-        ? `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/projects`
-        : `${process.env.NEXT_PUBLIC_API_URL}/projects`
-      const res = await fetch(url, { headers })
+      if (workspaceId) {
+        headers["X-Workspace-Id"] = workspaceId
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/projects`, { headers })
+        if (res.ok) { setProjects(await res.json()); return }
+      }
+      // Fallback: no cookie set yet — show top-level workspaces as projects
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, { headers })
       if (res.ok) setProjects(await res.json())
     } finally {
       setLoading(false)
@@ -135,6 +138,7 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
     const h = await authHeaders()
     h["Content-Type"] = "application/json"
     const wsId = getWorkspaceId()
+    if (wsId) h["X-Workspace-Id"] = wsId
     const url = wsId
       ? `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${wsId}/projects/${id}`
       : `${process.env.NEXT_PUBLIC_API_URL}/projects/${id}`
@@ -148,6 +152,7 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
   async function deleteProject(id: string) {
     const h = await authHeaders()
     const wsId = getWorkspaceId()
+    if (wsId) h["X-Workspace-Id"] = wsId
     const url = wsId
       ? `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${wsId}/projects/${id}`
       : `${process.env.NEXT_PUBLIC_API_URL}/projects/${id}`
