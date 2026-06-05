@@ -28,7 +28,7 @@ function Nav() {
       </div>
       <div className="flex items-center gap-4">
         <a href="/blog" className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
-        <a href="/marketplace" className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Playbooks</a>
+        <a href="/marketplace" className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Agent Templates</a>
         <a href="/tools" className="flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-900 transition-colors">Tools</a>
         <a href="/benchmark" className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Benchmark</a>
         <a href="/docs" className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
@@ -476,7 +476,7 @@ function PageFooter() {
         <span>·</span>
         <a href="/" className="hover:text-stone-600 transition-colors">Conduct AI</a>
         <span>·</span>
-        <a href="/marketplace" className="hover:text-stone-600 transition-colors">Playbooks</a>
+        <a href="/marketplace" className="hover:text-stone-600 transition-colors">Agent Templates</a>
         <span>·</span>
         <a href="/tools" className="hover:text-stone-600 transition-colors">Tools</a>
         <span>·</span>
