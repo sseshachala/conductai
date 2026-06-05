@@ -1,6 +1,14 @@
 export default function BlogIndex() {
   const posts = [
     {
+      slug: "which-ai-model-for-which-task",
+      title: "Which AI model should you use — and for which task?",
+      excerpt: "Claude, GPT-4o, Gemini, DeepSeek, Mistral, Llama — a practical guide for developers on picking the right model for the job. With code examples and ConductGuard governance.",
+      date: "June 5, 2026",
+      tag: "Guide",
+      tagColor: "text-amber-700 bg-amber-50 border-amber-200",
+    },
+    {
       slug: "stop-paying-opus-prices-for-haiku-work",
       title: "Stop paying Opus prices for Haiku work.",
       excerpt: "Most AI coding setups default to the most capable model for every task — including fixing a typo. That's a 4x cost penalty on work a cheaper model handles just as well.",
