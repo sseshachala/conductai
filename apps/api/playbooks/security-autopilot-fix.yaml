@@ -8,20 +8,16 @@ description: >
 inputs:
   upstream_owner:
     label: Upstream repo owner
-    default: elementalsouls
     type: string
+    hint: "GitHub username or org that owns the target repo"
   upstream_repo:
     label: Upstream repo name
-    default: Claude-BugHunter
     type: string
+    hint: "Repo name only, e.g. Claude-BugHunter"
   issue_number:
     label: Security issue number
-    default: "13"
     type: string
-  fix_branch:
-    label: Fix branch name
-    default: fix/security-bugs-13
-    type: string
+    hint: "Issue number containing the confirmed bug report"
   model:
     label: AI model
     default: claude-sonnet-4-6
@@ -70,7 +66,7 @@ blocks:
 
       Upstream repo: {{inputs.upstream_owner}}/{{inputs.upstream_repo}}
       Fork full name: {{fork_upstream.fork_full_name}}
-      Fix branch: {{inputs.fix_branch}}
+      Fix branch: fix/security-issue-{{inputs.issue_number}}
       Issue #{{inputs.issue_number}} title: {{fetch_issue.title}}
 
       Bug report (from issue body):
@@ -85,7 +81,7 @@ blocks:
         cd /tmp/repo
         git config user.email "bot@conductai.ai"
         git config user.name "Conduct AI"
-        git checkout -b {{inputs.fix_branch}}
+        git checkout -b fix/security-issue-{{inputs.issue_number}}
 
         # Apply all 5 fixes to scripts/cbh.py and scripts/hunt.sh using python3 inline.
         # Read each file, apply the exact changes below, write it back, then commit.
@@ -121,10 +117,10 @@ blocks:
 
         git add scripts/cbh.py scripts/hunt.sh
         git commit -m "fix: path traversal, arbitrary write, Q5 logic, TLS warning, shell injection (closes #{{inputs.issue_number}})"
-        git push https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git {{inputs.fix_branch}}
+        git push https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git fix/security-issue-{{inputs.issue_number}}
 
       After the shell call, output ONLY this JSON on the last line:
-        {"branch_pushed": "{{inputs.fix_branch}}", "fork_owner": "{{fork_upstream.fork_owner}}", "files_changed": ["scripts/cbh.py", "scripts/hunt.sh"]}
+        {"branch_pushed": "fix/security-issue-{{inputs.issue_number}}", "fork_owner": "{{fork_upstream.fork_owner}}", "files_changed": ["scripts/cbh.py", "scripts/hunt.sh"]}
     next: open_pr
 
   open_pr:
@@ -137,7 +133,7 @@ blocks:
       owner: "{{inputs.upstream_owner}}"
       repo: "{{inputs.upstream_repo}}"
       title: "fix: path traversal, shell injection, Q5 logic, TLS bypass (closes #{{inputs.issue_number}})"
-      head: "{{implement_fixes.fork_owner}}:{{inputs.fix_branch}}"
+      head: "{{implement_fixes.fork_owner}}:fix/security-issue-{{inputs.issue_number}}"
       base: "main"
       body: |
         Fixes #{{inputs.issue_number}}
