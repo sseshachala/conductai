@@ -131,7 +131,13 @@ def _require_auth(args):
 
 def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, token=None, api_key=None) -> bool:
     hdrs = api.headers(workspace_id, token, "application/json", api_key)
-    url  = f"{server}/workflows/{workflow_id}/runs/{run_id}/stream"
+    # SSE endpoint reads auth from query params (EventSource can't set headers)
+    qs_parts = [f"workspace_id={workspace_id}"]
+    if token:
+        qs_parts.append(f"token={token}")
+    if api_key:
+        qs_parts.append(f"api_key={api_key}")
+    url  = f"{server}/workflows/{workflow_id}/runs/{run_id}/stream?{'&'.join(qs_parts)}"
 
     for data in api.stream(url, hdrs):
         kind    = data.get("kind", "")
