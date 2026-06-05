@@ -11,9 +11,9 @@ import OnboardingChecklist from "@/components/OnboardingChecklist"
 interface Project {
   id: string
   name: string
-  workflow_count: number
+  agent_count: number
   created_at: string
-  is_approved: boolean
+  workspace_id?: string
 }
 
 function timeAgo(ts: string): string {
@@ -109,7 +109,12 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
 
   async function fetchProjects() {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, { headers: await authHeaders() })
+      const headers = await authHeaders()
+      const workspaceId = document.cookie.match(/delegator_project_id=([^;]+)/)?.[1] ?? ""
+      const url = workspaceId
+        ? `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/projects`
+        : `${process.env.NEXT_PUBLIC_API_URL}/projects`
+      const res = await fetch(url, { headers })
       if (res.ok) setProjects(await res.json())
     } finally {
       setLoading(false)
@@ -119,17 +124,21 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
   useEffect(() => { fetchProjects() }, [])
 
   function selectProject(id: string, name?: string) {
-    document.cookie = `delegator_project_id=${id}; path=/; max-age=31536000`
-    if (name) document.cookie = `delegator_project_name=${encodeURIComponent(name)}; path=/; max-age=31536000`
-    router.push("/workflows")
+    router.push(`/workflows?project=${id}`)
+  }
+
+  function getWorkspaceId(): string {
+    return document.cookie.match(/delegator_project_id=([^;]+)/)?.[1] ?? ""
   }
 
   async function renameProject(id: string, name: string) {
     const h = await authHeaders()
     h["Content-Type"] = "application/json"
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${id}`, {
-      method: "PATCH", headers: h, body: JSON.stringify({ name }),
-    })
+    const wsId = getWorkspaceId()
+    const url = wsId
+      ? `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${wsId}/projects/${id}`
+      : `${process.env.NEXT_PUBLIC_API_URL}/projects/${id}`
+    const res = await fetch(url, { method: "PATCH", headers: h, body: JSON.stringify({ name }) })
     if (res.ok) {
       const updated = await res.json()
       setProjects(prev => prev.map(p => p.id === id ? { ...p, name: updated.name } : p))
@@ -138,7 +147,11 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
 
   async function deleteProject(id: string) {
     const h = await authHeaders()
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${id}`, { method: "DELETE", headers: h })
+    const wsId = getWorkspaceId()
+    const url = wsId
+      ? `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${wsId}/projects/${id}`
+      : `${process.env.NEXT_PUBLIC_API_URL}/projects/${id}`
+    await fetch(url, { method: "DELETE", headers: h })
     setProjects(prev => prev.filter(p => p.id !== id))
   }
 
@@ -633,7 +646,7 @@ function ProjectCard({ project, onSelect, onRename, onDelete }: ProjectCardProps
         onClick={onSelect}
       >
         <div style={{ flex: 1, padding: "11px 20px" }}>
-          <div style={{ fontSize: 17, fontWeight: 650, color: "var(--text)" }}>{project.workflow_count}</div>
+          <div style={{ fontSize: 17, fontWeight: 650, color: "var(--text)" }}>{project.agent_count ?? 0}</div>
           <div style={{ fontSize: 11, color: "var(--text-muted)" }}>agents</div>
         </div>
         <div style={{ flex: 1, padding: "11px 20px", borderLeft: "1px solid var(--border)" }}>

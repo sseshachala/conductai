@@ -23,7 +23,11 @@ export default function NewProjectModal({ getToken, onClose, onCreate }: Props) 
         const token = await getToken()
         if (token) headers["Authorization"] = `Bearer ${token}`
       }
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, {
+      const workspaceId = document.cookie.match(/delegator_project_id=([^;]+)/)?.[1] ?? ""
+      const endpoint = workspaceId
+        ? `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/projects`
+        : `${process.env.NEXT_PUBLIC_API_URL}/projects`
+      const res = await fetch(endpoint, {
         method: "POST",
         headers,
         body: JSON.stringify({ name: name.trim() }),
