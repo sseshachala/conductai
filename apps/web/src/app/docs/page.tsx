@@ -924,6 +924,84 @@ conduct guard status`}</Pre>
           ))}
         </div>
 
+        <SubHeading>Covered tools — confirmed in the wild</SubHeading>
+        <p className="text-stone-500 text-sm mb-5 leading-relaxed">
+          ConductGuard has been tested and confirmed working on the following tools. Hard block means every tool call — Bash, Read, Edit, Write — is intercepted before execution and stopped cold at the PreToolUse hook.
+        </p>
+        <div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-2">
+
+          <div className="rounded-xl border border-stone-200 overflow-hidden">
+            <div className="px-4 py-3 flex items-center justify-between border-b border-stone-100 bg-stone-50">
+              <span className="font-semibold text-stone-800 text-sm">Claude Code</span>
+              <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">✓ Live</span>
+            </div>
+            <div className="px-4 py-3 text-xs text-stone-500 space-y-1 border-b border-stone-100">
+              <div><span className="font-medium text-stone-700">Hook:</span> PreToolUse · PostToolUse · Stop</div>
+              <div><span className="font-medium text-stone-700">Enforcement:</span> Hard block — exit code 2</div>
+              <div><span className="font-medium text-stone-700">Config:</span> <code className="font-mono bg-stone-100 px-1 rounded">~/.claude/settings.json</code></div>
+            </div>
+            <div className="p-3 bg-stone-950 space-y-1 font-mono text-xs">
+              <p className="text-stone-500"># Claude Code — budget hard cap hit</p>
+              <p className="text-amber-400">• PreToolUse hook (blocked)</p>
+              <p className="text-stone-300 pl-2">feedback: [ConductGuard] Your team&apos;s monthly</p>
+              <p className="text-stone-300 pl-2">AI budget of $650.00 has been reached.</p>
+              <p className="text-stone-300 pl-2">New tool calls are paused until the limit</p>
+              <p className="text-stone-300 pl-2">is raised. Contact your security team.</p>
+              <p className="text-stone-500 mt-2"># Every tool call blocked until cap raised</p>
+              <p className="text-amber-400">• PreToolUse hook (blocked)</p>
+              <p className="text-amber-400">• PreToolUse hook (blocked)</p>
+              <p className="text-amber-400">• PreToolUse hook (blocked)</p>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-stone-200 overflow-hidden">
+            <div className="px-4 py-3 flex items-center justify-between border-b border-stone-100 bg-stone-50">
+              <span className="font-semibold text-stone-800 text-sm">Codex CLI</span>
+              <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">✓ Live</span>
+            </div>
+            <div className="px-4 py-3 text-xs text-stone-500 space-y-1 border-b border-stone-100">
+              <div><span className="font-medium text-stone-700">Hook:</span> PreToolUse</div>
+              <div><span className="font-medium text-stone-700">Enforcement:</span> Hard block — exit code 2</div>
+              <div><span className="font-medium text-stone-700">Config:</span> <code className="font-mono bg-stone-100 px-1 rounded">~/.codex/hooks.json</code></div>
+            </div>
+            <div className="p-3 bg-stone-950 space-y-1 font-mono text-xs">
+              <p className="text-stone-500"># Codex CLI — same hook, same block</p>
+              <p className="text-amber-400">• PreToolUse hook (blocked)</p>
+              <p className="text-stone-300 pl-2">feedback: [ConductGuard] Your team&apos;s monthly</p>
+              <p className="text-stone-300 pl-2">AI budget of $650.00 has been reached.</p>
+              <p className="text-stone-300 pl-2">New tool calls are paused until the limit</p>
+              <p className="text-stone-300 pl-2">is raised. Contact your security team.</p>
+              <p className="text-stone-400 mt-2 italic"># Codex stopped cold — same script,</p>
+              <p className="text-stone-400 italic"># same exit-code-2 protocol as Claude Code</p>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-stone-200 overflow-hidden opacity-60">
+            <div className="px-4 py-3 flex items-center justify-between border-b border-stone-100 bg-stone-50">
+              <span className="font-semibold text-stone-800 text-sm">Cursor</span>
+              <span className="text-xs font-semibold text-stone-500 bg-stone-100 border border-stone-200 px-2 py-0.5 rounded-full">Coming soon</span>
+            </div>
+            <div className="px-4 py-3 text-xs text-stone-400 space-y-1">
+              <div><span className="font-medium text-stone-500">Hook:</span> MCP server (advisory)</div>
+              <div><span className="font-medium text-stone-500">Enforcement:</span> Advisory — AI self-enforces via Guard MCP tools</div>
+              <div><span className="font-medium text-stone-500">Hard block:</span> In development</div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-stone-200 overflow-hidden opacity-60">
+            <div className="px-4 py-3 flex items-center justify-between border-b border-stone-100 bg-stone-50">
+              <span className="font-semibold text-stone-800 text-sm">Windsurf</span>
+              <span className="text-xs font-semibold text-stone-500 bg-stone-100 border border-stone-200 px-2 py-0.5 rounded-full">Coming soon</span>
+            </div>
+            <div className="px-4 py-3 text-xs text-stone-400 space-y-1">
+              <div><span className="font-medium text-stone-500">Hook:</span> MCP server (advisory)</div>
+              <div><span className="font-medium text-stone-500">Enforcement:</span> Advisory — AI self-enforces via Guard MCP tools</div>
+              <div><span className="font-medium text-stone-500">Hard block:</span> In development</div>
+            </div>
+          </div>
+
+        </div>
+
         <div className="rounded-xl bg-stone-100 border border-stone-200 px-4 py-3 text-sm text-stone-700">
           <strong>Exit codes:</strong> 0 = pass (tool runs), 2 = block (tool aborted).
           The tool surfaces the rule message to the developer so they know why the call was blocked.
