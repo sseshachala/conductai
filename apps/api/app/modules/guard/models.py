@@ -19,6 +19,7 @@ class GuardConfig(Base):
     enforcement_mode = Column(String(20), nullable=False, default="warn")
     notify_on_block = Column(Boolean, nullable=False, default=True)
     notify_on_budget = Column(Boolean, nullable=False, default=True)
+    resync_requested_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
