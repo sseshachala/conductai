@@ -299,7 +299,140 @@ Dedicated view in the Conduct console showing:
 
 ---
 
-## 13. Architecture (Revised)
+## 13. Detailed Flow & Use Case
+
+### End-to-end flow
+
+```
+1. Developer runs Claude-BugHunter or codexstar69/bug-hunter in terminal
+        ↓
+2. Security Loop CLI extension (built into ConductGuard)
+   - For Claude-BugHunter: structured markdown output → parsed directly
+   - For Codex bug-hunter: raw unstructured terminal output → classifier normalizes it
+        ↓
+3. Classifier produces standardized finding schema
+   { tool, severity, type, file, line, description, suggested_fix, repo_full_name }
+        ↓
+4. ConductGuard CLI sends finding to new Conduct API endpoint
+   POST /security-findings  { workspace_id, finding }
+        ↓
+5. API stores finding in DB, triggers SSE refresh to console
+        ↓
+6. /security console page surfaces the finding in real-time
+        ↓
+7. Platform auto-creates a draft Agent in the "Security" project
+   - Agent is based on thirdparty-autopilot-fix template
+   - Pre-filled with repo, issue details from the finding
+   - Status: draft (not running yet)
+        ↓
+8. Slack notification → #security channel
+   "New finding captured: [severity] [type] in [repo] — view in Conduct"
+        ↓
+9. Security engineer reviews the draft agent in the console,
+   approves → run triggers → triage → fix → PR pipeline fires
+```
+
+### Component breakdown
+
+**A. ConductGuard CLI extension**
+
+Two modes depending on the source tool:
+
+- **Claude-BugHunter mode:** CBH outputs structured markdown with findings. Guard parses this directly — no classifier needed. Key fields map cleanly: severity, file, description, suggested fix.
+
+- **Codex bug-hunter mode:** Raw terminal output, unstructured. Guard pipes this through the classifier before emitting. Classifier uses fast path (regex: CVE refs, OWASP terms, secret patterns) + slow path (Haiku LLM call) for ambiguous output.
+
+Usage:
+```bash
+# Pipe claude-bughunter output into Guard
+cbh scan --target acme | conductguard emit --tool claude-bughunter --repo owner/repo
+
+# Pipe codex bug-hunter output into Guard
+codex run hunt.sh | conductguard emit --tool codex-bughunter --repo owner/repo
+```
+
+**B. Classifier (Codex + unstructured tools)**
+
+Input: raw terminal text
+Output: standardized finding schema or null (if no finding detected)
+
+Fast path — regex patterns:
+- Secret leak: `(api_key|secret|password|token)\s*=\s*["\'][^"\']{8,}`
+- Path traversal: `path traversal|directory traversal|REPO_ROOT`
+- Injection: `sql injection|command injection|shell injection|XSS`
+- CVE reference: `CVE-\d{4}-\d+`
+- OWASP class: `OWASP [AT]\d+`
+
+Slow path — Haiku call when fast path confidence is low:
+```
+"Does the following output describe a security vulnerability? 
+If yes, return JSON with: severity, type, file, description, suggested_fix. 
+If no, return null."
+```
+
+**C. API endpoint**
+
+```
+POST /security-findings
+Headers: x-api-key or Authorization
+Body: {
+  tool: string,
+  severity: critical|high|medium|low|info,
+  type: string,
+  file: string,
+  line: number,
+  description: string,
+  suggested_fix: string,
+  repo_full_name: string,
+  commit_sha: string,
+  raw_output: string  // original text for audit
+}
+
+Response: { finding_id, agent_id, slack_ts }
+```
+
+DB: new `security_findings` table — finding_id, workspace_id, tool, severity, status, finding payload, agent_id (FK to workflows), created_at.
+
+SSE: existing run-feed SSE infrastructure reused to push finding updates to `/security` page.
+
+**D. /security console page**
+
+Real-time feed of all captured findings across all tools:
+
+| Column | Value |
+|---|---|
+| Severity | critical / high / medium / low badge |
+| Type | injection / path-traversal / secret-leak etc. |
+| Repo | owner/repo |
+| Tool | claude-bughunter / codex / cursor |
+| Status | captured → draft → running → PR open → merged |
+| Agent | link to the auto-created draft agent |
+| Time | when captured |
+
+**E. Auto-create draft Agent**
+
+When a finding lands:
+1. Look up or create a "Security" project in the workspace
+2. Instantiate `thirdparty-autopilot-fix` template as a new agent
+3. Pre-fill inputs: `upstream_owner`, `upstream_repo`, `issue_number` (from finding)
+4. Set agent status to `draft` — does NOT run automatically
+5. Link agent ID back to the finding record
+
+The engineer reviews the draft in the console and clicks Run when ready. This keeps humans in the loop before any code is changed.
+
+**F. Slack notification**
+
+Fires immediately on finding capture, before the agent runs:
+
+```
+🐛 New security finding — [HIGH] path-traversal in elementalsouls/Claude-BugHunter
+Tool: claude-bughunter  |  File: scripts/cbh.py
+Draft agent ready in Security project → [View in Conduct]
+```
+
+---
+
+## 14. Architecture (Revised)
 
 ```
 Claude Code / Codex CLI
