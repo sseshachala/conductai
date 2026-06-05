@@ -948,7 +948,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                         </div>
                       ))}
                     </div>
-                    {data.agent_health.map(agent => (
+                    {data.agent_health.slice(0, 5).map(agent => (
                       <AgentHealthRow key={agent.workflow_id} agent={agent} />
                     ))}
                   </div>
