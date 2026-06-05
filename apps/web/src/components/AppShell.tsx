@@ -52,6 +52,7 @@ function Icon({ d, children, size = 16, strokeWidth = 1.5, className = "" }: {
 }
 
 const Icons = {
+  Spark: () => <Icon><path d="M12 3v4M12 17v4M3 12h4M17 12h4" /><circle cx="12" cy="12" r="4" /></Icon>,
   Shield: () => <Icon><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></Icon>,
   Grid: () => <Icon><path d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z" /></Icon>,
   Board: () => <Icon><path d="M3 3h5v18H3zm7 0h5v11h-5zm7 0h5v14h-5z" /></Icon>,
@@ -92,6 +93,7 @@ const Icons = {
 // ── Breadcrumb logic ──────────────────────────────────────────────────────────
 
 function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
+  if (pathname.startsWith('/dashboard')) return ['Dashboard']
   if (pathname.startsWith('/guard/spend')) return ['Guard', 'Spend']
   if (pathname.startsWith('/guard/policies')) return ['Guard', 'Policies']
   if (pathname.startsWith('/guard/activity')) return ['Guard', 'Activity']
@@ -125,6 +127,7 @@ const PALETTE_COMMANDS = [
   { group: "BUILD", label: "Tasks", href: "/tasks", icon: "Board" as const },
   { group: "BUILD", label: "Canvas", href: "/workflows/new", icon: "Flow" as const },
   { group: "BUILD", label: "Marketplace", href: "/marketplace", icon: "Store" as const },
+  { group: "OBSERVE", label: "Dashboard", href: "/dashboard", icon: "Spark" as const },
   { group: "OBSERVE", label: "Runs", href: "/runs", icon: "Pulse" as const },
   { group: "GOVERN", label: "Guard · Overview", href: "/guard", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Spend", href: "/guard/spend", icon: "Shield" as const },
@@ -710,6 +713,15 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
 
         {/* Nav scroll area */}
         <nav style={{ flex: 1, overflowY: "auto", padding: "4px 10px 8px" }}>
+
+          {/* Dashboard — always first */}
+          <SideNavItem
+            href="/dashboard"
+            label="Dashboard"
+            icon={<Icons.Spark />}
+            active={pathname.startsWith("/dashboard")}
+            collapsed={collapsed}
+          />
 
           {/* GOVERN group — Guard */}
           {canSeeGuard && (
