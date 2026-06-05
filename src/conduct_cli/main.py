@@ -218,7 +218,7 @@ def _write_codex_mcp_config() -> bool:
         content = config_path.read_text() if config_path.exists() else ""
         if "conduct-mcp" in content:
             return True
-        mcp_block = '\n[[mcp_servers]]\nname = "conduct"\ncommand = "conduct-mcp"\nargs = []\n'
+        mcp_block = '\n[mcp_servers.conduct]\ncommand = "conduct-mcp"\nargs = []\n'
         config_path.write_text(content + mcp_block)
         return True
     except Exception:
