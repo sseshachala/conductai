@@ -661,6 +661,62 @@ Security Loop is the first chain. It proves the pattern. Everything after it get
 
 ---
 
+## 19. Observations Dashboard
+
+Every step of every agent in the chain is captured, costed, and auditable in one dashboard. This is both the operational view for engineers and the compliance evidence for security teams.
+
+### Per-run view (single Security Loop chain run)
+
+```
+Step                    Agent                 Duration   Cost     Detail
+─────────────────────────────────────────────────────────────────────────
+Finding detected        security-loop-cli     0m 02s     —        claude-bughunter · HIGH · path-traversal
+Issue created           github (tool)         0m 03s     —        issue #47 in owner/repo
+Triage fired            issue-triage          0m 28s     $0.04    severity: high · labels: security, bug
+Scanner validated       security-scanner      1m 12s     $0.18    confirmed: path-traversal in scripts/cbh.py
+Fix applied             autopilot-fix         1m 52s     $0.38    2 files changed · branch pushed
+PR opened               github (tool)         0m 04s     —        PR #15 → main
+Slack notified          slack (output)        0m 02s     —        #security notified
+─────────────────────────────────────────────────────────────────────────
+Total                                         3m 43s     $0.61    7 steps · approved by: sudhi@
+```
+
+### Workspace-level observations (across all findings)
+
+| Metric | What it shows |
+|---|---|
+| Findings captured | Total this week, by tool (claude-bughunter, codex, cursor) |
+| Findings by severity | Critical / high / medium / low breakdown |
+| Findings by repo | Which repos surface the most issues |
+| Pipeline completion rate | % findings that reached PR stage vs dropped |
+| Mean time to PR (MTTP) | Average time from detection to PR opened |
+| Mean time to merge (MTTM) | Average time from PR open to merged (human step) |
+| Cost per finding | Average $ spent per finding resolved |
+| Slowest step | Which agent in the chain takes the most time |
+| Most expensive step | Which agent costs the most per run |
+| Tools connected | Which AI tools are actively emitting findings |
+
+### Compliance export
+
+A CISO or security lead can export a finding report showing:
+
+```
+Finding ID    Tool             Severity  Repo                    Detected        Reviewed by    PR          Merged
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+SL-001        claude-bughunter HIGH      elementalsouls/cbh      2026-06-05      sudhi@         PR #15      2026-06-05
+SL-002        codex            MEDIUM    owner/repo              2026-06-06      —              draft       —
+```
+
+Every row is a tamper-evident run trace with a unique run ID, timestamps at every step, approver identity, PR link, and cost. Sufficient for SOC 2, internal audits, and board-level security reviews.
+
+### The claim
+
+> "Every vulnerability your AI coding tools find — detected, triaged, fixed, and shipped as a PR — with a full audit trail in one dashboard. Across Claude Code, Codex, and Cursor."
+
+No other tool closes this loop. They all stop at surfacing the finding. Conduct is what happens next.
+
+---
+
 ## 18. Agent Chaining — Future Platform Primitive
 
 > Not building now. Captured for roadmap.
