@@ -120,6 +120,11 @@ def get_user_workspace_role_sse(
     if not _clerk_enabled():
         return "admin"
 
+    # API key auth — workspace was already validated by get_workspace_id_sse, grant admin
+    api_key_val = request.headers.get("x-api-key") or request.query_params.get("api_key")
+    if api_key_val:
+        return "admin"
+
     user_id = _get_user_id_from_request(request)
 
     import re as _re
