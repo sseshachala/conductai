@@ -1185,41 +1185,50 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
               )}
             </div>
 
-            {/* Right panel — block config */}
+            {/* Right panel — block config or environment/integrations panel */}
             <div
               style={{
-                flexBasis: (rightOpen && selectedNode) ? 344 : 0,
-                width: (rightOpen && selectedNode) ? 344 : 0,
-                maxWidth: (rightOpen && selectedNode) ? 344 : 0,
+                flexBasis: rightOpen ? 344 : 0,
+                width: rightOpen ? 344 : 0,
+                maxWidth: rightOpen ? 344 : 0,
                 minWidth: 0,
                 flexGrow: 0,
                 flexShrink: 0,
                 overflow: "hidden",
-                borderLeft: (rightOpen && selectedNode) ? "1px solid #e7e5e4" : "none",
+                borderLeft: rightOpen ? "1px solid #e7e5e4" : "none",
                 background: "white",
               }}
             >
-              {rightOpen && selectedNode && selectedData && (
+              {rightOpen && (
                 <div className="flex-1 overflow-y-auto min-w-0 w-[344px] h-full">
-                  <BlockEditor
-                    workflowId={workflowId}
-                    blockId={selectedNode.id}
-                    blockType={selectedData.type}
-                    label={selectedData.label}
-                    description={(selectedData.description as string) ?? ""}
-                    blockData={selectedNode.data as Record<string, unknown>}
-                    onChange={handleBlockChange}
-                    getToken={getToken}
-                    isAdmin={isAdmin}
-                    isViewer={isViewer}
-                    githubHookRepo={githubHookRepo}
-                    githubHookId={githubHookId}
-                    githubWebhook={githubWebhook}
-                    playbookSlug={playbookSlug}
-                    projectSlug={projectSlug}
-                    onWebhookChange={(id, repo) => { setGithubHookId(id); setGithubHookRepo(repo) }}
-                    onClose={() => setSelectedNode(null)}
-                  />
+                  {selectedNode && selectedData ? (
+                    <BlockEditor
+                      workflowId={workflowId}
+                      blockId={selectedNode.id}
+                      blockType={selectedData.type}
+                      label={selectedData.label}
+                      description={(selectedData.description as string) ?? ""}
+                      blockData={selectedNode.data as Record<string, unknown>}
+                      onChange={handleBlockChange}
+                      getToken={getToken}
+                      isAdmin={isAdmin}
+                      isViewer={isViewer}
+                      githubHookRepo={githubHookRepo}
+                      githubHookId={githubHookId}
+                      githubWebhook={githubWebhook}
+                      playbookSlug={playbookSlug}
+                      projectSlug={projectSlug}
+                      onWebhookChange={(id, repo) => { setGithubHookId(id); setGithubHookRepo(repo) }}
+                      onClose={() => setSelectedNode(null)}
+                    />
+                  ) : (
+                    <EnvironmentPanel
+                      environments={environments}
+                      selectedEnvId={selectedEnvId}
+                      credentials={envCredentials}
+                      nodes={nodes}
+                    />
+                  )}
                 </div>
               )}
             </div>
