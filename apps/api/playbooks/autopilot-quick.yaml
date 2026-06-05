@@ -55,16 +55,6 @@ blocks:
     scope: repo
     key: "{{_trigger.repo_full_name}}"
     limit: 5
-    next: guard_check
-
-  guard_check:
-    type: guard
-    label: Policy check
-    config:
-      enforcement_mode: block
-      context_keys:
-        - _trigger
-        - recall_context
     next: fetch_issue
 
   fetch_issue:
