@@ -190,8 +190,12 @@ def fork_repo(token: str, owner: str, repo: str) -> dict:
     user_r.raise_for_status()
     fork_owner = user_r.json()["login"]
 
-    # GitHub fork creation is async — wait briefly before callers try to clone
-    time.sleep(4)
+    # GitHub fork creation is async — poll until the fork is reachable (max 30s)
+    for _ in range(10):
+        time.sleep(3)
+        check = httpx.get(f"{BASE}/repos/{fork_owner}/{repo}", headers=_headers(token), timeout=10)
+        if check.status_code == 200:
+            break
 
     return {
         "fork_owner": fork_owner,
