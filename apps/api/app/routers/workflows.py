@@ -130,7 +130,7 @@ FRIENDLY_NAMES_SERVER = {
     "copilot_reviewer":   "Copilot / AI PR Reviewer",
     "security_scanner":   "Security Scanner",
     "smoke_test":             "Smoke Test",
-    "security_autopilot_fix": "Security Autopilot Fix",
+    "thirdparty_autopilot_fix": "Third-Party Autopilot Fix",
 }
 
 _TEMPLATE_PLAYBOOKS = {
@@ -151,7 +151,7 @@ _TEMPLATE_PLAYBOOKS = {
     "postmortem_drafter":     "postmortem-drafter.yaml",
     "docs_drift_detector":    "docs-drift-detector.yaml",
     "terraform_reviewer":     "terraform-reviewer.yaml",
-    "security_autopilot_fix": "security-autopilot-fix.yaml",
+    "thirdparty_autopilot_fix": "thirdparty-autopilot-fix.yaml",
     "smoke_test":             "smoke-test.yaml",
     "factory":               "factory.yaml",
 }
@@ -174,7 +174,7 @@ _PLAYBOOK_META = {
     "security_patch_updater":{"icon": "🛡️",  "category": "Security",           "tags": ["github", "security", "ops"],         "featured": True,  "description": "Dependabot alert fires → AI applies the security patch → runs tests → opens a PR with CVE reference. No waiting for the weekly cron."},
     "docs_drift_detector":   {"icon": "📖",  "category": "Docs",               "tags": ["github", "docs"],                    "featured": True,  "description": "PR merged → AI checks if related docs, README, or runbooks are out of date → opens a follow-up docs PR or creates an issue."},
     "terraform_reviewer":    {"icon": "🏗️",  "category": "Platform & Infra",   "tags": ["github", "infra", "security"],       "featured": True,  "description": "Terraform plan PR opened → AI reviews for security misconfigs, cost anomalies, and drift from approved patterns → posts structured findings."},
-    "security_autopilot_fix":{"icon": "🔐",  "category": "Security",           "tags": ["github", "security", "code"],        "featured": True,  "description": "Security issue filed → AI forks the repo, applies all confirmed fixes, and opens a PR back to upstream. Full run trace captured in Conduct."},
+    "thirdparty_autopilot_fix":{"icon": "🔀", "category": "Issue to PR",        "tags": ["github", "code", "oss"],             "featured": True,  "description": "Issue on any third-party repo → AI forks it, clones the fork, reads the issue, applies the fix, and opens a PR back to upstream. Works on any public repo."},
     "smoke_test":            {"icon": "🏓",  "category": "Testing",            "tags": ["ci", "ops"],                         "featured": False, "description": "Minimal 1-step pipeline ping. Fires a brain block and returns ok. Use for CI gating and worker health checks — completes in under 30s."},
     "factory":               {"icon": "🏭",  "category": "Issue to PR",        "tags": ["github", "code", "tdd", "approval"],  "featured": True,  "description": "GitHub issue → spec (Opus) → architecture + ADR → failing tests → implementation → passing tests → human approval → PR. The full software factory pipeline."},
 }
