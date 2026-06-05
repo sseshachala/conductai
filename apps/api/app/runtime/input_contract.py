@@ -67,31 +67,35 @@ def validate_run_start_inputs(initial_state: dict[str, Any] | None) -> dict[str,
     Validate and normalize run-start state.
 
     Contract (phase2.v1):
-    - state must be a non-empty dict
-    - must carry either:
+    - state must be a non-empty dict OR carry __manual=True (CLI manual trigger)
+    - must carry one of:
       1) a non-empty `_trigger` envelope with core signal fields, OR
-      2) GitHub normalized shape: `github_trigger` + `github_issue`
+      2) GitHub normalized shape: `github_trigger` + `github_issue`, OR
+      3) `__manual: True` — CLI/UI manual trigger with arbitrary inputs
     """
-    if not _is_non_empty_dict(initial_state):
+    is_manual = isinstance(initial_state, dict) and initial_state.get("__manual") is True
+
+    if not is_manual and not _is_non_empty_dict(initial_state):
         raise InputContractError(
-            "Run start requires explicit inputs. Provide `_trigger` or GitHub normalized input state."
+            "Run start requires explicit inputs. Provide `_trigger`, GitHub normalized input state, or set `__manual: true`."
         )
 
-    state: dict[str, Any] = deepcopy(initial_state)
+    state: dict[str, Any] = deepcopy(initial_state or {})
     has_trigger = _is_non_empty_dict(state.get("_trigger"))
-    has_github = _is_non_empty_dict(state.get("github_trigger")) or _is_non_empty_dict(state.get("github_issue"))
+    has_github  = _is_non_empty_dict(state.get("github_trigger")) or _is_non_empty_dict(state.get("github_issue"))
 
-    if not has_trigger and not has_github:
-        raise InputContractError(
-            "Run start input contract not satisfied. Expected `_trigger` or `github_trigger`/`github_issue`."
-        )
-
-    if has_trigger:
+    if is_manual:
+        shape = "manual"
+    elif has_trigger:
         _validate_trigger_shape(state["_trigger"])
         shape = "trigger"
-    else:
+    elif has_github:
         _validate_github_shape(state)
         shape = "github"
+    else:
+        raise InputContractError(
+            "Run start input contract not satisfied. Expected `_trigger`, `github_trigger`/`github_issue`, or `__manual: true`."
+        )
 
     state["__input_contract"] = {
         "version": "phase2.v1",

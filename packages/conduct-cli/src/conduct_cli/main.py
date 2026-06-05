@@ -1323,7 +1323,7 @@ def cmd_run(args):
 
     run = api.req("POST", f"{server}/workflows/{workflow_id}/runs", json_h, {
         "triggered_by": "cli",
-        "initial_state": initial_state,
+        "initial_state": {"__manual": True, "inputs": initial_state},
     })
     _stream_run(server, workflow_id, run["id"], workspace_id, token, api_key)
 
