@@ -56,7 +56,6 @@ function BlockIcon({ type, className }: { type: string; className?: string }) {
     case "approval": return <svg {...props}><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
     case "output":   return <svg {...props}><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
     case "cleanup":  return <svg {...props}><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-    case "guard":    return <svg {...props}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
     case "mcp":      return <svg {...props}><path d="M4 6h16M4 12h16M4 18h7"/><circle cx="17" cy="18" r="3"/><path d="M14.5 18h-1M19.5 18h1M17 15.5v-1M17 20.5v1"/></svg>
     default:         return null
   }
@@ -151,6 +150,12 @@ function BlockNode({ data, selected }: NodeProps) {
         </span>
         {nodeData.isAgentic && (
           <span className="text-[8px] font-bold bg-violet-600 text-white px-1.5 py-0.5 rounded">AI</span>
+        )}
+        {nodeData.isAgentic && (
+          <span className="text-[8px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            Guard
+          </span>
         )}
       </div>
 

@@ -1881,16 +1881,6 @@ export default function BlockEditor({
         )
       })()}
 
-      {/* ── Guard block ── */}
-      {blockType === "guard" && (
-        <GuardBlockPanel
-          getToken={getToken}
-          config={blockData}
-          onChange={handleFieldChange}
-          isAdmin={isAdmin}
-          isViewer={isViewer}
-        />
-      )}
 
       {/* ── MCP block ── */}
       {blockType === "mcp" && (
