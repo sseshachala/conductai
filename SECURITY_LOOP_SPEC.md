@@ -612,4 +612,51 @@ Controlled by a workspace setting: **Security Loop run mode** — `draft` (defau
 
 ---
 
+---
+
+## 17. Multi-Agent Chain — The Bigger Picture
+
+Security Loop is not a single playbook. It is a **chain of specialized agents** that work in tandem, each doing one thing well and handing state to the next.
+
+```
+Security Loop CLI  (emitter — wraps Claude Code / Codex)
+        ↓ finding event
+Security Findings Agent  (capture + store + create GitHub issue)
+        ↓ issue created
+Issue Triage Agent  (label + classify severity)
+        ↓ triaged issue
+Security Scanner Agent  (validate the finding)
+        ↓ validated + confirmed
+Autopilot Fix Agent  (fork → clone → fix → push → open PR)
+        ↓ PR opened
+Notify Agent  (Slack — finding captured, PR opened)
+```
+
+Each agent is a standalone Conduct agent with its own:
+- Run trace (turns, cost, duration)
+- Input/output state
+- Credentials (GitHub, Slack)
+- Guard policy enforcement
+
+The chain is triggered by events passing between agents — not a single monolithic playbook. State flows forward automatically.
+
+### Why this matters
+
+Security Loop is the first real proof point of **agent orchestration** on Conduct — a platform where chains of specialized agents collaborate on a task end to end.
+
+Once this pattern is established:
+
+- **Swappable agents** — replace the fix agent with a different strategy (patch-only, full refactor, dependency bump) without touching the rest of the chain
+- **Branching chains** — critical findings take one path (auto-run), medium findings take another (draft + human approval)
+- **Reusable pattern** — the same chain architecture applies to any multi-step workflow beyond security: release pipelines, incident response, dependency management
+- **Per-agent observability** — every agent in the chain has its own cost, turns, and trace. You can see exactly where time and money is spent
+
+### The moat
+
+Not any single playbook. Conduct as the platform where agents chain into autonomous workflows — each agent specialized, each step traced, the whole thing visible in one dashboard.
+
+Security Loop is the first chain. It proves the pattern. Everything after it gets easier.
+
+---
+
 *Conduct AI · SECURITY_LOOP_SPEC.md · v0.2*
