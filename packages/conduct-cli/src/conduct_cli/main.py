@@ -1280,82 +1280,48 @@ def _build_state(issue: dict, repo_full_name: str) -> dict:
 
 
 def cmd_run(args):
-    path = Path(args.yaml)
-    if not path.exists():
-        print(f"ERROR: file not found: {path}")
+    server, workspace_id, api_key, token = _require_auth(args)
+    json_h = api.headers(workspace_id, token, "application/json", api_key)
+
+    # Parse --input key=value pairs into initial_state
+    initial_state: dict = {}
+    for kv in (args.input or []):
+        if "=" not in kv:
+            print(f"{RED}Bad --input format '{kv}' — expected key=value{RESET}")
+            sys.exit(1)
+        k, v = kv.split("=", 1)
+        initial_state[k] = v
+
+    # Resolve agent by name
+    target = args.agent
+    workflows = api.req("GET", f"{server}/workflows", json_h)
+
+    # Filter by project if given
+    if args.project:
+        projects = api.req("GET", f"{server}/workspaces/{workspace_id}/projects", json_h)
+        proj = next((p for p in projects if p["name"].lower() == args.project.lower()), None)
+        if not proj:
+            print(f"{RED}Project '{args.project}' not found.{RESET}")
+            sys.exit(1)
+        workflows = [w for w in workflows if w.get("project_id") == proj["id"]]
+
+    wf = next((w for w in workflows if w["name"].lower() == target.lower()), None)
+    if not wf:
+        print(f"{RED}Agent '{target}' not found. Run 'conduct agents' to list agents.{RESET}")
         sys.exit(1)
 
-    raw_yaml     = path.read_text()
-    cfg          = yaml.safe_load(raw_yaml)
-    name         = cfg.get("name", path.stem)
-    workflow_id  = cfg.get("id")
-    server, workspace_id, api_key, token = _require_auth(args)
-    on_block     = cfg.get("on") or {}
-    trigger_type = next(iter(on_block), None)
-    trigger_cfg  = on_block.get(trigger_type, {})
+    workflow_id = wf["id"]
+    print(f"\n{BOLD}▶ conduct run — {wf['name']}{RESET}")
+    if initial_state:
+        for k, v in initial_state.items():
+            print(f"  {GRAY}{k}={v}{RESET}")
+    print()
 
-    json_h = api.headers(workspace_id, token, "application/json", api_key)
-    yaml_h = api.headers(workspace_id, token, "application/x-yaml", api_key)
-
-    print(f"\n{BOLD}▶ conduct run — {name}{RESET}")
-    print(f"  server: {server}\n")
-
-    if not workflow_id:
-        workflow_id = api.find_or_create_workflow(server, name, json_h)
-    print(f"  workflow: {workflow_id}")
-    print(f"  pushing YAML… ", end="", flush=True)
-    api.req_text("PUT", f"{server}/workflows/{workflow_id}/yaml", yaml_h, raw_yaml)
-    print(f"{GREEN}ok{RESET}\n")
-
-    if trigger_type == "github_issue_labeled":
-        repo  = trigger_cfg.get("repo_allowlist", "")
-        label = trigger_cfg.get("label", "")
-
-        print(f"  Fetching issues from {repo} with label '{label}'…")
-        qs = urllib.parse.urlencode({"repo": repo, "label": label})
-        issues = api.req("GET", f"{server}/credentials/github/issues?{qs}", json_h)
-
-        if not issues:
-            print(f"  No open issues found with label '{label}'.")
-            return
-
-        print(f"  Found {len(issues)} issue(s)\n")
-
-        passed = failed = 0
-        for issue in issues:
-            print(f"{CYAN}  ── Issue #{issue['number']}: {issue['title']}{RESET}")
-            state = _build_state(issue, repo)
-
-            max_turns = None
-            try:
-                pf = api.req("POST", f"{server}/workflows/{workflow_id}/preflight", json_h, {
-                    "issue_title": issue["title"],
-                    "issue_body":  issue.get("body") or "",
-                })
-                suggested = pf.get("suggested_max_turns", 20)
-                if suggested > 20:
-                    print(f"{GRAY}  ⚠ estimated {suggested} turns — bumping max_turns{RESET}")
-                    max_turns = suggested
-            except Exception:
-                pass
-
-            payload = {"triggered_by": f"cli:issue#{issue['number']}", "initial_state": state}
-            if max_turns:
-                payload["max_turns"] = max_turns
-            run = api.req("POST", f"{server}/workflows/{workflow_id}/runs", json_h, payload)
-            ok  = _stream_run(server, workflow_id, run["id"], workspace_id, token, api_key)
-            passed += ok
-            failed += not ok
-            print()
-
-        print(f"{BOLD}  Summary: {passed} passed, {failed} failed{RESET}\n")
-
-    else:
-        run = api.req("POST", f"{server}/workflows/{workflow_id}/runs", json_h, {
-            "triggered_by": "cli",
-            "initial_state": {},
-        })
-        _stream_run(server, workflow_id, run["id"], workspace_id, token)
+    run = api.req("POST", f"{server}/workflows/{workflow_id}/runs", json_h, {
+        "triggered_by": "cli",
+        "initial_state": initial_state,
+    })
+    _stream_run(server, workflow_id, run["id"], workspace_id, token, api_key)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -1458,8 +1424,10 @@ def main():
                       help="Input value applied to all playbooks (repeatable)")
 
     # conduct run (existing)
-    run_p = sub.add_parser("run", help="Run a workflow from a YAML file")
-    run_p.add_argument("yaml", help="Path to workflow YAML")
+    run_p = sub.add_parser("run", help="Run an installed agent by name")
+    run_p.add_argument("agent",    help="Agent name (e.g. 'security_autopilot_fix')")
+    run_p.add_argument("--project", metavar="name", help="Narrow to a specific project")
+    run_p.add_argument("--input",   action="append", metavar="key=value", help="Runtime input (repeatable)")
 
     # conduct guard
     guard_p, _guard_sub = _guard.register_guard_parser(sub)
