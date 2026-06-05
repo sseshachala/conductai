@@ -300,9 +300,10 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
     background: "var(--surface-3, #f5f5f4)",
     borderRadius: 8,
     fontSize: 11.5,
-    overflowX: "auto",
+    overflowX: "hidden",
     lineHeight: 1.5,
     whiteSpace: "pre-wrap",
+    wordBreak: "break-all",
     maxHeight: 192,
   }
 

@@ -66,7 +66,7 @@ function TraceRow({ row }: { row: TraceRow }) {
 
       {/* Tool input */}
       {row.role === "tool_use" && row.tool_input && (
-        <pre style={{ margin: 0, padding: "9px 11px", background: "var(--inverse)", borderRadius: 7, fontFamily: "var(--font-mono, monospace)", fontSize: 11.5, overflowX: "auto", lineHeight: 1.5, color: "var(--on-inverse)" }}>
+        <pre style={{ margin: 0, padding: "9px 11px", background: "var(--inverse)", borderRadius: 7, fontFamily: "var(--font-mono, monospace)", fontSize: 11.5, overflowX: "hidden", lineHeight: 1.5, color: "var(--on-inverse)", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
           {JSON.stringify(row.tool_input, null, 2)}
         </pre>
       )}
