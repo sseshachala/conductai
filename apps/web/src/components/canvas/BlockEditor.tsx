@@ -1930,13 +1930,10 @@ export default function BlockEditor({
         </div>
       )}
 
-      {/* Footer */}
-      {!isViewer && (
-        <div style={{ padding: "12px 18px", borderTop: "1px solid var(--border)", display: "flex", gap: 8 }} className="shrink-0 bg-white sticky bottom-0">
-          <button type="button" className="btn btn-accent btn-sm" style={{ flex: 1, justifyContent: "center" }}>Save block</button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
-        </div>
-      )}
+      {/* Footer — close only; changes auto-save on every edit */}
+      <div style={{ padding: "10px 18px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "flex-end" }} className="shrink-0 bg-white sticky bottom-0">
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
+      </div>
 
     </div>
   )
