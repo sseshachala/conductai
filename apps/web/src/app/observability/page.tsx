@@ -170,9 +170,11 @@ export default function ObservabilityPage() {
     connectSSE()
     loadAgents()
     loadAnalytics()
-    const agentInterval = setInterval(loadAgents, 30_000)
+    const agentInterval     = setInterval(loadAgents,    30_000)
+    const analyticsInterval = setInterval(loadAnalytics, 60_000)
     return () => {
-      agentInterval && clearInterval(agentInterval)
+      clearInterval(agentInterval)
+      clearInterval(analyticsInterval)
       esRef.current?.close()
     }
   }, [connectSSE, loadAgents, loadAnalytics])
