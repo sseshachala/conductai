@@ -8,8 +8,19 @@ from pydantic import BaseModel, model_validator
 def _extract_repo(state: dict | None) -> str | None:
     if not state:
         return None
+    # Webhook-triggered runs: _trigger.repository.full_name
     trigger = state.get("_trigger") or {}
-    return (trigger.get("repository") or {}).get("full_name") or None
+    if repo := (trigger.get("repository") or {}).get("full_name"):
+        return repo
+    # Manual/CLI runs: inputs may carry upstream_owner+upstream_repo or repo_full_name
+    inputs = state.get("inputs") or {}
+    if inputs.get("upstream_owner") and inputs.get("upstream_repo"):
+        return f"{inputs['upstream_owner']}/{inputs['upstream_repo']}"
+    if inputs.get("repo_full_name"):
+        return inputs["repo_full_name"]
+    if inputs.get("owner") and inputs.get("repo"):
+        return f"{inputs['owner']}/{inputs['repo']}"
+    return None
 
 
 def _extract_trigger_summary(state: dict | None) -> str | None:
