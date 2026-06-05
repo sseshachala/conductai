@@ -133,7 +133,7 @@ export default function ObservabilityPage() {
       const res = await fetch(`${base}/analytics/summary?days=30`, { headers })
       if (res.ok) setAnalytics(await res.json())
     } catch {
-      // non-fatal
+      // non-fatal — keep last known state
     }
   }, [getToken])
 
@@ -182,6 +182,7 @@ export default function ObservabilityPage() {
   const refresh = useCallback(async () => {
     setLoading(true)
     await Promise.all([connectSSE(), loadAgents(), loadAnalytics()])
+    setLoading(false)
   }, [connectSSE, loadAgents, loadAnalytics])
 
   const h = summary?.health
