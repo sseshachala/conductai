@@ -1,5 +1,5 @@
 # Conduct Security Loop
-**v0.1 · June 5, 2026**
+**v0.2 · June 5, 2026**
 
 ---
 
@@ -109,16 +109,70 @@ This becomes the `_trigger` shape for the Security Loop pipeline.
 
 ## 6. What's New (Build List)
 
-### 6a. Finding emitter per tool
+### 6a. Two-track emitter strategy
 
-Thin event emitter that fires when an AI tool surfaces a security finding and POSTs to Conduct's webhook endpoint.
+There are two complementary approaches to capturing findings. Both ship — A first (low effort, immediate coverage), B second (universal coverage). They are not alternatives; they are layers.
 
-| Tool | Mechanism | Effort |
-|---|---|---|
-| Claude Code | `PostToolUse` hook in `.claude/settings.json` | Low — Guard hook already exists |
-| Codex CLI | `after_tool` hook in `codex.toml` | Low — same pattern |
-| Cursor | Rules file + background agent | Medium |
-| GitHub Copilot | PR comment webhook → Conduct | Low — webhook already supported |
+**Track A — Extend ConductGuard (Claude Code + Codex CLI)**
+
+ConductGuard is already registered inside Claude Code and Codex CLI and intercepts every tool call. We add a second responsibility: a **finding classifier** that inspects each tool call output and, when it looks like a security finding, emits a structured event to Conduct.
+
+```
+Tool call completes
+        ↓
+Guard PostToolUse hook fires (already exists)
+        ↓
+Finding classifier runs (new) — LLM call or regex heuristic
+        ↓
+If finding detected → POST to Conduct webhook
+        ↓
+Security Loop pipeline starts
+```
+
+The classifier is the core new piece. It needs to answer: "does this output contain a security vulnerability worth acting on?" Options:
+- **Fast path:** regex + keyword matching (secret patterns, OWASP terms, CVE refs) — zero latency, zero cost
+- **Slow path:** lightweight LLM call (Haiku) to classify ambiguous output — only fires when fast path is uncertain
+
+Dependency: classifier must exist before Track A emitter can ship.
+
+| Tool | Mechanism | Dependency | Effort |
+|---|---|---|---|
+| Claude Code | `PostToolUse` hook in Guard (already wired) | Classifier | Low |
+| Codex CLI | `after_tool` hook in Guard (already wired) | Classifier | Low |
+
+**Track B — Universal Webhook Bridge (all other tools)**
+
+A thin HTTP bridge that any tool can call — structured or unstructured. For tools with no hook system, Conduct provides a webhook endpoint that accepts raw text and runs the classifier server-side.
+
+| Tool | Mechanism | Dependency | Effort |
+|---|---|---|---|
+| GitHub Copilot | PR comment webhook → Conduct | Webhook endpoint (exists) | Low |
+| Cursor | `.cursor/rules` file + background script | Webhook endpoint | Medium |
+| Claude-BugHunter | Output pipe → `conduct emit finding` CLI command | CLI emit command | Low |
+| codexstar69/bug-hunter | Same — pipe output to CLI | CLI emit command | Low |
+| Any tool | `conduct emit finding --text "..."` from terminal | CLI emit command | Low |
+
+Track B also ships a CLI command `conduct emit finding` that any tool or script can call directly:
+
+```bash
+# Pipe any tool output into Conduct
+claude-bughunter scan | conduct emit finding --repo owner/repo --tool claude-bughunter
+codex run hunt.sh | conduct emit finding --repo owner/repo --tool codex
+```
+
+This makes it universal — if a tool produces text output, it can feed into the Security Loop with one pipe.
+
+**Dependency map:**
+
+```
+Classifier (fast + slow path)
+    ├── Track A — Guard emitter (Claude Code, Codex)        [Week 1-2]
+    └── Track B — Webhook bridge + CLI emit command         [Week 3-4]
+            ├── Copilot PR webhook
+            ├── Claude-BugHunter pipe
+            ├── codexstar69/bug-hunter pipe
+            └── Cursor rules integration                    [Week 5-6]
+```
 
 ### 6b. `security_finding` trigger shape
 
@@ -207,23 +261,27 @@ Dedicated view in the Conduct console showing:
 
 ## 11. Build Sequence
 
-**Week 1–2**
-- `security_finding` trigger shape in input_contract.py
-- Finding emitter for Claude Code (PostToolUse hook in ConductGuard)
+**Week 1–2** — Foundation
+- `security_finding` trigger shape in `input_contract.py`
+- Finding classifier (fast path: regex + keywords)
+- Track A: Guard emitter for Claude Code (PostToolUse hook)
 - Security Loop playbook YAML
 
-**Week 3–4**
-- Finding emitter for Codex CLI
+**Week 3–4** — Track A complete + Track B starts
+- Track A: Guard emitter for Codex CLI (`after_tool` hook)
+- Finding classifier slow path (Haiku LLM call for ambiguous output)
+- `conduct emit finding` CLI command (Track B foundation)
 - `create_issue` action in GitHub integration
 - End-to-end smoke test: Claude Code finding → PR in one run
 
-**Week 5–6**
+**Week 5–6** — Track B expands
+- Copilot PR comment → Conduct webhook path
+- Claude-BugHunter + codexstar69/bug-hunter pipe support
 - Dashboard Security Loop feed (findings status view)
-- Copilot PR comment → webhook path
 - Export / compliance report
 
-**Week 7–8**
-- Cursor integration
+**Week 7–8** — Coverage complete
+- Cursor rules integration
 - MTTF metric in dashboard
 - Launch blog post + demo video
 
@@ -233,8 +291,9 @@ Dedicated view in the Conduct console showing:
 
 1. Should dismissed findings (false positives) be tracked separately in the dashboard?
 2. Do we want human approval gates before the fix branch is pushed? (autopilot-approved pattern)
-3. Should the finding emitter be part of ConductGuard CLI or a separate lightweight binary?
+3. Classifier accuracy threshold — what confidence level triggers an emit vs. silent discard?
 4. Severity threshold — should low/info findings auto-close without creating an issue?
+5. For Track B `conduct emit finding` — should the CLI block until the pipeline completes, or fire-and-forget?
 
 ---
 
