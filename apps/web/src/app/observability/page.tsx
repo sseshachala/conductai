@@ -105,6 +105,10 @@ export default function ObservabilityPage() {
   const [loading, setLoading] = useState(true)
   const [live, setLive] = useState(false)
   const esRef = useRef<EventSource | null>(null)
+  const [filterSearch, setFilterSearch] = useState("")
+  const [filterHealth, setFilterHealth] = useState("all")
+  const PAGE_SIZE = 10
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
 
   const loadAgents = useCallback(async () => {
     const token = await getToken()
@@ -117,6 +121,7 @@ export default function ObservabilityPage() {
       const res = await fetch(`${base}/observability/agents`, { headers })
       if (!res.ok) throw new Error("Failed to load agent data")
       setAgents(await res.json())
+      setVisibleCount(PAGE_SIZE)
     } catch {
       // non-fatal — agents grid keeps last known state
     }
@@ -193,6 +198,35 @@ export default function ObservabilityPage() {
     }
   }, [connectSSE, loadAgents, loadAnalytics])
 
+  const selectStyle: React.CSSProperties = {
+    fontSize: 13,
+    border: "1px solid var(--border)",
+    borderRadius: 8,
+    padding: "6px 12px",
+    background: "var(--surface)",
+    color: "var(--text-2)",
+    cursor: "pointer",
+  }
+
+  const filteredAgents = [...agents]
+    .sort((a, b) => {
+      if (!a.last_run_at && !b.last_run_at) return 0
+      if (!a.last_run_at) return 1
+      if (!b.last_run_at) return -1
+      return new Date(b.last_run_at).getTime() - new Date(a.last_run_at).getTime()
+    })
+    .filter(a => {
+      if (filterHealth !== "all" && a.health !== filterHealth) return false
+      if (filterSearch) {
+        const q = filterSearch.toLowerCase()
+        if (!a.name.toLowerCase().includes(q) && !(a.playbook_slug ?? "").toLowerCase().includes(q)) return false
+      }
+      return true
+    })
+  const visibleAgents = filteredAgents.slice(0, visibleCount)
+  const hasMore = filteredAgents.length > visibleCount
+  const anyFilter = filterSearch !== "" || filterHealth !== "all"
+
   const h = summary?.health
 
   const healthCards = [
@@ -237,6 +271,39 @@ export default function ObservabilityPage() {
 
         {/* Agent status */}
         <div className="eyebrow" style={{ marginBottom: 11 }}>Agent status</div>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, marginBottom: 12 }}>
+          <div style={{ position: "relative" }}>
+            <input
+              type="text"
+              placeholder="Search agent or slug…"
+              value={filterSearch}
+              onChange={e => { setFilterSearch(e.target.value); setVisibleCount(PAGE_SIZE) }}
+              style={{ ...selectStyle, paddingRight: filterSearch ? 28 : 12, width: 200 }}
+            />
+            {filterSearch && (
+              <button onClick={() => { setFilterSearch(""); setVisibleCount(PAGE_SIZE) }}
+                style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 14, padding: 0 }}>
+                ×
+              </button>
+            )}
+          </div>
+          <select value={filterHealth} onChange={e => { setFilterHealth(e.target.value); setVisibleCount(PAGE_SIZE) }} style={selectStyle}>
+            <option value="all">All health</option>
+            <option value="healthy">Healthy</option>
+            <option value="degraded">Degraded</option>
+            <option value="stale">Stale</option>
+            <option value="idle">Idle</option>
+          </select>
+          {anyFilter && (
+            <button onClick={() => { setFilterSearch(""); setFilterHealth("all"); setVisibleCount(PAGE_SIZE) }}
+              className="btn btn-ghost" style={{ fontSize: 12 }}>
+              Clear filters
+            </button>
+          )}
+          <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" }}>
+            {filteredAgents.length} agent{filteredAgents.length !== 1 ? "s" : ""}
+          </span>
+        </div>
         <div className="card" style={{ overflow: "hidden", marginBottom: 26 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1.8fr 1fr 0.7fr 0.9fr 1.1fr 1fr", gap: 14, padding: "10px 20px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
             {["Agent", "Status", "Active", "Approvals", "Success 24h", "Last run"].map((h, i) => (
@@ -251,12 +318,7 @@ export default function ObservabilityPage() {
               <Link href="/workflows" style={{ color: "var(--accent)" }}>Create a workflow</Link> to get started.
             </div>
           ) : (
-            [...agents].sort((a, b) => {
-              if (!a.last_run_at && !b.last_run_at) return 0
-              if (!a.last_run_at) return 1
-              if (!b.last_run_at) return -1
-              return new Date(b.last_run_at).getTime() - new Date(a.last_run_at).getTime()
-            }).map((a) => {
+            visibleAgents.map((a) => {
               const [lbl, c, bg] = HEALTH_BADGE[a.health] ?? ["Idle", "var(--text-3)", "var(--surface-3)"]
               return (
                 <div
@@ -295,6 +357,13 @@ export default function ObservabilityPage() {
             })
           )}
         </div>
+        {hasMore && (
+          <div style={{ textAlign: "center", marginTop: 8, marginBottom: 16 }}>
+            <button className="btn btn-ghost" style={{ fontSize: 13 }} onClick={() => setVisibleCount(v => v + PAGE_SIZE)}>
+              Load more ({filteredAgents.length - visibleCount} remaining)
+            </button>
+          </div>
+        )}
 
         {/* Cost summary */}
         <div className="eyebrow" style={{ marginBottom: 11 }}>
