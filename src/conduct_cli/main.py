@@ -1327,10 +1327,13 @@ def cmd_run(args):
             print(f"  {GRAY}{k}={v}{RESET}")
     print()
 
-    run = api.req("POST", f"{server}/workflows/{workflow_id}/runs", json_h, {
+    body: dict = {
         "triggered_by": "cli",
         "initial_state": {"__manual": True, "inputs": initial_state},
-    })
+    }
+    if getattr(args, "max_turns", None):
+        body["max_turns"] = args.max_turns
+    run = api.req("POST", f"{server}/workflows/{workflow_id}/runs", json_h, body)
     _stream_run(server, workflow_id, run["id"], workspace_id, token, api_key)
 
 
@@ -1435,9 +1438,10 @@ def main():
 
     # conduct run (existing)
     run_p = sub.add_parser("run", help="Run an installed agent by name")
-    run_p.add_argument("agent",    help="Agent name (e.g. 'security_autopilot_fix')")
-    run_p.add_argument("--project", metavar="name", help="Narrow to a specific project")
-    run_p.add_argument("--input",   action="append", metavar="key=value", help="Runtime input (repeatable)")
+    run_p.add_argument("agent",       help="Agent name (e.g. 'security_autopilot_fix')")
+    run_p.add_argument("--project",   metavar="name",  help="Narrow to a specific project")
+    run_p.add_argument("--input",     action="append", metavar="key=value", help="Runtime input (repeatable)")
+    run_p.add_argument("--max-turns", dest="max_turns", type=int, metavar="N", help="Max agentic turns (default: auto)")
 
     # conduct guard
     guard_p, _guard_sub = _guard.register_guard_parser(sub)
