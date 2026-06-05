@@ -6,17 +6,18 @@ PATCH /guard/config?workspace_id          — update alert_channel, notify_on_bl
 GET   /guard/config/installed?workspace_id — returns {installed, workspace_id, invite_code}
 """
 import secrets
+import uuid
 from datetime import datetime, timezone
 
 import structlog
 
 log = structlog.get_logger(__name__)
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, get_user_id
+from app.core.auth import get_workspace_id, get_user_id, require_workspace_role
 from app.core.database import get_db
 from app.modules.guard.models import GuardConfig, GuardMemberConfig
 from app.modules.guard.routers.policies import seed_builtin_policies
@@ -64,7 +65,6 @@ class InstallStatusOut(BaseModel):
 
 def _get_or_create_config(db: Session, workspace_id: str) -> GuardConfig:
     """Return existing GuardConfig or create one (with seeded policies)."""
-    import uuid
     ws_uuid = uuid.UUID(workspace_id)
     config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
     if config:
@@ -109,7 +109,6 @@ def get_install_status(
     Auto-provisions a guard_member_config entry for the calling user if they are
     a workspace member (idempotent).
     """
-    import uuid
     try:
         ws_uuid = uuid.UUID(workspace_id)
     except ValueError:
@@ -212,7 +211,6 @@ def delete_config(
     workspace_id: str = Depends(get_workspace_id),
 ):
     """Uninstall Guard for the workspace — removes guard_config and all guard_member_config rows."""
-    import uuid
     try:
         ws_uuid = uuid.UUID(workspace_id)
     except ValueError:
@@ -221,6 +219,31 @@ def delete_config(
     db.query(GuardMemberConfig).filter(GuardMemberConfig.workspace_id == ws_uuid).delete()
     db.commit()
     log.info("guard.config_deleted", workspace_id=workspace_id)
+
+
+class ResyncOut(BaseModel):
+    ok: bool
+    resync_requested_at: str
+
+
+@router.post("/resync", response_model=ResyncOut, status_code=200)
+def request_resync(
+    workspace_id: str = Query(...),
+    db: Session = Depends(get_db),
+    _role: str = Depends(require_workspace_role("admin", "developer")),
+):
+    """Bump resync_requested_at so the CLI detects a version change within its next 60s poll."""
+    try:
+        ws_uuid = uuid.UUID(workspace_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid workspace_id")
+    config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="Guard not installed")
+    config.resync_requested_at = datetime.now(timezone.utc)
+    db.commit()
+    log.info("guard.resync_requested", workspace_id=workspace_id)
+    return ResyncOut(ok=True, resync_requested_at=config.resync_requested_at.isoformat())
 
 
 class JoinIn(BaseModel):

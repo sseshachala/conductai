@@ -134,6 +134,10 @@ function SettingsContent() {
   // Enforcement mode
   const [enforcementMode, setEnforcementMode] = useState<"block" | "warn" | "audit">("warn")
 
+  // Re-sync state
+  const [resyncing, setResyncing] = useState(false)
+  const [resyncDone, setResyncDone] = useState(false)
+
   // Sync status
   const [toolCoverage, setToolCoverage] = useState<Array<{ detected_tools: string[]; mcp_registered: string[]; hook_registered: string[] }> | null>(null)
 
@@ -189,6 +193,25 @@ function SettingsContent() {
     })
     if (!res.ok) throw new Error(`Save failed (${res.status})`)
     return res.json()
+  }
+
+  async function handleResync() {
+    if (!wsId || resyncing) return
+    setResyncing(true)
+    setResyncDone(false)
+    try {
+      const headers = await authHeaders()
+      const res = await fetch(`${base}/guard/config/resync?workspace_id=${wsId}`, {
+        method: "POST", headers,
+      })
+      if (!res.ok) throw new Error(`Resync failed (${res.status})`)
+      setResyncDone(true)
+      setTimeout(() => setResyncDone(false), 2000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Resync failed")
+    } finally {
+      setResyncing(false)
+    }
   }
 
   async function handleSaveChannel() {
@@ -478,10 +501,11 @@ function SettingsContent() {
                 </div>
                 <button
                   className="btn btn-ghost btn-sm"
-                  disabled={!isAdmin}
+                  disabled={!isAdmin || resyncing}
                   style={{ opacity: isAdmin ? 1 : 0.5 }}
+                  onClick={handleResync}
                 >
-                  Re-sync
+                  {resyncing ? "Syncing…" : resyncDone ? "Synced" : "Re-sync"}
                 </button>
               </div>
 

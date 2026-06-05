@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, get_guard_hook_auth
 from app.core.database import get_db
-from app.modules.guard.models import GuardPolicy
+from app.modules.guard.models import GuardConfig as _GuardConfig, GuardPolicy
 
 router = APIRouter(prefix="/guard/policies", tags=["guard-policies"])
 
@@ -281,6 +281,19 @@ def sync_policies(
 
     if active_policies:
         latest_ts = max(p.updated_at for p in active_policies)
+    else:
+        latest_ts = None
+
+    gc = db.query(_GuardConfig).filter(_GuardConfig.workspace_id == ws_uuid).first()
+    if gc and gc.resync_requested_at:
+        resync_ts = gc.resync_requested_at if gc.resync_requested_at.tzinfo is not None \
+            else gc.resync_requested_at.replace(tzinfo=timezone.utc)
+        if latest_ts is not None:
+            latest_ts = max(latest_ts, resync_ts)
+        else:
+            latest_ts = resync_ts
+
+    if latest_ts is not None:
         version = latest_ts.strftime("%Y-%m-%dT%H:%M:%SZ")
     else:
         version = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
