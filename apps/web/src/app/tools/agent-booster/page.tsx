@@ -137,7 +137,7 @@ function HeroSection() {
         </a>
       </div>
       <p className="mt-4 text-xs text-stone-400">
-        Python 3.10+ · MIT licensed · v0.2.3
+        Python 3.10+ · MIT licensed · v0.2.8
       </p>
     </section>
   )
