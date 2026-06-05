@@ -251,7 +251,12 @@ export default function ObservabilityPage() {
               <Link href="/workflows" style={{ color: "var(--accent)" }}>Create a workflow</Link> to get started.
             </div>
           ) : (
-            agents.map((a) => {
+            [...agents].sort((a, b) => {
+              if (!a.last_run_at && !b.last_run_at) return 0
+              if (!a.last_run_at) return 1
+              if (!b.last_run_at) return -1
+              return new Date(b.last_run_at).getTime() - new Date(a.last_run_at).getTime()
+            }).map((a) => {
               const [lbl, c, bg] = HEALTH_BADGE[a.health] ?? ["Idle", "var(--text-3)", "var(--surface-3)"]
               return (
                 <div
