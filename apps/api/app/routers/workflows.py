@@ -1094,7 +1094,7 @@ def validate_workflow(
     cred_rows = db.query(Integration).filter(
         Integration.workspace_id == workspace_id
     ).all()
-    configured_handles = {row.handle for row in cred_rows if row.encrypted_credentials}
+    configured_services = {row.service.lower() for row in cred_rows if row.encrypted_credentials}
 
     errors = []
 
@@ -1110,13 +1110,14 @@ def validate_workflow(
         if block_type == "trigger":
             event_type = config.get("event_type", "")
             if event_type in ("github_issue_labeled", "github_issue"):
-                if "github" not in configured_handles:
+                if "github" not in configured_services:
                     errors.append({"block_id": block_id, "label": label,
                                    "message": "GitHub credential not configured — connect it in Settings"})
                 if not config.get("repo_allowlist"):
                     errors.append({"block_id": block_id, "label": label,
                                    "message": "repo_allowlist is required (e.g. owner/repo)"})
-                if not config.get("label"):
+                labels = config.get("labels") or config.get("label")
+                if not labels:
                     errors.append({"block_id": block_id, "label": label,
                                    "message": "label is required (e.g. ai_ready)"})
 
@@ -1136,7 +1137,7 @@ def validate_workflow(
             else:
                 # Check the needed credential is configured
                 needed = integration.lower().split(":")[0]
-                if needed not in configured_handles:
+                if needed not in configured_services:
                     errors.append({"block_id": block_id, "label": label,
                                    "message": f"{integration} credential not configured — connect it in Settings"})
                 action = config.get("action", "")
@@ -1151,7 +1152,7 @@ def validate_workflow(
                 if not config.get("channel"):
                     errors.append({"block_id": block_id, "label": label,
                                    "message": "Slack channel is required (e.g. #general)"})
-                if "slack" not in configured_handles:
+                if "slack" not in configured_services:
                     errors.append({"block_id": block_id, "label": label,
                                    "message": "Slack credential not configured — connect it in Settings"})
             if via in ("email", "both") and not config.get("to"):
