@@ -1487,7 +1487,8 @@ def main():
     elif args.command == "projects":
         cmd_projects(args)
     elif args.command == "create":
-        if getattr(args, "create_type", None) == "project":
+        create_args = getattr(args, "create_args", None)
+        if create_args:
             cmd_create(args)
         else:
             create_p.print_help()
@@ -1496,7 +1497,8 @@ def main():
     elif args.command == "install":
         cmd_install(args)
     elif args.command == "delete":
-        if getattr(args, "delete_type", None) == "project":
+        delete_args = getattr(args, "delete_args", None)
+        if delete_args:
             cmd_delete(args)
         else:
             delete_p.print_help()
