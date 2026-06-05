@@ -179,29 +179,57 @@ def read_file(token: str, owner: str, repo: str, path: str, ref: str | None = No
 
 
 def fork_repo(token: str, owner: str, repo: str) -> dict:
-    """Fork a repo into the authenticated user's account and return fork metadata."""
-    import time
+    """Fork a repo into the authenticated user's account and return fork metadata.
 
-    r = httpx.post(f"{BASE}/repos/{owner}/{repo}/forks", headers=_headers(token), json={}, timeout=30)
-    r.raise_for_status()
-    d = r.json()
+    Handles all three cases generically:
+    1. Proper fork already exists → return it, no API call needed
+    2. No repo with that name exists → fork with original name
+    3. Non-fork repo with same name exists → fork with '{repo}-fork' suffix
+    """
+    import time
 
     user_r = httpx.get(f"{BASE}/user", headers=_headers(token), timeout=10)
     user_r.raise_for_status()
     fork_owner = user_r.json()["login"]
 
-    # GitHub fork creation is async — poll until the fork is reachable (max 30s)
+    # Case 1: proper fork already exists — reuse it
+    existing = httpx.get(f"{BASE}/repos/{fork_owner}/{repo}", headers=_headers(token), timeout=10)
+    if existing.status_code == 200 and existing.json().get("fork"):
+        d = existing.json()
+        return {
+            "fork_owner": fork_owner,
+            "fork_name": repo,
+            "fork_full_name": f"{fork_owner}/{repo}",
+            "default_branch": d.get("default_branch", "main"),
+            "html_url": d.get("html_url", f"https://github.com/{fork_owner}/{repo}"),
+            "already_existed": True,
+        }
+
+    # Case 3: non-fork name conflict → use '{repo}-fork'
+    fork_name = repo
+    if existing.status_code == 200 and not existing.json().get("fork"):
+        fork_name = f"{repo}-fork"
+
+    # Cases 2 & 3: create the fork
+    payload = {"name": fork_name} if fork_name != repo else {}
+    r = httpx.post(f"{BASE}/repos/{owner}/{repo}/forks", headers=_headers(token), json=payload, timeout=30)
+    r.raise_for_status()
+    d = r.json()
+
+    # Fork creation is async — poll until reachable and confirmed as a fork (max 30s)
     for _ in range(10):
         time.sleep(3)
-        check = httpx.get(f"{BASE}/repos/{fork_owner}/{repo}", headers=_headers(token), timeout=10)
-        if check.status_code == 200:
+        check = httpx.get(f"{BASE}/repos/{fork_owner}/{fork_name}", headers=_headers(token), timeout=10)
+        if check.status_code == 200 and check.json().get("fork"):
             break
 
     return {
         "fork_owner": fork_owner,
-        "fork_full_name": f"{fork_owner}/{repo}",
+        "fork_name": fork_name,
+        "fork_full_name": f"{fork_owner}/{fork_name}",
         "default_branch": d.get("default_branch", "main"),
-        "html_url": d.get("html_url", f"https://github.com/{fork_owner}/{repo}"),
+        "html_url": d.get("html_url", f"https://github.com/{fork_owner}/{fork_name}"),
+        "already_existed": False,
     }
 
 
