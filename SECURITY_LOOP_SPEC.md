@@ -547,4 +547,35 @@ Everything downstream of `POST /security-findings` can be built in parallel once
 
 ---
 
+## 16. Run Trigger Modes
+
+### Phase 1 — Draft mode (build first)
+
+Finding lands → draft agent created in Security project → human reviews → clicks Run in UI or fires `conduct run <agent>` from CLI.
+
+Human is in the loop before any code is touched. Default for all workspaces.
+
+### Phase 2 — Autopilot mode (future workspace setting)
+
+Finding lands → runs immediately if severity meets the configured threshold. No human approval step.
+
+| Severity | Default behaviour |
+|---|---|
+| critical | auto-run immediately |
+| high | auto-run immediately |
+| medium | draft — human approves |
+| low / info | draft — or auto-close |
+
+Controlled by a workspace setting: **Security Loop run mode** — `draft` (default) or `autopilot`. When autopilot is on, a severity threshold slider sets the cutoff.
+
+### Trigger surfaces (both modes)
+
+| Surface | Command |
+|---|---|
+| Conduct console | Click Run on draft agent in /security page |
+| CLI | `conduct run <agent-name> --project Security` |
+| Autopilot | Fires automatically on finding ingest — no human action |
+
+---
+
 *Conduct AI · SECURITY_LOOP_SPEC.md · v0.2*
