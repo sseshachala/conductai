@@ -851,7 +851,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                     </div>
                   ) : (
                     <div className="card" style={{ overflow: "hidden", padding: 0 }}>
-                      {data.recent_activity.slice(0, 6).map(run => {
+                      {data.recent_activity.slice(0, 5).map(run => {
                         const statusBadge =
                           run.status === "succeeded" ? "sbadge ok"
                           : run.status === "failed" ? "sbadge err"
