@@ -132,7 +132,10 @@ function SettingsContent() {
   const [notifDigest, setNotifDigest] = useState(false)
 
   // Enforcement mode
-  const [enforcementMode, setEnforcementMode] = useState<"block" | "warn" | "audit">("block")
+  const [enforcementMode, setEnforcementMode] = useState<"block" | "warn" | "audit">("warn")
+
+  // Sync status
+  const [toolCoverage, setToolCoverage] = useState<Array<{ detected_tools: string[]; mcp_registered: string[]; hook_registered: string[] }> | null>(null)
 
   const base = process.env.NEXT_PUBLIC_API_URL ?? ""
   const wsId = activeWorkspace?.id ?? null
@@ -161,6 +164,12 @@ function SettingsContent() {
         notify_on_budget: data.notify_on_budget ?? true,
       })
       setChannelInput((data.alert_channel ?? "").replace(/^#+/, ""))
+      if (data.enforcement_mode) setEnforcementMode(data.enforcement_mode as "block" | "warn" | "audit")
+      // Load sync coverage in parallel
+      fetch(`${base}/guard/developer-tools?workspace_id=${wsId}`, { headers })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d) setToolCoverage(d) })
+        .catch(() => {})
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load settings")
     } finally {
@@ -375,8 +384,41 @@ function SettingsContent() {
               </div>
             </div>
 
-            {/* RIGHT — Agent guard + Re-sync */}
+            {/* RIGHT — Sync status + Agent guard + Re-sync */}
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+              {/* Sync status — real data from /guard/developer-tools */}
+              <div className="card" style={{ padding: "18px 20px" }}>
+                <div className="eyebrow" style={{ marginBottom: 12 }}>Sync status</div>
+                {toolCoverage === null ? (
+                  <div style={{ height: 40 }} />
+                ) : (() => {
+                  const total = toolCoverage.length
+                  const synced = toolCoverage.filter(dev =>
+                    dev.detected_tools.every(t =>
+                      dev.mcp_registered.includes(t) || dev.hook_registered.includes(t)
+                    )
+                  ).length
+                  const allGood = total === 0 || synced === total
+                  return (
+                    <>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                        <span style={{ fontSize: 26, fontWeight: 700, color: allGood ? "var(--ok)" : "var(--warn)" }}>
+                          {total === 0 ? "—" : `${synced}/${total}`}
+                        </span>
+                        <span style={{ fontSize: 13, color: "var(--text-3)" }}>machines in sync</span>
+                      </div>
+                      <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 4 }}>
+                        Policies propagate within <strong style={{ color: "var(--text-2)" }}>60s</strong> of a change.
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 14, fontSize: 12.5, color: allGood ? "var(--ok)" : "var(--warn)" }}>
+                        <span className="conduct-pulse-dot" style={{ background: allGood ? "var(--ok)" : "var(--warn)" }} />
+                        {total === 0 ? "No developers connected yet" : allGood ? "All developers up to date" : `${total - synced} developer${total - synced !== 1 ? "s" : ""} need sync — run: conduct guard sync`}
+                      </div>
+                    </>
+                  )
+                })()}
+              </div>
 
               {/* Agent guard */}
               <div className="card" style={{ padding: "18px 20px" }}>
@@ -399,7 +441,7 @@ function SettingsContent() {
                     }}
                   >
                     <span
-                      onClick={() => isAdmin && setEnforcementMode(k)}
+                      onClick={() => { if (isAdmin) { setEnforcementMode(k); patch({ enforcement_mode: k } as never).catch(() => {}) } }}
                       style={{
                         width: 16,
                         height: 16,
