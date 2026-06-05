@@ -250,7 +250,7 @@ function BenchmarkContent({
           </div>
           <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-.025em", margin: "4px 0 0" }}>Conduct AI Benchmark</h1>
           <p className="page-sub" style={{ marginTop: 6 }}>
-            {edition.totalPlaybooks} playbooks · {edition.modelLabel}{summary && ` · published ${fmt(edition.publishedAt)}`}
+            {edition.totalPlaybooks} agent templates · {edition.modelLabel}{summary && ` · published ${fmt(edition.publishedAt)}`}
           </p>
         </div>
 
@@ -265,7 +265,7 @@ function BenchmarkContent({
               <div style={{ display: "flex", alignItems: "flex-start", marginBottom: 16 }}>
                 <div>
                   <div className="eyebrow" style={{ marginBottom: 3 }}>Grade distribution</div>
-                  <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{edition.totalPlaybooks} playbooks scored</div>
+                  <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{edition.totalPlaybooks} agent templates scored</div>
                 </div>
                 <div style={{ marginLeft: "auto", textAlign: "right" }}>
                   <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-.02em" }}>{summary ? `${summary.average_pct.toFixed(0)}%` : "—"}</div>

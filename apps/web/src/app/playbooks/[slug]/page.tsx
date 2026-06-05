@@ -175,7 +175,7 @@ export default function PublicPlaybookPage() {
         <div className="max-w-3xl mx-auto px-6 h-14 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
             <span className="text-sm font-semibold text-stone-900">Conduct</span>
-            <span className="text-stone-300 text-xs">/ Playbooks</span>
+            <span className="text-stone-300 text-xs">/ Agent Templates</span>
           </Link>
           <div className="flex items-center gap-2">
             <Link

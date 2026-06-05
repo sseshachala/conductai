@@ -409,7 +409,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
             Marketplace
           </h1>
           <p style={{ fontSize: 13.5, color: "var(--text-3)", lineHeight: 1.5 }}>
-            18 ready-made playbooks. Install in one click, connect credentials, and run.
+            22 ready-made agent templates. Install in one click, connect credentials, and run.
           </p>
         </div>
 
@@ -427,7 +427,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
             </svg>
             <input
               type="text"
-              placeholder="Search playbooks…"
+              placeholder="Search agent templates…"
               value={search}
               onChange={e => setSearch(e.target.value)}
               style={{
@@ -464,7 +464,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
             onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.background = "transparent"; (e.currentTarget as HTMLAnchorElement).style.color = "var(--text-2)" }}
           >
             <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
-            Submit playbook
+            Submit agent template
           </Link>
         </div>
 
@@ -528,7 +528,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
             {/* Playbooks grid */}
             {filtered.length === 0 ? (
               <div style={{ padding: "48px 0", textAlign: "center", color: "var(--text-muted)", fontSize: 13.5 }}>
-                No playbooks match your search.
+                No agent templates match your search.
               </div>
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))", gap: 14 }}>
