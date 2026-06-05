@@ -659,4 +659,72 @@ Security Loop is the first chain. It proves the pattern. Everything after it get
 
 ---
 
+---
+
+## 18. Agent Chaining — Future Platform Primitive
+
+> Not building now. Captured for roadmap.
+
+### The idea
+
+Today every agent is `simple` — one playbook, one run, one trace. A `chain` agent type would let you wire independent agents together so each one's output becomes the next one's input. Security Loop would be the first chain.
+
+### New agent type: `chain`
+
+```yaml
+type: chain
+agents:
+  - security_findings_agent
+  - issue_triage_agent
+  - security_scanner_agent
+  - autopilot_fix_agent
+  - notify_agent
+```
+
+Each node is a fully deployed agent with its own playbook, credentials, turn budget, and Guard policy. The chain runner spawns child runs sequentially and passes state forward.
+
+### What changes across the platform
+
+**Canvas** — chain agents open a different view: agent nodes connected by arrows instead of blocks inside a single flow.
+
+```
+[Security Findings] → [Issue Triage] → [Security Scanner] → [Autopilot Fix] → [Notify]
+     agent node            agent node        agent node          agent node      agent node
+```
+
+**Agent card** — new type badge alongside existing ones:
+
+```
+security_loop    CHAIN    Security Engineering
+autopilot        SIMPLE   Backend
+```
+
+**Run feed** — chain run shows a parent row that expands to reveal each child agent run inline, each with its own turns, cost, duration, and trace.
+
+```
+▶ security_loop  CHAIN  3m 42s  $0.61  5 agents
+  ├─ ✓ security_findings_agent   0m 04s  $0.00
+  ├─ ✓ issue_triage_agent        0m 28s  $0.04
+  ├─ ✓ security_scanner_agent    1m 12s  $0.18
+  ├─ ✓ autopilot_fix_agent       1m 52s  $0.38
+  └─ ✓ notify_agent              0m 06s  $0.01
+```
+
+**API** — chain runner spawns child runs, passes `output` of each run as `initial_state` of the next.
+
+### Minimum viable start (when ready to build)
+
+1. Type badge (`SIMPLE` / `CHAIN`) on agent cards and run feed — display only, no new canvas
+2. Chain run feed — parent row + nested child runs
+3. Chain YAML schema + chain runner in the executor
+4. Canvas chain view — agent nodes instead of blocks (last, most complex)
+
+### Why this is the moat
+
+Simple agents are replicable. A platform where specialized agents chain into autonomous multi-step workflows — each step traced, each agent swappable, the whole thing observable in one dashboard — is not.
+
+Security Loop proves the pattern. The chain primitive makes it reusable for every workflow on Conduct.
+
+---
+
 *Conduct AI · SECURITY_LOOP_SPEC.md · v0.2*
