@@ -108,7 +108,7 @@ function GuardShell({
             </span>
           </div>
           <p style={{ fontSize: 13, color: "var(--text-3)", marginTop: 5 }}>
-            MDM for AI coding tools — policies and spend limits enforced on every Claude Code, Codex, and Cursor call.
+            MDM for AI coding tools — when a hard cap is hit, every tool call across Claude Code, Codex, and Cursor is blocked immediately and your security team is notified on Slack.
           </p>
         </div>
         <div style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)", paddingTop: 4 }}>

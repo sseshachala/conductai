@@ -1,0 +1,177 @@
+name: Security Autopilot Fix
+version: 1
+description: >
+  Given a security issue number, fork the target repo, apply all confirmed fixes
+  using an agentic brain, and open a pull request back to the upstream repo.
+  Every step is traced in the Conduct run feed.
+
+inputs:
+  upstream_owner:
+    label: Upstream repo owner
+    default: elementalsouls
+    type: string
+  upstream_repo:
+    label: Upstream repo name
+    default: Claude-BugHunter
+    type: string
+  issue_number:
+    label: Security issue number
+    default: "13"
+    type: string
+  fix_branch:
+    label: Fix branch name
+    default: fix/security-bugs-13
+    type: string
+  model:
+    label: AI model
+    default: claude-sonnet-4-6
+    type: select
+    options:
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+
+on:
+  manual:
+    next: fetch_issue
+
+blocks:
+
+  fetch_issue:
+    type: tool
+    integration: github
+    action: fetch_issue
+    label: Fetch security issue
+    description: Pull the confirmed bug report from the upstream repo
+    params:
+      owner: "{{inputs.upstream_owner}}"
+      repo: "{{inputs.upstream_repo}}"
+      issue_number: "{{inputs.issue_number}}"
+    next: fork_upstream
+
+  fork_upstream:
+    type: tool
+    integration: github
+    action: fork_repo
+    label: Fork upstream repo
+    description: Fork into the authenticated user's GitHub account
+    params:
+      owner: "{{inputs.upstream_owner}}"
+      repo: "{{inputs.upstream_repo}}"
+    next: implement_fixes
+
+  implement_fixes:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    label: Apply security fixes
+    description: |
+      You are a security engineer. A confirmed bug report is attached below.
+      Your job is to fork-clone the repo, apply all fixes, and push the branch.
+
+      Upstream repo: {{inputs.upstream_owner}}/{{inputs.upstream_repo}}
+      Fork full name: {{fork_upstream.fork_full_name}}
+      Fix branch: {{inputs.fix_branch}}
+      Issue #{{inputs.issue_number}} title: {{fetch_issue.title}}
+
+      Bug report (from issue body):
+      {{fetch_issue.body}}
+
+      CRITICAL: Each run_shell call gets a FRESH container. Do ALL git work in a
+      SINGLE run_shell call. Use $GIT_TOKEN for auth. Do not split across calls.
+
+      Do the following in ONE run_shell call:
+        rm -rf /tmp/repo
+        git clone https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git /tmp/repo
+        cd /tmp/repo
+        git config user.email "bot@conductai.ai"
+        git config user.name "Conduct AI"
+        git checkout -b {{inputs.fix_branch}}
+
+        # Apply all 5 fixes to scripts/cbh.py and scripts/hunt.sh using python3 inline.
+        # Read each file, apply the exact changes below, write it back, then commit.
+
+        # Fix 1 — path traversal in cmd_recon (~line 230 of scripts/cbh.py):
+        #   After: out_dir = REPO_ROOT / "recon" / target
+        #   Add:   resolved = out_dir.resolve()
+        #          safe = (REPO_ROOT / "recon").resolve()
+        #          if not str(resolved).startswith(str(safe)):
+        #              print(f"[error] invalid target: {target}", file=sys.stderr); return 1
+        #          out_dir = resolved
+
+        # Fix 2 — arbitrary file write via --out (~line 669 of scripts/cbh.py):
+        #   Before out_path.write_text(draft), add:
+        #          out_path = out_path.resolve()
+        #          if not str(out_path).startswith(str(Path.cwd().resolve())):
+        #              print("[error] --out path must be within cwd", file=sys.stderr); return 1
+
+        # Fix 3 — Q5 duplicate logic (~line 471 of scripts/cbh.py):
+        #   Remove "duplicate" from the Q5 signals list. Keep: "not duplicate", "novel",
+        #   "first reported", "previously unknown", "h1 hacktivity", "disclosed-reports"
+
+        # Fix 4 — TLS CERT_NONE (~line 107 of scripts/cbh.py):
+        #   Add a prominent warning comment above ctx.verify_mode = ssl.CERT_NONE:
+        #   # WARNING: TLS verification is disabled for Burp proxy traffic.
+        #   # Use --proxy only in isolated lab environments — not on production targets.
+        #   Also add a print() warning when proxy mode is active.
+
+        # Fix 5 — shell injection in scripts/hunt.sh:
+        #   Quote ALL heredoc delimiters: <<CLAUDEMD → <<'CLAUDEMD'
+        #   For the 2–3 lines that legitimately need $target interpolated (the heading lines),
+        #   move those to explicit printf/echo statements AFTER the heredoc block.
+
+        git add scripts/cbh.py scripts/hunt.sh
+        git commit -m "fix: path traversal, arbitrary write, Q5 logic, TLS warning, shell injection (closes #{{inputs.issue_number}})"
+        git push https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git {{inputs.fix_branch}}
+
+      After the shell call, output ONLY this JSON on the last line:
+        {"branch_pushed": "{{inputs.fix_branch}}", "fork_owner": "{{fork_upstream.fork_owner}}", "files_changed": ["scripts/cbh.py", "scripts/hunt.sh"]}
+    next: open_pr
+
+  open_pr:
+    type: tool
+    integration: github
+    action: open_pull_request
+    label: Open pull request
+    description: Open PR from fork back to the upstream repo
+    params:
+      owner: "{{inputs.upstream_owner}}"
+      repo: "{{inputs.upstream_repo}}"
+      title: "fix: path traversal, shell injection, Q5 logic, TLS bypass (closes #{{inputs.issue_number}})"
+      head: "{{implement_fixes.fork_owner}}:{{inputs.fix_branch}}"
+      base: "main"
+      body: |
+        Fixes #{{inputs.issue_number}}
+
+        This PR was generated by [Conduct AI](https://conductai.ai)'s `security-autopilot-fix` playbook.
+        The run trace showing every step is captured in the Conduct dashboard.
+
+        ## Changes
+
+        **scripts/cbh.py**
+        - Fix path traversal in `cmd_recon`: validate `out_dir` stays under `REPO_ROOT/recon/`
+        - Fix arbitrary file write via `--out` flag: restrict output path to CWD
+        - Fix Q5 triage logic: remove `"duplicate"` from novelty signals so confirmed duplicates fail the gate
+        - Fix TLS bypass: add prominent warning comment when `ssl.CERT_NONE` is active via `--proxy`
+
+        **scripts/hunt.sh**
+        - Fix shell injection: quote heredoc delimiters (`<<'CLAUDEMD'`) to prevent `$target` command substitution
+
+        ---
+        *Generated by Conduct AI · security-autopilot-fix playbook · issue #{{inputs.issue_number}}*
+    next: notify_slack
+
+  notify_slack:
+    type: output
+    integration: slack
+    label: Notify security channel
+    message: |
+      *Security Autopilot Fix — PR opened* :shield:
+
+      Repo: `{{inputs.upstream_owner}}/{{inputs.upstream_repo}}`
+      Issue: #{{inputs.issue_number}} — {{fetch_issue.title}}
+      PR: {{open_pr.pr_url}}
+      Files patched: `scripts/cbh.py`, `scripts/hunt.sh`
+      Fixes: path traversal (x2), Q5 logic, TLS bypass, shell injection
+
+      _Generated by Conduct AI security-autopilot-fix playbook_
+    next: null
