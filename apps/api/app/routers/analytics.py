@@ -145,7 +145,7 @@ def get_summary(
     totals = db.query(
         func.count(RunAnalyticsEvent.id).label("total"),
         func.sum(
-            func.cast(RunAnalyticsEvent.outcome == "succeeded", text("int"))
+            case((RunAnalyticsEvent.outcome == "succeeded", 1), else_=0)
         ).label("succeeded"),
         func.sum(RunAnalyticsEvent.cost_usd).label("total_cost"),
         func.sum(RunAnalyticsEvent.input_tokens).label("total_input"),
