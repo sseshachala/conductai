@@ -98,13 +98,15 @@ const TAB_NAV: Record<TabId, { href: string; label: string }[]> = {
     { href: "#guard-block",  label: "Guard block" },
   ],
   "guard": [
-    { href: "#guard",           label: "Overview" },
-    { href: "#guard-user-flow", label: "Developer setup" },
-    { href: "#guard-hook",      label: "Hook & tool coverage" },
-    { href: "#guard-mcp",       label: "conductguard-mcp" },
-    { href: "#guard-spend",     label: "Spend controls" },
-    { href: "#guard-savings",   label: "Maximize savings" },
-    { href: "#guard-roles",     label: "Roles & permissions" },
+    { href: "#guard",             label: "Overview" },
+    { href: "#guard-agent",       label: "Agent guard" },
+    { href: "#guard-user-flow",   label: "Developer setup" },
+    { href: "#guard-hook",        label: "Hook & tool coverage" },
+    { href: "#guard-sync",        label: "Sync & re-sync" },
+    { href: "#guard-mcp",         label: "conductguard-mcp" },
+    { href: "#guard-spend",       label: "Spend controls" },
+    { href: "#guard-savings",     label: "Maximize savings" },
+    { href: "#guard-roles",       label: "Roles & permissions" },
     { href: "#guard-onboarding",  label: "Team onboarding" },
     { href: "#guard-scenarios",      label: "Test scenarios" },
     { href: "#guard-token-savings",  label: "RTK + Agent Booster" },
@@ -796,6 +798,55 @@ function TabGuard() {
         </div>
       </section>
 
+      <section id="guard-agent">
+        <SectionHeading id="guard-agent">Agent guard</SectionHeading>
+        <p className="text-stone-500 text-sm mb-4 leading-relaxed">
+          Agent guard is an automatic policy check that runs before every <Code>mode: agentic</Code> brain block in a
+          workflow. No YAML block needed — it fires as an executor hook and records results in the run trace.
+        </p>
+
+        <SubHeading>Enforcement modes</SubHeading>
+        <div className="rounded-xl border border-stone-200 overflow-hidden mb-6">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-stone-50 border-b border-stone-200">
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider w-28">Mode</th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase tracking-wider">Behaviour</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-stone-100 text-sm">
+              {[
+                ["block", "Run halts immediately — the AI step never executes. Use for hard policy lines (e.g. no access to prod repos)."],
+                ["warn",  "Policy match is flagged in the run trace and the Steps tab, but the run continues. Default for new workspaces."],
+                ["audit", "Match is recorded silently in Guard activity. No interruption visible to the developer or the run."],
+              ].map(([mode, desc]) => (
+                <tr key={mode}>
+                  <td className="px-4 py-3 font-mono text-xs text-stone-800 align-top">{mode}</td>
+                  <td className="px-4 py-3 text-xs text-stone-500 leading-relaxed">{desc}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <SubHeading>Disabling per run</SubHeading>
+        <p className="text-stone-500 text-sm mb-3">
+          The run trigger modal has a <strong>Guard</strong> toggle (on by default). Flip it off before firing a run to
+          skip the auto-hook for that run only — useful for local dev and debugging. The toggle sends{" "}
+          <Code>guard_enabled: false</Code> in the run payload.
+        </p>
+
+        <SubHeading>Where to configure</SubHeading>
+        <p className="text-stone-500 text-sm mb-2">
+          Workspace-level enforcement mode lives in <strong>Guard → Settings → Agent guard</strong>. The selected mode
+          applies to all runs in the workspace unless overridden per-run.
+        </p>
+        <p className="text-stone-500 text-sm">
+          Guard must be installed (Guard config present) for the hook to evaluate policies. If Guard is not installed the
+          hook skips silently — no runs are blocked.
+        </p>
+      </section>
+
       <section id="guard-user-flow">
         <SectionHeading id="guard-user-flow">Developer setup</SectionHeading>
         <p className="text-stone-500 text-sm mb-4 leading-relaxed">
@@ -848,6 +899,37 @@ conduct guard status`}</Pre>
           The CLI checks PyPI for a newer version on every command (cached 24 h). If one is found it upgrades
           itself and re-runs the original command — developers never need to manually update.
           Set <Code>CONDUCT_NO_AUTOUPDATE=1</Code> to disable (useful in CI).
+        </p>
+      </section>
+
+      <section id="guard-sync">
+        <SectionHeading id="guard-sync">Sync &amp; re-sync</SectionHeading>
+        <p className="text-stone-500 text-sm mb-4 leading-relaxed">
+          Each developer machine caches a local copy of the workspace policy file. The CLI polls{" "}
+          <Code>GET /guard/policies/sync</Code> every 60 seconds and automatically re-syncs when the server version
+          changes — no manual action needed under normal operation.
+        </p>
+
+        <SubHeading>When a re-sync is triggered</SubHeading>
+        <div className="rounded-xl border border-stone-200 divide-y divide-stone-100 text-sm mb-6">
+          {[
+            ["Policy created / edited / deleted", "The server version timestamp updates — all machines re-sync within 60s."],
+            ["Re-sync button (Guard → Settings)",  "Bumps a resync_requested_at timestamp on the workspace. Machines pick it up on the next poll cycle."],
+            ["conduct guard sync (CLI)",           "Forces an immediate pull regardless of cached version. Useful after a network gap or machine restore."],
+          ].map(([trigger, detail]) => (
+            <div key={trigger} className="px-4 py-3">
+              <p className="font-medium text-stone-800 text-xs mb-0.5">{trigger}</p>
+              <p className="text-stone-500 text-xs leading-relaxed">{detail}</p>
+            </div>
+          ))}
+        </div>
+
+        <SubHeading>Sync status card</SubHeading>
+        <p className="text-stone-500 text-sm mb-2">
+          <strong>Guard → Settings</strong> shows a live <em>Sync status</em> card: <Code>synced / total</Code> machines
+          in green when all developers are up to date, amber when any machine hasn{"'"}t pulled the latest version yet.
+          The count comes from the <Code>/guard/developer-tools</Code> endpoint which tracks per-developer tool
+          coverage snapshots pushed at login and by <Code>conduct guard sync</Code>.
         </p>
       </section>
 
