@@ -211,6 +211,8 @@ def create_run(
     initial_state = body.initial_state or {}
     if body.dry_run:
         initial_state["__dry_run"] = True
+    if not body.guard_enabled:
+        initial_state["__guard_enabled"] = False
 
     try:
         initial_state = validate_run_start_inputs(initial_state)

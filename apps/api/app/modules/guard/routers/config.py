@@ -26,11 +26,15 @@ router = APIRouter(prefix="/guard/config", tags=["guard-config"])
 
 # ── Pydantic models ────────────────────────────────────────────────────────────
 
+_VALID_ENFORCEMENT_MODES = {"block", "warn", "audit"}
+
+
 class ConfigOut(BaseModel):
     workspace_id: str
     invite_code: str
     slug: str | None
     alert_channel: str | None
+    enforcement_mode: str
     notify_on_block: bool
     notify_on_budget: bool
     created_at: datetime
@@ -42,6 +46,7 @@ class ConfigOut(BaseModel):
 
 class ConfigPatch(BaseModel):
     alert_channel: str | None = None
+    enforcement_mode: str | None = None
     notify_on_block: bool | None = None
     notify_on_budget: bool | None = None
 
@@ -84,6 +89,7 @@ def _config_to_out(cfg: GuardConfig) -> ConfigOut:
         invite_code=cfg.invite_code,
         slug=cfg.slug,
         alert_channel=cfg.alert_channel,
+        enforcement_mode=cfg.enforcement_mode,
         notify_on_block=cfg.notify_on_block,
         notify_on_budget=cfg.notify_on_budget,
         created_at=cfg.created_at,
@@ -179,9 +185,17 @@ def patch_config(
     workspace_id: str = Depends(get_workspace_id),
 ):
     """Update Guard notification/channel settings for the workspace."""
+    from fastapi import HTTPException
     config = _get_or_create_config(db, workspace_id)
     if body.alert_channel is not None:
         config.alert_channel = body.alert_channel
+    if body.enforcement_mode is not None:
+        if body.enforcement_mode not in _VALID_ENFORCEMENT_MODES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"enforcement_mode must be one of: {', '.join(sorted(_VALID_ENFORCEMENT_MODES))}",
+            )
+        config.enforcement_mode = body.enforcement_mode
     if body.notify_on_block is not None:
         config.notify_on_block = body.notify_on_block
     if body.notify_on_budget is not None:

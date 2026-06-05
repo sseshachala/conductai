@@ -16,6 +16,7 @@ class GuardConfig(Base):
     invite_code = Column(Text, nullable=False)
     slug = Column(Text, nullable=True)
     alert_channel = Column(String(100), nullable=True)
+    enforcement_mode = Column(String(20), nullable=False, default="warn")
     notify_on_block = Column(Boolean, nullable=False, default=True)
     notify_on_budget = Column(Boolean, nullable=False, default=True)
     created_at = Column(
