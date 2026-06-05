@@ -167,9 +167,14 @@ export default function ObservabilityPage() {
   }, [getToken])
 
   useEffect(() => {
-    connectSSE()
-    loadAgents()
-    loadAnalytics()
+    const init = async () => {
+      try {
+        await Promise.all([connectSSE(), loadAgents(), loadAnalytics()])
+      } finally {
+        setLoading(false)
+      }
+    }
+    init()
     const agentInterval     = setInterval(loadAgents,    30_000)
     const analyticsInterval = setInterval(loadAnalytics, 60_000)
     return () => {
@@ -181,8 +186,11 @@ export default function ObservabilityPage() {
 
   const refresh = useCallback(async () => {
     setLoading(true)
-    await Promise.all([connectSSE(), loadAgents(), loadAnalytics()])
-    setLoading(false)
+    try {
+      await Promise.all([connectSSE(), loadAgents(), loadAnalytics()])
+    } finally {
+      setLoading(false)
+    }
   }, [connectSSE, loadAgents, loadAnalytics])
 
   const h = summary?.health
