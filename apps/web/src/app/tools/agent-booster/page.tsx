@@ -14,6 +14,7 @@ export default function AgentBoosterPage() {
         <HowItWorksSection />
         <ThreeLayersSection />
         <QuickstartSection />
+        <ClaudePluginSection />
         <McpToolsSection />
         <CliReferenceSection />
         <WorksWithSection />
@@ -407,6 +408,98 @@ function QuickstartSection() {
             <InlineCodeBlock>booster gain</InlineCodeBlock>
           </div>
         </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── Claude Plugin ────────────────────────────────────────────────────── */
+
+function ClaudePluginSection() {
+  return (
+    <section className="px-6 py-20">
+      <div className="max-w-3xl mx-auto">
+        <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">Claude Code Plugin</p>
+        <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
+          One command to install everything.
+        </h2>
+        <p className="text-center text-stone-500 text-sm max-w-xl mx-auto mb-12">
+          Agent Booster is available as an official Claude Code plugin. One slash command installs
+          the MCP server, wires the context skill, and you&apos;re live.
+        </p>
+
+        <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-8 py-8 flex flex-col gap-6">
+          {/* Install command */}
+          <div>
+            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Install via Claude Code</p>
+            <InlineCodeBlock>/plugin marketplace add sseshachala/conductai</InlineCodeBlock>
+          </div>
+
+          {/* What it does */}
+          <div className="grid sm:grid-cols-3 gap-4">
+            {[
+              {
+                icon: "◈",
+                title: "MCP server",
+                desc: "Wires booster serve as an MCP server — smart_read, search_context, get_symbols, route_model available immediately.",
+                color: "text-indigo-600",
+                bg: "bg-white border-indigo-200",
+              },
+              {
+                icon: "✦",
+                title: "Context skill",
+                desc: "Adds the booster-context skill so Claude prefers smart_read and search_context over native Read/Grep.",
+                color: "text-violet-600",
+                bg: "bg-white border-violet-200",
+              },
+              {
+                icon: "⊙",
+                title: "Zero config",
+                desc: "No manual .mcp.json edits. Works in every Claude Code session opened in this directory.",
+                color: "text-emerald-600",
+                bg: "bg-white border-emerald-200",
+              },
+            ].map(item => (
+              <div key={item.title} className={`rounded-xl border ${item.bg} px-5 py-4 flex flex-col gap-2`}>
+                <span className={`text-xl font-black ${item.color}`}>{item.icon}</span>
+                <p className="text-sm font-semibold text-stone-900">{item.title}</p>
+                <p className="text-xs text-stone-500 leading-relaxed">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Post-install step */}
+          <div className="border-t border-indigo-200 pt-5">
+            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Then index your project (once per repo)</p>
+            <InlineCodeBlock>booster index && booster embed</InlineCodeBlock>
+            <p className="mt-2 text-xs text-stone-400">
+              Requires <code className="font-mono bg-white px-1 rounded">pip install agent-booster[embed]</code> first.
+            </p>
+          </div>
+        </div>
+
+        {/* Submission note */}
+        <p className="text-center text-xs text-stone-400 mt-6">
+          Plugin is pending review at the{" "}
+          <a
+            href="https://clau.de/plugin-directory-submission"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-indigo-500 hover:text-indigo-700"
+          >
+            Anthropic plugin directory
+          </a>
+          . Until then, install directly from{" "}
+          <a
+            href="https://github.com/sseshachala/conductai"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-indigo-500 hover:text-indigo-700"
+          >
+            GitHub
+          </a>
+          .
+        </p>
       </div>
     </section>
   )
