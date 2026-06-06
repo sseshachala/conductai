@@ -221,23 +221,30 @@ def daemon_ping(root: Path) -> dict | None:
         return None
 
 
-def start_daemon(root: Path) -> bool:
-    """Launch daemon in background. Returns True if newly started."""
+def start_daemon(root: Path) -> "bool | str":
+    """Launch daemon in background. Returns True if started, False if already running, error string on failure."""
     if daemon_ping(root) is not None:
         return False  # already running
     import subprocess, sys
+    booster_dir = root / ".booster"
+    booster_dir.mkdir(exist_ok=True)
+    log_path = booster_dir / "daemon.log"
+    log_file = open(log_path, "w")
     subprocess.Popen(
         [sys.executable, "-m", "booster.daemon", str(root)],
         start_new_session=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=log_file,
+        stderr=log_file,
     )
     # Wait up to 5s for it to be ready
     for _ in range(20):
         time.sleep(0.25)
         if daemon_ping(root) is not None:
+            log_file.close()
             return True
-    return False
+    log_file.close()
+    tail = log_path.read_text().strip()[-800:] if log_path.exists() else ""
+    return tail or "unknown error"
 
 
 def stop_daemon(root: Path) -> bool:
