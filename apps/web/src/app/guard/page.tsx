@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from "recharts"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -297,7 +297,6 @@ function CostTrendChart({
                 formatter={(val, name) => [`$${Number(val ?? 0).toFixed(4)}`, String(name)]}
                 contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid var(--border)" }}
               />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="claude" name="Claude" stackId="a" fill="var(--chart-claude)" radius={[0, 0, 0, 0]} />
               <Bar dataKey="codex"  name="Codex"  stackId="a" fill="var(--chart-codex)"  radius={[3, 3, 0, 0]} />
               {data.some(d => d.other > 0) && (
