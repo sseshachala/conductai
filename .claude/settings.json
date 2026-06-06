@@ -56,6 +56,26 @@
         ]
       }
     ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/sudhiseshachala/projects/marshal/.claude/hooks/guard-precompact.py"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/sudhiseshachala/projects/marshal/.claude/hooks/guard-session-start.py"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
