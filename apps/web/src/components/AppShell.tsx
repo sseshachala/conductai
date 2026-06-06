@@ -745,11 +745,12 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
               {pathname.startsWith("/guard") && !collapsed && (
                 <div style={{ marginLeft: 28, marginTop: 2, display: "flex", flexDirection: "column", gap: 1 }}>
                   {[
-                    { label: "Overview", href: "/guard" },
-                    { label: "Spend", href: "/guard/spend" },
-                    { label: "Policies", href: "/guard/policies" },
-                    { label: "Activity", href: "/guard/activity" },
-                    { label: "Settings", href: "/guard/settings" },
+                    { label: "Overview",  href: "/guard" },
+                    { label: "Insights",  href: "/guard/insights" },
+                    { label: "Spend",     href: "/guard/spend" },
+                    { label: "Policies",  href: "/guard/policies" },
+                    { label: "Activity",  href: "/guard/activity" },
+                    { label: "Settings",  href: "/guard/settings" },
                   ].map(sub => {
                     const subActive = sub.href === "/guard" ? pathname === "/guard" : pathname.startsWith(sub.href)
                     return (
