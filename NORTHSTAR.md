@@ -312,6 +312,57 @@ Hitting 8+ = moat is real. Fewer than 5 = still building features, not accumulat
 
 ---
 
+---
+
+## 9. Expansion Strategy — Workspace-as-Persona
+
+*Added June 2026*
+
+### The insight
+The Conduct workspace IS a persona. Dev teams are the beachhead, not the ceiling. The same infrastructure — workspace, agent templates, shared context, Guard governance — applies to every knowledge worker role.
+
+### Why dev teams first (and why that's the right order)
+Dev teams generate the deepest AI signal of any role: every tool call, every token, every blocked action, every session end. The Guard hook gives us write-path access to Claude/Codex/Cursor sessions that no other platform has. Trust is earned bottom-up — the dev team adopts, the VP Eng sees measurable ROI (tokens saved, spend per developer, blocks prevented), then asks: *"Can we do this for PMs too?"* Expansion is pull-based, not push-based.
+
+### The expansion pattern
+Each role gets a workspace with three things:
+1. **Role-specific agent template library** — what agents that team runs
+2. **Role-specific context sources** — what data feeds their shared context
+3. **Role-specific governance rules** — what needs approval before it ships
+
+| Workspace | Templates | Context sources | Guard examples |
+|---|---|---|---|
+| **Dev** (now) | CI, PR review, incident response, deploy | Codebase, GitHub, PagerDuty | No force push, no prod deploy without approval |
+| **PM** (next) | Spec writing, user stories, sprint planning, roadmap synthesis | Jira, Figma, Notion, meeting transcripts | No auto-post to customers, flag scope changes hitting committed dev work |
+| **Data / Analytics** | Query generation, dashboard spec, anomaly investigation | Data catalog, schema docs, metric definitions | No destructive queries without approval, flag PII access |
+| **Design** | Design critique, accessibility audit, copy review | Figma, brand guidelines, component library | Flag brand violations |
+
+### What's already built (reuses everything)
+- Multi-tenant workspace scoping ✓
+- Agent Templates (YAML playbooks) ✓
+- Guard governance layer ✓
+- Shared context via Agent Booster ✓
+- Spend tracking per workspace ✓
+
+### What's needed per new role
+- Role-specific agent template pack (the main work)
+- Role-specific integrations (Jira/Figma/Notion connectors)
+- Role-specific pre-seeded Guard policies
+
+### vs. competitors
+**Personaas** starts broad (all roles, generic context) and tries to go deep. Conduct starts deep (dev teams, hook-level data) and expands outward as customers pull us there. Generic context for everyone means shallow context for anyone. Hook-level access for dev teams means the richest, most actionable context of any role — and that's the reference implementation every other workspace copies.
+
+### Sequencing
+1. Dev teams (now — Guard + Agent Templates + Booster)
+2. PM teams (first expansion — natural ask from VP Eng customers)
+3. Data/analytics teams
+4. Design teams
+5. Enterprise-wide "Conduct for every team" positioning — earned, not assumed
+
+*Tracked in GH #524.*
+
+---
+
 ## Closing Note
 
 A vibe-coded SaaS can clone Conduct's v1 in a weekend. It cannot clone:
