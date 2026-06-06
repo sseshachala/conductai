@@ -1,0 +1,24 @@
+{
+  "name": "conduct-cli",
+  "version": "0.4.42",
+  "description": "Conduct AI CLI — run agents, manage workspaces, and enforce AI usage policies with ConductGuard MCP. Includes conduct, conductguard-mcp, and conduct-mcp binaries.",
+  "author": "Sudhi Seshachala",
+  "homepage": "https://conductai.ai/tools/conduct-cli",
+  "repository": "https://github.com/sseshachala/conductai",
+  "license": "MIT",
+  "keywords": ["mcp", "guard", "agents", "cli", "conduct", "ai", "policies"],
+  "install": {
+    "steps": [
+      {
+        "type": "shell",
+        "command": "pip install conduct-cli",
+        "description": "Install conduct-cli from PyPI"
+      },
+      {
+        "type": "shell",
+        "command": "conduct whoami",
+        "description": "Verify install and check active workspace"
+      }
+    ]
+  }
+}
