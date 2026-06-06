@@ -955,7 +955,47 @@ class PreflightRequest(BaseModel):
     issue_body: str = ""
 
 
-def _estimate_turns_for_graph(graph: dict, issue_title: str = "", issue_body: str = "", min_turns: int = 0) -> dict:
+def _resolve_preflight_key(workspace_id: str | None, db: Session | None) -> str | None:
+    """Resolve ANTHROPIC_API_KEY from workspace vault, fall back to server key."""
+    from app.core.config import settings
+    if workspace_id and db:
+        try:
+            from app.models.integration import Integration
+            from app.models.environment import Environment as _Env
+            from app.core.crypto import decrypt
+            default_env = db.query(_Env).filter(
+                _Env.workspace_id == workspace_id,
+                _Env.name == "Default",
+            ).first()
+            env_ids = [str(default_env.id)] if default_env else []
+            for eid in env_ids:
+                rows = db.query(Integration).filter(
+                    Integration.workspace_id == workspace_id,
+                    Integration.environment_id == eid,
+                    Integration.handle.in_(["anthropic", "env_vars"]),
+                ).all()
+                for row in rows:
+                    if not row.encrypted_credentials:
+                        continue
+                    creds = decrypt(row.encrypted_credentials) or {}
+                    key = creds.get("api_key") if row.handle == "anthropic" else (
+                        creds.get("ANTHROPIC_API_KEY") or creds.get("anthropic_api_key")
+                    )
+                    if key:
+                        return key
+        except Exception:
+            pass
+    return settings.anthropic_api_key
+
+
+def _estimate_turns_for_graph(
+    graph: dict,
+    issue_title: str = "",
+    issue_body: str = "",
+    min_turns: int = 0,
+    workspace_id: str | None = None,
+    db: Session | None = None,
+) -> dict:
     """
     Core turn-budget estimation logic — shared between the preflight HTTP endpoint
     and server-side webhook queueing.
@@ -965,7 +1005,6 @@ def _estimate_turns_for_graph(graph: dict, issue_title: str = "", issue_body: st
     Falls back to defaults on any error so callers are never blocked.
     """
     import anthropic, json, re
-    from app.core.config import settings
 
     nodes = graph.get("nodes", [])
     brain_blocks = [
@@ -977,7 +1016,8 @@ def _estimate_turns_for_graph(graph: dict, issue_title: str = "", issue_body: st
     if not brain_blocks:
         return {"suggested_max_turns": 20, "blocks": [], "total_files": []}
 
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    api_key = _resolve_preflight_key(workspace_id, db)
+    client = anthropic.Anthropic(api_key=api_key)
     block_estimates = []
     all_files: list[str] = []
 
@@ -1062,7 +1102,7 @@ def preflight_workflow(
         except Exception:
             pass
     min_turns = max(yaml_min, workflow.default_max_turns or 0)
-    result = _estimate_turns_for_graph(graph, body.issue_title, body.issue_body, min_turns)
+    result = _estimate_turns_for_graph(graph, body.issue_title, body.issue_body, min_turns, workspace_id, db)
     result["min_turns"] = min_turns
     return result
 
@@ -1715,7 +1755,7 @@ def test_trigger(
             except Exception:
                 pass
         min_turns = max(yaml_min, workflow.default_max_turns or 0)
-        pf = _estimate_turns_for_graph(graph, payload.get("title", ""), payload.get("body", ""), min_turns)
+        pf = _estimate_turns_for_graph(graph, payload.get("title", ""), payload.get("body", ""), min_turns, workspace_id, db)
         suggested_turns = pf["suggested_max_turns"]
     except Exception:
         suggested_turns = max(20, workflow.default_max_turns or 0)
