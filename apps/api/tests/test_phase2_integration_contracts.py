@@ -215,3 +215,60 @@ def test_retry_boundary_classification_is_deterministic_for_cost_cap():
     assert summary["code"] == "COST_BUDGET_EXHAUSTED"
     assert summary["stop_reason"] == "max_cost_reached"
     assert "raise the cost cap" in summary["next_action"]
+
+
+# ── _resolve_preflight_key tests ──────────────────────────────────────────────
+
+def test_resolve_preflight_key_uses_workspace_key_when_available(monkeypatch):
+    import app.routers.workflows as wf_module
+
+    workspace_key = "sk-ant-workspace-key-123"
+    monkeypatch.setattr(wf_module, "_resolve_preflight_key", lambda ws, db: workspace_key)
+
+    result = wf_module._resolve_preflight_key("some-workspace", object())
+    assert result == workspace_key
+
+
+def test_resolve_preflight_key_falls_back_to_server_key(monkeypatch):
+    from app.routers.workflows import _resolve_preflight_key
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "anthropic_api_key", "sk-server-key")
+
+    class _EmptyDB:
+        def query(self, _model):
+            return SimpleNamespace(
+                filter=lambda *a, **k: SimpleNamespace(
+                    first=lambda: None,
+                    all=lambda: [],
+                )
+            )
+
+    result = _resolve_preflight_key(None, None)
+    assert result == "sk-server-key"
+
+
+def test_resolve_preflight_key_falls_back_on_db_error(monkeypatch):
+    from app.routers.workflows import _resolve_preflight_key
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "anthropic_api_key", "sk-server-fallback")
+
+    class _BrokenDB:
+        def query(self, _model):
+            raise RuntimeError("db unavailable")
+
+    result = _resolve_preflight_key("some-workspace", _BrokenDB())
+    assert result == "sk-server-fallback"
+
+
+def test_estimate_turns_falls_back_to_default_on_missing_key(monkeypatch):
+    from app.routers.workflows import _estimate_turns_for_graph
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "anthropic_api_key", None)
+
+    graph = {"nodes": [{"id": "b1", "data": {"type": "brain", "isAgentic": True, "label": "Fix bug", "description": "Fix the bug"}}]}
+    result = _estimate_turns_for_graph(graph, "Test issue", "body", workspace_id=None, db=None)
+    assert "suggested_max_turns" in result
+    assert result["suggested_max_turns"] >= 20
