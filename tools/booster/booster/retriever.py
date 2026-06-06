@@ -4,12 +4,15 @@ from pathlib import Path
 
 from booster.indexer import SymbolIndexer
 
+_MAX_OUTPUT_BYTES = 5_000
+
 
 def smart_read(file_path: Path, task: str, indexer: SymbolIndexer) -> str:
     rel = str(file_path.relative_to(indexer.root))
     source_lines = file_path.read_text(encoding="utf-8", errors="replace").splitlines()
 
-    matched = indexer.vector_search_file(rel, task, limit=5)
+    # RRF fusion: combines vector + keyword ranks for better symbol selection
+    matched = indexer.rrf_search_file(rel, task, limit=5)
 
     if not matched:
         total = len(source_lines)
@@ -26,4 +29,11 @@ def smart_read(file_path: Path, task: str, indexer: SymbolIndexer) -> str:
         body = "\n".join(source_lines[start:end])
         chunks.append(f"{header}\n{body}")
 
-    return "\n\n".join(chunks)
+    result = "\n\n".join(chunks)
+
+    # 5KB gate: trim to top-3 symbols if still too large
+    if len(result.encode()) > _MAX_OUTPUT_BYTES and len(chunks) > 3:
+        result = "\n\n".join(chunks[:3])
+        result += f"\n\n# [Truncated: showing top 3 of {len(matched)} matched symbols — use get_symbols for full list]"
+
+    return result

@@ -101,7 +101,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         return [TextContent(type="text", text=text)]
 
     if name == "search_context":
-        results = indexer.vector_search(arguments["task"], limit=10)
+        results = indexer.rrf_search(arguments["task"], limit=10)
         lines = [
             f"{s['file']}:{s['start_line']} {s['kind']} {s['name']} — {s['signature']}"
             for s in results

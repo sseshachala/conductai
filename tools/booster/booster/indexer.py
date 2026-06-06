@@ -301,6 +301,64 @@ class SymbolIndexer:
         id_to_sym = {s["id"]: s for s in file_symbols}
         return [id_to_sym[file_ids_ordered[i]] for i in top_indices if file_ids_ordered[i] in id_to_sym]
 
+    def rrf_search(self, query: str, limit: int = 10, k: int = 60) -> list[dict]:
+        """Reciprocal Rank Fusion of vector + keyword results.
+
+        Merges two ranked lists using RRF score = sum(1 / (k + rank_i)).
+        Falls back to keyword-only when embeddings are unavailable.
+        """
+        kw_results = self.search(query, limit=limit * 2)
+        vec_results = self.vector_search(query, limit=limit * 2)
+
+        kw_ids = [r["id"] for r in kw_results]
+        vec_ids = [r["id"] for r in vec_results]
+        if kw_ids == vec_ids:
+            return kw_results[:limit]
+
+        kw_rank = {r["id"]: i for i, r in enumerate(kw_results)}
+        vec_rank = {r["id"]: i for i, r in enumerate(vec_results)}
+        all_ids = list(dict.fromkeys(kw_ids + vec_ids))
+
+        def _score(sid: int) -> float:
+            s = 0.0
+            if sid in kw_rank:
+                s += 1.0 / (k + kw_rank[sid])
+            if sid in vec_rank:
+                s += 1.0 / (k + vec_rank[sid])
+            return s
+
+        ranked_ids = sorted(all_ids, key=_score, reverse=True)[:limit]
+        id_to_sym = {r["id"]: r for r in kw_results + vec_results}
+        return [id_to_sym[sid] for sid in ranked_ids if sid in id_to_sym]
+
+    def rrf_search_file(self, file: str, query: str, limit: int = 5, k: int = 60) -> list[dict]:
+        """RRF search restricted to symbols in a single file."""
+        file_symbols = self.get_symbols(file)
+        if not file_symbols:
+            return []
+
+        kw_results = _keyword_match(file_symbols, query, limit=limit * 2)
+        vec_results = self.vector_search_file(file, query, limit=limit * 2)
+
+        if [r["id"] for r in kw_results] == [r["id"] for r in vec_results]:
+            return kw_results[:limit]
+
+        kw_rank = {r["id"]: i for i, r in enumerate(kw_results)}
+        vec_rank = {r["id"]: i for i, r in enumerate(vec_results)}
+        all_ids = list(dict.fromkeys([r["id"] for r in kw_results] + [r["id"] for r in vec_results]))
+
+        def _score(sid: int) -> float:
+            s = 0.0
+            if sid in kw_rank:
+                s += 1.0 / (k + kw_rank[sid])
+            if sid in vec_rank:
+                s += 1.0 / (k + vec_rank[sid])
+            return s
+
+        ranked_ids = sorted(all_ids, key=_score, reverse=True)[:limit]
+        id_to_sym = {s["id"]: s for s in file_symbols}
+        return [id_to_sym[sid] for sid in ranked_ids if sid in id_to_sym]
+
     def get_symbols(self, file: str) -> list[dict]:
         rows = self._conn.execute(
             "SELECT * FROM symbols WHERE file = ? ORDER BY start_line", (file,)
