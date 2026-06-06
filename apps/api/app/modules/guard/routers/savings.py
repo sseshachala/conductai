@@ -49,9 +49,11 @@ class MemberSavings(BaseModel):
     rtk_saved_tokens: int
     rtk_savings_pct: float
     rtk_total_commands: int
+    rtk_saved_usd: float
     booster_saved_tokens: int
     booster_savings_pct: float
     booster_total_reads: int
+    booster_saved_usd: float
     period_end: str
     recorded_at: str
 
@@ -191,6 +193,9 @@ def _build_summary(db: Session, workspace_id: str) -> SavingsSummaryOut:
     if not latest_rows:
         return _EMPTY_SUMMARY
 
+    def _tokens_to_usd(tokens: int) -> float:
+        return round(tokens * _USD_PER_MILLION_TOKENS / 1_000_000, 6)
+
     by_member: list[MemberSavings] = []
     total_rtk_tokens = 0
     total_booster_tokens = 0
@@ -213,15 +218,14 @@ def _build_summary(db: Session, workspace_id: str) -> SavingsSummaryOut:
             rtk_saved_tokens=rtk_tokens,
             rtk_savings_pct=float(r.rtk_savings_pct or 0.0),
             rtk_total_commands=int(r.rtk_total_commands or 0),
+            rtk_saved_usd=_tokens_to_usd(rtk_tokens),
             booster_saved_tokens=booster_tokens,
             booster_savings_pct=float(r.booster_savings_pct or 0.0),
             booster_total_reads=int(r.booster_total_reads or 0),
+            booster_saved_usd=_tokens_to_usd(booster_tokens),
             period_end=r.period_end.isoformat() if r.period_end else "",
             recorded_at=r.recorded_at.isoformat() if r.recorded_at else "",
         ))
-
-    def _tokens_to_usd(tokens: int) -> float:
-        return round(tokens * _USD_PER_MILLION_TOKENS / 1_000_000, 6)
 
     tools_installed: list[str] = []
     if has_rtk:

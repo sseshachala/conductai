@@ -11,10 +11,12 @@ interface SavingsTeamTotal {
 }
 
 interface SavingsByMember {
-  email: string
+  member_email: string
   rtk_saved_tokens: number
+  rtk_saved_usd: number
   booster_saved_tokens: number
-  last_synced: string
+  booster_saved_usd: number
+  recorded_at: string
 }
 
 export interface GuardSavingsSummary {

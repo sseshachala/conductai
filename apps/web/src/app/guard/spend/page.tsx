@@ -741,38 +741,74 @@ function SpendContent() {
             ))}
           </div>
 
-          {/* RTK + Agent Booster savings */}
+          {/* Team token savings — RTK + Agent Booster */}
           {!savingsLoading && savings &&
-            (savings.team_total.rtk_saved_tokens > 0 || savings.team_total.booster_saved_tokens > 0) && (
-            <div style={{
-              borderRadius: 12,
-              border: "1px solid var(--ok-bd)",
-              background: "var(--ok-bg)",
-              padding: "16px 20px",
-              marginBottom: 24,
-            }}>
-              <p className="eyebrow" style={{ color: "var(--ok)", marginBottom: 12 }}>
-                Token savings from developer tools
-              </p>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
-                {[
-                  [formatTokens(savings.team_total.rtk_saved_tokens), "RTK — tokens saved", false],
-                  [`$${savings.team_total.rtk_saved_usd.toFixed(2)}`, "RTK — cost saved", false],
-                  [formatTokens(savings.team_total.booster_saved_tokens), "Booster — tokens saved", false],
-                  [`$${(savings.team_total.rtk_saved_usd + savings.team_total.booster_saved_usd).toFixed(2)}`, "Combined savings", true],
-                ].map(([v, k, bold], i) => (
-                  <div key={i} className="card" style={{ padding: "12px 16px", borderColor: "var(--ok-bd)" }}>
-                    <div style={{ fontSize: 20, fontWeight: 700, color: bold ? "var(--ok)" : "var(--ok)" }}>{v}</div>
-                    <div className="eyebrow" style={{ marginTop: 4, fontSize: 10, color: "var(--text-3)" }}>{k}</div>
+            (savings.team_total.rtk_saved_tokens > 0 || savings.team_total.booster_saved_tokens > 0) && (() => {
+            const totalTok = savings.team_total.rtk_saved_tokens + savings.team_total.booster_saved_tokens
+            const totalUsd = savings.team_total.rtk_saved_usd + savings.team_total.booster_saved_usd
+            return (
+              <div className="card" style={{ overflow: "hidden", marginBottom: 24, borderColor: "var(--ok-bd)" }}>
+                {/* Header */}
+                <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--ok-bd)", background: "var(--ok-bg)", display: "flex", alignItems: "center", gap: 12 }}>
+                  <span style={{ width: 32, height: 32, borderRadius: 9, background: "rgba(22,163,74,0.15)", color: "var(--ok)", display: "grid", placeItems: "center", flexShrink: 0, fontSize: 16 }}>
+                    ↓
+                  </span>
+                  <div>
+                    <div style={{ fontWeight: 650, fontSize: 15, color: "var(--text)" }}>Team token savings — all time</div>
+                    <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+                      Reported by {savings.by_member.length} developer{savings.by_member.length !== 1 ? "s" : ""} via{" "}
+                      <span className="mono" style={{ fontSize: 11 }}>conduct guard sync</span>
+                    </div>
                   </div>
-                ))}
+                  <div style={{ marginLeft: "auto", textAlign: "right" }}>
+                    <div style={{ fontSize: 26, fontWeight: 700, color: "var(--ok)", letterSpacing: "-.02em", lineHeight: 1 }}>
+                      ${totalUsd.toFixed(2)}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 3 }}>{formatTokens(totalTok)} tokens saved</div>
+                  </div>
+                </div>
+
+                {/* 4 KPI cells */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", borderBottom: "1px solid var(--border)" }}>
+                  {[
+                    { v: formatTokens(savings.team_total.rtk_saved_tokens), k: "RTK tokens saved" },
+                    { v: `$${savings.team_total.rtk_saved_usd.toFixed(2)}`, k: "RTK cost saved" },
+                    { v: formatTokens(savings.team_total.booster_saved_tokens), k: "Booster tokens saved" },
+                    { v: `$${savings.team_total.booster_saved_usd.toFixed(2)}`, k: "Booster cost saved" },
+                  ].map(({ v, k }, i) => (
+                    <div key={i} style={{ padding: "14px 20px", borderRight: i < 3 ? "1px solid var(--border)" : undefined }}>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: "var(--ok)" }}>{v}</div>
+                      <div className="eyebrow" style={{ marginTop: 5, fontSize: 10, color: "var(--text-3)" }}>{k}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Per-developer breakdown */}
+                {savings.by_member.length > 0 && (
+                  <>
+                    <div style={{ display: "grid", gridTemplateColumns: "1.8fr 1fr 1fr 1fr 1fr", gap: 14, padding: "10px 20px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+                      {["Developer", "RTK tokens", "Booster tokens", "Combined tokens", "Total saved"].map((h, i) => (
+                        <div key={i} className="eyebrow" style={{ fontSize: 10 }}>{h}</div>
+                      ))}
+                    </div>
+                    {savings.by_member.map(m => {
+                      const mTok = m.rtk_saved_tokens + m.booster_saved_tokens
+                      const mUsd = m.rtk_saved_usd + m.booster_saved_usd
+                      return (
+                        <div key={m.member_email} style={{ display: "grid", gridTemplateColumns: "1.8fr 1fr 1fr 1fr 1fr", gap: 14, padding: "11px 20px", borderBottom: "1px solid var(--border)", alignItems: "center" }}>
+                          <div className="mono" style={{ fontSize: 12.5, fontWeight: 550, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.member_email}</div>
+                          <div className="mono" style={{ fontSize: 12.5, color: "var(--text-3)" }}>{formatTokens(m.rtk_saved_tokens)}</div>
+                          <div className="mono" style={{ fontSize: 12.5, color: "var(--text-3)" }}>{formatTokens(m.booster_saved_tokens)}</div>
+                          <div className="mono" style={{ fontSize: 12.5, color: "var(--text-2)", fontWeight: 600 }}>{formatTokens(mTok)}</div>
+                          <div className="mono" style={{ fontSize: 12.5, color: "var(--ok)", fontWeight: 600 }}>${mUsd.toFixed(2)}</div>
+                        </div>
+                      )
+                    })}
+                  </>
+                )}
               </div>
-              <p style={{ fontSize: 12, color: "var(--ok)", marginTop: 12 }}>
-                Reported by {savings.by_member.length} developer{savings.by_member.length !== 1 ? "s" : ""} via{" "}
-                <span className="mono">conduct guard sync</span>
-              </p>
-            </div>
-          )}
+            )
+          })()}
         </>
       ) : null}
 

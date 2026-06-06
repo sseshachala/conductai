@@ -794,7 +794,12 @@ def cmd_route(task: str) -> None:
 
 @main.command("gain")
 @click.option("--format", "-f", "fmt", type=click.Choice(["text", "json"]), default="text")
-def cmd_gain(fmt: str) -> None:
+@click.option("--team", is_flag=True, default=False, help="Show team-wide savings from Guard (requires conduct guard sync)")
+def cmd_gain(fmt: str, team: bool) -> None:
+    if team:
+        _cmd_gain_team(fmt)
+        return
+
     from booster.stats import StatsTracker
 
     tracker = StatsTracker(Path.cwd())
@@ -823,3 +828,71 @@ def cmd_gain(fmt: str) -> None:
         for entry in s["top_files"]:
             name = Path(entry["file"]).name
             click.echo(f"  {name:<24} {entry['saved']:,} tokens saved  ({entry['reads']} reads)")
+
+
+def _cmd_gain_team(fmt: str) -> None:
+    """Fetch team-wide savings summary from Guard API."""
+    import urllib.request as req_lib
+
+    guard_cfg_path = Path.home() / ".conductguard" / "config.json"
+    if not guard_cfg_path.exists():
+        click.echo("No Guard config found. Run: conduct guard sync", err=True)
+        raise SystemExit(1)
+
+    cfg          = json.loads(guard_cfg_path.read_text())
+    workspace_id = cfg.get("workspace_id", "")
+    api_key      = cfg.get("api_key", "")
+    api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+
+    if not workspace_id:
+        click.echo("workspace_id missing from Guard config. Run: conduct guard sync", err=True)
+        raise SystemExit(1)
+
+    url = f"{api_url}/guard/savings/summary?workspace_id={workspace_id}"
+    request = req_lib.Request(url, headers={"Authorization": f"Bearer {api_key}"} if api_key else {})
+    try:
+        with req_lib.urlopen(request, timeout=10) as resp:
+            data = json.loads(resp.read())
+    except Exception as exc:
+        click.echo(f"Failed to fetch team savings: {exc}", err=True)
+        raise SystemExit(1)
+
+    if fmt == "json":
+        click.echo(json.dumps(data))
+        return
+
+    tt           = data.get("team_total", {})
+    by_member    = data.get("by_member", [])
+    rtk_tok      = tt.get("rtk_saved_tokens", 0)
+    rtk_usd      = tt.get("rtk_saved_usd", 0.0)
+    boost_tok    = tt.get("booster_saved_tokens", 0)
+    boost_usd    = tt.get("booster_saved_usd", 0.0)
+    total_tok    = rtk_tok + boost_tok
+    total_usd    = rtk_usd + boost_usd
+
+    def _fmt(n: int) -> str:
+        if n >= 1_000_000: return f"{n/1_000_000:.1f}M"
+        if n >= 1_000:     return f"{n/1_000:.0f}k"
+        return str(n)
+
+    click.echo()
+    click.echo("Conduct Guard — Team Savings Report")
+    click.echo("\u2500" * 38)
+    click.echo(f"Developers reporting: {len(by_member)}")
+    click.echo(f"RTK tokens saved:     {_fmt(rtk_tok)}  (${rtk_usd:.2f})")
+    click.echo(f"Booster tokens saved: {_fmt(boost_tok)}  (${boost_usd:.2f})")
+    click.echo(f"Combined savings:     {_fmt(total_tok)} tokens  ${total_usd:.2f}")
+
+    if by_member:
+        click.echo()
+        click.echo(f"  {'Developer':<32} {'RTK':>8} {'Booster':>9} {'Total $':>8}")
+        click.echo("  " + "\u2500" * 62)
+        for m in by_member:
+            mt = m.get("rtk_saved_tokens", 0) + m.get("booster_saved_tokens", 0)
+            mu = m.get("rtk_saved_usd", 0.0) + m.get("booster_saved_usd", 0.0)
+            click.echo(
+                f"  {m['member_email']:<32} "
+                f"{_fmt(m.get('rtk_saved_tokens', 0)):>8} "
+                f"{_fmt(m.get('booster_saved_tokens', 0)):>9} "
+                f"${mu:>7.2f}"
+            )
