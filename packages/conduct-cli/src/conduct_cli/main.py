@@ -1891,15 +1891,24 @@ def _render_tui(rows: list[dict]) -> None:
                            "paused": "yellow", "pending": "cyan", "cancelled": "dim"}.get(status, "white")
                 sicon   = {"running": "●", "succeeded": "✓", "failed": "✗",
                            "paused": "⏸", "pending": "○", "cancelled": "—"}.get(status, "?")
-                # Duration
-                created = r.get("created_at") or r.get("started_at") or 0
-                ended   = r.get("completed_at") or r.get("finished_at") or 0
-                if created and ended:
-                    secs = int(ended - created)
+                # Duration — timestamps may be ISO strings or unix floats
+                import datetime as _dt
+                def _to_ts(val):
+                    if not val:
+                        return None
+                    if isinstance(val, (int, float)):
+                        return float(val)
+                    try:
+                        return _dt.datetime.fromisoformat(str(val).replace("Z", "+00:00")).timestamp()
+                    except Exception:
+                        return None
+                created_ts = _to_ts(r.get("created_at") or r.get("started_at"))
+                ended_ts   = _to_ts(r.get("completed_at") or r.get("finished_at"))
+                if created_ts and ended_ts:
+                    secs = int(ended_ts - created_ts)
                     dur  = f"{secs//60}:{secs%60:02d}"
-                elif created and status == "running":
-                    import datetime as _dt
-                    secs = int(time.time() - (created if created > 1e10 else created))
+                elif created_ts and status == "running":
+                    secs = int(time.time() - created_ts)
                     dur  = f"{secs//60}:{secs%60:02d}"
                 else:
                     dur = "—"
