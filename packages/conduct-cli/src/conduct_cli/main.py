@@ -1460,6 +1460,7 @@ def cmd_whoami(args):
 
 _CLAUDE_SESSIONS = Path.home() / ".claude" / "sessions"
 _CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
+_CODEX_SESSIONS  = Path.home() / ".codex" / "sessions"
 
 # Context window limits by model prefix (tokens)
 _CTX_LIMITS = {
@@ -1539,6 +1540,116 @@ def _session_stats(session_id: str, project_dir: Path) -> dict:
     }
 
 
+def _codex_running_cwds() -> set[str]:
+    """Return cwds of any running codex processes via /proc or ps."""
+    cwds: set[str] = set()
+    try:
+        import subprocess as _sp
+        out = _sp.run(["ps", "aux"], capture_output=True, text=True).stdout
+        for line in out.splitlines():
+            if "codex" in line and "grep" not in line:
+                # Extract cwd from lsof for each codex PID
+                parts = line.split()
+                if parts:
+                    pid = parts[1]
+                    try:
+                        r = _sp.run(["lsof", "-p", pid, "-a", "-d", "cwd", "-Fn"],
+                                    capture_output=True, text=True, timeout=1)
+                        for l in r.stdout.splitlines():
+                            if l.startswith("n"):
+                                cwds.add(l[1:])
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+    return cwds
+
+
+def _codex_session_stats(jsonl_path: Path) -> dict:
+    """Parse a Codex JSONL session file for model, ctx window, and turn count."""
+    model = ""
+    ctx_limit = 0
+    turns = 0
+    cwd = ""
+    try:
+        for raw in jsonl_path.read_bytes().splitlines():
+            try:
+                entry = json.loads(raw)
+            except Exception:
+                continue
+            t = entry.get("type", "")
+            p = entry.get("payload", {})
+            if t == "session_meta":
+                cwd = p.get("cwd", "")
+            if t == "turn_context":
+                model = p.get("model", model)
+                turns += 1
+            if t == "event_msg" and not ctx_limit:
+                ctx_limit = p.get("model_context_window", 0)
+    except Exception:
+        pass
+
+    return {"model": model, "ctx_limit": ctx_limit, "turns": turns, "cwd": cwd}
+
+
+def _load_codex_sessions(active_cwds: set[str]) -> list[dict]:
+    """Find recent Codex sessions from ~/.codex/sessions/YYYY/MM/DD/."""
+    if not _CODEX_SESSIONS.exists():
+        return []
+
+    guard_cfg = Path.home() / ".conductguard" / "config.json"
+    guard_on  = guard_cfg.exists()
+
+    rows = []
+    # Walk the last 2 days of session dirs
+    from datetime import datetime, timedelta
+    today = datetime.now()
+    date_dirs = []
+    for delta in (0, 1):
+        d = today - timedelta(days=delta)
+        date_dirs.append(_CODEX_SESSIONS / str(d.year) / f"{d.month:02d}" / f"{d.day:02d}")
+
+    seen: set[str] = set()
+    for date_dir in date_dirs:
+        if not date_dir.exists():
+            continue
+        for f in sorted(date_dir.iterdir(), reverse=True):
+            if not f.suffix == ".jsonl":
+                continue
+            session_id = f.stem.split("-", 1)[-1] if "-" in f.stem else f.stem
+            if session_id in seen:
+                continue
+            seen.add(session_id)
+
+            stats = _codex_session_stats(f)
+            cwd   = stats.get("cwd", "")
+            alive = cwd in active_cwds
+
+            ctx_limit  = stats.get("ctx_limit", 0) or 200_000
+            # Codex doesn't expose per-turn token counts in JSONL — show turns only
+            ctx_pct    = 0
+
+            rows.append({
+                "pid":        "—",
+                "session_id": session_id[:8],
+                "project":    Path(cwd).name if cwd else "—",
+                "cwd":        cwd,
+                "model":      stats.get("model", "—"),
+                "turns":      stats.get("turns", 0),
+                "ctx_pct":    ctx_pct,
+                "ctx_tokens": 0,
+                "total_in":   0,
+                "total_out":  0,
+                "guard":      guard_on,
+                "alive":      alive,
+                "kind":       "codex",
+                "started_at": int(f.stat().st_mtime * 1000),
+                "ai":         "CD",
+            })
+
+    return rows
+
+
 def _load_sessions() -> list[dict]:
     """Read ~/.claude/sessions/*.json and join with JSONL stats."""
     if not _CLAUDE_SESSIONS.exists():
@@ -1590,7 +1701,12 @@ def _load_sessions() -> list[dict]:
             "alive":      alive,
             "kind":       kind,
             "started_at": started_at,
+            "ai":         "CC",
         })
+
+    # Merge Codex sessions
+    active_cwds = _codex_running_cwds()
+    rows += _load_codex_sessions(active_cwds)
 
     return sorted(rows, key=lambda r: r["started_at"], reverse=True)
 
@@ -1616,21 +1732,23 @@ def _render_table(rows: list[dict]) -> str:
 
     lines = []
     header = (
-        f"  {BOLD}{'PROJECT':<18} {'SESSION':<10} {'MODEL':<18} "
+        f"  {BOLD}{'AI':<4} {'PROJECT':<18} {'SESSION':<10} {'MODEL':<18} "
         f"{'CTX':>14}   {'TOKENS IN':>10} {'TURNS':>6} {'GUARD':>6} {'STATUS':>8}{RESET}"
     )
     lines.append(header)
-    lines.append("  " + "─" * 95)
+    lines.append("  " + "─" * 100)
 
     for r in rows:
-        status_str = f"{GREEN}active{RESET}" if r["alive"] else f"{GRAY}idle{RESET}"
-        guard_str  = f"{GREEN}✓{RESET}" if r["guard"] else f"{GRAY}—{RESET}"
-        model_short = r["model"].replace("claude-", "").replace("-20", " 20") if r["model"] != "—" else "—"
+        status_str  = f"{GREEN}active{RESET}" if r["alive"] else f"{GRAY}idle{RESET}"
+        guard_str   = f"{GREEN}✓{RESET}" if r["guard"] else f"{GRAY}—{RESET}"
+        model_short = r["model"].replace("claude-", "").replace("-20", " 20") if r["model"] not in ("—", "") else "—"
         ctx_display = _ctx_bar(r["ctx_pct"]) if r["ctx_pct"] else f"{GRAY}{'—':>14}{RESET}"
         tokens_str  = _fmt_tokens(r["ctx_tokens"]) if r["ctx_tokens"] else "—"
+        ai_label    = r.get("ai", "CC")
+        ai_color    = CYAN if ai_label == "CD" else BLUE
 
         lines.append(
-            f"  {r['project']:<18} {r['session_id']:<10} {model_short:<18} "
+            f"  {ai_color}{ai_label:<4}{RESET} {r['project']:<18} {r['session_id']:<10} {model_short:<18} "
             f"{ctx_display}   {tokens_str:>10} {r['turns']:>6} {guard_str:>6}   {status_str}"
         )
 
