@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -14,6 +15,12 @@ if TYPE_CHECKING:
 
 _embed_model: "_ST | None" = None
 
+# Asymmetric embedding prefixes: separate instruction for indexing vs querying.
+# "passage:" prefix tells the model this is a document to store.
+# "query:" prefix tells the model this is a question/task to match against documents.
+_EMBED_INDEX_PREFIX = "passage: "
+_EMBED_QUERY_PREFIX = "query: "
+
 
 def _get_embed_model() -> "_ST":
     global _embed_model
@@ -21,6 +28,21 @@ def _get_embed_model() -> "_ST":
         from sentence_transformers import SentenceTransformer
         _embed_model = SentenceTransformer("all-MiniLM-L6-v2")
     return _embed_model
+
+
+def _embed_for_index(texts: list[str]) -> "np.ndarray":
+    model = _get_embed_model()
+    prefixed = [f"{_EMBED_INDEX_PREFIX}{t}" for t in texts]
+    return model.encode(prefixed, show_progress_bar=False, convert_to_numpy=True)
+
+
+def _embed_for_query(query: str) -> "np.ndarray":
+    model = _get_embed_model()
+    return model.encode([f"{_EMBED_QUERY_PREFIX}{query}"], show_progress_bar=False, convert_to_numpy=True)[0]
+
+
+def _file_hash(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 PY_LANGUAGE = Language(tspython.language())
@@ -39,9 +61,14 @@ CREATE TABLE IF NOT EXISTS symbols (
     kind      TEXT NOT NULL,
     start_line INTEGER NOT NULL,
     end_line   INTEGER NOT NULL,
-    signature  TEXT NOT NULL DEFAULT ''
+    signature  TEXT NOT NULL DEFAULT '',
+    file_hash  TEXT NOT NULL DEFAULT '',
+    file_mtime REAL NOT NULL DEFAULT 0.0
 )
 """
+
+_MIGRATE_ADD_HASH = "ALTER TABLE symbols ADD COLUMN file_hash TEXT NOT NULL DEFAULT ''"
+_MIGRATE_ADD_MTIME = "ALTER TABLE symbols ADD COLUMN file_mtime REAL NOT NULL DEFAULT 0.0"
 
 _PY_KIND_MAP = {
     "function_definition": "function",
@@ -136,9 +163,18 @@ class SymbolIndexer:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute(_CREATE_TABLE)
         self._conn.commit()
+        self._migrate()
         self._py_parser = Parser(PY_LANGUAGE)
         self._ts_parser = Parser(TS_LANGUAGE)
         self._tsx_parser = Parser(TSX_LANGUAGE)
+
+    def _migrate(self) -> None:
+        cols = {row[1] for row in self._conn.execute("PRAGMA table_info(symbols)").fetchall()}
+        if "file_hash" not in cols:
+            self._conn.execute(_MIGRATE_ADD_HASH)
+        if "file_mtime" not in cols:
+            self._conn.execute(_MIGRATE_ADD_MTIME)
+        self._conn.commit()
 
     def _parser_for(self, path: Path) -> Parser:
         if path.suffix == ".tsx" or path.suffix == ".jsx":
@@ -147,9 +183,13 @@ class SymbolIndexer:
             return self._ts_parser
         return self._py_parser
 
-    def index_file(self, path: Path) -> int:
+    def index_file(self, path: Path, fhash: str = "", fmtime: float = 0.0) -> int:
         source = path.read_bytes()
         rel = str(path.relative_to(self.root))
+        if not fhash:
+            fhash = hashlib.sha256(source).hexdigest()
+        if not fmtime:
+            fmtime = path.stat().st_mtime
         self._conn.execute("DELETE FROM symbols WHERE file = ?", (rel,))
         inserted = 0
 
@@ -158,8 +198,9 @@ class SymbolIndexer:
             tree = parser.parse(source)
             for name, kind, start_line, end_line, sig in _collect_ts_symbols(tree.root_node, source):
                 self._conn.execute(
-                    "INSERT INTO symbols (file, name, kind, start_line, end_line, signature) VALUES (?, ?, ?, ?, ?, ?)",
-                    (rel, name, kind, start_line, end_line, sig),
+                    "INSERT INTO symbols (file, name, kind, start_line, end_line, signature, file_hash, file_mtime)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (rel, name, kind, start_line, end_line, sig, fhash, fmtime),
                 )
                 inserted += 1
         else:
@@ -172,8 +213,9 @@ class SymbolIndexer:
                     if name:
                         sig = _extract_signature(node, source)
                         self._conn.execute(
-                            "INSERT INTO symbols (file, name, kind, start_line, end_line, signature) VALUES (?, ?, ?, ?, ?, ?)",
-                            (rel, name, _PY_KIND_MAP[node.type], node.start_point[0] + 1, node.end_point[0] + 1, sig),
+                            "INSERT INTO symbols (file, name, kind, start_line, end_line, signature, file_hash, file_mtime)"
+                            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                            (rel, name, _PY_KIND_MAP[node.type], node.start_point[0] + 1, node.end_point[0] + 1, sig, fhash, fmtime),
                         )
                         inserted += 1
                 cursor.extend(node.children)
@@ -181,10 +223,20 @@ class SymbolIndexer:
         self._conn.commit()
         return inserted
 
-    def index_all(self, embed: bool = False) -> tuple[int, int]:
-        self._conn.execute("DELETE FROM symbols")
-        self._conn.commit()
+    def _is_unchanged(self, rel: str, fhash: str, fmtime: float) -> bool:
+        row = self._conn.execute(
+            "SELECT file_hash, file_mtime FROM symbols WHERE file = ? LIMIT 1", (rel,)
+        ).fetchone()
+        return row is not None and row["file_hash"] == fhash and abs(row["file_mtime"] - fmtime) < 0.001
+
+    def index_all(self, embed: bool = False, force: bool = False) -> tuple[int, int]:
+        """Index all source files. Skips unchanged files unless force=True."""
+        if force:
+            self._conn.execute("DELETE FROM symbols")
+            self._conn.commit()
+
         files = 0
+        skipped = 0
         symbols = 0
         patterns = ["*.py", "*.ts", "*.tsx", "*.js", "*.jsx"]
         for pattern in patterns:
@@ -192,7 +244,13 @@ class SymbolIndexer:
                 if any(part in _SKIP_DIRS for part in path.parts):
                     continue
                 try:
-                    symbols += self.index_file(path)
+                    rel = str(path.relative_to(self.root))
+                    fmtime = path.stat().st_mtime
+                    fhash = _file_hash(path)
+                    if not force and self._is_unchanged(rel, fhash, fmtime):
+                        skipped += 1
+                        continue
+                    symbols += self.index_file(path, fhash=fhash, fmtime=fmtime)
                     files += 1
                 except Exception:
                     pass
@@ -210,10 +268,9 @@ class SymbolIndexer:
         if not rows:
             return 0
 
-        model = _get_embed_model()
         ids = np.array([r["id"] for r in rows], dtype=np.int64)
         texts = [f"{r['name']} {r['signature']}" for r in rows]
-        vecs = model.encode(texts, show_progress_bar=False, convert_to_numpy=True)
+        vecs = _embed_for_index(texts)
         norms = np.linalg.norm(vecs, axis=1, keepdims=True)
         norms = np.where(norms == 0, 1.0, norms)
         vecs = vecs / norms
@@ -236,11 +293,10 @@ class SymbolIndexer:
         except (ImportError, Exception):
             return self.search(query, limit)
 
-        model = _get_embed_model()
         vecs = np.load(str(vec_path))
         ids = np.load(str(ids_path))
 
-        q = model.encode([query], show_progress_bar=False, convert_to_numpy=True)[0]
+        q = _embed_for_query(query)
         norm = np.linalg.norm(q)
         if norm > 0:
             q = q / norm
@@ -287,8 +343,7 @@ class SymbolIndexer:
         file_vecs = all_vecs[mask]
         file_ids_ordered = [int(all_ids[i]) for i in range(len(all_ids)) if mask[i]]
 
-        model = _get_embed_model()
-        q = model.encode([query], show_progress_bar=False, convert_to_numpy=True)[0]
+        q = _embed_for_query(query)
         norm = np.linalg.norm(q)
         if norm > 0:
             q = q / norm

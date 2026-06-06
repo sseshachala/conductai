@@ -415,11 +415,15 @@ def main() -> None:
 
 @main.command("index")
 @click.option("--embed", is_flag=True, default=False)
-def cmd_index(embed: bool) -> None:
+@click.option("--force", is_flag=True, default=False, help="Re-index all files, ignoring cached hashes.")
+def cmd_index(embed: bool, force: bool) -> None:
     root = Path.cwd()
     indexer = SymbolIndexer(root)
-    files, symbols = indexer.index_all(embed=embed)
-    click.echo(f"Indexed {files} files, {symbols} symbols.")
+    files, symbols = indexer.index_all(embed=embed, force=force)
+    if force:
+        click.echo(f"Indexed {files} files, {symbols} symbols. (forced full re-index)")
+    else:
+        click.echo(f"Indexed {files} changed files, {symbols} symbols. (use --force to re-index all)")
 
 
 @main.command("embed")
