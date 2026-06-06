@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "conductguard-mcp": {
+      "command": "conductguard-mcp",
+      "args": [],
+      "env": {}
+    },
+    "conduct-mcp": {
+      "command": "conduct-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}
