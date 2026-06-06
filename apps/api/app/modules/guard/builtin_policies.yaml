@@ -172,3 +172,12 @@
   match_path_pattern: 'Dockerfile[^/]*$'
   action: audit
   message: Dockerfile modified
+
+# ── Token Efficiency ───────────────────────────────────────────────────────────
+
+- rule_id: warn-deterministic-compute
+  description: Warn when LLM is used for deterministic operations
+  match_tool: "bash,edit,write"
+  match_pattern: '(?i)(count the|filter (these|the)|deduplic|sort these|sum (the|all)|how many)'
+  action: warn
+  message: This looks like deterministic work (counting, filtering, dedup). Use a script instead — LLM tokens are unnecessary here.
