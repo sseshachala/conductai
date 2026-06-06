@@ -94,6 +94,7 @@ const Icons = {
 
 function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
   if (pathname.startsWith('/dashboard')) return ['Dashboard']
+  if (pathname.startsWith('/guard/insights')) return ['Guard', 'Insights']
   if (pathname.startsWith('/guard/spend')) return ['Guard', 'Spend']
   if (pathname.startsWith('/guard/policies')) return ['Guard', 'Policies']
   if (pathname.startsWith('/guard/activity')) return ['Guard', 'Activity']
@@ -130,6 +131,7 @@ const PALETTE_COMMANDS = [
   { group: "OBSERVE", label: "Dashboard", href: "/dashboard", icon: "Spark" as const },
   { group: "OBSERVE", label: "Runs", href: "/runs", icon: "Pulse" as const },
   { group: "GOVERN", label: "Guard · Overview", href: "/guard", icon: "Shield" as const },
+  { group: "GOVERN", label: "Guard · Insights", href: "/guard/insights", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Spend", href: "/guard/spend", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Policies", href: "/guard/policies", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Activity", href: "/guard/activity", icon: "Shield" as const },
