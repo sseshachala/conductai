@@ -891,10 +891,10 @@ function ClaudePluginSection() {
 
           {/* Post-install step */}
           <div className="border-t border-indigo-200 pt-5">
-            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Then index your project (once per repo)</p>
-            <InlineCodeBlock>booster index && booster embed</InlineCodeBlock>
+            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Then start booster in your project</p>
+            <InlineCodeBlock comment="indexes, embeds, and starts the daemon automatically">booster start</InlineCodeBlock>
             <p className="mt-2 text-xs text-stone-400">
-              Requires <code className="font-mono bg-white px-1 rounded">pip install agent-booster[embed]</code> first.
+              Detects which AI tools are installed, wires each one, runs <code className="font-mono bg-white px-1 rounded">booster index</code> and <code className="font-mono bg-white px-1 rounded">booster embed</code> if the index is missing, then starts the background daemon. Nothing to run manually.
             </p>
           </div>
         </div>
@@ -1061,7 +1061,7 @@ function CliReferenceSection() {
           Every command, and when to use it.
         </h2>
         <p className="text-center text-stone-500 text-sm max-w-xl mx-auto mb-12">
-          Most of the time you only need three: <code className="font-mono bg-stone-200 px-1 rounded">init</code>, <code className="font-mono bg-stone-200 px-1 rounded">index &amp;&amp; embed</code>, and <code className="font-mono bg-stone-200 px-1 rounded">gain</code>.
+          Most of the time you only need two: <code className="font-mono bg-stone-200 px-1 rounded">start</code> (does everything) and <code className="font-mono bg-stone-200 px-1 rounded">gain</code> (shows savings).
         </p>
 
         <div className="flex flex-col divide-y divide-stone-200 rounded-2xl border border-stone-200 bg-white overflow-hidden">
@@ -1153,7 +1153,7 @@ const FAQS = [
   },
   {
     q: "How does the symbol index work?",
-    a: "When you run booster index, we walk every .py file in your project using tree-sitter, extract all function_definition and class_definition nodes, and store their name, kind, file path, start/end line, and signature into a local SQLite database at .booster/symbols.db. Re-indexing is safe — we clear and rebuild the table each run, skipping worktrees, node_modules, .venv, and __pycache__.",
+    a: "When you run booster index (or booster start on first run), we walk every .py / .ts / .tsx / .js / .jsx file with tree-sitter, extract all function and class nodes, and store name, kind, file path, start/end line, and signature into .booster/symbols.db. Delta indexing skips unchanged files — each file's SHA-256 hash and mtime are stored, so only modified files are re-parsed. Use booster index --force to bypass the delta cache and re-index everything.",
   },
   {
     q: "How does semantic search work?",
@@ -1189,7 +1189,7 @@ const FAQS = [
   },
   {
     q: "Does each developer on my team need to run booster init?",
-    a: "Yes — once per developer, once per project. booster init writes files into the project directory (.mcp.json, .claude/settings.json, hook scripts). If you commit those files to the repo, teammates who clone it get the hooks automatically but still need to run pip install agent-booster[embed] and booster index && booster embed locally since the symbol index is gitignored. For teams, the Sentinel integration (coming) will push the init automatically to every developer's workspace.",
+    a: "Yes — once per developer, once per project. Each developer runs pip install 'agent-booster[full]' then booster start inside the project. booster start wires the AI tools it detects, indexes the codebase, builds embeddings, and starts the daemon — nothing manual. The symbol index is gitignored so each developer builds their own locally. For teams, the Sentinel integration (coming) will push the setup automatically to every developer's workspace.",
   },
 ]
 
@@ -1398,7 +1398,7 @@ function FooterCTASection() {
         </a>
       </div>
       <p className="mt-6 text-xs text-stone-400">
-        + semantic search: <code className="font-mono bg-stone-100 px-1.5 py-0.5 rounded text-stone-600">pip install agent-booster[embed]</code>
+        Embeddings, file watcher, and daemon all included in the <code className="font-mono bg-stone-100 px-1.5 py-0.5 rounded text-stone-600">[full]</code> extra.
       </p>
     </section>
   )
