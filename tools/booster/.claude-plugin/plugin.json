@@ -1,6 +1,6 @@
 {
   "name": "agent-booster",
-  "version": "0.2.17",
+  "version": "0.2.18",
   "description": "AST + vector context router for AI coding agents — cut token costs 5-15x. Provides smart_read, search_context, get_symbols, and route_model MCP tools. Includes delta indexing (skips unchanged files), asymmetric embeddings for better retrieval, and an optional background daemon for instant search.",
   "author": "Sudhi Seshachala",
   "homepage": "https://conductai.ai/tools/agent-booster",

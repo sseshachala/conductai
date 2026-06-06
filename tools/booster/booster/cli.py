@@ -671,25 +671,84 @@ def cmd_remove(platform: str) -> None:
 @main.command("start")
 @click.option("--foreground", "-f", is_flag=True, default=False, help="Run in foreground (don't fork).")
 def cmd_start(foreground: bool) -> None:
-    """Start the booster daemon (model server + file watcher)."""
+    """Bootstrap and start Agent Booster — init, index, and start daemon in one step."""
     from booster.daemon import BoosterDaemon, daemon_ping, start_daemon
+    import subprocess as _sp
 
     root = Path.cwd()
-    if not foreground:
-        existing = daemon_ping(root)
-        if existing:
-            click.echo(f"Daemon already running (pid {existing['pid']}, uptime {existing['uptime']}s).")
-            return
-        ok = start_daemon(root)
-        if ok:
-            info = daemon_ping(root)
-            pid = info["pid"] if info else "?"
-            click.echo(f"Daemon started (pid {pid}). Model warm, file watcher active.")
-        else:
-            click.echo("Failed to start daemon — check that sentence-transformers is installed.", err=True)
-    else:
+
+    if foreground:
         click.echo(f"Booster daemon running in foreground (pid {os.getpid()}).")
         BoosterDaemon(root).run()
+        return
+
+    # ── 1. Already running? ───────────────────────────────────────────────
+    existing = daemon_ping(root)
+    if existing:
+        click.echo(f"Already running  pid={existing['pid']}  uptime={existing['uptime']}s")
+        return
+
+    # ── 2. Detect which AI tools are present ─────────────────────────────
+    def _is_wired(platform: str) -> bool:
+        if platform == "claude":
+            p = root / ".mcp.json"
+            return p.exists() and "agent-booster" in p.read_text()
+        if platform == "cursor":
+            p = root / ".cursor" / "mcp.json"
+            return p.exists() and "agent-booster" in p.read_text()
+        if platform == "windsurf":
+            p = Path.home() / ".windsurf" / "mcp.json"
+            return p.exists() and "agent-booster" in p.read_text()
+        if platform == "codex":
+            p = Path.home() / ".codex" / "config.json"
+            return p.exists() and "agent-booster" in p.read_text()
+        return False
+
+    def _is_present(platform: str) -> bool:
+        if platform == "claude":
+            return (root / ".claude").exists() or (root / "CLAUDE.md").exists()
+        if platform == "cursor":
+            return (root / ".cursor").exists() or (root / ".cursorrules").exists()
+        if platform == "windsurf":
+            return (root / ".windsurfrules").exists() or (Path.home() / ".windsurf").exists()
+        if platform == "codex":
+            return (root / "AGENTS.md").exists() or (Path.home() / ".codex").exists()
+        return False
+
+    platforms = ["claude", "cursor", "windsurf", "codex"]
+    to_init = [p for p in platforms if _is_present(p) and not _is_wired(p)]
+
+    if to_init:
+        click.echo(f"Detected: {', '.join(to_init)} — wiring Agent Booster...")
+        for platform in to_init:
+            _sp.run(["booster", "init", platform, "--yes"], cwd=str(root))
+
+    # ── 3. Index if no DB or DB is empty ─────────────────────────────────
+    db_path = root / ".booster" / "symbols.db"
+    needs_index = not db_path.exists()
+    if not needs_index:
+        import sqlite3 as _sq
+        try:
+            n = _sq.connect(str(db_path)).execute("SELECT COUNT(*) FROM symbols").fetchone()[0]
+            needs_index = (n == 0)
+        except Exception:
+            needs_index = True
+
+    if needs_index:
+        click.echo("Indexing project (first time)...")
+        _sp.run(["booster", "index"], cwd=str(root))
+        click.echo("Building embeddings...")
+        _sp.run(["booster", "embed"], cwd=str(root))
+
+    # ── 4. Start daemon ───────────────────────────────────────────────────
+    ok = start_daemon(root)
+    if ok:
+        info = daemon_ping(root)
+        pid = info["pid"] if info else "?"
+        click.echo(f"Booster running  pid={pid}  model warm  file watcher active")
+        click.echo("Tip: run 'booster status' to check, 'booster stop' to stop.")
+    else:
+        click.echo("Failed to start daemon — run: pip install 'agent-booster[full]'", err=True)
 
 
 @main.command("stop")
