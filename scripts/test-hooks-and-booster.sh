@@ -31,19 +31,19 @@ echo ""
 echo "▸ PreCompact hook"
 
 check "hook exits 0" \
-  "echo '{}' | python3 '$ROOT/.claude/hooks/guard-precompact.py'"
+  "bash -c \"python3 '$ROOT/.claude/hooks/guard-precompact.py' </dev/null\""
 
 check "snapshot written" \
-  "test -f '$ROOT/.booster/session_snapshot.json'"
+  "test -f '$HOME/.conductguard/session_snapshot.json'"
 
 check "snapshot has git_branch" \
-  "python3 -c \"import json,pathlib; d=json.loads(pathlib.Path('$ROOT/.booster/session_snapshot.json').read_text()); assert d['tier1'].get('git_branch')\""
+  "python3 -c \"import json,pathlib; d=json.loads(pathlib.Path('$HOME/.conductguard/session_snapshot.json').read_text()); assert d['tier1'].get('git_branch')\""
 
 check "snapshot has recent_commits" \
-  "python3 -c \"import json,pathlib; d=json.loads(pathlib.Path('$ROOT/.booster/session_snapshot.json').read_text()); assert d['tier1'].get('recent_commits')\""
+  "python3 -c \"import json,pathlib; d=json.loads(pathlib.Path('$HOME/.conductguard/session_snapshot.json').read_text()); assert d['tier1'].get('recent_commits')\""
 
 check "no leftover .tmp file" \
-  "! test -f '$ROOT/.booster/session_snapshot.tmp'"
+  "! test -f '$HOME/.conductguard/session_snapshot.tmp'"
 
 # ── 2. SessionStart hook ─────────────────────────────────────────────────
 echo ""
@@ -57,7 +57,7 @@ check "prints 'Session resumed'" \
 
 check "stale snapshot → no output" ""$BPYTHON" - <<'PYEOF'
 import json, pathlib, subprocess
-p = pathlib.Path('$ROOT/.booster/session_snapshot.json')
+p = pathlib.Path('$HOME/.conductguard/session_snapshot.json')
 d = json.loads(p.read_text())
 orig = d['compacted_at']
 d['compacted_at'] = '2020-01-01T00:00:00+00:00'

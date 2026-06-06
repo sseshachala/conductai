@@ -446,6 +446,144 @@ if __name__ == "__main__":
         main()
 '''
 
+_PRECOMPACT_HOOK_SCRIPT = '''\
+#!/usr/bin/env python3
+"""ConductGuard PreCompact hook — persists session context before compaction."""
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+GUARD_DIR = Path.home() / ".conductguard"
+SNAPSHOT_PATH = GUARD_DIR / "session_snapshot.json"
+
+
+def _git(cmd):
+    try:
+        return subprocess.check_output(
+            ["git"] + cmd, stderr=subprocess.DEVNULL, text=True, timeout=3
+        ).strip()
+    except Exception:
+        return ""
+
+
+def _guard_status():
+    try:
+        out = subprocess.check_output(
+            ["conductguard", "status", "--json"],
+            stderr=subprocess.DEVNULL, text=True, timeout=3,
+        )
+        return json.loads(out.strip())
+    except Exception:
+        return None
+
+
+def _memory_headline():
+    try:
+        root = Path.cwd()
+        mem_key = str(root).replace("/", "-").lstrip("-")
+        mem_path = Path.home() / ".claude" / "projects" / mem_key / "memory" / "MEMORY.md"
+        if mem_path.exists():
+            return "\\n".join(mem_path.read_text().splitlines()[:10])
+    except Exception:
+        pass
+    return ""
+
+
+def main():
+    try:
+        sys.stdin.read()
+    except Exception:
+        pass
+
+    try:
+        GUARD_DIR.mkdir(parents=True, exist_ok=True)
+        snapshot = {
+            "compacted_at": datetime.now(timezone.utc).isoformat(),
+            "tier1": {
+                "git_branch": _git(["branch", "--show-current"]),
+                "recent_commits": _git(["log", "--oneline", "-3"]),
+                "memory_headline": _memory_headline(),
+            },
+            "tier2": {"guard_status": _guard_status()},
+            "tier3": {"cwd": str(Path.cwd()), "python": sys.version.split()[0]},
+        }
+        tmp = GUARD_DIR / "session_snapshot.tmp"
+        tmp.write_text(json.dumps(snapshot, indent=2))
+        tmp.rename(SNAPSHOT_PATH)
+    except Exception:
+        pass
+
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
+'''
+
+_SESSION_START_HOOK_SCRIPT = '''\
+#!/usr/bin/env python3
+"""ConductGuard SessionStart hook — prints context after compaction."""
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+SNAPSHOT_PATH = Path.home() / ".conductguard" / "session_snapshot.json"
+MAX_AGE_HOURS = 2
+
+
+def main():
+    try:
+        sys.stdin.read()
+    except Exception:
+        pass
+
+    if not SNAPSHOT_PATH.exists():
+        sys.exit(0)
+
+    try:
+        snapshot = json.loads(SNAPSHOT_PATH.read_text())
+        compacted_at = datetime.fromisoformat(snapshot.get("compacted_at", ""))
+        age_hours = (datetime.now(timezone.utc) - compacted_at).total_seconds() / 3600
+        if age_hours > MAX_AGE_HOURS:
+            sys.exit(0)
+
+        t1 = snapshot.get("tier1", {})
+        branch = t1.get("git_branch", "")
+        commits = t1.get("recent_commits", "")
+        headline = t1.get("memory_headline", "")
+        t2 = snapshot.get("tier2", {})
+        guard = t2.get("guard_status") or {}
+
+        lines = [f"## Session resumed (snapshot from {compacted_at.strftime(\'%Y-%m-%d %H:%M\')} UTC)"]
+        if branch:
+            last = commits.splitlines()[0] if commits else ""
+            lines.append(f"- Branch: {branch}" + (f" | Last: {last}" if last else ""))
+        budget = guard.get("budget_pct")
+        if budget is not None:
+            lines.append(f"- Guard: {budget}% budget used")
+        else:
+            lines.append("- Guard: state unavailable")
+        if headline:
+            lines.append(f"- Memory index:\\n  {headline}")
+        else:
+            lines.append("- Memory index:\\n  (none)")
+
+        print("\\n".join(lines))
+    except Exception:
+        pass
+
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
+'''
+
+
 # ── Python interpreter selection ─────────────────────────────────────────────
 
 def _best_python() -> str:
@@ -476,6 +614,42 @@ def _write_hook(path: Path) -> None:
         raise RuntimeError(
             f"hook.py failed syntax check after write — hook NOT installed.\n{exc}"
         ) from exc
+
+
+def _install_session_hooks() -> None:
+    """Write PreCompact + SessionStart hook scripts and register them in ~/.claude/settings.json."""
+    python = _best_python()
+
+    precompact_path = GUARD_DIR / "guard-precompact.py"
+    session_start_path = GUARD_DIR / "guard-session-start.py"
+
+    precompact_path.write_text(_PRECOMPACT_HOOK_SCRIPT)
+    precompact_path.chmod(0o755)
+    session_start_path.write_text(_SESSION_START_HOOK_SCRIPT)
+    session_start_path.chmod(0o755)
+
+    claude_settings = Path.home() / ".claude" / "settings.json"
+    settings: dict = {}
+    if claude_settings.exists():
+        try:
+            settings = json.loads(claude_settings.read_text())
+        except Exception:
+            pass
+
+    hooks = settings.setdefault("hooks", {})
+
+    pre_cmd = f"{python} {precompact_path}"
+    compact_hooks = hooks.setdefault("PreCompact", [])
+    if not any(pre_cmd in str(e) for h in compact_hooks for e in h.get("hooks", [])):
+        compact_hooks.append({"hooks": [{"type": "command", "command": pre_cmd}]})
+
+    start_cmd = f"{python} {session_start_path}"
+    start_hooks = hooks.setdefault("SessionStart", [])
+    if not any(start_cmd in str(e) for h in start_hooks for e in h.get("hooks", [])):
+        start_hooks.append({"hooks": [{"type": "command", "command": start_cmd}]})
+
+    claude_settings.parent.mkdir(parents=True, exist_ok=True)
+    claude_settings.write_text(json.dumps(settings, indent=2) + "\n")
 
 
 # ── Guard config helpers ──────────────────────────────────────────────────────
@@ -815,6 +989,12 @@ def cmd_guard_install(args):
     # Register MCP in all found AI tools — Cursor/Windsurf (advisory)
     _register_mcp(workspace_id, member_token or "", server)
 
+    # Install session persistence hooks (PreCompact + SessionStart)
+    try:
+        _install_session_hooks()
+    except Exception:
+        pass
+
 
 def cmd_guard_join(args):
     invite_code = args.invite_code
@@ -1020,6 +1200,10 @@ def cmd_guard_sync(args):
     _install_codex_hook(hook_path)
     cfg2 = _load_guard_config()
     _register_mcp(workspace_id, cfg2.get("member_token", ""), base_url)
+    try:
+        _install_session_hooks()
+    except Exception:
+        pass
     print(f"  {GREEN}Hook script updated{RESET}")
 
     # Capture savings from RTK and Agent Booster
