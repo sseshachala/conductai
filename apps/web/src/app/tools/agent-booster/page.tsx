@@ -131,8 +131,8 @@ function HeroSection() {
 
       <p className="mt-6 text-xl text-stone-500 max-w-2xl leading-relaxed">
         Swarm-style AI development costs up to $2,500/day — not because models are expensive,
-        but because the same architecture docs, source files, and conversation history get
-        resent on every single call. Agent Booster fixes the information flow.
+        but because stuck context cycles keep resending the same architecture docs, source files,
+        and conversation history on every call. Agent Booster breaks the cycle.
       </p>
 
       <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
@@ -151,7 +151,7 @@ function HeroSection() {
         </a>
       </div>
       <p className="mt-4 text-xs text-stone-400">
-        Python 3.10+ · MIT licensed · v0.2.18
+        Python 3.10+ · MIT licensed · v0.2.19 · runs 100% locally · no code leaves your machine
       </p>
     </section>
   )
@@ -1173,7 +1173,7 @@ const FAQS = [
   },
   {
     q: "Does Booster send my code anywhere?",
-    a: "No. Everything runs locally on your machine. The symbol index, vector store, and stats database are all stored in .booster/ inside your project. The MCP server runs as a local stdio process — no network calls, no telemetry. The only external call is the one-time model download from HuggingFace when you first run booster embed.",
+    a: "No code, no prompts, no file content ever leaves your machine. The symbol index, vector store, and stats database are all local — stored in .booster/ inside your project. The MCP server runs as a local stdio process. No network calls, no telemetry, no structured events phoned home. The only external call is the one-time model download from HuggingFace when you first run booster embed.",
   },
   {
     q: "Does it work with TypeScript and other languages?",
