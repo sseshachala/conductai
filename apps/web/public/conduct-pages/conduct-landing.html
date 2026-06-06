@@ -225,6 +225,31 @@ footer { border-top: 1px solid var(--stone-200); padding: 36px 0; }
 .footer-links a:hover { color: var(--stone-700); }
 .footer-copy { font-size: 12px; color: var(--stone-300); }
 
+/* Architecture diagram */
+.arch-section { background: var(--stone-900); padding: 80px 0; }
+.arch-section .eyebrow { color: #a78bfa; }
+.arch-section h2 { color: #fff; }
+.arch-section .section-intro { color: #a8a29e; max-width: 600px; }
+.arch-wrap { margin-top: 52px; display: flex; flex-direction: column; align-items: center; gap: 0; }
+.arch-triggers { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.arch-trigger { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-radius: 8px; padding: 7px 14px; font-size: 12px; font-weight: 600; color: #d6d3d1; display: flex; align-items: center; gap: 7px; }
+.arch-trigger .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.arch-vline { width: 1px; height: 36px; background: linear-gradient(to bottom, rgba(79,70,229,.5), rgba(79,70,229,.2)); margin: 0 auto; }
+.arch-vline-arrow { width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid rgba(79,70,229,.4); margin: 0 auto; }
+.arch-engine { background: linear-gradient(135deg, rgba(79,70,229,.2), rgba(124,58,237,.15)); border: 1.5px solid rgba(79,70,229,.4); border-radius: 16px; padding: 24px 32px; width: 100%; max-width: 680px; }
+.arch-engine-label { font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: rgba(165,180,252,.7); margin-bottom: 6px; }
+.arch-engine-title { font-size: 18px; font-weight: 800; color: #fff; letter-spacing: -.02em; margin-bottom: 12px; }
+.arch-engine-rows { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.arch-engine-row { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.09); border-radius: 10px; padding: 12px 14px; }
+.arch-engine-row-label { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 5px; }
+.arch-engine-row-items { display: flex; flex-wrap: wrap; gap: 5px; }
+.arch-engine-row-item { font-size: 10.5px; font-weight: 600; padding: 2px 8px; border-radius: 20px; }
+.arch-fanout-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; width: 100%; max-width: 680px; }
+.arch-fanout-card { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.09); border-radius: 12px; padding: 16px; text-align: center; }
+.arch-fanout-icon { font-size: 22px; margin-bottom: 8px; }
+.arch-fanout-label { font-size: 12px; font-weight: 700; color: #e7e5e4; margin-bottom: 4px; }
+.arch-fanout-sub { font-size: 11px; color: rgba(255,255,255,.35); line-height: 1.4; }
+
 @media (max-width: 900px) {
   .hero-layout { grid-template-columns: 1fr; }
   .mock-topbar, .mock-body { display: none; }
@@ -471,6 +496,101 @@ footer { border-top: 1px solid var(--stone-200); padding: 36px 0; }
         <p>Agents that get better with every run. Before acting, each agent recalls what it learned on this repo last time. After the run, it records the outcome. The 10th PR is smarter than the first.</p>
         <a href="/docs#memory-block" class="pillar-link" style="color:var(--amber-600)">Memory docs →</a>
       </div>
+    </div>
+  </div>
+</section>
+
+<!-- ARCHITECTURE DIAGRAM -->
+<section class="arch-section">
+  <div class="container text-center">
+    <div class="eyebrow">Platform architecture</div>
+    <h2>Triggers in. Outcomes out.<br><em style="color:#a78bfa">Everything auditable in between.</em></h2>
+    <p class="section-intro text-center" style="margin:16px auto 0">Conduct sits between your existing tools and your AI agents — routing events through playbooks, enforcing Guard policies, and recording every decision.</p>
+
+    <div class="arch-wrap">
+
+      <!-- Row 1: Triggers -->
+      <div class="arch-triggers">
+        <div class="arch-trigger"><span class="dot" style="background:#f87171"></span> GitHub event</div>
+        <div class="arch-trigger"><span class="dot" style="background:#60a5fa"></span> Slack message</div>
+        <div class="arch-trigger"><span class="dot" style="background:#fb923c"></span> PagerDuty alert</div>
+        <div class="arch-trigger"><span class="dot" style="background:#a78bfa"></span> Linear ticket</div>
+        <div class="arch-trigger"><span class="dot" style="background:#34d399"></span> CI/CD failure</div>
+        <div class="arch-trigger"><span class="dot" style="background:#e7e5e4"></span> Manual trigger</div>
+      </div>
+
+      <!-- Arrow down -->
+      <div class="arch-vline" style="height:28px"></div>
+      <div class="arch-vline-arrow"></div>
+      <div style="font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.25);margin:4px 0 8px">Playbook trigger → runtime</div>
+
+      <!-- Row 2: Conduct engine -->
+      <div class="arch-engine">
+        <div class="arch-engine-label">Conduct Playbook Engine</div>
+        <div class="arch-engine-title">YAML playbook → Run → auditable trace</div>
+        <div class="arch-engine-rows">
+          <div class="arch-engine-row">
+            <div class="arch-engine-row-label" style="color:#a5b4fc">Brain blocks</div>
+            <div class="arch-engine-row-items">
+              <span class="arch-engine-row-item" style="background:rgba(124,58,237,.2);color:#c4b5fd;border:1px solid rgba(124,58,237,.3)">haiku</span>
+              <span class="arch-engine-row-item" style="background:rgba(124,58,237,.2);color:#c4b5fd;border:1px solid rgba(124,58,237,.3)">sonnet</span>
+              <span class="arch-engine-row-item" style="background:rgba(124,58,237,.2);color:#c4b5fd;border:1px solid rgba(124,58,237,.3)">opus</span>
+            </div>
+          </div>
+          <div class="arch-engine-row">
+            <div class="arch-engine-row-label" style="color:#6ee7b7">Action blocks</div>
+            <div class="arch-engine-row-items">
+              <span class="arch-engine-row-item" style="background:rgba(16,185,129,.15);color:#6ee7b7;border:1px solid rgba(16,185,129,.25)">GitHub</span>
+              <span class="arch-engine-row-item" style="background:rgba(16,185,129,.15);color:#6ee7b7;border:1px solid rgba(16,185,129,.25)">Slack</span>
+              <span class="arch-engine-row-item" style="background:rgba(16,185,129,.15);color:#6ee7b7;border:1px solid rgba(16,185,129,.25)">Linear</span>
+            </div>
+          </div>
+          <div class="arch-engine-row">
+            <div class="arch-engine-row-label" style="color:#fcd34d">Guard layer</div>
+            <div class="arch-engine-row-items">
+              <span class="arch-engine-row-item" style="background:rgba(220,38,38,.2);color:#fca5a5;border:1px solid rgba(220,38,38,.3)">BLOCK</span>
+              <span class="arch-engine-row-item" style="background:rgba(217,119,6,.2);color:#fcd34d;border:1px solid rgba(217,119,6,.3)">WARN</span>
+              <span class="arch-engine-row-item" style="background:rgba(255,255,255,.07);color:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.1)">AUDIT</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Arrow down -->
+      <div class="arch-vline" style="height:28px"></div>
+      <div class="arch-vline-arrow"></div>
+      <div style="font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.25);margin:4px 0 8px">Outcomes</div>
+
+      <!-- Row 3: Outputs -->
+      <div class="arch-fanout-row">
+        <div class="arch-fanout-card">
+          <div class="arch-fanout-icon">🔀</div>
+          <div class="arch-fanout-label">GitHub PRs</div>
+          <div class="arch-fanout-sub">Draft fix, review request, or merge — human approves before ship</div>
+        </div>
+        <div class="arch-fanout-card">
+          <div class="arch-fanout-icon">💬</div>
+          <div class="arch-fanout-label">Slack alerts</div>
+          <div class="arch-fanout-sub">Incident summaries, Guard blocks, run completions</div>
+        </div>
+        <div class="arch-fanout-card" style="border-color:rgba(124,58,237,.3);background:rgba(124,58,237,.08)">
+          <div class="arch-fanout-icon">🔍</div>
+          <div class="arch-fanout-label">Audit trail</div>
+          <div class="arch-fanout-sub">Every run, every block, every approval — immutable, linked</div>
+        </div>
+        <div class="arch-fanout-card">
+          <div class="arch-fanout-icon">🧠</div>
+          <div class="arch-fanout-label">Agent memory</div>
+          <div class="arch-fanout-sub">Each run writes back — agents improve with every execution</div>
+        </div>
+      </div>
+
+      <!-- MCP note -->
+      <div style="margin-top:20px;max-width:680px;width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:14px 20px;display:flex;align-items:center;gap:14px;text-align:left">
+        <span style="font-size:20px;flex-shrink:0">🔌</span>
+        <p style="font-size:12.5px;color:rgba(255,255,255,.4);line-height:1.5">Agents and external tools connect via the <strong style="color:rgba(255,255,255,.6)">Conduct MCP server</strong> — query runs, trigger workflows, and check Guard policy state from any MCP-compatible AI tool. <code style="font-family:var(--mono);font-size:11px;color:#a78bfa">conduct mcp install</code> wires it in 30 seconds.</p>
+      </div>
+
     </div>
   </div>
 </section>
