@@ -109,11 +109,13 @@ export default function GuardInsightsPage() {
   const [events, setEvents]     = useState<AuditEvent[]>([])
   const [devTools, setDevTools] = useState<DeveloperTool[]>([])
   const [loading, setLoading]   = useState(false)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [period, setPeriod]     = useState<"7d" | "30d">("7d")
 
   const load = useCallback(async () => {
     if (!teamId) return
     setLoading(true)
+    setFetchError(null)
     try {
       const token = await getToken()
       const headers: Record<string, string> = { "Content-Type": "application/json" }
@@ -129,7 +131,11 @@ export default function GuardInsightsPage() {
       ])
 
       if (evRes.ok) setEvents(await evRes.json())
+      else setFetchError(`events: ${evRes.status}`)
       if (dtRes.ok) setDevTools(await dtRes.json())
+      else setFetchError(prev => [prev, `dev-tools: ${dtRes.status}`].filter(Boolean).join(", "))
+    } catch (e) {
+      setFetchError(String(e))
     } finally {
       setLoading(false)
     }
@@ -178,7 +184,14 @@ export default function GuardInsightsPage() {
         {/* ── Not installed ──────────────────────────────────────────────── */}
         {!teamLoading && (teamError || !teamId) && (
           <div style={{ marginTop: 40, textAlign: "center", color: "var(--text-3)", fontSize: 14 }}>
-            Guard not set up for this workspace.
+            Guard not set up for this workspace.{teamError ? ` (${teamError})` : ""}
+          </div>
+        )}
+
+        {/* ── Fetch error ─────────────────────────────────────────────────── */}
+        {fetchError && (
+          <div style={{ marginBottom: 16, padding: "8px 14px", borderRadius: 6, background: "#fef2f2", border: "1px solid #fca5a5", fontSize: 12, color: "#dc2626" }}>
+            API error: {fetchError}
           </div>
         )}
 
