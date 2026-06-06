@@ -170,7 +170,7 @@ function TabOverview() {
             { label: "Human approval gates",             detail: "Any block can be marked as an approval gate. The run pauses and cannot proceed until an authorized user approves or rejects." },
             { label: "Immutable audit log",              detail: "run_events are append-only. Every tool call, LLM decision, and output is recorded with a timestamp. There is no delete path for run events." },
             { label: "HMAC-validated webhooks",          detail: "GitHub webhook payloads are validated with HMAC-SHA256 before the run is created. Unauthenticated payloads are rejected with 401." },
-            { label: "Hashed API keys",                  detail: "API keys are bcrypt-hashed before storage. The plaintext is shown once at creation and never stored. A compromised database does not expose working keys." },
+            { label: "Hashed API keys",                  detail: "API keys are SHA-256 hashed before storage. The plaintext is shown once at creation and never stored. A compromised database does not expose working keys." },
           ].map(({ label, detail }) => (
             <div key={label} className="px-4 py-3">
               <p className="font-medium text-stone-800 mb-0.5">{label}</p>
