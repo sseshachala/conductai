@@ -1289,6 +1289,175 @@ def _build_state(issue: dict, repo_full_name: str) -> dict:
     return {"github_issue": trigger, "_trigger": trigger}
 
 
+def _atomic_write(path: Path, data: dict) -> None:
+    """Write data to path atomically via a .tmp sibling."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2))
+    os.replace(tmp, path)
+
+
+def cmd_switch(args):
+    cfg = _load_config()
+    server  = cfg.get("server", "").rstrip("/")
+    api_key = cfg.get("api_key", "")
+    token   = cfg.get("token", "")
+
+    if not server or (not api_key and not token):
+        print(f"{RED}Not logged in. Run: conduct login --server <url> --api-key <key>{RESET}")
+        sys.exit(1)
+
+    hdrs = {"Content-Type": "application/json"}
+    if api_key:
+        hdrs["X-Api-Key"] = api_key
+    elif token:
+        hdrs["Authorization"] = f"Bearer {token}"
+
+    workspaces = api.req("GET", f"{server}/projects", hdrs)
+
+    current_id = cfg.get("workspace", "")
+    target = getattr(args, "workspace", None)
+
+    if not target:
+        # List mode — print numbered list with current marked
+        if not workspaces:
+            print("No workspaces found.")
+            return
+        print(f"\n{BOLD}Workspaces:{RESET}")
+        for i, ws in enumerate(workspaces, 1):
+            marker = f"{GREEN}*{RESET}" if str(ws.get("id", "")) == str(current_id) else " "
+            wid = str(ws.get("id", ""))
+            print(f"  {marker} {i}. {ws['name']:<35} {GRAY}{wid}{RESET}")
+        print()
+        return
+
+    # Match workspace: exact name (case-insensitive) first
+    target_lower = target.lower()
+
+    exact = [ws for ws in workspaces if ws["name"].lower() == target_lower]
+    if not exact:
+        # Partial name match
+        partial = [ws for ws in workspaces if target_lower in ws["name"].lower()]
+        if not partial:
+            # UUID prefix match
+            partial = [ws for ws in workspaces if str(ws.get("id", "")).startswith(target)]
+        candidates = partial
+    else:
+        candidates = exact
+
+    if len(candidates) > 1:
+        print(f"{YELLOW}Ambiguous — multiple matches for '{target}':{RESET}")
+        for ws in candidates:
+            print(f"  {ws['name']}  {GRAY}({ws['id']}){RESET}")
+        print("Be more specific.")
+        sys.exit(1)
+
+    if not candidates:
+        print(f"{RED}No workspace matching '{target}' found. Available:{RESET}")
+        for ws in workspaces:
+            print(f"  {ws['name']}  {GRAY}({ws['id']}){RESET}")
+        sys.exit(1)
+
+    chosen = candidates[0]
+    new_id   = str(chosen["id"])
+    new_name = chosen["name"]
+
+    # Update ~/.conduct/config.json atomically
+    cfg["workspace"] = new_id
+    _atomic_write(CONFIG_PATH, cfg)
+
+    # Update ~/.conductguard/config.json atomically if it exists
+    guard_cfg_path = Path.home() / ".conductguard" / "config.json"
+    if guard_cfg_path.exists():
+        try:
+            guard_cfg = json.loads(guard_cfg_path.read_text())
+            guard_cfg["workspace_id"] = new_id
+            _atomic_write(guard_cfg_path, guard_cfg)
+        except Exception:
+            pass
+
+    # Re-sync Guard policies for the new workspace
+    try:
+        policy = _guard._req(
+            "GET",
+            f"{server}/guard/policies/sync?workspace_id={new_id}",
+            api_key=api_key,
+        )
+        _guard._save_policy(policy)
+        rule_count = len(policy.get("rules", []))
+        print(f"  {GRAY}Guard policies synced: {rule_count} rule(s){RESET}")
+    except SystemExit:
+        pass  # Guard not configured for this workspace — skip silently
+    except Exception:
+        pass
+
+    print(f"{GREEN}✓ Switched to \"{new_name}\" ({new_id[:8]}){RESET}")
+
+
+def cmd_whoami(args):
+    cfg = _load_config()
+
+    workspace_id   = cfg.get("workspace", "")
+    server         = cfg.get("server", "—")
+    api_key        = cfg.get("api_key", "")
+
+    # Try to resolve workspace name from /projects
+    workspace_name = ""
+    if workspace_id and server != "—" and api_key:
+        try:
+            hdrs = {"Content-Type": "application/json", "X-Api-Key": api_key}
+            projects = api.req("GET", f"{server.rstrip('/')}/projects", hdrs)
+            match = next((p for p in projects if str(p.get("id", "")) == str(workspace_id)), None)
+            if match:
+                workspace_name = match["name"]
+        except Exception:
+            pass
+
+    ws_display = workspace_name if workspace_name else workspace_id
+    ws_id_hint = f"  ({workspace_id[:8]})" if workspace_id else ""
+    api_key_display = (api_key[:12] + "…  (set)") if api_key else "not set"
+
+    print(f"\n{BOLD}Workspace:{RESET}  {ws_display}{ws_id_hint}")
+    print(f"{BOLD}Server:{RESET}     {server}")
+    print(f"{BOLD}API key:{RESET}    {api_key_display}")
+
+    # Guard section
+    guard_cfg_path = Path.home() / ".conductguard" / "config.json"
+    policy_path    = Path.home() / ".conductguard" / "policy.json"
+    hook_path      = Path.home() / ".conductguard" / "hook.py"
+
+    if guard_cfg_path.exists():
+        try:
+            gcfg = json.loads(guard_cfg_path.read_text())
+            user_email = gcfg.get("user_email", "")
+            rule_count = 0
+            if policy_path.exists():
+                try:
+                    rule_count = len(json.loads(policy_path.read_text()).get("rules", []))
+                except Exception:
+                    pass
+            hook_status = "hook installed" if hook_path.exists() else "hook missing"
+            email_part  = f"  |  member: {user_email}" if user_email else ""
+            print(f"{BOLD}Guard:{RESET}      {GREEN}✓ {hook_status}{RESET}  |  policy: {rule_count} rules{email_part}")
+        except Exception:
+            print(f"{BOLD}Guard:{RESET}      {YELLOW}config unreadable{RESET}")
+    else:
+        print(f"{BOLD}Guard:{RESET}      not configured")
+
+    # Booster section
+    booster_paths = [
+        Path.home() / ".booster" / "config.json",
+        Path.home() / ".agent-booster" / "config.json",
+    ]
+    booster_found = any(p.exists() for p in booster_paths)
+    if booster_found:
+        print(f"{BOLD}Booster:{RESET}    {GREEN}✓ configured{RESET}")
+    else:
+        print(f"{BOLD}Booster:{RESET}    not configured")
+
+    print()
+
+
 def cmd_run(args):
     server, workspace_id, api_key, token = _require_auth(args)
     json_h = api.headers(workspace_id, token, "application/json", api_key)
@@ -1443,6 +1612,14 @@ def main():
     run_p.add_argument("--input",     action="append", metavar="key=value", help="Runtime input (repeatable)")
     run_p.add_argument("--max-turns", dest="max_turns", type=int, metavar="N", help="Max agentic turns (default: auto)")
 
+    # conduct switch [workspace]
+    switch_p = sub.add_parser("switch", help="Switch active workspace (or list workspaces)")
+    switch_p.add_argument("workspace", nargs="?", metavar="name_or_id",
+                          help="Workspace name or UUID prefix to switch to (omit to list)")
+
+    # conduct whoami
+    sub.add_parser("whoami", help="Show current workspace, server, API key, and Guard/Booster status")
+
     # conduct guard
     guard_p, _guard_sub = _guard.register_guard_parser(sub)
 
@@ -1495,6 +1672,10 @@ def main():
         cmd_test(args)
     elif args.command == "run":
         cmd_run(args)
+    elif args.command == "switch":
+        cmd_switch(args)
+    elif args.command == "whoami":
+        cmd_whoami(args)
     elif args.command == "guard":
         _guard.dispatch_guard(args, guard_p)
     elif args.command == "mcp":
