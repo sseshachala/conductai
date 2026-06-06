@@ -135,8 +135,8 @@ function HeroSection() {
 
       <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
         <div className="flex items-center rounded-xl bg-stone-950 px-5 py-3">
-          <code className="font-mono text-sm text-emerald-400">pip install agent-booster</code>
-          <CopyButton text="pip install agent-booster" />
+          <code className="font-mono text-sm text-emerald-400">pip install agent-booster[full]</code>
+          <CopyButton text="pip install 'agent-booster[full]'" />
         </div>
         <a
           href="https://github.com/sseshachala/conductai"
@@ -149,7 +149,7 @@ function HeroSection() {
         </a>
       </div>
       <p className="mt-4 text-xs text-stone-400">
-        Python 3.10+ · MIT licensed · v0.2.15
+        Python 3.10+ · MIT licensed · v0.2.18
       </p>
     </section>
   )
@@ -393,29 +393,21 @@ function QuickstartSection() {
       <div className="max-w-2xl mx-auto">
         <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">Quickstart</p>
         <h2 className="text-3xl font-bold text-stone-900 text-center mb-12">
-          Up and running in three commands.
+          Up and running in two commands.
         </h2>
 
         <div className="flex flex-col gap-5">
           <div>
             <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 1 — Install</p>
-            <InlineCodeBlock comment="[embed] adds semantic vector search">pip install agent-booster[embed]</InlineCodeBlock>
+            <InlineCodeBlock comment="includes embeddings + file watcher">pip install agent-booster[full]</InlineCodeBlock>
           </div>
           <div>
-            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 2 — Wire to your tool</p>
-            <InlineCodeBlock comment="claude · cursor · windsurf · codex · all — shows what changes, asks to confirm">booster init claude</InlineCodeBlock>
-            <p className="mt-2 text-xs text-stone-400">Writes .mcp.json, CLAUDE.md rules, and three hooks: Read gate, Grep nudge, and auto route_model on every turn. Run once per project — hooks fire in <strong>every</strong> Claude Code session opened in this directory, any terminal. Fully reversible with <code className="font-mono bg-stone-100 px-1 rounded text-stone-600">booster remove claude</code>.</p>
+            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 2 — Start</p>
+            <InlineCodeBlock comment="detects Claude/Cursor/Codex, wires hooks, indexes, starts daemon">booster start</InlineCodeBlock>
+            <p className="mt-2 text-xs text-stone-400">Detects which AI tools are present (Claude Code, Cursor, Windsurf, Codex), wires each one automatically, indexes the project, and starts a background daemon that keeps the model warm and auto-re-indexes on every file save. Fully reversible with <code className="font-mono bg-stone-100 px-1 rounded text-stone-600">booster remove claude</code>.</p>
           </div>
           <div>
-            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 3 — Index your codebase</p>
-            <InlineCodeBlock comment="builds symbol index + semantic vectors">booster index &amp;&amp; booster embed</InlineCodeBlock>
-          </div>
-          <div>
-            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 4 — Route to the right model</p>
-            <InlineCodeBlock comment="haiku · sonnet · opus — auto-selected">booster route &quot;your task description&quot;</InlineCodeBlock>
-          </div>
-          <div>
-            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 5 — Track savings</p>
+            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">That&apos;s it — then track savings</p>
             <InlineCodeBlock>booster gain</InlineCodeBlock>
           </div>
         </div>
@@ -767,9 +759,27 @@ function McpToolsSection() {
 
 const CLI_COMMANDS = [
   {
+    cmd: "booster start",
+    when: "Once per project — the only command you need",
+    what: "Bootstraps everything: detects installed AI tools, wires each one, indexes the project, and starts the background daemon. On subsequent runs, just wakes up the daemon.",
+    note: "booster start --foreground  to run daemon in terminal",
+  },
+  {
+    cmd: "booster stop",
+    when: "When you're done or want to free memory",
+    what: "Sends SIGTERM to the daemon and waits for clean shutdown.",
+    note: null,
+  },
+  {
+    cmd: "booster status",
+    when: "To check what's running",
+    what: "Shows daemon pid, uptime, model name, and file watcher state.",
+    note: null,
+  },
+  {
     cmd: "booster init <platform>",
-    when: "Once per project, after install",
-    what: "Writes MCP config, rules file, and hooks for claude, cursor, windsurf, or codex. For Claude Code: Read gate, Grep nudge, and auto route_model on every turn. Shows what will change, asks for confirmation.",
+    when: "Manual wiring for a specific tool (optional — booster start does this automatically)",
+    what: "Writes MCP config, rules file, and hooks for claude, cursor, windsurf, or codex.",
     note: "booster init claude --yes  to skip prompt",
   },
   {
@@ -780,26 +790,20 @@ const CLI_COMMANDS = [
   },
   {
     cmd: "booster index",
-    when: "After install, and after large refactors",
-    what: "Parses all .py / .ts / .tsx / .js / .jsx files with tree-sitter, stores symbols in .booster/symbols.db.",
-    note: "Skips .next/, dist/, build/, node_modules, .venv",
+    when: "Manual re-index after a large refactor (daemon handles this automatically on file save)",
+    what: "Parses .py / .ts / .tsx / .js / .jsx files with tree-sitter. Skips unchanged files (delta indexing). Use --force to re-index everything.",
+    note: "booster index --force  to bypass delta cache",
   },
   {
     cmd: "booster embed",
-    when: "After booster index",
-    what: "Builds sentence-transformer vector embeddings for all symbols. Required for semantic search_context calls.",
-    note: "Needs pip install agent-booster[embed]",
+    when: "After manual booster index",
+    what: "Rebuilds sentence-transformer vector embeddings for all symbols. The daemon handles this automatically after file-save re-indexes.",
+    note: null,
   },
   {
     cmd: "booster route \"<task>\"",
     when: "Before starting a non-trivial task",
     what: "Recommends haiku, sonnet, or opus based on task complexity — keyword signals, file count, symbol count.",
-    note: null,
-  },
-  {
-    cmd: "booster search \"<query>\"",
-    when: "To explore the index from the terminal",
-    what: "Keyword search across all indexed symbols. Same as search_context but run from the CLI.",
     note: null,
   },
   {
@@ -1148,8 +1152,8 @@ function FooterCTASection() {
 
       <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
         <div className="flex items-center rounded-xl bg-stone-950 px-5 py-3">
-          <code className="font-mono text-sm text-emerald-400">pip install agent-booster</code>
-          <CopyButton text="pip install agent-booster" />
+          <code className="font-mono text-sm text-emerald-400">pip install agent-booster[full]</code>
+          <CopyButton text="pip install 'agent-booster[full]'" />
         </div>
         <a
           href="https://github.com/sseshachala/conductai"
