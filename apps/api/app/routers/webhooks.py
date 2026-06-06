@@ -320,7 +320,7 @@ async def inbound_webhook(
     )
     try:
         graph = version.graph or {}
-        pf = _estimate_turns_for_graph(graph, issue_title, issue_body)
+        pf = _estimate_turns_for_graph(graph, issue_title, issue_body, workspace_id=str(workflow.workspace_id), db=db)
         suggested_turns = pf["suggested_max_turns"]
     except Exception:
         suggested_turns = 20
@@ -918,7 +918,7 @@ async def github_webhook_by_slug(
 
     from app.routers.workflows import _estimate_turns_for_graph
     try:
-        pf = _estimate_turns_for_graph(version.graph or {}, normalized["issue"]["title"], normalized["issue"]["body"] or "")
+        pf = _estimate_turns_for_graph(version.graph or {}, normalized["issue"]["title"], normalized["issue"]["body"] or "", workspace_id=str(workflow.workspace_id), db=db)
         suggested_turns = pf["suggested_max_turns"]
     except Exception:
         suggested_turns = 20
