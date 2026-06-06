@@ -81,7 +81,7 @@ function ToolsSection() {
           </p>
         </div>
 
-        <div className="grid sm:grid-cols-2 gap-8">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
 
           {/* Agent Booster */}
           <div className="rounded-2xl border border-stone-200 bg-white px-8 py-8 flex flex-col gap-5 hover:border-indigo-200 hover:shadow-sm transition-all">
@@ -137,6 +137,62 @@ function ToolsSection() {
                 GitHub
               </a>
               <code className="font-mono text-xs text-stone-400 bg-stone-50 px-2 py-1 rounded">pip install agent-booster</code>
+            </div>
+          </div>
+
+          {/* Conduct CLI */}
+          <div className="rounded-2xl border border-stone-200 bg-white px-8 py-8 flex flex-col gap-5 hover:border-violet-200 hover:shadow-sm transition-all">
+            <div className="flex items-start justify-between">
+              <div>
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-100 px-2.5 py-1 rounded-full mb-3">
+                  v0.4.42 · PyPI
+                </span>
+                <h2 className="text-2xl font-bold text-stone-900">Conduct CLI</h2>
+                <p className="text-sm text-stone-500 mt-1">Run agents. Enforce policies. Switch workspaces.</p>
+              </div>
+              <span className="text-3xl font-black text-violet-600">⬡</span>
+            </div>
+
+            <p className="text-sm text-stone-600 leading-relaxed">
+              The daily driver for Conduct users. Run agents from the terminal, switch workspaces in one command,
+              and enforce AI usage policies across the team with ConductGuard MCP — every tool call Claude makes
+              passes through Guard first.
+            </p>
+
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">What it does</p>
+              <ul className="space-y-1.5">
+                {[
+                  "Run any agent from the terminal — no browser needed",
+                  "conduct switch: swap workspaces + re-sync policies atomically",
+                  "ConductGuard MCP enforces team AI policies on every tool call",
+                  "conduct whoami: instant view of workspace, Guard, and Booster status",
+                ].map(item => (
+                  <li key={item} className="flex items-start gap-2 text-sm text-stone-600">
+                    <span className="text-violet-500 mt-0.5 shrink-0">✓</span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="mt-auto pt-4 border-t border-stone-100 flex items-center gap-3 flex-wrap">
+              <a
+                href="/tools/conduct-cli"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 transition-colors"
+              >
+                Learn more →
+              </a>
+              <a
+                href="https://github.com/sseshachala/conductai"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg border border-stone-200 px-4 py-2 text-sm font-medium text-stone-600 hover:border-stone-300 transition-colors"
+              >
+                <GitHubIcon />
+                GitHub
+              </a>
+              <code className="font-mono text-xs text-stone-400 bg-stone-50 px-2 py-1 rounded">pip install conduct-cli</code>
             </div>
           </div>
 

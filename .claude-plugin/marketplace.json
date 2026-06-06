@@ -10,6 +10,12 @@
       "source": "./tools/booster",
       "description": "AST + vector context router — cut AI agent token costs 5-15x via smart_read, search_context, get_symbols, and route_model MCP tools.",
       "keywords": ["mcp", "tokens", "context", "ast", "ai"]
+    },
+    {
+      "name": "conduct-cli",
+      "source": "./packages/conduct-cli",
+      "description": "Conduct AI CLI — run agents, manage workspaces, and enforce AI usage policies with ConductGuard MCP.",
+      "keywords": ["mcp", "guard", "agents", "cli", "conduct", "ai", "policies"]
     }
   ]
 }
