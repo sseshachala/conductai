@@ -148,6 +148,16 @@ function GuardShell({
 
 const normTool = (t: string) => t.replace(/-/g, "_")
 
+const canonicalTool = (t: string): string => {
+  const n = normTool(t ?? "").toLowerCase()
+  if (n.includes("claude"))   return "claude_code"
+  if (n.includes("codex"))    return "codex"
+  if (n.includes("cursor"))   return "cursor"
+  if (n.includes("windsurf")) return "windsurf"
+  if (n.includes("gemini"))   return "gemini"
+  return n
+}
+
 function AiToolBadge({ tool }: { tool: string }) {
   const cfg = AI_TOOL_BADGES[normTool(tool)]
   if (!cfg) {
@@ -732,10 +742,10 @@ function GuardDashboard() {
       ),
       est_cost_today:     todayEvents.reduce((s, e) => s + (e.cost_usd_after ?? 0), 0),
       claude_cost_today:  todayEvents
-        .filter(e => normTool(e.ai_tool).includes("claude"))
+        .filter(e => canonicalTool(e.ai_tool) === "claude_code")
         .reduce((s, e) => s + (e.cost_usd_after ?? 0), 0),
       codex_cost_today:   todayEvents
-        .filter(e => normTool(e.ai_tool).includes("codex"))
+        .filter(e => canonicalTool(e.ai_tool) === "codex")
         .reduce((s, e) => s + (e.cost_usd_after ?? 0), 0),
     }
   }, [events])
@@ -746,7 +756,7 @@ function GuardDashboard() {
     const q = filterSearch.toLowerCase()
     return events.filter(ev => {
       if (!permissions.canViewAllActivity && ev.user_email !== currentUserEmail) return false
-      if (filterTool !== "all"     && normTool(ev.ai_tool) !== filterTool) return false
+      if (filterTool !== "all"     && canonicalTool(ev.ai_tool) !== filterTool) return false
       if (filterDecision !== "all" && ev.decision   !== filterDecision)    return false
       if (filterDev !== "all"      && ev.user_email !== filterDev)         return false
       if (q && !ev.user_email?.toLowerCase().includes(q) && !ev.rule_id?.toLowerCase().includes(q)) return false
