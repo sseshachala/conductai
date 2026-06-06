@@ -407,7 +407,7 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
         {row.toolCalls && row.toolCalls.length > 0 && (
           <div style={{ marginTop: 6, borderLeft: "2px solid #ddd6fe", paddingLeft: 8 }}>
             {row.toolCalls.map((tc, i) => (
-              <p key={i} className="mono" style={{ fontSize: 10, color: "var(--text-3, #78716c)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", margin: 0 }}>
+              <p key={i} className="mono" style={{ fontSize: 10, color: "var(--text-3, #78716c)", whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0 }}>
                 {tc.summary}
               </p>
             ))}
