@@ -1458,6 +1458,294 @@ def cmd_whoami(args):
     print()
 
 
+_CLAUDE_SESSIONS = Path.home() / ".claude" / "sessions"
+_CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
+
+# Context window limits by model prefix (tokens)
+_CTX_LIMITS = {
+    "claude-opus-4":    200_000,
+    "claude-sonnet-4":  200_000,
+    "claude-haiku-4":   200_000,
+    "claude-opus-3":    200_000,
+    "claude-sonnet-3":  200_000,
+    "claude-haiku-3":   200_000,
+}
+
+def _ctx_limit(model: str) -> int:
+    for prefix, limit in _CTX_LIMITS.items():
+        if model.startswith(prefix):
+            return limit
+    return 200_000
+
+
+def _is_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _session_stats(session_id: str, project_dir: Path) -> dict:
+    """Parse the tail of a session JSONL for model, token counts, and turn count."""
+    jsonl = project_dir / f"{session_id}.jsonl"
+    if not jsonl.exists():
+        return {}
+
+    model = ""
+    total_input = 0
+    total_output = 0
+    turns = 0
+    last_usage: dict = {}
+
+    try:
+        lines = jsonl.read_bytes().splitlines()
+        # Scan last 300 lines for efficiency
+        for raw in lines[-300:]:
+            try:
+                entry = json.loads(raw)
+            except Exception:
+                continue
+            msg = entry.get("message", {})
+            if not isinstance(msg, dict):
+                continue
+            if msg.get("role") == "assistant":
+                turns += 1
+                if msg.get("model"):
+                    model = msg["model"]
+                usage = msg.get("usage", {})
+                if usage:
+                    last_usage = usage
+            if msg.get("role") == "assistant" and "usage" in msg:
+                u = msg["usage"]
+                total_input  += u.get("input_tokens", 0) + u.get("cache_read_input_tokens", 0)
+                total_output += u.get("output_tokens", 0)
+    except Exception:
+        pass
+
+    cache_read = last_usage.get("cache_read_input_tokens", 0)
+    fresh_in   = last_usage.get("input_tokens", 0)
+    ctx_tokens = cache_read + fresh_in
+    limit      = _ctx_limit(model)
+    ctx_pct    = round(ctx_tokens / limit * 100) if limit else 0
+
+    return {
+        "model":      model,
+        "turns":      turns,
+        "ctx_tokens": ctx_tokens,
+        "ctx_pct":    ctx_pct,
+        "total_in":   total_input,
+        "total_out":  total_output,
+    }
+
+
+def _load_sessions() -> list[dict]:
+    """Read ~/.claude/sessions/*.json and join with JSONL stats."""
+    if not _CLAUDE_SESSIONS.exists():
+        return []
+
+    guard_cfg = Path.home() / ".conductguard" / "config.json"
+    guard_on  = guard_cfg.exists()
+
+    rows = []
+    seen_sessions: set[str] = set()
+    for f in sorted(_CLAUDE_SESSIONS.iterdir()):
+        if not f.suffix == ".json":
+            continue
+        try:
+            s = json.loads(f.read_text())
+        except Exception:
+            continue
+
+        pid        = s.get("pid", 0)
+        session_id = s.get("sessionId", "")
+        cwd        = s.get("cwd", "")
+        started_at = s.get("startedAt", 0)
+        kind       = s.get("kind", "")
+
+        if session_id in seen_sessions:
+            continue
+        seen_sessions.add(session_id)
+
+        alive = _is_alive(pid)
+
+        # Claude names project dirs by replacing / with - (keeping leading -)
+        project_key = cwd.replace("/", "-").replace("\\", "-")
+        project_dir = _CLAUDE_PROJECTS / project_key
+
+        stats = _session_stats(session_id, project_dir) if project_dir.exists() else {}
+
+        rows.append({
+            "pid":        pid,
+            "session_id": session_id[:8],
+            "project":    Path(cwd).name if cwd else "—",
+            "cwd":        cwd,
+            "model":      stats.get("model", "—"),
+            "turns":      stats.get("turns", 0),
+            "ctx_pct":    stats.get("ctx_pct", 0),
+            "ctx_tokens": stats.get("ctx_tokens", 0),
+            "total_in":   stats.get("total_in", 0),
+            "total_out":  stats.get("total_out", 0),
+            "guard":      guard_on,
+            "alive":      alive,
+            "kind":       kind,
+            "started_at": started_at,
+        })
+
+    return sorted(rows, key=lambda r: r["started_at"], reverse=True)
+
+
+def _fmt_tokens(n: int) -> str:
+    if n >= 1_000_000:
+        return f"{n/1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n/1_000:.1f}k"
+    return str(n)
+
+
+def _ctx_bar(pct: int, width: int = 10) -> str:
+    filled = round(pct / 100 * width)
+    bar    = "█" * filled + "░" * (width - filled)
+    color  = RED if pct >= 80 else YELLOW if pct >= 60 else GREEN
+    return f"{color}{bar}{RESET} {pct}%"
+
+
+def _render_table(rows: list[dict]) -> str:
+    if not rows:
+        return f"\n{GRAY}  No Claude Code sessions found.{RESET}\n"
+
+    lines = []
+    header = (
+        f"  {BOLD}{'PROJECT':<18} {'SESSION':<10} {'MODEL':<18} "
+        f"{'CTX':>14}   {'TOKENS IN':>10} {'TURNS':>6} {'GUARD':>6} {'STATUS':>8}{RESET}"
+    )
+    lines.append(header)
+    lines.append("  " + "─" * 95)
+
+    for r in rows:
+        status_str = f"{GREEN}active{RESET}" if r["alive"] else f"{GRAY}idle{RESET}"
+        guard_str  = f"{GREEN}✓{RESET}" if r["guard"] else f"{GRAY}—{RESET}"
+        model_short = r["model"].replace("claude-", "").replace("-20", " 20") if r["model"] != "—" else "—"
+        ctx_display = _ctx_bar(r["ctx_pct"]) if r["ctx_pct"] else f"{GRAY}{'—':>14}{RESET}"
+        tokens_str  = _fmt_tokens(r["ctx_tokens"]) if r["ctx_tokens"] else "—"
+
+        lines.append(
+            f"  {r['project']:<18} {r['session_id']:<10} {model_short:<18} "
+            f"{ctx_display}   {tokens_str:>10} {r['turns']:>6} {guard_str:>6}   {status_str}"
+        )
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _render_tui(rows: list[dict]) -> None:
+    """Full-screen TUI with live refresh using ANSI escape codes."""
+    try:
+        import shutil
+        import signal
+
+        stop = False
+        def _sigint(sig, frame):
+            nonlocal stop
+            stop = True
+        signal.signal(signal.SIGINT, _sigint)
+
+        def _clear():
+            sys.stdout.write("\033[2J\033[H")
+            sys.stdout.flush()
+
+        def _render_frame(rows):
+            cols, _ = shutil.get_terminal_size((120, 40))
+            out = []
+
+            # Header bar
+            title = " conduct sessions  (TUI — q or Ctrl+C to quit) "
+            pad   = max(0, cols - len(title))
+            out.append(f"{BOLD}\033[44m{title}{' ' * pad}\033[0m")
+            out.append("")
+
+            # Summary line
+            active = sum(1 for r in rows if r["alive"])
+            guard_on = sum(1 for r in rows if r["guard"])
+            out.append(f"  {BOLD}{active}{RESET} active session(s)  ·  {BOLD}{guard_on}{RESET} with Guard  ·  refreshing every 5s")
+            out.append("")
+
+            # Table
+            out.append(_render_table(rows))
+
+            # Context pressure panel — sessions above 60%
+            high = [r for r in rows if r["ctx_pct"] >= 60 and r["alive"]]
+            if high:
+                out.append(f"  {YELLOW}{BOLD}⚠ Context pressure{RESET}")
+                for r in high:
+                    color = RED if r["ctx_pct"] >= 80 else YELLOW
+                    out.append(f"    {color}{r['project']}{RESET}  ({r['session_id']})  {r['ctx_pct']}% — consider /compact")
+                out.append("")
+
+            sys.stdout.write("\n".join(out))
+            sys.stdout.flush()
+
+        # Use raw terminal input for 'q' detection (non-blocking)
+        import select, tty, termios
+        old = termios.tcgetattr(sys.stdin)
+        try:
+            tty.setcbreak(sys.stdin.fileno())
+            while not stop:
+                _clear()
+                rows = _load_sessions()
+                _render_frame(rows)
+                # Wait up to 5s, exit on 'q'
+                for _ in range(50):
+                    if select.select([sys.stdin], [], [], 0.1)[0]:
+                        ch = sys.stdin.read(1)
+                        if ch in ("q", "Q"):
+                            stop = True
+                            break
+                    if stop:
+                        break
+        finally:
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old)
+            _clear()
+            print("conduct sessions exited.")
+
+    except Exception as e:
+        # Graceful fallback to table if TUI setup fails
+        print(f"{YELLOW}TUI unavailable ({e}), showing table:{RESET}")
+        print(_render_table(rows))
+
+
+def cmd_sessions(args):
+    tui   = getattr(args, "tui", False)
+    watch = getattr(args, "watch", False)
+
+    if tui:
+        _render_tui(_load_sessions())
+        return
+
+    if watch:
+        try:
+            import signal
+            stop = False
+            def _sig(s, f): nonlocal stop; stop = True
+            signal.signal(signal.SIGINT, _sig)
+            while not stop:
+                sys.stdout.write("\033[2J\033[H")
+                sys.stdout.flush()
+                rows = _load_sessions()
+                print(f"\n{BOLD}conduct sessions{RESET}  {GRAY}(Ctrl+C to stop · refreshing every 5s){RESET}")
+                print(_render_table(rows))
+                for _ in range(50):
+                    time.sleep(0.1)
+                    if stop: break
+        except KeyboardInterrupt:
+            pass
+        return
+
+    rows = _load_sessions()
+    print(f"\n{BOLD}conduct sessions{RESET}")
+    print(_render_table(rows))
+
+
 def cmd_run(args):
     server, workspace_id, api_key, token = _require_auth(args)
     json_h = api.headers(workspace_id, token, "application/json", api_key)
@@ -1624,6 +1912,10 @@ def main():
     guard_p, _guard_sub = _guard.register_guard_parser(sub)
 
     # conduct mcp
+    sessions_p = sub.add_parser("sessions", help="Show active Claude Code / Codex sessions")
+    sessions_p.add_argument("--watch", action="store_true", help="Refresh every 5s (table view)")
+    sessions_p.add_argument("--tui",   action="store_true", help="Full-screen TUI with live panels")
+
     mcp_p = sub.add_parser("mcp", help="Manage the Conduct MCP server")
     mcp_sub = mcp_p.add_subparsers(dest="mcp_command")
     mcp_sub.add_parser("install", help="Register conduct-mcp in Claude Code and Codex")
@@ -1676,6 +1968,8 @@ def main():
         cmd_switch(args)
     elif args.command == "whoami":
         cmd_whoami(args)
+    elif args.command == "sessions":
+        cmd_sessions(args)
     elif args.command == "guard":
         _guard.dispatch_guard(args, guard_p)
     elif args.command == "mcp":
