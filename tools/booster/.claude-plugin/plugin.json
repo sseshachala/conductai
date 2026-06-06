@@ -1,0 +1,24 @@
+{
+  "name": "agent-booster",
+  "version": "0.2.15",
+  "description": "AST + vector context router for AI coding agents — cut token costs 5-15x. Provides smart_read, search_context, get_symbols, and route_model MCP tools.",
+  "author": "Sudhi Seshachala",
+  "homepage": "https://github.com/sseshachala/conductai",
+  "repository": "https://github.com/sseshachala/conductai",
+  "license": "MIT",
+  "keywords": ["mcp", "tokens", "claude", "ast", "context", "ai", "agents"],
+  "install": {
+    "steps": [
+      {
+        "type": "shell",
+        "command": "pip install agent-booster",
+        "description": "Install agent-booster from PyPI"
+      },
+      {
+        "type": "shell",
+        "command": "booster index .",
+        "description": "Index the current project (run once per repo)"
+      }
+    ]
+  }
+}
