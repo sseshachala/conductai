@@ -333,6 +333,22 @@ conduct test --all
 conduct test --all --project DevOps --repo sseshachala/conductai-testbed-node
 
 # Exit code: 0 if all pass, 1 if any fail — safe to use in CI`}</Pre>
+
+        <div className="mt-6 rounded-xl border border-indigo-200 bg-indigo-50 px-5 py-4 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold text-indigo-900">Install as a Claude Code plugin</p>
+            <p className="text-xs text-indigo-600 mt-0.5">
+              Wire conduct-cli and ConductGuard MCP into Claude Code in one command —
+              no manual <Code>.mcp.json</Code> edits needed.
+            </p>
+          </div>
+          <a
+            href="/tools/conduct-cli"
+            className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors"
+          >
+            Learn more →
+          </a>
+        </div>
       </section>
 
       <section id="ci">
