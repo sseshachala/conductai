@@ -15,6 +15,7 @@ export default function AgentBoosterPage() {
         <ThreeLayersSection />
         <QuickstartSection />
         <ClaudePluginSection />
+        <UseCasesSection />
         <McpToolsSection />
         <CliReferenceSection />
         <WorksWithSection />
@@ -406,6 +407,192 @@ function QuickstartSection() {
           <div>
             <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 5 — Track savings</p>
             <InlineCodeBlock>booster gain</InlineCodeBlock>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── Use Cases ────────────────────────────────────────────────────────── */
+
+const USE_CASES = [
+  {
+    title: "Fixing a bug in a large service file",
+    scenario: "You need to fix a validation bug in one function inside a 1,800-line API router.",
+    without: {
+      label: "Without Booster",
+      steps: [
+        "Claude reads the full 1,800-line file",
+        "~450 tokens just to locate the function",
+        "Full file re-sent on every follow-up turn",
+      ],
+      cost: "~450 tokens per read",
+      color: "text-red-600",
+      bg: "bg-red-50 border-red-200",
+    },
+    with: {
+      label: "With Booster",
+      steps: [
+        "smart_read(file, \"fix validation in create_order\") returns 42 lines",
+        "Only the matching function + its direct dependencies",
+        "Same slice reused across follow-up turns via prompt cache",
+      ],
+      cost: "~12 tokens per read",
+      color: "text-emerald-600",
+      bg: "bg-emerald-50 border-emerald-200",
+    },
+    saving: "97%",
+  },
+  {
+    title: "Finding where an interface is implemented",
+    scenario: "You ask Claude to find all implementations of a PaymentProvider interface across a monorepo.",
+    without: {
+      label: "Without Booster",
+      steps: [
+        "Claude Greps recursively — returns 40+ files with matches",
+        "Reads several files in full to find the right ones",
+        "Often re-reads files it already saw in a previous turn",
+      ],
+      cost: "~1,200 tokens across reads",
+      color: "text-red-600",
+      bg: "bg-red-50 border-red-200",
+    },
+    with: {
+      label: "With Booster",
+      steps: [
+        "search_context(\"PaymentProvider implementation\") returns top 6 matching symbols",
+        "Each result includes file, line, and signature — no full reads needed",
+        "Claude acts on symbols directly, zero redundant file reads",
+      ],
+      cost: "~80 tokens",
+      color: "text-emerald-600",
+      bg: "bg-emerald-50 border-emerald-200",
+    },
+    saving: "93%",
+  },
+  {
+    title: "Routine task on a well-understood file",
+    scenario: "Claude is asked to add a log statement to a utility function it has seen many times this session.",
+    without: {
+      label: "Without routing",
+      steps: [
+        "Defaults to Claude Sonnet or Opus for every task",
+        "A 30-second task costs full Sonnet pricing",
+        "Model capacity wasted on trivial edits",
+      ],
+      cost: "Sonnet input price",
+      color: "text-red-600",
+      bg: "bg-red-50 border-red-200",
+    },
+    with: {
+      label: "With route_model",
+      steps: [
+        "route_model detects low complexity: single file, no architecture signals",
+        "Recommends Haiku — 25× cheaper than Opus, same output quality",
+        "Claude Code routes the task to Haiku automatically",
+      ],
+      cost: "Haiku input price (~4× cheaper)",
+      color: "text-emerald-600",
+      bg: "bg-emerald-50 border-emerald-200",
+    },
+    saving: "75%",
+  },
+  {
+    title: "Explaining an unfamiliar module",
+    scenario: "A new developer asks Claude to explain how the auth middleware works across 12 files.",
+    without: {
+      label: "Without Booster",
+      steps: [
+        "Claude reads each file in full to map the flow",
+        "Most lines are unrelated — imports, comments, other routes",
+        "Context window fills fast, forcing a new session",
+      ],
+      cost: "~6,000 tokens",
+      color: "text-red-600",
+      bg: "bg-red-50 border-red-200",
+    },
+    with: {
+      label: "With Booster",
+      steps: [
+        "get_symbols() maps all auth-related functions across files instantly",
+        "smart_read() returns only the relevant slices per file",
+        "Full auth flow explained from 480 lines instead of 3,400",
+      ],
+      cost: "~120 tokens",
+      color: "text-emerald-600",
+      bg: "bg-emerald-50 border-emerald-200",
+    },
+    saving: "98%",
+  },
+]
+
+function UseCasesSection() {
+  const [active, setActive] = useState(0)
+  const uc = USE_CASES[active]
+
+  return (
+    <section className="bg-stone-50 px-6 py-20">
+      <div className="max-w-5xl mx-auto">
+        <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">Example use cases</p>
+        <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
+          See the difference on real tasks.
+        </h2>
+        <p className="text-center text-stone-500 text-sm max-w-xl mx-auto mb-10">
+          These are actual patterns from everyday coding sessions — not synthetic benchmarks.
+        </p>
+
+        {/* Tab selector */}
+        <div className="flex flex-wrap gap-2 justify-center mb-10">
+          {USE_CASES.map((u, i) => (
+            <button
+              key={i}
+              onClick={() => setActive(i)}
+              className={`rounded-full px-4 py-2 text-xs font-semibold transition-all border ${
+                active === i
+                  ? "bg-indigo-600 text-white border-indigo-600"
+                  : "bg-white text-stone-600 border-stone-200 hover:border-stone-300"
+              }`}
+            >
+              {u.title}
+            </button>
+          ))}
+        </div>
+
+        {/* Active case */}
+        <div className="rounded-2xl border border-stone-200 bg-white overflow-hidden">
+          {/* Header */}
+          <div className="px-8 py-6 border-b border-stone-100 flex items-start justify-between gap-4">
+            <div>
+              <p className="text-lg font-bold text-stone-900 mb-1">{uc.title}</p>
+              <p className="text-sm text-stone-500">{uc.scenario}</p>
+            </div>
+            <div className="shrink-0 text-center">
+              <p className="text-3xl font-black text-indigo-600">{uc.saving}</p>
+              <p className="text-xs text-stone-400 mt-0.5">token savings</p>
+            </div>
+          </div>
+
+          {/* Comparison */}
+          <div className="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-stone-100">
+            {[uc.without, uc.with].map((side) => (
+              <div key={side.label} className={`px-8 py-7 flex flex-col gap-4`}>
+                <p className={`text-xs font-bold uppercase tracking-widest ${side.color}`}>{side.label}</p>
+                <ul className="space-y-2.5">
+                  {side.steps.map((step, i) => (
+                    <li key={i} className="flex items-start gap-2.5 text-sm text-stone-600">
+                      <span className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center shrink-0 text-[10px] font-bold ${side.bg} ${side.color}`}>
+                        {side === uc.with ? "✓" : "✕"}
+                      </span>
+                      {step}
+                    </li>
+                  ))}
+                </ul>
+                <div className={`mt-auto pt-4 border-t border-stone-100`}>
+                  <p className={`text-sm font-semibold ${side.color}`}>{side.cost}</p>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
