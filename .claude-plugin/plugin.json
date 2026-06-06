@@ -1,0 +1,10 @@
+{
+  "name": "conductai",
+  "version": "1.0.0",
+  "description": "Conduct AI plugin collection — Agent Booster (token-efficient context routing) and more.",
+  "author": "Sudhi Seshachala",
+  "homepage": "https://conductai.ai",
+  "repository": "https://github.com/sseshachala/conductai",
+  "license": "MIT",
+  "keywords": ["conduct", "mcp", "agents", "playbooks", "ai"]
+}

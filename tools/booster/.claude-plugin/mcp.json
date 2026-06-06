@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "agent-booster": {
+      "command": "booster",
+      "args": ["serve"],
+      "env": {}
+    }
+  }
+}
