@@ -1757,79 +1757,137 @@ def _render_table(rows: list[dict]) -> str:
 
 
 def _render_tui(rows: list[dict]) -> None:
-    """Full-screen TUI with live refresh using ANSI escape codes."""
+    """Full-screen TUI with live refresh. Uses rich.live if available, else ANSI loop."""
+
+    def _build_rich_display(rows):
+        from rich.table import Table
+        from rich.panel import Panel
+        from rich.columns import Columns
+        from rich import box
+        from rich.text import Text
+
+        active   = sum(1 for r in rows if r["alive"])
+        guard_on = sum(1 for r in rows if r["guard"])
+        high_ctx = [r for r in rows if r["ctx_pct"] >= 60 and r["alive"]]
+
+        # Main sessions table
+        tbl = Table(box=box.ROUNDED, expand=True, show_header=True, header_style="bold white")
+        tbl.add_column("AI",      width=4,  style="bold")
+        tbl.add_column("Project", min_width=14)
+        tbl.add_column("Session", width=10, style="dim")
+        tbl.add_column("Model",   min_width=14)
+        tbl.add_column("CTX",     width=16)
+        tbl.add_column("Tokens",  width=10, justify="right")
+        tbl.add_column("Turns",   width=6,  justify="right")
+        tbl.add_column("Guard",   width=6,  justify="center")
+        tbl.add_column("Status",  width=8)
+
+        for r in rows:
+            ai_text     = Text(r.get("ai", "CC"), style="bold cyan" if r.get("ai") == "CD" else "bold blue")
+            status_text = Text("active", style="green") if r["alive"] else Text("idle", style="dim")
+            guard_text  = Text("✓", style="green") if r["guard"] else Text("—", style="dim")
+            model_short = r["model"].replace("claude-", "").replace("-20", " 20") if r["model"] not in ("—", "") else "—"
+
+            pct = r["ctx_pct"]
+            if pct:
+                filled = round(pct / 100 * 10)
+                bar    = "█" * filled + "░" * (10 - filled)
+                color  = "red" if pct >= 80 else "yellow" if pct >= 60 else "green"
+                ctx_text = Text(f"{bar} {pct}%", style=color)
+            else:
+                ctx_text = Text("—", style="dim")
+
+            tbl.add_row(
+                ai_text,
+                r["project"],
+                r["session_id"],
+                model_short,
+                ctx_text,
+                _fmt_tokens(r["ctx_tokens"]) if r["ctx_tokens"] else "—",
+                str(r["turns"]),
+                guard_text,
+                status_text,
+            )
+
+        # Summary header
+        summary = f"[bold]{active}[/] active  ·  [bold]{guard_on}[/] with Guard  ·  [dim]refreshing every 5s — Ctrl+C to quit[/]"
+
+        panels = [Panel(tbl, title="[bold blue]conduct sessions[/]", subtitle=summary, expand=True)]
+
+        # Context pressure panel
+        if high_ctx:
+            warnings = "\n".join(
+                f"[{'red' if r['ctx_pct'] >= 80 else 'yellow'}]{r['project']}[/]  "
+                f"[dim]{r['session_id']}[/]  {r['ctx_pct']}% — consider /compact"
+                for r in high_ctx
+            )
+            panels.append(Panel(warnings, title="[yellow bold]⚠ Context pressure[/]", expand=True))
+
+        from rich.console import Group
+        return Group(*panels)
+
+    # Try rich.live first (works without raw TTY)
     try:
-        import shutil
-        import signal
+        from rich.live import Live
+        from rich.console import Console
+        console = Console()
+        with Live(console=console, refresh_per_second=0.2, screen=True) as live:
+            while True:
+                live.update(_build_rich_display(_load_sessions()))
+                time.sleep(5)
+        return
+    except KeyboardInterrupt:
+        return
+    except ImportError:
+        pass  # fall through to ANSI loop
 
-        stop = False
-        def _sigint(sig, frame):
-            nonlocal stop
-            stop = True
-        signal.signal(signal.SIGINT, _sigint)
-
-        def _clear():
-            sys.stdout.write("\033[2J\033[H")
-            sys.stdout.flush()
-
-        def _render_frame(rows):
-            cols, _ = shutil.get_terminal_size((120, 40))
-            out = []
-
-            # Header bar
-            title = " conduct sessions  (TUI — q or Ctrl+C to quit) "
-            pad   = max(0, cols - len(title))
-            out.append(f"{BOLD}\033[44m{title}{' ' * pad}\033[0m")
-            out.append("")
-
-            # Summary line
-            active = sum(1 for r in rows if r["alive"])
-            guard_on = sum(1 for r in rows if r["guard"])
-            out.append(f"  {BOLD}{active}{RESET} active session(s)  ·  {BOLD}{guard_on}{RESET} with Guard  ·  refreshing every 5s")
-            out.append("")
-
-            # Table
-            out.append(_render_table(rows))
-
-            # Context pressure panel — sessions above 60%
-            high = [r for r in rows if r["ctx_pct"] >= 60 and r["alive"]]
-            if high:
-                out.append(f"  {YELLOW}{BOLD}⚠ Context pressure{RESET}")
-                for r in high:
-                    color = RED if r["ctx_pct"] >= 80 else YELLOW
-                    out.append(f"    {color}{r['project']}{RESET}  ({r['session_id']})  {r['ctx_pct']}% — consider /compact")
-                out.append("")
-
-            sys.stdout.write("\n".join(out))
-            sys.stdout.flush()
-
-        # Use raw terminal input for 'q' detection (non-blocking)
-        import select, tty, termios
-        old = termios.tcgetattr(sys.stdin)
-        try:
-            tty.setcbreak(sys.stdin.fileno())
-            while not stop:
-                _clear()
-                rows = _load_sessions()
-                _render_frame(rows)
-                # Wait up to 5s, exit on 'q'
-                for _ in range(50):
-                    if select.select([sys.stdin], [], [], 0.1)[0]:
-                        ch = sys.stdin.read(1)
-                        if ch in ("q", "Q"):
-                            stop = True
-                            break
-                    if stop:
-                        break
-        finally:
-            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old)
-            _clear()
-            print("conduct sessions exited.")
-
-    except Exception as e:
-        # Graceful fallback to table if TUI setup fails
-        print(f"{YELLOW}TUI unavailable ({e}), showing table:{RESET}")
+    # ANSI fallback — requires real TTY
+    if not sys.stdin.isatty():
+        print(f"{YELLOW}TUI requires a real terminal. Run directly in your shell, not via a subprocess.{RESET}")
         print(_render_table(rows))
+        return
+
+    import shutil, signal, select, tty, termios
+    stop = False
+    def _sig(s, f): nonlocal stop; stop = True
+    signal.signal(signal.SIGINT, _sig)
+
+    def _frame(rows):
+        cols, _ = shutil.get_terminal_size((120, 40))
+        title = " conduct sessions  (Ctrl+C or q to quit) "
+        pad   = max(0, cols - len(title))
+        active   = sum(1 for r in rows if r["alive"])
+        guard_on = sum(1 for r in rows if r["guard"])
+        out = [
+            f"{BOLD}\033[44m{title}{' ' * pad}\033[0m",
+            f"\n  {BOLD}{active}{RESET} active  ·  {BOLD}{guard_on}{RESET} with Guard  ·  refreshing every 5s\n",
+            _render_table(rows),
+        ]
+        high = [r for r in rows if r["ctx_pct"] >= 60 and r["alive"]]
+        if high:
+            out.append(f"  {YELLOW}{BOLD}⚠ Context pressure{RESET}")
+            for r in high:
+                c = RED if r["ctx_pct"] >= 80 else YELLOW
+                out.append(f"    {c}{r['project']}{RESET} ({r['session_id']}) {r['ctx_pct']}% — consider /compact")
+        sys.stdout.write("\033[2J\033[H" + "\n".join(out))
+        sys.stdout.flush()
+
+    old = termios.tcgetattr(sys.stdin)
+    try:
+        tty.setcbreak(sys.stdin.fileno())
+        while not stop:
+            _frame(_load_sessions())
+            for _ in range(50):
+                if select.select([sys.stdin], [], [], 0.1)[0]:
+                    if sys.stdin.read(1) in ("q", "Q"):
+                        stop = True
+                        break
+                if stop:
+                    break
+    finally:
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old)
+        sys.stdout.write("\033[2J\033[H")
+        print("conduct sessions exited.")
 
 
 def cmd_sessions(args):
