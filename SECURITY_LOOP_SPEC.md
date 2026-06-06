@@ -1,5 +1,5 @@
 # Conduct Security Loop
-**v0.2 · June 5, 2026**
+**v0.3 · June 6, 2026**
 
 ---
 
@@ -783,4 +783,217 @@ Security Loop proves the pattern. The chain primitive makes it reusable for ever
 
 ---
 
-*Conduct AI · SECURITY_LOOP_SPEC.md · v0.2*
+---
+
+## 20. BugHunter Integration — Active Hunt Mode
+
+> Added v0.3. Covers the integration of Claude-BugHunter as an active vulnerability scanner feeding the Security Loop pipeline.
+
+### Two modes: passive capture vs active hunt
+
+The existing spec covers **passive capture** — AI tools surface findings as a side effect of normal coding work, Guard intercepts them, Conduct closes the loop.
+
+BugHunter adds **active hunt mode** — a targeted scan of a specific repo or URL using structured hunting methodology. The output feeds the same Security Loop pipeline.
+
+```
+PASSIVE (existing)                     ACTIVE (new — BugHunter)
+─────────────────────────────          ──────────────────────────────────
+Developer works with Claude Code  →    Security engineer points BugHunter
+Guard intercepts incidental finding    at a target repo or URL
+        ↓                                      ↓
+Finding classifier                     8 hunt skills run sequentially
+        ↓                                      ↓
+POST /security-findings                Structured findings emitted per skill
+        ↓                                      ↓
+Same pipeline: triage → fix → PR       Same pipeline: triage → fix → PR
+```
+
+### The 8 hunt skills and their Security Loop mapping
+
+Each BugHunter skill maps to a finding `type` in the Security Loop schema. When a skill fires, the emitter populates the `type` field so the triage agent knows which remediation playbook to invoke.
+
+| BugHunter skill | Finding type | Severity default | Remediation playbook |
+|---|---|---|---|
+| `hunt-llm-injection` | `llm-injection` | high | security-scanner → autopilot-fix |
+| `hunt-jwt-confusion` | `auth-bypass` | critical | security-scanner → autopilot-fix |
+| `hunt-graphql` | `idor` / `injection` | high | security-scanner → autopilot-fix |
+| `hunt-oauth-oidc` | `auth-bypass` | critical | security-scanner → autopilot-fix |
+| `hunt-ssrf-cloud` | `ssrf` | critical | security-scanner → autopilot-fix |
+| `hunt-websocket` | `auth-bypass` / `injection` | high | security-scanner → autopilot-fix |
+| `hunt-supply-chain` | `supply-chain` | critical | security-scanner → autopilot-fix |
+| `hunt-race-conditions` | `race-condition` | high | security-scanner → autopilot-fix |
+
+### `conduct hunt` CLI command
+
+New CLI command that kicks off a targeted BugHunter scan against a repo and pipes findings into the Security Loop:
+
+```bash
+# Scan a GitHub repo — hunt all 8 skill classes
+conduct hunt --repo owner/repo --skills all
+
+# Scan a target URL (API surface, web app)
+conduct hunt --url https://target.com --skills llm-injection,graphql,oauth-oidc
+
+# Run a specific skill only
+conduct hunt --repo owner/repo --skill hunt-jwt-confusion
+
+# Dry run — show what would be emitted, no pipeline trigger
+conduct hunt --repo owner/repo --skills all --dry-run
+```
+
+**Flow:**
+```
+conduct hunt --repo owner/repo --skills all
+        ↓
+For each skill in the run set:
+  1. Load SKILL.md from Claude-BugHunter (via installed plugin or local cache)
+  2. Invoke Claude (Sonnet) with the skill as context + target repo/URL
+  3. Claude runs the methodology, produces structured findings
+  4. Emitter maps findings to Security Loop schema
+  5. POST /security-findings for each confirmed finding
+        ↓
+/security console page shows findings in real-time as skills complete
+```
+
+### Hunt playbook YAML
+
+A new Conduct playbook that orchestrates the hunt across all 8 skills:
+
+```yaml
+name: bughunter-active-scan
+description: Run Claude-BugHunter skills against a target and feed findings into the Security Loop pipeline.
+
+input:
+  target_repo:
+    type: string
+    description: GitHub repo to scan (owner/repo format)
+  target_url:
+    type: string
+    description: Optional target URL for web-facing surface scan
+  skills:
+    type: array
+    items:
+      enum:
+        - hunt-llm-injection
+        - hunt-jwt-confusion
+        - hunt-graphql
+        - hunt-oauth-oidc
+        - hunt-ssrf-cloud
+        - hunt-websocket
+        - hunt-supply-chain
+        - hunt-race-conditions
+    default:
+      - hunt-llm-injection
+      - hunt-jwt-confusion
+      - hunt-graphql
+      - hunt-oauth-oidc
+      - hunt-ssrf-cloud
+      - hunt-websocket
+      - hunt-supply-chain
+      - hunt-race-conditions
+  severity_threshold:
+    type: string
+    enum: [critical, high, medium, low]
+    default: medium
+    description: Only emit findings at or above this severity
+
+blocks:
+  - id: load_skills
+    type: tool
+    action: bughunter/load_skills
+    input:
+      skills: "{{ input.skills }}"
+
+  - id: run_hunt
+    type: brain
+    model: claude-sonnet-4-6
+    for_each: "{{ load_skills.output.skills }}"
+    system: |
+      You are a security researcher running the {{ item.name }} hunt skill.
+      Target: {{ input.target_repo }}{% if input.target_url %} ({{ input.target_url }}){% endif %}
+      
+      Follow the methodology in the skill exactly. For each finding you confirm:
+      - Assign severity: critical | high | medium | low
+      - Classify type using the finding type map
+      - Provide: file/endpoint, description, suggested fix, evidence
+      
+      Output ONLY confirmed findings with sufficient evidence. Do not speculate.
+      Output format: JSON array of finding objects, or empty array if no findings.
+    prompt: |
+      Run the {{ item.name }} hunt against the target.
+      
+      Skill methodology:
+      {{ item.content }}
+      
+      Return findings as JSON:
+      [{"severity": "...", "type": "...", "file": "...", "description": "...", "suggested_fix": "...", "evidence": "..."}]
+
+  - id: emit_findings
+    type: tool
+    action: security_loop/emit_findings
+    input:
+      findings: "{{ run_hunt.output }}"
+      tool: "claude-bughunter"
+      repo_full_name: "{{ input.target_repo }}"
+      severity_threshold: "{{ input.severity_threshold }}"
+
+  - id: notify_summary
+    type: output
+    channels:
+      - slack
+    template: |
+      🔍 BugHunter scan complete — {{ input.target_repo }}
+      Skills run: {{ input.skills | length }}
+      Findings emitted: {{ emit_findings.output.count }}
+      Critical: {{ emit_findings.output.by_severity.critical | default(0) }}
+      High: {{ emit_findings.output.by_severity.high | default(0) }}
+      → View in Conduct: {{ emit_findings.output.console_url }}
+```
+
+### Guard policies derived from hunt findings
+
+As the Security Loop runs hunts against real targets, high-confidence patterns get promoted to Guard policies. This closes the learning loop — hunt findings become standing protection for Conduct's own agent fleet.
+
+| Hunt finding type | Resulting Guard policy |
+|---|---|
+| `llm-injection` confirmed in target | Block: agent tool calls where output contains known injection signatures |
+| `ssrf-cloud` confirmed | Alert: agent making HTTP requests to `169.254.169.254` or `metadata.google.internal` |
+| `jwt-confusion` confirmed | Block: agents issuing or consuming JWTs without algorithm allowlist |
+| `supply-chain` (Actions injection) | Alert: agent modifying `.github/workflows/` files with unvalidated input |
+| `race-conditions` (financial) | Alert: agent making concurrent writes to the same financial resource |
+
+Guard policies are stored in the workspace policy set and enforced by ConductGuard on all subsequent agent runs. The policy is linked back to the Security Loop run that generated it — full audit trail from hunt finding → Guard policy → enforcement event.
+
+### Build additions (v0.3)
+
+These items extend the build list in section 15:
+
+| What | Layer | Effort |
+|---|---|---|
+| `conduct hunt` CLI command | CLI — Python | Medium |
+| `bughunter/load_skills` action | API — playbook actions | Small |
+| `security_loop/emit_findings` action | API — playbook actions | Small |
+| `bughunter-active-scan` playbook YAML | Playbook | Small |
+| Hunt-to-Guard-policy promotion logic | API — business logic | Medium |
+| `/security` page — active hunts tab | Frontend | Small |
+| Guard policy creation from finding | Guard CLI + API | Medium |
+
+### Critical path addition
+
+```
+conduct hunt CLI command
+        ↓
+bughunter/load_skills action (fetches skill SKILL.md content)
+        ↓
+brain block runs per skill (Claude Sonnet with skill as context)
+        ↓
+security_loop/emit_findings action → POST /security-findings (already on critical path)
+        ↓
+Guard policy promotion (after N confirmed findings of same type)
+```
+
+The hunt playbook is unblocked as soon as `POST /security-findings` exists. It can be built and smoke-tested in parallel with the `/security` console page.
+
+---
+
+*Conduct AI · SECURITY_LOOP_SPEC.md · v0.3*
