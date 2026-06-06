@@ -41,7 +41,22 @@ export default function BlogIndex() {
           <img src="/logo.png" alt="Conduct AI" className="h-10 w-auto" />
         </a>
         <div className="flex items-center gap-4">
-          <a href="/tools/agent-booster" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Agent Booster</a>
+          <div className="relative group">
+            <a href="/tools" className="flex items-center gap-1 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
+              Tools
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="opacity-40 mt-0.5"><path d="M2 4l4 4 4-4"/></svg>
+            </a>
+            <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50">
+              <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-1.5 min-w-[160px]">
+                <a href="/tools/agent-booster" className="flex items-center gap-2 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+                  <span className="text-indigo-600 font-bold">◈</span> Agent Booster
+                </a>
+                <a href="/tools/conduct-cli" className="flex items-center gap-2 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+                  <span className="text-violet-600 font-bold">⬡</span> Conduct CLI
+                </a>
+              </div>
+            </div>
+          </div>
           <a href="/marketplace" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Agent Templates</a>
           <a href="/docs" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
         </div>
