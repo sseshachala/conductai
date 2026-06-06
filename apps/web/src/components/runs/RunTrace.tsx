@@ -303,7 +303,7 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
     overflowX: "hidden",
     lineHeight: 1.5,
     whiteSpace: "pre-wrap",
-    wordBreak: "break-all",
+    wordBreak: "break-word",
     maxHeight: 192,
   }
 
