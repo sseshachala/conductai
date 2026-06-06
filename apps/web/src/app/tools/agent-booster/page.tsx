@@ -12,8 +12,10 @@ export default function AgentBoosterPage() {
         <InspirationSection />
         <ProblemSection />
         <HowItWorksSection />
+        <ComparisonSection />
         <ThreeLayersSection />
         <QuickstartSection />
+        <WhatsNewSection />
         <ClaudePluginSection />
         <UseCasesSection />
         <McpToolsSection />
@@ -353,6 +355,236 @@ function ThreeLayersSection() {
             <p className="text-sm text-stone-400">
               Stable context reuse — native to Claude Code and the Anthropic API. Repeated stable prefixes are cached at a 90% discount.
             </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── Comparison ──────────────────────────────────────────────────────── */
+
+const COMPARISON_ROWS = [
+  {
+    feature: "Purpose",
+    booster: "Plug-and-play token savings for AI coding agents",
+    coco: "General-purpose code indexing ETL framework",
+  },
+  {
+    feature: "MCP integration",
+    booster: "Built-in — 4 MCP tools, works in Claude Code / Cursor / Windsurf / Codex out of the box",
+    coco: "None — you wire your own transport layer",
+  },
+  {
+    feature: "Setup",
+    booster: "pip install + booster start — one command, fully bootstrapped",
+    coco: "Write a pipeline in Python — chunking, embedding, storage are your job",
+  },
+  {
+    feature: "Delta indexing",
+    booster: "Built-in — SHA-256 hash + mtime, skips unchanged files automatically",
+    coco: "Core feature — incremental pipeline execution is CocoIndex's main idea",
+  },
+  {
+    feature: "Asymmetric embeddings",
+    booster: "Built-in — passage: / query: E5 prefixes applied automatically",
+    coco: "BYO — you configure the embedding function",
+  },
+  {
+    feature: "Background daemon",
+    booster: "Built-in — Unix socket, keeps model warm, ~50ms search vs 2–3s cold start",
+    coco: "None — no daemon concept",
+  },
+  {
+    feature: "File watcher",
+    booster: "Built-in — watchdog, 2s debounce, auto re-index on every file save",
+    coco: "Incremental pipelines (manual trigger or CI)",
+  },
+  {
+    feature: "Model routing",
+    booster: "Built-in — route_model picks haiku/sonnet/opus by task complexity",
+    coco: "Not in scope",
+  },
+  {
+    feature: "Token tracking",
+    booster: "Built-in — booster gain reports savings per file, per session",
+    coco: "Not in scope",
+  },
+  {
+    feature: "Target user",
+    booster: "Developer who wants savings now, zero custom code",
+    coco: "Engineer building a custom indexing pipeline or RAG system",
+  },
+]
+
+function ComparisonSection() {
+  return (
+    <section className="px-6 py-20 bg-white">
+      <div className="max-w-5xl mx-auto">
+        <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">How we compare</p>
+        <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
+          Agent Booster vs CocoIndex
+        </h2>
+        <p className="text-center text-stone-500 text-sm max-w-2xl mx-auto mb-12">
+          CocoIndex is a well-designed incremental indexing framework — great if you&apos;re building a custom pipeline.
+          Agent Booster is the opposite: every layer ships pre-built, and you never write pipeline code.
+        </p>
+
+        <div className="rounded-2xl border border-stone-200 overflow-hidden">
+          {/* Header */}
+          <div className="grid grid-cols-[1.2fr_2fr_2fr] bg-stone-50 border-b border-stone-200">
+            <div className="px-6 py-4 text-xs font-bold text-stone-400 uppercase tracking-widest" />
+            <div className="px-6 py-4 border-l border-stone-200">
+              <div className="flex items-center gap-2">
+                <span className="text-indigo-600 font-black text-lg">◈</span>
+                <div>
+                  <p className="text-sm font-bold text-stone-900">Agent Booster</p>
+                  <p className="text-xs text-stone-400">Plug-and-play · MCP-native</p>
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-l border-stone-200">
+              <div className="flex items-center gap-2">
+                <span className="text-stone-500 font-black text-lg">⊛</span>
+                <div>
+                  <p className="text-sm font-bold text-stone-900">CocoIndex</p>
+                  <p className="text-xs text-stone-400">Framework · BYO pipeline</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Rows */}
+          {COMPARISON_ROWS.map((row, i) => (
+            <div
+              key={row.feature}
+              className={`grid grid-cols-[1.2fr_2fr_2fr] ${i % 2 === 0 ? "bg-white" : "bg-stone-50"} border-b border-stone-100 last:border-b-0`}
+            >
+              <div className="px-6 py-4 flex items-start">
+                <p className="text-xs font-semibold text-stone-500 uppercase tracking-widest pt-0.5">{row.feature}</p>
+              </div>
+              <div className="px-6 py-4 border-l border-stone-100 flex items-start gap-2.5">
+                <span className="mt-0.5 w-4 h-4 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center shrink-0 text-[10px] font-bold">✓</span>
+                <p className="text-sm text-stone-700 leading-relaxed">{row.booster}</p>
+              </div>
+              <div className="px-6 py-4 border-l border-stone-100 flex items-start gap-2.5">
+                <span className="mt-0.5 w-4 h-4 rounded-full bg-stone-50 border border-stone-200 text-stone-400 flex items-center justify-center shrink-0 text-[10px] font-bold">–</span>
+                <p className="text-sm text-stone-500 leading-relaxed">{row.coco}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-center text-xs text-stone-400 mt-6">
+          CocoIndex is OSS and worth a look if you need a custom pipeline:{" "}
+          <a
+            href="https://github.com/cocoindex-io/cocoindex-code"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-indigo-500 hover:text-indigo-700 font-mono"
+          >
+            cocoindex-io/cocoindex-code
+          </a>
+        </p>
+      </div>
+    </section>
+  )
+}
+
+/* ─── What's New ───────────────────────────────────────────────────────── */
+
+const WHATS_NEW_ITEMS = [
+  {
+    icon: "⚡",
+    title: "Background daemon",
+    tag: "v0.2.17",
+    desc: "booster start launches a persistent Unix socket process that keeps the embedding model loaded. search_context drops from 2–3 s cold-start to ~50 ms. Daemon survives editor restarts — it's not tied to any terminal.",
+    color: "text-amber-600",
+    bg: "bg-amber-50 border-amber-200",
+  },
+  {
+    icon: "◎",
+    title: "File watcher",
+    tag: "v0.2.17",
+    desc: "watchdog monitors the project for writes. Changed files are re-indexed within 2 seconds of a save — no manual booster index during a coding session. Daemon handles this automatically.",
+    color: "text-blue-600",
+    bg: "bg-blue-50 border-blue-200",
+  },
+  {
+    icon: "≋",
+    title: "Delta indexing",
+    tag: "v0.2.16",
+    desc: "SHA-256 hash and mtime stored per file in the SQLite index. Full re-index skips unchanged files entirely. Large repos that took seconds now finish in milliseconds. Use --force to override.",
+    color: "text-violet-600",
+    bg: "bg-violet-50 border-violet-200",
+  },
+  {
+    icon: "◈",
+    title: "Asymmetric embeddings",
+    tag: "v0.2.16",
+    desc: "Index-time vectors use a passage: prefix; query-time vectors use query:. Follows the E5 paper's asymmetric retrieval approach. Retrieval accuracy improves meaningfully over symmetric embeddings, especially for short function names.",
+    color: "text-indigo-600",
+    bg: "bg-indigo-50 border-indigo-200",
+  },
+  {
+    icon: "✦",
+    title: "booster start does everything",
+    tag: "v0.2.18",
+    desc: "One command bootstraps the full stack: detects installed AI tools (Claude Code, Cursor, Windsurf, Codex), wires each one that isn't already wired, indexes the project, builds embeddings, and starts the daemon. On subsequent runs it just wakes the daemon.",
+    color: "text-emerald-600",
+    bg: "bg-emerald-50 border-emerald-200",
+  },
+]
+
+function WhatsNewSection() {
+  return (
+    <section className="px-6 py-20 bg-stone-50">
+      <div className="max-w-5xl mx-auto">
+        <div className="flex items-center justify-center gap-3 mb-3">
+          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest">What&apos;s new</p>
+          <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full uppercase tracking-widest">
+            v0.2.16 – v0.2.18
+          </span>
+        </div>
+        <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
+          Daemon, delta indexing, and asymmetric embeddings.
+        </h2>
+        <p className="text-center text-stone-500 text-sm max-w-2xl mx-auto mb-12">
+          Three releases shipped together. The result: booster start is the only command you need,
+          search is instant after the first run, and re-indexing costs nothing on unchanged files.
+        </p>
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {WHATS_NEW_ITEMS.map((item) => (
+            <div key={item.title} className={`rounded-2xl border ${item.bg} px-6 py-6 flex flex-col gap-3`}>
+              <div className="flex items-start justify-between gap-2">
+                <span className={`text-2xl font-black ${item.color}`}>{item.icon}</span>
+                <span className="text-[10px] font-semibold text-stone-400 bg-white border border-stone-200 px-2 py-0.5 rounded-full font-mono mt-1">
+                  {item.tag}
+                </span>
+              </div>
+              <p className="text-sm font-bold text-stone-900">{item.title}</p>
+              <p className="text-xs text-stone-600 leading-relaxed">{item.desc}</p>
+            </div>
+          ))}
+
+          {/* Changelog link card */}
+          <div className="rounded-2xl border border-stone-200 bg-white px-6 py-6 flex flex-col gap-3 justify-between">
+            <div>
+              <p className="text-sm font-bold text-stone-900 mb-2">Full changelog</p>
+              <p className="text-xs text-stone-500 leading-relaxed">
+                Every commit, diff, and release note lives in the GitHub repo. PRs welcome.
+              </p>
+            </div>
+            <a
+              href="https://github.com/sseshachala/conductai/commits/main/tools/booster"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors mt-2"
+            >
+              <GitHubIcon />
+              View commits →
+            </a>
           </div>
         </div>
       </div>
