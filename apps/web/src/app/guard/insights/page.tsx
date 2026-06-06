@@ -152,16 +152,6 @@ export default function GuardInsightsPage() {
   const coveredCount = devTools.filter(d => d.hook_registered?.length > 0).length
   const uncovered    = devTools.filter(d => !d.hook_registered?.length)
 
-  if (teamLoading) return <AppShell><div style={{ padding: 32, color: "var(--text-3)" }}>Loading…</div></AppShell>
-  if (teamError || !teamId) return (
-    <AppShell>
-      <div style={{ padding: 32 }}>
-        <GuardNav />
-        <div style={{ marginTop: 40, textAlign: "center", color: "var(--text-3)" }}>Guard not set up for this workspace.</div>
-      </div>
-    </AppShell>
-  )
-
   return (
     <AppShell>
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 24px 48px" }}>
@@ -184,6 +174,13 @@ export default function GuardInsightsPage() {
             <option value="30d">Last 30 days</option>
           </select>
         </div>
+
+        {/* ── Not installed ──────────────────────────────────────────────── */}
+        {!teamLoading && (teamError || !teamId) && (
+          <div style={{ marginTop: 40, textAlign: "center", color: "var(--text-3)", fontSize: 14 }}>
+            Guard not set up for this workspace.
+          </div>
+        )}
 
         {/* ── Section 1: KPIs ────────────────────────────────────────────── */}
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 28 }}>
