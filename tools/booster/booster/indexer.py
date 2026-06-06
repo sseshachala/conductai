@@ -41,6 +41,12 @@ def _embed_for_query(query: str) -> "np.ndarray":
     return model.encode([f"{_EMBED_QUERY_PREFIX}{query}"], show_progress_bar=False, convert_to_numpy=True)[0]
 
 
+def _normalize(vecs: "np.ndarray") -> "np.ndarray":
+    norms = np.linalg.norm(vecs, axis=0 if vecs.ndim == 1 else 1, keepdims=vecs.ndim > 1)
+    norms = np.where(norms == 0, 1.0, norms)
+    return vecs / norms
+
+
 def _file_hash(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -168,6 +174,11 @@ class SymbolIndexer:
         self._ts_parser = Parser(TS_LANGUAGE)
         self._tsx_parser = Parser(TSX_LANGUAGE)
 
+    def _daemon_embed(self, prefixed_texts: list[str]) -> "np.ndarray | None":
+        """Try the running daemon for embeddings; return None if unavailable."""
+        from booster.daemon import daemon_embed
+        return daemon_embed(prefixed_texts, self.root)
+
     def _migrate(self) -> None:
         cols = {row[1] for row in self._conn.execute("PRAGMA table_info(symbols)").fetchall()}
         if "file_hash" not in cols:
@@ -269,8 +280,11 @@ class SymbolIndexer:
             return 0
 
         ids = np.array([r["id"] for r in rows], dtype=np.int64)
-        texts = [f"{r['name']} {r['signature']}" for r in rows]
-        vecs = _embed_for_index(texts)
+        raw_texts = [f"{r['name']} {r['signature']}" for r in rows]
+        prefixed = [f"{_EMBED_INDEX_PREFIX}{t}" for t in raw_texts]
+        vecs = self._daemon_embed(prefixed)
+        if vecs is None:
+            vecs = _embed_for_index(raw_texts)
         norms = np.linalg.norm(vecs, axis=1, keepdims=True)
         norms = np.where(norms == 0, 1.0, norms)
         vecs = vecs / norms
@@ -296,10 +310,12 @@ class SymbolIndexer:
         vecs = np.load(str(vec_path))
         ids = np.load(str(ids_path))
 
-        q = _embed_for_query(query)
-        norm = np.linalg.norm(q)
-        if norm > 0:
-            q = q / norm
+        prefixed_q = f"{_EMBED_QUERY_PREFIX}{query}"
+        daemon_result = self._daemon_embed([prefixed_q])
+        if daemon_result is not None:
+            q = _normalize(daemon_result[0])
+        else:
+            q = _normalize(_embed_for_query(query))
 
         scores = vecs @ q
         top_k = min(limit, len(scores))
@@ -343,10 +359,12 @@ class SymbolIndexer:
         file_vecs = all_vecs[mask]
         file_ids_ordered = [int(all_ids[i]) for i in range(len(all_ids)) if mask[i]]
 
-        q = _embed_for_query(query)
-        norm = np.linalg.norm(q)
-        if norm > 0:
-            q = q / norm
+        prefixed_q = f"{_EMBED_QUERY_PREFIX}{query}"
+        daemon_result = self._daemon_embed([prefixed_q])
+        if daemon_result is not None:
+            q = _normalize(daemon_result[0])
+        else:
+            q = _normalize(_embed_for_query(query))
 
         scores = file_vecs @ q
         top_k = min(limit, len(scores))

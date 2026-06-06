@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from pathlib import Path
 
 import click
@@ -665,6 +666,54 @@ def cmd_remove(platform: str) -> None:
             click.echo("  cleaned ~/.codex/config.json")
         _remove_rules_block(root / "AGENTS.md", "AGENTS.md")
         click.echo("Done.")
+
+
+@main.command("start")
+@click.option("--foreground", "-f", is_flag=True, default=False, help="Run in foreground (don't fork).")
+def cmd_start(foreground: bool) -> None:
+    """Start the booster daemon (model server + file watcher)."""
+    from booster.daemon import BoosterDaemon, daemon_ping, start_daemon
+
+    root = Path.cwd()
+    if not foreground:
+        existing = daemon_ping(root)
+        if existing:
+            click.echo(f"Daemon already running (pid {existing['pid']}, uptime {existing['uptime']}s).")
+            return
+        ok = start_daemon(root)
+        if ok:
+            info = daemon_ping(root)
+            pid = info["pid"] if info else "?"
+            click.echo(f"Daemon started (pid {pid}). Model warm, file watcher active.")
+        else:
+            click.echo("Failed to start daemon — check that sentence-transformers is installed.", err=True)
+    else:
+        click.echo(f"Booster daemon running in foreground (pid {os.getpid()}).")
+        BoosterDaemon(root).run()
+
+
+@main.command("stop")
+def cmd_stop() -> None:
+    """Stop the running booster daemon."""
+    from booster.daemon import stop_daemon
+    root = Path.cwd()
+    ok = stop_daemon(root)
+    click.echo("Daemon stopped." if ok else "No daemon running.")
+
+
+@main.command("status")
+def cmd_status() -> None:
+    """Show booster daemon status."""
+    from booster.daemon import daemon_ping
+    root = Path.cwd()
+    info = daemon_ping(root)
+    if info:
+        uptime = info.get("uptime", 0)
+        mins, secs = divmod(uptime, 60)
+        click.echo(f"Daemon running  pid={info['pid']}  uptime={mins}m{secs}s  model=all-MiniLM-L6-v2")
+        click.echo("File watcher: active (2s debounce)")
+    else:
+        click.echo("Daemon not running. Start with: booster start")
 
 
 @main.command("route")
