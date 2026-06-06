@@ -618,7 +618,7 @@ def cmd_init(platform: str, yes: bool) -> None:
         click.echo(f"  wrote ~/.codex/config.json")
         _append_rules_block(agents_md, _RULES_BLOCK, "AGENTS.md")
         click.echo()
-        click.echo("Done. Run: booster index && booster embed")
+        click.echo("Done.")
         click.echo("To remove: booster remove codex")
 
 
@@ -741,14 +741,20 @@ def cmd_start(foreground: bool) -> None:
         _sp.run(["booster", "embed"], cwd=str(root))
 
     # ── 4. Start daemon ───────────────────────────────────────────────────
-    ok = start_daemon(root)
-    if ok:
+    result = start_daemon(root)
+    if result is True:
         info = daemon_ping(root)
         pid = info["pid"] if info else "?"
         click.echo(f"Booster running  pid={pid}  model warm  file watcher active")
         click.echo("Tip: run 'booster status' to check, 'booster stop' to stop.")
+    elif result is False:
+        # start_daemon returns False only when already running — guarded above, shouldn't reach here
+        click.echo("Daemon already running.")
     else:
-        click.echo("Failed to start daemon — run: pip install 'agent-booster[full]'", err=True)
+        click.echo("Failed to start daemon. Error output:", err=True)
+        click.echo(result, err=True)
+        click.echo(f"Full log: {root / '.booster' / 'daemon.log'}", err=True)
+        click.echo("If sentence-transformers is missing: pip install 'agent-booster[full]'", err=True)
 
 
 @main.command("stop")
