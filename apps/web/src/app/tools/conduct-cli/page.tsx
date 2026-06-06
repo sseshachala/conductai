@@ -11,6 +11,7 @@ export default function ConductCliPage() {
         <WhatItCoversSection />
         <UseCasesSection />
         <ClaudePluginSection />
+        <SessionsSection />
         <CliReferenceSection />
         <GuardInsightsCallout />
         <AlsoBySection />
@@ -585,6 +586,108 @@ const CLI_COMMANDS = [
     what: "Conduct platform MCP server \u2014 exposes run/list/status as MCP tools.",
   },
 ] as const
+
+/* ─── Sessions ──────────────────────────────────────────────────────── */
+
+const SESSIONS_TABS = [
+  {
+    id: "table",
+    label: "conduct sessions",
+    command: "conduct sessions",
+    description: "Instant snapshot of every active Claude Code and Codex session — project, model, context window usage, tokens, turn count, and Guard status. No API key needed, reads local session files.",
+    img: "/conduct-sessions/table.png",
+    alt: "conduct sessions table view showing CC sessions with context bars",
+  },
+  {
+    id: "tui",
+    label: "--tui (live)",
+    command: "conduct sessions --tui",
+    description: "Full-screen live TUI. Context pressure panel alerts you when any session exceeds 60% — prompts you to /compact before the session degrades. Refreshes every 5s. Ctrl+C to quit.",
+    img: "/conduct-sessions/tui.png",
+    alt: "conduct sessions --tui showing sessions table with context pressure warning",
+  },
+  {
+    id: "tui-full",
+    label: "--tui (full)",
+    command: "conduct sessions --tui",
+    description: "Three panels in one screen: your local coding sessions, all platform agent runs with status and duration, and team Guard activity grouped by developer. Everything you need to know about your AI fleet at a glance.",
+    img: "/conduct-sessions/tui-full.png",
+    alt: "conduct sessions --tui full view with My Sessions, Agent Runs, and Team Activity panels",
+  },
+] as const
+
+function SessionsSection() {
+  const [active, setActive] = useState<number>(0)
+  const tab = SESSIONS_TABS[active]
+
+  return (
+    <section className="bg-stone-50 px-6 py-20">
+      <div className="max-w-5xl mx-auto">
+        <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">conduct sessions</p>
+        <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
+          Your entire AI fleet in one command.
+        </h2>
+        <p className="text-center text-stone-500 text-sm max-w-xl mx-auto mb-10">
+          Stop flying blind across terminal windows. <code className="font-mono bg-stone-200 px-1 rounded text-stone-700">conduct sessions</code> shows
+          every active Claude Code and Codex session — context usage, tokens, Guard status, agent runs, and team activity — all in one place.
+        </p>
+
+        {/* Tab selector */}
+        <div className="flex flex-wrap gap-2 justify-center mb-8">
+          {SESSIONS_TABS.map((t, i) => (
+            <button
+              key={t.id}
+              onClick={() => setActive(i)}
+              className={`rounded-full px-4 py-2 text-xs font-semibold transition-all border font-mono ${
+                active === i
+                  ? "bg-stone-900 text-emerald-400 border-stone-900"
+                  : "bg-white text-stone-600 border-stone-200 hover:border-stone-400"
+              }`}
+            >
+              {t.command}
+            </button>
+          ))}
+        </div>
+
+        {/* Screenshot */}
+        <div className="rounded-2xl overflow-hidden border border-stone-800 shadow-2xl bg-stone-950">
+          <div className="flex items-center gap-1.5 px-4 py-3 bg-stone-900 border-b border-stone-800">
+            <span className="w-3 h-3 rounded-full bg-red-500/70" />
+            <span className="w-3 h-3 rounded-full bg-yellow-500/70" />
+            <span className="w-3 h-3 rounded-full bg-green-500/70" />
+            <code className="ml-3 text-xs text-stone-400 font-mono">{tab.command}</code>
+          </div>
+          <img
+            src={tab.img}
+            alt={tab.alt}
+            className="w-full block"
+          />
+        </div>
+
+        {/* Description */}
+        <p className="mt-5 text-sm text-stone-500 text-center max-w-2xl mx-auto leading-relaxed">
+          {tab.description}
+        </p>
+
+        {/* Feature pills */}
+        <div className="mt-8 flex flex-wrap gap-3 justify-center">
+          {[
+            "Claude Code + Codex",
+            "Context window bars",
+            "Agent runs + status",
+            "Team Guard activity",
+            "Context pressure alerts",
+            "Refreshes every 5s",
+          ].map(f => (
+            <span key={f} className="inline-flex items-center gap-1.5 text-xs font-medium bg-white border border-stone-200 text-stone-600 px-3 py-1.5 rounded-full">
+              <span className="text-emerald-500">✓</span> {f}
+            </span>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
 
 function CliReferenceSection() {
   return (
