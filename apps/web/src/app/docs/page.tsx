@@ -282,6 +282,9 @@ conduct --version`}</Pre>
             <tbody className="divide-y divide-stone-100">
               {[
                 ["conduct login",                      "Save connection config to ~/.conduct/config.json"],
+                ["conduct switch",                     "List available workspaces (current marked with *)"],
+                ["conduct switch <name>",              "Switch active workspace — updates CLI + Guard config, re-syncs policies"],
+                ["conduct whoami",                     "Show current workspace, server, Guard status, and Booster status"],
                 ["conduct projects",                   "List all projects in the workspace"],
                 ["conduct create <name>",              "Create a project"],
                 ["conduct delete <name> --yes",        "Delete a project and all its agents"],

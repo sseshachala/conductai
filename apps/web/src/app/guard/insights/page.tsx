@@ -194,6 +194,17 @@ export default function GuardInsightsPage() {
           </div>
         )}
 
+        {/* ── CLI workspace mismatch hint ──────────────────────────────────── */}
+        {!loading && !fetchError && wsId && events.length === 0 && (
+          <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 6, background: "var(--surface-2)", border: "1px solid var(--border)", fontSize: 12, color: "var(--text-3)" }}>
+            No activity yet. If your CLI is configured for a different workspace, run{" "}
+            <code style={{ fontFamily: "monospace", color: "var(--text)" }}>conduct switch &lt;workspace-name&gt;</code>{" "}
+            to align it, then{" "}
+            <code style={{ fontFamily: "monospace", color: "var(--text)" }}>conduct whoami</code>{" "}
+            to confirm.
+          </div>
+        )}
+
         {/* ── Section 1: KPIs ────────────────────────────────────────────── */}
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 28 }}>
           <StatCard label="Tool calls" value={fmtK(totalCalls)} tone="var(--info, #2563eb)" />
