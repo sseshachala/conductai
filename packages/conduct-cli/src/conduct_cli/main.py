@@ -1387,9 +1387,9 @@ def cmd_switch(args):
         rule_count = len(policy.get("rules", []))
         print(f"  {GRAY}Guard policies synced: {rule_count} rule(s){RESET}")
     except SystemExit:
-        pass  # Guard not configured for this workspace — skip silently
-    except Exception:
-        pass
+        print(f"  {GRAY}Guard not configured for this workspace — policies not synced{RESET}")
+    except Exception as e:
+        print(f"  {YELLOW}⚠ Guard policy sync failed: {e}{RESET}")
 
     print(f"{GREEN}✓ Switched to \"{new_name}\" ({new_id[:8]}){RESET}")
 
