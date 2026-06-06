@@ -290,13 +290,8 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
 
         {/* mode toggle */}
         <div style={{ display: "flex", background: "var(--surface-3)", borderRadius: 10, padding: 3, marginBottom: 24, width: "fit-content" }}>
-          {([["playbook", "Start from playbook"], ["describe", "Describe it"]] as const).map(([v, l]) => (
+          {([["playbook", "Start from playbook"]] as const).map(([v, l]) => (
             <button key={v} onClick={() => setMode(v)} style={{ border: "none", background: mode === v ? "var(--surface)" : "transparent", color: mode === v ? "var(--text)" : "var(--text-3)", fontSize: 13, fontWeight: 600, padding: "7px 16px", borderRadius: 8, cursor: "pointer", boxShadow: mode === v ? "var(--shadow-sm)" : "none", display: "flex", alignItems: "center", gap: 7 }}>
-              {v === "describe" && (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" /><path d="M19 15l.75 2.25L22 18l-2.25.75L19 21l-.75-2.25L16 18l2.25-.75z" />
-                </svg>
-              )}
               {l}
             </button>
           ))}
