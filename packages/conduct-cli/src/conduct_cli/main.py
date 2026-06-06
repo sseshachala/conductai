@@ -1756,8 +1756,60 @@ def _render_table(rows: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _fetch_runs(cfg: dict) -> list[dict]:
+    """Fetch recent runs from GET /runs."""
+    server  = cfg.get("server", "").rstrip("/")
+    api_key = cfg.get("api_key", "")
+    ws_id   = cfg.get("workspace", "")
+    if not all([server, api_key, ws_id]):
+        return []
+    try:
+        hdrs = {"Content-Type": "application/json", "X-Api-Key": api_key}
+        data = api.req("GET", f"{server}/runs?limit=15&workspace_id={ws_id}", hdrs)
+        runs = data if isinstance(data, list) else data.get("runs", data.get("items", []))
+        return runs[:15]
+    except Exception:
+        return []
+
+
+def _fetch_guard_activity(cfg: dict, guard_cfg: dict) -> list[dict]:
+    """Fetch recent Guard events grouped by developer."""
+    server  = cfg.get("server", "").rstrip("/")
+    api_key = cfg.get("api_key", "")
+    ws_id   = cfg.get("workspace", "")
+    if not all([server, api_key, ws_id]):
+        return []
+    try:
+        hdrs = {"Content-Type": "application/json", "X-Api-Key": api_key}
+        data = api.req("GET", f"{server}/guard/events?workspace_id={ws_id}&limit=200", hdrs)
+        events = data if isinstance(data, list) else data.get("events", [])
+        # Group by user_email
+        devs: dict[str, dict] = {}
+        for e in events:
+            email   = e.get("user_email") or e.get("email") or "unknown"
+            blocked = e.get("decision") == "block"
+            tokens  = e.get("tokens_used") or e.get("tokens", 0) or 0
+            if email not in devs:
+                devs[email] = {"email": email, "calls": 0, "blocked": 0, "tokens": 0}
+            devs[email]["calls"]   += 1
+            devs[email]["blocked"] += int(blocked)
+            devs[email]["tokens"]  += tokens
+        return sorted(devs.values(), key=lambda d: d["calls"], reverse=True)
+    except Exception:
+        return []
+
+
 def _render_tui(rows: list[dict]) -> None:
     """Full-screen TUI with live refresh. Uses rich.live if available, else ANSI loop."""
+
+    cfg       = _load_config()
+    guard_cfg = {}
+    _gp = Path.home() / ".conductguard" / "config.json"
+    if _gp.exists():
+        try:
+            guard_cfg = json.loads(_gp.read_text())
+        except Exception:
+            pass
 
     def _build_rich_display(rows):
         from rich.table import Table
@@ -1812,7 +1864,7 @@ def _render_tui(rows: list[dict]) -> None:
         # Summary header
         summary = f"[bold]{active}[/] active  ·  [bold]{guard_on}[/] with Guard  ·  [dim]refreshing every 5s — Ctrl+C to quit[/]"
 
-        panels = [Panel(tbl, title="[bold blue]conduct sessions[/]", subtitle=summary, expand=True)]
+        panels = [Panel(tbl, title="[bold blue]● My Sessions[/]", subtitle=summary, expand=True)]
 
         # Context pressure panel
         if high_ctx:
@@ -1822,6 +1874,74 @@ def _render_tui(rows: list[dict]) -> None:
                 for r in high_ctx
             )
             panels.append(Panel(warnings, title="[yellow bold]⚠ Context pressure[/]", expand=True))
+
+        # Agent Runs panel
+        run_data = _fetch_runs(cfg)
+        runs_tbl = Table(box=box.SIMPLE, expand=True, show_header=True, header_style="bold white")
+        runs_tbl.add_column("Agent",      min_width=22)
+        runs_tbl.add_column("Status",     width=12)
+        runs_tbl.add_column("Duration",   width=10, justify="right")
+        runs_tbl.add_column("Project",    min_width=14)
+        runs_tbl.add_column("Triggered",  width=12)
+
+        if run_data:
+            for r in run_data:
+                status  = r.get("status", "")
+                scolor  = {"running": "green", "succeeded": "dim green", "failed": "red",
+                           "paused": "yellow", "pending": "cyan", "cancelled": "dim"}.get(status, "white")
+                sicon   = {"running": "●", "succeeded": "✓", "failed": "✗",
+                           "paused": "⏸", "pending": "○", "cancelled": "—"}.get(status, "?")
+                # Duration
+                created = r.get("created_at") or r.get("started_at") or 0
+                ended   = r.get("completed_at") or r.get("finished_at") or 0
+                if created and ended:
+                    secs = int(ended - created)
+                    dur  = f"{secs//60}:{secs%60:02d}"
+                elif created and status == "running":
+                    import datetime as _dt
+                    secs = int(time.time() - (created if created > 1e10 else created))
+                    dur  = f"{secs//60}:{secs%60:02d}"
+                else:
+                    dur = "—"
+                agent_name   = r.get("workflow_name") or r.get("name") or "—"
+                project_name = r.get("project_name") or r.get("project") or "—"
+                trigger      = r.get("trigger_type") or r.get("triggered_by") or "manual"
+                runs_tbl.add_row(
+                    agent_name[:28],
+                    Text(f"{sicon} {status}", style=scolor),
+                    dur,
+                    project_name[:18],
+                    trigger[:12],
+                )
+        else:
+            runs_tbl.add_row("[dim]No runs yet or not connected[/]", "", "", "", "")
+
+        panels.append(Panel(runs_tbl, title="[bold green]▶ Agent Runs[/]", expand=True))
+
+        # Team Activity panel (Guard)
+        team_data = _fetch_guard_activity(cfg, guard_cfg)
+        team_tbl  = Table(box=box.SIMPLE, expand=True, show_header=True, header_style="bold white")
+        team_tbl.add_column("Developer",  min_width=28)
+        team_tbl.add_column("Calls",      width=8,  justify="right")
+        team_tbl.add_column("Blocked",    width=8,  justify="right")
+        team_tbl.add_column("Tokens",     width=10, justify="right")
+        team_tbl.add_column("Guard",      width=7,  justify="center")
+
+        if team_data:
+            for d in team_data:
+                blocked_text = Text(str(d["blocked"]), style="red bold" if d["blocked"] else "dim")
+                guard_text   = Text("✓", style="green")
+                team_tbl.add_row(
+                    d["email"][:32],
+                    str(d["calls"]),
+                    blocked_text,
+                    _fmt_tokens(d["tokens"]),
+                    guard_text,
+                )
+        else:
+            team_tbl.add_row("[dim]No team activity or not connected[/]", "", "", "", "")
+
+        panels.append(Panel(team_tbl, title="[bold magenta]👥 Team Activity (Guard)[/]", expand=True))
 
         from rich.console import Group
         return Group(*panels)
