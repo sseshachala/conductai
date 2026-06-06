@@ -108,7 +108,7 @@ export default function GuardInsightsPage() {
 
   const [events, setEvents]     = useState<AuditEvent[]>([])
   const [devTools, setDevTools] = useState<DeveloperTool[]>([])
-  const [loading, setLoading]   = useState(true)
+  const [loading, setLoading]   = useState(false)
   const [period, setPeriod]     = useState<"7d" | "30d">("7d")
 
   const load = useCallback(async () => {
