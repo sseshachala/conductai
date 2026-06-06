@@ -88,7 +88,7 @@ function ToolsSection() {
             <div className="flex items-start justify-between">
               <div>
                 <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-1 rounded-full mb-3">
-                  v0.2.8 · PyPI
+                  v0.2.15 · PyPI
                 </span>
                 <h2 className="text-2xl font-bold text-stone-900">Agent Booster</h2>
                 <p className="text-sm text-stone-500 mt-1">Cut AI running costs by up to 15×</p>
@@ -295,6 +295,13 @@ function GuardTogetherSection() {
               outcome: "Guard sets the ceiling. Agent Booster makes sure you never pay for a more expensive model than the task needs.",
               color: "border-teal-500",
               toolColor: "text-teal-300",
+            },
+            {
+              guard: "Guard wires PreCompact + SessionStart hooks into Claude Code",
+              tool: "Agent Booster uses RRF fusion — vector + keyword ranks merged for every search",
+              outcome: "Session context (budget, branch, policies) survives conversation compaction. Searches return better symbol matches by combining two ranking strategies automatically.",
+              color: "border-emerald-500",
+              toolColor: "text-emerald-300",
             },
           ].map(({ guard, tool, outcome, color, toolColor }) => (
             <div key={guard} className={`rounded-2xl border ${color} bg-stone-800 p-6 flex flex-col gap-4`}>
