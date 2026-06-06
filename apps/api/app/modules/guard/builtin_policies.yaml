@@ -53,6 +53,29 @@
   action: block
   message: DELETE without WHERE blocked. Add a WHERE clause.
 
+# ── Permission Escalation ─────────────────────────────────────────────────────
+
+- rule_id: no-sudo
+  description: Block sudo commands
+  match_tool: bash
+  match_pattern: '\bsudo\b'
+  action: block
+  message: sudo blocked. Escalating permissions via an AI agent is not permitted.
+
+- rule_id: no-chmod-permissive
+  description: Warn on world-writable or fully permissive chmod
+  match_tool: bash
+  match_pattern: 'chmod\s+(777|a\+w|o\+w|0?777)'
+  action: warn
+  message: World-writable permissions detected. Confirm this is intentional.
+
+- rule_id: no-chown-root
+  description: Block chown to root
+  match_tool: bash
+  match_pattern: 'chown\s+(root|0)[\s:]'
+  action: block
+  message: Changing ownership to root is not permitted.
+
 # ── Secrets & Credentials ──────────────────────────────────────────────────────
 
 - rule_id: no-env-commits
@@ -82,6 +105,13 @@
   match_path_pattern: '\.(pem|key|p12|pfx)$'
   action: block
   message: Writing private key files is not permitted.
+
+- rule_id: no-secret-in-commit-msg
+  description: Warn on secret-like patterns in git commit messages
+  match_tool: bash
+  match_pattern: 'git\s+commit\s+.*-m.*([A-Za-z0-9+/]{32,}|sk-[a-zA-Z0-9]{32,}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16})'
+  action: warn
+  message: Possible secret detected in commit message. Remove before pushing.
 
 # ── Production Gates ───────────────────────────────────────────────────────────
 
