@@ -15,7 +15,7 @@ from pathlib import Path
 
 def _git(cmd: list[str]) -> str:
     try:
-        return subprocess.check_output(["git"] + cmd, capture_output=True, text=True, timeout=3).stdout.strip()
+        return subprocess.check_output(["git"] + cmd, stderr=subprocess.DEVNULL, text=True, timeout=3).strip()
     except Exception:
         return ""
 
