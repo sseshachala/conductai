@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useAuth } from "@clerk/nextjs"
-import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useGuardSavings } from "@/hooks/useGuardSavings"
@@ -27,7 +26,7 @@ interface AuditEvent {
 }
 
 interface DeveloperTool {
-  user_email: string
+  email: string
   detected_tools: string[]
   mcp_registered: string[]
   hook_registered: string[]
@@ -101,10 +100,10 @@ function StatCard({ label, value, sub, tone }: { label: string; value: string | 
 
 export default function GuardInsightsPage() {
   const { getToken } = useAuth()
-  const { teamId, loading: teamLoading, error: teamError } = useGuardTeam()
-  const { activeWorkspace } = useWorkspace()
-  const { permissions } = useGuardRole(teamId, activeWorkspace?.id ?? null)
-  const { savings, loading: savingsLoading } = useGuardSavings(teamId)
+  const { activeWorkspace, loading: wsLoading } = useWorkspace()
+  const wsId = activeWorkspace?.id ?? null
+  const { permissions } = useGuardRole(wsId, wsId)
+  const { savings, loading: savingsLoading } = useGuardSavings(wsId)
 
   const [events, setEvents]     = useState<AuditEvent[]>([])
   const [devTools, setDevTools] = useState<DeveloperTool[]>([])
@@ -113,7 +112,7 @@ export default function GuardInsightsPage() {
   const [period, setPeriod]     = useState<"7d" | "30d">("7d")
 
   const load = useCallback(async () => {
-    if (!teamId) return
+    if (!wsId) return
     setLoading(true)
     setFetchError(null)
     try {
@@ -126,8 +125,8 @@ export default function GuardInsightsPage() {
       const since = new Date(Date.now() - days * 86400_000).toISOString()
 
       const [evRes, dtRes] = await Promise.all([
-        fetch(`${base}/guard/events?workspace_id=${teamId}&limit=50&since=${since}`, { headers }),
-        fetch(`${base}/guard/developer-tools?workspace_id=${teamId}`, { headers }),
+        fetch(`${base}/guard/events?workspace_id=${wsId}&limit=50&since=${since}`, { headers }),
+        fetch(`${base}/guard/developer-tools?workspace_id=${wsId}`, { headers }),
       ])
 
       if (evRes.ok) setEvents(await evRes.json())
@@ -139,7 +138,7 @@ export default function GuardInsightsPage() {
     } finally {
       setLoading(false)
     }
-  }, [getToken, teamId, period])
+  }, [getToken, wsId, period])
 
   useEffect(() => { load() }, [load])
 
@@ -182,9 +181,9 @@ export default function GuardInsightsPage() {
         </div>
 
         {/* ── Not installed ──────────────────────────────────────────────── */}
-        {!teamLoading && (teamError || !teamId) && (
+        {!wsLoading && !wsId && (
           <div style={{ marginTop: 40, textAlign: "center", color: "var(--text-3)", fontSize: 14 }}>
-            Guard not set up for this workspace.{teamError ? ` (${teamError})` : ""}
+            No workspace selected.
           </div>
         )}
 
@@ -305,8 +304,8 @@ export default function GuardInsightsPage() {
                     const hookOk = d.hook_registered?.length > 0
                     const mcpOk  = d.mcp_registered?.length > 0
                     return (
-                      <tr key={d.user_email} style={{ borderTop: "1px solid var(--border)" }}>
-                        <td style={{ padding: "10px 16px", color: "var(--text)", fontWeight: 500 }}>{d.user_email}</td>
+                      <tr key={d.email} style={{ borderTop: "1px solid var(--border)" }}>
+                        <td style={{ padding: "10px 16px", color: "var(--text)", fontWeight: 500 }}>{d.email}</td>
                         <td style={{ padding: "10px 16px", color: "var(--text-3)" }}>{d.detected_tools?.join(", ") || "—"}</td>
                         <td style={{ padding: "10px 16px" }}>
                           <span style={{ color: hookOk ? "var(--ok)" : "var(--err)", fontWeight: 600 }}>{hookOk ? "✓" : "✗"}</span>
