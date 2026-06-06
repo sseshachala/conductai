@@ -245,6 +245,8 @@ def create_run(
                 graph,
                 issue.get("title", ""),
                 issue.get("body", ""),
+                workspace_id=workspace_id,
+                db=db,
             )
             max_turns = pf["suggested_max_turns"]
         except Exception:
