@@ -107,7 +107,7 @@ def _fetch_budget_status():
         return False, None
 
 
-def _check_policy(tool_name, tool_input):
+def _check_policy(tool_name, tool_input, tokens_before=0):
     """Return (matched_rule, action, rule_id, message) or (None, 'allow', None, None)."""
     if not POLICY_PATH.exists():
         return None, "allow", None, None
@@ -138,6 +138,10 @@ def _check_policy(tool_name, tool_input):
                 if not re.search(path_pattern, path_text, re.IGNORECASE):
                     continue
             except re.error:
+                continue
+        min_tokens = rule.get("match_tokens_before_gt")
+        if min_tokens is not None:
+            if tokens_before <= int(min_tokens):
                 continue
         action  = rule.get("action", "audit")
         rule_id = rule.get("rule_id", "unknown")
@@ -389,6 +393,11 @@ def post_usage_main():
     elif transcript_path:
         tokens_input, tokens_output = _read_tokens_from_transcript(transcript_path, tool_use_id)
         _post_usage(session_id, tool_name, tokens_input, tokens_output, None)
+        # Token-threshold policy check (PostToolUse only — tokens not known at PreToolUse)
+        _, action, rule_id, message = _check_policy(tool_name, {}, tokens_before=tokens_input)
+        if action in ("warn", "block"):
+            decision = "warned" if action == "warn" else "blocked"
+            _post_event(tool_name, {}, decision, rule_id, message, session_id=session_id)
 
     sys.exit(0)
 
