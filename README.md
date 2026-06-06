@@ -326,8 +326,12 @@ apps/
   api/app/modules/guard/ Guard team, policies, spend, audit events, MCP auth
   api/worker.py         Background run executor (Redis queue)
 packages/
-  conduct-cli/          Python CLI — trigger agents, guard sync/status/audit
-                        conductguard-mcp binary — MCP server for editors
+  conduct-cli/          Python CLI — trigger agents, switch workspaces, guard sync
+                        conductguard-mcp — MCP server for editors (policy enforcement)
+                        conduct-mcp — MCP server exposing run/list/status as tools
+tools/
+  booster/              Agent Booster — AST + vector context router, 5–15× token savings
+                        booster serve — MCP server (smart_read, search_context, route_model)
 ```
 
 ---
@@ -393,10 +397,41 @@ conduct install-all --project DevOps --repo myorg/my-repo
 # Test all agents
 conduct test --all --project DevOps
 
+# Switch workspaces — updates CLI + Guard config, re-syncs policies atomically
+conduct switch staging
+
+# Check active workspace, Guard status, and Booster status
+conduct whoami
+
 # Guard — sync policies, hook, and MCP (run once, then keep up to date)
 conduct guard sync
 conduct guard status
 ```
+
+→ Full reference and use cases at [conductai.ai/tools/conduct-cli](https://conductai.ai/tools/conduct-cli)
+
+---
+
+## Claude Code Plugins
+
+Both tools are available as Claude Code plugins — no manual `.mcp.json` edits needed.
+
+```bash
+# In Claude Code
+/plugin marketplace add sseshachala/conductai
+```
+
+This installs:
+
+| Plugin | What it wires |
+|--------|--------------|
+| **agent-booster** | `booster serve` MCP server — smart_read, search_context, get_symbols, route_model |
+| **conduct-cli** | `conductguard-mcp` + `conduct-mcp` MCP servers + Guard skill |
+
+Pending review in the [Anthropic plugin directory](https://clau.de/plugin-directory-submission). Until then, install directly from this repo.
+
+→ [conductai.ai/tools/agent-booster](https://conductai.ai/tools/agent-booster)
+→ [conductai.ai/tools/conduct-cli](https://conductai.ai/tools/conduct-cli)
 
 ---
 
