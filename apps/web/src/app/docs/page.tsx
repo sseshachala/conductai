@@ -894,7 +894,7 @@ conduct guard status`}</Pre>
             </thead>
             <tbody className="divide-y divide-stone-100">
               {[
-                ["Claude Code", "PreToolUse hook (~/.claude/settings.json)", "Hard block — every tool call intercepted before execution"],
+                ["Claude Code", "PreToolUse · PreCompact · SessionStart hooks (~/.claude/settings.json)", "Hard block — every tool call intercepted; session state preserved across compaction"],
                 ["Codex CLI",   "PreToolUse hook (~/.codex/hooks.json)",     "Hard block — same script, same exit-code-2 protocol"],
                 ["Cursor",      "MCP server (conductguard-mcp)",             "Advisory — AI sees Guard tools, can self-enforce"],
                 ["Windsurf",    "MCP server (conductguard-mcp)",             "Advisory — AI sees Guard tools, can self-enforce"],
@@ -919,6 +919,23 @@ conduct guard status`}</Pre>
           ].map(([step, desc]) => (
             <div key={step} className="flex gap-4 px-4 py-3">
               <span className="font-medium text-stone-700 w-52 shrink-0 text-xs">{step}</span>
+              <span className="text-stone-500 text-xs leading-relaxed">{desc}</span>
+            </div>
+          ))}
+        </div>
+
+        <SubHeading>Session persistence across compaction</SubHeading>
+        <p className="text-stone-500 text-sm mb-4 leading-relaxed">
+          When Claude Code compacts a long conversation, guard state (budget position, recent blocks, active workspace) would otherwise be lost. ConductGuard wires two additional hooks to preserve context across compaction events.
+        </p>
+        <div className="rounded-xl border border-stone-200 divide-y divide-stone-100 text-sm mb-6">
+          {[
+            ["PreCompact hook", "Fires before compaction. Writes a priority-tiered snapshot to .booster/session_snapshot.json — Tier 1: git branch + last 3 commits, memory index headline; Tier 2: guard budget state (via conductguard status --json); Tier 3: cwd metadata. Write is atomic (tmp → rename) and never blocks Claude Code on failure."],
+            ["SessionStart hook", "Fires when a new session opens. Reads the snapshot if it exists and is under 2 hours old, then injects a ≤5-line context reminder into Claude's view: branch, last commit, guard budget %, and memory index headline. Skips silently if snapshot is stale or missing."],
+            ["Snapshot location", ".booster/session_snapshot.json in the project root. Three priority tiers ensure critical state is always preserved — lower-priority metadata is dropped if space is tight."],
+          ].map(([step, desc]) => (
+            <div key={step} className="flex gap-4 px-4 py-3">
+              <span className="font-medium text-stone-700 w-44 shrink-0 text-xs">{step}</span>
               <span className="text-stone-500 text-xs leading-relaxed">{desc}</span>
             </div>
           ))}

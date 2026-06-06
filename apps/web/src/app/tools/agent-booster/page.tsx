@@ -137,7 +137,7 @@ function HeroSection() {
         </a>
       </div>
       <p className="mt-4 text-xs text-stone-400">
-        Python 3.10+ · MIT licensed · v0.2.8
+        Python 3.10+ · MIT licensed · v0.2.15
       </p>
     </section>
   )
@@ -425,14 +425,14 @@ const MCP_TOOLS = [
   {
     name: "search_context",
     signature: "search_context(task)",
-    desc: "Semantic vector search across the full codebase — finds relevant symbols by meaning, not just keyword match. Falls back to keyword search if embeddings aren't built.",
+    desc: "RRF-fused search across the full codebase — merges vector similarity and keyword ranks using Reciprocal Rank Fusion so strong keyword matches surface even when embeddings are weak. Falls back to keyword-only if embeddings aren't built.",
     color: "text-violet-700",
     bg: "bg-violet-50 border-violet-200",
   },
   {
     name: "smart_read",
     signature: "smart_read(file, task)",
-    desc: "Returns only the relevant slice of a file — the functions and classes that match the task. Logs token savings to booster gain.",
+    desc: "Returns only the relevant AST symbol slices for a task using RRF-ranked selection. Applies a 5 KB gate — if matched symbols exceed 5 KB, trims to the top-3 ranked symbols with a truncation notice. Logs token savings to booster gain.",
     color: "text-emerald-700",
     bg: "bg-emerald-50 border-emerald-200",
   },
@@ -635,7 +635,7 @@ const FAQS = [
   },
   {
     q: "What happens when Claude reads a file through Booster?",
-    a: "The MCP smart_read tool receives the file path and a task description. It runs a per-file vector search against the symbol index — finding the symbols most semantically similar to the task using cosine similarity on sentence-transformer embeddings. It returns only the source lines for those symbols, with a header showing name and line range. If no symbols match, it returns an explicit 'no matching symbols' message so Claude knows to fall back to a full Read rather than silently receiving the whole file. Every call is logged to .booster/stats.db so booster gain can report real token savings.",
+    a: "The MCP smart_read tool receives the file path and a task description. It uses RRF (Reciprocal Rank Fusion) to merge two ranked lists — a vector similarity search and a keyword LIKE search — using the formula score = Σ 1/(60 + rank). This surfaces symbols that score well on either or both strategies, instead of relying on embeddings alone. The result is AST symbol slices (source lines for matching functions/classes) with a header showing name and line range. A 5 KB gate caps output — if matched symbols exceed 5 KB, only the top-3 RRF-ranked symbols are returned with a truncation notice. Every call is logged to .booster/stats.db so booster gain can report real token savings.",
   },
   {
     q: "How does token savings tracking work?",
