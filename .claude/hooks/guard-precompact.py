@@ -51,7 +51,7 @@ def main() -> None:
 
     try:
         root = Path.cwd()
-        booster_dir = root / ".booster"
+        booster_dir = Path.home() / ".conductguard"
         booster_dir.mkdir(exist_ok=True)
 
         snapshot = {
@@ -74,6 +74,7 @@ def main() -> None:
         tmp = booster_dir / "session_snapshot.tmp"
         tmp.write_text(json.dumps(snapshot, indent=2))
         tmp.rename(booster_dir / "session_snapshot.json")
+
     except Exception:
         pass  # never block Claude Code
 

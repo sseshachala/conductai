@@ -18,7 +18,7 @@ def main() -> None:
         pass
 
     try:
-        snapshot_path = Path.cwd() / ".booster" / "session_snapshot.json"
+        snapshot_path = Path.home() / ".conductguard" / "session_snapshot.json"
         if not snapshot_path.exists():
             sys.exit(0)
 
