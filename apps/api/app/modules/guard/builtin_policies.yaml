@@ -181,3 +181,10 @@
   match_pattern: '(?i)(count the|filter (these|the)|deduplic|sort these|sum (the|all)|how many)'
   action: warn
   message: This looks like deterministic work (counting, filtering, dedup). Use a script instead — LLM tokens are unnecessary here.
+
+- rule_id: warn-large-context-dump
+  description: Warn when a single call consumes more than 50K tokens
+  match_tool: "*"
+  match_tokens_before_gt: 50000
+  action: warn
+  message: Large context detected (>50K tokens). Use Agent Booster smart_read to retrieve only relevant symbols instead of dumping the full file or repo.
