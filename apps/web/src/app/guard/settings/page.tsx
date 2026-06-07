@@ -631,8 +631,11 @@ function SettingsContent() {
                 </svg>
               </span>
               <div style={{ fontWeight: 650, fontSize: 14.5 }}>Token guardrails</div>
+              <a href="/token-guardrails" target="_blank" style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-3)", textDecoration: "none" }}>
+                Learn more →
+              </a>
               {guardrailSaved && (
-                <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--ok)", fontWeight: 600 }}>Saved</span>
+                <span style={{ fontSize: 12, color: "var(--ok)", fontWeight: 600 }}>Saved</span>
               )}
             </div>
             <div style={{ padding: "4px 20px 16px" }}>
