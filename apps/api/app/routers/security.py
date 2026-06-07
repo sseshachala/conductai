@@ -179,6 +179,13 @@ def ingest_finding(
 
     db.commit()
     db.refresh(finding)
+
+    # Slack alert — non-fatal, runs after commit so finding is visible
+    try:
+        _send_security_slack_alert(finding, workspace_id, db)
+    except Exception as exc:
+        log.warning("security_finding.slack_error", finding_id=str(finding.id), error=str(exc))
+
     log.info(
         "security_finding.ingested",
         finding_id=str(finding.id),
@@ -187,6 +194,40 @@ def ingest_finding(
         tool=finding.tool,
     )
     return finding
+
+
+def _send_security_slack_alert(finding: SecurityFinding, workspace_id: str, db: Session) -> None:
+    """POST a Slack alert to the configured security channel. Non-fatal."""
+    try:
+        import uuid as _uuid
+        from app.modules.guard.models import GuardConfig
+        cfg = db.query(GuardConfig).filter(
+            GuardConfig.workspace_id == _uuid.UUID(workspace_id),
+        ).first()
+        if not cfg or not cfg.security_slack_alerts_enabled:
+            return
+        channel = cfg.security_slack_channel or cfg.alert_channel
+        webhook = cfg.slack_webhook_url
+        if not webhook:
+            return
+        import urllib.request
+        sev = finding.severity.upper()
+        location = f" in {finding.file}:{finding.line}" if finding.file else ""
+        text = f"[{sev}] {finding.type}{location} — {finding.description} · {finding.tool}"
+        if channel:
+            text = f"#{channel} {text}"
+        payload = {"text": text}
+        import json as _json
+        req = urllib.request.Request(
+            webhook,
+            data=_json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=5)
+        log.info("security_finding.slack_sent", finding_id=str(finding.id), channel=channel)
+    except Exception as exc:
+        log.warning("security_finding.slack_failed", finding_id=str(finding.id), error=str(exc))
 
 
 def _trigger_security_loop(finding: SecurityFinding, workspace_id: str, db: Session) -> None:

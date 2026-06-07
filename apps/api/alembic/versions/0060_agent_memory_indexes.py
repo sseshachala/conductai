@@ -21,17 +21,10 @@ def upgrade() -> None:
             ON agent_memory (workspace_id, playbook_slug, scope, key)
             WHERE embedding IS NOT NULL
         """)
-        # IVFFlat index for cosine similarity search.
-        # lists=100 is safe up to ~1M rows; tune upward as data grows.
-        op.execute("""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_agent_memory_embedding
-            ON agent_memory USING ivfflat (embedding vector_cosine_ops)
-            WITH (lists = 100)
-            WHERE embedding IS NOT NULL
-        """)
+        # IVFFlat index skipped: embedding column is text (JSON-serialised list).
+        # To enable IVFFlat acceleration, migrate the column to vector(N) type first.
 
 
 def downgrade() -> None:
     with op.get_context().autocommit_block():
-        op.execute("DROP INDEX CONCURRENTLY IF EXISTS ix_agent_memory_embedding")
         op.execute("DROP INDEX CONCURRENTLY IF EXISTS ix_agent_memory_search")

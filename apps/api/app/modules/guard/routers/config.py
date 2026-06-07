@@ -38,6 +38,9 @@ class ConfigOut(BaseModel):
     enforcement_mode: str
     notify_on_block: bool
     notify_on_budget: bool
+    security_emit_enabled: bool
+    security_slack_alerts_enabled: bool
+    security_slack_channel: str | None
     created_at: datetime
     updated_at: datetime | None
 
@@ -50,6 +53,9 @@ class ConfigPatch(BaseModel):
     enforcement_mode: str | None = None
     notify_on_block: bool | None = None
     notify_on_budget: bool | None = None
+    security_emit_enabled: bool | None = None
+    security_slack_alerts_enabled: bool | None = None
+    security_slack_channel: str | None = None
 
 
 class InstallStatusOut(BaseModel):
@@ -92,6 +98,9 @@ def _config_to_out(cfg: GuardConfig) -> ConfigOut:
         enforcement_mode=cfg.enforcement_mode,
         notify_on_block=cfg.notify_on_block,
         notify_on_budget=cfg.notify_on_budget,
+        security_emit_enabled=cfg.security_emit_enabled,
+        security_slack_alerts_enabled=cfg.security_slack_alerts_enabled,
+        security_slack_channel=cfg.security_slack_channel,
         created_at=cfg.created_at,
         updated_at=cfg.updated_at,
     )
@@ -199,6 +208,12 @@ def patch_config(
         config.notify_on_block = body.notify_on_block
     if body.notify_on_budget is not None:
         config.notify_on_budget = body.notify_on_budget
+    if body.security_emit_enabled is not None:
+        config.security_emit_enabled = body.security_emit_enabled
+    if body.security_slack_alerts_enabled is not None:
+        config.security_slack_alerts_enabled = body.security_slack_alerts_enabled
+    if body.security_slack_channel is not None:
+        config.security_slack_channel = body.security_slack_channel
     config.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(config)
