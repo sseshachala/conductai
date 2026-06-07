@@ -107,48 +107,51 @@ def _fetch_budget_status():
         return False, None
 
 
-def _check_policy(tool_name, tool_input, tokens_before=0):
-    """Return (matched_rule, action, rule_id, message) or (None, 'allow', None, None)."""
-    if not POLICY_PATH.exists():
-        return None, "allow", None, None
-    try:
-        policy = json.loads(POLICY_PATH.read_text())
-    except Exception:
-        return None, "allow", None, None
+try:
+    from conduct_cli.guard import _check_policy
+except Exception:
+    def _check_policy(tool_name, tool_input, tokens_before=0):
+        """Return (matched_rule, action, rule_id, message) or (None, 'allow', None, None)."""
+        if not POLICY_PATH.exists():
+            return None, "allow", None, None
+        try:
+            policy = json.loads(POLICY_PATH.read_text())
+        except Exception:
+            return None, "allow", None, None
 
-    rules      = policy.get("rules", [])
-    input_text = json.dumps(tool_input)
-    path_fields = [str(tool_input.get(f, "")) for f in ["file_path", "path", "command"]]
+        rules      = policy.get("rules", [])
+        input_text = json.dumps(tool_input)
+        path_fields = [str(tool_input.get(f, "")) for f in ["file_path", "path", "command"]]
 
-    for rule in rules:
-        match_tool = (rule.get("match_tool") or "*").lower()
-        if match_tool != "*":
-            if tool_name not in [t.strip() for t in match_tool.split(",")]:
-                continue
-        pattern = rule.get("match_pattern")
-        if pattern:
-            try:
-                if not re.search(pattern, input_text, re.IGNORECASE):
+        for rule in rules:
+            match_tool = (rule.get("match_tool") or "*").lower()
+            if match_tool != "*":
+                if tool_name not in [t.strip() for t in match_tool.split(",")]:
                     continue
-            except re.error:
-                continue
-        path_pattern = rule.get("match_path_pattern")
-        if path_pattern:
-            try:
-                if not any(re.search(path_pattern, f, re.IGNORECASE) for f in path_fields if f):
+            pattern = rule.get("match_pattern")
+            if pattern:
+                try:
+                    if not re.search(pattern, input_text, re.IGNORECASE):
+                        continue
+                except re.error:
                     continue
-            except re.error:
-                continue
-        min_tokens = rule.get("match_tokens_before_gt")
-        if min_tokens is not None:
-            if tokens_before <= int(min_tokens):
-                continue
-        action  = rule.get("action", "audit")
-        rule_id = rule.get("rule_id", "unknown")
-        message = rule.get("message") or f"Policy violation: {rule_id}"
-        return rule, action, rule_id, message
+            path_pattern = rule.get("match_path_pattern")
+            if path_pattern:
+                try:
+                    if not any(re.search(path_pattern, f, re.IGNORECASE) for f in path_fields if f):
+                        continue
+                except re.error:
+                    continue
+            min_tokens = rule.get("match_tokens_before_gt")
+            if min_tokens is not None:
+                if tokens_before <= int(min_tokens):
+                    continue
+            action  = rule.get("action", "audit")
+            rule_id = rule.get("rule_id", "unknown")
+            message = rule.get("message") or f"Policy violation: {rule_id}"
+            return rule, action, rule_id, message
 
-    return None, "allow", None, None
+        return None, "allow", None, None
 
 
 def _detect_ai_tool():
