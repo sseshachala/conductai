@@ -126,15 +126,17 @@ def _build_guardrail_state(db: Session, workspace_id: str) -> dict:
     current_tools = (["rtk"] if has_rtk else []) + (["booster"] if has_booster else [])
 
     # ── Auto-detect: deterministic offload policy ─────────────────────────────
-    deterministic_offload = (
+    # Builtin default is active. Only inactive if a row exists with enabled=False.
+    explicitly_disabled = (
         db.query(GuardPolicy)
         .filter(
             GuardPolicy.workspace_id == ws_uuid,
             GuardPolicy.rule_id == "warn-deterministic-compute",
-            GuardPolicy.enabled.is_(True),
+            GuardPolicy.enabled.is_(False),
         )
         .first()
     ) is not None
+    deterministic_offload = not explicitly_disabled
 
     # ── Auto-detect: any spend budget ─────────────────────────────────────────
     metrics_budgets = (
