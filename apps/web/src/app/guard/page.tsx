@@ -12,6 +12,7 @@ import { timeAgo } from "@/lib/runUtils"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useGuardSavings, type GuardSavingsSummary } from "@/hooks/useGuardSavings"
+import { useTokenGuardrails, type TokenGuardrails } from "@/hooks/useTokenGuardrails"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -528,6 +529,7 @@ function GuardDashboard() {
   const { activeWorkspace } = useWorkspace()
   const { permissions, loading: permissionsLoading } = useGuardRole(teamId, activeWorkspace?.id ?? null)
   const { savings, loading: savingsLoading } = useGuardSavings(teamId)
+  const { guardrails } = useTokenGuardrails(activeWorkspace?.id ?? null)
 
   const [events, setEvents]           = useState<GuardEvent[]>([])
   const [stats, setStats]             = useState<SpendStats | null>(null)
@@ -986,19 +988,22 @@ function GuardDashboard() {
 
       {/* ── 7 Token Guardrails widget ───────────────────────────────────────── */}
       {!loading && (() => {
-        const hasRtk      = savings?.tools_installed.includes("rtk") ?? false
-        const hasBooster  = savings?.tools_installed.includes("booster") ?? false
-        const hasPolicies = tokenEfficiencyWarnings.count >= 0 // policies seeded on install
-        const guardrails = [
-          { label: "Prompt caching",     ok: true,        tip: "System prompt cached on every agent run" },
-          { label: "Model routing",      ok: true,        tip: "Agent runs select model tier by task complexity" },
-          { label: "Prompt splitting",   ok: true,        tip: "Agent Templates enforce composable YAML skills" },
-          { label: "Deterministic offload", ok: hasPolicies, tip: hasPolicies ? "warn-deterministic-compute policy active" : "Run conduct guard sync to activate" },
-          { label: "Output compression", ok: hasRtk,      tip: hasRtk ? "RTK compressing git/test/build output (60–90%)" : "Install RTK: pip install rtk" },
-          { label: "Structured retrieval", ok: hasBooster, tip: hasBooster ? "Agent Booster AST+vector retrieval active" : "Install: pip install agent-booster" },
-          { label: "Metrics & budgets",  ok: true,        tip: "Guard tracks tokens per developer with hard caps" },
-        ]
-        const activeCount = guardrails.filter(g => g.ok).length
+        const guardrailItems = [
+          { label: "Prompt caching",        key: "prompt_caching",        manual: true  },
+          { label: "Model routing",         key: "model_routing",         manual: true  },
+          { label: "Prompt splitting",      key: "prompt_splitting",      manual: true  },
+          { label: "Deterministic offload", key: "deterministic_offload", manual: false },
+          { label: "Output compression",    key: "output_compression",    manual: false },
+          { label: "Structured retrieval",  key: "structured_retrieval",  manual: false },
+          { label: "Metrics & budgets",     key: "metrics_budgets",       manual: false },
+        ].map(item => ({
+          ...item,
+          ok: guardrails ? guardrails[item.key as keyof TokenGuardrails] as boolean : true,
+          tip: item.manual
+            ? "Configured in Settings → Token Guardrails"
+            : "Auto-detected from installed tools and policies",
+        }))
+        const activeCount = guardrailItems.filter(g => g.ok).length
         return (
           <div className="card" style={{ marginBottom: 20, padding: "16px 20px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
@@ -1008,7 +1013,7 @@ function GuardDashboard() {
               </span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 8 }}>
-              {guardrails.map((g, i) => (
+              {guardrailItems.map((g, i) => (
                 <div key={i} title={g.tip} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, cursor: "default" }}>
                   <div style={{
                     width: 36, height: 36, borderRadius: 10,
@@ -1022,12 +1027,22 @@ function GuardDashboard() {
                   <span style={{ fontSize: 10, color: g.ok ? "var(--text-2)" : "var(--text-muted)", textAlign: "center", lineHeight: 1.3, fontWeight: g.ok ? 500 : 400 }}>
                     {g.label}
                   </span>
+                  <span style={{
+                    fontSize: 9, fontWeight: 600, letterSpacing: ".02em",
+                    color: g.manual ? "var(--accent-text, #6366f1)" : "var(--text-muted)",
+                    background: g.manual ? "var(--accent-weak, #eef2ff)" : "var(--surface-3)",
+                    borderRadius: 4, padding: "1px 5px",
+                  }}>
+                    {g.manual ? "config" : "auto"}
+                  </span>
                 </div>
               ))}
             </div>
             {activeCount < 7 && (
               <div style={{ marginTop: 12, fontSize: 11, color: "var(--text-3)" }}>
-                Hover each item for setup instructions.
+                Configure manual guardrails in{" "}
+                <a href="/guard/settings" style={{ color: "var(--accent)", textDecoration: "none" }}>Settings → Token Guardrails</a>.
+                Auto-detected guardrails update when tools are installed or removed.
               </div>
             )}
           </div>

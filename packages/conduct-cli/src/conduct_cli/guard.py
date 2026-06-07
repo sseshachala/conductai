@@ -118,7 +118,7 @@ def _check_policy(tool_name, tool_input, tokens_before=0):
 
     rules      = policy.get("rules", [])
     input_text = json.dumps(tool_input)
-    path_text  = " ".join(str(tool_input.get(f, "")) for f in ["file_path", "path", "command"])
+    path_fields = [str(tool_input.get(f, "")) for f in ["file_path", "path", "command"]]
 
     for rule in rules:
         match_tool = (rule.get("match_tool") or "*").lower()
@@ -135,7 +135,7 @@ def _check_policy(tool_name, tool_input, tokens_before=0):
         path_pattern = rule.get("match_path_pattern")
         if path_pattern:
             try:
-                if not re.search(path_pattern, path_text, re.IGNORECASE):
+                if not any(re.search(path_pattern, f, re.IGNORECASE) for f in path_fields if f):
                     continue
             except re.error:
                 continue
@@ -591,6 +591,55 @@ def main():
 if __name__ == "__main__":
     main()
 '''
+
+
+# ── Policy engine (also embedded in _HOOK_SCRIPT for standalone use) ──────────
+
+import json as _json
+import re as _re
+
+def _check_policy(tool_name, tool_input, tokens_before=0):
+    """Return (matched_rule, action, rule_id, message) or (None, 'allow', None, None)."""
+    if not POLICY_PATH.exists():
+        return None, "allow", None, None
+    try:
+        policy = _json.loads(POLICY_PATH.read_text())
+    except Exception:
+        return None, "allow", None, None
+
+    rules      = policy.get("rules", [])
+    input_text = _json.dumps(tool_input)
+    path_fields = [str(tool_input.get(f, "")) for f in ["file_path", "path", "command"]]
+
+    for rule in rules:
+        match_tool = (rule.get("match_tool") or "*").lower()
+        if match_tool != "*":
+            if tool_name not in [t.strip() for t in match_tool.split(",")]:
+                continue
+        pattern = rule.get("match_pattern")
+        if pattern:
+            try:
+                if not _re.search(pattern, input_text, _re.IGNORECASE):
+                    continue
+            except _re.error:
+                continue
+        path_pattern = rule.get("match_path_pattern")
+        if path_pattern:
+            try:
+                if not any(_re.search(path_pattern, f, _re.IGNORECASE) for f in path_fields if f):
+                    continue
+            except _re.error:
+                continue
+        min_tokens = rule.get("match_tokens_before_gt")
+        if min_tokens is not None:
+            if tokens_before <= int(min_tokens):
+                continue
+        action  = rule.get("action", "audit")
+        rule_id = rule.get("rule_id", "unknown")
+        message = rule.get("message") or f"Policy violation: {rule_id}"
+        return rule, action, rule_id, message
+
+    return None, "allow", None, None
 
 
 # ── Python interpreter selection ─────────────────────────────────────────────
