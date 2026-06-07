@@ -88,16 +88,32 @@ def create_embedding_client(
     openai_api_key: str | None = None,
     voyage_api_key: str | None = None,
 ) -> EmbeddingClient | None:
-    """Return the best available embedding client, or None if no key provided."""
-    if openai_api_key:
-        log.debug("embedding.provider", provider="openai")
-        return OpenAIEmbeddingClient(openai_api_key)
-    if voyage_api_key:
-        log.debug("embedding.provider", provider="voyage")
-        return VoyageEmbeddingClient(voyage_api_key)
+    """
+    Return the best available embedding client.
+
+    Resolution order (first non-empty key wins):
+      1. Workspace credential passed in (openai_api_key / voyage_api_key args)
+      2. Server-level defaults from settings (OPENAI_API_KEY / VOYAGE_API_KEY env vars)
+
+    Returns None only if no key is found anywhere — memory block falls back to recency.
+    """
+    from app.core.config import settings as _settings
+
+    resolved_openai = openai_api_key or _settings.openai_api_key or None
+    resolved_voyage = voyage_api_key or _settings.voyage_api_key or None
+
+    if resolved_openai:
+        source = "workspace" if openai_api_key else "server-default"
+        log.debug("embedding.provider", provider="openai", source=source)
+        return OpenAIEmbeddingClient(resolved_openai)
+    if resolved_voyage:
+        source = "workspace" if voyage_api_key else "server-default"
+        log.debug("embedding.provider", provider="voyage", source=source)
+        return VoyageEmbeddingClient(resolved_voyage)
 
     log.warning(
         "embedding.no_provider",
-        msg="Set OPENAI_API_KEY or VOYAGE_API_KEY in the workspace environment to enable the memory block.",
+        msg="No embedding key found. Set OPENAI_API_KEY or VOYAGE_API_KEY on the server for a default, "
+            "or add the key to the workspace environment to enable semantic memory recall.",
     )
     return None
