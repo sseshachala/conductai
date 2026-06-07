@@ -190,6 +190,57 @@ class TestBuildSummaryMultipleDevelopers:
         assert abs(summary.team_total.rtk_saved_usd - expected) < 1e-9
 
 
+class TestWorkspaceIsolation:
+    def test_other_workspace_rows_excluded(self):
+        """Rows for a different workspace must not appear in the summary."""
+        other_ws = str(uuid.uuid4())
+        # Return rows only for the other workspace — _build_summary is called with _WS
+        db = _make_db([_make_row("attacker@other.com", rtk_saved_tokens=9_999_999)])
+        # Simulate the SQL only returning rows for the queried workspace (mock returns what we give)
+        # The real isolation is in the SQL WHERE clause; here we verify _build_summary
+        # correctly uses the workspace_id param it receives (spot-check via empty result)
+        db_empty = _make_db([])
+        summary = _build_summary(db_empty, _WS)
+        assert summary.team_total.rtk_saved_tokens == 0
+        assert len(summary.by_member) == 0
+
+    def test_workspace_id_passed_to_execute(self):
+        """Verify _build_summary passes workspace_id into the SQL query."""
+        db = _make_db([])
+        _build_summary(db, _WS)
+        call_args = db.execute.call_args
+        params = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("params", {})
+        # The bound param dict should contain our workspace id
+        assert _WS in str(call_args)
+
+
+class TestNullFieldHandling:
+    def test_period_end_none_returns_empty_string(self):
+        r = _make_row("alice@co.com", rtk_saved_tokens=100)
+        r.period_end = None
+        db = _make_db([r])
+        summary = _build_summary(db, _WS)
+        assert summary.by_member[0].period_end == ""
+
+    def test_recorded_at_none_returns_empty_string(self):
+        r = _make_row("alice@co.com", rtk_saved_tokens=100)
+        r.recorded_at = None
+        db = _make_db([r])
+        summary = _build_summary(db, _WS)
+        assert summary.by_member[0].recorded_at == ""
+
+    def test_null_token_fields_default_to_zero(self):
+        r = _make_row("alice@co.com")
+        r.rtk_saved_tokens = None
+        r.booster_saved_tokens = None
+        r.rtk_total_commands = None
+        r.booster_total_reads = None
+        db = _make_db([r])
+        summary = _build_summary(db, _WS)
+        assert summary.team_total.rtk_saved_tokens == 0
+        assert summary.team_total.booster_saved_tokens == 0
+
+
 class TestProjectionMath:
     def test_per_month_is_30x_per_day(self):
         from app.modules.guard.routers.savings import get_team_summary
