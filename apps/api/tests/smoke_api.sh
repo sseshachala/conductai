@@ -184,6 +184,97 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+header "5. analytics endpoints"
+
+STATUS=$(hit GET "/analytics/summary?days=30" "application/json" -)
+if [[ "$STATUS" == "200" ]] && grep -q '"total_runs"' /tmp/smoke_body; then
+  pass "GET /analytics/summary" "200, total_runs present"
+elif [[ "$STATUS" == "401" && -z "$AUTH_TOKEN" ]]; then
+  pass "GET /analytics/summary" "401 (auth enforced)"
+else
+  fail "GET /analytics/summary" "got $STATUS — body: $(cat /tmp/smoke_body | head -c 200)"
+fi
+
+STATUS=$(hit GET "/analytics/playbooks?days=30" "application/json" -)
+if [[ "$STATUS" == "200" ]]; then
+  pass "GET /analytics/playbooks" "200"
+elif [[ "$STATUS" == "401" && -z "$AUTH_TOKEN" ]]; then
+  pass "GET /analytics/playbooks" "401 (auth enforced)"
+else
+  fail "GET /analytics/playbooks" "got $STATUS"
+fi
+
+STATUS=$(hit GET "/analytics/dora?days=30" "application/json" -)
+if [[ "$STATUS" == "200" ]] && grep -q '"deployment_frequency"' /tmp/smoke_body; then
+  pass "GET /analytics/dora" "200, deployment_frequency present"
+elif [[ "$STATUS" == "401" && -z "$AUTH_TOKEN" ]]; then
+  pass "GET /analytics/dora" "401 (auth enforced)"
+else
+  fail "GET /analytics/dora" "got $STATUS — body: $(cat /tmp/smoke_body | head -c 200)"
+fi
+
+STATUS=$(hit GET "/analytics/scorecards?days=30" "application/json" -)
+if [[ "$STATUS" == "200" ]]; then
+  pass "GET /analytics/scorecards" "200"
+elif [[ "$STATUS" == "401" && -z "$AUTH_TOKEN" ]]; then
+  pass "GET /analytics/scorecards" "401 (auth enforced)"
+else
+  fail "GET /analytics/scorecards" "got $STATUS"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+header "6. Guard endpoints"
+
+STATUS=$(hit GET "/guard/policies" "application/json" -)
+if [[ "$STATUS" == "200" ]]; then
+  pass "GET /guard/policies" "200"
+elif [[ "$STATUS" == "401" && -z "$AUTH_TOKEN" ]]; then
+  pass "GET /guard/policies" "401 (auth enforced)"
+else
+  fail "GET /guard/policies" "got $STATUS"
+fi
+
+STATUS=$(hit GET "/guard/spend" "application/json" -)
+if [[ "$STATUS" == "200" ]] || [[ "$STATUS" == "404" ]]; then
+  pass "GET /guard/spend" "${STATUS}"
+elif [[ "$STATUS" == "401" && -z "$AUTH_TOKEN" ]]; then
+  pass "GET /guard/spend" "401 (auth enforced)"
+else
+  fail "GET /guard/spend" "got $STATUS"
+fi
+
+STATUS=$(hit GET "/guard/savings/team-summary" "application/json" -)
+if [[ "$STATUS" == "200" ]] && grep -q '"developer_count"' /tmp/smoke_body; then
+  pass "GET /guard/savings/team-summary" "200, developer_count present"
+elif [[ "$STATUS" == "401" && -z "$AUTH_TOKEN" ]]; then
+  pass "GET /guard/savings/team-summary" "401 (auth enforced)"
+else
+  fail "GET /guard/savings/team-summary" "got $STATUS — body: $(cat /tmp/smoke_body | head -c 200)"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+header "7. RBAC — permission enforcement"
+
+# Unauthenticated request to a require_permission endpoint must get 401 or 403, never 200
+ANON_STATUS=$(curl -sS -o /tmp/smoke_body -w "%{http_code}" \
+  -H "X-Workspace-ID: ${TEST_WORKSPACE_ID}" \
+  "${API_URL}/analytics/dora" 2>/dev/null)
+if [[ "$ANON_STATUS" == "401" ]] || [[ "$ANON_STATUS" == "403" ]]; then
+  pass "Unauthenticated /analytics/dora blocked" "${ANON_STATUS}"
+else
+  fail "Unauthenticated /analytics/dora blocked" "got ${ANON_STATUS} — should be 401/403"
+fi
+
+ANON_STATUS=$(curl -sS -o /tmp/smoke_body -w "%{http_code}" \
+  -H "X-Workspace-ID: ${TEST_WORKSPACE_ID}" \
+  "${API_URL}/analytics/scorecards" 2>/dev/null)
+if [[ "$ANON_STATUS" == "401" ]] || [[ "$ANON_STATUS" == "403" ]]; then
+  pass "Unauthenticated /analytics/scorecards blocked" "${ANON_STATUS}"
+else
+  fail "Unauthenticated /analytics/scorecards blocked" "got ${ANON_STATUS} — should be 401/403"
+fi
+
 echo
 echo "──────────────────────────────────────────────────────"
 printf "Total: %d   Passed: %d   Failed: %d\n" "$N" "$PASSES" "$FAILS"
