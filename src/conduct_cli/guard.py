@@ -1458,11 +1458,15 @@ def cmd_guard_savings(args):
     api_key      = cfg.get("api_key", "")
     base_url     = _api_url(cfg)
 
-    data = _req(
-        "GET",
-        f"{base_url}/guard/savings/team-summary?workspace_id={workspace_id}",
-        api_key=api_key,
-    )
+    try:
+        data = _req(
+            "GET",
+            f"{base_url}/guard/savings/team-summary?workspace_id={workspace_id}",
+            api_key=api_key,
+        )
+    except Exception:
+        print(f"{RED}Failed to fetch team savings.{RESET}")
+        return
     if not isinstance(data, dict):
         print(f"{RED}Failed to fetch team savings.{RESET}")
         return
