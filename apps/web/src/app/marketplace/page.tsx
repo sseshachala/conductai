@@ -164,6 +164,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   const [scores, setScores] = useState<Map<string, PlaybookScore>>(new Map())
   const [secureInstalling, setSecureInstalling] = useState(false)
   const [secureInstalled, setSecureInstalled] = useState(false)
+  const [secureDismissed, setSecureDismissed] = useState(false)
 
   // Check if Security Loop is already installed
   useEffect(() => {
@@ -189,6 +190,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
       if (res.ok) {
         setSecureInstalled(true)
         window.dispatchEvent(new CustomEvent("secure-install-changed", { detail: { installed: true } }))
+        setTimeout(() => setSecureDismissed(true), 1500)
       }
     } catch {}
     finally { setSecureInstalling(false) }
@@ -508,7 +510,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
         ) : (
           <>
             {/* Security Loop module install card */}
-            {(activeCategory === "All" || activeCategory === "Security") && !searchActive && (
+            {(activeCategory === "All" || activeCategory === "Security") && !searchActive && !secureDismissed && (
               <div style={{ marginBottom: 28 }}>
                 <div className="eyebrow" style={{ marginBottom: 11 }}>Modules</div>
                 <div style={{
@@ -539,11 +541,16 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                     </div>
                   </div>
                   {secureInstalled ? (
-                    <Link href="/secure" style={{ textDecoration: "none" }}>
-                      <button className="btn btn-ghost btn-sm" style={{ flexShrink: 0 }}>
-                        Open Secure →
-                      </button>
-                    </Link>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                      <Link href="/secure" style={{ textDecoration: "none" }}>
+                        <button className="btn btn-ghost btn-sm">Open Secure →</button>
+                      </Link>
+                      <button
+                        onClick={() => setSecureDismissed(true)}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "#b91c1c", fontSize: 16, lineHeight: 1, padding: "0 4px", opacity: 0.6 }}
+                        title="Dismiss"
+                      >×</button>
+                    </div>
                   ) : (
                     <button
                       className="btn btn-primary btn-sm"
