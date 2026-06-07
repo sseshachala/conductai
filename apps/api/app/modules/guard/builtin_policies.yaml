@@ -176,11 +176,11 @@
 # ── Token Efficiency ───────────────────────────────────────────────────────────
 
 - rule_id: warn-deterministic-compute
-  description: Warn when LLM is used for deterministic operations
-  match_tool: "bash,edit,write"
-  match_pattern: '(?i)(count the|filter (these|the)|deduplic|sort these|sum (the|all)|how many)'
+  description: Warn when bash is used for work that is purely deterministic — sort/dedup/count/sum pipelines that don't need LLM reasoning
+  match_tool: "bash"
+  match_pattern: '(sort\s+.*\|\s*uniq|grep\s+-c|wc\s+-l|awk\s+[''"].*sum|python\s+-c\s+[''"].*(\+|\*|sum|len|sort|filter)|jq\s+[''"]\.|\|\s*(sort|uniq|wc)\b)'
   action: warn
-  message: This looks like deterministic work (counting, filtering, dedup). Use a script instead — LLM tokens are unnecessary here.
+  message: "Deterministic work detected — sort/dedup/count/sum doesn't need an LLM. Run this directly as a script to save tokens."
 
 - rule_id: warn-large-context-dump
   description: Warn when a single call consumes more than 50K tokens

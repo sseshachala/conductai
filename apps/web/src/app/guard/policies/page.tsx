@@ -52,6 +52,8 @@ const RULE_CATEGORIES: Record<string, string> = {
   "audit-migrations": "Audit",
   "audit-ci-config": "Audit",
   "audit-dockerfile": "Audit",
+  "warn-deterministic-compute": "Token Efficiency",
+  "warn-large-context-dump": "Token Efficiency",
 }
 
 const CATEGORY_ORDER = [
@@ -59,6 +61,7 @@ const CATEGORY_ORDER = [
   "Secrets & Credentials",
   "Production Gates",
   "Audit",
+  "Token Efficiency",
   "Custom Rules",
 ]
 

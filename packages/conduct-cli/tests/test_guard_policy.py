@@ -348,15 +348,29 @@ class TestBuiltinPolicies:
         assert rule_id == "approve-db-migration-prod"
 
     # ── Token efficiency ──────────────────────────────────────────────────────
-    def test_warn_deterministic_compute_count(self, builtin_policy_path):
-        _, action, rule_id, _ = _check_policy("bash", {"command": "count the users"})
+    def test_warn_deterministic_compute_sort_uniq(self, builtin_policy_path):
+        _, action, rule_id, _ = _check_policy("bash", {"command": "sort users.csv | uniq -c"})
         assert action == "warn"
         assert rule_id == "warn-deterministic-compute"
 
-    def test_warn_deterministic_compute_filter(self, builtin_policy_path):
-        _, action, rule_id, _ = _check_policy("write", {"content": "filter these results"})
+    def test_warn_deterministic_compute_grep_count(self, builtin_policy_path):
+        _, action, rule_id, _ = _check_policy("bash", {"command": "grep -c 'ERROR' app.log"})
         assert action == "warn"
         assert rule_id == "warn-deterministic-compute"
+
+    def test_warn_deterministic_compute_wc_l(self, builtin_policy_path):
+        _, action, rule_id, _ = _check_policy("bash", {"command": "cat data.txt | wc -l"})
+        assert action == "warn"
+        assert rule_id == "warn-deterministic-compute"
+
+    def test_warn_deterministic_compute_python_oneliner(self, builtin_policy_path):
+        _, action, rule_id, _ = _check_policy("bash", {"command": "python -c 'print(sum([1,2,3]))'"}  )
+        assert action == "warn"
+        assert rule_id == "warn-deterministic-compute"
+
+    def test_warn_deterministic_compute_no_false_positive(self, builtin_policy_path):
+        _, action, rule_id, _ = _check_policy("bash", {"command": "git status"})
+        assert rule_id != "warn-deterministic-compute"
 
     def test_warn_large_context_above_threshold(self, builtin_policy_path):
         _, action, rule_id, _ = _check_policy("bash", {}, tokens_before=60000)
