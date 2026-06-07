@@ -89,14 +89,16 @@ def _make_db_with_role_and_perm(role: str, has_perm: bool):
     """
     First db.execute call → workspace_users row with the given role.
     Second db.execute call → permission row if has_perm else None.
+    When has_perm=False a third call checks if role_permissions is seeded;
+    we return a truthy row so the fallback is NOT triggered and 403 fires.
     """
     db = MagicMock()
     role_row = _make_role_row(role)
     perm_row = MagicMock() if has_perm else None
-    db.execute.side_effect = [
-        _fetchone_result(role_row),
-        _fetchone_result(perm_row),
-    ]
+    side_effects = [_fetchone_result(role_row), _fetchone_result(perm_row)]
+    if not has_perm:
+        side_effects.append(_fetchone_result(MagicMock()))  # seeded check → truthy
+    db.execute.side_effect = side_effects
     return db
 
 
@@ -218,4 +220,61 @@ class TestInvalidWorkspaceId:
         with patch("app.core.auth._clerk_enabled", return_value=True):
             with pytest.raises(HTTPException) as exc_info:
                 _call_check(checker, db, workspace_id="not-a-uuid")
+        assert exc_info.value.status_code == 403
+
+
+def _make_db_unseeded(role: str):
+    """
+    role_permissions table is empty (migration 0044 not yet applied).
+
+    Execution path:
+      1. db.execute → workspace_users row with `role`
+      2. db.execute → None (no permission row)
+      3. db.execute → None (role_permissions LIMIT 1 check → empty)
+    """
+    db = MagicMock()
+    role_row = _make_role_row(role)
+    db.execute.side_effect = [
+        _fetchone_result(role_row),
+        _fetchone_result(None),   # permission check → not found
+        _fetchone_result(None),   # seeded check → empty table
+    ]
+    return db
+
+
+class TestUnseedledRbacFallback:
+    def test_admin_gets_through_unseeded(self):
+        checker = require_permission("guard.settings.edit")
+        db = _make_db_unseeded("admin")
+        with patch("app.core.auth._clerk_enabled", return_value=True):
+            result = _call_check(checker, db)
+        assert result == "admin"
+
+    def test_developer_read_perm_unseeded(self):
+        checker = require_permission("platform.eval.view")
+        db = _make_db_unseeded("developer")
+        with patch("app.core.auth._clerk_enabled", return_value=True):
+            result = _call_check(checker, db)
+        assert result == "developer"
+
+    def test_developer_write_perm_unseeded(self):
+        checker = require_permission("guard.policies.edit")
+        db = _make_db_unseeded("developer")
+        with patch("app.core.auth._clerk_enabled", return_value=True):
+            result = _call_check(checker, db)
+        assert result == "developer"
+
+    def test_viewer_read_perm_unseeded(self):
+        checker = require_permission("platform.workflows.view")
+        db = _make_db_unseeded("viewer")
+        with patch("app.core.auth._clerk_enabled", return_value=True):
+            result = _call_check(checker, db)
+        assert result == "viewer"
+
+    def test_viewer_write_perm_unseeded_raises_403(self):
+        checker = require_permission("guard.policies.edit")
+        db = _make_db_unseeded("viewer")
+        with patch("app.core.auth._clerk_enabled", return_value=True):
+            with pytest.raises(HTTPException) as exc_info:
+                _call_check(checker, db)
         assert exc_info.value.status_code == 403
