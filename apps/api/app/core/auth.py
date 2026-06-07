@@ -498,6 +498,27 @@ def get_guard_hook_auth(
     raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
+def get_valid_roles(db: Session) -> set[str]:
+    """Return system role names from the DB. Falls back to the 4 canonical names if tables are empty."""
+    from sqlalchemy import text as _text
+    rows = db.execute(
+        _text("SELECT name FROM roles WHERE workspace_id IS NULL"),
+    ).fetchall()
+    if rows:
+        return {r.name for r in rows}
+    return {"admin", "developer", "security", "viewer"}
+
+
+def get_role_description(role: str, db: Session) -> str:
+    """Return the description for a role from the DB."""
+    from sqlalchemy import text as _text
+    row = db.execute(
+        _text("SELECT description FROM roles WHERE name = :name AND workspace_id IS NULL"),
+        {"name": role},
+    ).fetchone()
+    return row.description if row and row.description else ""
+
+
 def require_workspace_role(*allowed_roles: str):
     """
     Dependency factory that enforces minimum role for an endpoint.

@@ -18,10 +18,10 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_user_id, get_workspace_id, require_workspace_role, get_clerk_user_email, get_clerk_user_info, find_clerk_user_id_by_email
+from app.core.auth import get_user_id, get_workspace_id, require_workspace_role, get_clerk_user_email, get_clerk_user_info, find_clerk_user_id_by_email, get_role_description
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.email import send_template_email, _ROLE_DESCRIPTIONS, APP_URL
+from app.core.email import send_template_email, APP_URL
 from app.models.audit_log import AuditLog
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -80,7 +80,7 @@ class MemberOut(BaseModel):
 class MemberAdd(BaseModel):
     clerk_user_id: str | None = None   # direct add (existing user)
     email: str | None = None           # invite by email (pending until login)
-    role: Literal["admin", "developer", "security", "viewer"] = "developer"
+    role: str
 
 
 class MemberWorkspaceOut(BaseModel):
@@ -469,6 +469,9 @@ def add_member(
 ):
     if project_id != workspace_id:
         raise HTTPException(status_code=404, detail="Project not found")
+    from app.core.auth import get_valid_roles
+    if body.role not in get_valid_roles(db):
+        raise HTTPException(status_code=422, detail=f"Invalid role '{body.role}'")
     now = datetime.now(timezone.utc)
 
     # Email invite path — store as pending invite
@@ -527,7 +530,7 @@ def add_member(
                 "workspace_name": workspace_name,
                 "invited_by_email": inviter_email or "",
                 "role": body.role,
-                "role_description": _ROLE_DESCRIPTIONS.get(body.role, ""),
+                "role_description": get_role_description(body.role, db),
                 "app_url": APP_URL,
                 "workspace_id": workspace_id,
                 "guard_invite_cmd": guard_invite_cmd,
@@ -636,8 +639,9 @@ def update_member_role(
     if project_id != workspace_id:
         raise HTTPException(status_code=404, detail="Project not found")
     new_role = body.get("role", "")
-    if new_role not in ("admin", "developer", "security", "viewer"):
-        raise HTTPException(status_code=422, detail="Role must be admin, developer, security, or viewer")
+    from app.core.auth import get_valid_roles
+    if new_role not in get_valid_roles(db):
+        raise HTTPException(status_code=422, detail=f"Invalid role '{new_role}'")
     if clerk_user_id == user_id:
         raise HTTPException(status_code=400, detail="Cannot change your own role")
     old_row = db.execute(text("""
