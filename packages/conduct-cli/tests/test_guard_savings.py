@@ -142,6 +142,26 @@ class TestCmdGuardSavingsZeroDevelopers:
         assert "Tools contributing" not in out
 
 
+class TestCmdGuardSavingsToolsFilter:
+    def test_rtk_only_tools(self, capsys):
+        import conduct_cli.guard as g
+        resp = dict(_TEAM_RESPONSE, tools_installed=["rtk"])
+        with patch.object(g, "_req", return_value=resp):
+            g.cmd_guard_savings(_args())
+        out = capsys.readouterr().out
+        assert "rtk" in out
+        assert "booster" not in out
+
+    def test_booster_only_tools(self, capsys):
+        import conduct_cli.guard as g
+        resp = dict(_TEAM_RESPONSE, tools_installed=["booster"])
+        with patch.object(g, "_req", return_value=resp):
+            g.cmd_guard_savings(_args())
+        out = capsys.readouterr().out
+        assert "booster" in out
+        assert "rtk" not in out.split("Tools contributing")[1] if "Tools contributing" in out else True
+
+
 class TestCmdGuardSavingsApiFailure:
     def test_non_dict_response_prints_error(self, capsys):
         import conduct_cli.guard as g
@@ -153,6 +173,13 @@ class TestCmdGuardSavingsApiFailure:
     def test_string_response_prints_error(self, capsys):
         import conduct_cli.guard as g
         with patch.object(g, "_req", return_value="error"):
+            g.cmd_guard_savings(_args())
+        out = capsys.readouterr().out
+        assert "Failed" in out
+
+    def test_network_error_prints_error(self, capsys):
+        import conduct_cli.guard as g
+        with patch.object(g, "_req", side_effect=ConnectionError("timeout")):
             g.cmd_guard_savings(_args())
         out = capsys.readouterr().out
         assert "Failed" in out
