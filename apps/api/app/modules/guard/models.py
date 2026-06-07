@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
-from sqlalchemy.dialects.postgresql import JSON, UUID
+from sqlalchemy.dialects.postgresql import JSON, JSONB, UUID
 
 from app.core.database import Base
 
@@ -20,6 +20,9 @@ class GuardConfig(Base):
     notify_on_block = Column(Boolean, nullable=False, default=True)
     notify_on_budget = Column(Boolean, nullable=False, default=True)
     resync_requested_at = Column(DateTime(timezone=True), nullable=True)
+    token_guardrails = Column(JSONB, nullable=True)
+    guardrail_snapshot = Column(JSONB, nullable=True)
+    slack_webhook_url = Column(String(2048), nullable=True)
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,

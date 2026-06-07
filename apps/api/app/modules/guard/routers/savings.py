@@ -131,6 +131,48 @@ def record_savings(
         booster_saved_tokens=row.booster_saved_tokens,
     )
 
+    # ── Drift detection ───────────────────────────────────────────────────────
+    try:
+        import uuid as _uuid
+        from app.modules.guard.models import GuardConfig
+        from app.modules.guard.routers.token_guardrails import (
+            _check_guardrail_drift,
+            _post_slack_drift,
+        )
+
+        team = db.query(GuardConfig).filter(
+            GuardConfig.workspace_id == _uuid.UUID(body.workspace_id)
+        ).first()
+        if team is not None:
+            current_tools: list[str] = []
+            if row.rtk_saved_tokens > 0 or row.rtk_total_commands > 0:
+                current_tools.append("rtk")
+            if row.booster_saved_tokens > 0 or row.booster_total_reads > 0:
+                current_tools.append("booster")
+
+            prev_snap = team.guardrail_snapshot or {}
+            current_snapshot = {
+                "tools_installed": current_tools,
+                "deterministic_offload": prev_snap.get("deterministic_offload", False),
+                "metrics_budgets": prev_snap.get("metrics_budgets", False),
+            }
+
+            drifts = _check_guardrail_drift(team, current_tools, current_snapshot)
+            if drifts:
+                _post_slack_drift(
+                    team.slack_webhook_url or "",
+                    body.workspace_id,
+                    drifts,
+                )
+
+            team.guardrail_snapshot = {
+                **prev_snap,
+                "tools_installed": current_tools,
+            }
+            db.commit()
+    except Exception as exc:
+        log.warning("guard.drift_check_failed", exc=str(exc))
+
     return SavingsRecordedOut(status="ok", recorded_at=row.recorded_at.isoformat())
 
 
