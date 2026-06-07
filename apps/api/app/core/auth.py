@@ -505,9 +505,101 @@ def require_workspace_role(*allowed_roles: str):
     Usage:
         @router.post("/members")
         def add_member(_: str = Depends(require_workspace_role("admin")), ...):
+
+    Prefer require_permission() for all new endpoints — it checks via the
+    DB-seeded RBAC tables instead of hardcoded role name lists.
     """
     def _check(role: Annotated[str, Depends(get_user_workspace_role)]) -> str:
         if role not in allowed_roles:
             raise HTTPException(status_code=403, detail=f"Requires role: {', '.join(allowed_roles)}")
         return role
+    return _check
+
+
+def require_permission(permission: str):
+    """
+    Dependency factory that enforces a named permission from the RBAC tables.
+
+    Checks: workspace_users.role → roles → role_permissions → permissions.name
+
+    Seeded permissions (from migration 0044):
+      platform.workflows.view       — viewer, developer, security, admin
+      platform.workflows.edit       — developer, admin
+      platform.workflows.run        — developer, admin
+      platform.runs.view            — viewer, developer, security, admin
+      platform.marketplace.browse   — viewer, developer, security, admin
+      platform.marketplace.install  — developer, admin
+      platform.eval.view            — viewer, developer, security, admin
+      platform.workspace.edit       — admin
+      platform.members.manage       — admin
+      platform.credentials.manage   — developer, security, admin
+      platform.audit_log.view       — security, admin
+      guard.activity.view_all       — security, admin
+      guard.activity.view_own       — developer, security, admin (own only)
+      guard.activity.export         — security, admin
+      guard.spend.view_all          — security, admin
+      guard.spend.view_own          — developer, security, admin (own only)
+      guard.spend.budgets.edit      — admin
+      guard.policies.view           — viewer, developer, security, admin
+      guard.policies.edit           — security, admin
+      guard.settings.edit           — admin
+
+    Usage:
+        from app.core.auth import require_permission
+
+        @router.get("/scorecards")
+        def get_scorecards(_: str = Depends(require_permission("platform.eval.view")), ...):
+
+        @router.post("/workflows/{id}/runs")
+        def trigger_run(_: str = Depends(require_permission("platform.workflows.run")), ...):
+    """
+    from sqlalchemy import text as _text
+
+    def _check(
+        user_id: Annotated[str, Depends(get_user_id)],
+        workspace_id: Annotated[str, Depends(get_workspace_id)],
+        db: Session = Depends(get_db),
+    ) -> str:
+        if not _clerk_enabled():
+            return "admin"
+
+        import re as _re
+        if not _re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", workspace_id, _re.I):
+            raise HTTPException(status_code=403, detail="Invalid workspace ID")
+
+        row = db.execute(
+            _text("SELECT role FROM workspace_users WHERE workspace_id = :ws AND clerk_user_id = :uid"),
+            {"ws": workspace_id, "uid": user_id},
+        ).fetchone()
+
+        if not row:
+            owner = db.execute(
+                _text("SELECT 1 FROM workspaces WHERE id = :ws AND owner_id = :uid"),
+                {"ws": workspace_id, "uid": user_id},
+            ).fetchone()
+            if owner:
+                return "admin"
+            raise HTTPException(status_code=403, detail="Not a member of this workspace")
+
+        user_role = row.role
+
+        has_perm = db.execute(
+            _text("""
+                SELECT 1
+                FROM roles r
+                JOIN role_permissions rp ON rp.role_id = r.id
+                JOIN permissions p ON p.id = rp.permission_id
+                WHERE r.name = :role
+                  AND r.workspace_id IS NULL
+                  AND p.name = :perm
+                LIMIT 1
+            """),
+            {"role": user_role, "perm": permission},
+        ).fetchone()
+
+        if not has_perm:
+            raise HTTPException(status_code=403, detail=f"Permission denied: {permission}")
+
+        return user_role
+
     return _check

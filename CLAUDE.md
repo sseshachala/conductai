@@ -162,6 +162,40 @@ Run `booster gain` to see token savings.
 
 ## Security Rules (non-negotiable)
 
+### Use require_permission() for all new endpoints (not require_workspace_role)
+Every new FastAPI endpoint MUST use `require_permission("platform.xyz")` from `app.core.auth`.
+`require_workspace_role()` is legacy — it hardcodes role name strings. `require_permission()` checks
+the DB-seeded RBAC tables (roles → role_permissions → permissions) so the matrix stays in one place.
+
+Seeded permission names to use:
+- `platform.workflows.view` — read workflows (viewer+)
+- `platform.workflows.edit` — create/edit/delete workflows (developer+)
+- `platform.workflows.run` — trigger runs (developer+)
+- `platform.runs.view` — read run history (viewer+)
+- `platform.eval.view` — observability/analytics/scorecards (viewer+)
+- `platform.marketplace.browse` — browse marketplace (viewer+)
+- `platform.marketplace.install` — install playbooks (developer+)
+- `platform.credentials.manage` — manage credentials (developer+)
+- `platform.members.manage` — invite/remove members (admin)
+- `platform.workspace.edit` — workspace settings (admin)
+- `platform.audit_log.view` — audit log (security+)
+- `guard.policies.view` — read guard policies (viewer+)
+- `guard.policies.edit` — edit guard policies (security+)
+- `guard.activity.view_all` — all members' activity (security+)
+- `guard.activity.view_own` — own activity only (developer+)
+- `guard.spend.view_all` — all spend data (security+)
+- `guard.spend.view_own` — own spend data (developer+)
+- `guard.spend.budgets.edit` — set budgets (admin)
+- `guard.settings.edit` — guard settings/Slack (admin)
+
+```python
+# ❌ Legacy — do not use for new endpoints
+_role: str = Depends(require_workspace_role("admin", "developer"))
+
+# ✅ Correct — use for all new endpoints
+_: str = Depends(require_permission("platform.workflows.run"))
+```
+
 ### Auth at the resource layer
 Every FastAPI endpoint under `apps/api/` MUST have an auth dependency (`Depends(get_current_user)`, `Depends(get_guard_org_id)`, or equivalent). Never skip auth because a caller is trusted upstream (MCP tool, internal service, canvas block). Verify identity at the resource, every time.
 
