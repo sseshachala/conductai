@@ -103,7 +103,7 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
   if (pathname.startsWith('/settings')) return ['Settings']
   if (pathname.startsWith('/marketplace')) return ['Marketplace']
   if (pathname.startsWith('/runs')) return ['Runs']
-  if (pathname.startsWith('/security')) return ['Security']
+  if (pathname.startsWith('/secure')) return ['Secure']
   if (pathname.startsWith('/observability')) return ['Observability']
   if (pathname.startsWith('/eval')) return ['Quality']
   if (pathname.startsWith('/benchmark')) return ['Benchmark']
@@ -131,7 +131,7 @@ const PALETTE_COMMANDS = [
   { group: "BUILD", label: "Marketplace", href: "/marketplace", icon: "Store" as const },
   { group: "OBSERVE", label: "Dashboard", href: "/dashboard", icon: "Spark" as const },
   { group: "OBSERVE", label: "Runs", href: "/runs", icon: "Pulse" as const },
-  { group: "OBSERVE", label: "Security", href: "/security", icon: "Lock" as const },
+  { group: "SECURE", label: "Security Loop", href: "/secure", icon: "Lock" as const },
   { group: "GOVERN", label: "Guard · Overview", href: "/guard", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Spend", href: "/guard/spend", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Policies", href: "/guard/policies", icon: "Shield" as const },
@@ -195,6 +195,8 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
 
   // Guard install state
   const [guardInstalled, setGuardInstalled] = useState(false)
+  // Secure module install state
+  const [secureInstalled, setSecureInstalled] = useState(false)
 
   // Active runs count (for sidebar badge)
   const [activeRunsCount, setActiveRunsCount] = useState<number | undefined>(undefined)
@@ -373,6 +375,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
           const data = await res.json()
           setGuardInstalled(!!data.installed)
           if (data.installed && wsId) setActiveGuardWorkspace(wsId)
+          setSecureInstalled(!!data.security_loop_installed)
         }
       } catch {}
     }
@@ -382,9 +385,15 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
       setGuardInstalled(detail.installed)
     }
     window.addEventListener("guard-install-changed", onGuardChange)
+    function onSecureChange(e: Event) {
+      const detail = (e as CustomEvent<{ installed: boolean }>).detail
+      setSecureInstalled(detail.installed)
+    }
+    window.addEventListener("secure-install-changed", onSecureChange)
     return () => {
       cancelled = true
       window.removeEventListener("guard-install-changed", onGuardChange)
+      window.removeEventListener("secure-install-changed", onSecureChange)
     }
   }, [getToken, activeWorkspace])
 
@@ -462,6 +471,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
 
   const activeProjectId = pathname.match(/\/projects\/([^/]+)/)?.[1]
   const canSeeGuard = guardInstalled
+  const canSeeSecure = secureInstalled
   const canSeeProjects = userRole === "admin" || userRole === "developer" || userRole === "viewer"
   const canCreateProject = userRole === "admin" || userRole === "developer"
 
@@ -779,6 +789,54 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
             </div>
           )}
 
+          {/* SECURE group */}
+          {canSeeSecure && (
+            <div>
+              {!collapsed && (
+                <div style={{ padding: "12px 10px 5px", fontSize: 10, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+                  Secure
+                </div>
+              )}
+              {collapsed && <div style={{ borderTop: "1px solid var(--border)", margin: "6px 0" }} />}
+              <SideNavItem
+                href="/secure"
+                label="Security Loop"
+                icon={<Icons.Lock />}
+                active={pathname.startsWith("/secure")}
+                collapsed={collapsed}
+              />
+              {pathname.startsWith("/secure") && !collapsed && (
+                <div style={{ marginLeft: 28, marginTop: 2, display: "flex", flexDirection: "column", gap: 1 }}>
+                  {[
+                    { label: "Overview",  href: "/secure" },
+                    { label: "Activity",  href: "/secure/activity" },
+                    { label: "Policies",  href: "/secure/policies" },
+                    { label: "Settings",  href: "/secure/settings" },
+                  ].map(sub => {
+                    const subActive = sub.href === "/secure" ? pathname === "/secure" : pathname.startsWith(sub.href)
+                    return (
+                      <Link
+                        key={sub.href}
+                        href={sub.href}
+                        style={{
+                          display: "block", padding: "5px 10px", borderRadius: 7,
+                          fontSize: 13, fontWeight: subActive ? 600 : 400,
+                          color: subActive ? "var(--accent-text)" : "var(--text-3)",
+                          background: subActive ? "var(--accent-weak)" : "transparent",
+                          textDecoration: "none",
+                        }}
+                        onMouseEnter={e => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)" }}
+                        onMouseLeave={e => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "transparent" }}
+                      >
+                        {sub.label}
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* BUILD group */}
           <div>
             {!collapsed && (
@@ -951,13 +1009,6 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
               label="Benchmark"
               icon={<Icons.Trophy />}
               active={pathname.startsWith("/benchmark")}
-              collapsed={collapsed}
-            />
-            <SideNavItem
-              href="/security"
-              label="Security"
-              icon={<Icons.Lock />}
-              active={pathname.startsWith("/security")}
               collapsed={collapsed}
             />
           </div>

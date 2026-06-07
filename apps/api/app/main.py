@@ -25,6 +25,7 @@ from app.routers.rbac import router as rbac_router, me_router as me_rbac_router
 from app.routers.mcp import router as mcp_router
 from app.routers.generate import router as generate_router
 from app.routers.security import router as security_router
+from app.routers.secure import router as secure_router
 
 setup_logging()
 log = structlog.get_logger(__name__)
@@ -102,6 +103,7 @@ app.include_router(me_rbac_router)
 app.include_router(mcp_router)
 app.include_router(generate_router)
 app.include_router(security_router)
+app.include_router(secure_router)
 
 
 @app.on_event("startup")

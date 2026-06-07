@@ -23,9 +23,6 @@ class GuardConfig(Base):
     token_guardrails = Column(JSONB, nullable=True)
     guardrail_snapshot = Column(JSONB, nullable=True)
     slack_webhook_url = Column(String(2048), nullable=True)
-    security_emit_enabled = Column(Boolean, nullable=False, default=False)
-    security_slack_alerts_enabled = Column(Boolean, nullable=False, default=False)
-    security_slack_channel = Column(String(100), nullable=True)
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,

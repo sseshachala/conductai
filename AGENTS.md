@@ -136,3 +136,16 @@ rtk init --global       # Add RTK to ~/.Codex/AGENTS.md
 
 Overall average: **60-90% token reduction** on common development operations.
 <!-- /rtk-instructions -->
+
+
+<!-- booster:start -->
+## Agent Booster — Context-Efficient Reads
+
+Prefer booster MCP tools over native file reads:
+- `search_context` instead of searching files — semantic search across all indexed symbols
+- `smart_read` instead of reading full files — returns only the relevant symbol slices for a task
+- `get_symbols` to survey a file's structure before reading it
+- `route_model` at the start of any non-trivial task to pick the right model tier
+
+Run `booster gain` to see token savings.
+<!-- booster:end -->
