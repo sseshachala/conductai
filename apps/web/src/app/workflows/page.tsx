@@ -120,6 +120,12 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
   const menuRef = useRef<HTMLDivElement>(null)
   const confirmInputRef = useRef<HTMLInputElement>(null)
   const renameInputRef = useRef<HTMLInputElement>(null)
+  const [runModal, setRunModal] = useState<{ id: string; name: string } | null>(null)
+  const [runParams, setRunParams] = useState("")
+  const [runDryRun, setRunDryRun] = useState(false)
+  const [runGuard, setRunGuard] = useState(true)
+  const [runLoading, setRunLoading] = useState(false)
+  const [runError, setRunError] = useState<string | null>(null)
 
   async function authHeaders(): Promise<Record<string, string>> {
     const h: Record<string, string> = {}
@@ -144,6 +150,40 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
   useEffect(() => {
     if (renaming !== null) renameInputRef.current?.focus()
   }, [renaming])
+
+  useEffect(() => {
+    function handleEsc(e: KeyboardEvent) { if (e.key === "Escape") setRunModal(null) }
+    document.addEventListener("keydown", handleEsc)
+    return () => document.removeEventListener("keydown", handleEsc)
+  }, [])
+
+  async function runWorkflow() {
+    if (!runModal) return
+    setRunLoading(true)
+    setRunError(null)
+    const initial_state: Record<string, string> = {}
+    for (const line of runParams.split("\n")) {
+      const idx = line.indexOf("=")
+      if (idx > 0) initial_state[line.slice(0, idx).trim()] = line.slice(idx + 1).trim()
+    }
+    try {
+      const h = await authHeaders()
+      h["Content-Type"] = "application/json"
+      if (project?.id) h["X-Workspace-ID"] = project.id
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${runModal.id}/runs`, {
+        method: "POST",
+        headers: h,
+        body: JSON.stringify({ triggered_by: "manual", dry_run: runDryRun, guard_enabled: runGuard, initial_state }),
+      })
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.detail ?? "Failed to start run") }
+      setRunModal(null)
+      router.push(`/workflows/${runModal.id}/runs`)
+    } catch (err) {
+      setRunError(err instanceof Error ? err.message : "Failed to start run")
+    } finally {
+      setRunLoading(false)
+    }
+  }
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -404,6 +444,12 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
                       </div>
                       <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", position: "relative" }}>
                         <button
+                          className="btn btn-ghost btn-sm"
+                          title="Run now"
+                          style={{ fontSize: 11, padding: "3px 9px" }}
+                          onClick={e => { e.stopPropagation(); setRunParams(""); setRunDryRun(false); setRunGuard(true); setRunError(null); setRunModal({ id: w.id, name: w.name }) }}
+                        >Run</button>
+                        <button
                           className="btn btn-ghost btn-icon btn-sm"
                           title="Open"
                           onClick={e => { e.stopPropagation(); router.push(`/workflows/${w.id}`) }}
@@ -470,6 +516,53 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
         )}
 
       </div>
+
+      {/* Run modal */}
+      {runModal && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setRunModal(null)}
+        >
+          <div
+            style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "var(--shadow-lg)", padding: 24, width: 440, maxWidth: "90vw" }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ fontWeight: 650, fontSize: 15, marginBottom: 16 }}>Run — {runModal.name}</div>
+
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>Parameters (optional)</div>
+              <textarea
+                rows={4}
+                value={runParams}
+                onChange={e => setRunParams(e.target.value)}
+                placeholder={"MODEL=claude-sonnet-4-6\nBRANCH=main"}
+                style={{ width: "100%", fontSize: 12.5, fontFamily: "var(--font-mono, monospace)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", background: "var(--surface-2)", color: "var(--text)", resize: "vertical", boxSizing: "border-box" }}
+              />
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>One KEY=VALUE per line</div>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+                <input type="checkbox" checked={runGuard} onChange={e => setRunGuard(e.target.checked)} />
+                Enable Guard
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+                <input type="checkbox" checked={runDryRun} onChange={e => setRunDryRun(e.target.checked)} />
+                Dry run (simulate without executing)
+              </label>
+            </div>
+
+            {runError && <div style={{ fontSize: 12, color: "var(--err)", marginBottom: 12 }}>{runError}</div>}
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button className="btn btn-ghost" onClick={() => setRunModal(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={runWorkflow} disabled={runLoading}>
+                {runLoading ? "Starting…" : "Run now"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   )
 }

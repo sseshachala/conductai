@@ -75,6 +75,38 @@ interface AnalyticsSummary {
   top_playbooks: PlaybookStat[]
 }
 
+interface DoraMetrics {
+  window_days: number
+  total_runs: number
+  deployment_frequency: number
+  change_failure_rate: number
+  avg_duration_ms: number | null
+  by_trigger: Record<string, { runs: number; succeeded: number; failed: number; failure_rate: number }>
+}
+
+interface PlaybookScorecard {
+  playbook_slug: string
+  run_count: number
+  avg_pct: number
+  grade: string
+  grade_dist: Record<string, number>
+  avg_mechanical: number
+  avg_judge: number
+}
+
+function fmt_duration(ms: number): string {
+  const s = Math.floor(ms / 1000)
+  if (s < 60) return `${s}s`
+  return `${Math.floor(s / 60)}m ${s % 60}s`
+}
+
+function gradeColor(grade: string): [string, string] {
+  if (grade === "A") return ["var(--ok)", "var(--ok-bg)"]
+  if (grade === "B") return ["var(--info)", "#e8f4fd"]
+  if (grade === "C") return ["var(--warn)", "var(--warn-bg)"]
+  return ["var(--err)", "var(--err-bg)"]
+}
+
 const HEALTH_BADGE: Record<string, [string, string, string]> = {
   healthy:  ["Healthy",  "var(--ok)",     "var(--ok-bg)"],
   degraded: ["Degraded", "var(--warn)",   "var(--warn-bg)"],
@@ -102,6 +134,8 @@ export default function ObservabilityPage() {
   const [summary, setSummary] = useState<ObservabilitySummary | null>(null)
   const [agents, setAgents] = useState<AgentStatus[]>([])
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null)
+  const [dora, setDora] = useState<DoraMetrics | null>(null)
+  const [scorecards, setScorecards] = useState<Map<string, PlaybookScorecard>>(new Map())
   const [loading, setLoading] = useState(true)
   const [live, setLive] = useState(false)
   const esRef = useRef<EventSource | null>(null)
@@ -142,6 +176,35 @@ export default function ObservabilityPage() {
     }
   }, [getToken])
 
+  const loadDora = useCallback(async () => {
+    const token = await getToken()
+    const workspaceId = getCookie("delegator_project_id") ?? ""
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    if (token) headers["Authorization"] = `Bearer ${token}`
+    if (workspaceId) headers["x-workspace-id"] = workspaceId
+    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+    try {
+      const res = await fetch(`${base}/analytics/dora?days=30`, { headers })
+      if (res.ok) setDora(await res.json())
+    } catch { }
+  }, [getToken])
+
+  const loadScorecards = useCallback(async () => {
+    const token = await getToken()
+    const workspaceId = getCookie("delegator_project_id") ?? ""
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    if (token) headers["Authorization"] = `Bearer ${token}`
+    if (workspaceId) headers["x-workspace-id"] = workspaceId
+    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+    try {
+      const res = await fetch(`${base}/analytics/scorecards?days=30`, { headers })
+      if (res.ok) {
+        const list: PlaybookScorecard[] = await res.json()
+        setScorecards(new Map(list.map(s => [s.playbook_slug, s])))
+      }
+    } catch { }
+  }, [getToken])
+
   const connectSSE = useCallback(async () => {
     const token = await getToken()
     const workspaceId = getCookie("delegator_project_id") ?? ""
@@ -174,29 +237,29 @@ export default function ObservabilityPage() {
   useEffect(() => {
     const init = async () => {
       try {
-        await Promise.all([connectSSE(), loadAgents(), loadAnalytics()])
+        await Promise.all([connectSSE(), loadAgents(), loadAnalytics(), loadDora(), loadScorecards()])
       } finally {
         setLoading(false)
       }
     }
     init()
     const agentInterval     = setInterval(loadAgents,    30_000)
-    const analyticsInterval = setInterval(loadAnalytics, 60_000)
+    const analyticsInterval = setInterval(() => { loadAnalytics(); loadDora(); loadScorecards() }, 60_000)
     return () => {
       clearInterval(agentInterval)
       clearInterval(analyticsInterval)
       esRef.current?.close()
     }
-  }, [connectSSE, loadAgents, loadAnalytics])
+  }, [connectSSE, loadAgents, loadAnalytics, loadDora, loadScorecards])
 
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      await Promise.all([connectSSE(), loadAgents(), loadAnalytics()])
+      await Promise.all([connectSSE(), loadAgents(), loadAnalytics(), loadDora(), loadScorecards()])
     } finally {
       setLoading(false)
     }
-  }, [connectSSE, loadAgents, loadAnalytics])
+  }, [connectSSE, loadAgents, loadAnalytics, loadDora, loadScorecards])
 
   const selectStyle: React.CSSProperties = {
     fontSize: 13,
@@ -365,6 +428,40 @@ export default function ObservabilityPage() {
           </div>
         )}
 
+        {/* DORA-lite */}
+        <div className="eyebrow" style={{ marginBottom: 11 }}>
+          DORA-lite <span style={{ textTransform: "none", letterSpacing: 0, color: "var(--text-muted)", fontWeight: 500 }}>· last 30 days</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 24 }}>
+          {[
+            {
+              v: dora ? `${dora.deployment_frequency.toFixed(1)}/day` : "—",
+              k: "Deploys / day",
+              tone: dora ? (dora.deployment_frequency >= 1 ? "var(--ok)" : dora.deployment_frequency >= 0.5 ? "var(--warn)" : "var(--text-muted)") : "var(--text-muted)",
+            },
+            {
+              v: dora ? `${Math.round(dora.change_failure_rate * 100)}%` : "—",
+              k: "Failure rate",
+              tone: dora ? (dora.change_failure_rate < 0.1 ? "var(--ok)" : dora.change_failure_rate < 0.2 ? "var(--warn)" : "var(--err)") : "var(--text-muted)",
+            },
+            {
+              v: dora?.avg_duration_ms ? fmt_duration(dora.avg_duration_ms) : "—",
+              k: "Avg lead time",
+              tone: "var(--text)",
+            },
+            {
+              v: dora ? dora.total_runs : "—",
+              k: "Total runs",
+              tone: "var(--text)",
+            },
+          ].map((s, i) => (
+            <div key={i} className="card" style={{ padding: "16px 18px" }}>
+              <div style={{ fontSize: 23, fontWeight: 700, letterSpacing: "-.02em", color: s.tone, lineHeight: 1.1 }}>{String(s.v)}</div>
+              <div className="eyebrow" style={{ marginTop: 8, fontSize: 9.5 }}>{s.k}</div>
+            </div>
+          ))}
+        </div>
+
         {/* Cost summary */}
         <div className="eyebrow" style={{ marginBottom: 11 }}>
           Cost summary <span style={{ textTransform: "none", letterSpacing: 0, color: "var(--text-muted)", fontWeight: 500 }}>· last 30 days</span>
@@ -394,22 +491,32 @@ export default function ObservabilityPage() {
           {/* By playbook */}
           <div className="card" style={{ overflow: "hidden" }}>
             <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--border)", fontWeight: 650, fontSize: 13.5 }}>By playbook</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1.6fr 0.6fr 0.7fr 0.9fr", gap: 12, padding: "9px 18px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
-              {["Playbook", "Runs", "Success", "Total cost"].map((h, i) => (
+            <div style={{ display: "grid", gridTemplateColumns: "1.4fr 0.5fr 0.65fr 0.85fr 0.5fr", gap: 12, padding: "9px 18px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+              {["Playbook", "Runs", "Success", "Total cost", "Grade"].map((h, i) => (
                 <div key={i} className="eyebrow" style={{ fontSize: 9.5, textAlign: i > 0 ? "right" : "left" }}>{h}</div>
               ))}
             </div>
             {(analytics?.top_playbooks ?? []).length === 0 ? (
               <div style={{ padding: "20px 18px", fontSize: 12, color: "var(--text-muted)" }}>No playbook data yet.</div>
             ) : (
-              (analytics?.top_playbooks ?? []).map(p => (
-                <div key={p.playbook_slug} style={{ display: "grid", gridTemplateColumns: "1.6fr 0.6fr 0.7fr 0.9fr", gap: 12, padding: "11px 18px", borderBottom: "1px solid var(--border)", alignItems: "center" }}>
-                  <div className="mono" style={{ fontSize: 12.5, fontWeight: 600 }}>{p.playbook_slug}</div>
-                  <div className="mono" style={{ fontSize: 12.5, color: "var(--text-3)", textAlign: "right" }}>{p.run_count}</div>
-                  <div className="mono" style={{ fontSize: 12.5, textAlign: "right", color: p.success_rate >= 0.8 ? "var(--ok)" : "var(--err)" }}>{Math.round(p.success_rate * 100)}%</div>
-                  <div className="mono" style={{ fontSize: 12.5, fontWeight: 700, textAlign: "right" }}>${p.total_cost_usd.toFixed(4)}</div>
-                </div>
-              ))
+              (analytics?.top_playbooks ?? []).map(p => {
+                const sc = scorecards.get(p.playbook_slug)
+                const [gc, gbg] = sc ? gradeColor(sc.grade) : ["var(--text-muted)", "var(--surface-3)"]
+                return (
+                  <div key={p.playbook_slug} style={{ display: "grid", gridTemplateColumns: "1.4fr 0.5fr 0.65fr 0.85fr 0.5fr", gap: 12, padding: "11px 18px", borderBottom: "1px solid var(--border)", alignItems: "center" }}>
+                    <div className="mono" style={{ fontSize: 12.5, fontWeight: 600 }}>{p.playbook_slug}</div>
+                    <div className="mono" style={{ fontSize: 12.5, color: "var(--text-3)", textAlign: "right" }}>{p.run_count}</div>
+                    <div className="mono" style={{ fontSize: 12.5, textAlign: "right", color: p.success_rate >= 0.8 ? "var(--ok)" : "var(--err)" }}>{Math.round(p.success_rate * 100)}%</div>
+                    <div className="mono" style={{ fontSize: 12.5, fontWeight: 700, textAlign: "right" }}>${p.total_cost_usd.toFixed(4)}</div>
+                    <div style={{ textAlign: "right" }}>
+                      {sc
+                        ? <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, borderRadius: 6, fontSize: 11, fontWeight: 700, color: gc, background: gbg }}>{sc.grade}</span>
+                        : <span style={{ fontSize: 11, color: "var(--text-muted)" }}>—</span>
+                      }
+                    </div>
+                  </div>
+                )
+              })
             )}
           </div>
 
