@@ -4,6 +4,14 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { timeAgo } from "@/lib/runUtils"
 
+export function SecureLoopIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    </svg>
+  )
+}
+
 export type Severity = "critical" | "high" | "medium" | "low" | "info"
 export type FindingStatus = "open" | "triaging" | "fixed" | "dismissed"
 
@@ -49,6 +57,9 @@ export function SecureShell({ children }: { children: React.ReactNode }) {
       <div style={{ display: "flex", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+            <span style={{ width: 32, height: 32, borderRadius: 9, background: "#dc2626", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
+              <SecureLoopIcon size={16} />
+            </span>
             <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", letterSpacing: "-.02em", margin: 0 }}>
               Secure
             </h1>
