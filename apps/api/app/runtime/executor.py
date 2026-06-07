@@ -1772,7 +1772,7 @@ def _execute_memory_inner(block: dict, state: dict, db, run_id: str, workspace_i
             rows = db.execute(
                 __import__("sqlalchemy").text("""
                     SELECT summary, created_at,
-                           (embedding::vector <=> :vec::vector) AS distance
+                           (embedding::vector <=> CAST(:vec AS vector)) AS distance
                     FROM agent_memory
                     WHERE workspace_id = :ws
                       AND playbook_slug = :slug
