@@ -619,6 +619,30 @@ def require_permission(permission: str):
         ).fetchone()
 
         if not has_perm:
+            # Fallback: if the RBAC tables are unseeded (migration 0044 not yet
+            # applied), grant access based on role tier so no env gets locked out.
+            seeded = db.execute(
+                _text("SELECT 1 FROM role_permissions LIMIT 1"),
+            ).fetchone()
+            if not seeded:
+                # Tables empty — derive access from role tier (mirrors the old
+                # require_workspace_role logic): admin=all, viewer=read-only,
+                # developer+security=read+write (conservative safe default).
+                read_only_perms = {
+                    "platform.workflows.view", "platform.runs.view",
+                    "platform.marketplace.browse", "platform.eval.view",
+                    "guard.policies.view", "guard.activity.view_own",
+                    "guard.spend.view_own",
+                }
+                if user_role == "admin":
+                    return user_role
+                if user_role in ("developer", "security") and permission in read_only_perms:
+                    return user_role
+                if user_role == "viewer" and permission in read_only_perms:
+                    return user_role
+                # Write permissions need at least developer/security
+                if user_role in ("developer", "security"):
+                    return user_role
             raise HTTPException(status_code=403, detail=f"Permission denied: {permission}")
 
         return user_role
