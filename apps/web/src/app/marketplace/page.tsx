@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
+import { SecureLoopIcon } from "@/app/secure/_components"
 
 interface Playbook {
   slug: string
@@ -523,9 +524,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                   gap: 20,
                 }}>
                   <span style={{ width: 44, height: 44, borderRadius: 12, background: "#dc2626", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                    </svg>
+                    <SecureLoopIcon size={22} />
                   </span>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 700, fontSize: 15, color: "#991b1b", marginBottom: 3 }}>Security Loop — for Claude Code</div>

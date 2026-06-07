@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { setGuardTeamId, removeGuardTeamId } from "@/lib/guardStorage"
+import { SecureLoopIcon } from "@/app/secure/_components"
 
 interface GuardConfig {
   workspace_id: string
@@ -294,9 +295,7 @@ function SecurityLoopModule() {
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <span style={{ width: 40, height: 40, borderRadius: 10, background: "#fee2e2", color: "#dc2626", display: "grid", placeItems: "center", flexShrink: 0 }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-            </svg>
+            <SecureLoopIcon size={20} />
           </span>
           <div>
             <h3 style={{ fontSize: 15, fontWeight: 650, color: "var(--text)", margin: 0 }}>Security Loop</h3>
