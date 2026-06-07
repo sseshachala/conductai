@@ -141,8 +141,7 @@ export default function AboutPage() {
                   <div>
                     <p className="font-semibold text-stone-900">Conduct</p>
                     <p className="text-sm text-stone-500 mt-1">
-                      Governed AI automations for tickets, PRs, alerts, and incidents. Install a
-                      playbook, connect an environment, and run.
+                      22 ready-made agent playbooks for tickets, PRs, alerts, and incidents. DORA-lite metrics, per-agent A–F scorecards, vector memory across runs, and ConductGuard policy enforcement — all in one platform. Install a playbook, connect an environment, run.
                     </p>
                   </div>
                   <a href="/marketplace" className="shrink-0 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors mt-0.5">
