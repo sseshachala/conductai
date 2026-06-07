@@ -1103,24 +1103,27 @@ def cmd_guard_install(args):
     user_email     = result.get("user_email") or ""
     clerk_user_id  = result.get("clerk_user_id") or ""
 
-    # Fetch full guard config to pick up security flags
+    # Check if Security Loop module is installed for this workspace
     security_emit = False
     try:
-        full_cfg = _req("GET", f"{server}/guard/config?workspace_id={workspace_id}", api_key=api_key)
-        security_emit = full_cfg.get("security_emit_enabled", False)
+        sec = _req("GET", f"{server}/secure/installed?workspace_id={workspace_id}", api_key=api_key)
+        if sec.get("installed"):
+            security_emit = True
     except Exception:
         pass
 
     # Persist guard config — include api_key so CLI commands can authenticate
     _save_guard_config({
-        "workspace_id":         workspace_id,
-        "member_token":         member_token,
-        "user_email":           user_email,
-        "clerk_user_id":        clerk_user_id,
-        "api_key":              api_key,
-        "api_url":              server,
+        "workspace_id":          workspace_id,
+        "member_token":          member_token,
+        "user_email":            user_email,
+        "clerk_user_id":         clerk_user_id,
+        "api_key":               api_key,
+        "api_url":               server,
         "security_emit_enabled": security_emit,
     })
+    if security_emit:
+        print(f"  {GREEN}Security Loop:{RESET} installed — classifier active")
 
     # Download policies
     try:
@@ -1350,11 +1353,13 @@ def cmd_guard_sync(args):
     rule_count = len(policy.get("rules", []))
     print(f"  {GREEN}Policy refreshed:{RESET} {rule_count} rule(s)")
 
-    # Refresh security flags from server
+    # Re-check Security Loop install status
     try:
-        full_cfg = _req("GET", f"{base_url}/guard/config?workspace_id={workspace_id}", api_key=api_key)
-        cfg["security_emit_enabled"] = full_cfg.get("security_emit_enabled", False)
+        sec = _req("GET", f"{base_url}/secure/installed?workspace_id={workspace_id}", api_key=api_key)
+        cfg["security_emit_enabled"] = bool(sec.get("installed"))
         _save_guard_config(cfg)
+        if sec.get("installed"):
+            print(f"  {GREEN}Security Loop:{RESET} installed — classifier active")
     except Exception:
         pass
 

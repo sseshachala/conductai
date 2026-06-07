@@ -162,6 +162,37 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   const [installing, setInstalling] = useState(false)
   const [installedCount, setInstalledCount] = useState<Map<string, number>>(new Map())
   const [scores, setScores] = useState<Map<string, PlaybookScore>>(new Map())
+  const [secureInstalling, setSecureInstalling] = useState(false)
+  const [secureInstalled, setSecureInstalled] = useState(false)
+
+  // Check if Security Loop is already installed
+  useEffect(() => {
+    const wsId = getWorkspaceId()
+    if (!wsId) return
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/secure/installed?workspace_id=${wsId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.installed) setSecureInstalled(true) })
+      .catch(() => {})
+  }, [])
+
+  async function installSecureModule() {
+    const wsId = getWorkspaceId()
+    if (!wsId || secureInstalling) return
+    setSecureInstalling(true)
+    try {
+      const token = getToken ? await getToken() : null
+      const h: Record<string, string> = { "Content-Type": "application/json" }
+      if (token) h["Authorization"] = `Bearer ${token}`
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/secure/install?workspace_id=${wsId}`, {
+        method: "POST", headers: h,
+      })
+      if (res.ok) {
+        setSecureInstalled(true)
+        window.dispatchEvent(new CustomEvent("secure-install-changed", { detail: { installed: true } }))
+      }
+    } catch {}
+    finally { setSecureInstalling(false) }
+  }
 
   // YAML preview modal
   const [yamlSlug, setYamlSlug] = useState<string | null>(null)
@@ -476,6 +507,57 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
           </div>
         ) : (
           <>
+            {/* Security Loop module install card */}
+            {(activeCategory === "All" || activeCategory === "Security") && !searchActive && (
+              <div style={{ marginBottom: 28 }}>
+                <div className="eyebrow" style={{ marginBottom: 11 }}>Modules</div>
+                <div style={{
+                  background: "linear-gradient(135deg, #fef2f2 0%, #fff7ed 100%)",
+                  border: "1px solid #fecaca",
+                  borderRadius: 14,
+                  padding: "20px 24px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 20,
+                }}>
+                  <span style={{ width: 44, height: 44, borderRadius: 12, background: "#dc2626", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                  </span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: "#991b1b", marginBottom: 3 }}>Security Loop — for Claude Code</div>
+                    <div style={{ fontSize: 13, color: "#b91c1c", lineHeight: 1.5 }}>
+                      Passive security classifier on every Claude Code tool call. Findings surface in your team's Secure feed automatically — secrets, injections, path traversal, crypto issues. Zero developer action.
+                    </div>
+                    <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                      {["passive", "claude-code", "security", "bughunter"].map(tag => (
+                        <span key={tag} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, background: "rgba(220,38,38,.12)", color: "#dc2626", fontWeight: 500 }}>
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  {secureInstalled ? (
+                    <Link href="/secure" style={{ textDecoration: "none" }}>
+                      <button className="btn btn-ghost btn-sm" style={{ flexShrink: 0 }}>
+                        Open Secure →
+                      </button>
+                    </Link>
+                  ) : (
+                    <button
+                      className="btn btn-primary btn-sm"
+                      style={{ flexShrink: 0 }}
+                      disabled={secureInstalling}
+                      onClick={installSecureModule}
+                    >
+                      {secureInstalling ? "Installing…" : "Install"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Featured section */}
             {showFeatured && (
               <div style={{ marginBottom: 30 }}>
