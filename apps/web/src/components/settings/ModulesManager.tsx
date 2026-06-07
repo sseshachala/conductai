@@ -246,6 +246,9 @@ function SecurityLoopModule() {
   const [installed, setInstalled] = useState(false)
   const [loading, setLoading] = useState(true)
   const [installing, setInstalling] = useState(false)
+  const [uninstalling, setUninstalling] = useState(false)
+  const [confirmUninstall, setConfirmUninstall] = useState(false)
+  const [uninstallConfirmValue, setUninstallConfirmValue] = useState("")
   const [error, setError] = useState<string | null>(null)
 
   const base = process.env.NEXT_PUBLIC_API_URL ?? ""
@@ -286,6 +289,23 @@ function SecurityLoopModule() {
     }
   }
 
+  async function handleUninstall() {
+    if (uninstallConfirmValue !== "SecurityLoop") return
+    const wsId = activeWorkspace?.id
+    setUninstalling(true)
+    try {
+      const h = await buildHeaders()
+      await fetch(`${base}/secure/install${wsId ? `?workspace_id=${wsId}` : ""}`, { method: "DELETE", headers: h })
+    } catch {}
+    finally {
+      setInstalled(false)
+      setConfirmUninstall(false)
+      setUninstallConfirmValue("")
+      setUninstalling(false)
+      if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("secure-install-changed", { detail: { installed: false } }))
+    }
+  }
+
   if (loading) {
     return <ModuleCard><div style={{ height: 100, borderRadius: 12, background: "var(--surface-2)", opacity: 0.7 }} /></ModuleCard>
   }
@@ -305,7 +325,7 @@ function SecurityLoopModule() {
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           {installed && <span className="sbadge ok">✓ Installed</span>}
           {installed ? (
-            <Link href="/secure" className="btn btn-ghost btn-sm" style={{ color: "var(--accent-text)" }}>Open →</Link>
+            <button onClick={() => setConfirmUninstall(true)} disabled={uninstalling} className="btn btn-ghost btn-sm" style={{ color: "var(--err)" }}>Uninstall</button>
           ) : (
             <button onClick={handleInstall} disabled={installing} className="btn btn-primary btn-sm">
               {installing ? "Installing…" : "Install"}
@@ -331,7 +351,42 @@ function SecurityLoopModule() {
         </ul>
       )}
 
+      {installed && (
+        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+          <Link href="/secure" className="btn btn-ghost btn-sm" style={{ color: "var(--accent-text)" }}>
+            Go to Security Loop dashboard →
+          </Link>
+        </div>
+      )}
+
       {error && <p style={{ fontSize: 12, color: "var(--err)", borderTop: "1px solid var(--err-bd)", paddingTop: 12, margin: 0 }}>{error}</p>}
+
+      {confirmUninstall && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.3)", backdropFilter: "blur(4px)" }}>
+          <div className="card" style={{ maxWidth: 400, width: "100%", margin: "0 16px", padding: 24, display: "flex", flexDirection: "column", gap: 16, boxShadow: "var(--shadow-lg)" }}>
+            <h4 style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", margin: 0 }}>Uninstall Security Loop?</h4>
+            <p style={{ fontSize: 13, color: "var(--text-2)" }}>The classifier will stop running on all developers' machines on next sync. Findings data is retained.</p>
+            <p style={{ fontSize: 12, color: "var(--err)" }}>Type <strong>SecurityLoop</strong> to confirm.</p>
+            <input
+              value={uninstallConfirmValue}
+              onChange={e => setUninstallConfirmValue(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") handleUninstall(); if (e.key === "Escape") { setConfirmUninstall(false); setUninstallConfirmValue("") } }}
+              placeholder="SecurityLoop"
+              style={{ height: 36, border: "1px solid var(--err-bd)", borderRadius: 8, padding: "0 12px", fontSize: 13, width: "100%", background: "var(--surface)", color: "var(--text)", outline: "none", boxSizing: "border-box" }}
+            />
+            <div style={{ display: "flex", gap: 12, paddingTop: 4 }}>
+              <button onClick={() => { setConfirmUninstall(false); setUninstallConfirmValue("") }} className="btn btn-ghost" style={{ flex: 1 }}>Cancel</button>
+              <button
+                onClick={handleUninstall}
+                disabled={uninstalling || uninstallConfirmValue !== "SecurityLoop"}
+                style={{ flex: 1, background: "var(--err)", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: uninstallConfirmValue === "SecurityLoop" ? "pointer" : "not-allowed", opacity: uninstallConfirmValue === "SecurityLoop" ? 1 : 0.4 }}
+              >
+                {uninstalling ? "Uninstalling…" : "Uninstall"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </ModuleCard>
   )
 }
