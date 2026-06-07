@@ -8,6 +8,15 @@ class InputContractError(ValueError):
     """Raised when run-start inputs do not meet the explicit contract."""
 
 
+# Canonical trigger shape definitions — used for documentation and future validation.
+TRIGGER_SHAPES: dict[str, dict] = {
+    "security_finding": {
+        "required": ["tool", "severity", "type", "description"],
+        "optional": ["file", "line", "suggested_fix", "repo_full_name", "commit_sha", "source_run_id"],
+    },
+}
+
+
 def _is_non_empty_dict(value: Any) -> bool:
     return isinstance(value, dict) and bool(value)
 

@@ -88,6 +88,7 @@ const Icons = {
   Plus: () => <Icon><path d="M12 5v14M5 12h14" /></Icon>,
   Play: () => <Icon><polygon points="5 3 19 12 5 21 5 3" /></Icon>,
   Arrow: () => <Icon><path d="M5 12h14M12 5l7 7-7 7" /></Icon>,
+  Lock: () => <Icon><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></Icon>,
 }
 
 // ── Breadcrumb logic ──────────────────────────────────────────────────────────
@@ -102,6 +103,7 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
   if (pathname.startsWith('/settings')) return ['Settings']
   if (pathname.startsWith('/marketplace')) return ['Marketplace']
   if (pathname.startsWith('/runs')) return ['Runs']
+  if (pathname.startsWith('/security')) return ['Security']
   if (pathname.startsWith('/observability')) return ['Observability']
   if (pathname.startsWith('/eval')) return ['Quality']
   if (pathname.startsWith('/benchmark')) return ['Benchmark']
@@ -129,6 +131,7 @@ const PALETTE_COMMANDS = [
   { group: "BUILD", label: "Marketplace", href: "/marketplace", icon: "Store" as const },
   { group: "OBSERVE", label: "Dashboard", href: "/dashboard", icon: "Spark" as const },
   { group: "OBSERVE", label: "Runs", href: "/runs", icon: "Pulse" as const },
+  { group: "OBSERVE", label: "Security", href: "/security", icon: "Lock" as const },
   { group: "GOVERN", label: "Guard · Overview", href: "/guard", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Spend", href: "/guard/spend", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Policies", href: "/guard/policies", icon: "Shield" as const },
@@ -948,6 +951,13 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
               label="Benchmark"
               icon={<Icons.Trophy />}
               active={pathname.startsWith("/benchmark")}
+              collapsed={collapsed}
+            />
+            <SideNavItem
+              href="/security"
+              label="Security"
+              icon={<Icons.Lock />}
+              active={pathname.startsWith("/security")}
               collapsed={collapsed}
             />
           </div>

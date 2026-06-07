@@ -1,0 +1,416 @@
+"""
+POST  /security-findings              — ingest a finding (Guard CLI or external tools)
+GET   /security-findings              — list findings for workspace
+GET   /security-findings/summary      — workspace-level stats
+GET   /security-findings/{finding_id} — get single finding
+PATCH /security-findings/{finding_id} — update status or github_issue_url
+"""
+import uuid
+from datetime import datetime, timezone, timedelta
+from typing import Optional
+from uuid import UUID
+
+import redis
+import structlog
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, field_validator
+from sqlalchemy import func, text
+from sqlalchemy.orm import Session
+
+from app.core.auth import get_workspace_id, require_permission
+from app.core.config import settings
+from app.core.database import get_db
+from app.models.security_finding import SecurityFinding
+
+log = structlog.get_logger(__name__)
+
+router = APIRouter(prefix="/security-findings", tags=["security"])
+
+QUEUE_KEY = "marshal:runs:queue"
+QUEUE_MAX_DEPTH = 50_000
+
+_VALID_SEVERITIES = {"critical", "high", "medium", "low", "info"}
+_VALID_TYPES = {"injection", "path-traversal", "secret-leak", "auth-bypass", "crypto", "other"}
+_VALID_STATUSES = {"open", "triaging", "fixed", "dismissed"}
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _redis():
+    return redis.from_url(settings.redis_url, decode_responses=True)
+
+
+def _enqueue_run(run_id: str) -> None:
+    """Push run_id onto the Redis queue, refusing when queue is too deep."""
+    r = _redis()
+    depth = r.llen(QUEUE_KEY)
+    if depth >= QUEUE_MAX_DEPTH:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Run queue is at capacity ({depth} pending). Try again shortly.",
+        )
+    r.rpush(QUEUE_KEY, run_id)
+
+
+# ── Pydantic schemas ──────────────────────────────────────────────────────────
+
+class FindingIn(BaseModel):
+    tool: str
+    severity: str
+    type: str
+    description: str
+    file: Optional[str] = None
+    line: Optional[int] = None
+    suggested_fix: Optional[str] = None
+    repo_full_name: Optional[str] = None
+    commit_sha: Optional[str] = None
+    source_run_id: Optional[str] = None
+
+    @field_validator("severity")
+    @classmethod
+    def validate_severity(cls, v: str) -> str:
+        if v not in _VALID_SEVERITIES:
+            raise ValueError(f"severity must be one of: {', '.join(sorted(_VALID_SEVERITIES))}")
+        return v
+
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, v: str) -> str:
+        if v not in _VALID_TYPES:
+            raise ValueError(f"type must be one of: {', '.join(sorted(_VALID_TYPES))}")
+        return v
+
+
+class FindingOut(BaseModel):
+    id: UUID
+    workspace_id: str
+    tool: str
+    severity: str
+    type: str
+    file: Optional[str]
+    line: Optional[int]
+    description: str
+    suggested_fix: Optional[str]
+    repo_full_name: Optional[str]
+    commit_sha: Optional[str]
+    source_run_id: Optional[str]
+    status: str
+    github_issue_url: Optional[str]
+    run_id: Optional[str]
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class FindingUpdate(BaseModel):
+    status: Optional[str] = None
+    github_issue_url: Optional[str] = None
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in _VALID_STATUSES:
+            raise ValueError(f"status must be one of: {', '.join(sorted(_VALID_STATUSES))}")
+        return v
+
+
+class FindingSummary(BaseModel):
+    total: int
+    by_severity: dict
+    by_status: dict
+    by_tool: dict
+    mttr_hours: Optional[float]
+
+
+# ── Endpoints ─────────────────────────────────────────────────────────────────
+
+@router.post("", response_model=FindingOut, status_code=201)
+def ingest_finding(
+    body: FindingIn,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+) -> FindingOut:
+    """Ingest a security finding from Guard CLI or external tools.
+
+    If a workflow with playbook_slug='security_loop' is installed in the workspace,
+    it will be triggered automatically via the Redis run queue.
+    """
+    now = _now()
+    finding = SecurityFinding(
+        id=uuid.uuid4(),
+        workspace_id=workspace_id,
+        tool=body.tool,
+        severity=body.severity,
+        type=body.type,
+        file=body.file,
+        line=body.line,
+        description=body.description,
+        suggested_fix=body.suggested_fix,
+        repo_full_name=body.repo_full_name,
+        commit_sha=body.commit_sha,
+        source_run_id=body.source_run_id,
+        status="open",
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(finding)
+    db.flush()  # get the ID before triggering the workflow
+
+    # Trigger the security_loop workflow if installed in this workspace
+    try:
+        _trigger_security_loop(finding, workspace_id, db)
+    except HTTPException:
+        # Queue at capacity — log and continue; the finding is still persisted
+        log.warning(
+            "security_finding.queue_full",
+            finding_id=str(finding.id),
+            workspace_id=workspace_id,
+        )
+    except Exception as exc:
+        log.warning(
+            "security_finding.trigger_failed",
+            finding_id=str(finding.id),
+            workspace_id=workspace_id,
+            error=str(exc),
+        )
+
+    db.commit()
+    db.refresh(finding)
+    log.info(
+        "security_finding.ingested",
+        finding_id=str(finding.id),
+        workspace_id=workspace_id,
+        severity=finding.severity,
+        tool=finding.tool,
+    )
+    return finding
+
+
+def _trigger_security_loop(finding: SecurityFinding, workspace_id: str, db: Session) -> None:
+    """Look up the security_loop workflow and enqueue a run for this finding."""
+    from app.models.workflow import Workflow, WorkflowVersion
+    from app.models.run import Run
+
+    workflow = (
+        db.query(Workflow)
+        .filter(
+            Workflow.workspace_id == workspace_id,
+            Workflow.playbook_slug == "security_loop",
+        )
+        .first()
+    )
+    if not workflow or not workflow.current_version_id:
+        return
+
+    initial_state = {
+        "_trigger": {
+            "event_type": "security_finding",
+            "finding_id": str(finding.id),
+            "tool": finding.tool,
+            "severity": finding.severity,
+            "type": finding.type,
+            "description": finding.description,
+            "file": finding.file,
+            "line": finding.line,
+            "suggested_fix": finding.suggested_fix,
+            "repo_full_name": finding.repo_full_name,
+            "commit_sha": finding.commit_sha,
+            "source_run_id": finding.source_run_id,
+        },
+        "__input_contract": {
+            "version": "phase2.v1",
+            "status": "validated",
+            "shape": "trigger",
+        },
+    }
+
+    run = Run(
+        workflow_version_id=workflow.current_version_id,
+        triggered_by="security_finding",
+        status="pending",
+        state=initial_state,
+    )
+    db.add(run)
+    db.flush()
+
+    # Update the finding with the pipeline run_id
+    finding.run_id = str(run.id)
+
+    _enqueue_run(str(run.id))
+    log.info(
+        "security_finding.run_enqueued",
+        finding_id=str(finding.id),
+        run_id=str(run.id),
+        workflow_id=str(workflow.id),
+    )
+
+
+@router.get("/summary", response_model=FindingSummary)
+def get_summary(
+    days: int = Query(default=30, ge=1, le=365),
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.activity.view_all")),
+) -> FindingSummary:
+    """Return workspace-level stats for the given time window."""
+    cutoff = _now() - timedelta(days=days)
+    base = db.query(SecurityFinding).filter(
+        SecurityFinding.workspace_id == workspace_id,
+        SecurityFinding.created_at >= cutoff,
+    )
+
+    total = base.count()
+
+    by_severity: dict = {s: 0 for s in _VALID_SEVERITIES}
+    for row in (
+        base.with_entities(SecurityFinding.severity, func.count(SecurityFinding.id))
+        .group_by(SecurityFinding.severity)
+        .all()
+    ):
+        by_severity[row[0]] = row[1]
+
+    by_status: dict = {s: 0 for s in _VALID_STATUSES}
+    for row in (
+        base.with_entities(SecurityFinding.status, func.count(SecurityFinding.id))
+        .group_by(SecurityFinding.status)
+        .all()
+    ):
+        by_status[row[0]] = row[1]
+
+    by_tool: dict = {}
+    for row in (
+        base.with_entities(SecurityFinding.tool, func.count(SecurityFinding.id))
+        .group_by(SecurityFinding.tool)
+        .all()
+    ):
+        by_tool[row[0]] = row[1]
+
+    # mttr = avg hours from created_at to updated_at for fixed findings
+    mttr_hours: Optional[float] = None
+    mttr_row = (
+        db.query(
+            func.avg(
+                func.extract("epoch", SecurityFinding.updated_at)
+                - func.extract("epoch", SecurityFinding.created_at)
+            )
+        )
+        .filter(
+            SecurityFinding.workspace_id == workspace_id,
+            SecurityFinding.created_at >= cutoff,
+            SecurityFinding.status == "fixed",
+        )
+        .scalar()
+    )
+    if mttr_row is not None:
+        mttr_hours = round(float(mttr_row) / 3600, 2)
+
+    return FindingSummary(
+        total=total,
+        by_severity=by_severity,
+        by_status=by_status,
+        by_tool=by_tool,
+        mttr_hours=mttr_hours,
+    )
+
+
+@router.get("", response_model=list[FindingOut])
+def list_findings(
+    severity: Optional[str] = Query(default=None),
+    status: Optional[str] = Query(default=None),
+    repo: Optional[str] = Query(default=None),
+    days: int = Query(default=30, ge=1, le=365),
+    limit: int = Query(default=50, ge=1, le=500),
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.activity.view_all")),
+) -> list[FindingOut]:
+    """List findings for the workspace, filtered by optional query params."""
+    if severity and severity not in _VALID_SEVERITIES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"severity must be one of: {', '.join(sorted(_VALID_SEVERITIES))}",
+        )
+    if status and status not in _VALID_STATUSES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"status must be one of: {', '.join(sorted(_VALID_STATUSES))}",
+        )
+
+    cutoff = _now() - timedelta(days=days)
+    q = db.query(SecurityFinding).filter(
+        SecurityFinding.workspace_id == workspace_id,
+        SecurityFinding.created_at >= cutoff,
+    )
+    if severity:
+        q = q.filter(SecurityFinding.severity == severity)
+    if status:
+        q = q.filter(SecurityFinding.status == status)
+    if repo:
+        q = q.filter(SecurityFinding.repo_full_name == repo)
+
+    return (
+        q.order_by(SecurityFinding.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+
+@router.get("/{finding_id}", response_model=FindingOut)
+def get_finding(
+    finding_id: UUID,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.activity.view_all")),
+) -> FindingOut:
+    """Fetch a single finding by ID."""
+    finding = (
+        db.query(SecurityFinding)
+        .filter(
+            SecurityFinding.id == finding_id,
+            SecurityFinding.workspace_id == workspace_id,
+        )
+        .first()
+    )
+    if not finding:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    return finding
+
+
+@router.patch("/{finding_id}", response_model=FindingOut)
+def update_finding(
+    finding_id: UUID,
+    body: FindingUpdate,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.policies.edit")),
+) -> FindingOut:
+    """Update the status or github_issue_url of a finding."""
+    finding = (
+        db.query(SecurityFinding)
+        .filter(
+            SecurityFinding.id == finding_id,
+            SecurityFinding.workspace_id == workspace_id,
+        )
+        .first()
+    )
+    if not finding:
+        raise HTTPException(status_code=404, detail="Finding not found")
+
+    if body.status is not None:
+        finding.status = body.status
+    if body.github_issue_url is not None:
+        finding.github_issue_url = body.github_issue_url
+
+    finding.updated_at = _now()
+    db.commit()
+    db.refresh(finding)
+    log.info(
+        "security_finding.updated",
+        finding_id=str(finding.id),
+        workspace_id=workspace_id,
+        status=finding.status,
+    )
+    return finding
