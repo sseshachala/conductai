@@ -241,6 +241,90 @@ def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms)
     )
 
 
+def _maybe_emit_security_finding(tool_response, session_id, tool_name):
+    """Classify tool_response for security findings; POST to /security-findings if flag ON. Never raises."""
+    try:
+        cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
+    except Exception:
+        return
+    if not cfg.get("security_emit_enabled", False):
+        return
+    workspace_id = cfg.get("workspace_id")
+    api_key = cfg.get("api_key", "")
+    api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+    if not workspace_id:
+        return
+
+    import re as _re2
+    text = str(tool_response)
+
+    # Fast-path classifier
+    SECRET_PATTERNS = [
+        (r"sk-[A-Za-z0-9]{20,}", "secret-leak", "high", "Potential OpenAI/Anthropic API key"),
+        (r"ghp_[A-Za-z0-9]{36}", "secret-leak", "high", "GitHub Personal Access Token"),
+        (r"AKIA[0-9A-Z]{16}", "secret-leak", "critical", "AWS Access Key ID"),
+        (r"Bearer\s+[A-Za-z0-9+/=]{20,}", "secret-leak", "high", "Bearer token in output"),
+        (r"""password\s*=\s*['"][^'"]{4,}""", "secret-leak", "high", "Hardcoded password"),
+        (r"""api[_-]?key\s*=\s*['"][^'"]{4,}""", "secret-leak", "high", "Hardcoded API key"),
+        (r"\.\./\.\./\.\./", "path-traversal", "medium", "Path traversal sequence"),
+        (r"file://", "path-traversal", "medium", "File URI scheme in output"),
+        (r"\beval\s*\(", "injection", "high", "eval() in output"),
+        (r"\bexec\s*\(", "injection", "high", "exec() in output"),
+        (r"\b__import__\s*\(", "injection", "high", "__import__() in output"),
+        (r"ssl\.CERT_NONE", "crypto", "high", "SSL verification disabled"),
+        (r"verify\s*=\s*False", "crypto", "medium", "TLS verification bypassed"),
+    ]
+    OWASP_KEYWORDS = [
+        ("sql injection", "injection", "high", "SQL injection mentioned in AI output"),
+        ("cross-site scripting", "injection", "high", "XSS mentioned in AI output"),
+        (" xss ", "injection", "high", "XSS mentioned in AI output"),
+        ("idor", "injection", "medium", "IDOR mentioned in AI output"),
+        ("ssrf", "injection", "high", "SSRF mentioned in AI output"),
+        ("command injection", "injection", "high", "Command injection mentioned in AI output"),
+        ("auth bypass", "auth-bypass", "high", "Auth bypass mentioned in AI output"),
+    ]
+
+    finding_type = severity = description = None
+    for pattern, ftype, sev, desc in SECRET_PATTERNS:
+        if _re2.search(pattern, text, _re2.IGNORECASE):
+            finding_type, severity, description = ftype, sev, desc
+            break
+    if not finding_type:
+        lower = text.lower()
+        for kw, ftype, sev, desc in OWASP_KEYWORDS:
+            if kw in lower:
+                finding_type, severity, description = ftype, sev, desc
+                break
+    if not finding_type:
+        return
+
+    payload = json.dumps({
+        "tool": _detect_ai_tool(),
+        "severity": severity,
+        "type": finding_type,
+        "description": description,
+        "source_run_id": session_id,
+    })
+    script = (
+        "import urllib.request\\n"
+        "try:\\n"
+        f"    req = urllib.request.Request(\\"{api_url}/security-findings\\","
+        f" data={repr(payload.encode())}, headers={{\\\"Content-Type\\\": \\\"application/json\\\","
+        f" \\\"Authorization\\\": \\\"Bearer {api_key}\\\"}}, method=\\"POST\\")\\n"
+        "    urllib.request.urlopen(req, timeout=5)\\n"
+        "except: pass\\n"
+    )
+    try:
+        subprocess.Popen(
+            [sys.executable, "-c", script],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except Exception:
+        pass
+
+
 def _tail_lines(path, n=200):
     """Read last n lines of a file efficiently without loading the whole file."""
     size = path.stat().st_size
@@ -401,6 +485,9 @@ def post_usage_main():
         if action in ("warn", "block"):
             decision = "warned" if action == "warn" else "blocked"
             _post_event(tool_name, {}, decision, rule_id, message, session_id=session_id)
+        # Security classifier — emit finding if flag ON
+        tool_response = data.get("tool_response") or data.get("output") or ""
+        _maybe_emit_security_finding(str(tool_response), session_id, tool_name)
 
     sys.exit(0)
 
@@ -1016,14 +1103,23 @@ def cmd_guard_install(args):
     user_email     = result.get("user_email") or ""
     clerk_user_id  = result.get("clerk_user_id") or ""
 
+    # Fetch full guard config to pick up security flags
+    security_emit = False
+    try:
+        full_cfg = _req("GET", f"{server}/guard/config?workspace_id={workspace_id}", api_key=api_key)
+        security_emit = full_cfg.get("security_emit_enabled", False)
+    except Exception:
+        pass
+
     # Persist guard config — include api_key so CLI commands can authenticate
     _save_guard_config({
-        "workspace_id":  workspace_id,
-        "member_token":  member_token,
-        "user_email":    user_email,
-        "clerk_user_id": clerk_user_id,
-        "api_key":       api_key,
-        "api_url":       server,
+        "workspace_id":         workspace_id,
+        "member_token":         member_token,
+        "user_email":           user_email,
+        "clerk_user_id":        clerk_user_id,
+        "api_key":              api_key,
+        "api_url":              server,
+        "security_emit_enabled": security_emit,
     })
 
     # Download policies
@@ -1253,6 +1349,14 @@ def cmd_guard_sync(args):
     _save_policy(policy)
     rule_count = len(policy.get("rules", []))
     print(f"  {GREEN}Policy refreshed:{RESET} {rule_count} rule(s)")
+
+    # Refresh security flags from server
+    try:
+        full_cfg = _req("GET", f"{base_url}/guard/config?workspace_id={workspace_id}", api_key=api_key)
+        cfg["security_emit_enabled"] = full_cfg.get("security_emit_enabled", False)
+        _save_guard_config(cfg)
+    except Exception:
+        pass
 
     # Refresh hook script + re-register in all tools
     hook_path = GUARD_DIR / "hook.py"

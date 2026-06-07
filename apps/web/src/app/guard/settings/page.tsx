@@ -16,6 +16,9 @@ interface TeamPrefs {
   alert_channel: string | null
   notify_on_block: boolean
   notify_on_budget: boolean
+  security_emit_enabled: boolean
+  security_slack_alerts_enabled: boolean
+  security_slack_channel: string | null
 }
 
 // ─── Guard Shell ──────────────────────────────────────────────────────────────
@@ -121,8 +124,14 @@ function SettingsContent() {
     alert_channel: null,
     notify_on_block: true,
     notify_on_budget: true,
+    security_emit_enabled: false,
+    security_slack_alerts_enabled: false,
+    security_slack_channel: null,
   })
   const [channelInput, setChannelInput] = useState("")
+  const [securityChannelInput, setSecurityChannelInput] = useState("")
+  const [securityChannelSaved, setSecurityChannelSaved] = useState(false)
+  const [savingSecurityChannel, setSavingSecurityChannel] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [channelSaved, setChannelSaved] = useState(false)
@@ -175,8 +184,12 @@ function SettingsContent() {
         alert_channel: data.alert_channel ?? null,
         notify_on_block: data.notify_on_block ?? true,
         notify_on_budget: data.notify_on_budget ?? true,
+        security_emit_enabled: data.security_emit_enabled ?? false,
+        security_slack_alerts_enabled: data.security_slack_alerts_enabled ?? false,
+        security_slack_channel: data.security_slack_channel ?? null,
       })
       setChannelInput((data.alert_channel ?? "").replace(/^#+/, ""))
+      setSecurityChannelInput((data.security_slack_channel ?? "").replace(/^#+/, ""))
       if (data.enforcement_mode) setEnforcementMode(data.enforcement_mode as "block" | "warn" | "audit")
       // Load sync coverage in parallel
       fetch(`${base}/guard/developer-tools?workspace_id=${wsId}`, { headers })
@@ -245,6 +258,32 @@ function SettingsContent() {
       setError(e instanceof Error ? e.message : "Save failed")
     } finally {
       setSavingChannel(false)
+    }
+  }
+
+  async function handleSecurityToggle(field: "security_emit_enabled" | "security_slack_alerts_enabled", value: boolean) {
+    setPrefs(p => ({ ...p, [field]: value }))
+    try {
+      await patch({ [field]: value })
+    } catch (e) {
+      setPrefs(p => ({ ...p, [field]: !value }))
+      setError(e instanceof Error ? e.message : "Save failed")
+    }
+  }
+
+  async function handleSaveSecurityChannel() {
+    setSavingSecurityChannel(true)
+    const stripped = securityChannelInput.replace(/^#+/, "")
+    try {
+      await patch({ security_slack_channel: stripped || null })
+      setSecurityChannelInput(stripped)
+      setPrefs(p => ({ ...p, security_slack_channel: stripped || null }))
+      setSecurityChannelSaved(true)
+      setTimeout(() => setSecurityChannelSaved(false), 2000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed")
+    } finally {
+      setSavingSecurityChannel(false)
     }
   }
 
@@ -619,6 +658,87 @@ function SettingsContent() {
                 </button>
               </div>
 
+            </div>
+          </div>
+
+          {/* ── Security Loop ───────────────────────────────────────────────── */}
+          <div className="card" style={{ overflow: "hidden", marginTop: 20 }}>
+            <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ width: 30, height: 30, borderRadius: 8, background: "#dc2626", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+              </span>
+              <div style={{ fontWeight: 650, fontSize: 14.5 }}>Security</div>
+              <a href="/security" style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-3)", textDecoration: "none" }}>
+                View findings →
+              </a>
+            </div>
+            <div style={{ padding: "4px 20px 16px" }}>
+              {/* Security Emit */}
+              <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 0", borderTop: "1px solid var(--border)" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13.5 }}>Security Emit</div>
+                  <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+                    Classifier runs on every Claude Code tool call. Findings with secrets, injections, or OWASP keywords surface on the Security page automatically.
+                  </div>
+                </div>
+                <GuardToggle
+                  on={prefs.security_emit_enabled}
+                  onClick={() => isAdmin && handleSecurityToggle("security_emit_enabled", !prefs.security_emit_enabled)}
+                />
+              </div>
+
+              {/* Security Slack Alerts */}
+              <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 0", borderTop: "1px solid var(--border)" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13.5 }}>Security Slack Alerts</div>
+                  <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+                    POST to a dedicated Slack channel when a finding is detected — includes developer name, session ID, severity, and file.
+                  </div>
+                </div>
+                <GuardToggle
+                  on={prefs.security_slack_alerts_enabled}
+                  onClick={() => isAdmin && handleSecurityToggle("security_slack_alerts_enabled", !prefs.security_slack_alerts_enabled)}
+                />
+              </div>
+
+              {/* Security channel input — shown when Slack Alerts is on */}
+              {prefs.security_slack_alerts_enabled && (
+                <div style={{ paddingTop: 6, paddingBottom: 6 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)", marginBottom: 6 }}>Security alert channel</div>
+                  <div style={{ display: "flex", gap: 9 }}>
+                    <div style={{ display: "flex", alignItems: "center", flex: 1, border: "1px solid var(--border-2)", borderRadius: 8, overflow: "hidden" }}>
+                      <span style={{ padding: "0 10px", fontSize: 13, color: "var(--text-muted)", background: "var(--surface-2)", borderRight: "1px solid var(--border)", alignSelf: "stretch", display: "flex", alignItems: "center", userSelect: "none" }}>#</span>
+                      <input
+                        type="text"
+                        value={securityChannelInput}
+                        onChange={e => isAdmin && setSecurityChannelInput(e.target.value.replace(/^#+/, ""))}
+                        placeholder="security-alerts"
+                        disabled={!isAdmin}
+                        className="mono"
+                        style={{
+                          flex: 1, fontSize: 13, padding: "0 12px", height: 36,
+                          border: "none", background: "transparent", color: "var(--text)",
+                          outline: "none", opacity: isAdmin ? 1 : 0.6,
+                        }}
+                        onKeyDown={e => { if (e.key === "Enter" && isAdmin) handleSaveSecurityChannel() }}
+                      />
+                    </div>
+                    {isAdmin && (
+                      <button onClick={handleSaveSecurityChannel} disabled={savingSecurityChannel} className="btn btn-ghost btn-sm">
+                        {savingSecurityChannel ? "Saving…" : "Save"}
+                      </button>
+                    )}
+                    {securityChannelSaved && (
+                      <span style={{ fontSize: 12, color: "var(--ok)", fontWeight: 600, alignSelf: "center" }}>Saved</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 8 }}>
+                    Alert format: <code style={{ background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4, fontFamily: "ui-monospace,monospace" }}>[HIGH] secret-leak in config.py:12 — session abc123 · claude-code</code>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
