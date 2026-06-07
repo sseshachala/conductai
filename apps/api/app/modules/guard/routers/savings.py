@@ -190,6 +190,38 @@ _EMPTY_SUMMARY = SavingsSummaryOut(
 )
 
 
+class TeamSummaryOut(BaseModel):
+    workspace_id: str
+    developer_count: int
+    total_tokens_saved: int
+    total_cost_saved_usd: float
+    per_day_usd: float
+    per_month_usd: float
+    per_year_usd: float
+    tools_installed: list[str]
+
+
+@router.get("/team-summary", response_model=TeamSummaryOut)
+def get_team_summary(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    """Org-level savings aggregate for conduct guard savings --team."""
+    summary = _build_summary(db, workspace_id)
+    t = summary.team_total
+    total_usd = round(t.rtk_saved_usd + t.booster_saved_usd, 6)
+    return TeamSummaryOut(
+        workspace_id=workspace_id,
+        developer_count=len(summary.by_member),
+        total_tokens_saved=t.rtk_saved_tokens + t.booster_saved_tokens,
+        total_cost_saved_usd=total_usd,
+        per_day_usd=round(total_usd, 2),
+        per_month_usd=round(total_usd * 30, 2),
+        per_year_usd=round(total_usd * 365, 2),
+        tools_installed=summary.tools_installed,
+    )
+
+
 @router.get("/summary", response_model=SavingsSummaryOut)
 def get_savings_summary(
     db: Session = Depends(get_db),

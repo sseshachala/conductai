@@ -1452,6 +1452,42 @@ def cmd_guard_status(args):
     print()
 
 
+def cmd_guard_savings(args):
+    cfg          = _require_guard_config()
+    workspace_id = cfg.get("workspace_id")
+    api_key      = cfg.get("api_key", "")
+    base_url     = _api_url(cfg)
+
+    data = _req(
+        "GET",
+        f"{base_url}/guard/savings/team-summary?workspace_id={workspace_id}",
+        api_key=api_key,
+    )
+    if not isinstance(data, dict):
+        print(f"{RED}Failed to fetch team savings.{RESET}")
+        return
+
+    dev_count   = data.get("developer_count", 0)
+    total_tok   = data.get("total_tokens_saved", 0)
+    per_day     = data.get("per_day_usd", 0.0)
+    per_month   = data.get("per_month_usd", 0.0)
+    per_year    = data.get("per_year_usd", 0.0)
+    tools       = data.get("tools_installed", [])
+    avg_tok     = total_tok // dev_count if dev_count else 0
+    avg_day_usd = round(per_day / dev_count, 2) if dev_count else 0.0
+
+    print()
+    print(f"{BOLD}Team Token Savings{RESET}  ({dev_count} developer{'s' if dev_count != 1 else ''})")
+    print("─" * 52)
+    print(f"  Total tokens saved:    {total_tok:>14,}")
+    print(f"  Estimated savings:     ${per_day:>8.2f}/day  ·  ${per_month:,.0f}/month  ·  ${per_year:,.0f}/year")
+    if dev_count:
+        print(f"  Avg per developer:     {avg_tok:>14,} tokens  ·  ${avg_day_usd:.2f}/day")
+    if tools:
+        print(f"  Tools contributing:    {', '.join(tools)}")
+    print()
+
+
 def cmd_guard_audit(args):
     cfg          = _require_guard_config()
     workspace_id = cfg.get("workspace_id")
@@ -1529,6 +1565,9 @@ def register_guard_parser(sub):
     # conduct guard status
     guard_sub.add_parser("status", help="Show today's spend and violations")
 
+    # conduct guard savings --team
+    guard_sub.add_parser("savings", help="Show org-level token savings across all developers")
+
     # conduct guard audit [--since 7d]
     audit_p = guard_sub.add_parser("audit", help="Show recent guard events")
     audit_p.add_argument(
@@ -1548,6 +1587,8 @@ def dispatch_guard(args, guard_p):
         cmd_guard_sync(args)
     elif guard_command == "status":
         cmd_guard_status(args)
+    elif guard_command == "savings":
+        cmd_guard_savings(args)
     elif guard_command == "audit":
         cmd_guard_audit(args)
     else:
