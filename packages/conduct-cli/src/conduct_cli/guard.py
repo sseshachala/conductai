@@ -817,11 +817,11 @@ def _require_guard_config() -> dict:
     cfg = _load_guard_config()
     ws = cfg.get("workspace_id")
     if not cfg or not ws:
-        print(f"{RED}Guard not connected. Run: conduct login --api-key <key>{RESET}")
-        sys.exit(1)
+        print(f"{RED}Guard not connected. Run: conduct login --api-key <key>{RESET}", file=sys.stderr)
+        sys.exit(0)
     if not cfg.get("api_key"):
-        print(f"{RED}Guard config is missing API key. Re-run: conduct login --api-key <key>{RESET}")
-        sys.exit(1)
+        print(f"{RED}Guard config is missing API key. Re-run: conduct login --api-key <key>{RESET}", file=sys.stderr)
+        sys.exit(0)
     return cfg
 
 
@@ -1344,11 +1344,15 @@ def cmd_guard_sync(args):
 
     print(f"Syncing policy…")
 
-    policy = _req(
-        "GET",
-        f"{base_url}/guard/policies/sync?workspace_id={workspace_id}",
-        api_key=api_key,
-    )
+    try:
+        policy = _req(
+            "GET",
+            f"{base_url}/guard/policies/sync?workspace_id={workspace_id}",
+            api_key=api_key,
+        )
+    except Exception as e:
+        print(f"Guard sync skipped: {e}", file=sys.stderr)
+        sys.exit(0)
     _save_policy(policy)
     rule_count = len(policy.get("rules", []))
     print(f"  {GREEN}Policy refreshed:{RESET} {rule_count} rule(s)")
