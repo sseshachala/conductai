@@ -239,10 +239,109 @@ function ConductGuardModule() {
   )
 }
 
+function SecurityLoopModule() {
+  const { getToken } = useAuth()
+  const { activeWorkspace } = useWorkspace()
+  const [installed, setInstalled] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [installing, setInstalling] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+
+  const buildHeaders = useCallback(async (): Promise<Record<string, string>> => {
+    const h: Record<string, string> = { "Content-Type": "application/json" }
+    if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
+    return h
+  }, [getToken])
+
+  useEffect(() => {
+    const wsId = activeWorkspace?.id
+    if (!wsId) { setLoading(false); return }
+    buildHeaders().then(h =>
+      fetch(`${base}/secure/installed?workspace_id=${wsId}`, { headers: h })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d) setInstalled(!!d.installed) })
+        .catch(() => {})
+        .finally(() => setLoading(false))
+    )
+  }, [activeWorkspace?.id, buildHeaders, base])
+
+  async function handleInstall() {
+    const wsId = activeWorkspace?.id
+    if (!wsId) return
+    setInstalling(true)
+    setError(null)
+    try {
+      const h = await buildHeaders()
+      const res = await fetch(`${base}/secure/install?workspace_id=${wsId}`, { method: "POST", headers: h })
+      if (!res.ok) { setError(`Install failed (${res.status})`); return }
+      setInstalled(true)
+      if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("secure-install-changed", { detail: { installed: true } }))
+    } catch {
+      setError("Install failed — check your connection.")
+    } finally {
+      setInstalling(false)
+    }
+  }
+
+  if (loading) {
+    return <ModuleCard><div style={{ height: 100, borderRadius: 12, background: "var(--surface-2)", opacity: 0.7 }} /></ModuleCard>
+  }
+
+  return (
+    <ModuleCard>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <span style={{ width: 40, height: 40, borderRadius: 10, background: "#fee2e2", color: "#dc2626", display: "grid", placeItems: "center", flexShrink: 0 }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+          </span>
+          <div>
+            <h3 style={{ fontSize: 15, fontWeight: 650, color: "var(--text)", margin: 0 }}>Security Loop</h3>
+            <p style={{ fontSize: 12.5, color: "var(--text-3)", margin: "3px 0 0" }}>Passive security classifier for Claude Code — zero developer action required.</p>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          {installed && <span className="sbadge ok">✓ Installed</span>}
+          {installed ? (
+            <Link href="/secure" className="btn btn-ghost btn-sm" style={{ color: "var(--accent-text)" }}>Open →</Link>
+          ) : (
+            <button onClick={handleInstall} disabled={installing} className="btn btn-primary btn-sm">
+              {installing ? "Installing…" : "Install"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {!installed && (
+        <ul style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13, color: "var(--text-2)", listStyle: "none", margin: 0, padding: 0 }}>
+          {[
+            "Runs on every Claude Code tool call — no hooks to configure per developer",
+            "Detects secrets, injections, path traversal, and OWASP patterns automatically",
+            "Findings surface in the Secure dashboard with severity, file, and session ID",
+            "Slack alerts on high/critical findings with one toggle",
+            "Custom detection rules via regex — add your own patterns",
+          ].map(feat => (
+            <li key={feat} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+              <span style={{ color: "var(--ok)", marginTop: 2, flexShrink: 0, fontSize: 12 }}>✓</span>
+              <span>{feat}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {error && <p style={{ fontSize: 12, color: "var(--err)", borderTop: "1px solid var(--err-bd)", paddingTop: 12, margin: 0 }}>{error}</p>}
+    </ModuleCard>
+  )
+}
+
 export default function ModulesManager() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <ConductGuardModule />
+      <SecurityLoopModule />
     </div>
   )
 }
