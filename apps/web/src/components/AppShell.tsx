@@ -809,8 +809,8 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
                 <div style={{ marginLeft: 28, marginTop: 2, display: "flex", flexDirection: "column", gap: 1 }}>
                   {[
                     { label: "Overview",  href: "/secure" },
-                    { label: "Activity",  href: "/secure/activity" },
                     { label: "Policies",  href: "/secure/policies" },
+                    { label: "Activity",  href: "/secure/activity" },
                     { label: "Settings",  href: "/secure/settings" },
                   ].map(sub => {
                     const subActive = sub.href === "/secure" ? pathname === "/secure" : pathname.startsWith(sub.href)
