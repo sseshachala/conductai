@@ -296,25 +296,17 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
         .scalar() or 0
     )
 
-    # Count distinct active devs via raw SQL (avoids SQLAlchemy DISTINCT-expression quirks)
+    # Count distinct developers who opened a Guard session in the period
     active_developers = int(db.execute(
         text("""
             SELECT COUNT(DISTINCT COALESCE(user_email, clerk_user_id))
-            FROM guard_audit_events
+            FROM guard_sessions
             WHERE workspace_id = :ws
-              AND ts >= :since
+              AND started_at >= :since
               AND (user_email IS NOT NULL OR clerk_user_id IS NOT NULL)
         """),
         {"ws": str(ws_uuid), "since": period_start},
     ).scalar() or 0)
-    # Fallback: if all events are fully anonymous, show 1 whenever any events exist this period
-    if active_developers == 0:
-        has_events = int(db.execute(
-            text("SELECT COUNT(*) FROM guard_audit_events WHERE workspace_id = :ws AND ts >= :since"),
-            {"ws": str(ws_uuid), "since": period_start},
-        ).scalar() or 0)
-        if has_events > 0:
-            active_developers = 1
 
     return SpendSummary(
         workspace_id=workspace_id,

@@ -878,10 +878,10 @@ function GuardDashboard() {
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 12, marginBottom: 16 }}>
                 <GuardStatCard
-                  label="Active developers"
+                  label="Sessions"
                   value={stats?.active_developers || derivedStats.active_developers}
                   tone="ok"
-                  sub="sessions in range"
+                  sub="developers active"
                 />
                 <GuardStatCard
                   label="Events today"
