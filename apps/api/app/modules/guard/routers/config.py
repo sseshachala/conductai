@@ -242,6 +242,9 @@ def request_resync(
         raise HTTPException(status_code=404, detail="Guard not installed")
     config.resync_requested_at = datetime.now(timezone.utc)
     db.commit()
+    # Re-seed any builtin policies added since this workspace was first set up
+    from app.modules.guard.routers.policies import seed_builtin_policies
+    seed_builtin_policies(db, ws_uuid)
     log.info("guard.resync_requested", workspace_id=workspace_id)
     return ResyncOut(ok=True, resync_requested_at=config.resync_requested_at.isoformat())
 
