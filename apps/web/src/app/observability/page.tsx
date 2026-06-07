@@ -486,13 +486,13 @@ export default function ObservabilityPage() {
           ))}
         </div>
 
-        {/* By-playbook + events */}
+        {/* By-agent + events */}
         <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 16 }}>
-          {/* By playbook */}
+          {/* By agent */}
           <div className="card" style={{ overflow: "hidden" }}>
-            <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--border)", fontWeight: 650, fontSize: 13.5 }}>By playbook</div>
+            <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--border)", fontWeight: 650, fontSize: 13.5 }}>By agent</div>
             <div style={{ display: "grid", gridTemplateColumns: "1.4fr 0.5fr 0.65fr 0.85fr 0.5fr", gap: 12, padding: "9px 18px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
-              {["Playbook", "Runs", "Success", "Total cost", "Grade"].map((h, i) => (
+              {["Agent", "Runs", "Success", "Total cost", "Grade"].map((h, i) => (
                 <div key={i} className="eyebrow" style={{ fontSize: 9.5, textAlign: i > 0 ? "right" : "left" }}>{h}</div>
               ))}
             </div>
