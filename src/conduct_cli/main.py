@@ -2065,6 +2065,107 @@ def cmd_sessions(args):
     print(_render_table(rows))
 
 
+# ── Security finding classifier ───────────────────────────────────────────────
+
+import re as _re
+
+_SEVERITY_KEYWORDS = {
+    "critical": ["rce", "remote code execution", "sql injection", "sqli", "command injection"],
+    "high": ["xss", "cross-site", "path traversal", "directory traversal", "auth bypass",
+             "authentication bypass", "idor", "privilege escalation", "ssrf"],
+    "medium": ["csrf", "open redirect", "clickjacking", "insecure deserialization", "xxe"],
+    "low": ["information disclosure", "verbose error", "stack trace exposed", "version disclosure"],
+    "info": ["todo security", "fixme security", "hardcoded", "weak cipher"],
+}
+
+_SECRET_PATTERNS = [
+    r'(?i)(api[_-]?key|secret|password|token|private[_-]?key)\s*[:=]\s*["\']?[\w\-]{8,}',
+    r'(?i)sk-[a-zA-Z0-9]{20,}',   # OpenAI key pattern
+    r'(?i)ghp_[a-zA-Z0-9]{36}',   # GitHub PAT
+]
+
+_VULN_TYPES = {
+    "injection": ["sql injection", "sqli", "command injection", "code injection", "ldap injection"],
+    "path-traversal": ["path traversal", "directory traversal", "../"],
+    "secret-leak": ["hardcoded", "secret", "api key", "password", "token", "private key"],
+    "auth-bypass": ["auth bypass", "authentication bypass", "idor", "privilege escalation"],
+    "crypto": ["weak cipher", "md5", "sha1", "tls 1.0", "ssl 2.0", "cert_none"],
+}
+
+
+def classify_finding(text: str) -> "dict | None":
+    """
+    Fast-path classifier. Returns structured finding dict or None if not a security issue.
+    Checks secret patterns first (regex), then keyword severity matching.
+    """
+    text_lower = text.lower()
+
+    # Secret detection (regex fast path)
+    for pattern in _SECRET_PATTERNS:
+        if _re.search(pattern, text):
+            return {
+                "severity": "high",
+                "type": "secret-leak",
+                "description": text[:500],
+            }
+
+    # Severity + type matching
+    for severity, keywords in _SEVERITY_KEYWORDS.items():
+        for kw in keywords:
+            if kw in text_lower:
+                vuln_type = "other"
+                for vtype, vkws in _VULN_TYPES.items():
+                    if any(vk in text_lower for vk in vkws):
+                        vuln_type = vtype
+                        break
+                return {
+                    "severity": severity,
+                    "type": vuln_type,
+                    "description": text[:500],
+                }
+    return None
+
+
+def cmd_emit_finding(args):
+    """POST a security finding to /security-findings."""
+    server, workspace_id, api_key, token = _require_auth(args)
+    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+
+    from_stdin = getattr(args, "from_stdin", False)
+
+    if from_stdin:
+        raw = sys.stdin.read()
+        result = classify_finding(raw)
+        if result is None:
+            print("No security finding detected")
+            sys.exit(0)
+        severity    = result["severity"]
+        vuln_type   = result["type"]
+        description = result["description"]
+    else:
+        severity    = args.severity
+        vuln_type   = args.type
+        description = args.description
+
+    payload: dict = {
+        "severity":    severity,
+        "type":        vuln_type,
+        "description": description,
+    }
+    if getattr(args, "file", None):
+        payload["file"] = args.file
+    if getattr(args, "line", None) is not None:
+        payload["line"] = args.line
+    if getattr(args, "repo", None):
+        payload["repo"] = args.repo
+
+    result = api.req("POST", f"{server}/security-findings", hdrs, payload)
+    finding_id = result.get("id", result.get("finding_id", ""))
+    print(f"[FINDING] {severity} · {vuln_type} · {finding_id}")
+    if finding_id:
+        print(finding_id)
+
+
 def cmd_run(args):
     server, workspace_id, api_key, token = _require_auth(args)
     json_h = api.headers(workspace_id, token, "application/json", api_key)
@@ -2212,6 +2313,22 @@ def main():
     ia_p.add_argument("--input",    action="append", metavar="key=value",
                       help="Input value applied to all playbooks (repeatable)")
 
+    # conduct emit finding
+    emit_p = sub.add_parser("emit", help="Emit events to Conduct (e.g. security findings)")
+    emit_sub = emit_p.add_subparsers(dest="emit_command")
+
+    finding_p = emit_sub.add_parser("finding", help="Emit a security finding to POST /security-findings")
+    finding_p.add_argument("--severity",    choices=["critical", "high", "medium", "low", "info"],
+                           help="Finding severity")
+    finding_p.add_argument("--type",        dest="type",        metavar="TYPE",
+                           help="Vulnerability type (e.g. secret-leak, injection, path-traversal)")
+    finding_p.add_argument("--file",        metavar="PATH",     help="Source file path where finding was detected")
+    finding_p.add_argument("--line",        type=int,           metavar="N",    help="Line number of finding")
+    finding_p.add_argument("--description", metavar="TEXT",     help="Human-readable description of the finding")
+    finding_p.add_argument("--repo",        metavar="owner/repo", help="Repository where finding was detected")
+    finding_p.add_argument("--from-stdin",  dest="from_stdin",  action="store_true",
+                           help="Read raw tool output from stdin and auto-classify the finding")
+
     # conduct run (existing)
     run_p = sub.add_parser("run", help="Run an installed agent by name")
     run_p.add_argument("agent",       help="Agent name (e.g. 'security_autopilot_fix')")
@@ -2291,6 +2408,16 @@ def main():
         cmd_sessions(args)
     elif args.command == "guard":
         _guard.dispatch_guard(args, guard_p)
+    elif args.command == "emit":
+        emit_command = getattr(args, "emit_command", None)
+        if emit_command == "finding":
+            from_stdin = getattr(args, "from_stdin", False)
+            if not from_stdin and not (args.severity and args.type and args.description):
+                finding_p.print_help()
+                sys.exit(1)
+            cmd_emit_finding(args)
+        else:
+            emit_p.print_help()
     elif args.command == "mcp":
         if getattr(args, "mcp_command", None) == "install":
             cmd_mcp_install(args)
