@@ -14,12 +14,10 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, get_user_id
+from app.core.auth import get_workspace_id, get_user_id, get_valid_roles
 from app.core.database import get_db
 
 router = APIRouter(prefix="/guard/members", tags=["guard-members"])
-
-_VALID_ROLES = {"admin", "security", "developer", "viewer"}
 
 
 # ── Pydantic models ────────────────────────────────────────────────────────────
@@ -83,10 +81,11 @@ def update_member_role(
     _caller: str = Depends(get_user_id),
 ):
     """Update a member's role in workspace_users (the single source of truth for role)."""
-    if body.role not in _VALID_ROLES:
+    valid = get_valid_roles(db)
+    if body.role not in valid:
         raise HTTPException(
             status_code=422,
-            detail=f"Invalid role '{body.role}'. Must be one of: {sorted(_VALID_ROLES)}",
+            detail=f"Invalid role '{body.role}'. Must be one of: {sorted(valid)}",
         )
 
     result = db.execute(
