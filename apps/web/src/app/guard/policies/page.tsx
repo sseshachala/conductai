@@ -44,6 +44,10 @@ const RULE_CATEGORIES: Record<string, string> = {
   "no-hardcoded-secrets": "Secrets & Credentials",
   "no-aws-keys": "Secrets & Credentials",
   "no-private-key-files": "Secrets & Credentials",
+  "no-secret-in-commit-msg": "Secrets & Credentials",
+  "no-sudo": "Permission Escalation",
+  "no-chmod-permissive": "Permission Escalation",
+  "no-chown-root": "Permission Escalation",
   "approve-prod-deploy": "Production Gates",
   "approve-db-migration-prod": "Production Gates",
   "approve-terraform-destroy": "Production Gates",
@@ -59,6 +63,7 @@ const RULE_CATEGORIES: Record<string, string> = {
 const CATEGORY_ORDER = [
   "Destructive Operations",
   "Secrets & Credentials",
+  "Permission Escalation",
   "Production Gates",
   "Audit",
   "Token Efficiency",
