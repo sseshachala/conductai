@@ -2,7 +2,7 @@
 
 ## About
 **Owner:** Sudhi
-**Purpose:** Building Conduct — a YAML playbook platform that turns AI agents into reusable team automations, with a FastAPI backend, Next.js canvas UI, Redis worker, and 18 pre-built playbooks covering GitHub, Slack, CI/CD, and incident response workflows.
+**Purpose:** Building Conduct — a YAML playbook platform that turns AI agents into reusable team automations, with a FastAPI backend, Next.js canvas UI, Redis worker, and 22 pre-built playbooks covering GitHub, Slack, CI/CD, and incident response workflows.
 
 ---
 
