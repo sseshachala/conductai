@@ -160,7 +160,7 @@ function ToolsSection() {
             <div className="flex items-start justify-between">
               <div>
                 <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-100 px-2.5 py-1 rounded-full mb-3">
-                  v0.4.42 · PyPI
+                  v0.4.49 · PyPI
                 </span>
                 <h2 className="text-2xl font-bold text-stone-900">Conduct CLI</h2>
                 <p className="text-sm text-stone-500 mt-1">Run agents. Enforce policies. Switch workspaces.</p>
@@ -178,7 +178,7 @@ function ToolsSection() {
               <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">What it does</p>
               <ul className="space-y-1.5">
                 {[
-                  "Run any agent from the terminal — no browser needed",
+                  "Run any agent from the terminal — picks up the right context automatically",
                   "conduct switch: swap workspaces + re-sync policies atomically",
                   "ConductGuard MCP enforces team AI policies on every tool call",
                   "conduct whoami: instant view of workspace, Guard, and Booster status",
