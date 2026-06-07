@@ -275,6 +275,43 @@ else
   fail "Unauthenticated /analytics/scorecards blocked" "got ${ANON_STATUS} — should be 401/403"
 fi
 
+# ─────────────────────────────────────────────────────────────────────────────
+header "8. scenario — run a workflow and observe it in analytics"
+# This section only runs when AUTH_TOKEN is set; skip gracefully otherwise.
+
+if [[ -z "$AUTH_TOKEN" ]]; then
+  pass "Scenario: run→analytics round-trip" "(skipped — set AUTH_TOKEN to run)"
+else
+  # 8a. Trigger a manual run on the seeded workflow
+  cat >/tmp/smoke_run_body <<'JSON'
+{"triggered_by": "manual", "dry_run": true, "guard_enabled": false, "initial_state": {}}
+JSON
+  STATUS=$(hit POST "/workflows/${SMOKE_EMPTY_WF_ID}/runs" "application/json" /tmp/smoke_run_body)
+  if [[ "$STATUS" == "200" ]] || [[ "$STATUS" == "201" ]]; then
+    RUN_ID=$(grep -o '"id":"[^"]*"' /tmp/smoke_body | head -1 | cut -d'"' -f4)
+    pass "POST /workflows/{id}/runs (manual dry-run)" "${STATUS} run_id=${RUN_ID:-?}"
+  else
+    fail "POST /workflows/{id}/runs (manual dry-run)" "got $STATUS — body: $(cat /tmp/smoke_body | head -c 200)"
+    RUN_ID=""
+  fi
+
+  # 8b. Analytics summary must still return 200 (run table not broken by the insert)
+  STATUS=$(hit GET "/analytics/summary?days=30" "application/json" -)
+  if [[ "$STATUS" == "200" ]] && grep -q '"total_runs"' /tmp/smoke_body; then
+    pass "Analytics summary intact after run insert" "200"
+  else
+    fail "Analytics summary intact after run insert" "got $STATUS"
+  fi
+
+  # 8c. DORA endpoint survives a fresh run in the window
+  STATUS=$(hit GET "/analytics/dora?days=1" "application/json" -)
+  if [[ "$STATUS" == "200" ]] && grep -q '"deployment_frequency"' /tmp/smoke_body; then
+    pass "GET /analytics/dora?days=1 after run" "200"
+  else
+    fail "GET /analytics/dora?days=1 after run" "got $STATUS — body: $(cat /tmp/smoke_body | head -c 200)"
+  fi
+fi
+
 echo
 echo "──────────────────────────────────────────────────────"
 printf "Total: %d   Passed: %d   Failed: %d\n" "$N" "$PASSES" "$FAILS"
