@@ -2103,13 +2103,13 @@ def cmd_run(args):
             print(f"  {GRAY}{k}={v}{RESET}")
     print()
 
-    body: dict = {
-        "triggered_by": "cli",
-        "initial_state": {"__manual": True, "inputs": initial_state},
-    }
+    # Call the test-trigger endpoint so the YAML's built-in test_trigger.payload
+    # (PR fixture, issue fixture, etc.) is loaded and the configured repo is
+    # injected — instead of running with an empty trigger context.
+    body: dict = {**initial_state}
     if getattr(args, "max_turns", None):
-        body["max_turns"] = args.max_turns
-    run = api.req("POST", f"{server}/workflows/{workflow_id}/runs", json_h, body)
+        body["__max_turns"] = args.max_turns
+    run = api.req("POST", f"{server}/workflows/{workflow_id}/trigger", json_h, body)
     _stream_run(server, workflow_id, run["id"], workspace_id, token, api_key)
 
 
