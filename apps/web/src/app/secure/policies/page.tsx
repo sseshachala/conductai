@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
-import { SecureShell } from "../page"
+import { SecureShell } from "../_components"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface Policy {

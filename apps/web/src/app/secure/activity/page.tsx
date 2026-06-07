@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
-import { SecureShell, SeverityPill, StatusBadge, SEVERITY_STYLES } from "../page"
+import { SecureShell, SeverityPill, StatusBadge, SEVERITY_STYLES } from "../_components"
 import { timeAgo } from "@/lib/runUtils"
 
 type Severity = "critical" | "high" | "medium" | "low" | "info"
