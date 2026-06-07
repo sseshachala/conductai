@@ -224,7 +224,7 @@ footer{border-top:1px solid var(--stone-200);padding:28px 0}
   <div class="container">
     <div class="hero-badge">ConductGuard — AI Governance for Engineering Teams</div>
     <h1>Every AI tool.<br>Every developer.<br><em>One policy.</em></h1>
-    <p class="hero-sub">AI coding tools are brilliant individually. Guard makes them work as a team — one policy layer across Claude Code, Codex, and Cursor, with real-time spend visibility and a full audit trail.</p>
+    <p class="hero-sub">Your team is spending thousands on AI coding tools. You don't know which developer, which project, or which tool is driving the bill — and you have no way to stop a bad call before it happens. Guard fixes that.</p>
     <div class="hero-ctas">
       <a href="/sign-in" class="btn btn-white">Set up Guard free →</a>
       <a href="https://cal.com/conductai/demo" target="_blank" class="btn btn-ghost-white">Book a demo</a>
@@ -262,6 +262,9 @@ footer{border-top:1px solid var(--stone-200);padding:28px 0}
     <div class="eyebrow red">The problem</div>
     <h2>Your team is spending thousands<br>on AI tools. You have no idea how.</h2>
     <p class="section-sub">Every developer on your team is using AI coding tools. The bills arrive. The details don't.</p>
+    <div style="background:#fff7ed;border:1.5px solid #fed7aa;border-radius:12px;padding:18px 22px;margin-top:28px;max-width:620px;margin-left:auto;margin-right:auto;text-align:left">
+      <p style="font-size:13.5px;color:#92400e;line-height:1.65"><strong>Real scenario:</strong> A developer uses Claude Code to debug a production incident. The session reads a config file containing a database password, sends it to the model, and writes a fix directly to the prod branch — all in one unreviewed AI session. You find out when the security team asks why credentials showed up in a model provider's logs.</p>
+    </div>
     <div class="cards-3">
       <div class="problem-card" style="background:var(--red-50);border:1.5px solid #fecaca">
         <div class="problem-icon" style="background:#fee2e2;color:var(--red-600)">👁️</div>
@@ -277,6 +280,40 @@ footer{border-top:1px solid var(--stone-200);padding:28px 0}
         <div class="problem-icon" style="background:#fef3c7;color:var(--amber-600)">📋</div>
         <h3>No audit</h3>
         <p>When something goes wrong, there's no record of what the AI did, what command it issued, what was approved, or who authorised it. SOC 2 requires one.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- VS COMPARISON (moved up, near problem) -->
+<section style="padding:48px 0;background:var(--stone-50)">
+  <div class="container text-center">
+    <div class="eyebrow violet">Why not just use each tool's built-in policy?</div>
+    <div class="position-vs" style="margin-top:28px">
+      <div class="position-vs-col">
+        <h4>Framework policy layers</h4>
+        <ul>
+          <li class="bad">Only works inside their SDK</li>
+          <li class="bad">Each framework is a separate silo</li>
+          <li class="bad">Requires rewriting agents to adopt</li>
+          <li class="bad">No cross-tool spend visibility</li>
+          <li class="bad">No audit trail across tools</li>
+        </ul>
+      </div>
+      <div class="position-vs-divider">
+        <span></span>
+        <strong>VS</strong>
+        <span></span>
+      </div>
+      <div class="position-vs-col">
+        <h4 style="color:var(--violet-400)">ConductGuard</h4>
+        <ul>
+          <li class="good">Works with any agent framework</li>
+          <li class="good">Single event stream, all tools unified</li>
+          <li class="good">One-command install, no SDK changes</li>
+          <li class="good">Per-developer spend across every tool</li>
+          <li class="good">Full audit trail, one place</li>
+        </ul>
       </div>
     </div>
   </div>
@@ -310,9 +347,9 @@ footer{border-top:1px solid var(--stone-200);padding:28px 0}
           <span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--indigo-600);background:var(--violet-50);border:1px solid var(--violet-200);padding:2px 8px;border-radius:20px">Developer</span>
         </div>
         <div class="step-icon">⚡</div>
-        <h3>Join in one command</h3>
-        <p>Accept the invite, run one command. Guard downloads your team's policies and applies them to the local environment automatically. No IT ticket. 30 seconds.</p>
-        <code class="code-chip"># One command to join<br>conduct guard join<br><br>✓ spend limit applied<br>✓ approved tools configured<br>✓ blocked actions enforced</code>
+        <h3>Accept the invite, log in</h3>
+        <p>Team lead invites developers from the Guard dashboard. Developers accept the invite and log in with <code class="mono" style="font-size:12px;background:var(--stone-100);padding:1px 5px;border-radius:4px">conduct login</code> — policies download and apply automatically. No IT ticket. 30 seconds.</p>
+        <code class="code-chip">conduct login<br><br>✓ spend limit applied<br>✓ approved tools configured<br>✓ blocked actions enforced</code>
       </div>
       <div class="step-card">
         <div style="display:flex;align-items:center;gap:10px">
@@ -600,7 +637,7 @@ footer{border-top:1px solid var(--stone-200);padding:28px 0}
 <!-- CTA -->
 <div class="cta-section">
   <div class="container">
-    <h2>Start governing your team's AI usage today.</h2>
+    <h2>Get full visibility into your team's AI usage — free.</h2>
     <p class="cta-sub">Free during early access. No credit card. Set up in under 5 minutes.</p>
     <div class="cta-btns">
       <a href="/sign-in" class="btn btn-white" style="height:48px;font-size:15px">Set up Guard →</a>
