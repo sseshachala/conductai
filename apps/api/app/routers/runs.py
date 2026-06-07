@@ -33,6 +33,19 @@ router = APIRouter(prefix="/workflows/{workflow_id}/runs", tags=["runs"])
 workspace_runs_router = APIRouter(prefix="/runs", tags=["runs"])
 
 QUEUE_KEY = "marshal:runs:queue"
+QUEUE_MAX_DEPTH = 50_000  # hard cap — reject new runs when queue is this deep
+
+
+def _enqueue_run(run_id: str) -> None:
+    """Push run_id onto the Redis queue, refusing when queue is too deep."""
+    r = _redis()
+    depth = r.llen(QUEUE_KEY)
+    if depth >= QUEUE_MAX_DEPTH:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Run queue is at capacity ({depth} pending). Try again shortly.",
+        )
+    r.rpush(QUEUE_KEY, run_id)
 
 
 def get_workspace_id_sse(
@@ -273,7 +286,9 @@ def create_run(
     db.refresh(run)
 
     try:
-        _redis().rpush(QUEUE_KEY, str(run.id))
+        _enqueue_run(str(run.id))
+    except HTTPException:
+        raise
     except Exception as _enqueue_err:
         log.error("run.enqueue_failed", run_id=str(run.id), error=str(_enqueue_err))
         raise HTTPException(
@@ -520,17 +535,21 @@ def approve_run(
     if not block_id:
         raise HTTPException(status_code=400, detail="No approval block recorded on paused run")
 
-    # Atomic CAS: only one concurrent approval request wins.
-    # UPDATE ... WHERE status='paused' returns the updated row; if it returns
-    # nothing the run was already resumed (or is in a terminal state).
+    # Single atomic UPDATE: CAS on status='paused' + state merge in one statement.
+    # If another request already resumed the run, the WHERE clause fails and
+    # fetchone() returns None — no second writer can slip in between.
     from sqlalchemy import text as _text
+    state = dict(run.state or {})
+    state[f"__approval_{block_id}"] = body.decision
+    if body.approver:
+        state[f"__approver_{block_id}"] = body.approver
     cas_result = db.execute(
         _text(
-            "UPDATE runs SET status='pending', paused_at=NULL "
+            "UPDATE runs SET status='pending', paused_at=NULL, state=:state::jsonb "
             "WHERE id=:id AND status='paused' "
             "RETURNING id"
         ),
-        {"id": str(run_id)},
+        {"state": json.dumps(state), "id": str(run_id)},
     ).fetchone()
     if not cas_result:
         current_status = db.query(Run).filter(Run.id == run_id).first()
@@ -540,16 +559,6 @@ def approve_run(
             detail=f"Run is not paused — already resumed or in status '{status_str}'. "
                    "Duplicate approval ignored.",
         )
-
-    # Persist the decision into run state and write the event.
-    state = dict(run.state or {})
-    state[f"__approval_{block_id}"] = body.decision
-    if body.approver:
-        state[f"__approver_{block_id}"] = body.approver
-    db.execute(
-        _text("UPDATE runs SET state=:state::jsonb WHERE id=:id"),
-        {"state": json.dumps(state), "id": str(run_id)},
-    )
 
     event = RunEvent(
         run_id=run_id,
@@ -561,7 +570,9 @@ def approve_run(
     db.commit()
 
     try:
-        _redis().rpush(QUEUE_KEY, str(run_id))
+        _enqueue_run(str(run_id))
+    except HTTPException:
+        raise
     except Exception as _enqueue_err:
         log.error("run.approve_enqueue_failed", run_id=str(run_id), error=str(_enqueue_err))
         raise HTTPException(status_code=503, detail="Approval recorded but queue unavailable — retry shortly")

@@ -31,10 +31,22 @@ log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 QUEUE_KEY = "marshal:runs:queue"
+QUEUE_MAX_DEPTH = 50_000
 
 
 def _redis():
     return redis.from_url(settings.redis_url, decode_responses=True)
+
+
+def _enqueue_run(run_id: str) -> None:
+    r = _redis()
+    depth = r.llen(QUEUE_KEY)
+    if depth >= QUEUE_MAX_DEPTH:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Run queue is at capacity ({depth} pending). Try again shortly.",
+        )
+    r.rpush(QUEUE_KEY, run_id)
 
 
 def _verify_slack_signature(request_body: bytes, timestamp: str, signature: str, signing_secret: str) -> bool:
@@ -173,7 +185,7 @@ async def slack_interactions(request: Request, db: Session = Depends(get_db)):
             ))
             db.commit()
             try:
-                _redis().rpush(QUEUE_KEY, run_id_str)
+                _enqueue_run(run_id_str)
             except Exception:
                 log.error("slack.redis_enqueue_failed", run_id=run_id_str)
             log.info("run.approval_gate", run_id=run_id_str, decision=decision, approver=approver)
@@ -352,7 +364,7 @@ async def inbound_webhook(
     db.add(run)
     db.commit()
     try:
-        _redis().rpush(QUEUE_KEY, str(run.id))
+        _enqueue_run(str(run.id))
     except Exception as _enqueue_err:
         log.error("webhook.inbound_enqueue_failed", run_id=str(run.id), error=str(_enqueue_err))
         raise HTTPException(status_code=503, detail="Webhook received but queue is unavailable")
@@ -420,7 +432,7 @@ def _trigger_webhook_workflows(
     r = _redis()
     for run in matching_runs:
         try:
-            r.rpush(QUEUE_KEY, str(run.id))
+            _enqueue_run(str(run.id))
             queued.append(str(run.id))
             log.info("webhook.triggered", event_type=event_type, run_id=str(run.id),
                      version_id=str(run.workflow_version_id))
@@ -820,7 +832,7 @@ def _trigger_github_workflows(
     r = _redis()
     for run in queued_runs:
         try:
-            r.rpush(QUEUE_KEY, str(run.id))
+            _enqueue_run(str(run.id))
             queued.append(str(run.id))
             log.info("github.triggered", event_type=event_type, repo=incoming_repo, run_id=str(run.id))
         except Exception as _enqueue_err:
@@ -949,7 +961,7 @@ async def github_webhook_by_slug(
     db.add(run)
     db.commit()
     try:
-        _redis().rpush(QUEUE_KEY, str(run.id))
+        _enqueue_run(str(run.id))
     except Exception as _enqueue_err:
         log.error("github.slug_enqueue_failed", run_id=str(run.id), error=str(_enqueue_err))
         raise HTTPException(status_code=503, detail="Webhook received but queue is unavailable")
