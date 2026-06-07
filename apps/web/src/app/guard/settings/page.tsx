@@ -141,10 +141,11 @@ function SettingsContent() {
 
   // Token guardrails
   const { guardrails: tokenGuardrails, refresh: refreshGuardrails } = useTokenGuardrails(activeWorkspace?.id ?? null)
-  const [guardrailSaved, setGuardrailSaved] = useState<string | null>(null)
-  const [webhookInput, setWebhookInput] = useState("")
-  const [savingWebhook, setSavingWebhook] = useState(false)
-  const [webhookSaved, setWebhookSaved] = useState(false)
+  const [guardrailState, setGuardrailState] = useState({ prompt_caching: true, model_routing: true, prompt_splitting: true })
+  const [guardrailSaved, setGuardrailSaved] = useState(false)
+  const [driftChannelInput, setDriftChannelInput] = useState("")
+  const [savingDriftChannel, setSavingDriftChannel] = useState(false)
+  const [driftChannelSaved, setDriftChannelSaved] = useState(false)
 
   // Sync status
   const [toolCoverage, setToolCoverage] = useState<Array<{ detected_tools: string[]; mcp_registered: string[]; hook_registered: string[] }> | null>(null)
@@ -192,8 +193,14 @@ function SettingsContent() {
 
   useEffect(() => { load() }, [load])
   useEffect(() => {
-    if (tokenGuardrails?.slack_webhook_url) setWebhookInput(tokenGuardrails.slack_webhook_url)
-  }, [tokenGuardrails?.slack_webhook_url])
+    if (!tokenGuardrails) return
+    setGuardrailState({
+      prompt_caching:   tokenGuardrails.prompt_caching,
+      model_routing:    tokenGuardrails.model_routing,
+      prompt_splitting: tokenGuardrails.prompt_splitting,
+    })
+    if (tokenGuardrails.slack_webhook_url) setDriftChannelInput(tokenGuardrails.slack_webhook_url.replace(/^#+/, ""))
+  }, [tokenGuardrails])
 
   async function patch(body: Partial<TeamPrefs>) {
     if (!wsId) return
@@ -248,6 +255,38 @@ function SettingsContent() {
     } catch (e) {
       setPrefs(p => ({ ...p, [field]: !value }))
       setError(e instanceof Error ? e.message : "Save failed")
+    }
+  }
+
+  async function handleGuardrailToggle(field: "prompt_caching" | "model_routing" | "prompt_splitting", value: boolean) {
+    if (!wsId) return
+    setGuardrailState(s => ({ ...s, [field]: value }))
+    try {
+      const token = await getToken()
+      await patchTokenGuardrails(wsId, token ?? "", base, { [field]: value })
+      refreshGuardrails()
+      setGuardrailSaved(true)
+      setTimeout(() => setGuardrailSaved(false), 2000)
+    } catch {
+      setGuardrailState(s => ({ ...s, [field]: !value }))
+    }
+  }
+
+  async function handleSaveDriftChannel() {
+    if (!wsId) return
+    setSavingDriftChannel(true)
+    const stripped = driftChannelInput.replace(/^#+/, "")
+    try {
+      const token = await getToken()
+      await patchTokenGuardrails(wsId, token ?? "", base, { slack_webhook_url: stripped || null })
+      setDriftChannelInput(stripped)
+      refreshGuardrails()
+      setDriftChannelSaved(true)
+      setTimeout(() => setDriftChannelSaved(false), 2000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed")
+    } finally {
+      setSavingDriftChannel(false)
     }
   }
 
@@ -396,6 +435,41 @@ function SettingsContent() {
                   <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 14, lineHeight: 1.5 }}>
                     Spend alerts are deduped — Slack fires once per 5% increment, not on every tool call.
                   </div>
+
+                  {/* Drift alert channel */}
+                  <div style={{ borderTop: "1px solid var(--border)", marginTop: 16, paddingTop: 16 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)", marginBottom: 6 }}>Drift alert channel</div>
+                    <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 10 }}>
+                      Fires when a token guardrail goes inactive — tool removed or policy disabled.
+                    </div>
+                    <div style={{ display: "flex", gap: 9 }}>
+                      <div style={{ display: "flex", alignItems: "center", flex: 1, border: "1px solid var(--border-2)", borderRadius: 8, overflow: "hidden" }}>
+                        <span style={{ padding: "0 10px", fontSize: 13, color: "var(--text-muted)", background: "var(--surface-2)", borderRight: "1px solid var(--border)", alignSelf: "stretch", display: "flex", alignItems: "center", userSelect: "none" }}>#</span>
+                        <input
+                          type="text"
+                          value={driftChannelInput}
+                          onChange={e => isAdmin && setDriftChannelInput(e.target.value.replace(/^#+/, ""))}
+                          placeholder="guard-drift-alerts"
+                          disabled={!isAdmin}
+                          className="mono"
+                          style={{
+                            flex: 1, fontSize: 13, padding: "0 12px", height: 36,
+                            border: "none", background: "transparent", color: "var(--text)",
+                            outline: "none", opacity: isAdmin ? 1 : 0.6,
+                          }}
+                          onKeyDown={e => { if (e.key === "Enter" && isAdmin) handleSaveDriftChannel() }}
+                        />
+                      </div>
+                      {isAdmin && (
+                        <button onClick={handleSaveDriftChannel} disabled={savingDriftChannel} className="btn btn-ghost btn-sm">
+                          {savingDriftChannel ? "Saving…" : "Save"}
+                        </button>
+                      )}
+                      {driftChannelSaved && (
+                        <span style={{ fontSize: 12, color: "var(--ok)", fontWeight: 600, alignSelf: "center" }}>Saved</span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -500,6 +574,31 @@ function SettingsContent() {
                 ))}
               </div>
 
+              {/* Auto-detected guardrails (read-only status) */}
+              <div className="card" style={{ padding: "18px 20px" }}>
+                <div className="eyebrow" style={{ marginBottom: 4 }}>Token guardrails</div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>Auto-detected from installed tools and active policies.</div>
+                {([
+                  { key: "deterministic_offload", label: "Deterministic offload", desc: "warn-deterministic-compute policy" },
+                  { key: "output_compression",    label: "Output compression",    desc: "RTK installed" },
+                  { key: "structured_retrieval",  label: "Structured retrieval",  desc: "Agent Booster installed" },
+                  { key: "metrics_budgets",       label: "Metrics & budgets",     desc: "Spend budgets configured" },
+                ] as const).map((item, i) => {
+                  const active = tokenGuardrails ? tokenGuardrails[item.key] : true
+                  return (
+                    <div key={item.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", borderTop: i > 0 ? "1px solid var(--border)" : undefined }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{item.label}</div>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{item.desc}</div>
+                      </div>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: active ? "var(--ok)" : "var(--text-3)", flexShrink: 0, marginLeft: 12 }}>
+                        {active ? "Active" : "Inactive"}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+
               {/* Re-sync */}
               <div className="card" style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 12 }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -523,114 +622,36 @@ function SettingsContent() {
             </div>
           </div>
 
-          {/* ── Token Guardrails ─────────────────────────────────────────────── */}
-          <div className="card" style={{ padding: "20px 24px", marginTop: 20 }}>
-            <div className="eyebrow" style={{ marginBottom: 4 }}>Token guardrails</div>
-            <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 18 }}>
-              Auto-detected guardrails update automatically when tools are installed or removed. Manual guardrails reflect your team's adopted practices.
+          {/* ── Token Guardrails — manual toggles ───────────────────────────── */}
+          <div className="card" style={{ overflow: "hidden", marginTop: 20 }}>
+            <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent)", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+                </svg>
+              </span>
+              <div style={{ fontWeight: 650, fontSize: 14.5 }}>Token guardrails</div>
+              {guardrailSaved && (
+                <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--ok)", fontWeight: 600 }}>Saved</span>
+              )}
             </div>
-
-            {/* Auto-detected (read-only) */}
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 10 }}>
-              Auto-detected
-            </div>
-            {([
-              { key: "deterministic_offload", label: "Deterministic offload",   desc: "warn-deterministic-compute policy" },
-              { key: "output_compression",    label: "Output compression",      desc: "RTK installation" },
-              { key: "structured_retrieval",  label: "Structured retrieval",    desc: "Agent Booster installation" },
-              { key: "metrics_budgets",       label: "Metrics & budgets",       desc: "Spend budget configuration" },
-            ] as const).map(item => {
-              const active = tokenGuardrails ? tokenGuardrails[item.key] : true
-              return (
-                <div key={item.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", borderBottom: "1px solid var(--border)" }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{item.label}</div>
-                    <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 1 }}>Detected via: {item.desc}</div>
+            <div style={{ padding: "4px 20px 16px" }}>
+              {([
+                { key: "prompt_caching",   label: "Prompt caching",   desc: "System prompts are cached on every agent run" },
+                { key: "model_routing",    label: "Model routing",    desc: "Agent runs select model tier by task complexity" },
+                { key: "prompt_splitting", label: "Prompt splitting", desc: "Agent Templates enforce composable YAML skills" },
+              ] as const).map(item => (
+                <div key={item.key} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 0", borderTop: "1px solid var(--border)" }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13.5 }}>{item.label}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>{item.desc}</div>
                   </div>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: active ? "var(--ok)" : "var(--text-3)" }}>
-                    {active ? "Active" : "Inactive"}
-                  </span>
+                  <GuardToggle
+                    on={guardrailState[item.key]}
+                    onClick={() => isAdmin && handleGuardrailToggle(item.key, !guardrailState[item.key])}
+                  />
                 </div>
-              )
-            })}
-
-            {/* Manual (toggles) */}
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".06em", marginTop: 20, marginBottom: 10 }}>
-              Manual
-            </div>
-            {([
-              { key: "prompt_caching",  label: "Prompt caching",   desc: "System prompts are cached on every agent run" },
-              { key: "model_routing",   label: "Model routing",    desc: "Agent runs select model tier by task complexity" },
-              { key: "prompt_splitting", label: "Prompt splitting", desc: "Agent Templates enforce composable YAML skills" },
-            ] as const).map(item => {
-              const active = tokenGuardrails ? tokenGuardrails[item.key] : true
-              return (
-                <div key={item.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", borderBottom: "1px solid var(--border)" }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{item.label}</div>
-                    <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 1 }}>{item.desc}</div>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    {guardrailSaved === item.key && (
-                      <span style={{ fontSize: 11, color: "var(--ok)" }}>Saved</span>
-                    )}
-                    <GuardToggle
-                      on={active}
-                      onClick={async () => {
-                        if (!isAdmin || !wsId) return
-                        try {
-                          const token = await getToken()
-                          await patchTokenGuardrails(wsId, token ?? "", base, { [item.key]: !active })
-                          refreshGuardrails()
-                          setGuardrailSaved(item.key)
-                          setTimeout(() => setGuardrailSaved(null), 2000)
-                        } catch { /* silent */ }
-                      }}
-                    />
-                  </div>
-                </div>
-              )
-            })}
-
-            {/* Drift alerts — Slack webhook */}
-            <div style={{ marginTop: 24 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 3 }}>Drift alerts</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
-                Get notified on Slack immediately when a guardrail goes inactive (tool removed, policy disabled).
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <input
-                  type="text"
-                  value={webhookInput}
-                  onChange={e => setWebhookInput(e.target.value)}
-                  disabled={!isAdmin}
-                  placeholder="https://hooks.slack.com/services/..."
-                  style={{
-                    flex: 1, padding: "7px 11px", borderRadius: 8, fontSize: 12.5,
-                    border: "1px solid var(--border)", background: "var(--surface-2)",
-                    color: "var(--text)", outline: "none", opacity: isAdmin ? 1 : 0.6,
-                  }}
-                />
-                <button
-                  className="btn btn-sm"
-                  disabled={!isAdmin || savingWebhook || !webhookInput}
-                  onClick={async () => {
-                    if (!wsId) return
-                    setSavingWebhook(true)
-                    try {
-                      const token = await getToken()
-                      await patchTokenGuardrails(wsId, token ?? "", base, { slack_webhook_url: webhookInput })
-                      refreshGuardrails()
-                      setWebhookSaved(true)
-                      setTimeout(() => setWebhookSaved(false), 2000)
-                    } catch { /* silent */ } finally {
-                      setSavingWebhook(false)
-                    }
-                  }}
-                >
-                  {savingWebhook ? "Saving…" : webhookSaved ? "Saved ✓" : "Save"}
-                </button>
-              </div>
+              ))}
             </div>
           </div>
         </>
