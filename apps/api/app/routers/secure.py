@@ -84,7 +84,6 @@ class ConfigOut(BaseModel):
     security_emit_enabled: bool
     security_slack_alerts_enabled: bool
     security_slack_channel: Optional[str]
-    slack_webhook_url: Optional[str]
     installed_at: Optional[datetime]
     created_at: datetime
     updated_at: Optional[datetime]
@@ -96,7 +95,6 @@ class ConfigPatch(BaseModel):
     security_emit_enabled: Optional[bool] = None
     security_slack_alerts_enabled: Optional[bool] = None
     security_slack_channel: Optional[str] = None
-    slack_webhook_url: Optional[str] = None
 
 
 class PolicyOut(BaseModel):
@@ -145,7 +143,6 @@ def _config_to_out(cfg: SecurityConfig) -> ConfigOut:
         security_emit_enabled=cfg.security_emit_enabled,
         security_slack_alerts_enabled=cfg.security_slack_alerts_enabled,
         security_slack_channel=cfg.security_slack_channel,
-        slack_webhook_url=cfg.slack_webhook_url,
         installed_at=cfg.installed_at,
         created_at=cfg.created_at,
         updated_at=cfg.updated_at,
@@ -240,8 +237,7 @@ def patch_config(
         cfg.security_slack_alerts_enabled = body.security_slack_alerts_enabled
     if body.security_slack_channel is not None:
         cfg.security_slack_channel = body.security_slack_channel
-    if body.slack_webhook_url is not None:
-        cfg.slack_webhook_url = body.slack_webhook_url
+
     cfg.updated_at = _now()
     db.commit()
     db.refresh(cfg)
