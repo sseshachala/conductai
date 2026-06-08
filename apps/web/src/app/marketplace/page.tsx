@@ -162,6 +162,8 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   const [search, setSearch] = useState("")
   const [installing, setInstalling] = useState(false)
   const [installedCount, setInstalledCount] = useState<Map<string, number>>(new Map())
+  const [installedWorkflowId, setInstalledWorkflowId] = useState<Map<string, string>>(new Map())
+  const [uninstalling, setUninstalling] = useState<string | null>(null)
   const [scores, setScores] = useState<Map<string, PlaybookScore>>(new Map())
   const [secureInstalling, setSecureInstalling] = useState(false)
   const [secureInstalled, setSecureInstalled] = useState(false)
@@ -244,6 +246,26 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
     return headers
   }
 
+  async function uninstallPlaybook(slug: string) {
+    const wfId = installedWorkflowId.get(slug)
+    if (!wfId) return
+    const wsId = getWorkspaceId()
+    if (!wsId) return
+    setUninstalling(slug)
+    try {
+      const h = await authHeaders()
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/workflows/${wfId}?workspace_id=${wsId}`,
+        { method: "DELETE", headers: h },
+      )
+      if (res.ok) {
+        setInstalledCount(prev => { const m = new Map(prev); m.delete(slug); return m })
+        setInstalledWorkflowId(prev => { const m = new Map(prev); m.delete(slug); return m })
+      }
+    } catch {}
+    finally { setUninstalling(null) }
+  }
+
   useEffect(() => {
     async function load() {
       const headers = await authHeaders()
@@ -264,12 +286,15 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
       if (wfRes.ok) {
         const workflows: { id: string; name: string; playbook_slug?: string }[] = await wfRes.json()
         const counts = new Map<string, number>()
+        const ids = new Map<string, string>()
         for (const wf of workflows) {
           if (wf.playbook_slug) {
             counts.set(wf.playbook_slug, (counts.get(wf.playbook_slug) ?? 0) + 1)
+            if (!ids.has(wf.playbook_slug)) ids.set(wf.playbook_slug, wf.id)
           }
         }
         setInstalledCount(counts)
+        setInstalledWorkflowId(ids)
       }
 
       // Fetch quality scores — graceful if endpoint not yet available
@@ -579,6 +604,8 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                       grade={scores.get(p.slug)?.grade}
                       onInstall={openInstallModal}
                       onViewYaml={openYamlModal}
+                      onUninstall={uninstallPlaybook}
+                      uninstalling={uninstalling === p.slug}
                     />
                   ))}
                 </div>
@@ -630,6 +657,8 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                     grade={scores.get(p.slug)?.grade}
                     onInstall={openInstallModal}
                     onViewYaml={openYamlModal}
+                    onUninstall={uninstallPlaybook}
+                    uninstalling={uninstalling === p.slug}
                   />
                 ))}
               </div>
@@ -847,6 +876,8 @@ function PlaybookCard({
   grade,
   onInstall,
   onViewYaml,
+  onUninstall,
+  uninstalling,
 }: {
   playbook: Playbook
   installing: boolean
@@ -855,6 +886,8 @@ function PlaybookCard({
   grade?: string
   onInstall: (slug: string) => void
   onViewYaml: (slug: string) => void
+  onUninstall: (slug: string) => void
+  uninstalling: boolean
 }) {
   const blockType = CAT_BLOCK[playbook.category] ?? "brain"
   const displayName = FRIENDLY_NAMES[playbook.slug] ?? playbook.name
@@ -993,6 +1026,27 @@ function PlaybookCard({
             "Install"
           )}
         </button>
+        {isInstalled && (
+          <button
+            onClick={() => onUninstall(playbook.slug)}
+            disabled={uninstalling}
+            title="Uninstall"
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 7,
+              border: "1px solid var(--err-bd)",
+              background: "transparent",
+              color: "var(--err)",
+              cursor: uninstalling ? "wait" : "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 16,
+              flexShrink: 0,
+            }}
+          >×</button>
+        )}
         <button
           onClick={() => onViewYaml(playbook.slug)}
           title="Preview YAML"
