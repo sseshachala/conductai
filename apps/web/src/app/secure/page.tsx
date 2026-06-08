@@ -54,7 +54,11 @@ function SecureOverview() {
     finally { setLoading(false) }
   }, [base, wsId, buildHeaders])
 
-  useEffect(() => { load(filterDays) }, [load, filterDays])
+  useEffect(() => {
+    load(filterDays)
+    const t = setInterval(() => load(filterDays), 30_000)
+    return () => clearInterval(t)
+  }, [load, filterDays])
 
   const selectStyle: React.CSSProperties = {
     fontSize: 13, border: "1px solid var(--border)", borderRadius: 8,

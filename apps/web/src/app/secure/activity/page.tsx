@@ -60,7 +60,11 @@ function ActivityContent() {
     finally { setLoading(false) }
   }, [base, wsId, buildHeaders, filterDays])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+    const t = setInterval(load, 30_000)
+    return () => clearInterval(t)
+  }, [load])
 
   const tools = Array.from(new Set(findings.map(f => f.tool).filter(Boolean))) as string[]
 
