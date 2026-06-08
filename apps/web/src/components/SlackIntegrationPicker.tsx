@@ -82,7 +82,7 @@ export function SlackIntegrationPicker({ base, wsId, buildHeaders, integrationId
           <option value="">Select Slack integration…</option>
           {integrations.map(i => (
             <option key={i.id} value={i.id}>
-              {i.handle}{i.environment_name ? ` · ${i.environment_name}` : ""}
+              {i.environment_name ?? i.handle} — Slack
             </option>
           ))}
         </select>
