@@ -1,17 +1,17 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# bughunter-active-scan — active vulnerability hunt using Claude-BugHunter skills
+# bughunter-active-scan — dynamic vulnerability hunt via Claude-BugHunter
 #
-# Runs targeted security hunts against a GitHub repo or URL using the 8
-# BugHunter skill classes. Each confirmed finding is emitted to the Security
-# Loop pipeline: triage → validate → fix → PR → Slack.
+# Discovers hunt-* skills from the upstream repo at runtime — no YAML update
+# needed when new skills are added upstream.
 #
-# Source skills: github.com/elementalsouls/Claude-BugHunter (PR #30)
+# Source skills: github.com/elementalsouls/Claude-BugHunter
 # ──────────────────────────────────────────────────────────────────────────────
 name: BugHunter Active Scan
-version: 1
+version: 2
 description: >
-  Run Claude-BugHunter skills against a target repo or URL. Confirmed findings
-  flow automatically into the Security Loop: GitHub issue → triage → fix PR.
+  Dynamically discovers and runs all Claude-BugHunter hunt-* skills against a
+  target repo. New upstream skills are picked up automatically — no playbook
+  update required. Confirmed findings flow into the Security Loop and GitHub.
 
 inputs:
   target_repo:
@@ -27,29 +27,6 @@ inputs:
     description: Optional web-facing surface to scan alongside the repo.
     required: false
 
-  skills:
-    label: Hunt Skills
-    type: multiselect
-    default:
-      - hunt-llm-injection
-      - hunt-jwt-confusion
-      - hunt-graphql
-      - hunt-oauth-oidc
-      - hunt-ssrf-cloud
-      - hunt-websocket
-      - hunt-supply-chain
-      - hunt-race-conditions
-    options:
-      - hunt-llm-injection
-      - hunt-jwt-confusion
-      - hunt-graphql
-      - hunt-oauth-oidc
-      - hunt-ssrf-cloud
-      - hunt-websocket
-      - hunt-supply-chain
-      - hunt-race-conditions
-    description: BugHunter skills to run. Defaults to all 8.
-
   severity_threshold:
     label: Min Severity to Emit
     type: select
@@ -60,6 +37,15 @@ inputs:
       - medium
       - low
     description: Only emit findings at or above this severity into the pipeline.
+
+  skill_filter:
+    label: Skill filter (optional)
+    type: string
+    placeholder: "hunt-llm-injection, hunt-jwt-confusion"
+    description: >
+      Comma-separated list of skill names to run. Leave blank to run all
+      discovered skills automatically.
+    required: false
 
   model:
     label: AI Model
@@ -72,266 +58,127 @@ inputs:
 
 on:
   manual:
-    next: recon
+    next: discover_skills
 
 blocks:
-  # ── 1. Recon ────────────────────────────────────────────────────────────────
+  # ── 1. Discover skills from upstream repo ───────────────────────────────────
+  - id: discover_skills
+    type: brain
+    mode: agentic
+    model: "{{ inputs.model }}"
+    next: recon
+    system: |
+      You are discovering the available hunt skills from the Claude-BugHunter
+      repository. Fetch the repository index and return the full list of
+      hunt-* skill names and their descriptions.
+    prompt: |
+      Fetch the README and file listing from:
+      https://github.com/elementalsouls/Claude-BugHunter
+
+      Find every file or section named hunt-*.md or hunt-* skill.
+      For each skill extract:
+        - name (e.g. hunt-llm-injection)
+        - description (one line summary of what it hunts for)
+        - key_patterns (list of vulnerability patterns it covers)
+
+      {% if inputs.skill_filter %}
+      Filter to only these skills: {{ inputs.skill_filter }}
+      {% endif %}
+
+      Return ONLY a JSON array on the last line:
+      [{"name":"hunt-llm-injection","description":"...","key_patterns":["prompt injection","RAG poisoning"]}]
+
+  # ── 2. Recon ─────────────────────────────────────────────────────────────────
   - id: recon
     type: brain
+    mode: agentic
     model: "{{ inputs.model }}"
-    next: hunt_llm_injection
+    next: run_hunts
     system: |
       You are a security researcher preparing a targeted vulnerability hunt.
-      Gather public information about the target to inform the hunt skills:
-      - What tech stack is the repo using? (check package.json, requirements.txt, go.mod, Cargo.toml)
-      - What CI/CD setup is present? (.github/workflows/)
-      - Does it have AI/LLM features? (keywords: openai, anthropic, langchain, mcp)
-      - What authentication mechanism is used? (jwt, oauth, session cookies)
-      - Does it have a GraphQL endpoint?
-      - Is it cloud-hosted? (AWS, GCP, Azure signals in config files)
-      Summarize findings as a recon brief that will be passed to each hunt skill.
+      Examine the target repository and produce a recon brief that will be
+      used to focus each hunt skill on the most relevant attack surfaces.
+    prompt: |
+      Target repo: {{ inputs.target_repo }}
+      {% if inputs.target_url %}Target URL: {{ inputs.target_url }}{% endif %}
+      Skills to run: {{ discover_skills.output }}
+
+      Examine the repository and produce a recon brief covering:
+      1. Tech stack (check package.json, requirements.txt, go.mod, Cargo.toml, pyproject.toml)
+      2. Authentication mechanism(s) — JWT, OAuth, session, API key
+      3. AI/LLM surface — openai, anthropic, langchain, mcp keywords
+      4. Cloud provider signals — AWS, GCP, Azure in config files
+      5. GraphQL or WebSocket presence
+      6. CI/CD setup — .github/workflows/ contents
+      7. Which discovered skills are most likely to yield findings and why
+
+      Output the recon brief as plain text. Be specific — name actual files
+      and code paths where relevant attack surfaces exist.
+
+  # ── 3. Run all hunt skills dynamically ──────────────────────────────────────
+  - id: run_hunts
+    type: brain
+    mode: agentic
+    model: "{{ inputs.model }}"
+    next: collect_findings
+    system: |
+      You are a security researcher executing a structured vulnerability hunt.
+      You have a list of hunt skills and a recon brief. For each skill, fetch
+      its full definition from the Claude-BugHunter repository, then apply it
+      to the target.
+
+      Rules:
+      - Run every skill in the discovered list sequentially
+      - For each skill, read its upstream definition before running it — do not
+        rely on prior knowledge of the skill content
+      - Only report findings you are >80% confident are real vulnerabilities
+      - Skip a skill entirely if the recon brief shows the target has no
+        relevant attack surface (e.g. skip hunt-graphql if no GraphQL found)
+      - Output a single JSON array across all skills — do not split by skill
+
+      Recon brief:
+      {{ recon.output }}
     prompt: |
       Target repo: {{ inputs.target_repo }}
       {% if inputs.target_url %}Target URL: {{ inputs.target_url }}{% endif %}
 
-      Examine the repository and produce a recon brief covering:
-      1. Tech stack summary
-      2. Authentication mechanism(s)
-      3. AI/LLM surface (if any)
-      4. Cloud provider (if determinable)
-      5. Which of the 8 hunt skills are most likely to yield findings — and why
+      Skills to execute (fetch each definition from upstream before running):
+      {{ discover_skills.output }}
 
-  # ── 2. Hunt: LLM Injection ───────────────────────────────────────────────
-  - id: hunt_llm_injection
-    type: brain
-    model: "{{ inputs.model }}"
-    next: hunt_jwt_confusion
-    skip_if: "{{ 'hunt-llm-injection' not in inputs.skills }}"
-    system: |
-      You are running the hunt-llm-injection skill from Claude-BugHunter.
-      Recon brief: {{ recon.output }}
+      For each skill:
+      1. Fetch its definition from https://github.com/elementalsouls/Claude-BugHunter
+      2. Apply it to the target repo/URL using the recon brief as context
+      3. Record confirmed findings
 
-      Hunt for: direct prompt injection via user input, indirect injection via
-      RAG context or tool outputs, MCP tool call hijacking, system prompt
-      extraction, exfiltration via markdown rendering, multi-tenant context bleed.
+      Return ALL findings across all skills as a single JSON array on the last line:
+      [{"skill":"hunt-llm-injection","severity":"high","type":"injection","endpoint_or_file":"api/chat.py","description":"...","suggested_fix":"...","evidence":"...","cwe":"CWE-77"}]
 
-      For each confirmed finding output JSON with fields:
-      severity, type, endpoint_or_file, description, suggested_fix, evidence, cwe
-    prompt: |
-      Target: {{ inputs.target_repo }}{% if inputs.target_url %} / {{ inputs.target_url }}{% endif %}
+      If no findings, return: []
 
-      Run the LLM injection hunt. Focus on:
-      - User-controlled input paths that reach an LLM
-      - Tool call handlers that could be hijacked
-      - RAG pipelines ingesting external content
-      - Multi-tenant session isolation on AI chat features
-
-      Return findings as JSON array (empty array if no findings):
-      [{"severity":"high","type":"llm-injection","endpoint_or_file":"...","description":"...","suggested_fix":"...","evidence":"...","cwe":"CWE-77"}]
-
-  # ── 3. Hunt: JWT Confusion ───────────────────────────────────────────────
-  - id: hunt_jwt_confusion
-    type: brain
-    model: "{{ inputs.model }}"
-    next: hunt_graphql
-    skip_if: "{{ 'hunt-jwt-confusion' not in inputs.skills }}"
-    system: |
-      You are running the hunt-jwt-confusion skill from Claude-BugHunter.
-      Recon brief: {{ recon.output }}
-
-      Hunt for: RS256→HS256 algorithm confusion, none algorithm bypass,
-      kid header SQL/path traversal injection, jwks_uri/jku spoofing,
-      weak secret bruteforceable, cross-tenant claim manipulation.
-    prompt: |
-      Target: {{ inputs.target_repo }}{% if inputs.target_url %} / {{ inputs.target_url }}{% endif %}
-
-      Check JWT handling code for:
-      - Algorithm validation (is RS256 enforced or can it be downgraded?)
-      - kid parameter sanitization (SQL injection, path traversal)
-      - jwks_uri fetching (is the URL user-controllable?)
-      - Secret strength (is a weak default used?)
-
-      Return findings as JSON array:
-      [{"severity":"critical","type":"auth-bypass","endpoint_or_file":"...","description":"...","suggested_fix":"...","evidence":"...","cwe":"CWE-347"}]
-
-  # ── 4. Hunt: GraphQL ─────────────────────────────────────────────────────
-  - id: hunt_graphql
-    type: brain
-    model: "{{ inputs.model }}"
-    next: hunt_oauth_oidc
-    skip_if: "{{ 'hunt-graphql' not in inputs.skills or 'graphql' not in recon.output | lower }}"
-    system: |
-      You are running the hunt-graphql skill from Claude-BugHunter.
-      Recon brief: {{ recon.output }}
-
-      Hunt for: field-level authorization gaps (IDOR on nested objects),
-      mutation authorization bypass, batching/alias rate-limit bypass,
-      SQL/NoSQL injection via arguments, SSRF via URL-fetching resolvers,
-      subscription channel IDOR, introspection leaking sensitive schema.
-    prompt: |
-      Target: {{ inputs.target_repo }}{% if inputs.target_url %} / {{ inputs.target_url }}{% endif %}
-
-      Examine GraphQL resolver code for authorization checks.
-      Check: does every resolver verify the caller owns the requested resource?
-      Are mutations protected against cross-user manipulation?
-      Are argument inputs sanitized before DB queries?
-
-      Return findings as JSON array:
-      [{"severity":"high","type":"idor","endpoint_or_file":"...","description":"...","suggested_fix":"...","evidence":"...","cwe":"CWE-284"}]
-
-  # ── 5. Hunt: OAuth/OIDC ──────────────────────────────────────────────────
-  - id: hunt_oauth_oidc
-    type: brain
-    model: "{{ inputs.model }}"
-    next: hunt_ssrf_cloud
-    skip_if: "{{ 'hunt-oauth-oidc' not in inputs.skills }}"
-    system: |
-      You are running the hunt-oauth-oidc skill from Claude-BugHunter.
-      Recon brief: {{ recon.output }}
-
-      Hunt for: redirect_uri validation bypass, missing/predictable state parameter,
-      PKCE downgrade, dynamic client registration without auth, token leakage
-      in Referer headers, cross-client token confusion.
-    prompt: |
-      Target: {{ inputs.target_repo }}{% if inputs.target_url %} / {{ inputs.target_url }}{% endif %}
-
-      Check OAuth/OIDC implementation for:
-      - How is redirect_uri validated? (exact match, prefix, regex, wildcard?)
-      - Is state parameter present and cryptographically random?
-      - Is PKCE required or optional?
-      - Does the token endpoint accept codes without verifier?
-
-      Return findings as JSON array:
-      [{"severity":"critical","type":"auth-bypass","endpoint_or_file":"...","description":"...","suggested_fix":"...","evidence":"...","cwe":"CWE-601"}]
-
-  # ── 6. Hunt: SSRF Cloud ──────────────────────────────────────────────────
-  - id: hunt_ssrf_cloud
-    type: brain
-    model: "{{ inputs.model }}"
-    next: hunt_websocket
-    skip_if: "{{ 'hunt-ssrf-cloud' not in inputs.skills }}"
-    system: |
-      You are running the hunt-ssrf-cloud skill from Claude-BugHunter.
-      Recon brief: {{ recon.output }}
-
-      Hunt for: user-controlled URL parameters that could reach cloud metadata
-      endpoints (169.254.169.254, metadata.google.internal, Azure IMDS),
-      PDF/screenshot generators, webhook registration, import-from-URL features,
-      image proxy endpoints, any fetch/HTTP client call with user-supplied URL.
-    prompt: |
-      Target: {{ inputs.target_repo }}{% if inputs.target_url %} / {{ inputs.target_url }}{% endif %}
-
-      Identify every place user-supplied URLs are fetched server-side.
-      Check for: URL allowlisting, SSRF mitigations (DNS rebinding protection,
-      private IP blocking). Flag any unprotected fetch calls.
-
-      Return findings as JSON array:
-      [{"severity":"critical","type":"ssrf","endpoint_or_file":"...","description":"...","suggested_fix":"...","evidence":"...","cwe":"CWE-918"}]
-
-  # ── 7. Hunt: WebSocket ───────────────────────────────────────────────────
-  - id: hunt_websocket
-    type: brain
-    model: "{{ inputs.model }}"
-    next: hunt_supply_chain
-    skip_if: "{{ 'hunt-websocket' not in inputs.skills or 'websocket' not in recon.output | lower }}"
-    system: |
-      You are running the hunt-websocket skill from Claude-BugHunter.
-      Recon brief: {{ recon.output }}
-
-      Hunt for: missing Origin header validation (CSWSH), authentication bypass
-      on upgrade handshake, IDOR via unvalidated room/channel IDs, stored XSS
-      via WebSocket message, SQL/command injection in message fields.
-    prompt: |
-      Target: {{ inputs.target_repo }}{% if inputs.target_url %} / {{ inputs.target_url }}{% endif %}
-
-      Check WebSocket handlers for Origin validation and authentication.
-      Look for: does the upgrade handler check the Origin header?
-      Are channel/room subscriptions authorization-checked per-user?
-      Are message contents sanitized before DB writes or broadcasts?
-
-      Return findings as JSON array:
-      [{"severity":"high","type":"auth-bypass","endpoint_or_file":"...","description":"...","suggested_fix":"...","evidence":"...","cwe":"CWE-346"}]
-
-  # ── 8. Hunt: Supply Chain ────────────────────────────────────────────────
-  - id: hunt_supply_chain
-    type: brain
-    model: "{{ inputs.model }}"
-    next: hunt_race_conditions
-    skip_if: "{{ 'hunt-supply-chain' not in inputs.skills }}"
-    system: |
-      You are running the hunt-supply-chain skill from Claude-BugHunter.
-      Recon brief: {{ recon.output }}
-
-      Hunt for: private package names not on public registries (dependency confusion),
-      GitHub Actions workflow injection via untrusted input (pull_request_target,
-      issue title, PR body in run steps), third-party scripts without SRI,
-      secrets exposed in git history or Actions logs, typosquatting on dependencies.
-    prompt: |
-      Target: {{ inputs.target_repo }}
-
-      Check:
-      1. package.json/requirements.txt — any internal package names that don't exist on public registries?
-      2. .github/workflows/ — any use of pull_request_target with untrusted input in run steps?
-      3. HTML/templates — any <script> tags without integrity attribute from CDNs?
-      4. Workflow files — any secrets accessed in jobs triggered by external PRs?
-
-      Return findings as JSON array:
-      [{"severity":"critical","type":"supply-chain","endpoint_or_file":"...","description":"...","suggested_fix":"...","evidence":"...","cwe":"CWE-1357"}]
-
-  # ── 9. Hunt: Race Conditions ─────────────────────────────────────────────
-  - id: hunt_race_conditions
-    type: brain
-    model: "{{ inputs.model }}"
-    next: collect_findings
-    skip_if: "{{ 'hunt-race-conditions' not in inputs.skills }}"
-    system: |
-      You are running the hunt-race-conditions skill from Claude-BugHunter.
-      Recon brief: {{ recon.output }}
-
-      Hunt for: non-atomic check-then-act sequences on financial operations,
-      single-use token/coupon validation without database-level locking,
-      concurrent state transitions bypassing state machine guards,
-      rate limiting implemented without atomic increment.
-    prompt: |
-      Target: {{ inputs.target_repo }}
-
-      Look for patterns like:
-      - SELECT balance → check → UPDATE (non-atomic)
-      - SELECT used=false → set used=true (no row lock)
-      - State machine transitions without optimistic/pessimistic locking
-      - Rate limit counters updated with non-atomic reads
-
-      Return findings as JSON array:
-      [{"severity":"high","type":"race-condition","endpoint_or_file":"...","description":"...","suggested_fix":"...","evidence":"...","cwe":"CWE-362"}]
-
-  # ── 10. Collect & filter findings ────────────────────────────────────────
+  # ── 4. Deduplicate and filter ────────────────────────────────────────────────
   - id: collect_findings
     type: brain
     model: claude-haiku-4-5-20251001
     next: emit_to_security_loop
     system: |
-      You are aggregating security findings from multiple hunt scans.
-      Deduplicate findings that refer to the same vulnerability.
-      Filter to only include findings at or above severity: {{ inputs.severity_threshold }}.
-      Output a clean, deduplicated JSON array.
+      You are aggregating security findings from a multi-skill vulnerability hunt.
+      Deduplicate findings that refer to the same vulnerability in the same file.
+      Filter to only include findings at or above the severity threshold.
     prompt: |
-      Findings from all hunt skills (may include nulls or empty arrays):
-
-      LLM Injection: {{ hunt_llm_injection.output | default('[]') }}
-      JWT Confusion: {{ hunt_jwt_confusion.output | default('[]') }}
-      GraphQL: {{ hunt_graphql.output | default('[]') }}
-      OAuth/OIDC: {{ hunt_oauth_oidc.output | default('[]') }}
-      SSRF Cloud: {{ hunt_ssrf_cloud.output | default('[]') }}
-      WebSocket: {{ hunt_websocket.output | default('[]') }}
-      Supply Chain: {{ hunt_supply_chain.output | default('[]') }}
-      Race Conditions: {{ hunt_race_conditions.output | default('[]') }}
+      Raw findings from all hunt skills:
+      {{ run_hunts.output }}
 
       Severity threshold: {{ inputs.severity_threshold }}
+      Skills run: {{ discover_skills.output | length }} skills discovered
 
-      Return a deduplicated JSON array of findings above the threshold.
-      Add a field "skill" to each finding indicating which hunt skill found it.
+      1. Remove exact duplicates (same type + same endpoint_or_file)
+      2. Merge near-duplicates (same vulnerability, different evidence — keep the richer one)
+      3. Drop findings below severity threshold
+      4. Add field "skill" if missing
 
-  # ── 11. Emit to Security Loop pipeline ────────────────────────────────────
+      Return deduplicated JSON array on the last line. If nothing passes, return [].
+
+  # ── 5. Emit to Security Loop ─────────────────────────────────────────────────
   - id: emit_to_security_loop
     type: tool
     action: conduct/emit_finding
@@ -347,7 +194,7 @@ blocks:
       repo_full_name: "{{ inputs.target_repo }}"
       source_run_id: "{{ _run.id | default('bughunter') }}"
 
-  # ── 12. Create GitHub issue for team visibility ───────────────────────────
+  # ── 6. Create GitHub issue for team visibility ───────────────────────────────
   - id: create_github_issue
     type: tool
     action: github/create_issue
@@ -381,7 +228,7 @@ blocks:
         - bughunter
         - autopilot-ready
 
-  # ── 13. Summary notification ──────────────────────────────────────────────
+  # ── 7. Summary notification ───────────────────────────────────────────────────
   - id: notify_complete
     type: output
     channels:
@@ -389,10 +236,11 @@ blocks:
     template: |
       🔍 *BugHunter Active Scan complete* — `{{ inputs.target_repo }}`
 
-      *Skills run:* {{ inputs.skills | join(', ') }}
+      *Skills discovered:* {{ discover_skills.output | length }}
       *Findings emitted:* {{ collect_findings.output | length }}
       {% for f in collect_findings.output %}
-      • [{{ f.severity | upper }}] {{ f.type }} — `{{ f.endpoint_or_file }}`
+      • [{{ f.severity | upper }}] {{ f.type }} — `{{ f.endpoint_or_file }}` ({{ f.skill }})
       {% endfor %}
 
-      View issues → https://github.com/{{ inputs.target_repo }}/issues?q=label%3Abughunter
+      View in Security Loop → https://app.conductai.ai/secure/activity
+      View GitHub issues → https://github.com/{{ inputs.target_repo }}/issues?q=label%3Abughunter
