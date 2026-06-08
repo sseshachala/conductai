@@ -21,6 +21,7 @@ interface NotificationItem {
   desc: string
   time: string
   unread: boolean
+  href?: string
   created_at?: string | null
 }
 
@@ -1159,13 +1160,16 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
                         info: { bg: "var(--info-bg)", color: "var(--info)" },
                       }
                       const tc = toneColors[n.tone] ?? toneColors.info
-                      const toneIcon = n.tone === "warn" ? "⚠" : n.tone === "err" ? "✕" : n.tone === "ok" ? "✓" : "i"
+                      const isSecurity = n.id.startsWith("sf-")
+                      const toneIcon = isSecurity ? "🛡" : n.tone === "warn" ? "⚠" : n.tone === "err" ? "✕" : n.tone === "ok" ? "✓" : "i"
+                      const Wrapper = n.href ? "a" : "div"
                       return (
-                        <div key={n.id} style={{
+                        <Wrapper key={n.id} href={n.href} style={{
                           display: "flex", alignItems: "flex-start", gap: 12,
                           padding: "12px 16px",
                           borderBottom: "1px solid var(--border)",
                           background: n.unread ? "var(--surface-2)" : "var(--surface)",
+                          textDecoration: "none", cursor: n.href ? "pointer" : "default",
                         }}>
                           <div style={{
                             width: 30, height: 30, borderRadius: 8, flexShrink: 0,
@@ -1187,7 +1191,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
                             </div>
                           </div>
                           <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>{n.time}</span>
-                        </div>
+                        </Wrapper>
                       )
                     })}
                   </div>
