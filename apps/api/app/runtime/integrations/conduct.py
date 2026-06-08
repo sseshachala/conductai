@@ -10,6 +10,7 @@ from __future__ import annotations
 TOOL_MAP = {
     "emit_finding": "_emit_finding",
     "update_finding": "_update_finding",
+    "trigger_fix": "_trigger_fix",
 }
 
 
@@ -18,6 +19,8 @@ def execute(action: str, params: dict, creds: dict, db=None, workspace_id: str =
         return _emit_finding(params, db=db, workspace_id=workspace_id)
     if action == "update_finding":
         return _update_finding(params, db=db, workspace_id=workspace_id)
+    if action == "trigger_fix":
+        return _trigger_fix(params, db=db, workspace_id=workspace_id)
     return {"skipped": True, "reason": f"Unknown conduct action: {action}"}
 
 
@@ -66,3 +69,62 @@ def _update_finding(params: dict, db=None, workspace_id: str = "") -> dict:
         finding.status = new_status
     db.commit()
     return {"id": str(finding.id), "status": finding.status, "updated": True}
+
+
+def _trigger_fix(params: dict, db=None, workspace_id: str = "") -> dict:
+    """Enqueue a security-autopilot-fix run for a finding."""
+    if db is None or not workspace_id:
+        return {"skipped": True, "reason": "conduct/trigger_fix requires db and workspace_id"}
+    finding_id = params.get("finding_id")
+    if not finding_id:
+        return {"skipped": True, "reason": "finding_id is required"}
+
+    from app.models.security_finding import SecurityFinding
+    from app.models.workflow import Workflow
+    from app.models.run import Run
+    from app.routers.security import _enqueue_run, _now
+    import uuid as _uuid
+
+    try:
+        fid = _uuid.UUID(str(finding_id))
+    except ValueError:
+        return {"error": f"Invalid finding_id: {finding_id}"}
+
+    finding = db.query(SecurityFinding).filter(
+        SecurityFinding.id == fid,
+        SecurityFinding.workspace_id == workspace_id,
+    ).first()
+    if not finding:
+        return {"error": f"Finding {finding_id} not found"}
+
+    workflow = db.query(Workflow).filter(
+        Workflow.workspace_id == workspace_id,
+        Workflow.playbook_slug == "security-autopilot-fix",
+    ).first()
+    if not workflow or not workflow.current_version_id:
+        return {"skipped": True, "reason": "security-autopilot-fix playbook not installed"}
+
+    run = Run(
+        workflow_version_id=workflow.current_version_id,
+        triggered_by="security_autopilot",
+        status="pending",
+        state={
+            "_trigger": {
+                "finding_id": str(finding.id),
+                "severity": finding.severity,
+                "type": finding.type,
+                "description": finding.description,
+                "file": finding.file,
+                "line": finding.line,
+                "suggested_fix": finding.suggested_fix,
+                "repo_full_name": finding.repo_full_name,
+                "commit_sha": finding.commit_sha,
+            }
+        },
+    )
+    db.add(run)
+    db.flush()
+    finding.status = "triaging"
+    _enqueue_run(str(run.id))
+    db.commit()
+    return {"triggered": True, "run_id": str(run.id), "finding_id": str(finding.id)}

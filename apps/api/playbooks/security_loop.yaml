@@ -119,6 +119,23 @@ blocks:
     params:
       finding_id: "{{_trigger.finding_id}}"
       status: triaging
+    next: autopilot_gate
+
+  autopilot_gate:
+    type: logic
+    label: Autopilot — auto-fix enabled?
+    condition: "{{_trigger.autopilot_enabled == true and _trigger.repo_full_name}}"
+    next:
+      pass: trigger_fix
+      fail: alert_slack
+
+  trigger_fix:
+    type: tool
+    integration: conduct
+    action: trigger_fix
+    label: Trigger autopilot fix pipeline
+    params:
+      finding_id: "{{_trigger.finding_id}}"
     next: alert_slack
 
   alert_slack:
