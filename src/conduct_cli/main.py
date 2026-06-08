@@ -2225,21 +2225,22 @@ def cmd_sync(args):
 
 
 _SECURITY_TEST_CASES = [
-    ("AWS Access Key",       "secret-leak",     "critical", "AKIA1234567890ABCDEF found in output"),
-    ("OpenAI API Key",       "secret-leak",     "high",     "sk-abcdefghijklmnopqrstuvwx1234567890 in response"),
-    ("GitHub PAT",           "secret-leak",     "high",     "ghp_" + "A" * 36 + " token present"),
-    ("Bearer Token",         "secret-leak",     "high",     "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.test.sig"),
-    ("Hardcoded Password",   "secret-leak",     "high",     "password = 'hardcoded_secret_here'"),
-    ("Hardcoded API Key",    "secret-leak",     "high",     "api_key = 'abc123def456ghi789'"),
-    ("Path Traversal",       "path-traversal",  "medium",   "../../etc/passwd accessed"),
-    ("File URI",             "path-traversal",  "medium",   "file:///etc/passwd read"),
-    ("eval() Injection",     "injection",       "high",     "eval(user_input) called in output"),
-    ("exec() Injection",     "injection",       "high",     "exec(command) called in output"),
-    ("SSL Disabled",         "crypto",          "high",     "ssl.CERT_NONE used — verification disabled"),
-    ("TLS Bypass",           "crypto",          "medium",   "verify=False passed to requests"),
-    ("SQL Injection",        "injection",       "high",     "sql injection vulnerability in query"),
-    ("XSS",                  "injection",       "high",     "cross-site scripting detected in output"),
-    ("Auth Bypass",          "auth-bypass",     "high",     "auth bypass possible via missing check"),
+    # (name, type, severity, description, file, line)
+    ("AWS Access Key",       "secret-leak",     "critical", "AKIA1234567890ABCDEF found in output",                    "test_vuln.py",  7),
+    ("OpenAI API Key",       "secret-leak",     "high",     "sk-abcdefghijklmnopqrstuvwx1234567890 in response",       "test_vuln.py",  8),
+    ("GitHub PAT",           "secret-leak",     "high",     "ghp_" + "A" * 36 + " token present",                     "test_vuln.py",  8),
+    ("Bearer Token",         "secret-leak",     "high",     "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.test.sig",     "test_vuln.py",  None),
+    ("Hardcoded Password",   "secret-leak",     "high",     "password = 'hardcoded_secret_here'",                      "test_vuln.py",  11),
+    ("Hardcoded API Key",    "secret-leak",     "high",     "api_key = 'abc123def456ghi789'",                          "test_vuln.py",  12),
+    ("Path Traversal",       "path-traversal",  "medium",   "../../etc/passwd accessed",                               "test_vuln.py",  32),
+    ("File URI",             "path-traversal",  "medium",   "file:///etc/passwd read",                                 "test_vuln.py",  None),
+    ("eval() Injection",     "injection",       "high",     "eval(user_input) called in output",                       "test_vuln.py",  16),
+    ("exec() Injection",     "injection",       "high",     "exec(command) called in output",                          "test_vuln.py",  20),
+    ("SSL Disabled",         "crypto",          "high",     "ssl.CERT_NONE used — verification disabled",              "test_vuln.py",  28),
+    ("TLS Bypass",           "crypto",          "medium",   "verify=False passed to requests",                         "test_vuln.py",  23),
+    ("SQL Injection",        "injection",       "high",     "sql injection vulnerability in query",                    "test_vuln.py",  None),
+    ("XSS",                  "injection",       "high",     "cross-site scripting detected in output",                 "test_vuln.py",  None),
+    ("Auth Bypass",          "auth-bypass",     "high",     "auth bypass possible via missing check",                  "test_vuln.py",  None),
 ]
 
 
@@ -2268,15 +2269,20 @@ def cmd_test_security(args):
 
     passed = 0
     failed = 0
-    for name, vtype, severity, description in _SECURITY_TEST_CASES:
-        payload = _json.dumps({
+    for name, vtype, severity, description, test_file, test_line in _SECURITY_TEST_CASES:
+        body: dict = {
             "tool": "claude-code",
             "severity": severity,
             "type": vtype,
             "description": f"[TEST] {description}",
             "reporter_email": user_email,
             "source_run_id": "conduct-test-security",
-        }).encode()
+        }
+        if test_file:
+            body["file"] = test_file
+        if test_line is not None:
+            body["line"] = test_line
+        payload = _json.dumps(body).encode()
         try:
             req = urllib.request.Request(
                 f"{api_url}/security-findings?workspace_id={workspace_id}",
