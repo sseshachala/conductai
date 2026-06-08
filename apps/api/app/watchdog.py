@@ -13,6 +13,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 import structlog
+from sqlalchemy import text
 
 from app.core.config import settings
 from app.models.watchdog_event import normalize_event_type
