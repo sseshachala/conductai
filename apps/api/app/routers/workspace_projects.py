@@ -95,7 +95,6 @@ def list_notifications(
         if resource:
             desc_parts.append(str(resource))
         if not desc_parts and meta:
-            # Small, safe summary fallback from metadata keys.
             keys = [k for k in ["workflow_id", "run_id", "credential_id", "project_id"] if k in meta]
             desc_parts.extend([str(meta[k]) for k in keys[:2]])
 
@@ -106,11 +105,45 @@ def list_notifications(
                 "tone": _notification_tone(action),
                 "desc": " · ".join(desc_parts) if desc_parts else "Workspace activity",
                 "time": _to_relative_time(r.created_at),
-                # Until we store read state per user, treat recent items as unread in UI.
                 "unread": True,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
             }
         )
+
+    # Merge in recent critical/high security findings
+    try:
+        findings = db.execute(
+            text(
+                """
+                SELECT id, severity, type, description, tool, created_at
+                FROM security_findings
+                WHERE workspace_id = :ws
+                  AND severity IN ('critical', 'high')
+                  AND status = 'open'
+                ORDER BY created_at DESC
+                LIMIT 10
+                """
+            ),
+            {"ws": workspace_id},
+        ).fetchall()
+        for f in findings:
+            tone = "err" if f.severity == "critical" else "warn"
+            sev = f.severity.upper()
+            items.append({
+                "id": f"sf-{f.id}",
+                "title": f"[{sev}] {f.type.replace('-', ' ').title()}",
+                "tone": tone,
+                "desc": f"{f.description} · {f.tool or 'claude-code'}",
+                "time": _to_relative_time(f.created_at),
+                "unread": True,
+                "created_at": f.created_at.isoformat() if f.created_at else None,
+                "href": "/secure/activity",
+            })
+    except Exception:
+        pass
+
+    items.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+    items = items[:limit]
 
     return {"items": items, "unread_count": len(items)}
 
