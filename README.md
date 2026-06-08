@@ -8,9 +8,9 @@
 
 # Conduct
 
-**YAML playbooks that turn AI agents into reusable team automations — with governance, memory, and a full audit trail.**
+**Agent Templates that turn AI agents into reusable team automations — with governance, memory, and a full audit trail.**
 
-![Conduct — live run trace showing agent executing an issue-to-PR playbook](apps/web/public/guard-docs/dashboard.png)
+![Conduct — live run trace showing agent executing an issue-to-PR agent template](apps/web/public/guard-docs/dashboard.png)
 
 </div>
 
@@ -46,72 +46,72 @@ Every step is visible. Every run is logged. Nothing merges without a human in th
 | Autonomous agents are black boxes | Live run trace, three-layer audit log, approval gates on every run |
 | No governance over what AI tools spend | ConductGuard: hard cap per developer, blocks the call before it hits the model |
 | Agents start from scratch every run | Memory blocks: recall past summaries via vector similarity, record outcomes after |
-| Copilot/Cursor PRs need extra scrutiny | AI PR Reviewer playbook with human approval gate before merge |
+| Copilot/Cursor PRs need extra scrutiny | AI PR Reviewer agent template with human approval gate before merge |
 | One shared credential set across all agents | Per-agent environments — each agent gets its own scoped credentials |
 | No visibility into what developers' AI tools are doing | Guard audit log: every Claude Code, Cursor, and Copilot call — decision, rule, cost |
 | Hard to move from demo to production | Human-in-the-loop by design — nothing merges without approval |
 
 ---
 
-## 18 ready-made playbooks
+## 18 ready-made agent templates
 
 Install any of these in one click from the [Marketplace](https://conductai.ai/marketplace), configure credentials, and run.
 
 ### Issue → PR
-| Playbook | Trigger | What it does |
+| Template | Trigger | What it does |
 |----------|---------|-------------|
 | **Autopilot Quick** | GitHub issue labeled | Implements fix, opens PR immediately |
 | **Autopilot Full** | GitHub issue labeled | Implements fix, runs tests with retry, opens PR |
 | **Autopilot + Approval** | GitHub issue labeled | Implements fix, runs tests, human approves in Slack, opens PR |
 
 ### Code Review
-| Playbook | Trigger | What it does |
+| Template | Trigger | What it does |
 |----------|---------|-------------|
 | **PR Reviewer** | PR opened | Reviews diff for bugs, security, and style; posts a review |
 | **Copilot / AI PR Reviewer** | PR opened by Copilot/Cursor/Claude Code | Extra scrutiny for hallucinated APIs and missing tests; human approves before merge |
 | **Security Scanner** | PR opened | Scans for OWASP Top 10, hardcoded secrets, auth bypasses; posts report |
 
 ### Issue Triage
-| Playbook | Trigger | What it does |
+| Template | Trigger | What it does |
 |----------|---------|-------------|
 | **Issue Triage** | GitHub issue opened | Classifies type and priority, adds labels, posts a clarifying comment if vague |
 
 ### CI/CD
-| Playbook | Trigger | What it does |
+| Template | Trigger | What it does |
 |----------|---------|-------------|
 | **CI Failure Alert** | CI build fails | Diagnoses the failed step, posts root cause and suggested fix to Slack |
 | **Flaky Test Detective** | Repeated CI failures | Identifies flaky tests, finds the offending commit, posts fix recommendation |
 
 ### Release Management
-| Playbook | Trigger | What it does |
+| Template | Trigger | What it does |
 |----------|---------|-------------|
 | **Release Readiness Reviewer** | Release branch cut | Checks open blockers, failed CI, pending reviews; posts go/no-go summary |
 | **Release Notes Drafter** | Git tag pushed | Reads merged PRs, groups by type, writes CHANGELOG, posts to Slack |
 
 ### Incidents & Ops
-| Playbook | Trigger | What it does |
+| Template | Trigger | What it does |
 |----------|---------|-------------|
 | **Incident Responder** | PagerDuty / OpsGenie webhook | Correlates recent commits and deploys, posts root cause hypothesis to Slack |
 | **Postmortem Drafter** | Incident resolved | Reads timeline, alerts, and commits; drafts a structured postmortem |
 
 ### Security
-| Playbook | Trigger | What it does |
+| Template | Trigger | What it does |
 |----------|---------|-------------|
 | **Dependency Updater** | Weekly cron | Bumps patch/minor deps, opens a single clean PR |
 | **Security Patch Updater** | Dependabot alert | Applies the security patch, runs tests, opens a PR with CVE reference |
 
 ### Docs
-| Playbook | Trigger | What it does |
+| Template | Trigger | What it does |
 |----------|---------|-------------|
 | **Docs Drift Detector** | PR merged | Checks if related docs/README/runbooks went stale; opens a docs PR or files an issue |
 
 ### Platform & Infra
-| Playbook | Trigger | What it does |
+| Template | Trigger | What it does |
 |----------|---------|-------------|
 | **Terraform Plan Reviewer** | Terraform plan PR opened | Reviews for security misconfigs, cost anomalies, and drift; posts findings |
 
 ### Testing
-| Playbook | Trigger | What it does |
+| Template | Trigger | What it does |
 |----------|---------|-------------|
 | **Smoke Test** | Manual / CI | Minimal 1-step pipeline ping for CI gating and worker health checks |
 
@@ -381,7 +381,7 @@ docker compose exec api alembic upgrade head
 ### 4. Create your first agent
 
 1. **Projects** → New project
-2. **Marketplace** → Install a playbook in one click
+2. **Marketplace** → Install an agent template in one click
 3. **Settings → Environments** → add GitHub + Slack credentials
 4. Assign the environment to your agent on the canvas
 5. Hit **Run**
@@ -399,7 +399,7 @@ conduct login \
   --api-key   cond_live_xxx \
   --workspace <workspace-id>
 
-# Install all playbooks into a project
+# Install all agent templates into a project
 conduct install-all --project DevOps --repo myorg/my-repo
 
 # Test all agents
