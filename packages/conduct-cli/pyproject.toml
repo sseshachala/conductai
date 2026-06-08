@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "conduct-cli"
-version = "0.4.60"
+version = "0.4.61"
 description = "CLI for Conduct AI — install agents, manage projects, run tests"
 readme = "README.md"
 license = { text = "MIT" }
@@ -38,3 +38,6 @@ conductguard-post = "conduct_cli.guard:post_usage_main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+conduct_cli = ["hook_template.py", "hook_precompact_template.py", "hook_session_start_template.py"]
