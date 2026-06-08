@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
-import { SecureShell, SeverityPill, StatusBadge, SEVERITY_STYLES } from "../_components"
+import { SecureShell, SeverityPill, StatusBadge, SEVERITY_STYLES, STATUS_TRANSITIONS } from "../_components"
 import { timeAgo } from "@/lib/runUtils"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
@@ -25,12 +25,6 @@ interface SecurityFinding {
   source_run_id: string | null
 }
 
-const STATUS_TRANSITIONS: Record<FindingStatus, { label: string; next: FindingStatus; tone: string }[]> = {
-  open:      [{ label: "Acknowledge", next: "triaging", tone: "warn" }, { label: "Dismiss", next: "dismissed", tone: "err" }],
-  triaging:  [{ label: "Mark fixed", next: "fixed", tone: "ok" }, { label: "Dismiss", next: "dismissed", tone: "err" }],
-  fixed:     [{ label: "Reopen", next: "open", tone: "warn" }],
-  dismissed: [{ label: "Reopen", next: "open", tone: "warn" }],
-}
 
 export default function SecureActivityPage() {
   return <AppShell><ActivityContent /></AppShell>
