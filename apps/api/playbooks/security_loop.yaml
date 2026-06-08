@@ -1,0 +1,149 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# security_loop — auto-triage every security finding
+#
+# Fires automatically whenever a new finding is ingested via POST /security-findings.
+# The ingest endpoint enqueues a run with playbook_slug='security_loop', injecting
+# the full finding payload into _trigger.
+#
+# Flow:
+#   triage (brain) → route_severity (logic) → alert_slack (output) for critical/high
+#                                            → log_only   (output) for medium/low
+#
+# If the brain decides the finding is a false positive, it sets
+# is_real=false and recommended_action=dismiss — route_severity falls
+# to the fail branch (log_only) and the status is updated to dismissed
+# by the update_status block that precedes it.
+# ──────────────────────────────────────────────────────────────────────────────
+name: Security Loop
+version: 1
+description: >
+  Auto-triage every security finding. Enriches with context, determines
+  if real or false positive, updates status, alerts on critical/high.
+
+inputs:
+  model:
+    label: AI Model
+    default: claude-haiku-4-5-20251001
+    type: select
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+
+on:
+  internal:
+    next: triage
+
+blocks:
+  triage:
+    type: brain
+    mode: single
+    model: "{{inputs.model}}"
+    label: Triage finding
+    description: |
+      You are a senior application-security engineer performing rapid first-pass
+      triage on a security finding reported by an automated scanner.
+
+      Finding details
+      ---------------
+      Finding ID:     {{_trigger.finding_id}}
+      Tool:           {{_trigger.tool}}
+      Severity:       {{_trigger.severity}}
+      Type:           {{_trigger.type}}
+      File:           {{_trigger.file}}
+      Line:           {{_trigger.line}}
+      Description:    {{_trigger.description}}
+      Suggested fix:  {{_trigger.suggested_fix}}
+      Repo:           {{_trigger.repo_full_name}}
+      Commit:         {{_trigger.commit_sha}}
+
+      Your task
+      ---------
+      Decide whether this is a real security issue or a false positive.
+
+      False-positive signals (any ONE is sufficient to dismiss):
+      - The finding is in a test file, fixture, or example directory
+        (paths containing: test/, tests/, spec/, fixtures/, examples/, __mocks__/)
+      - The "secret" or "credential" is clearly a placeholder
+        (e.g. "YOUR_KEY_HERE", "example.com", "TODO", "changeme", "xxxxxxxx")
+      - The vulnerability pattern cannot be triggered by an untrusted caller
+        given the code context described
+      - The finding type is "other" AND the description is too vague to act on
+
+      Real-finding signals:
+      - Hardcoded credential that is not a placeholder
+      - Injection flaw in a production code path
+      - Authentication bypass reachable from an external request
+      - Sensitive data returned in an API response without scrubbing
+
+      Severity calibration — accept the reported severity as-is unless it is
+      obviously mis-categorised (e.g. a TODO comment reported as "critical").
+
+      Return ONLY valid JSON on a single line — no markdown, no prose:
+        {"is_real": true, "confidence": 87, "triage_notes": "Hardcoded Stripe key in production config. Not a test fixture.", "recommended_action": "fix"}
+
+      Fields:
+        is_real            — boolean: true if this is a genuine finding
+        confidence         — integer 0-100: your confidence in the determination
+        triage_notes       — string: one or two sentences explaining the decision
+        recommended_action — one of: "fix" | "monitor" | "dismiss"
+    next: route_severity
+
+  route_severity:
+    type: logic
+    label: Critical or high real finding?
+    condition: "{{triage.is_real == true and (_trigger.severity == 'critical' or _trigger.severity == 'high')}}"
+    next:
+      pass: alert_slack
+      fail: log_only
+
+  alert_slack:
+    type: output
+    label: Alert on critical/high finding
+    description: |
+      Security finding requires immediate attention.
+
+      [{{_trigger.severity | upper}}] {{_trigger.type}} — {{_trigger.repo_full_name}}
+      Finding: {{_trigger.finding_id}}
+      File: {{_trigger.file}}:{{_trigger.line}}
+      Description: {{_trigger.description}}
+
+      Triage ({{triage.confidence}}% confidence): {{triage.triage_notes}}
+      Recommended action: {{triage.recommended_action}}
+
+      Suggested fix: {{_trigger.suggested_fix}}
+    output:
+      via: slack
+      slack:
+        channel: "#security"
+
+  log_only:
+    type: output
+    label: Log medium/low or false positive
+    description: |
+      {% if triage.is_real == false %}
+      Finding {{_trigger.finding_id}} dismissed as false positive ({{triage.confidence}}% confidence).
+      Reason: {{triage.triage_notes}}
+      {% else %}
+      [{{_trigger.severity | upper}}] {{_trigger.type}} logged — {{_trigger.repo_full_name}} · {{_trigger.file}}:{{_trigger.line}}
+      Triage: {{triage.triage_notes}}
+      {% endif %}
+    output:
+      via: slack
+      slack:
+        channel: "#security-log"
+
+test_trigger:
+  payload:
+    event_type: security_finding
+    finding_id: "00000000-0000-0000-0000-000000000001"
+    tool: "semgrep"
+    severity: "high"
+    type: "secret-leak"
+    file: "config/production.py"
+    line: 42
+    description: "Hardcoded Stripe secret key detected in production config."
+    suggested_fix: "Move the key to an environment variable and rotate the exposed credential."
+    repo_full_name: "sseshachala/conductai"
+    commit_sha: "abc1234def5678"
+    source_run_id: null
