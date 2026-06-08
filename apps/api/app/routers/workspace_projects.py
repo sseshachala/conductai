@@ -142,6 +142,37 @@ def list_notifications(
     except Exception:
         pass
 
+    # Merge in recent Guard blocked events
+    try:
+        guard_rows = db.execute(
+            text(
+                """
+                SELECT id, ai_tool, tool_call, rule_message, ts
+                FROM guard_audit_events
+                WHERE workspace_id = :ws
+                  AND decision = 'blocked'
+                ORDER BY ts DESC
+                LIMIT 10
+                """
+            ),
+            {"ws": workspace_id},
+        ).fetchall()
+        for g in guard_rows:
+            tool = g.tool_call or g.ai_tool or "tool"
+            desc = g.rule_message or "Policy violation"
+            items.append({
+                "id": f"guard-{g.id}",
+                "title": f"[BLOCKED] {tool}",
+                "tone": "err",
+                "desc": desc[:100] if desc else "Policy block",
+                "time": _to_relative_time(g.ts),
+                "unread": True,
+                "created_at": g.ts.isoformat() if g.ts else None,
+                "href": "/guard/activity",
+            })
+    except Exception:
+        pass
+
     items.sort(key=lambda x: x.get("created_at") or "", reverse=True)
     items = items[:limit]
 
