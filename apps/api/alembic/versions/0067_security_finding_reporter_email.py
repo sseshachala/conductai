@@ -8,7 +8,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = "0067_security_finding_reporter_email"
-down_revision = "0066_guard_alert_slack_integration_id"
+down_revision = "0066"
 branch_labels = None
 depends_on = None
 
