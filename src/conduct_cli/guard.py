@@ -241,7 +241,7 @@ def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms)
     )
 
 
-def _maybe_emit_security_finding(tool_response, session_id, tool_name):
+def _maybe_emit_security_finding(tool_response, session_id, tool_name, tool_input=None):
     """Classify tool_response for security findings; POST to /security-findings if flag ON. Never raises."""
     try:
         cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
@@ -298,6 +298,12 @@ def _maybe_emit_security_finding(tool_response, session_id, tool_name):
     if not finding_type:
         return
 
+    ti = tool_input or {}
+    file_path = (
+        ti.get("file_path") or ti.get("path") or
+        (ti.get("command", "")[:120] if tool_name in ("bash", "terminal") else None)
+    ) or None
+
     payload = json.dumps({
         "tool": _detect_ai_tool(),
         "severity": severity,
@@ -305,6 +311,7 @@ def _maybe_emit_security_finding(tool_response, session_id, tool_name):
         "description": description,
         "source_run_id": session_id,
         "reporter_email": cfg.get("user_email") or "",
+        "file": file_path,
     })
     script = (
         "import urllib.request\\n"
@@ -489,7 +496,8 @@ def post_usage_main():
 
     # Security classifier runs regardless of transcript_path — scan every tool response
     tool_response = data.get("tool_response") or data.get("output") or ""
-    _maybe_emit_security_finding(str(tool_response), session_id, tool_name)
+    tool_input    = data.get("tool_input") or {}
+    _maybe_emit_security_finding(str(tool_response), session_id, tool_name, tool_input)
 
     sys.exit(0)
 
