@@ -308,9 +308,9 @@ def _maybe_emit_security_finding(tool_response, session_id, tool_name):
     script = (
         "import urllib.request\\n"
         "try:\\n"
-        f"    req = urllib.request.Request(\\"{api_url}/security-findings\\","
+        f"    req = urllib.request.Request(\\"{api_url}/security-findings?workspace_id={workspace_id}\\","
         f" data={repr(payload.encode())}, headers={{\\\"Content-Type\\\": \\\"application/json\\\","
-        f" \\\"Authorization\\\": \\\"Bearer {api_key}\\\"}}, method=\\"POST\\")\\n"
+        f" \\\"X-Api-Key\\\": \\\"{api_key}\\\"}}, method=\\"POST\\")\\n"
         "    urllib.request.urlopen(req, timeout=5)\\n"
         "except: pass\\n"
     )
