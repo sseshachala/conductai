@@ -130,17 +130,8 @@ class FindingSummary(BaseModel):
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-@router.post("", response_model=FindingOut, status_code=201)
-def ingest_finding(
-    body: FindingIn,
-    db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-) -> FindingOut:
-    """Ingest a security finding from Guard CLI or external tools.
-
-    If a workflow with playbook_slug='security_loop' is installed in the workspace,
-    it will be triggered automatically via the Redis run queue.
-    """
+def _ingest_finding_core(body: FindingIn, workspace_id: str, db: Session) -> SecurityFinding:
+    """Write a SecurityFinding row and flush. Does NOT trigger the Redis run queue."""
     now = _now()
     finding = SecurityFinding(
         id=uuid.uuid4(),
@@ -161,13 +152,26 @@ def ingest_finding(
         updated_at=now,
     )
     db.add(finding)
-    db.flush()  # get the ID before triggering the workflow
+    db.flush()
+    return finding
 
-    # Trigger the security_loop workflow if installed in this workspace
+
+@router.post("", response_model=FindingOut, status_code=201)
+def ingest_finding(
+    body: FindingIn,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+) -> FindingOut:
+    """Ingest a security finding from Guard CLI or external tools.
+
+    If a workflow with playbook_slug='security_loop' is installed in the workspace,
+    it will be triggered automatically via the Redis run queue.
+    """
+    finding = _ingest_finding_core(body=body, workspace_id=workspace_id, db=db)
+
     try:
         _trigger_security_loop(finding, workspace_id, db)
     except HTTPException:
-        # Queue at capacity — log and continue; the finding is still persisted
         log.warning(
             "security_finding.queue_full",
             finding_id=str(finding.id),
@@ -184,7 +188,6 @@ def ingest_finding(
     db.commit()
     db.refresh(finding)
 
-    # Slack alert — non-fatal, runs after commit so finding is visible
     try:
         _send_security_slack_alert(finding, workspace_id, db)
     except Exception as exc:
