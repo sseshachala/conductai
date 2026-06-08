@@ -156,7 +156,7 @@ blocks:
     output:
       via: slack
       slack:
-        channel: "#security"
+        channel: "{{_trigger.slack_channel}}"
 
   log_false_positive:
     type: output
@@ -167,7 +167,7 @@ blocks:
     output:
       via: slack
       slack:
-        channel: "#security-log"
+        channel: "{{_trigger.slack_channel}}"
 
   log_only:
     type: output
@@ -178,7 +178,7 @@ blocks:
     output:
       via: slack
       slack:
-        channel: "#security-log"
+        channel: "{{_trigger.slack_channel}}"
 
 test_trigger:
   payload:
