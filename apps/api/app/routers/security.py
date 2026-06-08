@@ -188,11 +188,7 @@ def ingest_finding(
     db.commit()
     db.refresh(finding)
 
-    try:
-        _send_security_slack_alert(finding, workspace_id, db)
-    except Exception as exc:
-        log.warning("security_finding.slack_error", finding_id=str(finding.id), error=str(exc))
-
+    # Slack alerts are handled by security_loop.yaml after triage — no pre-triage alert here.
     log.info(
         "security_finding.ingested",
         finding_id=str(finding.id),
