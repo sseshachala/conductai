@@ -197,35 +197,38 @@ def ingest_finding(
 
 
 def _send_security_slack_alert(finding: SecurityFinding, workspace_id: str, db: Session) -> None:
-    """POST a Slack alert to the configured security channel. Non-fatal."""
+    """POST a Slack alert using the workspace Slack integration. Non-fatal."""
     try:
         import uuid as _uuid
         from app.models.security_config import SecurityConfig
+        from app.core.crypto import decrypt
+        from app.models.integration import Integration
+        from app.runtime.integrations.slack import post_message
 
         sec = db.query(SecurityConfig).filter(
             SecurityConfig.workspace_id == _uuid.UUID(workspace_id),
         ).first()
         if not sec or not sec.installed or not sec.security_slack_alerts_enabled:
             return
-        channel = sec.security_slack_channel
-        webhook = sec.slack_webhook_url
-        if not webhook:
+
+        channel = sec.security_slack_channel or "general"
+
+        row = db.query(Integration).filter(
+            Integration.workspace_id == workspace_id,
+            Integration.service == "slack",
+            Integration.encrypted_credentials.isnot(None),
+        ).first()
+        if not row:
             return
-        import urllib.request
+        creds = decrypt(row.encrypted_credentials)
+        token = creds.get("token") or creds.get("bot_token") or ""
+        if not token:
+            return
+
         sev = finding.severity.upper()
         location = f" in {finding.file}:{finding.line}" if finding.file else ""
         text = f"[{sev}] {finding.type}{location} — {finding.description} · {finding.tool}"
-        if channel:
-            text = f"#{channel} {text}"
-        payload = {"text": text}
-        import json as _json
-        req = urllib.request.Request(
-            webhook,
-            data=_json.dumps(payload).encode(),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        urllib.request.urlopen(req, timeout=5)
+        post_message(token=token, channel=channel, text=text)
         log.info("security_finding.slack_sent", finding_id=str(finding.id), channel=channel)
     except Exception as exc:
         log.warning("security_finding.slack_failed", finding_id=str(finding.id), error=str(exc))
