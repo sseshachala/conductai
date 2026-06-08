@@ -6,6 +6,7 @@ interface SlackIntegration {
   id: string
   handle: string
   environment_id: string | null
+  environment_name: string | null
 }
 
 interface Props {
@@ -80,7 +81,9 @@ export function SlackIntegrationPicker({ base, wsId, buildHeaders, integrationId
         >
           <option value="">Select Slack integration…</option>
           {integrations.map(i => (
-            <option key={i.id} value={i.id}>{i.handle}</option>
+            <option key={i.id} value={i.id}>
+              {i.handle}{i.environment_name ? ` · ${i.environment_name}` : ""}
+            </option>
           ))}
         </select>
         <div style={{ display: "flex", alignItems: "center", border: "1px solid var(--border-2)", borderRadius: 8, overflow: "hidden", width: 180 }}>

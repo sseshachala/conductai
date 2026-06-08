@@ -683,6 +683,7 @@ class SlackIntegrationOut(BaseModel):
     id: str
     handle: str
     environment_id: str | None
+    environment_name: str | None
 
 
 @router.get("/integrations/slack", response_model=list[SlackIntegrationOut])
@@ -692,15 +693,22 @@ def list_slack_integrations(
     _: str = Depends(require_permission("guard.settings.edit")),
 ) -> list[SlackIntegrationOut]:
     """List all Slack integrations for the workspace — used by settings dropdowns."""
+    from app.models.environment import Environment
     rows = db.query(Integration).filter(
         Integration.workspace_id == workspace_id,
         Integration.service == "slack",
     ).order_by(Integration.created_at).all()
+    env_ids = [r.environment_id for r in rows if r.environment_id]
+    env_names = {}
+    if env_ids:
+        envs = db.query(Environment).filter(Environment.id.in_(env_ids)).all()
+        env_names = {str(e.id): e.name for e in envs}
     return [
         SlackIntegrationOut(
             id=str(r.id),
             handle=r.handle,
             environment_id=str(r.environment_id) if r.environment_id else None,
+            environment_name=env_names.get(str(r.environment_id)) if r.environment_id else None,
         )
         for r in rows
     ]
