@@ -1,17 +1,15 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # bughunter-active-scan — dynamic vulnerability hunt via Claude-BugHunter
 #
-# Discovers hunt-* skills from the upstream repo at runtime — no YAML update
-# needed when new skills are added upstream.
-#
-# Source skills: github.com/elementalsouls/Claude-BugHunter
+# Discovers hunt-* skills from a configurable skills repo at runtime — no YAML
+# update needed when new skills are added. Works with public or private repos.
 # ──────────────────────────────────────────────────────────────────────────────
 name: BugHunter Active Scan
-version: 2
+version: 3
 description: >
-  Dynamically discovers and runs all Claude-BugHunter hunt-* skills against a
-  target repo. New upstream skills are picked up automatically — no playbook
-  update required. Confirmed findings flow into the Security Loop and GitHub.
+  Dynamically discovers and runs all hunt-* skills from a configurable GitHub
+  repo. Point it at the public Claude-BugHunter repo or your own private fork.
+  New skills are picked up automatically — no playbook update required.
 
 inputs:
   target_repo:
@@ -26,6 +24,14 @@ inputs:
     placeholder: "https://api.example.com"
     description: Optional web-facing surface to scan alongside the repo.
     required: false
+
+  skills_repo:
+    label: BugHunter Skills Repo
+    type: string
+    default: "elementalsouls/Claude-BugHunter"
+    description: >
+      GitHub repo containing hunt-* skill definitions. Use the default for the
+      public Claude-BugHunter skills, or point to your own fork / private repo.
 
   severity_threshold:
     label: Min Severity to Emit
@@ -67,15 +73,19 @@ blocks:
     mode: agentic
     model: "{{ inputs.model }}"
     next: recon
+    credentials:
+      github: github
     system: |
-      You are discovering the available hunt skills from the Claude-BugHunter
-      repository. Fetch the repository index and return the full list of
-      hunt-* skill names and their descriptions.
+      You are discovering the available hunt skills from a GitHub repository.
+      Use the GitHub credential to access the repo if it is private.
+      Fetch the repository index and return the full list of hunt-* skill names
+      and their descriptions.
     prompt: |
       Fetch the README and file listing from:
-      https://github.com/elementalsouls/Claude-BugHunter
+      https://github.com/{{ inputs.skills_repo }}
 
-      Find every file or section named hunt-*.md or hunt-* skill.
+      Use the GitHub API or raw.githubusercontent.com to read file contents.
+      Find every file or section named hunt-*.md or describing a hunt-* skill.
       For each skill extract:
         - name (e.g. hunt-llm-injection)
         - description (one line summary of what it hunts for)
@@ -121,19 +131,22 @@ blocks:
     mode: agentic
     model: "{{ inputs.model }}"
     next: collect_findings
+    credentials:
+      github: github
     system: |
       You are a security researcher executing a structured vulnerability hunt.
       You have a list of hunt skills and a recon brief. For each skill, fetch
-      its full definition from the Claude-BugHunter repository, then apply it
-      to the target.
+      its full definition from the skills repo (may be private — use the GitHub
+      credential), then apply it to the target.
 
       Rules:
       - Run every skill in the discovered list sequentially
-      - For each skill, read its upstream definition before running it — do not
-        rely on prior knowledge of the skill content
+      - For each skill, read its definition from the skills repo before running —
+        do not rely on prior knowledge of the skill content
+      - Use the GitHub credential to access private repos for both the skills
+        repo and the target repo
       - Only report findings you are >80% confident are real vulnerabilities
-      - Skip a skill entirely if the recon brief shows the target has no
-        relevant attack surface (e.g. skip hunt-graphql if no GraphQL found)
+      - Skip a skill if the recon brief shows no relevant attack surface
       - Output a single JSON array across all skills — do not split by skill
 
       Recon brief:
@@ -141,16 +154,17 @@ blocks:
     prompt: |
       Target repo: {{ inputs.target_repo }}
       {% if inputs.target_url %}Target URL: {{ inputs.target_url }}{% endif %}
+      Skills repo: {{ inputs.skills_repo }}
 
-      Skills to execute (fetch each definition from upstream before running):
+      Skills to execute:
       {{ discover_skills.output }}
 
       For each skill:
-      1. Fetch its definition from https://github.com/elementalsouls/Claude-BugHunter
+      1. Fetch its full definition from https://github.com/{{ inputs.skills_repo }}
       2. Apply it to the target repo/URL using the recon brief as context
       3. Record confirmed findings
 
-      Return ALL findings across all skills as a single JSON array on the last line:
+      Return ALL findings as a single JSON array on the last line:
       [{"skill":"hunt-llm-injection","severity":"high","type":"injection","endpoint_or_file":"api/chat.py","description":"...","suggested_fix":"...","evidence":"...","cwe":"CWE-77"}]
 
       If no findings, return: []
