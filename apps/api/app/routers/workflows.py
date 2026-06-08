@@ -154,6 +154,7 @@ _TEMPLATE_PLAYBOOKS = {
     "thirdparty_autopilot_fix": "thirdparty-autopilot-fix.yaml",
     "smoke_test":             "smoke-test.yaml",
     "factory":               "factory.yaml",
+    "security_loop":         "security_loop.yaml",
 }
 
 _PLAYBOOK_META = {
@@ -177,6 +178,7 @@ _PLAYBOOK_META = {
     "thirdparty_autopilot_fix":{"icon": "🔀", "category": "Issue to PR",        "tags": ["github", "code", "oss"],             "featured": True,  "description": "Issue on any third-party repo → AI forks it, clones the fork, reads the issue, applies the fix, and opens a PR back to upstream. Works on any public repo."},
     "smoke_test":            {"icon": "🏓",  "category": "Testing",            "tags": ["ci", "ops"],                         "featured": False, "description": "Minimal 1-step pipeline ping. Fires a brain block and returns ok. Use for CI gating and worker health checks — completes in under 30s."},
     "factory":               {"icon": "🏭",  "category": "Issue to PR",        "tags": ["github", "code", "tdd", "approval"],  "featured": True,  "description": "GitHub issue → spec (Opus) → architecture + ADR → failing tests → implementation → passing tests → human approval → PR. The full software factory pipeline."},
+    "security_loop":         {"icon": "🔐",  "category": "Security",           "tags": ["security", "guard", "ops"],           "featured": True,  "description": "Every Guard finding is auto-triaged: real vs false positive, critical/high alerts posted to #security, medium/low logged quietly."},
 }
 
 

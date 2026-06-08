@@ -1,0 +1,245 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# security-autopilot-fix — Security Loop fix pipeline
+#
+# Triggered when a developer clicks "Run fix pipeline" on a security finding
+# in the Security Loop activity page. Reads the affected file, generates a
+# targeted patch, opens a PR, and posts the PR link to Slack.
+#
+# If repo_full_name is null (finding has no repo context), the fix brain
+# block falls back to generating suggested fix text only, skipping the PR
+# step, and the result is posted directly to Slack.
+# ──────────────────────────────────────────────────────────────────────────────
+name: Security Autopilot Fix
+version: 1
+description: >
+  Automatically fixes a security finding by reading the affected file,
+  writing a targeted patch, and opening a PR. Triggered from the
+  Security Loop activity page.
+
+inputs: {}
+
+on:
+  internal:
+    next: check_has_repo
+
+blocks:
+
+  check_has_repo:
+    type: logic
+    label: Repo context available?
+    condition: "{{_trigger.repo_full_name}} != null and {{_trigger.repo_full_name}} != ''"
+    next:
+      pass: read_file
+      fail: generate_fix_text_only
+
+  # ── Happy path: repo is known ─────────────────────────────────────────────
+
+  read_file:
+    type: brain
+    mode: agentic
+    model: claude-sonnet-4-6
+    label: Read affected file
+    credentials:
+      github: github
+    description: |
+      You are a security engineer preparing context for a targeted patch.
+
+      Finding context from the Security Loop:
+        finding_id:    {{_trigger.finding_id}}
+        severity:      {{_trigger.severity}}
+        type:          {{_trigger.type}}
+        file:          {{_trigger.file}}
+        line:          {{_trigger.line}}
+        description:   {{_trigger.description}}
+        suggested_fix: {{_trigger.suggested_fix}}
+        repo:          {{_trigger.repo_full_name}}
+
+      Use the GitHub tool to fetch the raw content of the affected file:
+        - Tool: github.get_file_contents
+        - Repo: {{_trigger.repo_full_name}}
+        - Path: {{_trigger.file}}
+
+      Focus on the lines around {{_trigger.line}} (±30 lines of context).
+      Do NOT output the GitHub token or any credential value.
+
+      Output ONLY the following JSON on the last line:
+        {"file_path": "{{_trigger.file}}", "file_content": "<raw file content>", "default_branch": "<branch name>"}
+    next: generate_fix
+
+  generate_fix:
+    type: brain
+    mode: agentic
+    model: claude-sonnet-4-6
+    label: Generate and commit fix
+    credentials:
+      github: github
+    description: |
+      You are a security engineer implementing a targeted fix for a confirmed
+      security finding. Quality matters — this is a security patch.
+
+      Finding context:
+        finding_id:    {{_trigger.finding_id}}
+        severity:      {{_trigger.severity}}
+        type:          {{_trigger.type}}
+        file:          {{_trigger.file}}
+        line:          {{_trigger.line}}
+        description:   {{_trigger.description}}
+        suggested_fix: {{_trigger.suggested_fix}}
+        repo:          {{_trigger.repo_full_name}}
+
+      File content fetched in the previous step:
+        {{read_file.file_content}}
+
+      IMPORTANT: Each run_shell call gets a FRESH container — do ALL git work
+      in a SINGLE run_shell call. You MUST push the branch before this block ends.
+
+      Do ALL of the following in ONE run_shell call:
+
+        set -e
+        rm -rf /tmp/sec_fix_repo
+
+        # Clone using the injected GIT_TOKEN — never log it
+        git clone --depth 1 https://$GIT_TOKEN@github.com/{{_trigger.repo_full_name}}.git /tmp/sec_fix_repo
+        cd /tmp/sec_fix_repo
+        git config user.email "bot@conductai.ai"
+        git config user.name "Conduct AI"
+
+        # Branch name encodes finding type and a short id for traceability
+        BRANCH="security/fix-{{_trigger.type | lower | replace(' ', '-')}}-{{_trigger.finding_id}}"
+        git checkout -b "$BRANCH"
+
+        # Apply the fix to {{_trigger.file}} at approximately line {{_trigger.line}}.
+        # Use python3 or direct file edits — search for exact patterns, do NOT
+        # hardcode byte offsets. Honour the suggested_fix hint:
+        #   {{_trigger.suggested_fix}}
+        # Verify the edited file parses/compiles cleanly before committing.
+
+        git add -A
+        git diff --cached --stat
+        git commit -m "fix(security): {{_trigger.type}} in {{_trigger.file}} [{{_trigger.severity}}]
+
+        Finding: {{_trigger.finding_id}}
+        File: {{_trigger.file}}:{{_trigger.line}}
+        Severity: {{_trigger.severity}}
+
+        Applied fix based on security scan suggestion.
+        Automated patch by Conduct AI Security Autopilot."
+
+        git push https://$GIT_TOKEN@github.com/{{_trigger.repo_full_name}}.git "$BRANCH"
+        echo "BRANCH=$BRANCH"
+        echo "PUSH_OK"
+
+      After the shell call succeeds, extract the repo owner and name from
+      {{_trigger.repo_full_name}} (format: "owner/repo").
+
+      Output ONLY the following JSON on the last line:
+        {"branch": "<branch name>", "repo_owner": "<owner>", "repo_name": "<repo>", "default_branch": "{{read_file.default_branch}}"}
+    next: open_pr
+
+  open_pr:
+    type: tool
+    integration: github
+    action: open_pull_request
+    label: Open security fix PR
+    params:
+      owner: "{{generate_fix.repo_owner}}"
+      repo: "{{generate_fix.repo_name}}"
+      title: "fix(security): {{_trigger.type}} in {{_trigger.file}} [{{_trigger.severity}}]"
+      head: "{{generate_fix.branch}}"
+      base: "{{generate_fix.default_branch}}"
+      body: |
+        ## Security Fix — {{_trigger.type}}
+
+        | Field | Value |
+        |---|---|
+        | **Finding ID** | `{{_trigger.finding_id}}` |
+        | **Severity** | {{_trigger.severity}} |
+        | **File** | `{{_trigger.file}}:{{_trigger.line}}` |
+        | **Type** | {{_trigger.type}} |
+
+        ### Description
+        {{_trigger.description}}
+
+        ### Applied Fix
+        {{_trigger.suggested_fix}}
+
+        ---
+        *Automated security patch by [Conduct AI](https://conductai.ai) · security-autopilot-fix playbook*
+        *Review the diff, verify CI is green, then merge.*
+    next: notify
+
+  notify:
+    type: output
+    label: Notify security fix PR
+    output:
+      via: slack
+      slack:
+        channel: "#security"
+        message: |
+          *Security fix PR opened*
+
+          Repo: `{{_trigger.repo_full_name}}`
+          Finding: `{{_trigger.finding_id}}` — {{_trigger.type}} (`{{_trigger.severity}}`)
+          File: `{{_trigger.file}}:{{_trigger.line}}`
+          PR: {{open_pr.pr_url}}
+
+          _Review the diff and merge when CI is green._
+          _Generated by Conduct AI · security-autopilot-fix_
+
+  # ── Fallback path: no repo context ───────────────────────────────────────
+
+  generate_fix_text_only:
+    type: brain
+    mode: agentic
+    model: claude-sonnet-4-6
+    label: Generate suggested fix (no repo)
+    description: |
+      No repository context was provided for this security finding.
+      Generate a clear, actionable remediation guide a developer can apply manually.
+
+      Finding context:
+        finding_id:    {{_trigger.finding_id}}
+        severity:      {{_trigger.severity}}
+        type:          {{_trigger.type}}
+        file:          {{_trigger.file}}
+        line:          {{_trigger.line}}
+        description:   {{_trigger.description}}
+        suggested_fix: {{_trigger.suggested_fix}}
+
+      Produce a concise remediation plan:
+      1. Root cause explanation (2-3 sentences)
+      2. Step-by-step fix instructions referencing the file and line number
+      3. Any additional hardening recommendations for this vulnerability class
+
+      Output ONLY the following JSON on the last line:
+        {"remediation": "<full remediation guide as a single escaped string>"}
+    next: notify_text_only
+
+  notify_text_only:
+    type: output
+    label: Notify suggested fix (no repo)
+    output:
+      via: slack
+      slack:
+        channel: "#security"
+        message: |
+          *Security finding — suggested fix (no repo context)*
+
+          Finding: `{{_trigger.finding_id}}` — {{_trigger.type}} (`{{_trigger.severity}}`)
+          File: `{{_trigger.file}}:{{_trigger.line}}`
+
+          {{generate_fix_text_only.remediation}}
+
+          _No repository was linked to this finding — apply the fix manually._
+          _Generated by Conduct AI · security-autopilot-fix_
+
+test_trigger:
+  payload:
+    finding_id: "find_abc123"
+    severity: high
+    type: SQL Injection
+    file: "app/api/users.py"
+    line: 47
+    description: "[TEST] User-supplied input concatenated directly into a SQL query without parameterisation."
+    suggested_fix: "Replace string concatenation with a parameterised query using cursor.execute(query, params)."
+    repo_full_name: "sseshachala/conductai-testbed-python"

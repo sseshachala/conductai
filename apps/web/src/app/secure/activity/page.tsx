@@ -41,6 +41,7 @@ function ActivityContent() {
   const [filterTool, setFilterTool] = useState("all")
   const [filterDays, setFilterDays] = useState(30)
   const [updating, setUpdating] = useState<Record<string, boolean>>({})
+  const [triggering, setTriggering] = useState<Record<string, boolean>>({})
 
   const base = process.env.NEXT_PUBLIC_API_URL ?? ""
 
@@ -82,6 +83,23 @@ function ActivityContent() {
       }
     } catch {}
     finally { setUpdating(u => ({ ...u, [id]: false })) }
+  }, [base, wsId, buildHeaders])
+
+  const triggerFix = useCallback(async (id: string) => {
+    setTriggering(t => ({ ...t, [id]: true }))
+    try {
+      const headers = await buildHeaders()
+      const res = await fetch(`${base}/security-findings/${id}/trigger-fix?workspace_id=${wsId}`, {
+        method: "POST", headers,
+      })
+      if (res.ok) {
+        const r = await res.json()
+        if (r.triggered) {
+          setFindings(prev => prev.map(f => f.id === id ? { ...f, status: "triaging" } : f))
+        }
+      }
+    } catch {}
+    finally { setTriggering(t => ({ ...t, [id]: false })) }
   }, [base, wsId, buildHeaders])
 
   const tools = Array.from(new Set(findings.map(f => f.tool).filter(Boolean))) as string[]
@@ -156,6 +174,8 @@ function ActivityContent() {
           const reporter = f.reporter_email ? f.reporter_email.split("@")[0] : "—"
           const transitions = STATUS_TRANSITIONS[f.status] ?? []
           const busy = !!updating[f.id]
+          const fixing = !!triggering[f.id]
+          const canFix = (f.status === "open" || f.status === "triaging") && !!f.repo_full_name
 
           return (
             <div
@@ -185,10 +205,10 @@ function ActivityContent() {
                 {transitions.map(t => (
                   <button
                     key={t.next}
-                    disabled={busy}
+                    disabled={busy || fixing}
                     onClick={() => updateStatus(f.id, t.next)}
                     style={{
-                      fontSize: 10.5, fontWeight: 600, padding: "3px 8px", borderRadius: 6, cursor: busy ? "wait" : "pointer",
+                      fontSize: 10.5, fontWeight: 600, padding: "3px 8px", borderRadius: 6, cursor: (busy || fixing) ? "wait" : "pointer",
                       border: `1px solid ${t.tone === "ok" ? "var(--ok-bd)" : t.tone === "warn" ? "var(--warn-bd)" : "var(--err-bd)"}`,
                       background: t.tone === "ok" ? "var(--ok-bg)" : t.tone === "warn" ? "var(--warn-bg)" : "var(--err-bg)",
                       color: t.tone === "ok" ? "var(--ok)" : t.tone === "warn" ? "var(--warn)" : "var(--err)",
@@ -197,6 +217,21 @@ function ActivityContent() {
                     {t.label}
                   </button>
                 ))}
+                {canFix && (
+                  <button
+                    disabled={fixing || busy}
+                    onClick={() => triggerFix(f.id)}
+                    style={{
+                      fontSize: 10.5, fontWeight: 600, padding: "3px 8px", borderRadius: 6,
+                      cursor: (fixing || busy) ? "wait" : "pointer",
+                      border: "1px solid var(--accent-bd, var(--border-2))",
+                      background: "var(--accent-bg, var(--surface-2))",
+                      color: "var(--accent-text)",
+                    }}
+                  >
+                    {fixing ? "…" : "Run fix"}
+                  </button>
+                )}
               </div>
             </div>
           )

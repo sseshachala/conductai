@@ -444,6 +444,102 @@ def get_finding(
     return finding
 
 
+class TriggerFixResponse(BaseModel):
+    triggered: bool
+    run_id: Optional[str] = None
+    reason: Optional[str] = None
+
+
+@router.post("/{finding_id}/trigger-fix", response_model=TriggerFixResponse)
+def trigger_fix(
+    finding_id: UUID,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.activity.view_all")),
+) -> TriggerFixResponse:
+    """Trigger the security-autopilot-fix workflow for a finding.
+
+    Looks up the finding by ID and workspace, then enqueues a run for the
+    'security-autopilot-fix' playbook if it is installed in the workspace.
+    Sets finding status to 'triaging' on successful enqueue.
+    """
+    from app.models.workflow import Workflow
+    from app.models.run import Run
+
+    finding = (
+        db.query(SecurityFinding)
+        .filter(
+            SecurityFinding.id == finding_id,
+            SecurityFinding.workspace_id == workspace_id,
+        )
+        .first()
+    )
+    if not finding:
+        raise HTTPException(status_code=404, detail="Finding not found")
+
+    workflow = (
+        db.query(Workflow)
+        .filter(
+            Workflow.workspace_id == workspace_id,
+            Workflow.playbook_slug == "security-autopilot-fix",
+        )
+        .first()
+    )
+    if not workflow or not workflow.current_version_id:
+        return TriggerFixResponse(
+            triggered=False,
+            reason="security-autopilot-fix playbook not installed",
+        )
+
+    trigger_data = {
+        "finding_id": str(finding.id),
+        "severity": finding.severity,
+        "type": finding.type,
+        "file": finding.file,
+        "line": finding.line,
+        "description": finding.description,
+        "suggested_fix": finding.suggested_fix,
+        "repo_full_name": finding.repo_full_name,
+    }
+
+    initial_state = {
+        "_trigger": {
+            "event_type": "security_finding_fix",
+            **trigger_data,
+        },
+        "__input_contract": {
+            "version": "phase2.v1",
+            "status": "validated",
+            "shape": "trigger",
+        },
+    }
+
+    run = Run(
+        workflow_version_id=workflow.current_version_id,
+        triggered_by="security_finding_fix",
+        status="pending",
+        state=initial_state,
+    )
+    db.add(run)
+    db.flush()
+
+    _enqueue_run(str(run.id))
+
+    finding.status = "triaging"
+    finding.updated_at = _now()
+
+    db.commit()
+
+    log.info(
+        "security_finding.trigger_fix_enqueued",
+        finding_id=str(finding.id),
+        run_id=str(run.id),
+        workflow_id=str(workflow.id),
+        workspace_id=workspace_id,
+    )
+    return TriggerFixResponse(triggered=True, run_id=str(run.id))
+
+
 @router.patch("/{finding_id}", response_model=FindingOut)
 def update_finding(
     finding_id: UUID,
