@@ -241,8 +241,78 @@ def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms)
     )
 
 
+SECRET_PATTERNS = [
+    (r"sk-[A-Za-z0-9]{20,}",          "secret-leak",    "high",     "Potential OpenAI/Anthropic API key"),
+    (r"ghp_[A-Za-z0-9]{36}",           "secret-leak",    "high",     "GitHub Personal Access Token"),
+    (r"AKIA[0-9A-Z]{16}",              "secret-leak",    "critical", "AWS Access Key ID"),
+    (r"Bearer\s+[A-Za-z0-9+/=]{20,}",  "secret-leak",    "high",     "Bearer token in output"),
+    (r"""password\s*=\s*['"][^'"]{4,}""","secret-leak",  "high",     "Hardcoded password"),
+    (r"""api[_-]?key\s*=\s*['"][^'"]{4,}""","secret-leak","high",    "Hardcoded API key"),
+    (r"\.\./\.\./\.\./",               "path-traversal", "medium",   "Path traversal sequence"),
+    (r"file://",                        "path-traversal", "medium",   "File URI scheme in output"),
+    (r"\beval\s*\(",                    "injection",      "high",     "eval() in output"),
+    (r"\bexec\s*\(",                    "injection",      "high",     "exec() in output"),
+    (r"\b__import__\s*\(",              "injection",      "high",     "__import__() in output"),
+    (r"ssl\.CERT_NONE",                 "crypto",         "high",     "SSL verification disabled"),
+    (r"verify\s*=\s*False",             "crypto",         "medium",   "TLS verification bypassed"),
+]
+OWASP_KEYWORDS = [
+    ("sql injection",    "injection",   "high",   "SQL injection mentioned in AI output"),
+    ("cross-site scripting","injection","high",   "XSS mentioned in AI output"),
+    (" xss ",            "injection",   "high",   "XSS mentioned in AI output"),
+    ("idor",             "injection",   "medium", "IDOR mentioned in AI output"),
+    ("ssrf",             "injection",   "high",   "SSRF mentioned in AI output"),
+    ("command injection","injection",   "high",   "Command injection mentioned in AI output"),
+    ("auth bypass",      "auth-bypass", "high",   "Auth bypass mentioned in AI output"),
+]
+
+
+def _classify_text(text):
+    """Return (finding_type, severity, description, matched_pattern) or (None,...) if clean."""
+    import re as _re
+    for pattern, ftype, sev, desc in SECRET_PATTERNS:
+        if _re.search(pattern, text, _re.IGNORECASE):
+            return ftype, sev, desc, pattern
+    lower = text.lower()
+    for kw, ftype, sev, desc in OWASP_KEYWORDS:
+        if kw in lower:
+            return ftype, sev, desc, kw
+    return None, None, None, None
+
+
+def _line_number_from_text(text, matched_pattern):
+    """Extract line number where pattern matched.
+
+    Handles two formats:
+    - Read tool output: '     N\\tcode line'  (cat -n style)
+    - Plain text: count newlines before match offset
+    """
+    import re as _re
+    if not matched_pattern:
+        return None
+    try:
+        # Try cat-n format first (Read tool)
+        for raw_line in text.split("\n"):
+            m = _re.match(r"^\s*(\d+)\t(.*)$", raw_line)
+            if m:
+                lineno, content = int(m.group(1)), m.group(2)
+                try:
+                    if _re.search(matched_pattern, content, _re.IGNORECASE):
+                        return lineno
+                except Exception:
+                    if matched_pattern.lower() in content.lower():
+                        return lineno
+        # Fallback: count newlines before the first match
+        m = _re.search(matched_pattern, text, _re.IGNORECASE)
+        if m:
+            return text[:m.start()].count("\n") + 1
+    except Exception:
+        pass
+    return None
+
+
 def _maybe_emit_security_finding(tool_response, session_id, tool_name, tool_input=None):
-    """Classify tool_response for security findings; POST to /security-findings if flag ON. Never raises."""
+    """Classify tool output + input for security findings; POST if flag ON. Never raises."""
     try:
         cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
     except Exception:
@@ -255,54 +325,36 @@ def _maybe_emit_security_finding(tool_response, session_id, tool_name, tool_inpu
     if not workspace_id:
         return
 
-    import re as _re2
-    text = str(tool_response)
+    ti = tool_input or {}
 
-    # Fast-path classifier
-    SECRET_PATTERNS = [
-        (r"sk-[A-Za-z0-9]{20,}", "secret-leak", "high", "Potential OpenAI/Anthropic API key"),
-        (r"ghp_[A-Za-z0-9]{36}", "secret-leak", "high", "GitHub Personal Access Token"),
-        (r"AKIA[0-9A-Z]{16}", "secret-leak", "critical", "AWS Access Key ID"),
-        (r"Bearer\s+[A-Za-z0-9+/=]{20,}", "secret-leak", "high", "Bearer token in output"),
-        (r"""password\s*=\s*['"][^'"]{4,}""", "secret-leak", "high", "Hardcoded password"),
-        (r"""api[_-]?key\s*=\s*['"][^'"]{4,}""", "secret-leak", "high", "Hardcoded API key"),
-        (r"\.\./\.\./\.\./", "path-traversal", "medium", "Path traversal sequence"),
-        (r"file://", "path-traversal", "medium", "File URI scheme in output"),
-        (r"\beval\s*\(", "injection", "high", "eval() in output"),
-        (r"\bexec\s*\(", "injection", "high", "exec() in output"),
-        (r"\b__import__\s*\(", "injection", "high", "__import__() in output"),
-        (r"ssl\.CERT_NONE", "crypto", "high", "SSL verification disabled"),
-        (r"verify\s*=\s*False", "crypto", "medium", "TLS verification bypassed"),
-    ]
-    OWASP_KEYWORDS = [
-        ("sql injection", "injection", "high", "SQL injection mentioned in AI output"),
-        ("cross-site scripting", "injection", "high", "XSS mentioned in AI output"),
-        (" xss ", "injection", "high", "XSS mentioned in AI output"),
-        ("idor", "injection", "medium", "IDOR mentioned in AI output"),
-        ("ssrf", "injection", "high", "SSRF mentioned in AI output"),
-        ("command injection", "injection", "high", "Command injection mentioned in AI output"),
-        ("auth bypass", "auth-bypass", "high", "Auth bypass mentioned in AI output"),
-    ]
+    # Build scan candidates: (text_to_scan, source_label)
+    # Priority: tool_response first (Read), then written content (Edit/Write), then command (Bash)
+    candidates = [("response", str(tool_response))]
+    if tool_name in ("edit", "multiedit"):
+        candidates.append(("input", ti.get("new_string", "")))
+    elif tool_name == "write":
+        candidates.append(("input", ti.get("content", "")))
+    elif tool_name in ("bash", "terminal"):
+        candidates.append(("input", ti.get("command", "")))
 
-    finding_type = severity = description = None
-    for pattern, ftype, sev, desc in SECRET_PATTERNS:
-        if _re2.search(pattern, text, _re2.IGNORECASE):
-            finding_type, severity, description = ftype, sev, desc
+    finding_type = severity = description = matched_pattern = scan_text = None
+    for _src, text in candidates:
+        ft, sv, desc, pat = _classify_text(text)
+        if ft:
+            finding_type, severity, description, matched_pattern, scan_text = ft, sv, desc, pat, text
             break
-    if not finding_type:
-        lower = text.lower()
-        for kw, ftype, sev, desc in OWASP_KEYWORDS:
-            if kw in lower:
-                finding_type, severity, description = ftype, sev, desc
-                break
+
     if not finding_type:
         return
 
-    ti = tool_input or {}
+    # File path
     file_path = (
         ti.get("file_path") or ti.get("path") or
         (ti.get("command", "")[:120] if tool_name in ("bash", "terminal") else None)
     ) or None
+
+    # Line number
+    line_no = _line_number_from_text(scan_text, matched_pattern) if scan_text else None
 
     payload = json.dumps({
         "tool": _detect_ai_tool(),
@@ -312,6 +364,7 @@ def _maybe_emit_security_finding(tool_response, session_id, tool_name, tool_inpu
         "source_run_id": session_id,
         "reporter_email": cfg.get("user_email") or "",
         "file": file_path,
+        "line": line_no,
     })
     script = (
         "import urllib.request\\n"
