@@ -196,11 +196,12 @@ def _get_or_create_security_automation_project(db: Session, ws_uuid: uuid.UUID):
         Project.project_type == "security_automation",
     ).first()
     if not proj:
+        ws_short = str(ws_uuid).replace("-", "")[:8]
         proj = Project(
             id=uuid.uuid4(),
             workspace_id=ws_uuid,
-            name="Security Automation",
-            slug="security-automation",
+            name=f"Security Automation · {ws_short}",
+            slug=f"security-automation-{ws_short}",
             project_type="security_automation",
             created_at=_now(),
         )
