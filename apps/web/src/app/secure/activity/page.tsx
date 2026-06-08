@@ -40,6 +40,7 @@ function ActivityContent() {
   const [filterStatus, setFilterStatus] = useState("all")
   const [filterTool, setFilterTool] = useState("all")
   const [filterDays, setFilterDays] = useState(30)
+  const [sortBy, setSortBy] = useState<"newest" | "severity">("newest")
   const [updating, setUpdating] = useState<Record<string, boolean>>({})
   const [triggering, setTriggering] = useState<Record<string, boolean>>({})
 
@@ -104,13 +105,17 @@ function ActivityContent() {
 
   const tools = Array.from(new Set(findings.map(f => f.tool).filter(Boolean))) as string[]
 
+  const SEV_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 }
   const filtered = findings
     .filter(f =>
       (filterSeverity === "all" || f.severity === filterSeverity) &&
       (filterStatus === "all" || f.status === filterStatus) &&
       (filterTool === "all" || f.tool === filterTool)
     )
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .sort((a, b) => sortBy === "severity"
+      ? (SEV_ORDER[a.severity] ?? 9) - (SEV_ORDER[b.severity] ?? 9)
+      : new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )
 
   const selectStyle: React.CSSProperties = {
     fontSize: 13, border: "1px solid var(--border)", borderRadius: 8,
@@ -151,6 +156,10 @@ function ActivityContent() {
           <option value={7}>Last 7 days</option>
           <option value={30}>Last 30 days</option>
           <option value={90}>Last 90 days</option>
+        </select>
+        <select value={sortBy} onChange={e => setSortBy(e.target.value as "newest" | "severity")} style={selectStyle}>
+          <option value="newest">Sort: Newest first</option>
+          <option value="severity">Sort: Severity</option>
         </select>
         <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" }}>
           {filtered.length} finding{filtered.length !== 1 ? "s" : ""}

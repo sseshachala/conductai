@@ -272,8 +272,12 @@ def _trigger_security_loop(finding: SecurityFinding, workspace_id: str, db: Sess
     try:
         sec_cfg = db.query(SecurityConfig).filter(SecurityConfig.workspace_id == ws_uuid).first()
         autopilot_enabled = bool(sec_cfg and sec_cfg.autopilot_enabled)
+        slack_channel = (sec_cfg and sec_cfg.security_slack_channel) or "#security"
+        slack_alerts_enabled = bool(sec_cfg and sec_cfg.security_slack_alerts_enabled)
     except Exception:
         autopilot_enabled = False
+        slack_channel = "#security"
+        slack_alerts_enabled = False
 
     initial_state = {
         "_trigger": {
@@ -290,6 +294,8 @@ def _trigger_security_loop(finding: SecurityFinding, workspace_id: str, db: Sess
             "commit_sha": finding.commit_sha,
             "source_run_id": finding.source_run_id,
             "autopilot_enabled": autopilot_enabled,
+            "slack_channel": slack_channel,
+            "slack_alerts_enabled": slack_alerts_enabled,
         },
         "__input_contract": {
             "version": "phase2.v1",
