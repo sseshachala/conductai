@@ -485,9 +485,10 @@ def post_usage_main():
         if action in ("warn", "block"):
             decision = "warned" if action == "warn" else "blocked"
             _post_event(tool_name, {}, decision, rule_id, message, session_id=session_id)
-        # Security classifier — emit finding if flag ON
-        tool_response = data.get("tool_response") or data.get("output") or ""
-        _maybe_emit_security_finding(str(tool_response), session_id, tool_name)
+
+    # Security classifier runs regardless of transcript_path — scan every tool response
+    tool_response = data.get("tool_response") or data.get("output") or ""
+    _maybe_emit_security_finding(str(tool_response), session_id, tool_name)
 
     sys.exit(0)
 
