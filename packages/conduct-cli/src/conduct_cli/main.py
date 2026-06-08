@@ -2267,6 +2267,21 @@ def cmd_test_security(args):
 
     print(f"\n{BOLD}▶ conduct test-security — {len(_SECURITY_TEST_CASES)} patterns{RESET}\n")
 
+    # Clean up previous test run findings before inserting fresh ones
+    try:
+        req = urllib.request.Request(
+            f"{api_url}/security-findings?workspace_id={workspace_id}&source_run_id=conduct-test-security",
+            headers={"X-Api-Key": api_key},
+            method="DELETE",
+        )
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            r = _json.loads(resp.read())
+            n = r.get("deleted", 0)
+            if n:
+                print(f"  {GRAY}↺ Cleaned {n} previous test finding{'s' if n != 1 else ''}{RESET}\n")
+    except Exception:
+        pass  # cleanup is best-effort
+
     passed = 0
     failed = 0
     for name, vtype, severity, description, test_file, test_line in _SECURITY_TEST_CASES:
