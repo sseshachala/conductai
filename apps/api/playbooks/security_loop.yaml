@@ -101,7 +101,7 @@ blocks:
     params:
       finding_id: "{{_trigger.finding_id}}"
       status: dismissed
-    next: log_false_positive
+    next: slack_gate_dismiss
 
   route_severity:
     type: logic
@@ -109,7 +109,7 @@ blocks:
     condition: "{{_trigger.severity == 'critical' or _trigger.severity == 'high'}}"
     next:
       pass: auto_triage
-      fail: log_only
+      fail: slack_gate_log
 
   auto_triage:
     type: tool
@@ -127,7 +127,7 @@ blocks:
     condition: "{{_trigger.autopilot_enabled == true and _trigger.repo_full_name}}"
     next:
       pass: trigger_fix
-      fail: alert_slack
+      fail: slack_gate_alert
 
   trigger_fix:
     type: tool
@@ -136,7 +136,15 @@ blocks:
     label: Trigger autopilot fix pipeline
     params:
       finding_id: "{{_trigger.finding_id}}"
-    next: alert_slack
+    next: slack_gate_alert
+
+  slack_gate_alert:
+    type: logic
+    label: Slack alerts enabled?
+    condition: "{{_trigger.slack_alerts_enabled == true}}"
+    next:
+      pass: alert_slack
+      fail: done_alert
 
   alert_slack:
     type: output
@@ -158,6 +166,21 @@ blocks:
       slack:
         channel: "{{_trigger.slack_channel}}"
 
+  done_alert:
+    type: output
+    label: Slack alerts disabled — skipped
+    description: "Slack alerts are disabled for this workspace. Finding {{_trigger.finding_id}} triaged successfully."
+    output:
+      via: log
+
+  slack_gate_dismiss:
+    type: logic
+    label: Slack alerts enabled?
+    condition: "{{_trigger.slack_alerts_enabled == true}}"
+    next:
+      pass: log_false_positive
+      fail: done_dismiss
+
   log_false_positive:
     type: output
     label: Log dismissed false positive
@@ -169,6 +192,21 @@ blocks:
       slack:
         channel: "{{_trigger.slack_channel}}"
 
+  done_dismiss:
+    type: output
+    label: Slack alerts disabled — skipped
+    description: "Slack alerts are disabled. Finding {{_trigger.finding_id}} dismissed as false positive."
+    output:
+      via: log
+
+  slack_gate_log:
+    type: logic
+    label: Slack alerts enabled?
+    condition: "{{_trigger.slack_alerts_enabled == true}}"
+    next:
+      pass: log_only
+      fail: done_log
+
   log_only:
     type: output
     label: Log medium/low finding
@@ -179,6 +217,13 @@ blocks:
       via: slack
       slack:
         channel: "{{_trigger.slack_channel}}"
+
+  done_log:
+    type: output
+    label: Slack alerts disabled — skipped
+    description: "Slack alerts are disabled. Finding {{_trigger.finding_id}} logged."
+    output:
+      via: log
 
 test_trigger:
   payload:

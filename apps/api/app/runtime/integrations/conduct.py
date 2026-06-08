@@ -100,6 +100,10 @@ def _trigger_fix(params: dict, db=None, workspace_id: str = "") -> dict:
 
     ws_uuid = _uuid.UUID(workspace_id)
 
+    from app.models.security_config import SecurityConfig
+    sec_cfg = db.query(SecurityConfig).filter(SecurityConfig.workspace_id == ws_uuid).first()
+    slack_channel = (sec_cfg and sec_cfg.security_slack_channel) or "#security"
+
     # Security Autopilot Fix lives in the permanent Security Automation project
     sec_proj = db.query(Project).filter(
         Project.workspace_id == ws_uuid,
@@ -131,6 +135,7 @@ def _trigger_fix(params: dict, db=None, workspace_id: str = "") -> dict:
                 "suggested_fix": finding.suggested_fix,
                 "repo_full_name": finding.repo_full_name,
                 "commit_sha": finding.commit_sha,
+                "slack_channel": slack_channel,
             }
         },
     )
