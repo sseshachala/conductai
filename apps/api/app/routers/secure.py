@@ -215,7 +215,7 @@ def _ensure_automation_playbook(db: Session, workspace_id: str) -> None:
     wf = Workflow(
         id=uuid.uuid4(),
         workspace_id=ws_uuid,
-        name="Security Loop Automation",
+        name="Security Loop for Claude — Agentic Automation",
         playbook_slug="security_loop",
         created_at=_now(),
     )
