@@ -188,27 +188,38 @@ def install(
     return _config_to_out(cfg)
 
 
-def _get_or_create_security_automation_project(db: Session, ws_uuid: uuid.UUID):
-    """Return the permanent Security Automation project, creating it if needed."""
+def _create_security_automation_project(db: Session, ws_uuid: uuid.UUID):
+    """Create a fresh Security Automation project (always new — caller decides when to create)."""
     from app.models.project import Project
-    proj = db.query(Project).filter(
-        Project.workspace_id == ws_uuid,
-        Project.project_type == "security_automation",
-    ).first()
-    if not proj:
-        ws_short = str(ws_uuid).replace("-", "")[:8]
-        proj = Project(
-            id=uuid.uuid4(),
-            workspace_id=ws_uuid,
-            name=f"Security Automation · {ws_short}",
-            slug=f"security-automation-{ws_short}",
-            project_type="security_automation",
-            created_at=_now(),
-        )
-        db.add(proj)
-        db.flush()
-        log.info("secure.automation_project_created", workspace_id=str(ws_uuid))
+    import time as _t
+    ws_short = str(ws_uuid).replace("-", "")[:8]
+    stamp = str(int(_t.time()))[-6:]
+    proj = Project(
+        id=uuid.uuid4(),
+        workspace_id=ws_uuid,
+        name=f"Security Automation · {ws_short}",
+        slug=f"security-automation-{ws_short}-{stamp}",
+        project_type="security_automation",
+        created_at=_now(),
+    )
+    db.add(proj)
+    db.flush()
+    log.info("secure.automation_project_created", workspace_id=str(ws_uuid))
     return proj
+
+
+def _latest_security_automation_project(db: Session, ws_uuid: uuid.UUID):
+    """Return the most recently created Security Automation project, or None."""
+    from app.models.project import Project
+    return (
+        db.query(Project)
+        .filter(
+            Project.workspace_id == ws_uuid,
+            Project.project_type == "security_automation",
+        )
+        .order_by(Project.created_at.desc())
+        .first()
+    )
 
 
 def _install_workflow_into_project(
@@ -231,29 +242,6 @@ def _install_workflow_into_project(
         log.warning("secure.playbook_load_failed", slug=slug, error=str(exc))
         return False
 
-    existing = db.query(Workflow).filter(
-        Workflow.workspace_id == ws_uuid,
-        Workflow.project_id == project_id,
-        Workflow.playbook_slug == slug,
-    ).first()
-    if existing:
-        # Backfill environment_id if missing
-        if not existing.environment_id:
-            from app.models.environment import Environment as _Env
-            env = (
-                db.query(_Env).filter(_Env.workspace_id == ws_uuid, _Env.name == "Default").first()
-                or db.query(_Env).filter(_Env.workspace_id == ws_uuid).first()
-            )
-            if env:
-                existing.environment_id = env.id
-        # Always update graph so YAML changes take effect without reinstall
-        if existing.current_version_id:
-            cur_ver = db.query(WorkflowVersion).filter(WorkflowVersion.id == existing.current_version_id).first()
-            if cur_ver and cur_ver.graph != graph:
-                cur_ver.graph = graph
-                log.info("secure.playbook_graph_updated", slug=slug)
-        db.commit()
-        return False
 
     # Resolve workspace Default environment
     env = (
@@ -293,9 +281,9 @@ def _install_workflow_into_project(
 
 
 def _ensure_security_automation_project(db: Session, workspace_id: str, install_fix: bool = False) -> None:
-    """Ensure the Security Automation project exists and has the right workflows installed."""
+    """Create a fresh Security Automation project and install workflows with latest YAML."""
     ws_uuid = uuid.UUID(workspace_id)
-    proj = _get_or_create_security_automation_project(db, ws_uuid)
+    proj = _create_security_automation_project(db, ws_uuid)
     _install_workflow_into_project(
         db, ws_uuid, proj.id,
         slug="security_loop",
