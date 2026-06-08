@@ -207,9 +207,16 @@ function SettingsContent() {
               <span style={{ width: 30, height: 30, borderRadius: 8, background: "#dc2626", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
                 <SecureLoopIcon size={15} />
               </span>
-              <div>
-                <div style={{ fontWeight: 650, fontSize: 14.5 }}>Security Loop Automation</div>
-                <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 1 }}>Auto-triages every finding · Claude Code</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ fontWeight: 650, fontSize: 14.5 }}>Security Loop for Claude</div>
+                  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".06em", padding: "2px 7px", borderRadius: 20, background: "linear-gradient(135deg,#7c3aed,#2563eb)", color: "#fff" }}>
+                    AGENTIC
+                  </span>
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>
+                  An AI agent triages every finding — dismisses false positives, escalates real threats, opens fix PRs
+                </div>
               </div>
             </div>
 
@@ -248,17 +255,17 @@ function SettingsContent() {
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13.5 }}>Autopilot</div>
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 20, background: config.autopilot_enabled ? "#fef3c7" : "var(--surface-2)", color: config.autopilot_enabled ? "#92400e" : "var(--text-muted)", letterSpacing: ".04em" }}>
-                        {config.autopilot_enabled ? "ON" : "OFF"}
+                      <div style={{ fontWeight: 600, fontSize: 13.5 }}>Agentic Autopilot</div>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 20, background: config.autopilot_enabled ? "linear-gradient(135deg,#7c3aed,#2563eb)" : "var(--surface-2)", color: config.autopilot_enabled ? "#fff" : "var(--text-muted)", letterSpacing: ".04em" }}>
+                        {config.autopilot_enabled ? "ACTIVE" : "OFF"}
                       </span>
                     </div>
                     <div style={{ fontSize: 12, color: "var(--text-3)" }}>
-                      When on, real findings are sent through the fix pipeline automatically — a PR is opened for every confirmed vulnerability. When off, findings are triaged and flagged but fixing is manual.
+                      When active, the AI agent goes all the way — reads the affected file, writes a targeted patch, opens a PR, and notifies your team. When off, the agent triages and flags but leaves fixing to you.
                     </div>
                     {config.autopilot_enabled && (
-                      <div style={{ marginTop: 8, fontSize: 11.5, background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 12px", color: "#92400e" }}>
-                        Every confirmed finding with a linked repo will trigger a fix PR automatically. Requires <strong>security-autopilot-fix</strong> playbook installed.
+                      <div style={{ marginTop: 8, fontSize: 11.5, background: "linear-gradient(135deg,rgba(124,58,237,.08),rgba(37,99,235,.08))", border: "1px solid rgba(124,58,237,.25)", borderRadius: 8, padding: "8px 12px", color: "#5b21b6" }}>
+                        Agent will autonomously fix every confirmed finding with a linked repo. Requires <strong>security-autopilot-fix</strong> playbook installed.
                       </div>
                     )}
                   </div>
@@ -307,15 +314,15 @@ function SettingsContent() {
 
           {/* Info */}
           <div style={{ background: "var(--info-bg)", border: "1px solid var(--info-bd)", borderRadius: 12, padding: "14px 18px" }}>
-            <p style={{ fontSize: 12, fontWeight: 600, color: "var(--info)", marginBottom: 6 }}>How it works</p>
+            <p style={{ fontSize: 12, fontWeight: 600, color: "var(--info)", marginBottom: 6 }}>How the agent works</p>
             <p style={{ fontSize: 12, color: "var(--info)", marginBottom: 4 }}>
-              <strong>Security Emit</strong> — passive classifier runs on every Claude Code tool call. Findings surface automatically, no developer action required.
+              <strong>1. Detect</strong> — Security Emit passively classifies every Claude Code tool call. Zero developer friction.
             </p>
             <p style={{ fontSize: 12, color: "var(--info)", marginBottom: 4 }}>
-              <strong>Auto-triage</strong> — Security Loop Automation triages every finding with AI. False positives are dismissed instantly. Real findings are marked for review.
+              <strong>2. Triage</strong> — an AI agent reviews each finding: false positives are dismissed in seconds, real threats escalated immediately.
             </p>
             <p style={{ fontSize: 12, color: "var(--info)" }}>
-              <strong>Autopilot</strong> — when enabled, confirmed findings with a repo are sent through the fix pipeline. A PR is opened automatically. Toggle syncs within 60 seconds.
+              <strong>3. Fix (Autopilot)</strong> — with Agentic Autopilot active, the agent reads your code, writes a patch, and opens a PR — no human in the loop until review time.
             </p>
           </div>
         </div>
