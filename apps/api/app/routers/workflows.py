@@ -721,7 +721,7 @@ def delete_workflow(
     workflow_id: UUID,
     workspace_id: str = Depends(get_workspace_id),
     db: Session = Depends(get_db),
-    _role: str = Depends(require_workspace_role("admin")),
+    _: str = Depends(require_permission("platform.workflows.edit")),
 ):
     workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
     if not workflow:
