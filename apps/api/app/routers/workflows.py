@@ -7,7 +7,7 @@ from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from app.core.auth import get_workspace_id, get_user_id, require_workspace_role, audit
+from app.core.auth import get_workspace_id, get_user_id, require_workspace_role, require_permission, audit
 from app.core.database import get_db
 
 log = structlog.get_logger(__name__)
