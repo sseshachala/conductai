@@ -124,6 +124,7 @@ class FindingSummary(BaseModel):
     by_severity: dict
     by_status: dict
     by_tool: dict
+    by_type: dict
     mttr_hours: Optional[float]
 
 
@@ -340,6 +341,14 @@ def get_summary(
     ):
         by_tool[row[0]] = row[1]
 
+    by_type: dict = {}
+    for row in (
+        base.with_entities(SecurityFinding.type, func.count(SecurityFinding.id))
+        .group_by(SecurityFinding.type)
+        .all()
+    ):
+        by_type[row[0]] = row[1]
+
     # mttr = avg hours from created_at to updated_at for fixed findings
     mttr_hours: Optional[float] = None
     mttr_row = (
@@ -364,6 +373,7 @@ def get_summary(
         by_severity=by_severity,
         by_status=by_status,
         by_tool=by_tool,
+        by_type=by_type,
         mttr_hours=mttr_hours,
     )
 
