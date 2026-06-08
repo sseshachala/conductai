@@ -99,7 +99,7 @@ class ConfigPatch(BaseModel):
 
 class PolicyOut(BaseModel):
     id: UUID
-    workspace_id: str
+    workspace_id: UUID
     rule_id: str
     description: Optional[str]
     pattern: Optional[str]
