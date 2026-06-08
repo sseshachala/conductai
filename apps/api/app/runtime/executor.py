@@ -1167,8 +1167,8 @@ def _check_egress(host: str, allowed_hosts: list[str] | None) -> None:
     raise PermissionError(f"Host {host!r} is not in this environment's allowed_hosts list")
 
 
-def _execute_tool(block: dict, state: dict, credentials: dict, allowed_hosts: list[str] | None = None) -> dict:
-    from app.runtime.integrations import github, slack, linear, digitalocean, vercel, railway
+def _execute_tool(block: dict, state: dict, credentials: dict, allowed_hosts: list[str] | None = None, db=None, workspace_id: str = "") -> dict:
+    from app.runtime.integrations import github, slack, linear, digitalocean, vercel, railway, conduct
 
     dry_run = state.get("__dry_run", False)
     data = block["data"]
@@ -1180,6 +1180,9 @@ def _execute_tool(block: dict, state: dict, credentials: dict, allowed_hosts: li
         return {"skipped": True, "reason": "No integration configured"}
 
     action = config.get("action", "")
+
+    if integration == "conduct":
+        return conduct.execute(action, params, creds={}, db=db, workspace_id=workspace_id)
 
     if dry_run:
         creds = credentials.get(integration, {})
@@ -2033,7 +2036,7 @@ def _execute_dag(
                                         playbook_slug=slug)
 
             elif block_type == "tool":
-                result = _execute_tool(block, state, credentials, allowed_hosts=allowed_hosts)
+                result = _execute_tool(block, state, credentials, allowed_hosts=allowed_hosts, db=db, workspace_id=workspace_id_str)
 
             elif block_type == "output":
                 wf_name = version.workflow.name if version.workflow else "Agent"
@@ -2149,7 +2152,7 @@ def _execute_dag(
     for block in cleanup_blocks:
         try:
             _emit(db, run_id, block["id"], "block_started", {"type": "cleanup"})
-            result = _execute_tool(block, state, credentials, allowed_hosts=allowed_hosts)
+            result = _execute_tool(block, state, credentials, allowed_hosts=allowed_hosts, db=db, workspace_id=workspace_id_str)
             _emit(db, run_id, block["id"], "block_completed", {"output": result})
         except Exception as e:
             cleanup_summary = _classify_failure(e, block["id"])

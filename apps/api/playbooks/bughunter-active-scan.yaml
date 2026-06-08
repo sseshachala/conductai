@@ -334,6 +334,22 @@ blocks:
   # ── 11. Emit to Security Loop pipeline ────────────────────────────────────
   - id: emit_to_security_loop
     type: tool
+    action: conduct/emit_finding
+    for_each: "{{ collect_findings.output }}"
+    next: create_github_issue
+    input:
+      tool: bughunter
+      severity: "{{ item.severity }}"
+      type: "{{ item.type }}"
+      description: "{{ item.description }}"
+      file: "{{ item.endpoint_or_file }}"
+      suggested_fix: "{{ item.suggested_fix | default('') }}"
+      repo_full_name: "{{ inputs.target_repo }}"
+      source_run_id: "{{ _run.id | default('bughunter') }}"
+
+  # ── 12. Create GitHub issue for team visibility ───────────────────────────
+  - id: create_github_issue
+    type: tool
     action: github/create_issue
     for_each: "{{ collect_findings.output }}"
     next: notify_complete
@@ -365,7 +381,7 @@ blocks:
         - bughunter
         - autopilot-ready
 
-  # ── 12. Summary notification ──────────────────────────────────────────────
+  # ── 13. Summary notification ──────────────────────────────────────────────
   - id: notify_complete
     type: output
     channels:
