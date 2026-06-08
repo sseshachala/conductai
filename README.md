@@ -2,13 +2,15 @@
 
 **YAML playbooks that turn AI agents into reusable team automations — with governance, memory, and a full audit trail.**
 
-Label a GitHub issue `ai-ready` → an agent clones your repo, writes the fix, runs tests, and opens a draft PR. One-click Approve or Reject before anything merges. ConductGuard enforces your team's spend limits and policies on every run — and on every Claude Code, Cursor, and Copilot call your developers make locally.
+> **⭐ If this saves you time, [star it](https://github.com/sseshachala/conductai/stargazers) — it helps others find it.**
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/sseshachala/conductai?style=social)](https://github.com/sseshachala/conductai/stargazers)
 [![conductai.ai](https://img.shields.io/badge/hosted-conductai.ai-black)](https://conductai.ai)
 
-> ⭐ If this saves you time, star it — it helps others find it.
+![Conduct canvas — drag-and-drop agent builder with live run trace](apps/web/public/guard-docs/dashboard.png)
+
+Label a GitHub issue `ai-ready` → an agent clones your repo, writes the fix, runs tests, and opens a draft PR. One-click Approve or Reject before anything merges. ConductGuard enforces your team's spend limits and policies on every run — and on every Claude Code, Cursor, and Copilot call your developers make locally.
 
 ---
 
@@ -492,6 +494,17 @@ Pending review in the [Anthropic plugin directory](https://clau.de/plugin-direct
 - ConductGuard — hard cap enforcement blocks AI calls before they reach the model
 - HMAC-SHA256 webhook signature verification on all inbound webhooks
 - Sentry integration — block failures captured with `run_id`, `block_id`, `workspace_id` tags
+
+---
+
+## Community
+
+- **Website** → [conductai.ai](https://conductai.ai)
+- **Issues & feature requests** → [GitHub Issues](https://github.com/sseshachala/conductai/issues)
+- **Questions** → open a [Discussion](https://github.com/sseshachala/conductai/discussions)
+- **Email** → [hello@conductai.ai](mailto:hello@conductai.ai)
+
+If Conduct saves your team time, a ⭐ star goes a long way — it helps other teams find this.
 
 ---
 
