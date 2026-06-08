@@ -42,6 +42,7 @@ JUDGE_SAMPLE_RATE = float(os.environ.get("ONLINE_EVAL_JUDGE_SAMPLE_RATE", "0.20"
 
 # Reaper configuration — tunable via environment variables.
 STALE_RUN_THRESHOLD_MINUTES        = int(os.environ.get("STALE_RUN_THRESHOLD_MINUTES", "20"))
+STALE_PENDING_THRESHOLD_MINUTES    = int(os.environ.get("STALE_PENDING_THRESHOLD_MINUTES", "10"))
 STALE_RUN_REAPER_INTERVAL          = int(os.environ.get("STALE_RUN_REAPER_INTERVAL", "120"))  # seconds
 AUTOMATION_PROJECT_RETENTION_DAYS  = int(os.environ.get("AUTOMATION_PROJECT_RETENTION_DAYS", "30"))
 
@@ -98,6 +99,50 @@ def _reap_stale_runs() -> int:
 
     except Exception:
         log.exception("reaper.error")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return 0
+    finally:
+        db.close()
+
+
+def _reap_stale_pending_runs() -> int:
+    """Cancel pending runs older than STALE_PENDING_THRESHOLD_MINUTES that were never picked up."""
+    from app.core.database import SessionLocal
+    from app.models.run import Run, RunEvent
+
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(minutes=STALE_PENDING_THRESHOLD_MINUTES)
+
+    db = SessionLocal()
+    try:
+        stale = (
+            db.query(Run)
+            .filter(
+                Run.status == "pending",
+                Run.created_at < cutoff,
+            )
+            .all()
+        )
+        if not stale:
+            return 0
+
+        for run in stale:
+            run.status = "failed"
+            run.completed_at = now
+            db.add(RunEvent(
+                run_id=run.id,
+                block_id=None,
+                kind="run_failed",
+                payload={"status": "failed", "error": "Pending run timed out — never picked up by worker", "reaped": True},
+            ))
+
+        db.commit()
+        return len(stale)
+    except Exception:
+        log.exception("reaper.pending_error")
         try:
             db.rollback()
         except Exception:
@@ -187,6 +232,12 @@ def _reaper_loop() -> None:
                 log.debug("reaper.cycle", reaped=0)
         except Exception:
             log.exception("reaper.loop_error")
+        try:
+            stale_pending = _reap_stale_pending_runs()
+            if stale_pending > 0:
+                log.warning("reaper.stale_pending_reaped", count=stale_pending)
+        except Exception:
+            log.exception("reaper.pending_loop_error")
         try:
             purged = _purge_old_automation_projects()
             if purged > 0:
