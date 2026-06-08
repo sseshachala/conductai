@@ -2214,6 +2214,182 @@ def cmd_run(args):
     _stream_run(server, workflow_id, run["id"], workspace_id, token, api_key)
 
 
+# ── conduct sync / test-guard / test-security ────────────────────────────────
+
+def cmd_sync(args):
+    """Run guard sync + security policy sync in one shot."""
+    import conduct_cli.guard as _g
+    print(f"\n{BOLD}▶ conduct sync{RESET}\n")
+    _g.cmd_guard_sync(args)
+    print(f"\n{GREEN}Sync complete.{RESET}\n")
+
+
+_SECURITY_TEST_CASES = [
+    ("AWS Access Key",       "secret-leak",     "critical", "AKIA1234567890ABCDEF found in output"),
+    ("OpenAI API Key",       "secret-leak",     "high",     "sk-abcdefghijklmnopqrstuvwx1234567890 in response"),
+    ("GitHub PAT",           "secret-leak",     "high",     "ghp_" + "A" * 36 + " token present"),
+    ("Bearer Token",         "secret-leak",     "high",     "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.test.sig"),
+    ("Hardcoded Password",   "secret-leak",     "high",     "password = 'hardcoded_secret_here'"),
+    ("Hardcoded API Key",    "secret-leak",     "high",     "api_key = 'abc123def456ghi789'"),
+    ("Path Traversal",       "path-traversal",  "medium",   "../../etc/passwd accessed"),
+    ("File URI",             "path-traversal",  "medium",   "file:///etc/passwd read"),
+    ("eval() Injection",     "injection",       "high",     "eval(user_input) called in output"),
+    ("exec() Injection",     "injection",       "high",     "exec(command) called in output"),
+    ("SSL Disabled",         "crypto",          "high",     "ssl.CERT_NONE used — verification disabled"),
+    ("TLS Bypass",           "crypto",          "medium",   "verify=False passed to requests"),
+    ("SQL Injection",        "injection",       "high",     "sql injection vulnerability in query"),
+    ("XSS",                  "injection",       "high",     "cross-site scripting detected in output"),
+    ("Auth Bypass",          "auth-bypass",     "high",     "auth bypass possible via missing check"),
+]
+
+
+def cmd_test_security(args):
+    """Fire synthetic security findings for every classifier pattern."""
+    from conduct_cli.guard import CONFIG_PATH
+    try:
+        import json as _json
+        cfg = _json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
+    except Exception:
+        cfg = {}
+
+    workspace_id = cfg.get("workspace_id")
+    api_key      = cfg.get("api_key", "")
+    user_email   = cfg.get("user_email", "")
+    api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+
+    if not workspace_id:
+        print(f"{RED}Not configured. Run: conduct guard setup{RESET}")
+        sys.exit(1)
+
+    import urllib.request
+    import json as _json
+
+    print(f"\n{BOLD}▶ conduct test-security — {len(_SECURITY_TEST_CASES)} patterns{RESET}\n")
+
+    passed = 0
+    failed = 0
+    for name, vtype, severity, description in _SECURITY_TEST_CASES:
+        payload = _json.dumps({
+            "tool": "claude-code",
+            "severity": severity,
+            "type": vtype,
+            "description": f"[TEST] {description}",
+            "reporter_email": user_email,
+            "source_run_id": "conduct-test-security",
+        }).encode()
+        try:
+            req = urllib.request.Request(
+                f"{api_url}/security-findings?workspace_id={workspace_id}",
+                data=payload,
+                headers={"Content-Type": "application/json", "X-Api-Key": api_key},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                r = _json.loads(resp.read())
+                fid = r.get("id", "")[:8]
+                sev_color = RED if severity == "critical" else (YELLOW if severity == "high" else CYAN)
+                print(f"  {GREEN}✓{RESET}  {name:<22} {sev_color}{severity:<8}{RESET}  {GRAY}{fid}{RESET}")
+                passed += 1
+        except Exception as e:
+            print(f"  {RED}✕{RESET}  {name:<22} {RED}FAILED — {e}{RESET}")
+            failed += 1
+
+    print(f"\n  {passed} posted · {failed} failed")
+    print(f"\n  {CYAN}→ View findings: {api_url.replace('api.', 'app.')}/secure/activity{RESET}\n")
+
+
+def cmd_test_guard(args):
+    """Test each guard policy rule with a matching synthetic tool call."""
+    import json as _json
+    import re as _re
+    from conduct_cli.guard import CONFIG_PATH, POLICY_PATH
+
+    try:
+        cfg = _json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
+    except Exception:
+        cfg = {}
+
+    if not POLICY_PATH.exists():
+        print(f"{RED}No policy file found. Run: conduct guard sync{RESET}")
+        sys.exit(1)
+
+    try:
+        policy = _json.loads(POLICY_PATH.read_text())
+    except Exception as e:
+        print(f"{RED}Could not load policy: {e}{RESET}")
+        sys.exit(1)
+
+    rules = policy.get("rules", [])
+    if not rules:
+        print(f"{YELLOW}No rules in local policy. Run: conduct guard sync{RESET}")
+        sys.exit(0)
+
+    workspace_id = cfg.get("workspace_id")
+    api_key      = cfg.get("api_key", "")
+    api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+
+    print(f"\n{BOLD}▶ conduct test-guard — {len(rules)} rule(s){RESET}\n")
+
+    import urllib.request
+
+    blocked = 0
+    allowed = 0
+    errors  = 0
+    for rule in rules:
+        rule_id  = rule.get("rule_id", "unknown")
+        action   = rule.get("action", "audit")
+        message  = rule.get("message") or rule_id
+        tool     = (rule.get("match_tool") or "bash").split(",")[0].strip()
+        pattern  = rule.get("match_pattern") or rule.get("match_path_pattern") or ""
+
+        # Build a synthetic input that satisfies the rule's pattern
+        if pattern:
+            try:
+                # Use the pattern itself as a test input fragment where possible
+                test_input = _re.sub(r"[\\^$.*+?()\[\]{}|]", "", pattern)[:80] or rule_id
+            except Exception:
+                test_input = rule_id
+        else:
+            test_input = rule_id
+
+        payload = _json.dumps({
+            "ai_tool": "claude-code",
+            "tool_call": tool,
+            "input_summary": f"[TEST] {test_input}",
+            "decision": action if action in ("blocked", "warn") else "blocked",
+            "rule_id": rule_id,
+            "rule_message": f"[TEST] {message}",
+        }).encode()
+
+        action_color = RED if action == "blocked" else (YELLOW if action == "warn" else CYAN)
+        action_label = action.upper()
+
+        if workspace_id:
+            try:
+                req = urllib.request.Request(
+                    f"{api_url}/guard/events/test?workspace_id={workspace_id}",
+                    data=payload,
+                    headers={"Content-Type": "application/json", "X-Api-Key": api_key},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=5):
+                    pass
+                posted = f"{GRAY}posted{RESET}"
+            except Exception:
+                posted = f"{GRAY}local only{RESET}"
+        else:
+            posted = f"{GRAY}no workspace{RESET}"
+
+        print(f"  {action_color}{action_label:<8}{RESET}  {rule_id:<35}  {GRAY}{message[:50]}{RESET}  {posted}")
+        if action == "blocked":
+            blocked += 1
+        else:
+            allowed += 1
+
+    print(f"\n  {blocked} would block · {allowed} audit/allow")
+    print(f"\n  {CYAN}→ View events: {api_url.replace('api.', 'app.')}/guard/activity{RESET}\n")
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
@@ -2356,6 +2532,13 @@ def main():
     mcp_sub = mcp_p.add_subparsers(dest="mcp_command")
     mcp_sub.add_parser("install", help="Register conduct-mcp in Claude Code and Codex")
 
+    # conduct sync
+    sub.add_parser("sync", help="Sync Guard policies + Security Loop in one shot")
+
+    # conduct test-guard / test-security
+    sub.add_parser("test-guard",    help="Fire a synthetic event per guard policy rule and show decisions")
+    sub.add_parser("test-security", help="Post a synthetic finding per security classifier pattern")
+
     args = parser.parse_args()
 
     if args.command == "login":
@@ -2423,6 +2606,12 @@ def main():
             cmd_mcp_install(args)
         else:
             mcp_p.print_help()
+    elif args.command == "sync":
+        cmd_sync(args)
+    elif args.command == "test-guard":
+        cmd_test_guard(args)
+    elif args.command == "test-security":
+        cmd_test_security(args)
     else:
         parser.print_help()
 
