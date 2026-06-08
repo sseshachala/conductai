@@ -2341,7 +2341,7 @@ def cmd_test_security_verify(args):
 
     import urllib.request
 
-    TIMEOUT   = 120  # seconds to wait for all findings to leave "open"
+    TIMEOUT   = 240  # serial worker at CONCURRENCY=1: 15 runs × ~10s = ~150s; headroom for 2+ workers
     POLL_SECS = 5
 
     # ── Step 1: post test findings ────────────────────────────────────────
