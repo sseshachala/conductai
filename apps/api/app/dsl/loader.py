@@ -382,6 +382,8 @@ def _block_to_node(block_id: str, block: Block, col: int) -> dict[str, Any]:
     elif block.type == "brain":
         # The executor reads ``isAgentic`` (legacy field name from the canvas).
         data["isAgentic"] = (block.mode == "agentic")
+        if block.model and "{{" not in block.model:
+            data["model"] = block.model
         if block.custom_instructions:
             data["custom_instructions"] = block.custom_instructions
         if block.runs_on:

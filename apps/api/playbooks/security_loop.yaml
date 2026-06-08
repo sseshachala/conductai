@@ -20,16 +20,6 @@ description: >
   Auto-triage every security finding. Enriches with context, determines
   if real or false positive, updates status, alerts on critical/high.
 
-inputs:
-  model:
-    label: AI Model
-    default: claude-haiku-4-5-20251001
-    type: select
-    options:
-      - claude-haiku-4-5-20251001
-      - claude-sonnet-4-6
-      - claude-opus-4-7
-
 on:
   internal:
     next: triage
@@ -38,7 +28,7 @@ blocks:
   triage:
     type: brain
     mode: single
-    model: "{{inputs.model}}"
+    model: "claude-haiku-4-5-20251001"
     label: Triage finding
     description: |
       You are a senior application-security engineer performing rapid first-pass
