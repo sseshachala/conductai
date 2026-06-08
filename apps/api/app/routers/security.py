@@ -213,11 +213,14 @@ def _send_security_slack_alert(finding: SecurityFinding, workspace_id: str, db: 
 
         channel = sec.security_slack_channel or "general"
 
-        row = db.query(Integration).filter(
+        query = db.query(Integration).filter(
             Integration.workspace_id == workspace_id,
             Integration.service == "slack",
             Integration.encrypted_credentials.isnot(None),
-        ).first()
+        )
+        if sec.slack_integration_id:
+            query = query.filter(Integration.id == sec.slack_integration_id)
+        row = query.first()
         if not row:
             return
         creds = decrypt(row.encrypted_credentials)

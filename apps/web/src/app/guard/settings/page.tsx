@@ -9,6 +9,7 @@ import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useTokenGuardrails, patchTokenGuardrails } from "@/hooks/useTokenGuardrails"
 import AppShell from "@/components/AppShell"
+import { SlackIntegrationPicker } from "@/components/SlackIntegrationPicker"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -436,39 +437,32 @@ function SettingsContent() {
                     Spend alerts are deduped — Slack fires once per 5% increment, not on every tool call.
                   </div>
 
-                  {/* Drift alert channel */}
+                  {/* Drift alert channel + Slack integration picker */}
                   <div style={{ borderTop: "1px solid var(--border)", marginTop: 16, paddingTop: 16 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)", marginBottom: 6 }}>Drift alert channel</div>
-                    <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 10 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)", marginBottom: 4 }}>Drift alert channel</div>
+                    <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 8 }}>
                       Fires when a token guardrail goes inactive — tool removed or policy disabled.
                     </div>
-                    <div style={{ display: "flex", gap: 9 }}>
-                      <div style={{ display: "flex", alignItems: "center", flex: 1, border: "1px solid var(--border-2)", borderRadius: 8, overflow: "hidden" }}>
-                        <span style={{ padding: "0 10px", fontSize: 13, color: "var(--text-muted)", background: "var(--surface-2)", borderRight: "1px solid var(--border)", alignSelf: "stretch", display: "flex", alignItems: "center", userSelect: "none" }}>#</span>
-                        <input
-                          type="text"
-                          value={driftChannelInput}
-                          onChange={e => isAdmin && setDriftChannelInput(e.target.value.replace(/^#+/, ""))}
-                          placeholder="guard-drift-alerts"
-                          disabled={!isAdmin}
-                          className="mono"
-                          style={{
-                            flex: 1, fontSize: 13, padding: "0 12px", height: 36,
-                            border: "none", background: "transparent", color: "var(--text)",
-                            outline: "none", opacity: isAdmin ? 1 : 0.6,
-                          }}
-                          onKeyDown={e => { if (e.key === "Enter" && isAdmin) handleSaveDriftChannel() }}
-                        />
-                      </div>
-                      {isAdmin && (
-                        <button onClick={handleSaveDriftChannel} disabled={savingDriftChannel} className="btn btn-ghost btn-sm">
-                          {savingDriftChannel ? "Saving…" : "Save"}
-                        </button>
-                      )}
-                      {driftChannelSaved && (
-                        <span style={{ fontSize: 12, color: "var(--ok)", fontWeight: 600, alignSelf: "center" }}>Saved</span>
-                      )}
-                    </div>
+                    <SlackIntegrationPicker
+                      base={base}
+                      wsId={wsId ?? undefined}
+                      buildHeaders={async () => {
+                        const token = await getToken()
+                        const h: Record<string, string> = { "Content-Type": "application/json" }
+                        if (token) h["Authorization"] = `Bearer ${token}`
+                        return h
+                      }}
+                      integrationId={tokenGuardrails?.slack_integration_id ?? null}
+                      channel={tokenGuardrails?.slack_webhook_url ?? ""}
+                      isAdmin={isAdmin}
+                      onSave={async (integrationId, channel) => {
+                        const token = await getToken()
+                        await patchTokenGuardrails(wsId!, token ?? "", base, {
+                          slack_integration_id: integrationId,
+                          slack_webhook_url: channel || null,
+                        })
+                      }}
+                    />
                   </div>
                 </div>
               </div>
