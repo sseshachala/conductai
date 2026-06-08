@@ -1364,6 +1364,12 @@ def cmd_guard_sync(args):
         _save_guard_config(cfg)
         if sec.get("installed"):
             print(f"  {GREEN}Security Loop:{RESET} installed — classifier active")
+            try:
+                policies = _req("GET", f"{base_url}/secure/policies?workspace_id={workspace_id}", api_key=api_key)
+                policy_count = len(policies) if isinstance(policies, list) else 0
+                print(f"  {GREEN}Security Loop policies:{RESET} {policy_count} rule(s) synced")
+            except Exception:
+                pass
     except Exception:
         pass
 
