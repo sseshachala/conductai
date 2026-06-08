@@ -308,7 +308,10 @@ def yaml_to_graph(workflow: Workflow) -> dict[str, Any]:
             for handle, target in nxt.items():
                 edges.append(_make_edge(block_id, target, source_handle=handle))
 
-    return {"nodes": nodes, "edges": edges}
+    result: dict[str, Any] = {"nodes": nodes, "edges": edges}
+    if workflow.inputs:
+        result["inputs_spec"] = workflow.inputs
+    return result
 
 
 # ---------------------------------------------------------------------------

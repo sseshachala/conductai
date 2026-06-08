@@ -1945,6 +1945,15 @@ def _execute_dag(
 
     state: dict[str, Any] = dict(initial_state)
 
+    # Seed inputs defaults so {{inputs.x}} refs resolve for auto-triggered runs.
+    if "inputs" not in state:
+        inputs_spec = graph.get("inputs_spec") or {}
+        if inputs_spec:
+            state["inputs"] = {
+                k: (v.get("default") if isinstance(v, dict) else v)
+                for k, v in inputs_spec.items()
+            }
+
     failed = False
     fail_error = ""
     fail_summary: dict[str, Any] | None = None
