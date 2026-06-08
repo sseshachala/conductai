@@ -7,7 +7,7 @@ Create Date: 2026-06-08
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0067_security_finding_reporter_email"
+revision = "0067"
 down_revision = "0066"
 branch_labels = None
 depends_on = None
