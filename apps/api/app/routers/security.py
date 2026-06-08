@@ -309,7 +309,6 @@ def get_summary(
     days: int = Query(default=30, ge=1, le=365),
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _: str = Depends(require_permission("guard.activity.view_all")),
 ) -> FindingSummary:
     """Return workspace-level stats for the given time window."""
     cutoff = _now() - timedelta(days=days)
