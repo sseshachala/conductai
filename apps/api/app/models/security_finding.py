@@ -22,6 +22,7 @@ class SecurityFinding(Base):
     repo_full_name = Column(String, nullable=True, index=True)
     commit_sha = Column(String, nullable=True)
     source_run_id = Column(String, nullable=True)   # optional — if surfaced inside a Conduct run
+    reporter_email = Column(String(255), nullable=True)
     status = Column(String, nullable=False, default="open")  # open | triaging | fixed | dismissed
     github_issue_url = Column(String, nullable=True)
     run_id = Column(String, nullable=True)          # Security Loop pipeline run that handled this

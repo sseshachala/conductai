@@ -19,12 +19,18 @@ interface SecurityFinding {
   description: string
   tool: string | null
   repo_full_name: string | null
+  reporter_email: string | null
   status: FindingStatus
   created_at: string
   source_run_id: string | null
 }
 
-const SEVERITY_ORDER: Severity[] = ["critical", "high", "medium", "low", "info"]
+const STATUS_TRANSITIONS: Record<FindingStatus, { label: string; next: FindingStatus; tone: string }[]> = {
+  open:      [{ label: "Acknowledge", next: "triaging", tone: "warn" }, { label: "Dismiss", next: "dismissed", tone: "err" }],
+  triaging:  [{ label: "Mark fixed", next: "fixed", tone: "ok" }, { label: "Dismiss", next: "dismissed", tone: "err" }],
+  fixed:     [{ label: "Reopen", next: "open", tone: "warn" }],
+  dismissed: [{ label: "Reopen", next: "open", tone: "warn" }],
+}
 
 export default function SecureActivityPage() {
   return <AppShell><ActivityContent /></AppShell>
@@ -40,6 +46,7 @@ function ActivityContent() {
   const [filterStatus, setFilterStatus] = useState("all")
   const [filterTool, setFilterTool] = useState("all")
   const [filterDays, setFilterDays] = useState(30)
+  const [updating, setUpdating] = useState<Record<string, boolean>>({})
 
   const base = process.env.NEXT_PUBLIC_API_URL ?? ""
 
@@ -66,6 +73,23 @@ function ActivityContent() {
     return () => clearInterval(t)
   }, [load])
 
+  const updateStatus = useCallback(async (id: string, next: FindingStatus) => {
+    setUpdating(u => ({ ...u, [id]: true }))
+    try {
+      const headers = await buildHeaders()
+      const res = await fetch(`${base}/security-findings/${id}?workspace_id=${wsId}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ status: next }),
+      })
+      if (res.ok) {
+        const updated: SecurityFinding = await res.json()
+        setFindings(prev => prev.map(f => f.id === id ? updated : f))
+      }
+    } catch {}
+    finally { setUpdating(u => ({ ...u, [id]: false })) }
+  }, [base, wsId, buildHeaders])
+
   const tools = Array.from(new Set(findings.map(f => f.tool).filter(Boolean))) as string[]
 
   const filtered = findings
@@ -81,8 +105,8 @@ function ActivityContent() {
     padding: "6px 12px", background: "var(--surface)", color: "var(--text-2)", cursor: "pointer",
   }
 
-  const cols = "100px 120px 1.6fr 2fr 100px 120px 90px 80px 100px"
-  const headers = ["Severity", "Type", "File", "Description", "Tool", "Repo", "Session", "Age", "Status"]
+  const cols = "100px 120px 1.4fr 1.8fr 100px 110px 90px 70px 120px 140px"
+  const headers = ["Severity", "Type", "File", "Description", "Tool", "Reporter", "Session", "Age", "Status", "Actions"]
 
   return (
     <SecureShell>
@@ -135,10 +159,19 @@ function ActivityContent() {
         ) : filtered.map((f, i, arr) => {
           const filePart = f.file ? (f.line != null ? `${f.file}:${f.line}` : f.file) : "—"
           const session = f.source_run_id ? f.source_run_id.slice(0, 8) : "—"
+          const reporter = f.reporter_email ? f.reporter_email.split("@")[0] : "—"
+          const transitions = STATUS_TRANSITIONS[f.status] ?? []
+          const busy = !!updating[f.id]
+
           return (
             <div
               key={f.id}
-              style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "12px 20px", borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none", alignItems: "center" }}
+              style={{
+                display: "grid", gridTemplateColumns: cols, gap: 12, padding: "12px 20px",
+                borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none",
+                alignItems: "center",
+                opacity: busy ? 0.6 : 1,
+              }}
               onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
               onMouseLeave={e => (e.currentTarget.style.background = "")}
             >
@@ -146,13 +179,31 @@ function ActivityContent() {
               <div style={{ fontSize: 12.5, color: "var(--text-2)", fontWeight: 500 }}>{f.type || "—"}</div>
               <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{filePart}</div>
               <div style={{ fontSize: 12.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.description}>
-                {f.description.length > 80 ? f.description.slice(0, 77) + "…" : f.description}
+                {f.description.length > 72 ? f.description.slice(0, 69) + "…" : f.description}
               </div>
               <div style={{ fontSize: 12, color: "var(--text-3)" }}>{f.tool || "—"}</div>
-              <div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.repo_full_name || "—"}</div>
+              <div className="mono" title={f.reporter_email ?? undefined} style={{ fontSize: 11.5, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{reporter}</div>
               <div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{session}</div>
               <div style={{ fontSize: 12, color: "var(--text-3)" }}>{timeAgo(f.created_at)}</div>
               <StatusBadge status={f.status} />
+              {/* Inline actions */}
+              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                {transitions.map(t => (
+                  <button
+                    key={t.next}
+                    disabled={busy}
+                    onClick={() => updateStatus(f.id, t.next)}
+                    style={{
+                      fontSize: 10.5, fontWeight: 600, padding: "3px 8px", borderRadius: 6, cursor: busy ? "wait" : "pointer",
+                      border: `1px solid ${t.tone === "ok" ? "var(--ok-bd)" : t.tone === "warn" ? "var(--warn-bd)" : "var(--err-bd)"}`,
+                      background: t.tone === "ok" ? "var(--ok-bg)" : t.tone === "warn" ? "var(--warn-bg)" : "var(--err-bg)",
+                      color: t.tone === "ok" ? "var(--ok)" : t.tone === "warn" ? "var(--warn)" : "var(--err)",
+                    }}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
             </div>
           )
         })}

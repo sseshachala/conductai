@@ -304,6 +304,7 @@ def _maybe_emit_security_finding(tool_response, session_id, tool_name):
         "type": finding_type,
         "description": description,
         "source_run_id": session_id,
+        "reporter_email": cfg.get("user_email") or "",
     })
     script = (
         "import urllib.request\\n"
