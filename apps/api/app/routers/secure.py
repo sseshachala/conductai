@@ -314,6 +314,19 @@ def uninstall(
     log.info("secure.uninstalled", workspace_id=workspace_id)
 
 
+@router.post("/refresh-automation", status_code=200)
+def refresh_automation(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.settings.edit")),
+) -> dict:
+    """Create a fresh Security Automation project with the latest compiled YAML. Used by test-security-verify."""
+    cfg = _get_config(db, workspace_id)
+    install_fix = bool(cfg and cfg.autopilot_enabled)
+    _ensure_security_automation_project(db, workspace_id, install_fix=install_fix)
+    return {"refreshed": True, "workspace_id": workspace_id}
+
+
 @router.get("/installed", response_model=InstalledOut)
 def get_installed(
     db: Session = Depends(get_db),
