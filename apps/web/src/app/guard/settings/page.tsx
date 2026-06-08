@@ -15,6 +15,7 @@ import { SlackIntegrationPicker } from "@/components/SlackIntegrationPicker"
 
 interface TeamPrefs {
   alert_channel: string | null
+  alert_slack_integration_id: string | null
   notify_on_block: boolean
   notify_on_budget: boolean
 }
@@ -120,14 +121,12 @@ function SettingsContent() {
 
   const [prefs, setPrefs] = useState<TeamPrefs>({
     alert_channel: null,
+    alert_slack_integration_id: null,
     notify_on_block: true,
     notify_on_budget: true,
   })
-  const [channelInput, setChannelInput] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [channelSaved, setChannelSaved] = useState(false)
-  const [savingChannel, setSavingChannel] = useState(false)
 
   // Notification toggles: extend prefs with warn + digest
   const [notifWarn, setNotifWarn] = useState(true)
@@ -174,10 +173,10 @@ function SettingsContent() {
       const data = await res.json()
       setPrefs({
         alert_channel: data.alert_channel ?? null,
+        alert_slack_integration_id: data.alert_slack_integration_id ?? null,
         notify_on_block: data.notify_on_block ?? true,
         notify_on_budget: data.notify_on_budget ?? true,
       })
-      setChannelInput((data.alert_channel ?? "").replace(/^#+/, ""))
       if (data.enforcement_mode) setEnforcementMode(data.enforcement_mode as "block" | "warn" | "audit")
       // Load sync coverage in parallel
       fetch(`${base}/guard/developer-tools?workspace_id=${wsId}`, { headers })
@@ -233,21 +232,6 @@ function SettingsContent() {
     }
   }
 
-  async function handleSaveChannel() {
-    setSavingChannel(true)
-    const stripped = channelInput.replace(/^#+/, "")
-    try {
-      await patch({ alert_channel: stripped || null })
-      setChannelInput(stripped)
-      setPrefs(p => ({ ...p, alert_channel: stripped || null }))
-      setChannelSaved(true)
-      setTimeout(() => setChannelSaved(false), 2000)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed")
-    } finally {
-      setSavingChannel(false)
-    }
-  }
 
   async function handleToggle(field: "notify_on_block" | "notify_on_budget", value: boolean) {
     setPrefs(p => ({ ...p, [field]: value }))
@@ -370,45 +354,26 @@ function SettingsContent() {
                 </div>
 
                 <div style={{ padding: "16px 20px" }}>
-                  {/* Alert channel input */}
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)", marginBottom: 6 }}>Alert channel</div>
-                  <div style={{ display: "flex", gap: 9, marginBottom: 18 }}>
-                    <div style={{ display: "flex", alignItems: "center", flex: 1, border: "1px solid var(--border-2)", borderRadius: 8, overflow: "hidden" }}>
-                      <span style={{ padding: "0 10px", fontSize: 13, color: "var(--text-muted)", background: "var(--surface-2)", borderRight: "1px solid var(--border)", alignSelf: "stretch", display: "flex", alignItems: "center", userSelect: "none" }}>#</span>
-                      <input
-                        type="text"
-                        value={channelInput}
-                        onChange={e => isAdmin && setChannelInput(e.target.value.replace(/^#+/, ""))}
-                        placeholder="guard-alerts"
-                        disabled={!isAdmin}
-                        className="mono"
-                        style={{
-                          flex: 1,
-                          fontSize: 13,
-                          padding: "0 12px",
-                          height: 36,
-                          border: "none",
-                          background: "transparent",
-                          color: "var(--text)",
-                          outline: "none",
-                          opacity: isAdmin ? 1 : 0.6,
-                        }}
-                        onKeyDown={e => { if (e.key === "Enter" && isAdmin) handleSaveChannel() }}
-                      />
-                    </div>
-                    {isAdmin && (
-                      <button
-                        onClick={handleSaveChannel}
-                        disabled={savingChannel}
-                        className="btn btn-ghost btn-sm"
-                      >
-                        {savingChannel ? "Saving…" : "Send test"}
-                      </button>
-                    )}
-                    {channelSaved && (
-                      <span style={{ fontSize: 12, color: "var(--ok)", fontWeight: 600, alignSelf: "center" }}>Saved</span>
-                    )}
-                  </div>
+                  {/* Alert channel — Slack integration picker */}
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)", marginBottom: 4 }}>Alert channel</div>
+                  <SlackIntegrationPicker
+                    base={base}
+                    wsId={wsId ?? undefined}
+                    buildHeaders={async () => {
+                      const token = await getToken()
+                      const h: Record<string, string> = { "Content-Type": "application/json" }
+                      if (token) h["Authorization"] = `Bearer ${token}`
+                      return h
+                    }}
+                    integrationId={prefs.alert_slack_integration_id}
+                    channel={prefs.alert_channel ?? ""}
+                    isAdmin={isAdmin}
+                    onSave={async (integrationId, channel) => {
+                      await patch({ alert_slack_integration_id: integrationId as any, alert_channel: channel || null })
+                      setPrefs(p => ({ ...p, alert_slack_integration_id: integrationId, alert_channel: channel || null }))
+                    }}
+                  />
+                  <div style={{ marginBottom: 10 }} />
 
                   {/* Notification toggles */}
                   {NOTIFS.map((x, i) => (

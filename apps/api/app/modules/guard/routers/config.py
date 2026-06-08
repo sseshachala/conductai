@@ -35,6 +35,7 @@ class ConfigOut(BaseModel):
     invite_code: str
     slug: str | None
     alert_channel: str | None
+    alert_slack_integration_id: str | None
     enforcement_mode: str
     notify_on_block: bool
     notify_on_budget: bool
@@ -47,6 +48,7 @@ class ConfigOut(BaseModel):
 
 class ConfigPatch(BaseModel):
     alert_channel: str | None = None
+    alert_slack_integration_id: str | None = None
     enforcement_mode: str | None = None
     notify_on_block: bool | None = None
     notify_on_budget: bool | None = None
@@ -90,6 +92,7 @@ def _config_to_out(cfg: GuardConfig) -> ConfigOut:
         invite_code=cfg.invite_code,
         slug=cfg.slug,
         alert_channel=cfg.alert_channel,
+        alert_slack_integration_id=str(cfg.alert_slack_integration_id) if cfg.alert_slack_integration_id else None,
         enforcement_mode=cfg.enforcement_mode,
         notify_on_block=cfg.notify_on_block,
         notify_on_budget=cfg.notify_on_budget,
@@ -202,6 +205,9 @@ def patch_config(
     config = _get_or_create_config(db, workspace_id)
     if body.alert_channel is not None:
         config.alert_channel = body.alert_channel
+    if body.alert_slack_integration_id is not None:
+        import uuid as _uuid
+        config.alert_slack_integration_id = _uuid.UUID(body.alert_slack_integration_id) if body.alert_slack_integration_id else None
     if body.enforcement_mode is not None:
         if body.enforcement_mode not in _VALID_ENFORCEMENT_MODES:
             raise HTTPException(
