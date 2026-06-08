@@ -22,7 +22,6 @@ interface SecureConfig {
   security_emit_enabled: boolean
   security_slack_alerts_enabled: boolean
   security_slack_channel: string | null
-  slack_webhook_url: string | null
 }
 
 function GuardToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
@@ -62,14 +61,10 @@ function SettingsContent() {
     security_emit_enabled: true,
     security_slack_alerts_enabled: false,
     security_slack_channel: null,
-    slack_webhook_url: null,
   })
   const [channelInput, setChannelInput] = useState("")
   const [channelSaved, setChannelSaved] = useState(false)
   const [savingChannel, setSavingChannel] = useState(false)
-  const [webhookInput, setWebhookInput] = useState("")
-  const [webhookSaved, setWebhookSaved] = useState(false)
-  const [savingWebhook, setSavingWebhook] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [detectedTools, setDetectedTools] = useState<Set<string>>(new Set())
@@ -100,10 +95,8 @@ function SettingsContent() {
           security_emit_enabled: data.security_emit_enabled ?? true,
           security_slack_alerts_enabled: data.security_slack_alerts_enabled ?? false,
           security_slack_channel: data.security_slack_channel ?? null,
-          slack_webhook_url: data.slack_webhook_url ?? null,
         })
         setChannelInput((data.security_slack_channel ?? "").replace(/^#+/, ""))
-        setWebhookInput(data.slack_webhook_url ?? "")
       }
       if (toolsRes.ok) {
         const devs: { detected_tools: string[] }[] = await toolsRes.json()
@@ -149,20 +142,6 @@ function SettingsContent() {
       setError(e instanceof Error ? e.message : "Save failed")
     } finally {
       setSavingChannel(false)
-    }
-  }
-
-  async function handleSaveWebhook() {
-    setSavingWebhook(true)
-    try {
-      await patch({ slack_webhook_url: webhookInput || null })
-      setConfig(c => ({ ...c, slack_webhook_url: webhookInput || null }))
-      setWebhookSaved(true)
-      setTimeout(() => setWebhookSaved(false), 2000)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed")
-    } finally {
-      setSavingWebhook(false)
     }
   }
 
@@ -281,27 +260,6 @@ function SettingsContent() {
                   </div>
                   <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 8 }}>
                     Format: <code style={{ background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4, fontFamily: "ui-monospace,monospace" }}>[HIGH] secret-leak in config.py:12 · claude-code</code>
-                  </div>
-                  <div style={{ marginTop: 14 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)", marginBottom: 6 }}>Slack webhook URL</div>
-                    <div style={{ display: "flex", gap: 9 }}>
-                      <input
-                        type="text"
-                        value={webhookInput}
-                        onChange={e => isAdmin && setWebhookInput(e.target.value)}
-                        placeholder="https://hooks.slack.com/services/…"
-                        disabled={!isAdmin}
-                        className="mono"
-                        style={{ flex: 1, fontSize: 12, padding: "0 12px", height: 36, border: "1px solid var(--border-2)", borderRadius: 8, background: "transparent", color: "var(--text)", outline: "none", opacity: isAdmin ? 1 : 0.6 }}
-                        onKeyDown={e => { if (e.key === "Enter" && isAdmin) handleSaveWebhook() }}
-                      />
-                      {isAdmin && (
-                        <button onClick={handleSaveWebhook} disabled={savingWebhook} className="btn btn-ghost btn-sm">
-                          {savingWebhook ? "Saving…" : "Save"}
-                        </button>
-                      )}
-                      {webhookSaved && <span style={{ fontSize: 12, color: "var(--ok)", fontWeight: 600, alignSelf: "center" }}>Saved</span>}
-                    </div>
                   </div>
                 </div>
               )}
