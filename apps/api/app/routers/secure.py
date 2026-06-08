@@ -233,7 +233,6 @@ def _ensure_automation_playbook(db: Session, workspace_id: str) -> None:
         ver = WorkflowVersion(
             id=uuid.uuid4(),
             workflow_id=wf.id,
-            version=1,
             graph=graph,
             compiled_artifacts={},
             created_at=_now(),
