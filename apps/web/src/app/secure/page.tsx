@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { SecureShell, SeverityPill, StatusBadge, FindingsTable } from "./_components"
-import type { SecurityFinding } from "./_components"
+import type { SecurityFinding, FindingStatus } from "./_components"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface SecuritySummary {
@@ -30,6 +30,7 @@ function SecureOverview() {
   const [filterSeverity, setFilterSeverity] = useState("all")
   const [filterStatus, setFilterStatus] = useState("all")
   const [filterDays, setFilterDays] = useState(30)
+  const [updating, setUpdating] = useState<Record<string, boolean>>({})
 
   const base = process.env.NEXT_PUBLIC_API_URL ?? ""
 
@@ -59,6 +60,21 @@ function SecureOverview() {
     const t = setInterval(() => load(filterDays), 30_000)
     return () => clearInterval(t)
   }, [load, filterDays])
+
+  const updateStatus = useCallback(async (id: string, next: FindingStatus) => {
+    setUpdating(u => ({ ...u, [id]: true }))
+    try {
+      const headers = await buildHeaders()
+      const res = await fetch(`${base}/security-findings/${id}?workspace_id=${wsId}`, {
+        method: "PATCH", headers, body: JSON.stringify({ status: next }),
+      })
+      if (res.ok) {
+        const updated: SecurityFinding = await res.json()
+        setFindings(prev => prev.map(f => f.id === id ? updated : f))
+      }
+    } catch {}
+    finally { setUpdating(u => ({ ...u, [id]: false })) }
+  }, [base, wsId, buildHeaders])
 
   const selectStyle: React.CSSProperties = {
     fontSize: 13, border: "1px solid var(--border)", borderRadius: 8,
@@ -115,7 +131,7 @@ function SecureOverview() {
         </span>
       </div>
 
-      <FindingsTable findings={filteredFindings} loading={loading} />
+      <FindingsTable findings={filteredFindings} loading={loading} onStatusChange={updateStatus} updating={updating} />
     </SecureShell>
   )
 }
