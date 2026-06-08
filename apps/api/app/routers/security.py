@@ -242,16 +242,26 @@ def _send_security_slack_alert(finding: SecurityFinding, workspace_id: str, db: 
 
 
 def _trigger_security_loop(finding: SecurityFinding, workspace_id: str, db: Session) -> None:
-    """Look up the security_loop workflow and enqueue a run for this finding."""
+    """Look up the security_loop workflow inside the Security Automation project and enqueue a run."""
     from app.models.workflow import Workflow, WorkflowVersion
+    from app.models.project import Project
     from app.models.run import Run
     from app.models.security_config import SecurityConfig
     import uuid as _uuid
+
+    ws_uuid = _uuid.UUID(workspace_id)
+    sec_proj = db.query(Project).filter(
+        Project.workspace_id == ws_uuid,
+        Project.project_type == "security_automation",
+    ).first()
+    if not sec_proj:
+        return
 
     workflow = (
         db.query(Workflow)
         .filter(
             Workflow.workspace_id == workspace_id,
+            Workflow.project_id == sec_proj.id,
             Workflow.playbook_slug == "security_loop",
         )
         .first()
@@ -260,7 +270,6 @@ def _trigger_security_loop(finding: SecurityFinding, workspace_id: str, db: Sess
         return
 
     try:
-        ws_uuid = _uuid.UUID(workspace_id)
         sec_cfg = db.query(SecurityConfig).filter(SecurityConfig.workspace_id == ws_uuid).first()
         autopilot_enabled = bool(sec_cfg and sec_cfg.autopilot_enabled)
     except Exception:

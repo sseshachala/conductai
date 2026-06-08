@@ -107,7 +107,7 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
-  const [tab, setTab] = useState<"projects" | "incidents">("projects")
+  const [tab, setTab] = useState<"projects" | "automation">("projects")
 
   async function authHeaders(): Promise<Record<string, string>> {
     const h: Record<string, string> = {}
@@ -234,10 +234,10 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
         {/* Tabs */}
         {!loading && (
           <div style={{ display: "flex", gap: 6, marginBottom: 20 }}>
-            {(["projects", "incidents"] as const).map(t => {
+            {(["projects", "automation"] as const).map(t => {
               const count = t === "projects"
                 ? projects.filter(p => (p.project_type ?? "user") === "user").length
-                : projects.filter(p => p.project_type === "security_incident").length
+                : projects.filter(p => p.project_type === "security_automation").length
               const on = tab === t
               return (
                 <button
@@ -246,8 +246,8 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
                   className="chip"
                   style={{ height: 30, cursor: "pointer", fontWeight: 600, display: "flex", alignItems: "center", gap: 5, background: on ? "var(--accent-weak)" : "var(--surface)", borderColor: on ? "var(--accent-ring)" : "var(--border)", color: on ? "var(--accent-text)" : "var(--text-2)" }}
                 >
-                  {t === "incidents" && <ShieldIcon />}
-                  {t === "projects" ? "Projects" : "Incidents"}
+                  {t === "automation" && <ShieldIcon />}
+                  {t === "projects" ? "Projects" : "Automation"}
                   <span style={{ opacity: .6 }}>· {count}</span>
                 </button>
               )
@@ -280,17 +280,17 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
           })()
         ) : (
           (() => {
-            const incidents = projects.filter(p => p.project_type === "security_incident")
-            return incidents.length === 0 ? (
+            const automationProjects = projects.filter(p => p.project_type === "security_automation")
+            return automationProjects.length === 0 ? (
               <div style={{ borderRadius: 14, border: "1.5px dashed var(--border-2)", padding: "56px 40px", textAlign: "center" }}>
-                <p style={{ fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>No incidents yet</p>
-                <p style={{ color: "var(--text-3)", fontSize: 14, maxWidth: 320, margin: "0 auto", lineHeight: 1.6 }}>
-                  When Agentic Autopilot triggers a fix, an incident project appears here — one per finding.
+                <p style={{ fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>No automation project yet</p>
+                <p style={{ color: "var(--text-3)", fontSize: 14, maxWidth: 360, margin: "0 auto", lineHeight: 1.6 }}>
+                  Install Security Loop for Claude from the marketplace. A Security Automation project will be created automatically — all triage and fix runs live here.
                 </p>
               </div>
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
-                {incidents.map(p => (
+                {automationProjects.map(p => (
                   <IncidentCard key={p.id} project={p} onSelect={() => selectProject(p.id, p.name)} />
                 ))}
               </div>
@@ -442,7 +442,7 @@ function IncidentCard({ project, onSelect }: { project: Project; onSelect: () =>
           </div>
         </div>
         <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".04em", padding: "2px 8px", borderRadius: 20, background: "rgba(220,38,38,.12)", color: "#dc2626", border: "1px solid rgba(220,38,38,.25)", flexShrink: 0 }}>
-          INCIDENT
+          {project.project_type === "security_automation" ? "AUTOMATION" : "INCIDENT"}
         </span>
       </div>
       <div style={{ fontSize: 12, color: "#b91c1c", display: "flex", alignItems: "center", gap: 6 }}>
