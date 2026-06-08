@@ -13,6 +13,7 @@ interface Workflow {
   updated_at: string
   last_run_status: string | null
   last_run_at: string | null
+  project_name: string | null
 }
 
 function timeAgo(ts: string): string {
@@ -359,9 +360,9 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
           <>
             {view === "list" && (
               <div className="card" style={{ overflow: "hidden" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "2.2fr 1.3fr 1.2fr 0.8fr 64px", gap: 14, padding: "10px 18px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
-                  {["Agent", "Last run", "Success 30d", "Enabled", ""].map((h, i) => (
-                    <div key={i} className="eyebrow" style={{ fontSize: 9.5, textAlign: i === 3 ? "center" : "left" }}>{h}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1.2fr 1.1fr 64px", gap: 14, padding: "10px 18px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+                  {["Agent", "Project", "Last run", "Success 30d", ""].map((h, i) => (
+                    <div key={i} className="eyebrow" style={{ fontSize: 9.5 }}>{h}</div>
                   ))}
                 </div>
                 {rows.length === 0 && (
@@ -403,7 +404,7 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
                   return (
                     <div
                       key={w.id}
-                      style={{ display: "grid", gridTemplateColumns: "2.2fr 1.3fr 1.2fr 0.8fr 64px", gap: 14, padding: "13px 18px", borderBottom: "1px solid var(--border)", alignItems: "center", cursor: "pointer", opacity: enabled[w.id] ? 1 : .65, transition: "background .12s" }}
+                      style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1.2fr 1.1fr 64px", gap: 14, padding: "13px 18px", borderBottom: "1px solid var(--border)", alignItems: "center", cursor: "pointer", transition: "background .12s" }}
                       onClick={() => router.push(`/workflows/${w.id}`)}
                       onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
                       onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}
@@ -438,18 +439,18 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
                         )}
                         <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>edited {timeAgo(w.updated_at)}</div>
                       </div>
+                      <div style={{ fontSize: 12, color: "var(--text-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {w.project_name ?? <span style={{ color: "var(--text-muted)" }}>—</span>}
+                      </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <AgentStatusPill s={mapStatus(w.last_run_status)} />
                         <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{w.last_run_at ? timeAgo(w.last_run_at) : ""}</span>
                       </div>
                       <MiniSpark pct={0} runs={0} />
-                      <div style={{ display: "grid", placeItems: "center" }}>
-                        <Toggle on={!!enabled[w.id]} onClick={() => setEnabled(s => ({ ...s, [w.id]: !s[w.id] }))} />
-                      </div>
                       <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", position: "relative" }}>
                         <button
                           className="btn btn-ghost btn-sm"
-                          title="Run now"
+                          title="Trigger a manual run of this agent"
                           style={{ fontSize: 11, padding: "3px 9px" }}
                           onClick={e => { e.stopPropagation(); setRunParams(""); setRunDryRun(false); setRunGuard(true); setRunError(null); setRunModal({ id: w.id, name: w.name }) }}
                         >Run</button>
@@ -459,14 +460,17 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
                           onClick={e => { e.stopPropagation(); router.push(`/workflows/${w.id}`) }}
                         >→</button>
                         {isAdmin && (
-                          <div ref={menuRef} style={{ position: "relative" }}>
+                          <div style={{ position: "relative" }}>
                             <button
                               className="btn btn-ghost btn-icon btn-sm"
                               title="More"
                               onClick={e => { e.stopPropagation(); setMenuOpen(menuOpen === w.id ? null : w.id) }}
                             >⋯</button>
                             {menuOpen === w.id && (
-                              <div style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, zIndex: 20, minWidth: 130, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, boxShadow: "var(--shadow-md)", padding: "4px 0" }}>
+                              <div
+                                onMouseDown={e => e.stopPropagation()}
+                                style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, zIndex: 20, minWidth: 130, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, boxShadow: "var(--shadow-md)", padding: "4px 0" }}
+                              >
                                 <button
                                   onClick={e => { e.stopPropagation(); setMenuOpen(null); setRenaming(w.id); setRenameValue(w.name) }}
                                   style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--text)", background: "none", border: "none", cursor: "pointer" }}
@@ -474,7 +478,7 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
                                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}
                                 >Rename</button>
                                 <button
-                                  onClick={e => { e.stopPropagation(); setMenuOpen(null); setConfirming(w.id); setConfirmValue("") }}
+                                  onMouseDown={e => { e.stopPropagation(); setMenuOpen(null); setConfirming(w.id); setConfirmValue("") }}
                                   style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--err, #dc2626)", background: "none", border: "none", cursor: "pointer" }}
                                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
                                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}

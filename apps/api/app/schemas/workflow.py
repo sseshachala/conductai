@@ -51,6 +51,7 @@ class WorkflowOut(BaseModel):
     environment_id: Optional[UUID] = None
     playbook_slug: Optional[str] = None
     default_max_turns: Optional[int] = None
+    project_name: Optional[str] = None
 
     class Config:
         from_attributes = True
