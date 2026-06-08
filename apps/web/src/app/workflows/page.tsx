@@ -240,9 +240,13 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
     const h = await authHeaders()
     const wf = workflows.find(w => w.id === id)
     const wsId = project?.id ?? wf?.workspace_id
-    if (wsId) h["X-Workspace-ID"] = wsId
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${id}`, { method: "DELETE", headers: h })
-    if (!res.ok) return
+    const qParam = wsId ? `?workspace_id=${wsId}` : ""
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${id}${qParam}`, { method: "DELETE", headers: h })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      alert(body.detail ?? `Delete failed (${res.status})`)
+      return
+    }
     setWorkflows(prev => prev.filter(w => w.id !== id))
     setConfirming(null)
     setConfirmValue("")
