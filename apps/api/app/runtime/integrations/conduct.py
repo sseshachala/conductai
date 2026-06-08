@@ -104,11 +104,8 @@ def _trigger_fix(params: dict, db=None, workspace_id: str = "") -> dict:
     sec_cfg = db.query(SecurityConfig).filter(SecurityConfig.workspace_id == ws_uuid).first()
     slack_channel = (sec_cfg and sec_cfg.security_slack_channel) or "#security"
 
-    # Security Autopilot Fix lives in the permanent Security Automation project
-    sec_proj = db.query(Project).filter(
-        Project.workspace_id == ws_uuid,
-        Project.project_type == "security_automation",
-    ).first()
+    from app.routers.secure import _latest_security_automation_project
+    sec_proj = _latest_security_automation_project(db, ws_uuid)
     if not sec_proj:
         return {"skipped": True, "reason": "Security Automation project not found — reinstall module"}
 
