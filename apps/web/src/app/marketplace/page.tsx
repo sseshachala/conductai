@@ -18,6 +18,7 @@ interface Playbook {
   trigger?: string
   block_count?: number
   install_count?: number
+  bundled_with?: string
 }
 
 interface PlaybookScore {
@@ -948,6 +949,16 @@ function PlaybookCard({
         {playbook.featured && (
           <span style={{ fontSize: 9.5, fontWeight: 800, color: "var(--accent-text)", letterSpacing: ".05em" }}>
             ★ POPULAR
+          </span>
+        )}
+        {playbook.bundled_with === "security-loop-module" && (
+          <span style={{
+            fontSize: 9.5, fontWeight: 700, letterSpacing: ".04em",
+            padding: "2px 7px", borderRadius: 20,
+            background: "rgba(220,38,38,.10)", color: "#dc2626",
+            border: "1px solid rgba(220,38,38,.25)",
+          }}>
+            🔐 bundled
           </span>
         )}
       </div>
