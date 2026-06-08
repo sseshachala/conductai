@@ -85,6 +85,7 @@ class ConfigOut(BaseModel):
     security_slack_alerts_enabled: bool
     security_slack_channel: Optional[str]
     slack_integration_id: Optional[UUID] = None
+    autopilot_enabled: bool = False
     installed_at: Optional[datetime]
     created_at: datetime
     updated_at: Optional[datetime]
@@ -97,6 +98,7 @@ class ConfigPatch(BaseModel):
     security_slack_alerts_enabled: Optional[bool] = None
     security_slack_channel: Optional[str] = None
     slack_integration_id: Optional[UUID] = None
+    autopilot_enabled: Optional[bool] = None
 
 
 class PolicyOut(BaseModel):
@@ -146,6 +148,7 @@ def _config_to_out(cfg: SecurityConfig) -> ConfigOut:
         security_slack_alerts_enabled=cfg.security_slack_alerts_enabled,
         security_slack_channel=cfg.security_slack_channel,
         slack_integration_id=cfg.slack_integration_id,
+        autopilot_enabled=bool(cfg.autopilot_enabled),
         installed_at=cfg.installed_at,
         created_at=cfg.created_at,
         updated_at=cfg.updated_at,
@@ -160,7 +163,7 @@ def install(
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("guard.settings.edit")),
 ) -> ConfigOut:
-    """Install the Security Loop module for this workspace."""
+    """Install the Security Loop module and auto-provision the Security Loop Automation playbook."""
     ws_uuid = uuid.UUID(workspace_id)
     cfg = db.query(SecurityConfig).filter(SecurityConfig.workspace_id == ws_uuid).first()
     now = _now()
@@ -180,8 +183,59 @@ def install(
     db.commit()
     db.refresh(cfg)
     _seed_builtin_policies(db, workspace_id)
+    _ensure_automation_playbook(db, workspace_id)
     log.info("secure.installed", workspace_id=workspace_id)
     return _config_to_out(cfg)
+
+
+def _ensure_automation_playbook(db: Session, workspace_id: str) -> None:
+    """Create the Security Loop Automation workflow if it doesn't already exist."""
+    from app.models.workflow import Workflow, WorkflowVersion
+    from app.dsl.loader import yaml_to_graph
+    from app.dsl.schema import Workflow as DSLWorkflow
+    import pathlib, yaml as _yaml
+
+    ws_uuid = uuid.UUID(workspace_id)
+    existing = db.query(Workflow).filter(
+        Workflow.workspace_id == ws_uuid,
+        Workflow.playbook_slug == "security_loop",
+    ).first()
+    if existing:
+        return
+
+    playbook_path = pathlib.Path(__file__).parent.parent.parent / "playbooks" / "security_loop.yaml"
+    try:
+        raw = playbook_path.read_text(encoding="utf-8")
+        dsl = DSLWorkflow.model_validate(_yaml.safe_load(raw))
+        graph = yaml_to_graph(dsl)
+    except Exception as exc:
+        log.warning("secure.automation_playbook_failed", error=str(exc))
+        return
+
+    wf = Workflow(
+        id=uuid.uuid4(),
+        workspace_id=ws_uuid,
+        name="Security Loop Automation",
+        playbook_slug="security_loop",
+        created_at=_now(),
+    )
+    db.add(wf)
+    db.flush()
+
+    ver = WorkflowVersion(
+        id=uuid.uuid4(),
+        workflow_id=wf.id,
+        version=1,
+        graph=graph,
+        compiled_artifacts={},
+        created_at=_now(),
+    )
+    db.add(ver)
+    db.flush()
+
+    wf.current_version_id = ver.id
+    db.commit()
+    log.info("secure.automation_playbook_created", workspace_id=workspace_id)
 
 
 @router.delete("/install", status_code=204)
@@ -242,6 +296,8 @@ def patch_config(
         cfg.security_slack_channel = body.security_slack_channel
     if body.slack_integration_id is not None:
         cfg.slack_integration_id = body.slack_integration_id
+    if body.autopilot_enabled is not None:
+        cfg.autopilot_enabled = body.autopilot_enabled
 
     cfg.updated_at = _now()
     db.commit()

@@ -24,6 +24,7 @@ interface SecureConfig {
   security_slack_alerts_enabled: boolean
   security_slack_channel: string | null
   slack_integration_id: string | null
+  autopilot_enabled: boolean
 }
 
 function GuardToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
@@ -64,6 +65,7 @@ function SettingsContent() {
     security_slack_alerts_enabled: false,
     security_slack_channel: null,
     slack_integration_id: null,
+    autopilot_enabled: false,
   })
   const [channelInput, setChannelInput] = useState("")
   const [channelSaved, setChannelSaved] = useState(false)
@@ -99,6 +101,7 @@ function SettingsContent() {
           security_slack_alerts_enabled: data.security_slack_alerts_enabled ?? false,
           security_slack_channel: data.security_slack_channel ?? null,
           slack_integration_id: data.slack_integration_id ?? null,
+          autopilot_enabled: data.autopilot_enabled ?? false,
         })
         setChannelInput((data.security_slack_channel ?? "").replace(/^#+/, ""))
       }
@@ -204,7 +207,10 @@ function SettingsContent() {
               <span style={{ width: 30, height: 30, borderRadius: 8, background: "#dc2626", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
                 <SecureLoopIcon size={15} />
               </span>
-              <div style={{ fontWeight: 650, fontSize: 14.5 }}>Security Loop — Claude Code</div>
+              <div>
+                <div style={{ fontWeight: 650, fontSize: 14.5 }}>Security Loop Automation</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 1 }}>Auto-triages every finding · Claude Code</div>
+              </div>
             </div>
 
             <div style={{ padding: "4px 20px 16px" }}>
@@ -237,6 +243,46 @@ function SettingsContent() {
                 />
               </div>
 
+              {/* Autopilot */}
+              <div style={{ padding: "13px 0", borderTop: "1px solid var(--border)" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13.5 }}>Autopilot</div>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 20, background: config.autopilot_enabled ? "#fef3c7" : "var(--surface-2)", color: config.autopilot_enabled ? "#92400e" : "var(--text-muted)", letterSpacing: ".04em" }}>
+                        {config.autopilot_enabled ? "ON" : "OFF"}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--text-3)" }}>
+                      When on, real findings are sent through the fix pipeline automatically — a PR is opened for every confirmed vulnerability. When off, findings are triaged and flagged but fixing is manual.
+                    </div>
+                    {config.autopilot_enabled && (
+                      <div style={{ marginTop: 8, fontSize: 11.5, background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 12px", color: "#92400e" }}>
+                        Every confirmed finding with a linked repo will trigger a fix PR automatically. Requires <strong>security-autopilot-fix</strong> playbook installed.
+                      </div>
+                    )}
+                  </div>
+                  <GuardToggle
+                    on={config.autopilot_enabled}
+                    onClick={async () => {
+                      if (!isAdmin) return
+                      const next = !config.autopilot_enabled
+                      setConfig(c => ({ ...c, autopilot_enabled: next }))
+                      try {
+                        const res = await fetch(`${base}/secure/config?workspace_id=${wsId}`, {
+                          method: "PATCH", headers: await authHeaders(),
+                          body: JSON.stringify({ autopilot_enabled: next }),
+                        })
+                        if (!res.ok) throw new Error()
+                      } catch {
+                        setConfig(c => ({ ...c, autopilot_enabled: !next }))
+                        setError("Save failed")
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+
               {config.security_slack_alerts_enabled && (
                 <div style={{ paddingBottom: 6 }}>
                   <SlackIntegrationPicker
@@ -263,10 +309,13 @@ function SettingsContent() {
           <div style={{ background: "var(--info-bg)", border: "1px solid var(--info-bd)", borderRadius: 12, padding: "14px 18px" }}>
             <p style={{ fontSize: 12, fontWeight: 600, color: "var(--info)", marginBottom: 6 }}>How it works</p>
             <p style={{ fontSize: 12, color: "var(--info)", marginBottom: 4 }}>
-              Security Emit activates on every developer's machine on next <code style={{ background: "rgba(37,99,235,.12)", padding: "1px 5px", borderRadius: 4, fontFamily: "ui-monospace,monospace" }}>conduct guard sync</code>.
+              <strong>Security Emit</strong> — passive classifier runs on every Claude Code tool call. Findings surface automatically, no developer action required.
+            </p>
+            <p style={{ fontSize: 12, color: "var(--info)", marginBottom: 4 }}>
+              <strong>Auto-triage</strong> — Security Loop Automation triages every finding with AI. False positives are dismissed instantly. Real findings are marked for review.
             </p>
             <p style={{ fontSize: 12, color: "var(--info)" }}>
-              Toggle here → flag syncs to all Claude Code sessions within 60 seconds. No per-developer action needed.
+              <strong>Autopilot</strong> — when enabled, confirmed findings with a repo are sent through the fix pipeline. A PR is opened automatically. Toggle syncs within 60 seconds.
             </p>
           </div>
         </div>

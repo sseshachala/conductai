@@ -249,6 +249,8 @@ def _trigger_security_loop(finding: SecurityFinding, workspace_id: str, db: Sess
     """Look up the security_loop workflow and enqueue a run for this finding."""
     from app.models.workflow import Workflow, WorkflowVersion
     from app.models.run import Run
+    from app.models.security_config import SecurityConfig
+    import uuid as _uuid
 
     workflow = (
         db.query(Workflow)
@@ -260,6 +262,13 @@ def _trigger_security_loop(finding: SecurityFinding, workspace_id: str, db: Sess
     )
     if not workflow or not workflow.current_version_id:
         return
+
+    try:
+        ws_uuid = _uuid.UUID(workspace_id)
+        sec_cfg = db.query(SecurityConfig).filter(SecurityConfig.workspace_id == ws_uuid).first()
+        autopilot_enabled = bool(sec_cfg and sec_cfg.autopilot_enabled)
+    except Exception:
+        autopilot_enabled = False
 
     initial_state = {
         "_trigger": {
@@ -275,6 +284,7 @@ def _trigger_security_loop(finding: SecurityFinding, workspace_id: str, db: Sess
             "repo_full_name": finding.repo_full_name,
             "commit_sha": finding.commit_sha,
             "source_run_id": finding.source_run_id,
+            "autopilot_enabled": autopilot_enabled,
         },
         "__input_contract": {
             "version": "phase2.v1",
