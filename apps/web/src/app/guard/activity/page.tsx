@@ -253,7 +253,11 @@ function ActivityContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getToken, teamId, effectiveDeveloperFilter, filterTool, filterDecision, filterSince, filterUntil])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+    const t = setInterval(load, 30_000)
+    return () => clearInterval(t)
+  }, [load])
 
   async function loadMore() {
     setLoadingMore(true)

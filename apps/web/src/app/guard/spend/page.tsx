@@ -606,7 +606,11 @@ function SpendContent() {
     }
   }, [getToken, teamId, month])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+    const t = setInterval(load, 30_000)
+    return () => clearInterval(t)
+  }, [load])
 
   useEffect(() => {
     if (teamError) setError(teamError)
