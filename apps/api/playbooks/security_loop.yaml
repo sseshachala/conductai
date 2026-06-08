@@ -1,24 +1,28 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # security_loop — auto-triage every security finding
 #
-# Fires automatically whenever a new finding is ingested via POST /security-findings.
-# The ingest endpoint enqueues a run with playbook_slug='security_loop', injecting
-# the full finding payload into _trigger.
-#
 # Flow:
-#   triage (brain) → route_severity (logic) → alert_slack (output) for critical/high
-#                                            → log_only   (output) for medium/low
-#
-# If the brain decides the finding is a false positive, it sets
-# is_real=false and recommended_action=dismiss — route_severity falls
-# to the fail branch (log_only) and the status is updated to dismissed
-# by the update_status block that precedes it.
+#   triage (brain) → dismiss_gate (logic: is_real==false?)
+#                      pass → auto_dismiss (conduct/update_finding dismissed) → log_false_positive
+#                      fail → route_severity
+#                               pass → auto_triage (conduct/update_finding triaging) → alert_slack
+#                               fail → log_only
 # ──────────────────────────────────────────────────────────────────────────────
 name: Security Loop
 version: 1
 description: >
-  Auto-triage every security finding. Enriches with context, determines
-  if real or false positive, updates status, alerts on critical/high.
+  Auto-triage every security finding. Dismisses false positives automatically.
+  Alerts on critical/high real findings, logs medium/low quietly.
+
+inputs:
+  model:
+    label: AI Model
+    default: claude-haiku-4-5-20251001
+    type: select
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+      - claude-opus-4-7
 
 on:
   internal:
@@ -28,7 +32,7 @@ blocks:
   triage:
     type: brain
     mode: single
-    model: "claude-haiku-4-5-20251001"
+    model: "{{inputs.model}}"
     label: Triage finding
     description: |
       You are a senior application-security engineer performing rapid first-pass
@@ -59,6 +63,8 @@ blocks:
       - The vulnerability pattern cannot be triggered by an untrusted caller
         given the code context described
       - The finding type is "other" AND the description is too vague to act on
+      - The description says "mentioned in AI output" — this means the scanner
+        matched a keyword in an AI response, not actual code. Always dismiss these.
 
       Real-finding signals:
       - Hardcoded credential that is not a placeholder
@@ -77,15 +83,43 @@ blocks:
         confidence         — integer 0-100: your confidence in the determination
         triage_notes       — string: one or two sentences explaining the decision
         recommended_action — one of: "fix" | "monitor" | "dismiss"
-    next: route_severity
+    next: dismiss_gate
+
+  dismiss_gate:
+    type: logic
+    label: False positive?
+    condition: "{{triage.is_real == false}}"
+    next:
+      pass: auto_dismiss
+      fail: route_severity
+
+  auto_dismiss:
+    type: tool
+    integration: conduct
+    action: update_finding
+    label: Auto-dismiss false positive
+    params:
+      finding_id: "{{_trigger.finding_id}}"
+      status: dismissed
+    next: log_false_positive
 
   route_severity:
     type: logic
-    label: Critical or high real finding?
-    condition: "{{triage.is_real == true and (_trigger.severity == 'critical' or _trigger.severity == 'high')}}"
+    label: Critical or high?
+    condition: "{{_trigger.severity == 'critical' or _trigger.severity == 'high'}}"
     next:
-      pass: alert_slack
+      pass: auto_triage
       fail: log_only
+
+  auto_triage:
+    type: tool
+    integration: conduct
+    action: update_finding
+    label: Mark finding as triaging
+    params:
+      finding_id: "{{_trigger.finding_id}}"
+      status: triaging
+    next: alert_slack
 
   alert_slack:
     type: output
@@ -107,17 +141,23 @@ blocks:
       slack:
         channel: "#security"
 
+  log_false_positive:
+    type: output
+    label: Log dismissed false positive
+    description: |
+      Finding {{_trigger.finding_id}} auto-dismissed as false positive ({{triage.confidence}}% confidence).
+      Reason: {{triage.triage_notes}}
+    output:
+      via: slack
+      slack:
+        channel: "#security-log"
+
   log_only:
     type: output
-    label: Log medium/low or false positive
+    label: Log medium/low finding
     description: |
-      {% if triage.is_real == false %}
-      Finding {{_trigger.finding_id}} dismissed as false positive ({{triage.confidence}}% confidence).
-      Reason: {{triage.triage_notes}}
-      {% else %}
       [{{_trigger.severity | upper}}] {{_trigger.type}} logged — {{_trigger.repo_full_name}} · {{_trigger.file}}:{{_trigger.line}}
       Triage: {{triage.triage_notes}}
-      {% endif %}
     output:
       via: slack
       slack:
