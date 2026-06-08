@@ -1105,6 +1105,18 @@ def _execute_brain(
             cache_system=True,
         )
         text = next((b.text for b in response.content if isinstance(b, LLMTextBlock)), "")
+        if db and run_id and block_id:
+            _emit(db, run_id, block_id, "brain_tool_call", {
+                "turn": 1,
+                "tool": "single_call",
+                "summary": text[:300],
+                "input": user_message[:600],
+                "output": text,
+                "model": model_id,
+                "provider": provider,
+                "input_tokens": response.usage.input_tokens,
+                "output_tokens": response.usage.output_tokens,
+            })
         result = {
             "output": text,
             "turns": 1,
