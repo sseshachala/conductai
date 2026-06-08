@@ -2344,8 +2344,23 @@ def cmd_test_security_verify(args):
     TIMEOUT   = 300  # 15 runs × ~28s / 4 workers ≈ 105s; 300s gives headroom for queue variance
     POLL_SECS = 5
 
-    # ── Step 1: post test findings ────────────────────────────────────────
+    # ── Step 0: fresh Security Automation project ─────────────────────────
     print(f"\n{BOLD}▶ conduct test-security-verify{RESET}")
+    print(f"  {GRAY}Step 0/3 — refreshing Security Automation project…{RESET}")
+    try:
+        req = urllib.request.Request(
+            f"{api_url}/secure/refresh-automation?workspace_id={workspace_id}",
+            data=b"{}",
+            headers={"Content-Type": "application/json", "X-Api-Key": api_key},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            _json.loads(resp.read())
+            print(f"  {GREEN}✓{RESET}  Fresh project created with latest YAML\n")
+    except Exception as e:
+        print(f"  {YELLOW}⚠ refresh failed ({e}) — using existing project{RESET}\n")
+
+    # ── Step 1: post test findings ────────────────────────────────────────
     print(f"  {GRAY}Step 1/3 — posting {len(_SECURITY_TEST_CASES)} test findings…{RESET}\n")
 
     # Clean previous run
@@ -2400,6 +2415,7 @@ def cmd_test_security_verify(args):
 
     # ── Step 2: poll until all findings move off "open" ───────────────────
     print(f"\n  {GRAY}Step 2/3 — waiting for triage pipeline (timeout {TIMEOUT}s)…{RESET}\n")
+
     deadline = _time.time() + TIMEOUT
     final_statuses: dict[str, str] = {}
 
@@ -2434,6 +2450,7 @@ def cmd_test_security_verify(args):
 
     # ── Step 3: report per-finding results ────────────────────────────────
     print(f"\n  {GRAY}Step 3/3 — results{RESET}\n")
+
 
     all_pass = True
     name_by_id = {}
