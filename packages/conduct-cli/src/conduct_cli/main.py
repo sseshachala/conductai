@@ -2217,7 +2217,7 @@ def cmd_run(args):
 # ── conduct sync / test-guard / test-security ────────────────────────────────
 
 def cmd_sync(args):
-    """Run guard sync + security policy sync in one shot."""
+    """Sync Guard policies (and Security Loop policies if installed)."""
     import conduct_cli.guard as _g
     print(f"\n{BOLD}▶ conduct sync{RESET}\n")
     _g.cmd_guard_sync(args)
@@ -2533,7 +2533,7 @@ def main():
     mcp_sub.add_parser("install", help="Register conduct-mcp in Claude Code and Codex")
 
     # conduct sync
-    sub.add_parser("sync", help="Sync Guard policies + Security Loop in one shot")
+    sub.add_parser("sync", help="Sync Guard policies (and Security Loop policies if installed)")
 
     # conduct test-guard / test-security
     sub.add_parser("test-guard",    help="Fire a synthetic event per guard policy rule and show decisions")
