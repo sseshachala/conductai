@@ -8,6 +8,7 @@ import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { SecureLoopIcon } from "../_components"
+import { SlackIntegrationPicker } from "@/components/SlackIntegrationPicker"
 
 // Known tools — display name + support state
 const KNOWN_TOOLS: { key: string; label: string; supported: boolean }[] = [
@@ -22,6 +23,7 @@ interface SecureConfig {
   security_emit_enabled: boolean
   security_slack_alerts_enabled: boolean
   security_slack_channel: string | null
+  slack_integration_id: string | null
 }
 
 function GuardToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
@@ -61,6 +63,7 @@ function SettingsContent() {
     security_emit_enabled: true,
     security_slack_alerts_enabled: false,
     security_slack_channel: null,
+    slack_integration_id: null,
   })
   const [channelInput, setChannelInput] = useState("")
   const [channelSaved, setChannelSaved] = useState(false)
@@ -95,6 +98,7 @@ function SettingsContent() {
           security_emit_enabled: data.security_emit_enabled ?? true,
           security_slack_alerts_enabled: data.security_slack_alerts_enabled ?? false,
           security_slack_channel: data.security_slack_channel ?? null,
+          slack_integration_id: data.slack_integration_id ?? null,
         })
         setChannelInput((data.security_slack_channel ?? "").replace(/^#+/, ""))
       }
@@ -233,31 +237,20 @@ function SettingsContent() {
                 />
               </div>
 
-              {/* Channel input */}
               {config.security_slack_alerts_enabled && (
                 <div style={{ paddingBottom: 6 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)", marginBottom: 6 }}>Alert channel</div>
-                  <div style={{ display: "flex", gap: 9 }}>
-                    <div style={{ display: "flex", alignItems: "center", flex: 1, border: "1px solid var(--border-2)", borderRadius: 8, overflow: "hidden" }}>
-                      <span style={{ padding: "0 10px", fontSize: 13, color: "var(--text-muted)", background: "var(--surface-2)", borderRight: "1px solid var(--border)", alignSelf: "stretch", display: "flex", alignItems: "center", userSelect: "none" }}>#</span>
-                      <input
-                        type="text"
-                        value={channelInput}
-                        onChange={e => isAdmin && setChannelInput(e.target.value.replace(/^#+/, ""))}
-                        placeholder="security-alerts"
-                        disabled={!isAdmin}
-                        className="mono"
-                        style={{ flex: 1, fontSize: 13, padding: "0 12px", height: 36, border: "none", background: "transparent", color: "var(--text)", outline: "none", opacity: isAdmin ? 1 : 0.6 }}
-                        onKeyDown={e => { if (e.key === "Enter" && isAdmin) handleSaveChannel() }}
-                      />
-                    </div>
-                    {isAdmin && (
-                      <button onClick={handleSaveChannel} disabled={savingChannel} className="btn btn-ghost btn-sm">
-                        {savingChannel ? "Saving…" : "Save"}
-                      </button>
-                    )}
-                    {channelSaved && <span style={{ fontSize: 12, color: "var(--ok)", fontWeight: 600, alignSelf: "center" }}>Saved</span>}
-                  </div>
+                  <SlackIntegrationPicker
+                    base={base}
+                    wsId={wsId}
+                    buildHeaders={authHeaders}
+                    integrationId={config.slack_integration_id}
+                    channel={config.security_slack_channel ?? ""}
+                    isAdmin={isAdmin}
+                    onSave={async (integrationId, channel) => {
+                      await patch({ slack_integration_id: integrationId as any, security_slack_channel: channel || null })
+                      setConfig(c => ({ ...c, slack_integration_id: integrationId, security_slack_channel: channel || null }))
+                    }}
+                  />
                   <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 8 }}>
                     Format: <code style={{ background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4, fontFamily: "ui-monospace,monospace" }}>[HIGH] secret-leak in config.py:12 · claude-code</code>
                   </div>

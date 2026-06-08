@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, require_workspace_role, audit
+from app.core.auth import get_workspace_id, require_workspace_role, audit, require_permission
 from app.core.crypto import decrypt, encrypt
 from app.core.database import get_db
 from app.models.integration import Integration
@@ -673,6 +673,37 @@ def register_vercel_webhook(
 
     hook = r.json()
     return {"registered": True, "hook_id": hook.get("id"), "url": webhook_url, "existing": False}
+
+
+# ---------------------------------------------------------------------------
+# Slack integrations listing — used by settings dropdowns
+# ---------------------------------------------------------------------------
+
+class SlackIntegrationOut(BaseModel):
+    id: str
+    handle: str
+    environment_id: str | None
+
+
+@router.get("/integrations/slack", response_model=list[SlackIntegrationOut])
+def list_slack_integrations(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.settings.edit")),
+) -> list[SlackIntegrationOut]:
+    """List all Slack integrations for the workspace — used by settings dropdowns."""
+    rows = db.query(Integration).filter(
+        Integration.workspace_id == workspace_id,
+        Integration.service == "slack",
+    ).order_by(Integration.created_at).all()
+    return [
+        SlackIntegrationOut(
+            id=str(r.id),
+            handle=r.handle,
+            environment_id=str(r.environment_id) if r.environment_id else None,
+        )
+        for r in rows
+    ]
 
 
 # ---------------------------------------------------------------------------

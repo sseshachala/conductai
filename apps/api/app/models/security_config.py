@@ -17,6 +17,7 @@ class SecurityConfig(Base):
     security_emit_enabled = Column(Boolean, nullable=False, default=True)
     security_slack_alerts_enabled = Column(Boolean, nullable=False, default=False)
     security_slack_channel = Column(String(100), nullable=True)
+    slack_integration_id = Column(UUID(as_uuid=True), nullable=True)
     installed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(
         DateTime(timezone=True),

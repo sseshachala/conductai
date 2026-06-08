@@ -84,6 +84,7 @@ class ConfigOut(BaseModel):
     security_emit_enabled: bool
     security_slack_alerts_enabled: bool
     security_slack_channel: Optional[str]
+    slack_integration_id: Optional[UUID] = None
     installed_at: Optional[datetime]
     created_at: datetime
     updated_at: Optional[datetime]
@@ -95,6 +96,7 @@ class ConfigPatch(BaseModel):
     security_emit_enabled: Optional[bool] = None
     security_slack_alerts_enabled: Optional[bool] = None
     security_slack_channel: Optional[str] = None
+    slack_integration_id: Optional[UUID] = None
 
 
 class PolicyOut(BaseModel):
@@ -143,6 +145,7 @@ def _config_to_out(cfg: SecurityConfig) -> ConfigOut:
         security_emit_enabled=cfg.security_emit_enabled,
         security_slack_alerts_enabled=cfg.security_slack_alerts_enabled,
         security_slack_channel=cfg.security_slack_channel,
+        slack_integration_id=cfg.slack_integration_id,
         installed_at=cfg.installed_at,
         created_at=cfg.created_at,
         updated_at=cfg.updated_at,
@@ -237,6 +240,8 @@ def patch_config(
         cfg.security_slack_alerts_enabled = body.security_slack_alerts_enabled
     if body.security_slack_channel is not None:
         cfg.security_slack_channel = body.security_slack_channel
+    if body.slack_integration_id is not None:
+        cfg.slack_integration_id = body.slack_integration_id
 
     cfg.updated_at = _now()
     db.commit()

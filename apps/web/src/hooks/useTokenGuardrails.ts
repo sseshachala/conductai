@@ -13,6 +13,7 @@ export interface TokenGuardrails {
   metrics_budgets: boolean
   manual_keys: string[]
   slack_webhook_url: string | null
+  slack_integration_id: string | null
 }
 
 const DEFAULTS: TokenGuardrails = {
@@ -25,6 +26,7 @@ const DEFAULTS: TokenGuardrails = {
   metrics_budgets: true,
   manual_keys: ["prompt_caching", "model_routing", "prompt_splitting"],
   slack_webhook_url: null,
+  slack_integration_id: null,
 }
 
 interface UseTokenGuardrailsResult {
@@ -74,6 +76,7 @@ export async function patchTokenGuardrails(
   apiUrl: string,
   patch: Partial<Pick<TokenGuardrails, "prompt_caching" | "model_routing" | "prompt_splitting">> & {
     slack_webhook_url?: string | null
+    slack_integration_id?: string | null
   },
 ): Promise<TokenGuardrails> {
   const res = await fetch(`${apiUrl}/guard/token-guardrails?workspace_id=${workspaceId}`, {
