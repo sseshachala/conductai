@@ -151,7 +151,6 @@ def _trigger_fix(params: dict, db=None, workspace_id: str = "") -> dict:
         ver = WorkflowVersion(
             id=_uuid.uuid4(),
             workflow_id=workflow.id,
-            version=1,
             graph=graph,
             compiled_artifacts={},
         )
