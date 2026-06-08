@@ -24,6 +24,7 @@ class GuardConfig(Base):
     guardrail_snapshot = Column(JSONB, nullable=True)
     slack_webhook_url = Column(String(2048), nullable=True)
     slack_integration_id = Column(UUID(as_uuid=True), nullable=True)
+    alert_slack_integration_id = Column(UUID(as_uuid=True), nullable=True)
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
