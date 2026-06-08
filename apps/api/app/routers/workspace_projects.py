@@ -27,6 +27,8 @@ class ProjectOut(BaseModel):
     slug: str = ""
     created_at: datetime
     agent_count: int = 0
+    project_type: str = "user"
+    security_finding_id: str | None = None
 
 
 class ProjectCreate(BaseModel):
@@ -217,6 +219,7 @@ def list_projects(
     _enforce_workspace(workspace_id, active_workspace_id)
     rows = db.execute(text("""
         SELECT p.id, p.workspace_id, p.name, p.slug, p.created_at,
+               p.project_type, p.security_finding_id,
                COUNT(w.id) AS agent_count
         FROM projects p
         LEFT JOIN workflows w ON w.project_id = p.id
@@ -225,7 +228,9 @@ def list_projects(
         ORDER BY p.created_at ASC
     """), {"ws": workspace_id}).fetchall()
     return [ProjectOut(id=str(r.id), workspace_id=str(r.workspace_id), name=r.name,
-                       slug=r.slug or "", created_at=r.created_at, agent_count=r.agent_count or 0)
+                       slug=r.slug or "", created_at=r.created_at, agent_count=r.agent_count or 0,
+                       project_type=r.project_type or "user",
+                       security_finding_id=r.security_finding_id)
             for r in rows]
 
 
@@ -265,6 +270,10 @@ def rename_project(
     db: Session = Depends(get_db),
 ):
     _enforce_workspace(workspace_id, active_workspace_id)
+    guard = db.execute(text("SELECT project_type FROM projects WHERE id = :id AND workspace_id = :ws"),
+                       {"id": project_id, "ws": workspace_id}).fetchone()
+    if guard and (guard.project_type or "user") == "security_incident":
+        raise HTTPException(status_code=403, detail="Incident projects are read-only")
     name = (body.get("name") or "").strip()
     if not name:
         raise HTTPException(status_code=422, detail="Name cannot be empty")
@@ -297,10 +306,12 @@ def delete_project(
 ):
     _enforce_workspace(workspace_id, active_workspace_id)
     row = db.execute(text(
-        "SELECT id FROM projects WHERE id = :id AND workspace_id = :ws"
+        "SELECT id, project_type FROM projects WHERE id = :id AND workspace_id = :ws"
     ), {"id": project_id, "ws": workspace_id}).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Project not found")
+    if (row.project_type or "user") == "security_incident":
+        raise HTTPException(status_code=403, detail="Incident projects cannot be deleted")
 
     # Null out project_id on workflows (don't delete the agents)
     db.execute(text("UPDATE workflows SET project_id = NULL WHERE project_id = :pid"),

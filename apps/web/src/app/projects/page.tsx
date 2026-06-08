@@ -14,6 +14,8 @@ interface Project {
   agent_count: number
   created_at: string
   workspace_id?: string
+  project_type?: string
+  security_finding_id?: string
 }
 
 function timeAgo(ts: string): string {
@@ -72,6 +74,14 @@ function DotsIcon() {
   )
 }
 
+function ShieldIcon() {
+  return (
+    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  )
+}
+
 // ── Auth wrapper ──────────────────────────────────────────────────────────────
 
 export default function ProjectsPage() {
@@ -97,6 +107,7 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [tab, setTab] = useState<"projects" | "incidents">("projects")
 
   async function authHeaders(): Promise<Record<string, string>> {
     const h: Record<string, string> = {}
@@ -220,31 +231,71 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
           </div>
         </div>
 
+        {/* Tabs */}
+        {!loading && (
+          <div style={{ display: "flex", gap: 6, marginBottom: 20 }}>
+            {(["projects", "incidents"] as const).map(t => {
+              const count = t === "projects"
+                ? projects.filter(p => (p.project_type ?? "user") === "user").length
+                : projects.filter(p => p.project_type === "security_incident").length
+              const on = tab === t
+              return (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  className="chip"
+                  style={{ height: 30, cursor: "pointer", fontWeight: 600, display: "flex", alignItems: "center", gap: 5, background: on ? "var(--accent-weak)" : "var(--surface)", borderColor: on ? "var(--accent-ring)" : "var(--border)", color: on ? "var(--accent-text)" : "var(--text-2)" }}
+                >
+                  {t === "incidents" && <ShieldIcon />}
+                  {t === "projects" ? "Projects" : "Incidents"}
+                  <span style={{ opacity: .6 }}>· {count}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         {/* Content */}
         {loading ? (
           <LoadingGrid />
-        ) : projects.length === 0 ? (
-          <EmptyState onNew={() => setShowModal(true)} />
+        ) : tab === "projects" ? (
+          (() => {
+            const userProjects = projects.filter(p => (p.project_type ?? "user") === "user")
+            return userProjects.length === 0 ? (
+              <EmptyState onNew={() => setShowModal(true)} />
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
+                {userProjects.map(p => (
+                  <ProjectCard
+                    key={p.id}
+                    project={p}
+                    onSelect={() => selectProject(p.id, p.name)}
+                    onRename={(name) => renameProject(p.id, name)}
+                    onDelete={() => deleteProject(p.id)}
+                  />
+                ))}
+                <NewProjectTile onClick={() => setShowModal(true)} />
+              </div>
+            )
+          })()
         ) : (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-              gap: 16,
-            }}
-          >
-            {projects.map(p => (
-              <ProjectCard
-                key={p.id}
-                project={p}
-                onSelect={() => selectProject(p.id, p.name)}
-                onRename={(name) => renameProject(p.id, name)}
-                onDelete={() => deleteProject(p.id)}
-              />
-            ))}
-            {/* New project dashed tile */}
-            <NewProjectTile onClick={() => setShowModal(true)} />
-          </div>
+          (() => {
+            const incidents = projects.filter(p => p.project_type === "security_incident")
+            return incidents.length === 0 ? (
+              <div style={{ borderRadius: 14, border: "1.5px dashed var(--border-2)", padding: "56px 40px", textAlign: "center" }}>
+                <p style={{ fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>No incidents yet</p>
+                <p style={{ color: "var(--text-3)", fontSize: 14, maxWidth: 320, margin: "0 auto", lineHeight: 1.6 }}>
+                  When Agentic Autopilot triggers a fix, an incident project appears here — one per finding.
+                </p>
+              </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
+                {incidents.map(p => (
+                  <IncidentCard key={p.id} project={p} onSelect={() => selectProject(p.id, p.name)} />
+                ))}
+              </div>
+            )
+          })()
         )}
       </div>
 
@@ -353,6 +404,54 @@ function NewProjectTile({ onClick }: { onClick: () => void }) {
       <div style={{ textAlign: "center" }}>
         <PlusIcon size={22} />
         <div style={{ fontSize: 13.5, fontWeight: 600, marginTop: 6 }}>New project</div>
+      </div>
+    </div>
+  )
+}
+
+// ── Incident card ─────────────────────────────────────────────────────────────
+
+function IncidentCard({ project, onSelect }: { project: Project; onSelect: () => void }) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <div
+      onClick={onSelect}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        borderRadius: 14,
+        border: "1px solid #fecaca",
+        background: hovered ? "#fff5f5" : "#fef2f2",
+        overflow: "hidden",
+        cursor: "pointer",
+        boxShadow: hovered ? "var(--shadow-md)" : "none",
+        transition: "background .15s, box-shadow .15s",
+        padding: "18px 20px",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 10, background: "#dc2626", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
+          <ShieldIcon />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 650, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "#991b1b" }}>
+            {project.name}
+          </div>
+          <div style={{ fontSize: 11, color: "#b91c1c", marginTop: 2 }}>
+            {timeAgo(project.created_at)}
+          </div>
+        </div>
+        <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".04em", padding: "2px 8px", borderRadius: 20, background: "rgba(220,38,38,.12)", color: "#dc2626", border: "1px solid rgba(220,38,38,.25)", flexShrink: 0 }}>
+          INCIDENT
+        </span>
+      </div>
+      <div style={{ fontSize: 12, color: "#b91c1c", display: "flex", alignItems: "center", gap: 6 }}>
+        <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        {project.security_finding_id ? `Finding ${project.security_finding_id.slice(0, 8)}` : "Security finding"}
+      </div>
+      <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #fecaca", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 12, color: "#b91c1c" }}>{project.agent_count} agent{project.agent_count !== 1 ? "s" : ""}</span>
+        <span style={{ fontSize: 12, color: "#dc2626", fontWeight: 600 }}>View incident →</span>
       </div>
     </div>
   )
