@@ -2319,6 +2319,159 @@ def cmd_test_security(args):
     print(f"\n  {CYAN}→ View findings: {api_url.replace('api.', 'app.')}/secure/activity{RESET}\n")
 
 
+def cmd_test_security_verify(args):
+    """Post test findings and verify the full triage pipeline end-to-end."""
+    from conduct_cli.guard import CONFIG_PATH
+    import json as _json
+    import time as _time
+
+    try:
+        cfg = _json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
+    except Exception:
+        cfg = {}
+
+    workspace_id = cfg.get("workspace_id")
+    api_key      = cfg.get("api_key", "")
+    user_email   = cfg.get("user_email", "")
+    api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+
+    if not workspace_id:
+        print(f"{RED}Not configured. Run: conduct guard setup{RESET}")
+        sys.exit(1)
+
+    import urllib.request
+
+    TIMEOUT   = 120  # seconds to wait for all findings to leave "open"
+    POLL_SECS = 5
+
+    # ── Step 1: post test findings ────────────────────────────────────────
+    print(f"\n{BOLD}▶ conduct test-security-verify{RESET}")
+    print(f"  {GRAY}Step 1/3 — posting {len(_SECURITY_TEST_CASES)} test findings…{RESET}\n")
+
+    # Clean previous run
+    try:
+        req = urllib.request.Request(
+            f"{api_url}/security-findings?workspace_id={workspace_id}&source_run_id=conduct-test-security",
+            headers={"X-Api-Key": api_key},
+            method="DELETE",
+        )
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            r = _json.loads(resp.read())
+            n = r.get("deleted", 0)
+            if n:
+                print(f"  {GRAY}↺ Cleaned {n} previous test finding{'s' if n != 1 else ''}{RESET}\n")
+    except Exception:
+        pass
+
+    finding_ids: list[str] = []
+    for name, vtype, severity, description, test_file, test_line in _SECURITY_TEST_CASES:
+        body: dict = {
+            "tool": "claude-code",
+            "severity": severity,
+            "type": vtype,
+            "description": f"[TEST] {description}",
+            "reporter_email": user_email,
+            "source_run_id": "conduct-test-security",
+        }
+        if test_file:
+            body["file"] = test_file
+        if test_line is not None:
+            body["line"] = test_line
+        payload = _json.dumps(body).encode()
+        try:
+            req = urllib.request.Request(
+                f"{api_url}/security-findings?workspace_id={workspace_id}",
+                data=payload,
+                headers={"Content-Type": "application/json", "X-Api-Key": api_key},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                r = _json.loads(resp.read())
+                fid = r.get("id", "")
+                finding_ids.append(fid)
+                sev_color = RED if severity == "critical" else (YELLOW if severity == "high" else CYAN)
+                print(f"  {GREEN}✓{RESET}  {name:<22} {sev_color}{severity:<8}{RESET}  {GRAY}{fid[:8]}{RESET}")
+        except Exception as e:
+            print(f"  {RED}✕{RESET}  {name:<22} {RED}FAILED — {e}{RESET}")
+
+    if not finding_ids:
+        print(f"\n{RED}✗ No findings posted — aborting.{RESET}\n")
+        sys.exit(1)
+
+    # ── Step 2: poll until all findings move off "open" ───────────────────
+    print(f"\n  {GRAY}Step 2/3 — waiting for triage pipeline (timeout {TIMEOUT}s)…{RESET}\n")
+    deadline = _time.time() + TIMEOUT
+    final_statuses: dict[str, str] = {}
+
+    while _time.time() < deadline:
+        try:
+            req = urllib.request.Request(
+                f"{api_url}/security-findings?workspace_id={workspace_id}&source_run_id=conduct-test-security&limit=100",
+                headers={"X-Api-Key": api_key},
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                findings = _json.loads(resp.read())
+        except Exception as e:
+            print(f"  {YELLOW}⚠ poll error: {e}{RESET}")
+            _time.sleep(POLL_SECS)
+            continue
+
+        for f in findings:
+            if f["id"] in finding_ids:
+                final_statuses[f["id"]] = f["status"]
+
+        still_open = [fid for fid in finding_ids if final_statuses.get(fid) == "open"]
+        done_count = len(finding_ids) - len(still_open)
+        elapsed = int(_time.time() - (deadline - TIMEOUT))
+        print(f"  {GRAY}[{elapsed:>3}s] {done_count}/{len(finding_ids)} processed…{RESET}", end="\r")
+
+        if not still_open:
+            print()  # newline after \r
+            break
+        _time.sleep(POLL_SECS)
+    else:
+        print(f"\n\n  {RED}✗ Timeout — {len(still_open)} finding(s) still 'open' after {TIMEOUT}s{RESET}\n")
+
+    # ── Step 3: report per-finding results ────────────────────────────────
+    print(f"\n  {GRAY}Step 3/3 — results{RESET}\n")
+
+    all_pass = True
+    name_by_id = {}
+    for i, (name, *_) in enumerate(_SECURITY_TEST_CASES):
+        if i < len(finding_ids):
+            name_by_id[finding_ids[i]] = name
+
+    for fid in finding_ids:
+        status = final_statuses.get(fid, "open")
+        name   = name_by_id.get(fid, fid[:8])
+        if status == "open":
+            icon = f"{RED}✗{RESET}"
+            note = f"{RED}still open — triage did not run{RESET}"
+            all_pass = False
+        elif status == "dismissed":
+            icon = f"{CYAN}○{RESET}"
+            note = f"{CYAN}dismissed (false positive){RESET}"
+        elif status == "triaging":
+            icon = f"{YELLOW}◑{RESET}"
+            note = f"{YELLOW}triaging (real finding, no autopilot fix){RESET}"
+        elif status == "fixed":
+            icon = f"{GREEN}✓{RESET}"
+            note = f"{GREEN}fixed{RESET}"
+        else:
+            icon = f"{GRAY}?{RESET}"
+            note = f"{GRAY}{status}{RESET}"
+        print(f"  {icon}  {name:<22} → {note}")
+
+    print()
+    if all_pass:
+        print(f"  {GREEN}{BOLD}✓ All findings processed — triage pipeline OK{RESET}\n")
+    else:
+        print(f"  {RED}{BOLD}✗ Some findings were not processed — check Security Automation project runs{RESET}")
+        app_url = api_url.replace("api.", "app.")
+        print(f"  {CYAN}→ {app_url}/projects{RESET}\n")
+        sys.exit(1)
+
+
 def cmd_test_guard(args):
     """Test each guard policy rule with a matching synthetic tool call."""
     import json as _json
@@ -2556,9 +2709,10 @@ def main():
     # conduct sync
     sub.add_parser("sync", help="Sync Guard policies (and Security Loop policies if installed)")
 
-    # conduct test-guard / test-security
-    sub.add_parser("test-guard",    help="Fire a synthetic event per guard policy rule and show decisions")
-    sub.add_parser("test-security", help="Post a synthetic finding per security classifier pattern")
+    # conduct test-guard / test-security / test-security-verify
+    sub.add_parser("test-guard",            help="Fire a synthetic event per guard policy rule and show decisions")
+    sub.add_parser("test-security",         help="Post a synthetic finding per security classifier pattern")
+    sub.add_parser("test-security-verify",  help="Post test findings and verify full triage pipeline end-to-end")
 
     args = parser.parse_args()
 
@@ -2633,6 +2787,8 @@ def main():
         cmd_test_guard(args)
     elif args.command == "test-security":
         cmd_test_security(args)
+    elif args.command == "test-security-verify":
+        cmd_test_security_verify(args)
     else:
         parser.print_help()
 
