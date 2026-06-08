@@ -106,6 +106,14 @@ def list_workflows(
         for row in rows:
             last_run_by_workflow[str(row.workflow_id)] = row
 
+    # Batch-fetch project names
+    from app.models.project import Project as _ListProject
+    project_ids = {wf.project_id for wf in workflows if wf.project_id}
+    project_names: dict[str, str] = {}
+    if project_ids:
+        for proj in db.query(_ListProject).filter(_ListProject.id.in_(project_ids)).all():
+            project_names[str(proj.id)] = proj.name
+
     results = []
     for wf in workflows:
         out = WorkflowOut.model_validate(wf)
@@ -113,6 +121,8 @@ def list_workflows(
         if last_run:
             out.last_run_status = last_run.status
             out.last_run_at = last_run.created_at
+        if wf.project_id:
+            out.project_name = project_names.get(str(wf.project_id))
         results.append(out)
     return results
 
