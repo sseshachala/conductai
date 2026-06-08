@@ -432,6 +432,29 @@ def list_findings(
     )
 
 
+@router.delete("", status_code=200)
+def delete_findings(
+    source_run_id: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.settings.edit")),
+) -> dict:
+    """Bulk-delete findings. Scoped to workspace. source_run_id filter is required to prevent accidental full wipe."""
+    if not source_run_id:
+        raise HTTPException(status_code=422, detail="source_run_id filter is required")
+    deleted = (
+        db.query(SecurityFinding)
+        .filter(
+            SecurityFinding.workspace_id == workspace_id,
+            SecurityFinding.source_run_id == source_run_id,
+        )
+        .delete()
+    )
+    db.commit()
+    log.info("security_findings.bulk_deleted", workspace_id=workspace_id, source_run_id=source_run_id, count=deleted)
+    return {"deleted": deleted}
+
+
 @router.get("/{finding_id}", response_model=FindingOut)
 def get_finding(
     finding_id: UUID,
