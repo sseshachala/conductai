@@ -189,53 +189,61 @@ def install(
 
 
 def _ensure_automation_playbook(db: Session, workspace_id: str) -> None:
-    """Create the Security Loop Automation workflow if it doesn't already exist."""
+    """Auto-provision both Security Loop playbooks when the module is installed."""
     from app.models.workflow import Workflow, WorkflowVersion
     from app.dsl.loader import yaml_to_graph
     from app.dsl.schema import Workflow as DSLWorkflow
     import pathlib, yaml as _yaml
 
     ws_uuid = uuid.UUID(workspace_id)
-    existing = db.query(Workflow).filter(
-        Workflow.workspace_id == ws_uuid,
-        Workflow.playbook_slug == "security_loop",
-    ).first()
-    if existing:
-        return
+    playbooks_dir = pathlib.Path(__file__).parent.parent.parent / "playbooks"
 
-    playbook_path = pathlib.Path(__file__).parent.parent.parent / "playbooks" / "security_loop.yaml"
-    try:
-        raw = playbook_path.read_text(encoding="utf-8")
-        dsl = DSLWorkflow.model_validate(_yaml.safe_load(raw))
-        graph = yaml_to_graph(dsl)
-    except Exception as exc:
-        log.warning("secure.automation_playbook_failed", error=str(exc))
-        return
+    bundles = [
+        ("security_loop", "security_loop.yaml", "Security Loop Automation"),
+        ("security-autopilot-fix", "security-autopilot-fix.yaml", "Security Autopilot Fix"),
+    ]
 
-    wf = Workflow(
-        id=uuid.uuid4(),
-        workspace_id=ws_uuid,
-        name="Security Loop for Claude — Agentic Automation",
-        playbook_slug="security_loop",
-        created_at=_now(),
-    )
-    db.add(wf)
-    db.flush()
+    for slug, filename, display_name in bundles:
+        existing = db.query(Workflow).filter(
+            Workflow.workspace_id == ws_uuid,
+            Workflow.playbook_slug == slug,
+        ).first()
+        if existing:
+            continue
 
-    ver = WorkflowVersion(
-        id=uuid.uuid4(),
-        workflow_id=wf.id,
-        version=1,
-        graph=graph,
-        compiled_artifacts={},
-        created_at=_now(),
-    )
-    db.add(ver)
-    db.flush()
+        playbook_path = playbooks_dir / filename
+        try:
+            raw = playbook_path.read_text(encoding="utf-8")
+            dsl = DSLWorkflow.model_validate(_yaml.safe_load(raw))
+            graph = yaml_to_graph(dsl)
+        except Exception as exc:
+            log.warning("secure.automation_playbook_failed", slug=slug, error=str(exc))
+            continue
 
-    wf.current_version_id = ver.id
-    db.commit()
-    log.info("secure.automation_playbook_created", workspace_id=workspace_id)
+        wf = Workflow(
+            id=uuid.uuid4(),
+            workspace_id=ws_uuid,
+            name=display_name,
+            playbook_slug=slug,
+            created_at=_now(),
+        )
+        db.add(wf)
+        db.flush()
+
+        ver = WorkflowVersion(
+            id=uuid.uuid4(),
+            workflow_id=wf.id,
+            version=1,
+            graph=graph,
+            compiled_artifacts={},
+            created_at=_now(),
+        )
+        db.add(ver)
+        db.flush()
+
+        wf.current_version_id = ver.id
+        db.commit()
+        log.info("secure.automation_playbook_created", slug=slug, workspace_id=workspace_id)
 
 
 @router.delete("/install", status_code=204)
