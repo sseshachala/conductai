@@ -7,6 +7,16 @@ import { SecureShell } from "../_components"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
+import { SecureLoopIcon } from "../_components"
+
+// Known tools — display name + support state
+const KNOWN_TOOLS: { key: string; label: string; supported: boolean }[] = [
+  { key: "claude-code", label: "Claude Code",     supported: true  },
+  { key: "codex",       label: "Codex CLI",        supported: false },
+  { key: "cursor",      label: "Cursor",           supported: false },
+  { key: "copilot",     label: "GitHub Copilot",   supported: false },
+  { key: "windsurf",    label: "Windsurf",         supported: false },
+]
 
 interface SecureConfig {
   security_emit_enabled: boolean
@@ -57,6 +67,7 @@ function SettingsContent() {
   const [savingChannel, setSavingChannel] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [detectedTools, setDetectedTools] = useState<Set<string>>(new Set())
 
   const base = process.env.NEXT_PUBLIC_API_URL ?? ""
   const wsId = activeWorkspace?.id
@@ -73,15 +84,24 @@ function SettingsContent() {
     if (!wsId) return
     setLoading(true)
     try {
-      const res = await fetch(`${base}/secure/config?workspace_id=${wsId}`, { headers: await authHeaders() })
-      if (res.ok) {
-        const data = await res.json()
+      const headers = await authHeaders()
+      const [configRes, toolsRes] = await Promise.all([
+        fetch(`${base}/secure/config?workspace_id=${wsId}`, { headers }),
+        fetch(`${base}/guard/developer-tools?workspace_id=${wsId}`, { headers }),
+      ])
+      if (configRes.ok) {
+        const data = await configRes.json()
         setConfig({
           security_emit_enabled: data.security_emit_enabled ?? true,
           security_slack_alerts_enabled: data.security_slack_alerts_enabled ?? false,
           security_slack_channel: data.security_slack_channel ?? null,
         })
         setChannelInput((data.security_slack_channel ?? "").replace(/^#+/, ""))
+      }
+      if (toolsRes.ok) {
+        const devs: { detected_tools: string[] }[] = await toolsRes.json()
+        const all = new Set(devs.flatMap(d => d.detected_tools ?? []))
+        setDetectedTools(all)
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load settings")
@@ -134,12 +154,51 @@ function SettingsContent() {
       ) : (
         <div style={{ maxWidth: 640 }}>
 
+          {/* Covered tools */}
+          <div className="card" style={{ overflow: "hidden", marginBottom: 20 }}>
+            <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--border)" }}>
+              <div style={{ fontWeight: 650, fontSize: 14.5 }}>Covered tools</div>
+              <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+                Detected from your team's machines. Security Loop runs on supported tools automatically.
+              </div>
+            </div>
+            <div style={{ padding: "4px 20px 8px" }}>
+              {KNOWN_TOOLS.map((tool, i) => {
+                const detected = detectedTools.has(tool.key)
+                const isActive = tool.supported && detected
+                return (
+                  <div key={tool.key} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 0", borderTop: i > 0 ? "1px solid var(--border)" : undefined, opacity: tool.supported ? 1 : 0.5 }}>
+                    <span style={{ width: 32, height: 32, borderRadius: 8, background: tool.supported ? "#fee2e2" : "var(--surface-2)", color: tool.supported ? "#dc2626" : "var(--text-muted)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                      <SecureLoopIcon size={15} />
+                    </span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+                        {tool.label}
+                        {detected && (
+                          <span style={{ fontSize: 10, fontWeight: 600, padding: "1px 7px", borderRadius: 20, background: "var(--ok-bg)", color: "var(--ok)" }}>detected</span>
+                        )}
+                        {!tool.supported && (
+                          <span style={{ fontSize: 10, fontWeight: 600, padding: "1px 7px", borderRadius: 20, background: "var(--surface-2)", color: "var(--text-muted)" }}>coming soon</span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 1 }}>
+                        {tool.supported ? "Passive classifier active on every tool call" : "Security Loop support in development"}
+                      </div>
+                    </div>
+                    <span style={{
+                      width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+                      background: isActive ? "var(--ok)" : "var(--border-2)",
+                    }} />
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
           <div className="card" style={{ overflow: "hidden", marginBottom: 20 }}>
             <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ width: 30, height: 30, borderRadius: 8, background: "#dc2626", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                </svg>
+                <SecureLoopIcon size={15} />
               </span>
               <div style={{ fontWeight: 650, fontSize: 14.5 }}>Security Loop — Claude Code</div>
             </div>
