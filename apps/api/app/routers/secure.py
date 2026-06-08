@@ -222,6 +222,15 @@ def _install_workflow_into_project(
     from app.dsl.schema import Workflow as DSLWorkflow
     import pathlib, yaml as _yaml
 
+    playbook_path = pathlib.Path(__file__).parent.parent.parent / "playbooks" / filename
+    try:
+        raw = playbook_path.read_text(encoding="utf-8")
+        dsl = DSLWorkflow.model_validate(_yaml.safe_load(raw))
+        graph = yaml_to_graph(dsl)
+    except Exception as exc:
+        log.warning("secure.playbook_load_failed", slug=slug, error=str(exc))
+        return False
+
     existing = db.query(Workflow).filter(
         Workflow.workspace_id == ws_uuid,
         Workflow.project_id == project_id,
@@ -237,16 +246,13 @@ def _install_workflow_into_project(
             )
             if env:
                 existing.environment_id = env.id
-                db.commit()
-        return False
-
-    playbook_path = pathlib.Path(__file__).parent.parent.parent / "playbooks" / filename
-    try:
-        raw = playbook_path.read_text(encoding="utf-8")
-        dsl = DSLWorkflow.model_validate(_yaml.safe_load(raw))
-        graph = yaml_to_graph(dsl)
-    except Exception as exc:
-        log.warning("secure.playbook_load_failed", slug=slug, error=str(exc))
+        # Always update graph so YAML changes take effect without reinstall
+        if existing.current_version_id:
+            cur_ver = db.query(WorkflowVersion).filter(WorkflowVersion.id == existing.current_version_id).first()
+            if cur_ver and cur_ver.graph != graph:
+                cur_ver.graph = graph
+                log.info("secure.playbook_graph_updated", slug=slug)
+        db.commit()
         return False
 
     # Resolve workspace Default environment

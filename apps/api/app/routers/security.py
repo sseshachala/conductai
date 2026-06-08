@@ -250,6 +250,14 @@ def _trigger_security_loop(finding: SecurityFinding, workspace_id: str, db: Sess
     import uuid as _uuid
 
     ws_uuid = _uuid.UUID(workspace_id)
+
+    # Keep the compiled graph current whenever a finding is ingested
+    try:
+        from app.routers.secure import _ensure_security_automation_project
+        _ensure_security_automation_project(db, workspace_id)
+    except Exception as _e:
+        log.warning("security_finding.graph_refresh_failed", error=str(_e))
+
     sec_proj = db.query(Project).filter(
         Project.workspace_id == ws_uuid,
         Project.project_type == "security_automation",
