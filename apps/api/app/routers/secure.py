@@ -217,6 +217,7 @@ def _install_workflow_into_project(
 ) -> bool:
     """Install a playbook workflow into a project. Idempotent — skips if already installed."""
     from app.models.workflow import Workflow, WorkflowVersion
+    from app.models.environment import Environment
     from app.dsl.loader import yaml_to_graph
     from app.dsl.schema import Workflow as DSLWorkflow
     import pathlib, yaml as _yaml
@@ -227,7 +228,17 @@ def _install_workflow_into_project(
         Workflow.playbook_slug == slug,
     ).first()
     if existing:
-        return False  # already installed
+        # Backfill environment_id if missing
+        if not existing.environment_id:
+            from app.models.environment import Environment as _Env
+            env = (
+                db.query(_Env).filter(_Env.workspace_id == ws_uuid, _Env.name == "Default").first()
+                or db.query(_Env).filter(_Env.workspace_id == ws_uuid).first()
+            )
+            if env:
+                existing.environment_id = env.id
+                db.commit()
+        return False
 
     playbook_path = pathlib.Path(__file__).parent.parent.parent / "playbooks" / filename
     try:
@@ -238,12 +249,23 @@ def _install_workflow_into_project(
         log.warning("secure.playbook_load_failed", slug=slug, error=str(exc))
         return False
 
+    # Resolve workspace Default environment
+    env = (
+        db.query(Environment).filter(Environment.workspace_id == ws_uuid, Environment.name == "Default").first()
+        or db.query(Environment).filter(Environment.workspace_id == ws_uuid).first()
+    )
+    if not env:
+        env = Environment(workspace_id=str(ws_uuid), name="Default")
+        db.add(env)
+        db.flush()
+
     wf = Workflow(
         id=uuid.uuid4(),
         workspace_id=ws_uuid,
         project_id=project_id,
         name=display_name,
         playbook_slug=slug,
+        environment_id=env.id,
         created_at=_now(),
     )
     db.add(wf)
