@@ -201,18 +201,14 @@ def _send_security_slack_alert(finding: SecurityFinding, workspace_id: str, db: 
     try:
         import uuid as _uuid
         from app.models.security_config import SecurityConfig
-        from app.modules.guard.models import GuardConfig
+
         sec = db.query(SecurityConfig).filter(
             SecurityConfig.workspace_id == _uuid.UUID(workspace_id),
         ).first()
         if not sec or not sec.installed or not sec.security_slack_alerts_enabled:
             return
         channel = sec.security_slack_channel
-        # Fall back to guard slack webhook
-        guard_cfg = db.query(GuardConfig).filter(
-            GuardConfig.workspace_id == _uuid.UUID(workspace_id),
-        ).first()
-        webhook = guard_cfg.slack_webhook_url if guard_cfg else None
+        webhook = sec.slack_webhook_url
         if not webhook:
             return
         import urllib.request
