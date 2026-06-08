@@ -800,12 +800,12 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
         try {
           const base = process.env.NEXT_PUBLIC_API_URL ?? ""
           const [cfgRes, summaryRes] = await Promise.all([
-            fetch(`${base}/security-config?workspace_id=${workspaceId}`, { headers }),
+            fetch(`${base}/secure/installed?workspace_id=${workspaceId}`, { headers }),
             fetch(`${base}/security-findings/summary?workspace_id=${workspaceId}&days=30`, { headers }),
           ])
           if (cfgRes.ok) {
             const cfg = await cfgRes.json()
-            setSecInstalled(cfg.enabled === true)
+            setSecInstalled(cfg.installed === true)
           }
           if (summaryRes.ok) {
             setSecSummary(await summaryRes.json())
