@@ -67,6 +67,7 @@ class FindingIn(BaseModel):
     repo_full_name: Optional[str] = None
     commit_sha: Optional[str] = None
     source_run_id: Optional[str] = None
+    reporter_email: Optional[str] = None
 
     @field_validator("severity")
     @classmethod
@@ -96,6 +97,7 @@ class FindingOut(BaseModel):
     repo_full_name: Optional[str]
     commit_sha: Optional[str]
     source_run_id: Optional[str]
+    reporter_email: Optional[str]
     status: str
     github_issue_url: Optional[str]
     run_id: Optional[str]
@@ -152,6 +154,7 @@ def ingest_finding(
         repo_full_name=body.repo_full_name,
         commit_sha=body.commit_sha,
         source_run_id=body.source_run_id,
+        reporter_email=body.reporter_email,
         status="open",
         created_at=now,
         updated_at=now,
@@ -230,7 +233,8 @@ def _send_security_slack_alert(finding: SecurityFinding, workspace_id: str, db: 
 
         sev = finding.severity.upper()
         location = f" in {finding.file}:{finding.line}" if finding.file else ""
-        text = f"[{sev}] {finding.type}{location} — {finding.description} · {finding.tool}"
+        developer = f" · {finding.reporter_email}" if finding.reporter_email else ""
+        text = f"[{sev}] {finding.type}{location} — {finding.description} · {finding.tool}{developer}"
         post_message(token=token, channel=channel, text=text)
         log.info("security_finding.slack_sent", finding_id=str(finding.id), channel=channel)
     except Exception as exc:
