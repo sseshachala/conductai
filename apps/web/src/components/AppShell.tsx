@@ -1161,7 +1161,8 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
                       }
                       const tc = toneColors[n.tone] ?? toneColors.info
                       const isSecurity = n.id.startsWith("sf-")
-                      const toneIcon = isSecurity ? "🛡" : n.tone === "warn" ? "⚠" : n.tone === "err" ? "✕" : n.tone === "ok" ? "✓" : "i"
+                      const isGuardBlock = n.id.startsWith("guard-")
+                      const toneIcon = isSecurity ? "🛡" : isGuardBlock ? "🚫" : n.tone === "warn" ? "⚠" : n.tone === "err" ? "✕" : n.tone === "ok" ? "✓" : "i"
                       const Wrapper = n.href ? "a" : "div"
                       return (
                         <Wrapper key={n.id} href={n.href} style={{

@@ -633,9 +633,95 @@ function EmptyChecklist() {
 
 /* ── Main content ── */
 
+interface SecurityFindingSummary {
+  critical: number
+  high: number
+  medium: number
+  low: number
+  info: number
+  total: number
+}
+
+interface RecentSecurityFinding {
+  id: string
+  severity: string
+  type: string
+  description: string
+  created_at: string
+}
+
+function SecurityLoopSnapshot({ summary, recent, installed }: {
+  summary: SecurityFindingSummary | null
+  recent: RecentSecurityFinding[]
+  installed: boolean
+}) {
+  if (!installed) return null
+  if (summary && summary.total === 0 && recent.length === 0) return null
+
+  const severityColor = (s: string) =>
+    s === "critical" ? "var(--err)"
+    : s === "high" ? "#f97316"
+    : s === "medium" ? "var(--warn)"
+    : "var(--text-muted)"
+
+  return (
+    <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+      <div style={{ padding: "13px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
+        <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="var(--err)" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          <line x1="12" y1="8" x2="12" y2="12" strokeLinecap="round" />
+          <line x1="12" y1="16" x2="12.01" y2="16" strokeLinecap="round" />
+        </svg>
+        <span style={{ fontWeight: 650, fontSize: 14 }}>Security Loop</span>
+        <a href="/secure" className="btn btn-ghost btn-sm" style={{ textDecoration: "none", marginLeft: "auto" }}>
+          Full dashboard →
+        </a>
+      </div>
+
+      {summary && (summary.critical > 0 || summary.high > 0 || summary.medium > 0) && (
+        <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--border)" }}>
+          {[
+            { label: "Critical", val: summary.critical, color: "var(--err)" },
+            { label: "High", val: summary.high, color: "#f97316" },
+            { label: "Medium", val: summary.medium, color: "var(--warn)" },
+          ].map(({ label, val, color }) => (
+            <div key={label} style={{ flex: 1, padding: "12px 16px", borderRight: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 22, fontWeight: 750, color, letterSpacing: "-.03em" }}>{val}</div>
+              <div className="eyebrow" style={{ fontSize: 9.5, marginTop: 4 }}>{label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ padding: "13px 16px" }}>
+        <div className="eyebrow" style={{ fontSize: 9.5, marginBottom: 9 }}>Recent findings</div>
+        {recent.length === 0 ? (
+          <span style={{ fontSize: 12, color: "var(--ok)" }}>No open findings</span>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            {recent.map(f => (
+              <div key={f.id} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: severityColor(f.severity), flexShrink: 0, marginTop: 4 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.type || "finding"}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.description}</div>
+                </div>
+                <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>{timeAgo(f.created_at)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function DashboardContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [secSummary, setSecSummary] = useState<SecurityFindingSummary | null>(null)
+  const [secRecent, setSecRecent] = useState<RecentSecurityFinding[]>([])
+  const [secInstalled, setSecInstalled] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -651,6 +737,31 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
         if (res.ok) setData(await res.json())
       } finally {
         setLoading(false)
+      }
+
+      // Load security findings in parallel (non-blocking)
+      if (workspaceId) {
+        try {
+          const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+          const [cfgRes, findingsRes] = await Promise.all([
+            fetch(`${base}/security-config?workspace_id=${workspaceId}`, { headers }),
+            fetch(`${base}/security-findings?workspace_id=${workspaceId}&days=30&limit=3`, { headers }),
+          ])
+          if (cfgRes.ok) {
+            const cfg = await cfgRes.json()
+            setSecInstalled(cfg.enabled === true)
+          }
+          if (findingsRes.ok) {
+            const findings: RecentSecurityFinding[] = await findingsRes.json()
+            setSecRecent(findings.slice(0, 3))
+            const counts: SecurityFindingSummary = { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 }
+            for (const f of findings) {
+              if (f.severity in counts) (counts as unknown as Record<string, number>)[f.severity]++
+              counts.total++
+            }
+            setSecSummary(counts)
+          }
+        } catch {}
       }
     }
     load()
@@ -922,6 +1033,18 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                     tokenUsage={data.token_usage.total_tokens > 0 ? data.token_usage : null}
                   />
                 </div>
+
+                {/* Security Loop snapshot */}
+                {secInstalled && (
+                  <div>
+                    <SectionLabel>Security Loop</SectionLabel>
+                    <SecurityLoopSnapshot
+                      summary={secSummary}
+                      recent={secRecent}
+                      installed={secInstalled}
+                    />
+                  </div>
+                )}
 
                 {/* Agent health table */}
                 <div>
