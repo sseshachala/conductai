@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { SecureShell, SeverityPill, StatusBadge, FindingsTable } from "./_components"
 import type { SecurityFinding } from "./_components"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface SecuritySummary {
   total: number
@@ -21,6 +22,8 @@ export default function SecureOverviewPage() {
 
 function SecureOverview() {
   const { getToken } = useAuth()
+  const { activeWorkspace } = useWorkspace()
+  const wsId = activeWorkspace?.id
   const [summary, setSummary] = useState<SecuritySummary | null>(null)
   const [findings, setFindings] = useState<SecurityFinding[]>([])
   const [loading, setLoading] = useState(true)
@@ -42,14 +45,14 @@ function SecureOverview() {
     try {
       const headers = await buildHeaders()
       const [fr, sr] = await Promise.all([
-        fetch(`${base}/security-findings?days=${days}&limit=100`, { headers }),
-        fetch(`${base}/security-findings/summary?days=${days}`, { headers }),
+        fetch(`${base}/security-findings?workspace_id=${wsId}&days=${days}&limit=100`, { headers }),
+        fetch(`${base}/security-findings/summary?workspace_id=${wsId}&days=${days}`, { headers }),
       ])
       if (fr.ok) setFindings(await fr.json())
       if (sr.ok) setSummary(await sr.json())
     } catch {}
     finally { setLoading(false) }
-  }, [base, buildHeaders])
+  }, [base, wsId, buildHeaders])
 
   useEffect(() => { load(filterDays) }, [load, filterDays])
 

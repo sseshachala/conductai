@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { SecureShell, SeverityPill, StatusBadge, SEVERITY_STYLES } from "../_components"
 import { timeAgo } from "@/lib/runUtils"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 type Severity = "critical" | "high" | "medium" | "low" | "info"
 type FindingStatus = "open" | "triaging" | "fixed" | "dismissed"
@@ -31,6 +32,8 @@ export default function SecureActivityPage() {
 
 function ActivityContent() {
   const { getToken } = useAuth()
+  const { activeWorkspace } = useWorkspace()
+  const wsId = activeWorkspace?.id
   const [findings, setFindings] = useState<SecurityFinding[]>([])
   const [loading, setLoading] = useState(true)
   const [filterSeverity, setFilterSeverity] = useState("all")
@@ -51,11 +54,11 @@ function ActivityContent() {
     setLoading(true)
     try {
       const headers = await buildHeaders()
-      const res = await fetch(`${base}/security-findings?days=${filterDays}&limit=500`, { headers })
+      const res = await fetch(`${base}/security-findings?workspace_id=${wsId}&days=${filterDays}&limit=500`, { headers })
       if (res.ok) setFindings(await res.json())
     } catch {}
     finally { setLoading(false) }
-  }, [base, buildHeaders, filterDays])
+  }, [base, wsId, buildHeaders, filterDays])
 
   useEffect(() => { load() }, [load])
 
