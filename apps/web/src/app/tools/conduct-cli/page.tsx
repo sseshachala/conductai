@@ -139,7 +139,7 @@ function HeroSection() {
   return (
     <section className="flex flex-col items-center justify-center px-6 pt-16 pb-24 text-center">
       <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 border border-indigo-100 text-xs font-semibold px-3 py-1.5 rounded-full mb-8 uppercase tracking-widest">
-        Open Source &middot; v0.4.65
+        Open Source &middot; v0.4.66
       </div>
 
       <h1 className="text-5xl sm:text-6xl font-bold text-stone-900 leading-[1.1] tracking-tight max-w-3xl">
@@ -169,7 +169,7 @@ function HeroSection() {
         </a>
       </div>
       <p className="mt-4 text-xs text-stone-400">
-        Python 3.10+ &middot; MIT licensed &middot; v0.4.65
+        Python 3.10+ &middot; MIT licensed &middot; v0.4.66
       </p>
     </section>
   )

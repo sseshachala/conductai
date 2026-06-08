@@ -2341,7 +2341,7 @@ def cmd_test_security_verify(args):
 
     import urllib.request
 
-    TIMEOUT   = 240  # serial worker at CONCURRENCY=1: 15 runs × ~10s = ~150s; headroom for 2+ workers
+    TIMEOUT   = 300  # 15 runs × ~28s / 4 workers ≈ 105s; 300s gives headroom for queue variance
     POLL_SECS = 5
 
     # ── Step 1: post test findings ────────────────────────────────────────
