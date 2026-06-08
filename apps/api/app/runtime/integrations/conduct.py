@@ -72,7 +72,7 @@ def _update_finding(params: dict, db=None, workspace_id: str = "") -> dict:
 
 
 def _trigger_fix(params: dict, db=None, workspace_id: str = "") -> dict:
-    """Enqueue a security-autopilot-fix run for a finding."""
+    """Create an incident project (or reuse existing) and enqueue a security-autopilot-fix run."""
     if db is None or not workspace_id:
         return {"skipped": True, "reason": "conduct/trigger_fix requires db and workspace_id"}
     finding_id = params.get("finding_id")
@@ -80,10 +80,13 @@ def _trigger_fix(params: dict, db=None, workspace_id: str = "") -> dict:
         return {"skipped": True, "reason": "finding_id is required"}
 
     from app.models.security_finding import SecurityFinding
-    from app.models.workflow import Workflow
+    from app.models.project import Project
+    from app.models.workflow import Workflow, WorkflowVersion
     from app.models.run import Run
     from app.routers.security import _enqueue_run, _now
-    import uuid as _uuid
+    from app.dsl.loader import yaml_to_graph
+    from app.dsl.schema import Workflow as DSLWorkflow
+    import uuid as _uuid, pathlib, yaml as _yaml
 
     try:
         fid = _uuid.UUID(str(finding_id))
@@ -97,12 +100,65 @@ def _trigger_fix(params: dict, db=None, workspace_id: str = "") -> dict:
     if not finding:
         return {"error": f"Finding {finding_id} not found"}
 
+    ws_uuid = _uuid.UUID(workspace_id)
+
+    # Deduplicate: reuse an existing open incident project for this finding
+    incident_project = db.query(Project).filter(
+        Project.workspace_id == ws_uuid,
+        Project.security_finding_id == str(finding.id),
+        Project.project_type == "security_incident",
+    ).first()
+
+    if not incident_project:
+        label = (finding.type or "security-issue").replace("_", "-")[:40]
+        project_name = f"Incident: {label}"
+        incident_project = Project(
+            id=_uuid.uuid4(),
+            workspace_id=ws_uuid,
+            name=project_name,
+            slug=f"incident-{str(finding.id)[:8]}",
+            project_type="security_incident",
+            security_finding_id=str(finding.id),
+        )
+        db.add(incident_project)
+        db.flush()
+
+    # Ensure Security Autopilot Fix is installed in the incident project
     workflow = db.query(Workflow).filter(
-        Workflow.workspace_id == workspace_id,
+        Workflow.workspace_id == ws_uuid,
+        Workflow.project_id == incident_project.id,
         Workflow.playbook_slug == "security-autopilot-fix",
     ).first()
+
     if not workflow or not workflow.current_version_id:
-        return {"skipped": True, "reason": "security-autopilot-fix playbook not installed"}
+        playbook_path = pathlib.Path(__file__).parent.parent.parent / "playbooks" / "security-autopilot-fix.yaml"
+        try:
+            raw = playbook_path.read_text(encoding="utf-8")
+            dsl = DSLWorkflow.model_validate(_yaml.safe_load(raw))
+            graph = yaml_to_graph(dsl)
+        except Exception as exc:
+            return {"skipped": True, "reason": f"Could not load autopilot-fix playbook: {exc}"}
+
+        workflow = Workflow(
+            id=_uuid.uuid4(),
+            workspace_id=ws_uuid,
+            project_id=incident_project.id,
+            name="Security Autopilot Fix",
+            playbook_slug="security-autopilot-fix",
+        )
+        db.add(workflow)
+        db.flush()
+        ver = WorkflowVersion(
+            id=_uuid.uuid4(),
+            workflow_id=workflow.id,
+            version=1,
+            graph=graph,
+            compiled_artifacts={},
+        )
+        db.add(ver)
+        db.flush()
+        workflow.current_version_id = ver.id
+        db.flush()
 
     run = Run(
         workflow_version_id=workflow.current_version_id,
@@ -111,6 +167,7 @@ def _trigger_fix(params: dict, db=None, workspace_id: str = "") -> dict:
         state={
             "_trigger": {
                 "finding_id": str(finding.id),
+                "incident_project_id": str(incident_project.id),
                 "severity": finding.severity,
                 "type": finding.type,
                 "description": finding.description,
@@ -127,4 +184,5 @@ def _trigger_fix(params: dict, db=None, workspace_id: str = "") -> dict:
     finding.status = "triaging"
     _enqueue_run(str(run.id))
     db.commit()
-    return {"triggered": True, "run_id": str(run.id), "finding_id": str(finding.id)}
+    return {"triggered": True, "run_id": str(run.id), "finding_id": str(finding.id),
+            "incident_project_id": str(incident_project.id)}
