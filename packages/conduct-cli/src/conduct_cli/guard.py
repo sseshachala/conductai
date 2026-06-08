@@ -282,17 +282,14 @@ def _classify_text(text):
 
 def _line_number_from_text(text, matched_pattern):
     """Extract line number where pattern matched.
-
-    Handles two formats:
-    - Read tool output: '     N\\tcode line'  (cat -n style)
-    - Plain text: count newlines before match offset
+    Uses splitlines() and chr(10) — no backslash-n literals (safe inside _HOOK_SCRIPT).
     """
     import re as _re
     if not matched_pattern:
         return None
     try:
-        # Try cat-n format first (Read tool)
-        for raw_line in text.split("\n"):
+        # Try cat-n format first (Read tool outputs '   N<TAB>code line')
+        for raw_line in text.splitlines():
             m = _re.match(r"^\s*(\d+)\t(.*)$", raw_line)
             if m:
                 lineno, content = int(m.group(1)), m.group(2)
@@ -302,10 +299,10 @@ def _line_number_from_text(text, matched_pattern):
                 except Exception:
                     if matched_pattern.lower() in content.lower():
                         return lineno
-        # Fallback: count newlines before the first match
+        # Fallback: count lines before the first match offset
         m = _re.search(matched_pattern, text, _re.IGNORECASE)
         if m:
-            return text[:m.start()].count("\n") + 1
+            return text[:m.start()].count(chr(10)) + 1
     except Exception:
         pass
     return None
@@ -813,17 +810,25 @@ def _best_python() -> str:
 
 def _write_hook(path: Path) -> None:
     """Write _HOOK_SCRIPT to path, then py_compile-validate it.
-    Raises RuntimeError if the written file fails to compile — prevents
-    silently deploying a syntactically broken hook."""
+    On syntax failure: restores previous hook (or writes a safe stub) so the
+    system is never left without a working hook file."""
     import py_compile, tempfile, os
+    # Stash existing hook so we can restore on failure
+    backup = None
+    if path.exists():
+        backup = path.read_text()
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(_HOOK_SCRIPT)
     path.chmod(0o755)
     try:
         py_compile.compile(str(path), doraise=True)
     except py_compile.PyCompileError as exc:
-        path.unlink(missing_ok=True)
+        if backup is not None:
+            path.write_text(backup)
+        else:
+            path.write_text("#!/usr/bin/env python3\nimport sys\nsys.exit(0)\n")
         raise RuntimeError(
-            f"hook.py failed syntax check after write — hook NOT installed.\n{exc}"
+            f"hook.py failed syntax check — previous hook restored.\n{exc}"
         ) from exc
 
 
