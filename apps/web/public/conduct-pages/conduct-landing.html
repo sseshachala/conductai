@@ -277,6 +277,7 @@ footer { border-top: 1px solid var(--stone-200); padding: 36px 0; }
       <div class="nav-links">
         <a href="/marketplace" class="nav-link">Agent Templates</a>
         <a href="/tools" class="nav-link">Tools</a>
+        <a href="/sdd" class="nav-link">SDD</a>
         <a href="/compare" class="nav-link">Compare</a>
         <a href="/benchmark" class="nav-link">Benchmark</a>
         <a href="/docs" class="nav-link">Docs</a>
@@ -752,6 +753,43 @@ footer { border-top: 1px solid var(--stone-200); padding: 36px 0; }
     </div>
   </div>
 </div>
+
+<!-- SDD SECTION -->
+<section style="background:var(--stone-50)">
+  <div class="container text-center">
+    <div class="eyebrow">Spec-Driven Development</div>
+    <h2>AI writes code fast.<br><em style="color:var(--indigo-600)">Too fast.</em></h2>
+    <p class="section-intro" style="margin:16px auto 32px">Without a spec, AI coding tools drift. Requirements get lost. Nobody can trace which code maps to which decision. SDD gives every AI action a <em>why</em> — and Conduct enforces it automatically.</p>
+
+    <div class="callouts" style="grid-template-columns:1fr 1fr 1fr;gap:20px;margin-bottom:32px">
+      <div class="callout" style="border-color:#e0e7ff;background:linear-gradient(135deg,#fff 0%,#eef2ff 100%);text-align:left">
+        <div style="font-size:22px;margin-bottom:12px;font-weight:900;color:var(--indigo-600)">◈</div>
+        <h3 style="font-size:15px;margin-bottom:8px">Generate your spec free</h3>
+        <p style="font-size:13px">Describe what you're building. The agent asks 3 questions and writes a structured SPEC.md with numbered, testable FR-xxx requirements. No account needed.</p>
+        <a href="/sdd#try" class="callout-link" style="color:var(--indigo-600);font-size:13px">Generate SPEC.md →</a>
+      </div>
+      <div class="callout" style="border-color:#d1fae5;background:linear-gradient(135deg,#fff 0%,#ecfdf5 100%);text-align:left">
+        <div style="font-size:22px;margin-bottom:12px;font-weight:900;color:#059669">⟁</div>
+        <h3 style="font-size:15px;margin-bottom:8px">Scaffold your repo in one run</h3>
+        <p style="font-size:13px">sdd-bootstrap reads your SPEC.md and commits 6 files to your repo — AGENTS.md, DESIGN.md, PLAN.md, SPRINT.md, CLAUDE.md, and the spec index. Fully wired in minutes.</p>
+        <a href="/sdd#workflow" class="callout-link" style="color:#059669;font-size:13px">See the full workflow →</a>
+      </div>
+      <div class="callout" style="border-color:#fde68a;background:linear-gradient(135deg,#fff 0%,#fffbeb 100%);text-align:left">
+        <div style="font-size:22px;margin-bottom:12px;font-weight:900;color:#d97706">⊙</div>
+        <h3 style="font-size:15px;margin-bottom:8px">AI can't ship without a spec</h3>
+        <p style="font-size:13px">A pre-merge hook blocks any PR where changed files have no FR reference. The only platform that enforces spec traceability at the git layer — not just stores requirements.</p>
+        <a href="/sdd" class="callout-link" style="color:#d97706;font-size:13px">Learn about enforcement →</a>
+      </div>
+    </div>
+
+    <div style="display:inline-flex;align-items:center;gap:16px;background:#fff;border:1px solid #e0e7ff;border-radius:14px;padding:14px 24px">
+      <span style="font-size:13px;color:var(--stone-500)">FR numbers sync with</span>
+      <span style="font-size:12px;font-weight:600;color:var(--stone-700);background:var(--stone-100);padding:4px 10px;border-radius:6px">GitHub Issues</span>
+      <span style="font-size:12px;font-weight:600;color:var(--stone-400);background:var(--stone-50);padding:4px 10px;border-radius:6px;border:1px solid var(--stone-200)">Jira ·  soon</span>
+      <span style="font-size:12px;font-weight:600;color:var(--stone-400);background:var(--stone-50);padding:4px 10px;border-radius:6px;border:1px solid var(--stone-200)">Linear · soon</span>
+    </div>
+  </div>
+</section>
 
 <!-- TOOLS + COMPARE callouts -->
 <section style="background:#fff">

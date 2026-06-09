@@ -42,9 +42,13 @@ function Nav() {
               <a href="/tools/conduct-cli" className="flex items-center gap-2 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
                 <span className="text-violet-600 font-bold">⬡</span> Conduct CLI
               </a>
+              <a href="/tools/security-loop" className="flex items-center gap-2 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+                <span className="text-rose-600 font-bold">🔐</span> Security Loop
+              </a>
             </div>
           </div>
         </div>
+        <a href="/sdd" className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">SDD</a>
         <a href="/benchmark" className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Benchmark</a>
         <a href="/docs" className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
         <a
@@ -215,8 +219,8 @@ function ToolsSection() {
           <div className="rounded-2xl border border-stone-200 bg-white px-8 py-8 flex flex-col gap-5 hover:border-indigo-200 hover:shadow-sm transition-all">
             <div className="flex items-start justify-between">
               <div>
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-1 rounded-full mb-3">
-                  Early Access
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-100 px-2.5 py-1 rounded-full mb-3">
+                  v0.4 · Shipped
                 </span>
                 <h2 className="text-2xl font-bold text-stone-900">Security Loop</h2>
                 <p className="text-sm text-stone-500 mt-1">Finding to PR, automatically</p>
@@ -225,18 +229,19 @@ function ToolsSection() {
             </div>
 
             <p className="text-sm text-stone-600 leading-relaxed">
-              Connect Claude Code, Codex, and Cursor to Conduct. Every vulnerability they find gets
-              automatically triaged, fixed, and shipped as a PR — with a full audit trail.
+              Connect Claude Code, Codex, Cursor, or Windsurf to Conduct once. Every vulnerability
+              they surface gets captured automatically, triaged, and routed through a fix pipeline —
+              GitHub issue, agent fix, PR, Slack alert, full audit trail.
             </p>
 
             <div className="flex flex-col gap-2">
               <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">What it does</p>
               <ul className="space-y-1.5">
                 {[
-                  "Captures findings from any AI coding tool",
-                  "Creates GitHub issues with severity and labels automatically",
-                  "Runs an agent to apply the fix on a branch",
-                  "Opens a PR — you review, you merge",
+                  "Passive hook captures findings from every tool call — zero developer action",
+                  "BugHunter Active Scan runs 8 targeted hunt skills on demand",
+                  "GitHub issue created with severity, labels, and suggested fix",
+                  "Fix agent branches, patches, and opens a PR — you review, you merge",
                 ].map(item => (
                   <li key={item} className="flex items-start gap-2 text-sm text-stone-600">
                     <span className="text-emerald-500 mt-0.5 shrink-0">✓</span>
@@ -249,15 +254,15 @@ function ToolsSection() {
             <div className="mt-auto pt-4 border-t border-stone-100 flex items-center gap-3 flex-wrap">
               <a
                 href="/tools/security-loop"
-                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 transition-colors"
               >
                 Learn more →
               </a>
               <a
-                href="mailto:sudhi@b2bsphere.com?subject=Security Loop Early Access"
+                href="/secure"
                 className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 px-4 py-2 text-sm font-medium text-stone-600 hover:border-stone-300 transition-colors"
               >
-                Get early access →
+                Open Security console →
               </a>
             </div>
           </div>
