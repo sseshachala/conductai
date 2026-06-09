@@ -5,6 +5,6 @@ import { useRouter } from "next/navigation"
 
 export default function ModulesRedirect() {
   const router = useRouter()
-  useEffect(() => { router.replace("/settings") }, [router])
+  useEffect(() => { router.replace("/marketplace?tab=modules") }, [router])
   return null
 }
