@@ -171,6 +171,20 @@ function HeroSection() {
       <p className="mt-4 text-xs text-stone-400">
         Python 3.10+ &middot; MIT licensed &middot; v0.4.67
       </p>
+
+      <div className="mt-14 w-full max-w-3xl">
+        <div className="rounded-2xl border border-stone-200 bg-stone-50 p-2 shadow-sm">
+          <img
+            src="/tools/conduct-cli-demo.gif"
+            alt="Conduct CLI demo: conduct whoami, switch workspaces with Guard policy sync, and run an agent from the terminal"
+            className="w-full rounded-xl"
+            loading="lazy"
+          />
+        </div>
+        <p className="mt-3 text-xs text-stone-400">
+          One CLI: run agents, enforce Guard policies, and switch workspaces — your rules travel with you.
+        </p>
+      </div>
     </section>
   )
 }
