@@ -221,14 +221,12 @@ function ProjectContent({ getToken, currentUserId }: {
 
   const filtered = workflows.filter(w => {
     if (!w.name.toLowerCase().includes(q.toLowerCase())) return false
-    if (statusFilter !== "All" && mapStatus(w.last_run_status) !== statusFilter.toLowerCase().replace(" ", "")) return false
+    if (statusFilter !== "All" && mapStatus(w.last_run_status) !== STATUS_KEY[statusFilter]) return false
     return true
   })
 
   const STATUS_FILTERS = ["All", "Running", "Awaiting", "Succeeded", "Failed", "Never run"]
-  function statusKey(label: string): string {
-    return ({ Running: "run", Awaiting: "wait", Succeeded: "ok", Failed: "err", "Never run": "idle" } as Record<string, string>)[label] ?? "idle"
-  }
+  const STATUS_KEY: Record<string, string> = { Running: "run", Awaiting: "wait", Succeeded: "ok", Failed: "err", "Never run": "idle" }
 
   const rows = [...filtered].sort((a, b) => {
     if (sort === "name") return a.name.localeCompare(b.name)
@@ -330,7 +328,7 @@ function ProjectContent({ getToken, currentUserId }: {
             {/* Status chips */}
             <div style={{ display: "flex", gap: 7, marginBottom: 16, flexWrap: "wrap" }}>
               {STATUS_FILTERS.map(s => {
-                const n = s === "All" ? workflows.length : workflows.filter(w => mapStatus(w.last_run_status) === statusKey(s)).length
+                const n = s === "All" ? workflows.length : workflows.filter(w => mapStatus(w.last_run_status) === STATUS_KEY[s]).length
                 const on = statusFilter === s
                 return (
                   <button
