@@ -11,8 +11,10 @@
 name: Security Loop
 version: 1
 description: >
-  Auto-triage every security finding. Dismisses false positives automatically.
-  Alerts on critical/high real findings, logs medium/low quietly.
+  Auto-triage security findings from any AI tool — Claude Code, Codex, Cursor,
+  Windsurf, BugHunter, or any scanner that posts to the findings endpoint.
+  Dismisses false positives automatically. Alerts on critical/high findings,
+  logs medium/low quietly.
 
 inputs:
   model:

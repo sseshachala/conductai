@@ -285,7 +285,7 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
               <div style={{ borderRadius: 14, border: "1.5px dashed var(--border-2)", padding: "56px 40px", textAlign: "center" }}>
                 <p style={{ fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>No automation project yet</p>
                 <p style={{ color: "var(--text-3)", fontSize: 14, maxWidth: 360, margin: "0 auto", lineHeight: 1.6 }}>
-                  Install Security Loop for Claude from the marketplace. A Security Automation project will be created automatically — all triage and fix runs live here.
+                  Install Security Loop from the marketplace. A Security Automation project will be created automatically — all triage and fix runs live here.
                 </p>
               </div>
             ) : (
