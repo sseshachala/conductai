@@ -154,18 +154,35 @@ function HeroSection() {
         Python 3.10+ · MIT licensed · v0.2.19 · runs 100% locally · no code leaves your machine
       </p>
 
-      <div className="mt-14 w-full max-w-3xl">
-        <div className="rounded-2xl border border-stone-200 bg-stone-50 p-2 shadow-sm">
-          <img
-            src="/tools/agent-booster-demo.gif"
-            alt="Agent Booster demo: sends only relevant code, picks a cheaper model, and shows the token and cost savings per run"
-            className="w-full rounded-xl"
-            loading="lazy"
-          />
+      <div className="mt-14 w-full max-w-5xl grid md:grid-cols-2 gap-6">
+        <div>
+          <p className="text-xs font-semibold text-indigo-600 uppercase tracking-widest mb-3">Claude Code</p>
+          <div className="rounded-2xl border border-stone-200 bg-stone-50 p-2 shadow-sm">
+            <img
+              src="/tools/agent-booster-demo.gif"
+              alt="Agent Booster with Claude Code: booster init claude wires hooks, then booster gain shows the token and cost savings per run"
+              className="w-full rounded-xl"
+              loading="lazy"
+            />
+          </div>
+          <p className="mt-3 text-xs text-stone-400">
+            <code className="font-mono">booster init claude</code> → <code className="font-mono">booster gain</code> — less sent, less spent, same result.
+          </p>
         </div>
-        <p className="mt-3 text-xs text-stone-400">
-          Less sent, less spent, same result — token and cost savings on a single run.
-        </p>
+        <div>
+          <p className="text-xs font-semibold text-emerald-600 uppercase tracking-widest mb-3">OpenAI Codex</p>
+          <div className="rounded-2xl border border-stone-200 bg-stone-50 p-2 shadow-sm">
+            <img
+              src="/tools/agent-booster-codex-demo.gif"
+              alt="Agent Booster with OpenAI Codex: booster init codex wires the MCP server and AGENTS.md, booster start indexes the project, and booster gain shows token savings"
+              className="w-full rounded-xl"
+              loading="lazy"
+            />
+          </div>
+          <p className="mt-3 text-xs text-stone-400">
+            <code className="font-mono">booster init codex</code> → <code className="font-mono">booster start</code> → <code className="font-mono">booster gain</code>.
+          </p>
+        </div>
       </div>
     </section>
   )
@@ -1153,21 +1170,6 @@ function WorksWithSection() {
           Each command shows exactly what files will change and asks for confirmation before writing anything.
           Run <code className="font-mono bg-stone-200 px-1 rounded">booster remove &lt;platform&gt;</code> to cleanly undo.
         </p>
-
-        <div className="mt-12 max-w-3xl mx-auto">
-          <p className="text-center text-xs font-semibold text-emerald-600 uppercase tracking-widest mb-3">Example: OpenAI Codex</p>
-          <div className="rounded-2xl border border-stone-200 bg-white p-2 shadow-sm">
-            <img
-              src="/tools/agent-booster-codex-demo.gif"
-              alt="Agent Booster with OpenAI Codex: booster init codex wires the MCP server and AGENTS.md, booster start indexes the project, and booster gain shows token savings"
-              className="w-full rounded-xl"
-              loading="lazy"
-            />
-          </div>
-          <p className="mt-3 text-center text-xs text-stone-400">
-            <code className="font-mono">booster init codex</code> wires <code className="font-mono">~/.codex/config.json</code> + <code className="font-mono">AGENTS.md</code>, then <code className="font-mono">booster start</code> indexes and <code className="font-mono">booster gain</code> reports the savings.
-          </p>
-        </div>
       </div>
     </section>
   )
