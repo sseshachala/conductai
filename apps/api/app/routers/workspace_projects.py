@@ -225,7 +225,7 @@ def list_projects(
         LEFT JOIN workflows w ON w.project_id = p.id
         WHERE p.workspace_id = :ws
         GROUP BY p.id
-        ORDER BY p.created_at ASC
+        ORDER BY p.created_at DESC
     """), {"ws": workspace_id}).fetchall()
     return [ProjectOut(id=str(r.id), workspace_id=str(r.workspace_id), name=r.name,
                        slug=r.slug or "", created_at=r.created_at, agent_count=r.agent_count or 0,
