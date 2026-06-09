@@ -2126,6 +2126,111 @@ def classify_finding(text: str) -> "dict | None":
     return None
 
 
+def cmd_session_report(args):
+    """
+    Run paxel-local against local Claude Code transcripts and send a
+    developer profile report to the workspace admin via the Conduct API.
+    """
+    import json as _json
+    import shutil
+    import subprocess
+    import tempfile
+    import urllib.request
+
+    server, workspace_id, api_key, token = _require_auth(args)
+    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+
+    # ── 1. Fetch paxel-local ─────────────────────────────────────────────────
+    PAXEL_URL = "https://raw.githubusercontent.com/Photobombastic/paxel-local/main/paxel.py"
+    tmpdir = tempfile.mkdtemp(prefix="conduct-paxel-")
+    paxel_script = Path(tmpdir) / "paxel.py"
+
+    print("Downloading paxel-local…")
+    try:
+        urllib.request.urlretrieve(PAXEL_URL, paxel_script)
+    except Exception as exc:
+        print(f"ERROR: could not download paxel-local: {exc}")
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        sys.exit(1)
+
+    # ── 2. Run paxel ─────────────────────────────────────────────────────────
+    print("Analysing sessions…")
+    try:
+        result = subprocess.run(
+            [sys.executable, str(paxel_script), "--no-open"],
+            cwd=tmpdir,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired:
+        print("ERROR: paxel analysis timed out after 120 s.")
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        sys.exit(1)
+
+    stats_path = Path(tmpdir) / "stats.json"
+    report_path = Path(tmpdir) / "report.md"
+
+    if not stats_path.exists():
+        print("ERROR: paxel did not produce stats.json — no transcripts found?")
+        if result.stderr:
+            print(result.stderr[:500])
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        sys.exit(1)
+
+    with open(stats_path) as f:
+        stats = _json.load(f)
+
+    report_md = report_path.read_text() if report_path.exists() else ""
+
+    # ── 3. Build summary payload ─────────────────────────────────────────────
+    import getpass, socket
+    developer = getattr(args, "developer", None) or getpass.getuser()
+    hostname  = socket.gethostname()
+
+    archetype   = stats.get("archetype", {})
+    competency  = stats.get("competency_scores", stats.get("competencies", {}))
+    sessions    = stats.get("total_sessions", stats.get("session_count", "?"))
+    tools_used  = stats.get("tools_detected", stats.get("tools", []))
+
+    payload = {
+        "developer": developer,
+        "hostname": hostname,
+        "archetype": archetype.get("name", archetype) if isinstance(archetype, dict) else str(archetype),
+        "archetype_description": archetype.get("description", "") if isinstance(archetype, dict) else "",
+        "competency_scores": competency,
+        "total_sessions": sessions,
+        "tools_detected": tools_used,
+        "report_md": report_md[:4000],  # cap to avoid huge payloads
+        "raw_stats": stats,
+    }
+
+    # ── 4. Send to Conduct API ────────────────────────────────────────────────
+    print("Sending report to admin…")
+    resp = api.post(
+        server,
+        "/session-reports",
+        payload,
+        hdrs,
+    )
+
+    shutil.rmtree(tmpdir, ignore_errors=True)
+
+    if resp and resp.get("id"):
+        arch = payload["archetype"]
+        exec_score = competency.get("execution", competency.get("Execution", "?"))
+        plan_score = competency.get("planning", competency.get("Planning", "?"))
+        eng_score  = competency.get("engineering", competency.get("Engineering", "?"))
+        print(f"\nReport sent.")
+        print(f"  Archetype  : {arch}")
+        print(f"  Execution  : {exec_score}   Planning: {plan_score}   Engineering: {eng_score}")
+        print(f"  Sessions   : {sessions}")
+        if tools_used:
+            print(f"  Tools      : {', '.join(tools_used) if isinstance(tools_used, list) else tools_used}")
+    else:
+        print(f"WARNING: server response unexpected: {resp}")
+
+
 def cmd_emit_finding(args):
     """POST a security finding to /security-findings."""
     server, workspace_id, api_key, token = _require_auth(args)
@@ -2730,6 +2835,8 @@ def main():
     sub.add_parser("test-guard",            help="Fire a synthetic event per guard policy rule and show decisions")
     sub.add_parser("test-security",         help="Post a synthetic finding per security classifier pattern")
     sub.add_parser("test-security-verify",  help="Post test findings and verify full triage pipeline end-to-end")
+    sr_p = sub.add_parser("session-report", help="Analyse local AI coding sessions with paxel and send report to admin")
+    sr_p.add_argument("--developer", default=None, help="Developer name (defaults to OS username)")
 
     args = parser.parse_args()
 
@@ -2806,6 +2913,8 @@ def main():
         cmd_test_security(args)
     elif args.command == "test-security-verify":
         cmd_test_security_verify(args)
+    elif args.command == "session-report":
+        cmd_session_report(args)
     else:
         parser.print_help()
 
