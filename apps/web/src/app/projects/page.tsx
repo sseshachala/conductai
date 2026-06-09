@@ -144,16 +144,18 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
     const headers = await authHeaders()
     if (wsId) headers["X-Workspace-Id"] = wsId
 
-    const [projRes, wfRes] = await Promise.all([
-      wsId
-        ? fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${wsId}/projects`, { headers })
-        : fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, { headers }),
-      fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, { headers: { ...headers, ...(wsId ? { "X-Workspace-ID": wsId } : {}) } }),
-    ])
-
+    // Load projects first so the page renders immediately
+    const projRes = await (wsId
+      ? fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${wsId}/projects`, { headers })
+      : fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, { headers }))
     if (projRes.ok) setProjects(await projRes.json())
-    if (wfRes.ok) setWorkflows(await wfRes.json())
     setLoading(false)
+
+    // Load workflows in the background — agents populate without blocking the page
+    const wfRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, {
+      headers: { ...headers, ...(wsId ? { "X-Workspace-ID": wsId } : {}) },
+    })
+    if (wfRes.ok) setWorkflows(await wfRes.json())
   }
 
   useEffect(() => { fetchAll() }, [])
