@@ -491,34 +491,43 @@ function SpecGenSection() {
     }
   }
 
-  const SCAFFOLD_FILES = ["AGENTS.md", "DESIGN.md", "PLAN.md", "SPRINT.md", "CLAUDE.md", "spec-index.json"]
+  const SCAFFOLD_FILES = ["spec-index.json", "AGENTS.md", "DESIGN.md", "PLAN.md", "SPRINT.md", "CLAUDE.md"]
 
   async function handleScaffold() {
     setScaffoldStage("generating")
-    const steps = SCAFFOLD_FILES
-    let si = 0
-    setScaffoldStep(steps[0])
-    const iv = setInterval(() => {
-      si = Math.min(si + 1, steps.length - 1)
-      setScaffoldStep(steps[si])
-    }, 1200)
+    setScaffoldFiles([])
+    setScaffoldStep("spec-index.json")
 
     try {
-      const res = await fetch(`${base}/sdd/scaffold`, {
+      const res = await fetch(`${base}/sdd/scaffold/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ spec }),
       })
-      clearInterval(iv)
-      if (res.ok) {
-        const data = await res.json()
-        setScaffoldFiles(data.files ?? [])
-        setScaffoldStage("done")
-      } else {
-        setScaffoldStage("idle")
+      if (!res.ok || !res.body) { setScaffoldStage("idle"); return }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buf = ""
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split("\n")
+        buf = lines.pop() ?? ""
+        for (const line of lines) {
+          if (!line.trim()) continue
+          try {
+            const file = JSON.parse(line) as ScaffoldFile
+            setScaffoldFiles(prev => [...prev, file])
+            setScaffoldStep(file.name)
+            setActiveTab(file.name)
+          } catch { /* malformed line */ }
+        }
       }
+      setScaffoldStage("done")
     } catch {
-      clearInterval(iv)
       setScaffoldStage("idle")
     }
   }
