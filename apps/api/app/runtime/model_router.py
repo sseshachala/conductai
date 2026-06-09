@@ -25,9 +25,13 @@ OPUS     = "claude-opus-4-7"
 HAIKU    = "claude-haiku-4-5-20251001"
 GPT_41   = "gpt-4.1"
 GPT_41_M = "gpt-4.1-mini"
+SONAR          = "sonar"
+SONAR_PRO      = "sonar-pro"
+SONAR_REASONING = "sonar-reasoning-pro"
 
-ANTHROPIC = "anthropic"
-OPENAI    = "openai"
+ANTHROPIC  = "anthropic"
+OPENAI     = "openai"
+PERPLEXITY = "perplexity"
 
 # ── Task categories (derived from playbook slug) ──────────────────────────────
 
@@ -122,6 +126,15 @@ _PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {
         "reasoning":           (GPT_41,   "openai override: strongest available OpenAI model for reasoning"),
         "unknown":             (GPT_41_M, "openai override: balanced default model"),
     },
+    PERPLEXITY: {
+        "code_implementation": (SONAR_PRO,      "perplexity override: sonar-pro for code tasks"),
+        "code_review":         (SONAR_PRO,      "perplexity override: sonar-pro for code review"),
+        "security":            (SONAR_PRO,      "perplexity override: sonar-pro for security scanning"),
+        "triage":              (SONAR,          "perplexity override: sonar for triage"),
+        "summarization":       (SONAR,          "perplexity override: sonar for summarization"),
+        "reasoning":           (SONAR_REASONING, "perplexity override: sonar-reasoning-pro for reasoning"),
+        "unknown":             (SONAR,          "perplexity override: sonar default"),
+    },
 }
 
 
@@ -129,6 +142,8 @@ def _infer_provider(model: str) -> str:
     m = (model or "").lower()
     if m.startswith("gpt-"):
         return OPENAI
+    if m.startswith("sonar"):
+        return PERPLEXITY
     return ANTHROPIC
 
 
@@ -161,7 +176,7 @@ def resolve(
         category = _SLUG_TO_CATEGORY.get(playbook_slug or "", "") if playbook_slug else ""
 
         requested_provider = (explicit_provider or "").lower().strip()
-        if requested_provider in (ANTHROPIC, OPENAI):
+        if requested_provider in (ANTHROPIC, OPENAI, PERPLEXITY):
             category_key = category or "unknown"
             model, reason = _PROVIDER_MODEL_DEFAULTS[requested_provider].get(
                 category_key,

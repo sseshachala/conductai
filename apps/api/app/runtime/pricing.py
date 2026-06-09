@@ -40,11 +40,26 @@ _DEFAULT_PRICING: dict[str, dict[str, dict[str, float]]] = {
             "output": 1.60,
         },
     },
+    "perplexity": {
+        "sonar": {
+            "input": 1.00,
+            "output": 5.00,
+        },
+        "sonar-pro": {
+            "input": 3.00,
+            "output": 15.00,
+        },
+        "sonar-reasoning-pro": {
+            "input": 2.00,
+            "output": 8.00,
+        },
+    },
 }
 
 _DEFAULTS_BY_PROVIDER: dict[str, str] = {
     "anthropic": "claude-sonnet-4-6",
     "openai": "gpt-4.1-mini",
+    "perplexity": "sonar",
 }
 
 

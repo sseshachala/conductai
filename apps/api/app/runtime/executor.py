@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.core.config import settings
-from app.runtime.llm_client import AnthropicClient, OpenAIClient, LLMTextBlock, LLMToolUseBlock
+from app.runtime.llm_client import AnthropicClient, OpenAIClient, PerplexityClient, LLMTextBlock, LLMToolUseBlock
 from app.runtime.model_router import resolve as _router_resolve
 from app.runtime.pricing import freeze_pricing_snapshot, get_model_rates
 from app.core.crypto import decrypt
@@ -866,16 +866,27 @@ def _execute_brain(
         or _env_vars.get("OPENAI_API_KEY")
         or settings.openai_api_key
     )
+    _perplexity_key = (
+        (credentials or {}).get("perplexity", {}).get("api_key")
+        or _env_vars.get("perplexity_api_key")
+        or _env_vars.get("PERPLEXITY_API_KEY")
+    )
 
     pricing_snapshot = freeze_pricing_snapshot()
 
     # Provider fallback keeps existing Anthropic behavior if OpenAI is selected
     # but no key is configured for this workspace/run.
-    if provider == "openai" and _openai_key:
+    if provider == "perplexity" and _perplexity_key:
+        llm = PerplexityClient(api_key=_perplexity_key, pricing_snapshot=pricing_snapshot)
+    elif provider == "openai" and _openai_key:
         llm = OpenAIClient(api_key=_openai_key, pricing_snapshot=pricing_snapshot)
     else:
         if provider == "openai" and not _openai_key:
             log.warning("brain.provider_fallback", reason="missing_openai_key", selected_provider=provider, fallback_provider="anthropic")
+            provider, model_id, fallback_reason = _router_resolve(playbook_slug, routing_pref, None, "anthropic")
+            routing_reason = f"{routing_reason}; fallback: {fallback_reason}"
+        elif provider == "perplexity" and not _perplexity_key:
+            log.warning("brain.provider_fallback", reason="missing_perplexity_key", selected_provider=provider, fallback_provider="anthropic")
             provider, model_id, fallback_reason = _router_resolve(playbook_slug, routing_pref, None, "anthropic")
             routing_reason = f"{routing_reason}; fallback: {fallback_reason}"
         llm = AnthropicClient(api_key=_anthropic_key, pricing_snapshot=pricing_snapshot)
