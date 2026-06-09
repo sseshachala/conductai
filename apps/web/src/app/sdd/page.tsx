@@ -336,8 +336,56 @@ function WorkflowSection() {
 /* ─── sdd-spec-gen free tool ───────────────────────────────────────────── */
 
 type Stage = "input" | "asking" | "clarify" | "generating" | "output" | "error"
-
 type Question = { key: string; question: string }
+type ScaffoldFile = { name: string; content: string }
+type ScaffoldStage = "idle" | "generating" | "done"
+
+function renderInline(text: string): React.ReactNode[] {
+  const parts = text.split(/(\*\*[^*]+\*\*|_[^_]+_|`[^`]+`)/g)
+  return parts.map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**")) return <strong key={i}>{part.slice(2, -2)}</strong>
+    if (part.startsWith("_") && part.endsWith("_")) return <em key={i} className="text-stone-500 not-italic">{part.slice(1, -1)}</em>
+    if (part.startsWith("`") && part.endsWith("`")) return <code key={i} className="bg-stone-100 px-1 rounded text-xs font-mono text-indigo-700">{part.slice(1, -1)}</code>
+    return part
+  })
+}
+
+function MarkdownViewer({ content, name }: { content: string; name: string }) {
+  if (name === "spec-index.json") {
+    return <pre className="px-5 py-5 text-xs font-mono text-stone-600 leading-relaxed whitespace-pre-wrap max-h-[420px] overflow-y-auto">{content}</pre>
+  }
+  const lines = content.split("\n")
+  return (
+    <div className="px-6 py-5 max-h-[420px] overflow-y-auto space-y-1">
+      {lines.map((line, i) => {
+        if (line.startsWith("# ")) return <h1 key={i} className="text-lg font-bold text-stone-900 mt-2 mb-1 first:mt-0">{renderInline(line.slice(2))}</h1>
+        if (line.startsWith("## ")) return <h2 key={i} className="text-sm font-bold text-stone-800 mt-5 mb-1 pb-1 border-b border-stone-100">{renderInline(line.slice(3))}</h2>
+        if (line.startsWith("### ")) return <h3 key={i} className="text-sm font-semibold text-stone-700 mt-3 mb-0.5">{renderInline(line.slice(4))}</h3>
+        if (line.startsWith("---")) return <hr key={i} className="border-stone-200 my-3" />
+        if (line.startsWith("- ") || line.startsWith("* ")) return (
+          <div key={i} className="flex gap-2 text-xs text-stone-600 leading-relaxed">
+            <span className="text-stone-300 shrink-0 mt-0.5">•</span>
+            <span>{renderInline(line.slice(2))}</span>
+          </div>
+        )
+        if (line.startsWith("❓")) return (
+          <div key={i} className="bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 text-xs text-amber-800 my-1">{renderInline(line)}</div>
+        )
+        if (/^\*\*FR-\d+\*\*/.test(line)) return (
+          <div key={i} className="mt-3 mb-0.5 text-xs font-bold text-indigo-700">{renderInline(line)}</div>
+        )
+        if (/^\*\*NFR-\d+\*\*/.test(line)) return (
+          <div key={i} className="mt-3 mb-0.5 text-xs font-bold text-violet-700">{renderInline(line)}</div>
+        )
+        if (line.startsWith("_Acceptance")) return (
+          <div key={i} className="ml-4 text-xs text-emerald-700 border-l-2 border-emerald-200 pl-3 py-0.5 italic">{renderInline(line)}</div>
+        )
+        if (line.trim() === "") return <div key={i} className="h-1.5" />
+        return <p key={i} className="text-xs text-stone-600 leading-relaxed">{renderInline(line)}</p>
+      })}
+    </div>
+  )
+}
 
 function SpecGenSection() {
   const [stage, setStage] = useState<Stage>("input")
@@ -346,10 +394,14 @@ function SpecGenSection() {
   const [questions, setQuestions] = useState<Question[]>([])
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [generatingStep, setGeneratingStep] = useState(0)
-  const [copied, setCopied] = useState(false)
   const [trailOpen, setTrailOpen] = useState(false)
   const [spec, setSpec] = useState("")
   const [errorMsg, setErrorMsg] = useState("")
+  const [scaffoldFiles, setScaffoldFiles] = useState<ScaffoldFile[]>([])
+  const [scaffoldStage, setScaffoldStage] = useState<ScaffoldStage>("idle")
+  const [scaffoldStep, setScaffoldStep] = useState("")
+  const [activeTab, setActiveTab] = useState("SPEC.md")
+  const [copiedTab, setCopiedTab] = useState("")
 
   const base = process.env.NEXT_PUBLIC_API_URL ?? ""
 
@@ -439,23 +491,55 @@ function SpecGenSection() {
     }
   }
 
-  function handleCopy() {
-    navigator.clipboard.writeText(spec).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
+  const SCAFFOLD_FILES = ["AGENTS.md", "DESIGN.md", "PLAN.md", "SPRINT.md", "CLAUDE.md", "spec-index.json"]
+
+  async function handleScaffold() {
+    setScaffoldStage("generating")
+    const steps = SCAFFOLD_FILES
+    let si = 0
+    setScaffoldStep(steps[0])
+    const iv = setInterval(() => {
+      si = Math.min(si + 1, steps.length - 1)
+      setScaffoldStep(steps[si])
+    }, 1200)
+
+    try {
+      const res = await fetch(`${base}/sdd/scaffold`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spec }),
+      })
+      clearInterval(iv)
+      if (res.ok) {
+        const data = await res.json()
+        setScaffoldFiles(data.files ?? [])
+        setScaffoldStage("done")
+      } else {
+        setScaffoldStage("idle")
+      }
+    } catch {
+      clearInterval(iv)
+      setScaffoldStage("idle")
+    }
   }
 
-  function handleDownload() {
-    const blob = new Blob([spec], { type: "text/markdown" })
+  function downloadFile(name: string, content: string) {
+    const blob = new Blob([content], { type: name.endsWith(".json") ? "application/json" : "text/markdown" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
-    a.href = url
-    a.download = "SPEC.md"
-    a.click()
+    a.href = url; a.download = name; a.click()
     URL.revokeObjectURL(url)
   }
 
+  function copyFile(name: string, content: string) {
+    navigator.clipboard.writeText(content).then(() => {
+      setCopiedTab(name)
+      setTimeout(() => setCopiedTab(""), 2000)
+    })
+  }
+
+  const allFiles: ScaffoldFile[] = [{ name: "SPEC.md", content: spec }, ...scaffoldFiles]
+  const activeFile = allFiles.find(f => f.name === activeTab) ?? allFiles[0]
   const frCount = (spec.match(/\*\*FR-\d+\*\*/g) ?? []).length
   const openQCount = (spec.match(/❓/g) ?? []).length
 
@@ -611,54 +695,99 @@ function SpecGenSection() {
 
             {/* Stage 3 — Output */}
             {stage === "output" && (
-              <div className="flex flex-col gap-5">
+              <div className="flex flex-col gap-4">
+
+                {/* Status bar */}
                 <div className="flex items-center gap-3 flex-wrap">
                   <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1">
                     <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    <span className="text-xs font-semibold text-emerald-700">SPEC.md ready</span>
+                    <span className="text-xs font-semibold text-emerald-700">
+                      {scaffoldStage === "done" ? `${allFiles.length} files ready` : "SPEC.md ready"}
+                    </span>
                   </div>
-                  <span className="text-xs text-stone-500">
-                    {frCount > 0 ? `${frCount} functional requirements` : "Requirements generated"}
-                    {openQCount > 0 ? ` · ${openQCount} open question${openQCount > 1 ? "s" : ""}` : ""}
+                  <span className="text-xs text-stone-400">
+                    {frCount > 0 ? `${frCount} FRs` : ""}
+                    {openQCount > 0 ? ` · ${openQCount} open questions` : ""}
                   </span>
-                </div>
-
-                <div className="rounded-xl border border-stone-200 bg-stone-950 overflow-hidden">
-                  <div className="px-4 py-2.5 bg-stone-900 border-b border-stone-800 flex items-center justify-between">
-                    <span className="font-mono text-xs text-stone-500">SPEC.md</span>
-                    <button onClick={handleCopy} className="text-xs text-stone-400 hover:text-white transition-colors">
-                      {copied ? "Copied ✓" : "Copy"}
-                    </button>
-                  </div>
-                  <div className="px-5 py-4 font-mono text-xs text-stone-300 leading-relaxed max-h-72 overflow-y-auto whitespace-pre-wrap">
-                    {spec}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 flex-wrap">
                   <button
-                    onClick={handleDownload}
-                    className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors"
+                    onClick={() => { setStage("input"); setDescription(""); setSourceUrl(""); setAnswers({}); setQuestions([]); setSpec(""); setScaffoldFiles([]); setScaffoldStage("idle"); setActiveTab("SPEC.md"); setTrailOpen(false) }}
+                    className="text-xs text-stone-400 hover:text-stone-600 transition-colors ml-auto"
                   >
-                    Download SPEC.md
-                  </button>
-                  <button onClick={handleCopy} className="inline-flex items-center gap-2 rounded-xl border border-stone-200 px-5 py-2.5 text-sm font-medium text-stone-600 hover:border-stone-300 transition-colors">
-                    {copied ? "Copied ✓" : "Copy"}
-                  </button>
-                  <button onClick={() => { setStage("input"); setDescription(""); setSourceUrl(""); setAnswers({}); setQuestions([]); setSpec(""); setTrailOpen(false) }} className="text-sm text-stone-400 hover:text-stone-600 transition-colors ml-auto">
                     Start over
                   </button>
                 </div>
 
+                {/* Tab pills */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {allFiles.map(f => (
+                    <button
+                      key={f.name}
+                      onClick={() => setActiveTab(f.name)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                        activeTab === f.name
+                          ? "bg-indigo-600 text-white"
+                          : "bg-stone-100 text-stone-500 hover:bg-stone-200"
+                      }`}
+                    >
+                      {f.name}
+                    </button>
+                  ))}
+                  {scaffoldStage === "idle" && SCAFFOLD_FILES.map(n => (
+                    <span key={n} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-stone-50 text-stone-300 border border-dashed border-stone-200">{n}</span>
+                  ))}
+                </div>
+
+                {/* File viewer */}
+                <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
+                  <div className="px-4 py-2.5 bg-stone-50 border-b border-stone-100 flex items-center justify-between">
+                    <span className="font-mono text-xs text-stone-500">{activeFile?.name}</span>
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => copyFile(activeFile.name, activeFile.content)} className="text-xs text-stone-400 hover:text-stone-700 transition-colors">
+                        {copiedTab === activeFile?.name ? "Copied ✓" : "Copy"}
+                      </button>
+                      <button onClick={() => downloadFile(activeFile.name, activeFile.content)} className="text-xs text-indigo-500 hover:text-indigo-700 font-semibold transition-colors">
+                        Download
+                      </button>
+                    </div>
+                  </div>
+                  {activeFile && <MarkdownViewer content={activeFile.content} name={activeFile.name} />}
+                </div>
+
+                {/* Scaffold CTA or generating */}
+                {scaffoldStage === "idle" && (
+                  <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-5 py-4 flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold text-stone-900 mb-0.5">Scaffold your repo from this spec</p>
+                      <p className="text-xs text-stone-500">Generates AGENTS.md, DESIGN.md, PLAN.md, SPRINT.md, CLAUDE.md + spec-index.json — free, no login.</p>
+                    </div>
+                    <button
+                      onClick={handleScaffold}
+                      className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors"
+                    >
+                      Scaffold this →
+                    </button>
+                  </div>
+                )}
+
+                {scaffoldStage === "generating" && (
+                  <div className="rounded-xl border border-stone-100 bg-stone-50 px-5 py-4 flex items-center gap-4">
+                    <span className="text-indigo-400 animate-spin text-lg shrink-0">◈</span>
+                    <div>
+                      <p className="text-xs font-semibold text-stone-700">Generating scaffold files…</p>
+                      <p className="text-xs text-stone-400 font-mono mt-0.5">{scaffoldStep}</p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Generation trail */}
                 <details open={trailOpen} onToggle={e => setTrailOpen((e.target as HTMLDetailsElement).open)}
-                  className="rounded-xl border border-stone-100 bg-stone-50 overflow-hidden">
-                  <summary className="px-5 py-3 text-xs font-semibold text-stone-400 cursor-pointer select-none hover:text-stone-600 transition-colors list-none flex items-center justify-between">
+                  className="rounded-xl border border-stone-100 overflow-hidden">
+                  <summary className="px-5 py-3 text-xs font-semibold text-stone-400 cursor-pointer select-none hover:text-stone-600 transition-colors list-none flex items-center justify-between bg-stone-50">
                     <span>How this was generated</span>
                     <span className="text-stone-300">{trailOpen ? "▲" : "▼"}</span>
                   </summary>
                   {trailOpen && (
-                    <div className="px-5 pb-5 flex flex-col gap-4 border-t border-stone-100 pt-4">
+                    <div className="px-5 pb-5 flex flex-col gap-4 border-t border-stone-100 pt-4 bg-stone-50">
                       <div>
                         <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1.5">Description</p>
                         <p className="text-xs text-stone-600 leading-relaxed whitespace-pre-wrap">{description}</p>
@@ -684,18 +813,6 @@ function SpecGenSection() {
                   )}
                 </details>
 
-                <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-5 py-5 flex flex-col gap-3">
-                  <p className="text-sm font-semibold text-stone-900">Want to scaffold your repo from this?</p>
-                  <p className="text-sm text-stone-500 leading-relaxed">
-                    <code className="font-mono text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded">sdd-bootstrap</code> reads this SPEC.md and commits 6 scaffold files to your GitHub repo — AGENTS.md, DESIGN.md, PLAN.md, SPRINT.md, CLAUDE.md, and the spec index — in one push.
-                  </p>
-                  <a
-                    href="/dashboard"
-                    className="self-start inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors"
-                  >
-                    Sign in to run sdd-bootstrap →
-                  </a>
-                </div>
               </div>
             )}
           </div>
