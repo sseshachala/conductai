@@ -226,6 +226,7 @@ _ENV_VAR_MAP: dict[str, tuple[str, str]] = {
     "MODAL_TOKEN_SECRET": ("modal",        "token_secret"),
     # AI
     "ANTHROPIC_API_KEY":  ("anthropic",    "api_key"),
+    "PERPLEXITY_API_KEY": ("perplexity",   "api_key"),
     # Email
     "RESEND_API_KEY":     ("email",        "resend_api_key"),
     "SENDGRID_API_KEY":   ("email",        "sendgrid_api_key"),
@@ -834,12 +835,25 @@ def test_credential(
                 return {"ok": True}
             return {"ok": False, "error": f"Resend returned {r.status_code}: {r.text[:200]}"}
 
+        elif svc == "perplexity":
+            api_key = creds.get("api_key", "")
+            if not api_key:
+                return {"ok": False, "error": "Missing 'api_key' field"}
+            r = httpx.get(
+                "https://api.perplexity.ai/models",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=10,
+            )
+            if r.status_code == 200:
+                return {"ok": True}
+            return {"ok": False, "error": f"Perplexity returned {r.status_code}: {r.text[:200]}"}
+
         else:
             return {
                 "ok": False,
                 "error": (
                     f"Unknown service '{svc}'. "
-                    "Supported: github, slack, anthropic, linear, digitalocean, email"
+                    "Supported: github, slack, anthropic, linear, digitalocean, email, perplexity"
                 ),
             }
 

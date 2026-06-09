@@ -103,6 +103,19 @@ const SERVICES: ServiceDef[] = [
     ],
   },
   {
+    value: "perplexity", label: "Perplexity", abbr: "PPX",
+    description: "Single key for Sonar, GPT-4o, Claude, Gemini — multi-provider routing with no markup on third-party models",
+    color: "bg-teal-600 text-white",
+    fields: [
+      {
+        key: "api_key",
+        label: "API key",
+        placeholder: "pplx-…",
+        tip: "Create at perplexity.ai/settings/api — your key is encrypted at rest and never logged.",
+      },
+    ],
+  },
+  {
     value: "email", label: "Email", abbr: "EM",
     description: "Send notifications via Resend or SendGrid",
     color: "bg-emerald-600 text-white",
