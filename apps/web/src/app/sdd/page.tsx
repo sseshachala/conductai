@@ -25,17 +25,55 @@ export default function SDDPage() {
 
 /* ─── Nav ──────────────────────────────────────────────────────────────── */
 
+function GitHubIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
+    </svg>
+  )
+}
+
 function Nav() {
   return (
     <header className="px-6 py-5 flex items-center justify-between max-w-6xl mx-auto w-full">
-      <a href="/">
-        <img src="/logo.png" alt="Conduct AI" className="h-10 w-auto" />
-      </a>
+      <div className="flex items-center">
+        <a href="/">
+          <img src="/logo.png" alt="Conduct AI" className="h-10 w-auto" />
+        </a>
+      </div>
       <div className="flex items-center gap-4">
-        <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
-        <a href="/marketplace" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Agent Templates</a>
-        <a href="/tools" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Tools</a>
-        <a href="/docs" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
+        <a href="/blog" className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
+        <a href="/marketplace" className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Agent Templates</a>
+        <div className="relative group">
+          <a href="/tools" className="flex items-center gap-1 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
+            Tools
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="opacity-50 mt-0.5"><path d="M2 4l4 4 4-4"/></svg>
+          </a>
+          <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50">
+            <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-1.5 min-w-[160px]">
+              <a href="/tools/agent-booster" className="flex items-center gap-2 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+                <span className="text-indigo-600 font-bold">◈</span> Agent Booster
+              </a>
+              <a href="/tools/conduct-cli" className="flex items-center gap-2 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+                <span className="text-violet-600 font-bold">⬡</span> Conduct CLI
+              </a>
+              <a href="/tools/security-loop" className="flex items-center gap-2 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+                <span className="text-rose-600 font-bold">🔐</span> Security Loop
+              </a>
+            </div>
+          </div>
+        </div>
+        <a href="/sdd" className="flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">SDD</a>
+        <a href="/benchmark" className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Benchmark</a>
+        <a href="/docs" className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
+        <a
+          href="https://github.com/sseshachala/conductai"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
+        >
+          <GitHubIcon /> GitHub
+        </a>
         <a href="/dashboard" className="inline-flex items-center gap-2 rounded-lg bg-stone-900 px-4 py-2 text-sm font-semibold text-white hover:bg-stone-700 transition-colors">
           Sign in →
         </a>
