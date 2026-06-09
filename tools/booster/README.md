@@ -58,6 +58,10 @@ Each command shows exactly what files will change, asks for confirmation, then w
 booster remove claude   # or cursor, windsurf, codex, all
 ```
 
+Example — wiring up OpenAI Codex (`booster init codex` → `booster start` → `booster gain`):
+
+![Agent Booster with OpenAI Codex — init writes ~/.codex/config.json + AGENTS.md, start indexes, gain reports savings](assets/agent-booster-codex-demo.gif)
+
 > **Run once per project, not once per session.**
 > The hooks live in `.claude/settings.json` and `.mcp.json` at the project root.
 > Every Claude Code session opened in this directory — any terminal window, same machine — picks them up automatically.
