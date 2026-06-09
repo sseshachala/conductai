@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import { useSearchParams } from "next/navigation"
+import Link from "next/link"
 import AppShell from "@/components/AppShell"
 import { needsAttention, isActive, formatTrigger, timeAgo, duration } from "@/lib/runUtils"
 
@@ -435,10 +436,32 @@ function RunRow({ run, onClick }: RunRowProps) {
         background: hovered ? "var(--surface-2)" : "transparent",
       }}
     >
-      {/* Workflow */}
+      {/* Workflow + project breadcrumb */}
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontWeight: 600, fontSize: 13.5, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {run.workflow_name}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, overflow: "hidden" }}>
+          {run.project_name && run.project_id && (
+            <>
+              <Link
+                href={`/projects/${run.project_id}`}
+                onClick={e => e.stopPropagation()}
+                style={{ fontSize: 11.5, color: "var(--text-3)", fontWeight: 500, whiteSpace: "nowrap", textDecoration: "none", flexShrink: 0 }}
+                onMouseEnter={e => (e.currentTarget.style.color = "var(--accent-text)")}
+                onMouseLeave={e => (e.currentTarget.style.color = "var(--text-3)")}
+              >
+                {run.project_name}
+              </Link>
+              <span style={{ color: "var(--border-2)", fontSize: 11, flexShrink: 0 }}>/</span>
+            </>
+          )}
+          <Link
+            href={`/workflows/${run.workflow_id}`}
+            onClick={e => e.stopPropagation()}
+            style={{ fontWeight: 600, fontSize: 13.5, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: "none" }}
+            onMouseEnter={e => (e.currentTarget.style.color = "var(--accent-text)")}
+            onMouseLeave={e => (e.currentTarget.style.color = "var(--text)")}
+          >
+            {run.workflow_name}
+          </Link>
         </div>
         {triggerDetail && (
           <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 11, color: "var(--text-muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
