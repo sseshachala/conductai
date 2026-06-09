@@ -144,7 +144,6 @@ blocks:
     condition: "{{_trigger.slack_alerts_enabled == true}}"
     next:
       pass: alert_slack
-      fail: done_alert
 
   alert_slack:
     type: output
@@ -166,20 +165,12 @@ blocks:
       slack:
         channel: "{{_trigger.slack_channel}}"
 
-  done_alert:
-    type: output
-    label: Slack alerts disabled — skipped
-    description: "Slack alerts are disabled for this workspace. Finding {{_trigger.finding_id}} triaged successfully."
-    output:
-      via: log
-
   slack_gate_dismiss:
     type: logic
     label: Slack alerts enabled?
     condition: "{{_trigger.slack_alerts_enabled == true}}"
     next:
       pass: log_false_positive
-      fail: done_dismiss
 
   log_false_positive:
     type: output
@@ -192,20 +183,12 @@ blocks:
       slack:
         channel: "{{_trigger.slack_channel}}"
 
-  done_dismiss:
-    type: output
-    label: Slack alerts disabled — skipped
-    description: "Slack alerts are disabled. Finding {{_trigger.finding_id}} dismissed as false positive."
-    output:
-      via: log
-
   slack_gate_log:
     type: logic
     label: Slack alerts enabled?
     condition: "{{_trigger.slack_alerts_enabled == true}}"
     next:
       pass: log_only
-      fail: done_log
 
   log_only:
     type: output
@@ -217,13 +200,6 @@ blocks:
       via: slack
       slack:
         channel: "{{_trigger.slack_channel}}"
-
-  done_log:
-    type: output
-    label: Slack alerts disabled — skipped
-    description: "Slack alerts are disabled. Finding {{_trigger.finding_id}} logged."
-    output:
-      via: log
 
 test_trigger:
   payload:
