@@ -713,7 +713,7 @@ function GuardBlockPanel({
               This block enforces spend caps, tool blocks, and audit policies — but Guard is not installed for this workspace.
             </p>
             <a
-              href="/settings/modules"
+              href="/marketplace?tab=modules"
               className="inline-block text-[10px] font-semibold text-red-700 border border-red-300 rounded px-2 py-1 hover:bg-red-100 transition-colors"
             >
               Install Guard →

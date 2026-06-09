@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { SecureLoopIcon } from "@/app/secure/_components"
+import ModulesManager from "@/components/settings/ModulesManager"
 
 interface Playbook {
   slug: string
@@ -157,6 +158,10 @@ function MarketplaceWithAuth() {
 
 function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const [marketTab, setMarketTab] = useState<"templates" | "modules">(
+    searchParams?.get("tab") === "modules" ? "modules" : "templates"
+  )
   const [playbooks, setPlaybooks] = useState<Playbook[]>([])
   const [loading, setLoading] = useState(true)
   const [activeCategory, setActiveCategory] = useState("All")
@@ -464,14 +469,36 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
       <div className="mx-auto max-w-5xl px-6 py-10">
 
         {/* Page header */}
-        <div style={{ marginBottom: 28 }}>
+        <div style={{ marginBottom: 20 }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", letterSpacing: "-.02em", marginBottom: 5 }}>
             Marketplace
           </h1>
-          <p style={{ fontSize: 13.5, color: "var(--text-3)", lineHeight: 1.5 }}>
-            22 ready-made agent templates. Install in one click, connect credentials, and run.
-          </p>
         </div>
+
+        {/* Top tabs */}
+        <div style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border)", marginBottom: 24 }}>
+          {(["templates", "modules"] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => { setMarketTab(t); router.replace(t === "modules" ? "/marketplace?tab=modules" : "/marketplace") }}
+              style={{
+                background: "none", border: "none", padding: "9px 16px", fontSize: 13.5, cursor: "pointer",
+                fontWeight: marketTab === t ? 600 : 500, marginBottom: -1,
+                color: marketTab === t ? "var(--text)" : "var(--text-3)",
+                borderBottom: `2px solid ${marketTab === t ? "var(--accent)" : "transparent"}`,
+                fontFamily: "inherit",
+              }}
+            >
+              {t === "templates" ? "Agent Templates" : "Modules"}
+            </button>
+          ))}
+        </div>
+
+        {/* Modules tab */}
+        {marketTab === "modules" && <ModulesManager />}
+
+        {/* Agent Templates tab */}
+        {marketTab === "templates" && <>
 
         {/* Search + submit row */}
         <div style={{ display: "flex", gap: 10, marginBottom: 22, alignItems: "center" }}>
@@ -536,60 +563,6 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
           </div>
         ) : (
           <>
-            {/* Security Loop module install card */}
-            {(activeCategory === "All" || activeCategory === "Security") && !searchActive && !secureDismissed && (
-              <div style={{ marginBottom: 28 }}>
-                <div className="eyebrow" style={{ marginBottom: 11 }}>Modules</div>
-                <div style={{
-                  background: "linear-gradient(135deg, #fef2f2 0%, #fff7ed 100%)",
-                  border: "1px solid #fecaca",
-                  borderRadius: 14,
-                  padding: "20px 24px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 20,
-                }}>
-                  <span style={{ width: 44, height: 44, borderRadius: 12, background: "#dc2626", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
-                    <SecureLoopIcon size={22} />
-                  </span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 15, color: "#991b1b", marginBottom: 3 }}>Security Loop — AI Tools</div>
-                    <div style={{ fontSize: 13, color: "#b91c1c", lineHeight: 1.5 }}>
-                      Passive security classifier on every AI tool call — Claude Code, Codex, Cursor, Windsurf, and more. Findings surface in your team's Secure feed automatically — secrets, injections, path traversal, crypto issues. Zero developer action.
-                    </div>
-                    <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                      {["passive", "ai-tools", "security", "bughunter"].map(tag => (
-                        <span key={tag} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, background: "rgba(220,38,38,.12)", color: "#dc2626", fontWeight: 500 }}>
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  {secureInstalled ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                      <Link href="/secure" style={{ textDecoration: "none" }}>
-                        <button className="btn btn-ghost btn-sm">Open Secure →</button>
-                      </Link>
-                      <button
-                        onClick={() => setSecureDismissed(true)}
-                        style={{ background: "none", border: "none", cursor: "pointer", color: "#b91c1c", fontSize: 16, lineHeight: 1, padding: "0 4px", opacity: 0.6 }}
-                        title="Dismiss"
-                      >×</button>
-                    </div>
-                  ) : (
-                    <button
-                      className="btn btn-primary btn-sm"
-                      style={{ flexShrink: 0 }}
-                      disabled={secureInstalling}
-                      onClick={installSecureModule}
-                    >
-                      {secureInstalling ? "Installing…" : "Install"}
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-
             {/* Featured section */}
             {showFeatured && (
               <div style={{ marginBottom: 30 }}>
@@ -666,6 +639,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
             )}
           </>
         )}
+        </>}
       </div>
 
       {/* YAML preview modal */}
