@@ -1153,6 +1153,21 @@ function WorksWithSection() {
           Each command shows exactly what files will change and asks for confirmation before writing anything.
           Run <code className="font-mono bg-stone-200 px-1 rounded">booster remove &lt;platform&gt;</code> to cleanly undo.
         </p>
+
+        <div className="mt-12 max-w-3xl mx-auto">
+          <p className="text-center text-xs font-semibold text-emerald-600 uppercase tracking-widest mb-3">Example: OpenAI Codex</p>
+          <div className="rounded-2xl border border-stone-200 bg-white p-2 shadow-sm">
+            <img
+              src="/tools/agent-booster-codex-demo.gif"
+              alt="Agent Booster with OpenAI Codex: booster init codex wires the MCP server and AGENTS.md, booster start indexes the project, and booster gain shows token savings"
+              className="w-full rounded-xl"
+              loading="lazy"
+            />
+          </div>
+          <p className="mt-3 text-center text-xs text-stone-400">
+            <code className="font-mono">booster init codex</code> wires <code className="font-mono">~/.codex/config.json</code> + <code className="font-mono">AGENTS.md</code>, then <code className="font-mono">booster start</code> indexes and <code className="font-mono">booster gain</code> reports the savings.
+          </p>
+        </div>
       </div>
     </section>
   )
