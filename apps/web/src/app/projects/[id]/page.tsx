@@ -382,7 +382,7 @@ function AgentCard({ workflow, isAdmin, onRename, onDelete }: {
 
   return (
     <div className="card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", gap: 12 }}>
-      <Link href={renaming ? "#" : `/workflows/${workflow.id}`} style={{ flex: 1, minWidth: 0, textDecoration: "none", color: "inherit" }} onClick={renaming ? e => e.preventDefault() : undefined}>
+      <Link href={renaming ? "#" : `/workflows/${workflow.id}/runs`} style={{ flex: 1, minWidth: 0, textDecoration: "none", color: "inherit" }} onClick={renaming ? e => e.preventDefault() : undefined}>
         {renaming ? (
           <input
             ref={inputRef}

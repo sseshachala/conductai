@@ -2,8 +2,8 @@
 """
 conductguard-mcp — ConductGuard MCP server.
 
-Runs as a subprocess started by Claude Code / Cursor / Windsurf via the
-mcpServers config written by `conduct guard sync`. Communicates over
+Runs as a subprocess started by Claude Code / Codex / Cursor / Windsurf via
+the mcpServers config written by `conduct guard sync`. Communicates over
 stdin/stdout using JSON-RPC 2.0 (MCP stdio transport).
 
 Exposes three tools:
