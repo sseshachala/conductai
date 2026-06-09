@@ -22,6 +22,7 @@ interface Workflow {
   id: string
   name: string
   workspace_id: string
+  project_id: string | null
   updated_at: string
   last_run_status: string | null
   last_run_at: string | null
@@ -187,7 +188,7 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
   }
 
   function workflowsForProject(project: Project): Workflow[] {
-    return workflows.filter(w => w.project_name === project.name)
+    return workflows.filter(w => w.project_id === project.id)
   }
 
   const userProjects = projects.filter(p => (p.project_type ?? "user") === "user")
