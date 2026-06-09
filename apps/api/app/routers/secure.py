@@ -13,10 +13,12 @@ DELETE /secure/policies/{policy_id}       — delete non-builtin policy
 """
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 from uuid import UUID
 
 import structlog
+import yaml
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -29,31 +31,20 @@ log = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/secure", tags=["secure"])
 
+_BUILTIN_POLICIES_YAML = Path(__file__).parent.parent / "modules" / "security" / "builtin_policies.yaml"
+
+
+def _load_builtin_policies() -> list[dict]:
+    """Load builtin security policies from YAML. Falls back to empty list on error."""
+    try:
+        with open(_BUILTIN_POLICIES_YAML) as f:
+            return yaml.safe_load(f) or []
+    except Exception as exc:
+        log.error("secure.builtin_policies_load_failed", error=str(exc))
+        return []
+
 _VALID_TYPES = {"injection", "path-traversal", "secret-leak", "auth-bypass", "crypto", "other"}
 _VALID_SEVERITIES = {"critical", "high", "medium", "low", "info"}
-
-_BUILTIN_POLICIES = [
-    # Secrets — platform keys
-    ("secret-sk-key",       r"sk-[A-Za-z0-9]{20,}",                         "secret-leak",    "high",     "OpenAI/Anthropic API key"),
-    ("secret-gh-pat",       r"ghp_[A-Za-z0-9]{36}",                         "secret-leak",    "high",     "GitHub Personal Access Token"),
-    ("secret-aws-key",      r"AKIA[0-9A-Z]{16}",                             "secret-leak",    "critical", "AWS Access Key ID"),
-    ("secret-password",     r"password\s*=\s*[^\s]{4,}",                     "secret-leak",    "high",     "Hardcoded password"),
-    ("secret-api-key",      r"api_?key\s*=\s*[^\s]{4,}",                     "secret-leak",    "high",     "Hardcoded API key"),
-    ("secret-stripe",       r"sk_live_[0-9a-zA-Z]{24,}",                     "secret-leak",    "critical", "Stripe live secret key"),
-    ("secret-slack",        r"xox[baprs]-[0-9A-Za-z\-]{10,}",               "secret-leak",    "high",     "Slack bot/app token"),
-    ("secret-private-key",  r"-----BEGIN (RSA |EC )?PRIVATE KEY-----",       "secret-leak",    "critical", "Private key material"),
-    # Code security
-    ("path-traversal",      r"\.\./\.\./\.\./",                              "path-traversal", "medium",   "Path traversal sequence"),
-    ("code-eval",           r"\beval\s*\(",                                  "injection",      "high",     "eval() in code"),
-    ("cmd-injection",       r"(subprocess\.(call|run|Popen|check_output)|os\.(system|popen))", "injection", "high", "Unsanitised shell call"),
-    ("sql-injection",       r"(execute|cursor\.execute)\s*\(\s*[\"'][^\"']*%[s|d]", "injection", "high",   "String-formatted SQL query"),
-    # Crypto
-    ("ssl-cert-none",       r"ssl\.CERT_NONE",                               "crypto",         "high",     "SSL verification disabled"),
-    ("tls-verify-false",    r"verify\s*=\s*False",                           "crypto",         "medium",   "TLS verification bypassed"),
-    ("weak-hash-md5",       r"(hashlib\.md5|MD5\(|DigestUtils\.md5)",        "crypto",         "medium",   "MD5 used for security-sensitive hash"),
-    ("weak-hash-sha1",      r"(hashlib\.sha1|SHA1\(|DigestUtils\.sha1)",     "crypto",         "medium",   "SHA-1 used for security-sensitive hash"),
-]
-
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -61,7 +52,10 @@ def _now() -> datetime:
 
 def _seed_builtin_policies(db: Session, workspace_id: str) -> None:
     ws_uuid = uuid.UUID(workspace_id)
-    for rule_id, pattern, ftype, severity, description in _BUILTIN_POLICIES:
+    for policy in _load_builtin_policies():
+        rule_id = policy.get("rule_id")
+        if not rule_id:
+            continue
         existing = db.query(SecurityPolicy).filter(
             SecurityPolicy.workspace_id == ws_uuid,
             SecurityPolicy.rule_id == rule_id,
@@ -71,10 +65,10 @@ def _seed_builtin_policies(db: Session, workspace_id: str) -> None:
                 id=uuid.uuid4(),
                 workspace_id=ws_uuid,
                 rule_id=rule_id,
-                description=description,
-                pattern=pattern,
-                finding_type=ftype,
-                severity=severity,
+                description=policy.get("description", ""),
+                pattern=policy.get("pattern"),
+                finding_type=policy.get("finding_type", "other"),
+                severity=policy.get("severity", "medium"),
                 enabled=True,
                 builtin=True,
             ))
