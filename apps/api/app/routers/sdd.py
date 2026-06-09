@@ -10,6 +10,7 @@ import datetime
 import structlog
 from collections import defaultdict
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.core.config import settings
@@ -390,3 +391,43 @@ def scaffold_repo(req: ScaffoldRequest, request: Request) -> ScaffoldResponse:
 
     log.info("sdd.scaffold_generated", ip=ip, files=len(files))
     return ScaffoldResponse(files=files)
+
+
+@router.post("/scaffold/stream")
+def scaffold_stream(req: ScaffoldRequest, request: Request) -> StreamingResponse:
+    ip = request.client.host if request.client else "unknown"
+    _check_rate_limit(ip)
+
+    if not settings.anthropic_api_key:
+        raise HTTPException(status_code=503, detail="Scaffold generation not available — platform key not configured.")
+
+    if not req.spec.strip():
+        raise HTTPException(status_code=422, detail="Spec is required.")
+
+    def generate():
+        import json as _json
+
+        # spec-index.json first — deterministic, instant
+        spec_index = _parse_spec_index(req.spec)
+        yield _json.dumps({"name": "spec-index.json", "content": _json.dumps(spec_index, indent=2)}) + "\n"
+
+        client = AnthropicClient(api_key=settings.anthropic_api_key)
+        for filename, system in _SCAFFOLD_PROMPTS.items():
+            try:
+                result = client.create(
+                    model="claude-sonnet-4-6",
+                    system=system,
+                    messages=[{"role": "user", "content": req.spec}],
+                    max_tokens=2048,
+                )
+                content = "".join(
+                    block.text for block in result.content if isinstance(block, LLMTextBlock)
+                ).strip()
+            except Exception as exc:
+                log.warning("sdd.scaffold_stream_file_failed", file=filename, error=str(exc))
+                content = f"# {filename}\n\nGeneration failed — please retry."
+            yield _json.dumps({"name": filename, "content": content}) + "\n"
+
+        log.info("sdd.scaffold_streamed", ip=ip)
+
+    return StreamingResponse(generate(), media_type="application/x-ndjson")
