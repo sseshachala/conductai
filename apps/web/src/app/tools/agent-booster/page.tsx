@@ -153,6 +153,20 @@ function HeroSection() {
       <p className="mt-4 text-xs text-stone-400">
         Python 3.10+ · MIT licensed · v0.2.19 · runs 100% locally · no code leaves your machine
       </p>
+
+      <div className="mt-14 w-full max-w-3xl">
+        <div className="rounded-2xl border border-stone-200 bg-stone-50 p-2 shadow-sm">
+          <img
+            src="/tools/agent-booster-demo.gif"
+            alt="Agent Booster demo: sends only relevant code, picks a cheaper model, and shows the token and cost savings per run"
+            className="w-full rounded-xl"
+            loading="lazy"
+          />
+        </div>
+        <p className="mt-3 text-xs text-stone-400">
+          Less sent, less spent, same result — token and cost savings on a single run.
+        </p>
+      </div>
     </section>
   )
 }

@@ -4,6 +4,8 @@ Cut AI coding agent token costs 5–15x by routing only the code that matters.
 
 Instead of sending full source files to the model on every read, Agent Booster builds a symbol index of your codebase and returns only the functions and classes relevant to the current task.
 
+![Agent Booster demo — fewer tokens sent, lower cost, same result](assets/agent-booster-demo.gif)
+
 ---
 
 ## How it works
