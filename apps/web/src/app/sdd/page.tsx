@@ -14,6 +14,7 @@ export default function SDDPage() {
         <SpecGenSection />
         <EnforcementSection />
         <SyncSection />
+        <WhyNotChatGPTSection />
         <ComparisonSection />
         <FooterCTASection />
       </main>
@@ -727,6 +728,64 @@ function SyncSection() {
 }
 
 /* ─── Comparison ───────────────────────────────────────────────────────── */
+
+function WhyNotChatGPTSection() {
+  return (
+    <section className="px-6 py-20">
+      <div className="max-w-4xl mx-auto">
+        <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">Common question</p>
+        <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
+          Why not just ask Claude or ChatGPT?
+        </h2>
+        <p className="text-stone-500 text-center max-w-xl mx-auto mb-14 leading-relaxed">
+          You can. But you get a markdown blob in a chat window.
+        </p>
+
+        <div className="grid sm:grid-cols-2 gap-6 mb-12">
+          <div className="rounded-2xl border border-stone-200 p-7">
+            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-4">Claude / ChatGPT</p>
+            <ul className="space-y-3">
+              {[
+                "Spec lives in a chat thread",
+                "No FR numbers — just prose",
+                "Nothing enforced at commit time",
+                "Disconnected from your repo and tickets",
+                "Agents ignore it the next day",
+              ].map(item => (
+                <li key={item} className="flex items-start gap-2.5 text-sm text-stone-500">
+                  <span className="mt-0.5 text-stone-300">✕</span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-7">
+            <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest mb-4">Conduct SDD</p>
+            <ul className="space-y-3">
+              {[
+                "SPEC.md committed to git — versioned forever",
+                "FR-xxx numbers in every commit, PR, and test",
+                "Pre-commit hook blocks unlinked code",
+                "One command syncs FRs to Jira / Linear / GitHub",
+                "AGENTS.md makes every AI agent spec-aware",
+              ].map(item => (
+                <li key={item} className="flex items-start gap-2.5 text-sm text-stone-700">
+                  <span className="mt-0.5 text-indigo-500">✓</span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        <p className="text-center text-stone-500 text-sm font-medium">
+          Chat → markdown.&nbsp;&nbsp;Conduct → enforced architecture.
+        </p>
+      </div>
+    </section>
+  )
+}
 
 function ComparisonSection() {
   return (
