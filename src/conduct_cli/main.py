@@ -2209,14 +2209,15 @@ def cmd_session_report(args):
     else:
         archetype = "Execution-Focused Builder"
 
+    scores_raw = stats.get("scores", {})
     payload = {
         "developer": developer,
         "hostname": hostname,
         "archetype": archetype,
         "competency_scores": {
-            "autonomy": autonomy_score,
-            "planning_ratio": planning_ratio,
-            "commits": commits,
+            "Execution":  scores_raw.get("Execution",  scores_raw.get("execution",  autonomy_score)),
+            "Planning":   scores_raw.get("Planning",   scores_raw.get("planning",   planning_ratio)),
+            "Engineering": scores_raw.get("Engineering", scores_raw.get("engineering", commits)),
         },
         "total_sessions": sessions,
         "tools_detected": top_tools,
