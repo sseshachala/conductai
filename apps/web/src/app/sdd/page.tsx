@@ -297,15 +297,19 @@ function WorkflowSection() {
 
 /* ─── sdd-spec-gen free tool ───────────────────────────────────────────── */
 
-type Stage = "input" | "clarify" | "generating" | "output" | "error"
+type Stage = "input" | "asking" | "clarify" | "generating" | "output" | "error"
+
+type Question = { key: string; question: string }
 
 function SpecGenSection() {
   const [stage, setStage] = useState<Stage>("input")
   const [description, setDescription] = useState("")
   const [sourceUrl, setSourceUrl] = useState("")
-  const [answers, setAnswers] = useState({ users: "", outOfScope: "", constraints: "" })
+  const [questions, setQuestions] = useState<Question[]>([])
+  const [answers, setAnswers] = useState<Record<string, string>>({})
   const [generatingStep, setGeneratingStep] = useState(0)
   const [copied, setCopied] = useState(false)
+  const [trailOpen, setTrailOpen] = useState(false)
   const [spec, setSpec] = useState("")
   const [errorMsg, setErrorMsg] = useState("")
 
@@ -319,8 +323,40 @@ function SpecGenSection() {
     "Finalising SPEC.md",
   ]
 
-  function handleAnalyse() {
+  async function handleAnalyse() {
     if (!description.trim()) return
+    setStage("asking")
+    try {
+      const res = await fetch(`${base}/sdd/questions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setQuestions(data.questions ?? [])
+        const init: Record<string, string> = {}
+        for (const q of (data.questions ?? [])) init[q.key] = ""
+        setAnswers(init)
+      } else {
+        // Fall back to generic questions
+        const fallback = [
+          { key: "users", question: "Who are the primary users? What's their main goal?" },
+          { key: "out_of_scope", question: "What's explicitly out of scope for this version?" },
+          { key: "constraints", question: "Any hard constraints? (tech stack, compliance, timeline)" },
+        ]
+        setQuestions(fallback)
+        setAnswers({ users: "", out_of_scope: "", constraints: "" })
+      }
+    } catch {
+      const fallback = [
+        { key: "users", question: "Who are the primary users? What's their main goal?" },
+        { key: "out_of_scope", question: "What's explicitly out of scope for this version?" },
+        { key: "constraints", question: "Any hard constraints? (tech stack, compliance, timeline)" },
+      ]
+      setQuestions(fallback)
+      setAnswers({ users: "", out_of_scope: "", constraints: "" })
+    }
     setStage("clarify")
   }
 
@@ -343,11 +379,7 @@ function SpecGenSection() {
         body: JSON.stringify({
           description,
           source_url: sourceUrl || null,
-          answers: {
-            users: answers.users,
-            out_of_scope: answers.outOfScope,
-            constraints: answers.constraints,
-          },
+          answers,
         }),
       })
       clearInterval(iv)
@@ -407,7 +439,7 @@ function SpecGenSection() {
             {(["input", "clarify", "output"] as const).map((s, i) => (
               <div key={s} className="flex items-center gap-2">
                 <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold transition-colors ${
-                  stage === s || (stage === "generating" && s === "clarify") || (stage === "output" && i < 2)
+                  stage === s || (stage === "asking" && s === "input") || (stage === "generating" && s === "clarify") || (stage === "output" && i < 2)
                     ? "bg-indigo-600 text-white"
                     : "bg-stone-200 text-stone-400"
                 }`}>{i + 1}</div>
@@ -455,40 +487,31 @@ function SpecGenSection() {
               </div>
             )}
 
-            {/* Stage 2 — Clarify */}
+            {/* Stage 1b — Asking (loading questions) */}
+            {stage === "asking" && (
+              <div className="flex flex-col items-center gap-4 py-8">
+                <span className="text-2xl animate-spin inline-block text-indigo-400">◈</span>
+                <p className="text-sm text-stone-500">Analysing your description…</p>
+              </div>
+            )}
+
+            {/* Stage 2 — Clarify (dynamic questions) */}
             {stage === "clarify" && (
               <div className="flex flex-col gap-6">
                 <div className="rounded-xl bg-indigo-50 border border-indigo-100 px-5 py-4">
                   <p className="text-sm text-indigo-700 leading-relaxed">
-                    Based on your description, I need to fill a few gaps before I can write
+                    Based on your description, I have a few targeted questions before writing
                     atomic, testable requirements.
                   </p>
                 </div>
 
-                {[
-                  {
-                    key: "users" as const,
-                    q: "1. Who are the primary users? What's their main goal?",
-                    placeholder: "e.g. Product managers at B2B SaaS companies — they want to stop losing feature requests in Slack threads",
-                  },
-                  {
-                    key: "outOfScope" as const,
-                    q: "2. What's explicitly out of scope for this version?",
-                    placeholder: "e.g. Mobile app, Linear integration, custom AI training",
-                  },
-                  {
-                    key: "constraints" as const,
-                    q: "3. Any hard constraints? (tech stack, compliance, timeline)",
-                    placeholder: "e.g. Must use Next.js + Postgres, GDPR compliance required, launch in 8 weeks",
-                  },
-                ].map(({ key, q, placeholder }) => (
+                {questions.map(({ key, question }, i) => (
                   <div key={key} className="flex flex-col gap-2">
-                    <label className="text-sm font-semibold text-stone-700">{q}</label>
+                    <label className="text-sm font-semibold text-stone-700">{i + 1}. {question}</label>
                     <textarea
                       rows={2}
-                      value={answers[key]}
+                      value={answers[key] ?? ""}
                       onChange={e => setAnswers(a => ({ ...a, [key]: e.target.value }))}
-                      placeholder={placeholder}
                       className="w-full rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none leading-relaxed"
                     />
                   </div>
@@ -584,10 +607,44 @@ function SpecGenSection() {
                   <button onClick={handleCopy} className="inline-flex items-center gap-2 rounded-xl border border-stone-200 px-5 py-2.5 text-sm font-medium text-stone-600 hover:border-stone-300 transition-colors">
                     {copied ? "Copied ✓" : "Copy"}
                   </button>
-                  <button onClick={() => { setStage("input"); setDescription(""); setSourceUrl(""); setAnswers({ users: "", outOfScope: "", constraints: "" }); setSpec("") }} className="text-sm text-stone-400 hover:text-stone-600 transition-colors ml-auto">
+                  <button onClick={() => { setStage("input"); setDescription(""); setSourceUrl(""); setAnswers({}); setQuestions([]); setSpec(""); setTrailOpen(false) }} className="text-sm text-stone-400 hover:text-stone-600 transition-colors ml-auto">
                     Start over
                   </button>
                 </div>
+
+                {/* Generation trail */}
+                <details open={trailOpen} onToggle={e => setTrailOpen((e.target as HTMLDetailsElement).open)}
+                  className="rounded-xl border border-stone-100 bg-stone-50 overflow-hidden">
+                  <summary className="px-5 py-3 text-xs font-semibold text-stone-400 cursor-pointer select-none hover:text-stone-600 transition-colors list-none flex items-center justify-between">
+                    <span>How this was generated</span>
+                    <span className="text-stone-300">{trailOpen ? "▲" : "▼"}</span>
+                  </summary>
+                  {trailOpen && (
+                    <div className="px-5 pb-5 flex flex-col gap-4 border-t border-stone-100 pt-4">
+                      <div>
+                        <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1.5">Description</p>
+                        <p className="text-xs text-stone-600 leading-relaxed whitespace-pre-wrap">{description}</p>
+                      </div>
+                      {questions.length > 0 && (
+                        <div>
+                          <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">Questions asked</p>
+                          <div className="flex flex-col gap-3">
+                            {questions.map(({ key, question }) => (
+                              <div key={key}>
+                                <p className="text-xs font-medium text-stone-600 mb-0.5">{question}</p>
+                                <p className="text-xs text-stone-400 italic">{answers[key] ? `"${answers[key]}"` : "(not answered)"}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1.5">Model</p>
+                        <p className="text-xs text-stone-500 font-mono">claude-sonnet-4-6</p>
+                      </div>
+                    </div>
+                  )}
+                </details>
 
                 <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-5 py-5 flex flex-col gap-3">
                   <p className="text-sm font-semibold text-stone-900">Want to scaffold your repo from this?</p>

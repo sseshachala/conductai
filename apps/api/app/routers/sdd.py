@@ -75,6 +75,38 @@ def _check_rate_limit(ip: str) -> None:
     _rate_store[ip].append(now)
 
 
+QUESTIONS_SYSTEM_PROMPT = """\
+You are a Spec-Driven Development (SDD) assistant. Given a project description, generate
+exactly 2-3 targeted clarifying questions that would most improve the quality of a SPEC.md.
+
+Focus on gaps that would make requirements ambiguous or untestable: missing user context,
+unclear scope boundaries, compliance requirements, or technical constraints.
+
+Respond ONLY with a JSON array of objects, no preamble:
+[
+  {"key": "users", "question": "..."},
+  {"key": "out_of_scope", "question": "..."},
+  {"key": "constraints", "question": "..."}
+]
+
+Keys must be one of: users, out_of_scope, constraints, auth, data_model, integrations, scale.
+Limit to 3 questions maximum.
+"""
+
+
+class QuestionsRequest(BaseModel):
+    description: str
+
+
+class Question(BaseModel):
+    key: str
+    question: str
+
+
+class QuestionsResponse(BaseModel):
+    questions: list[Question]
+
+
 class GenerateRequest(BaseModel):
     description: str
     source_url: str | None = None
@@ -83,6 +115,42 @@ class GenerateRequest(BaseModel):
 
 class GenerateResponse(BaseModel):
     spec: str
+
+
+@router.post("/questions", response_model=QuestionsResponse)
+def get_questions(req: QuestionsRequest, request: Request) -> QuestionsResponse:
+    ip = request.client.host if request.client else "unknown"
+    _check_rate_limit(ip)
+
+    if not settings.anthropic_api_key:
+        raise HTTPException(status_code=503, detail="Not available — platform key not configured.")
+
+    if not req.description.strip():
+        raise HTTPException(status_code=422, detail="Description is required.")
+
+    try:
+        import json as _json
+        client = AnthropicClient(api_key=settings.anthropic_api_key)
+        result = client.create(
+            model="claude-sonnet-4-6",
+            system=QUESTIONS_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": req.description.strip()}],
+            max_tokens=512,
+        )
+        raw = "".join(
+            block.text for block in result.content if isinstance(block, LLMTextBlock)
+        ).strip()
+        questions = [Question(**q) for q in _json.loads(raw)]
+    except Exception as exc:
+        log.warning("sdd.questions_failed", error=str(exc), ip=ip)
+        # Fall back to generic questions on any failure
+        questions = [
+            Question(key="users", question="Who are the primary users? What's their main goal?"),
+            Question(key="out_of_scope", question="What's explicitly out of scope for this version?"),
+            Question(key="constraints", question="Any hard constraints? (tech stack, compliance, timeline)"),
+        ]
+
+    return QuestionsResponse(questions=questions)
 
 
 @router.post("/generate", response_model=GenerateResponse)
@@ -117,7 +185,7 @@ def generate_spec(req: GenerateRequest, request: Request) -> GenerateResponse:
     try:
         client = AnthropicClient(api_key=settings.anthropic_api_key)
         result = client.create(
-            model="claude-haiku-4-5-20251001",
+            model="claude-sonnet-4-6",
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_prompt}],
             max_tokens=4096,
