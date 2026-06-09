@@ -605,6 +605,9 @@ def cmd_init(platform: str, yes: bool) -> None:
         _append_rules_block(rules_path, _RULES_BLOCK, ".cursorrules")
         click.echo()
         click.echo("Done. Restart Cursor to activate the MCP server.")
+        click.echo("To keep the index fresh, add to your shell profile (~/.zshrc or ~/.bashrc):")
+        click.echo("  cd <project> && booster start")
+        click.echo("Or run 'booster start' once per session before opening Cursor.")
         click.echo("To remove: booster remove cursor")
 
     if platform in ("windsurf", "all"):
@@ -631,6 +634,9 @@ def cmd_init(platform: str, yes: bool) -> None:
         _append_rules_block(rules_path, _RULES_BLOCK, ".windsurfrules")
         click.echo()
         click.echo("Done. Restart Windsurf to activate the MCP server.")
+        click.echo("To keep the index fresh, add to your shell profile (~/.zshrc or ~/.bashrc):")
+        click.echo("  cd <project> && booster start")
+        click.echo("Or run 'booster start' once per session before opening Windsurf.")
         click.echo("To remove: booster remove windsurf")
 
     if platform in ("codex", "all"):
@@ -657,6 +663,9 @@ def cmd_init(platform: str, yes: bool) -> None:
         _append_rules_block(agents_md, _RULES_BLOCK, "AGENTS.md")
         click.echo()
         click.echo("Done.")
+        click.echo("To keep the index fresh, add to your shell profile (~/.zshrc or ~/.bashrc):")
+        click.echo("  cd <project> && booster start")
+        click.echo("Or run 'booster start' once per session before opening Codex.")
         click.echo("To remove: booster remove codex")
 
 
