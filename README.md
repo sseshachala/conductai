@@ -390,6 +390,8 @@ docker compose exec api alembic upgrade head
 
 ## CLI
 
+![Conduct CLI — run agents · enforce policies · switch workspaces](packages/conduct-cli/assets/conduct-cli-demo.gif)
+
 ```bash
 pip install conduct-cli
 
