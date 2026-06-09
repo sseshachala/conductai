@@ -2188,45 +2188,66 @@ def cmd_session_report(args):
     developer = getattr(args, "developer", None) or getpass.getuser()
     hostname  = socket.gethostname()
 
-    archetype   = stats.get("archetype", {})
-    competency  = stats.get("competency_scores", stats.get("competencies", {}))
-    sessions    = stats.get("total_sessions", stats.get("session_count", "?"))
-    tools_used  = stats.get("tools_detected", stats.get("tools", []))
+    volume   = stats.get("volume", {})
+    behavior = stats.get("behavior", {})
+    autonomy = stats.get("autonomy", {})
+    tools    = stats.get("tools", {})
+    velocity = stats.get("velocity", {})
+
+    sessions     = volume.get("total_sessions", "?")
+    prompts      = volume.get("total_prompts", "?")
+    autonomy_score = autonomy.get("autonomy_score_0_100", "?")
+    top_tools    = [t[0] for t in (tools.get("top_tools") or [])[:5]]
+    commits      = velocity.get("git_commits_real", "?") if isinstance(velocity, dict) else "?"
+
+    # Derive a simple archetype label from the data
+    planning_ratio = behavior.get("planning_ratio_explore_to_doing", 0)
+    if autonomy_score != "?" and float(autonomy_score) >= 70:
+        archetype = "Autonomous Builder"
+    elif planning_ratio != 0 and float(planning_ratio) > 1.0:
+        archetype = "Strategic Planner"
+    else:
+        archetype = "Execution-Focused Builder"
 
     payload = {
         "developer": developer,
         "hostname": hostname,
-        "archetype": archetype.get("name", archetype) if isinstance(archetype, dict) else str(archetype),
-        "archetype_description": archetype.get("description", "") if isinstance(archetype, dict) else "",
-        "competency_scores": competency,
+        "archetype": archetype,
+        "competency_scores": {
+            "autonomy": autonomy_score,
+            "planning_ratio": planning_ratio,
+            "commits": commits,
+        },
         "total_sessions": sessions,
-        "tools_detected": tools_used,
-        "report_md": report_md[:4000],  # cap to avoid huge payloads
-        "raw_stats": stats,
+        "tools_detected": top_tools,
+        "report_md": report_md[:4000],
+        "raw_stats": {
+            "volume": volume,
+            "autonomy": autonomy,
+            "top_tools": top_tools,
+            "velocity": velocity,
+            "scope": stats.get("scope", ""),
+        },
     }
 
     # ── 4. Send to Conduct API ────────────────────────────────────────────────
     print("Sending report to admin…")
-    resp = api.post(
-        server,
-        "/session-reports",
-        payload,
+    resp = api.req(
+        "POST",
+        f"{server}/session-reports",
         hdrs,
+        body=payload,
     )
 
     shutil.rmtree(tmpdir, ignore_errors=True)
 
     if resp and resp.get("id"):
-        arch = payload["archetype"]
-        exec_score = competency.get("execution", competency.get("Execution", "?"))
-        plan_score = competency.get("planning", competency.get("Planning", "?"))
-        eng_score  = competency.get("engineering", competency.get("Engineering", "?"))
         print(f"\nReport sent.")
-        print(f"  Archetype  : {arch}")
-        print(f"  Execution  : {exec_score}   Planning: {plan_score}   Engineering: {eng_score}")
-        print(f"  Sessions   : {sessions}")
-        if tools_used:
-            print(f"  Tools      : {', '.join(tools_used) if isinstance(tools_used, list) else tools_used}")
+        print(f"  Archetype  : {archetype}")
+        print(f"  Autonomy   : {autonomy_score}/100   Planning ratio: {planning_ratio}")
+        print(f"  Sessions   : {sessions}   Prompts: {prompts}   Commits: {commits}")
+        if top_tools:
+            print(f"  Top tools  : {', '.join(top_tools)}")
     else:
         print(f"WARNING: server response unexpected: {resp}")
 
