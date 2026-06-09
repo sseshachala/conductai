@@ -483,41 +483,15 @@ function ProjectListSection({
         </div>
       )}
 
-      {/* Agent rows */}
-      {agents.length === 0 ? (
-        <div style={{ padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          {project.agent_count > 0 ? (
-            <Link href={`/projects/${project.id}`} style={{ fontSize: 13, color: "var(--text-muted)", textDecoration: "none" }}
-              onMouseEnter={e => (e.currentTarget.style.color = "var(--accent-text)")}
-              onMouseLeave={e => (e.currentTarget.style.color = "var(--text-muted)")}
-            >
-              {project.agent_count} agent{project.agent_count !== 1 ? "s" : ""} — view in project →
-            </Link>
-          ) : (
-            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>No agents yet</span>
-          )}
-          <Link href={`/workflows/new?project=${project.id}`} className="btn btn-ghost btn-sm" style={{ fontSize: 11 }}>
-            + New agent
-          </Link>
-        </div>
-      ) : (
-        <>
-          {/* Column headers */}
-          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 80px", gap: 14, padding: "7px 18px 7px 58px", background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
-            {["Agent", "Status", "Last run", ""].map((h, i) => (
-              <div key={i} className="eyebrow" style={{ fontSize: 9.5 }}>{h}</div>
-            ))}
-          </div>
-          {agents.map((w, idx) => (
-            <AgentRow
-              key={w.id}
-              workflow={w}
-              isLast={idx === agents.length - 1}
-              router={router}
-            />
-          ))}
-        </>
-      )}
+      {/* Agent rows — only rendered when agents are loaded */}
+      {agents.map((w, idx) => (
+        <AgentRow
+          key={w.id}
+          workflow={w}
+          isLast={idx === agents.length - 1}
+          router={router}
+        />
+      ))}
     </div>
   )
 }
