@@ -45,6 +45,9 @@ function Nav() {
               <a href="/tools/security-loop" className="flex items-center gap-2 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
                 <span className="text-rose-600 font-bold">🔐</span> Security Loop
               </a>
+              <a href="/tools/session-report" className="flex items-center gap-2 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+                <span className="text-amber-600 font-bold">📊</span> Session Report
+              </a>
             </div>
           </div>
         </div>
@@ -264,6 +267,48 @@ function ToolsSection() {
               >
                 Open Security console →
               </a>
+            </div>
+          </div>
+
+          {/* Session Report */}
+          <div className="rounded-2xl border border-stone-200 bg-white px-8 py-8 flex flex-col gap-5 hover:border-amber-200 hover:shadow-sm transition-all">
+            <div className="flex items-start justify-between">
+              <div>
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-100 px-2.5 py-1 rounded-full mb-3">
+                  v0.4.68 · New
+                </span>
+                <h2 className="text-2xl font-bold text-stone-900">Session Report</h2>
+                <p className="text-sm text-stone-500 mt-1">Dev profile from your AI coding sessions</p>
+              </div>
+              <span className="text-3xl font-black text-amber-600">📊</span>
+            </div>
+
+            <p className="text-sm text-stone-600 leading-relaxed">
+              Run one command. Conduct analyses your local Claude Code transcripts using paxel,
+              builds your builder profile — archetype, competency scores, signature moves —
+              and sends the report straight to your admin. No data leaves your machine until you hit send.
+            </p>
+
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">What it does</p>
+              <ul className="space-y-1.5">
+                {[
+                  "Analyses local ~/.claude/projects transcripts — fully offline",
+                  "Computes builder archetype: Execution · Planning · Engineering scores",
+                  "Sends a formatted report to your admin via Slack",
+                  "No install needed — paxel downloads on first run",
+                ].map(item => (
+                  <li key={item} className="flex items-start gap-2 text-sm text-stone-600">
+                    <span className="text-amber-500 mt-0.5 shrink-0">✓</span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="mt-auto pt-4 border-t border-stone-100 flex items-center gap-3 flex-wrap">
+              <code className="font-mono text-xs bg-stone-900 text-emerald-400 px-3 py-1.5 rounded-lg">conduct session-report</code>
+              <code className="font-mono text-xs text-stone-400 bg-stone-50 px-2 py-1 rounded">pip install conduct-cli==0.4.68</code>
             </div>
           </div>
 
