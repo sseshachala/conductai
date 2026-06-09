@@ -412,7 +412,7 @@ function ProjectListSection({
             </div>
           )}
           <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-            {agents.length} agent{agents.length !== 1 ? "s" : ""} · created {timeAgo(project.created_at)}
+            {project.agent_count} agent{project.agent_count !== 1 ? "s" : ""} · created {timeAgo(project.created_at)}
           </div>
         </div>
 
@@ -486,7 +486,16 @@ function ProjectListSection({
       {/* Agent rows */}
       {agents.length === 0 ? (
         <div style={{ padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span style={{ fontSize: 13, color: "var(--text-muted)" }}>No agents yet</span>
+          {project.agent_count > 0 ? (
+            <Link href={`/projects/${project.id}`} style={{ fontSize: 13, color: "var(--text-muted)", textDecoration: "none" }}
+              onMouseEnter={e => (e.currentTarget.style.color = "var(--accent-text)")}
+              onMouseLeave={e => (e.currentTarget.style.color = "var(--text-muted)")}
+            >
+              {project.agent_count} agent{project.agent_count !== 1 ? "s" : ""} — view in project →
+            </Link>
+          ) : (
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>No agents yet</span>
+          )}
           <Link href={`/workflows/new?project=${project.id}`} className="btn btn-ghost btn-sm" style={{ fontSize: 11 }}>
             + New agent
           </Link>
@@ -709,7 +718,16 @@ function ProjectGridCard({
       <div style={{ borderTop: "1px solid var(--border)" }}>
         {agents.length === 0 ? (
           <div style={{ padding: "12px 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>No agents yet</span>
+            {project.agent_count > 0 ? (
+              <Link href={`/projects/${project.id}`} style={{ fontSize: 12, color: "var(--text-muted)", textDecoration: "none" }} onClick={e => e.stopPropagation()}
+                onMouseEnter={e => (e.currentTarget.style.color = "var(--accent-text)")}
+                onMouseLeave={e => (e.currentTarget.style.color = "var(--text-muted)")}
+              >
+                {project.agent_count} agent{project.agent_count !== 1 ? "s" : ""} →
+              </Link>
+            ) : (
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>No agents yet</span>
+            )}
             <Link href={`/workflows/new?project=${project.id}`} className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={e => e.stopPropagation()}>
               + New agent
             </Link>
