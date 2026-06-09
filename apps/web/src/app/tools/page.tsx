@@ -190,6 +190,15 @@ function ToolsSection() {
               passes through Guard first.
             </p>
 
+            <a href="/tools/conduct-cli" className="block rounded-xl border border-stone-200 bg-stone-50 p-1.5 hover:border-violet-200 transition-colors">
+              <img
+                src="/tools/conduct-cli-demo.gif"
+                alt="Conduct CLI demo: whoami, switch workspaces with Guard policy sync, and run an agent"
+                className="w-full rounded-lg"
+                loading="lazy"
+              />
+            </a>
+
             <div className="flex flex-col gap-2">
               <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">What it does</p>
               <ul className="space-y-1.5">
