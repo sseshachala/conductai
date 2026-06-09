@@ -206,3 +206,187 @@ def generate_spec(req: GenerateRequest, request: Request) -> GenerateResponse:
 
     log.info("sdd.spec_generated", ip=ip, description_len=len(req.description))
     return GenerateResponse(spec=spec_text)
+
+
+# ── Scaffold ───────────────────────────────────────────────────────────────
+
+_SCAFFOLD_PROMPTS: dict[str, str] = {
+    "AGENTS.md": """\
+You are an SDD scaffold generator. Given a SPEC.md, write AGENTS.md.
+
+AGENTS.md instructs AI coding agents (Claude Code, Copilot, Cursor, etc.) on how to
+work within this project's spec. Format:
+
+# AGENTS.md
+
+## Project Spec
+One sentence referencing SPEC.md as the source of truth.
+
+## Requirement References
+Every commit, PR, and comment MUST reference at least one FR-xxx from SPEC.md.
+
+## Agent Rules
+Bullet list of project-specific rules derived from the spec (tech constraints,
+out-of-scope boundaries, security requirements, etc.)
+
+## FR Quick Reference
+Table: | FR | Title | Status |
+List every FR from the spec with status = open.
+
+Output raw markdown only. No preamble.""",
+
+    "DESIGN.md": """\
+You are an SDD scaffold generator. Given a SPEC.md, write DESIGN.md.
+
+DESIGN.md captures architecture decisions required to satisfy the FRs. Format:
+
+# DESIGN.md
+
+## Architecture Overview
+2-3 sentence summary of the system shape.
+
+## Component Map
+Table or list of major components and their responsibility.
+
+## Key Design Decisions
+For each significant decision: **Decision**, Rationale, Alternatives considered.
+Ground each decision in the FR(s) that drove it.
+
+## Data Model Sketch
+Key entities and relationships (prose or simple table — no SQL).
+
+## Integration Points
+External services, APIs, or platforms referenced in the spec.
+
+Output raw markdown only. No preamble.""",
+
+    "PLAN.md": """\
+You are an SDD scaffold generator. Given a SPEC.md, write PLAN.md.
+
+PLAN.md is a phased implementation plan ordered by dependency and risk. Format:
+
+# PLAN.md
+
+## Phase 1 — Foundation
+FRs to implement first (infrastructure, auth, core data model). List each FR with
+a one-line implementation note.
+
+## Phase 2 — Core Features
+FRs that deliver the primary user value.
+
+## Phase 3 — Polish & NFRs
+Remaining FRs, NFRs, integrations, observability.
+
+## Dependencies
+Any cross-FR dependencies or sequencing constraints.
+
+Output raw markdown only. No preamble.""",
+
+    "SPRINT.md": """\
+You are an SDD scaffold generator. Given a SPEC.md, write SPRINT.md for Sprint 1.
+
+SPRINT.md is the sprint 1 scope — the smallest slice that delivers a working system.
+Pick the ~20% of FRs that unlock everything else. Format:
+
+# SPRINT.md — Sprint 1
+
+## Goal
+One sentence: what a developer can do at the end of this sprint.
+
+## In Scope
+| FR | Title | Acceptance shorthand |
+List only the FRs included in sprint 1.
+
+## Out of Sprint 1
+Brief list of deferred FRs and why.
+
+## Definition of Done
+Bulleted checklist.
+
+Output raw markdown only. No preamble.""",
+
+    "CLAUDE.md": """\
+You are an SDD scaffold generator. Given a SPEC.md, write CLAUDE.md for this project.
+
+CLAUDE.md gives Claude Code project-specific context and rules. Format:
+
+# CLAUDE.md
+
+## About This Project
+One paragraph summary of what the project does.
+
+## Spec Reference
+All work must reference FR-xxx from SPEC.md. Link: ./SPEC.md
+
+## Tech Stack
+List the stack implied by the spec (or marked as TBD if unspecified).
+
+## Key Rules
+Project-specific rules Claude must follow (security constraints, out-of-scope
+items, naming conventions implied by the spec, etc.)
+
+## Commands
+Placeholder section for build/test/lint commands (fill in after scaffolding).
+
+Output raw markdown only. No preamble.""",
+}
+
+
+def _parse_spec_index(spec: str) -> list[dict]:
+    import re
+    frs = []
+    for m in re.finditer(r'\*\*FR-(\d+)\*\*\s+(.+?)(?:\n|$)', spec):
+        frs.append({"id": f"FR-{m.group(1)}", "title": m.group(2).strip(), "status": "open"})
+    return frs
+
+
+class ScaffoldRequest(BaseModel):
+    spec: str
+
+
+class ScaffoldFile(BaseModel):
+    name: str
+    content: str
+
+
+class ScaffoldResponse(BaseModel):
+    files: list[ScaffoldFile]
+
+
+@router.post("/scaffold", response_model=ScaffoldResponse)
+def scaffold_repo(req: ScaffoldRequest, request: Request) -> ScaffoldResponse:
+    ip = request.client.host if request.client else "unknown"
+    _check_rate_limit(ip)
+
+    if not settings.anthropic_api_key:
+        raise HTTPException(status_code=503, detail="Scaffold generation not available — platform key not configured.")
+
+    if not req.spec.strip():
+        raise HTTPException(status_code=422, detail="Spec is required.")
+
+    client = AnthropicClient(api_key=settings.anthropic_api_key)
+    files: list[ScaffoldFile] = []
+
+    for filename, system in _SCAFFOLD_PROMPTS.items():
+        try:
+            result = client.create(
+                model="claude-sonnet-4-6",
+                system=system,
+                messages=[{"role": "user", "content": req.spec}],
+                max_tokens=2048,
+            )
+            content = "".join(
+                block.text for block in result.content if isinstance(block, LLMTextBlock)
+            ).strip()
+            files.append(ScaffoldFile(name=filename, content=content))
+        except Exception as exc:
+            log.warning("sdd.scaffold_file_failed", file=filename, error=str(exc))
+            files.append(ScaffoldFile(name=filename, content=f"# {filename}\n\nGeneration failed — please retry."))
+
+    # spec-index.json is deterministic — no LLM needed
+    import json as _json
+    spec_index = _parse_spec_index(req.spec)
+    files.append(ScaffoldFile(name="spec-index.json", content=_json.dumps(spec_index, indent=2)))
+
+    log.info("sdd.scaffold_generated", ip=ip, files=len(files))
+    return ScaffoldResponse(files=files)
