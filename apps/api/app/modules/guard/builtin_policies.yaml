@@ -173,6 +173,59 @@
   action: audit
   message: Dockerfile modified
 
+# ── Secrets — Provider Keys ────────────────────────────────────────────────────
+
+- rule_id: secret-stripe
+  description: Warn on hardcoded Stripe live secret keys
+  match_tool: "edit,write"
+  match_pattern: 'sk_live_[0-9a-zA-Z]{24,}'
+  action: warn
+  message: Stripe live secret key detected. Use environment variables — never hardcode payment credentials.
+
+- rule_id: secret-slack
+  description: Warn on hardcoded Slack bot or user tokens
+  match_tool: "edit,write"
+  match_pattern: 'xox[bpoa]-[0-9A-Za-z\-]{10,}'
+  action: warn
+  message: Slack token detected. Store in environment variables, not source code.
+
+- rule_id: secret-private-key
+  description: Warn on PEM private key content in edited files
+  match_tool: "edit,write"
+  match_pattern: '-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----'
+  action: warn
+  message: Private key content detected. Use a secrets manager — never embed keys in source.
+
+# ── Code Security ──────────────────────────────────────────────────────────────
+
+- rule_id: cmd-injection
+  description: Warn on shell execution with potentially user-controlled input
+  match_tool: "edit,write"
+  match_pattern: '(subprocess\.(call|run|Popen|check_output)|os\.(system|popen)|exec\(|eval\()'
+  action: warn
+  message: Shell execution or eval detected. Verify input is sanitised to prevent command injection.
+
+- rule_id: sql-injection
+  description: Warn on string-formatted SQL queries (f-string or % interpolation)
+  match_tool: "edit,write"
+  match_pattern: '(f[''"].*SELECT|f[''"].*INSERT|f[''"].*UPDATE|f[''"].*DELETE|%\s*\(.*\)\s*[''"].*SELECT)'
+  action: warn
+  message: String-formatted SQL detected. Use parameterised queries to prevent SQL injection.
+
+- rule_id: weak-hash-md5
+  description: Warn on MD5 usage for security-sensitive hashing
+  match_tool: "edit,write"
+  match_pattern: '(hashlib\.md5|MD5\(|DigestUtils\.md5)'
+  action: warn
+  message: MD5 is cryptographically broken. Use SHA-256 or bcrypt for security-sensitive hashing.
+
+- rule_id: weak-hash-sha1
+  description: Warn on SHA-1 usage for security-sensitive hashing
+  match_tool: "edit,write"
+  match_pattern: '(hashlib\.sha1|SHA1\(|DigestUtils\.sha1)'
+  action: warn
+  message: SHA-1 is deprecated for security use. Use SHA-256 or bcrypt for password/token hashing.
+
 # ── Token Efficiency ───────────────────────────────────────────────────────────
 
 - rule_id: warn-deterministic-compute
