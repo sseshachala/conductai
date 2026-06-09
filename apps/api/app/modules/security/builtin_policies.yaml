@@ -1,0 +1,112 @@
+# Security Loop built-in detection policies.
+# Add new policies here — they are seeded into every workspace on Security module install.
+# Fields:
+#   rule_id      — unique slug (lowercase, hyphens only)
+#   description  — shown in the UI
+#   pattern      — regex matched against code content / finding description
+#   finding_type — injection | path-traversal | secret-leak | auth-bypass | crypto | other
+#   severity     — critical | high | medium | low | info
+
+# ── Secrets — Platform Keys ────────────────────────────────────────────────────
+
+- rule_id: secret-sk-key
+  description: OpenAI/Anthropic API key
+  pattern: 'sk-[A-Za-z0-9]{20,}'
+  finding_type: secret-leak
+  severity: high
+
+- rule_id: secret-gh-pat
+  description: GitHub Personal Access Token
+  pattern: 'ghp_[A-Za-z0-9]{36}'
+  finding_type: secret-leak
+  severity: high
+
+- rule_id: secret-aws-key
+  description: AWS Access Key ID
+  pattern: 'AKIA[0-9A-Z]{16}'
+  finding_type: secret-leak
+  severity: critical
+
+- rule_id: secret-password
+  description: Hardcoded password
+  pattern: 'password\s*=\s*[^\s]{4,}'
+  finding_type: secret-leak
+  severity: high
+
+- rule_id: secret-api-key
+  description: Hardcoded API key
+  pattern: 'api_?key\s*=\s*[^\s]{4,}'
+  finding_type: secret-leak
+  severity: high
+
+- rule_id: secret-stripe
+  description: Stripe live secret key
+  pattern: 'sk_live_[0-9a-zA-Z]{24,}'
+  finding_type: secret-leak
+  severity: critical
+
+- rule_id: secret-slack
+  description: Slack bot/app token
+  pattern: 'xox[baprs]-[0-9A-Za-z\-]{10,}'
+  finding_type: secret-leak
+  severity: high
+
+- rule_id: secret-private-key
+  description: Private key material
+  pattern: '-----BEGIN (RSA |EC )?PRIVATE KEY-----'
+  finding_type: secret-leak
+  severity: critical
+
+# ── Path Traversal ─────────────────────────────────────────────────────────────
+
+- rule_id: path-traversal
+  description: Path traversal sequence
+  pattern: '\.\./\.\./\.\./'
+  finding_type: path-traversal
+  severity: medium
+
+# ── Injection ──────────────────────────────────────────────────────────────────
+
+- rule_id: code-eval
+  description: eval() used in code
+  pattern: '\beval\s*\('
+  finding_type: injection
+  severity: high
+
+- rule_id: cmd-injection
+  description: Unsanitised shell call
+  pattern: '(subprocess\.(call|run|Popen|check_output)|os\.(system|popen))'
+  finding_type: injection
+  severity: high
+
+- rule_id: sql-injection
+  description: String-formatted SQL query
+  pattern: '(execute|cursor\.execute)\s*\(\s*[\"''][^\"'']*%[s|d]'
+  finding_type: injection
+  severity: high
+
+# ── Crypto Issues ──────────────────────────────────────────────────────────────
+
+- rule_id: ssl-cert-none
+  description: SSL verification disabled
+  pattern: 'ssl\.CERT_NONE'
+  finding_type: crypto
+  severity: high
+
+- rule_id: tls-verify-false
+  description: TLS verification bypassed
+  pattern: 'verify\s*=\s*False'
+  finding_type: crypto
+  severity: medium
+
+- rule_id: weak-hash-md5
+  description: MD5 used for security-sensitive hash
+  pattern: '(hashlib\.md5|MD5\(|DigestUtils\.md5)'
+  finding_type: crypto
+  severity: medium
+
+- rule_id: weak-hash-sha1
+  description: SHA-1 used for security-sensitive hash
+  pattern: '(hashlib\.sha1|SHA1\(|DigestUtils\.sha1)'
+  finding_type: crypto
+  severity: medium
