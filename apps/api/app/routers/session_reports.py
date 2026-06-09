@@ -82,7 +82,10 @@ def _notify_admin_slack(
             .filter(SecurityConfig.workspace_id == _uuid.UUID(workspace_id))
             .first()
         )
-        slack_channel = (cfg.security_slack_channel if cfg else None) or "#engineering"
+        primary_channel = (cfg.security_slack_channel if cfg else None) or "#engineering"
+        channels = [primary_channel]
+        if "#general" not in channels:
+            channels.append("#general")
 
         integration = (
             db.query(Integration)
@@ -102,9 +105,9 @@ def _notify_admin_slack(
         token = decrypt_value(integration.encrypted_token)
 
         scores = report.competency_scores
-        exec_s = scores.get("execution", scores.get("Execution", "—"))
-        plan_s = scores.get("planning",  scores.get("Planning",  "—"))
-        eng_s  = scores.get("engineering", scores.get("Engineering", "—"))
+        exec_s = scores.get("Execution", scores.get("execution", "—"))
+        plan_s = scores.get("Planning",  scores.get("planning",  "—"))
+        eng_s  = scores.get("Engineering", scores.get("engineering", "—"))
         tools  = report.tools_detected
         tools_str = ", ".join(tools) if isinstance(tools, list) else str(tools or "—")
 
@@ -118,11 +121,11 @@ def _notify_admin_slack(
             + f"\n*Tools:* {tools_str}"
         )
         if report.report_md:
-            # append first 500 chars of the markdown summary
             snippet = report.report_md[:500].strip()
             text += f"\n\n```{snippet}```"
 
-        post_slack_message(token=token, channel=slack_channel, text=text)
-        log.info("session_report.slack_sent", report_id=report_id, channel=slack_channel)
+        for channel in channels:
+            post_slack_message(token=token, channel=channel, text=text)
+        log.info("session_report.slack_sent", report_id=report_id, channels=channels)
     except Exception as exc:
         log.warning("session_report.slack_failed", error=str(exc))
