@@ -553,12 +553,12 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                     <SecureLoopIcon size={22} />
                   </span>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 15, color: "#991b1b", marginBottom: 3 }}>Security Loop — for Claude Code</div>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: "#991b1b", marginBottom: 3 }}>Security Loop — AI Tools</div>
                     <div style={{ fontSize: 13, color: "#b91c1c", lineHeight: 1.5 }}>
-                      Passive security classifier on every Claude Code tool call. Findings surface in your team's Secure feed automatically — secrets, injections, path traversal, crypto issues. Zero developer action.
+                      Passive security classifier on every AI tool call — Claude Code, Codex, Cursor, Windsurf, and more. Findings surface in your team's Secure feed automatically — secrets, injections, path traversal, crypto issues. Zero developer action.
                     </div>
                     <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                      {["passive", "claude-code", "security", "bughunter"].map(tag => (
+                      {["passive", "ai-tools", "security", "bughunter"].map(tag => (
                         <span key={tag} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, background: "rgba(220,38,38,.12)", color: "#dc2626", fontWeight: 500 }}>
                           {tag}
                         </span>
