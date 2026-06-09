@@ -33,15 +33,25 @@ _VALID_TYPES = {"injection", "path-traversal", "secret-leak", "auth-bypass", "cr
 _VALID_SEVERITIES = {"critical", "high", "medium", "low", "info"}
 
 _BUILTIN_POLICIES = [
-    ("secret-sk-key",    r"sk-[A-Za-z0-9]{20,}",      "secret-leak",    "high",     "OpenAI/Anthropic API key"),
-    ("secret-gh-pat",    r"ghp_[A-Za-z0-9]{36}",      "secret-leak",    "high",     "GitHub Personal Access Token"),
-    ("secret-aws-key",   r"AKIA[0-9A-Z]{16}",          "secret-leak",    "critical", "AWS Access Key ID"),
-    ("secret-password",  r"password\s*=\s*[^\s]{4,}",  "secret-leak",    "high",     "Hardcoded password"),
-    ("secret-api-key",   r"api_?key\s*=\s*[^\s]{4,}",  "secret-leak",    "high",     "Hardcoded API key"),
-    ("path-traversal",   r"\.\./\.\./\.\./",            "path-traversal", "medium",   "Path traversal sequence"),
-    ("code-eval",        r"\beval\s*\(",                "injection",      "high",     "eval() in code"),
-    ("ssl-cert-none",    r"ssl\.CERT_NONE",             "crypto",         "high",     "SSL verification disabled"),
-    ("tls-verify-false", r"verify\s*=\s*False",         "crypto",         "medium",   "TLS verification bypassed"),
+    # Secrets — platform keys
+    ("secret-sk-key",       r"sk-[A-Za-z0-9]{20,}",                         "secret-leak",    "high",     "OpenAI/Anthropic API key"),
+    ("secret-gh-pat",       r"ghp_[A-Za-z0-9]{36}",                         "secret-leak",    "high",     "GitHub Personal Access Token"),
+    ("secret-aws-key",      r"AKIA[0-9A-Z]{16}",                             "secret-leak",    "critical", "AWS Access Key ID"),
+    ("secret-password",     r"password\s*=\s*[^\s]{4,}",                     "secret-leak",    "high",     "Hardcoded password"),
+    ("secret-api-key",      r"api_?key\s*=\s*[^\s]{4,}",                     "secret-leak",    "high",     "Hardcoded API key"),
+    ("secret-stripe",       r"sk_live_[0-9a-zA-Z]{24,}",                     "secret-leak",    "critical", "Stripe live secret key"),
+    ("secret-slack",        r"xox[baprs]-[0-9A-Za-z\-]{10,}",               "secret-leak",    "high",     "Slack bot/app token"),
+    ("secret-private-key",  r"-----BEGIN (RSA |EC )?PRIVATE KEY-----",       "secret-leak",    "critical", "Private key material"),
+    # Code security
+    ("path-traversal",      r"\.\./\.\./\.\./",                              "path-traversal", "medium",   "Path traversal sequence"),
+    ("code-eval",           r"\beval\s*\(",                                  "injection",      "high",     "eval() in code"),
+    ("cmd-injection",       r"(subprocess\.(call|run|Popen|check_output)|os\.(system|popen))", "injection", "high", "Unsanitised shell call"),
+    ("sql-injection",       r"(execute|cursor\.execute)\s*\(\s*[\"'][^\"']*%[s|d]", "injection", "high",   "String-formatted SQL query"),
+    # Crypto
+    ("ssl-cert-none",       r"ssl\.CERT_NONE",                               "crypto",         "high",     "SSL verification disabled"),
+    ("tls-verify-false",    r"verify\s*=\s*False",                           "crypto",         "medium",   "TLS verification bypassed"),
+    ("weak-hash-md5",       r"(hashlib\.md5|MD5\(|DigestUtils\.md5)",        "crypto",         "medium",   "MD5 used for security-sensitive hash"),
+    ("weak-hash-sha1",      r"(hashlib\.sha1|SHA1\(|DigestUtils\.sha1)",     "crypto",         "medium",   "SHA-1 used for security-sensitive hash"),
 ]
 
 
