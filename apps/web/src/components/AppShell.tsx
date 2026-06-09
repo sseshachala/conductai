@@ -10,7 +10,7 @@ import { PreferencesProvider } from "@/lib/PreferencesContext"
 import Toast, { type ToastData } from "@/components/ui/Toast"
 import ErrorBoundary from "@/components/ui/ErrorBoundary"
 
-interface Project { id: string; name: string; agent_count: number }
+interface Project { id: string; name: string; agent_count: number; project_type?: string }
 
 type UserRole = "admin" | "security" | "developer" | "viewer" | null
 
@@ -855,12 +855,12 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
                   icon={<Icons.Grid />}
                   active={pathname.startsWith("/projects")}
                   collapsed={collapsed}
-                  badge={projects.length > 0 ? projects.length : undefined}
+                  badge={projects.filter(p => (p.project_type ?? "user") === "user").length > 0 ? projects.filter(p => (p.project_type ?? "user") === "user").length : undefined}
                 />
-                {/* Inline project list when not collapsed */}
-                {!collapsed && canSeeProjects && projects.length > 0 && pathname.startsWith("/projects") && (
+                {/* Inline project list when not collapsed — user projects only */}
+                {!collapsed && canSeeProjects && projects.filter(p => (p.project_type ?? "user") === "user").length > 0 && pathname.startsWith("/projects") && (
                   <div style={{ marginLeft: 28, marginTop: 2, marginBottom: 2, display: "flex", flexDirection: "column", gap: 1 }}>
-                    {projects.map(project => {
+                    {projects.filter(p => (p.project_type ?? "user") === "user").map(project => {
                       const isActive = activeProjectId === project.id
                       const isRenaming = renamingProjectId === project.id
                       return (

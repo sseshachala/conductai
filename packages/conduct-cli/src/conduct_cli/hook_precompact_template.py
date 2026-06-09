@@ -35,9 +35,13 @@ def _memory_headline():
     try:
         root = Path.cwd()
         mem_key = str(root).replace("/", "-").lstrip("-")
-        mem_path = Path.home() / ".claude" / "projects" / mem_key / "memory" / "MEMORY.md"
-        if mem_path.exists():
-            return "\n".join(mem_path.read_text().splitlines()[:10])
+        candidates = [
+            Path.home() / ".claude" / "projects" / mem_key / "memory" / "MEMORY.md",
+            Path.home() / ".codex" / "projects" / mem_key / "memory" / "MEMORY.md",
+        ]
+        for mem_path in candidates:
+            if mem_path.exists():
+                return "\n".join(mem_path.read_text().splitlines()[:10])
     except Exception:
         pass
     return ""

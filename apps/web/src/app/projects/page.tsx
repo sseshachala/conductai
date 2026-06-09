@@ -108,6 +108,10 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [tab, setTab] = useState<"projects" | "automation">("projects")
+  const [view, setView] = useState<"grid" | "list">(() => {
+    if (typeof window !== "undefined") return (localStorage.getItem("projects_view") as "grid" | "list") ?? "grid"
+    return "grid"
+  })
 
   async function authHeaders(): Promise<Record<string, string>> {
     const h: Record<string, string> = {}
@@ -186,7 +190,34 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
               Group agents by team or repo. Each one keeps its own runs, memory, and environments.
             </p>
           </div>
-          <div style={{ marginLeft: "auto", display: "flex", gap: 9 }}>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 9, alignItems: "center" }}>
+            {/* Grid / List toggle */}
+            <div style={{ display: "flex", border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
+              {(["grid", "list"] as const).map(v => (
+                <button
+                  key={v}
+                  onClick={() => { setView(v); localStorage.setItem("projects_view", v) }}
+                  style={{
+                    width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
+                    border: "none", cursor: "pointer", background: view === v ? "var(--surface-3)" : "var(--surface)",
+                    color: view === v ? "var(--text)" : "var(--text-3)", transition: "background .1s",
+                  }}
+                  title={v === "grid" ? "Grid view" : "List view"}
+                >
+                  {v === "grid" ? (
+                    <svg width="13" height="13" fill="currentColor" viewBox="0 0 12 12">
+                      <rect x="0" y="0" width="5" height="5" rx="1"/><rect x="7" y="0" width="5" height="5" rx="1"/>
+                      <rect x="0" y="7" width="5" height="5" rx="1"/><rect x="7" y="7" width="5" height="5" rx="1"/>
+                    </svg>
+                  ) : (
+                    <svg width="13" height="13" fill="currentColor" viewBox="0 0 12 12">
+                      <rect x="0" y="1" width="12" height="2" rx="1"/><rect x="0" y="5" width="12" height="2" rx="1"/>
+                      <rect x="0" y="9" width="12" height="2" rx="1"/>
+                    </svg>
+                  )}
+                </button>
+              ))}
+            </div>
             <Link
               href="/runs"
               style={{
@@ -263,7 +294,7 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
             const userProjects = projects.filter(p => (p.project_type ?? "user") === "user")
             return userProjects.length === 0 ? (
               <EmptyState onNew={() => setShowModal(true)} />
-            ) : (
+            ) : view === "grid" ? (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
                 {userProjects.map(p => (
                   <ProjectCard
@@ -275,6 +306,44 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
                   />
                 ))}
                 <NewProjectTile onClick={() => setShowModal(true)} />
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {userProjects.map(p => (
+                  <div
+                    key={p.id}
+                    onClick={() => router.push(`/projects/${p.id}`)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 12,
+                      padding: "10px 16px", borderRadius: 10, cursor: "pointer",
+                      border: "1px solid var(--border)", background: "var(--surface)",
+                      transition: "background .1s",
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
+                    onMouseLeave={e => (e.currentTarget.style.background = "var(--surface)")}
+                  >
+                    <span style={{
+                      width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+                      background: "var(--surface-3)", color: "var(--text-2)",
+                      fontSize: 13, fontWeight: 700,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>{p.name[0].toUpperCase()}</span>
+                    <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+                    <span style={{ fontSize: 12, color: "var(--text-muted)", flexShrink: 0 }}>{p.agent_count} agent{p.agent_count !== 1 ? "s" : ""}</span>
+                  </div>
+                ))}
+                <button
+                  onClick={() => setShowModal(true)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10, padding: "10px 16px",
+                    borderRadius: 10, border: "1.5px dashed var(--border)", background: "transparent",
+                    color: "var(--text-muted)", fontSize: 13.5, cursor: "pointer", fontFamily: "inherit",
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
+                  onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                >
+                  <span style={{ fontSize: 16, lineHeight: 1 }}>+</span> New project
+                </button>
               </div>
             )
           })()

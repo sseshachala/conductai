@@ -354,15 +354,16 @@ function FilterPanel({
   )
 }
 
-type FilterLabel = "All" | "Running" | "Awaiting" | "Failed"
+type FilterLabel = "All" | "Running" | "Succeeded" | "Awaiting" | "Failed"
 type TimeRangeLabel = "Last 24 hours" | "Last 7 days" | "Last 30 days" | "All time"
 
-const FILTERS: FilterLabel[] = ["All", "Running", "Awaiting", "Failed"]
+const FILTERS: FilterLabel[] = ["All", "Running", "Succeeded", "Awaiting", "Failed"]
 const TIME_RANGES: TimeRangeLabel[] = ["Last 24 hours", "Last 7 days", "Last 30 days", "All time"]
 
 function matchesFilter(run: Run, filter: FilterLabel): boolean {
   if (filter === "All") return true
   if (filter === "Running") return run.status === "running"
+  if (filter === "Succeeded") return run.status === "succeeded"
   if (filter === "Awaiting") return run.status === "paused"
   if (filter === "Failed") return run.status === "failed" || run.status === "cancelled"
   return true
@@ -586,6 +587,7 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
   const [selectedRepository, setSelectedRepository] = useState<string | null>(null)
   const [selectedPlaybook, setSelectedPlaybook] = useState<string | null>(null)
   const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRangeLabel>("All time")
+  const [searchQuery, setSearchQuery] = useState("")
 
   async function buildHeaders() {
     const headers: Record<string, string> = {}
@@ -691,9 +693,11 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
   const playbooks = Array.from(new Set(runs.map(r => r.workflow_name))).sort()
 
   // Apply all filters
+  const q = searchQuery.trim().toLowerCase()
   const shownRuns = runs.filter(r => {
     if (!matchesFilter(r, activeFilter)) return false
     if (!matchesAdvancedFilters(r, selectedRepository, selectedPlaybook, selectedTimeRange)) return false
+    if (q && !r.workflow_name.toLowerCase().includes(q) && !(r.project_name ?? "").toLowerCase().includes(q)) return false
     return true
   })
 
@@ -811,17 +815,30 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
           </div>
         </div>
 
-        {/* Filter chips */}
-        <div style={{ display: "flex", gap: 7, marginBottom: 16 }}>
-          {FILTERS.map(f => (
-            <FilterChip
-              key={f}
-              label={f}
-              count={f === "All" ? countFor("All") : undefined}
-              active={activeFilter === f}
-              onClick={() => setActiveFilter(f)}
-            />
-          ))}
+        {/* Search + filter chips */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+          <input
+            type="text"
+            placeholder="Search by agent or project…"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            style={{
+              height: 32, padding: "0 12px", borderRadius: 8, fontSize: 13,
+              border: "1px solid var(--border)", background: "var(--surface)",
+              color: "var(--text)", outline: "none", width: 220,
+            }}
+          />
+          <div style={{ display: "flex", gap: 7 }}>
+            {FILTERS.map(f => (
+              <FilterChip
+                key={f}
+                label={f}
+                count={f === "All" ? countFor("All") : undefined}
+                active={activeFilter === f}
+                onClick={() => setActiveFilter(f)}
+              />
+            ))}
+          </div>
         </div>
 
         {/* Runs table / skeleton */}
