@@ -74,6 +74,15 @@
             "command": "python3 /Users/sudhiseshachala/projects/marshal/.claude/hooks/guard-session-start.py"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/sudhiseshachala/projects/marshal/.claude/hooks/booster-session-start.py",
+            "async": true
+          }
+        ]
       }
     ],
     "Stop": [
