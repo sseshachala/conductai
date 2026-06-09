@@ -369,7 +369,7 @@ export const FEATURE_GROUPS = [
       {
         name: "Engineering metrics dashboard",
         note: "DORA, cycle time, deployment freq",
-        values: { conduct: "❌", copilot: "❌", devin: "❌", linearb: "✅", bito: "❌", amazonq: "🟡", coderabbit: "❌", xhawk: "🟡", runtm: "❌" },
+        values: { conduct: "🟡", copilot: "❌", devin: "❌", linearb: "✅", bito: "❌", amazonq: "🟡", coderabbit: "❌", xhawk: "🟡", runtm: "❌" },
       },
     ],
   },
