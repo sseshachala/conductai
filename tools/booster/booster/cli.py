@@ -63,6 +63,32 @@ def _route_hook_command(root: Path) -> str:
 def _agent_inject_command(root: Path) -> str:
     return f"python3 {root / '.claude' / 'hooks' / 'booster-agent-inject.py'}"
 
+def _session_start_command(root: Path) -> str:
+    return f"python3 {root / '.claude' / 'hooks' / 'booster-session-start.py'}"
+
+_SESSION_START_SCRIPT = '''\
+#!/usr/bin/env python3
+"""Auto-start booster daemon if not running — fires on every Claude Code session open."""
+import subprocess
+import sys
+from pathlib import Path
+
+root = Path(__file__).resolve().parent.parent  # .claude/hooks/ is 2 levels down
+
+try:
+    result = subprocess.run(
+        ["booster", "start"],
+        capture_output=True, text=True, timeout=30, cwd=str(root),
+    )
+    out = result.stdout.strip()
+    if out and "already running" not in out.lower():
+        print(out)
+except Exception:
+    pass  # never block the session
+
+sys.exit(0)
+'''
+
 _GATE_SCRIPT = '''\
 #!/usr/bin/env python3
 """Agent Booster gate hook — runs smart-read for indexed files, blocking the raw Read."""
@@ -306,10 +332,12 @@ def _install_hook(root: Path) -> None:
     (hooks_dir / "booster-grep-nudge.py").write_text(_GREP_NUDGE_SCRIPT)
     (hooks_dir / "booster-route.py").write_text(_ROUTE_SCRIPT)
     (hooks_dir / "booster-agent-inject.py").write_text(_AGENT_INJECT_SCRIPT)
+    (hooks_dir / "booster-session-start.py").write_text(_SESSION_START_SCRIPT)
     click.echo(f"  wrote .claude/hooks/booster-gate.py (Read gate)")
     click.echo(f"  wrote .claude/hooks/booster-grep-nudge.py (Grep nudge)")
     click.echo(f"  wrote .claude/hooks/booster-route.py (route_model on every turn)")
     click.echo(f"  wrote .claude/hooks/booster-agent-inject.py (Agent prompt injection)")
+    click.echo(f"  wrote .claude/hooks/booster-session-start.py (auto-start daemon on session open)")
 
     settings_path = root / ".claude" / "settings.json"
     settings: dict = {}
@@ -330,6 +358,7 @@ def _install_hook(root: Path) -> None:
     grep_cmd = _grep_hook_command(root)
     route_cmd = _route_hook_command(root)
     agent_cmd = _agent_inject_command(root)
+    session_cmd = _session_start_command(root)
 
     if not _has("Read", hook_cmd):
         pre.append({"matcher": "Read", "hooks": [{"type": "command", "command": hook_cmd}]})
@@ -341,6 +370,10 @@ def _install_hook(root: Path) -> None:
     ups = hooks.setdefault("UserPromptSubmit", [])
     if not any(e.get("command") == route_cmd for h in ups for e in h.get("hooks", [])):
         ups.append({"hooks": [{"type": "command", "command": route_cmd}]})
+
+    session_start = hooks.setdefault("SessionStart", [])
+    if not any(e.get("command") == session_cmd for h in session_start for e in h.get("hooks", [])):
+        session_start.append({"hooks": [{"type": "command", "command": session_cmd, "async": True}]})
 
     _BOOSTER_TOOLS = [
         "mcp__agent-booster__search_context",
@@ -373,7 +406,7 @@ def _install_hook(root: Path) -> None:
 
 def _remove_hook(root: Path) -> None:
     hooks_dir = root / ".claude" / "hooks"
-    for name in ("booster-gate.py", "booster-grep-nudge.py", "booster-route.py", "booster-agent-inject.py"):
+    for name in ("booster-gate.py", "booster-grep-nudge.py", "booster-route.py", "booster-agent-inject.py", "booster-session-start.py"):
         f = hooks_dir / name
         if f.exists():
             f.unlink()
@@ -383,7 +416,7 @@ def _remove_hook(root: Path) -> None:
     if not settings_path.exists():
         return
     settings = json.loads(settings_path.read_text())
-    booster_cmds = {_hook_command(root), _grep_hook_command(root), _route_hook_command(root), _agent_inject_command(root)}
+    booster_cmds = {_hook_command(root), _grep_hook_command(root), _route_hook_command(root), _agent_inject_command(root), _session_start_command(root)}
 
     pre = settings.get("hooks", {}).get("PreToolUse", [])
     settings["hooks"]["PreToolUse"] = [
@@ -393,6 +426,11 @@ def _remove_hook(root: Path) -> None:
     ups = settings.get("hooks", {}).get("UserPromptSubmit", [])
     settings["hooks"]["UserPromptSubmit"] = [
         h for h in ups
+        if not any(e.get("command") in booster_cmds for e in h.get("hooks", []))
+    ]
+    session_start = settings.get("hooks", {}).get("SessionStart", [])
+    settings["hooks"]["SessionStart"] = [
+        h for h in session_start
         if not any(e.get("command") in booster_cmds for e in h.get("hooks", []))
     ]
 
