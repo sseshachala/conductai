@@ -18,43 +18,62 @@ interface Project {
   security_finding_id?: string
 }
 
+interface Workflow {
+  id: string
+  name: string
+  workspace_id: string
+  updated_at: string
+  last_run_status: string | null
+  last_run_at: string | null
+  project_name: string | null
+}
+
 function timeAgo(ts: string): string {
   const diff = Date.now() - new Date(ts).getTime()
-  const days = Math.floor(diff / 86400000)
-  if (days === 0) return "today"
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return "just now"
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
   if (days === 1) return "yesterday"
   if (days < 30) return `${days}d ago`
   return new Date(ts).toLocaleDateString()
 }
 
-// ── Project avatar colours ────────────────────────────────────────────────────
-
 const AVATAR_COLORS = [
   "#4f46e5", "#059669", "#d97706", "#dc2626",
   "#7c3aed", "#0284c7", "#be185d", "#15803d",
 ]
-
 function avatarColor(name: string): string {
   let h = 0
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffffff
   return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length]
 }
 
-// ── Icons ────────────────────────────────────────────────────────────────────
-
-function ArrowRightIcon() {
-  return (
-    <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M5 12h14M12 5l7 7-7 7" />
-    </svg>
-  )
+function mapStatus(s: string | null): string {
+  if (!s) return "idle"
+  const l = s.toLowerCase()
+  if (l === "running") return "run"
+  if (l === "waiting" || l === "pending" || l === "awaiting") return "wait"
+  if (l === "succeeded" || l === "success") return "ok"
+  if (l === "failed" || l === "error") return "err"
+  if (l === "warn" || l === "degraded") return "warn"
+  return "idle"
 }
 
-function PulseIcon() {
+function AgentStatusPill({ s }: { s: string }) {
+  const m = ({
+    ok: ["ok", "Succeeded"], wait: ["warn", "Awaiting"], run: ["run", "Running"],
+    err: ["err", "Failed"], idle: ["idle", "Never run"], warn: ["warn", "Degraded"],
+  } as Record<string, [string, string]>)[s] || ["idle", "Never run"]
   return (
-    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-    </svg>
+    <span className={"sbadge " + m[0]}>
+      {(s === "run" || s === "wait") && (
+        <span className="dot pulse" style={{ background: m[0] === "warn" ? "var(--warn)" : "var(--info)" }} />
+      )}
+      {m[1]}
+    </span>
   )
 }
 
@@ -62,14 +81,6 @@ function PlusIcon({ size = 15 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M12 5v14M5 12h14" />
-    </svg>
-  )
-}
-
-function DotsIcon() {
-  return (
-    <svg width={16} height={16} fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-      <path d="M10 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4z" />
     </svg>
   )
 }
@@ -105,12 +116,14 @@ function ProjectsWithAuth() {
 function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
   const router = useRouter()
   const [projects, setProjects] = useState<Project[]>([])
+  const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [tab, setTab] = useState<"projects" | "automation">("projects")
-  const [view, setView] = useState<"grid" | "list">(() => {
-    if (typeof window !== "undefined") return (localStorage.getItem("projects_view") as "grid" | "list") ?? "grid"
-    return "grid"
+  const [q, setQ] = useState("")
+  const [view, setView] = useState<"list" | "grid">(() => {
+    if (typeof window !== "undefined") return (localStorage.getItem("projects_view") as "list" | "grid") ?? "list"
+    return "list"
   })
 
   async function authHeaders(): Promise<Record<string, string>> {
@@ -122,32 +135,28 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
     return h
   }
 
-  async function fetchProjects() {
-    try {
-      const headers = await authHeaders()
-      const workspaceId = document.cookie.match(/delegator_project_id=([^;]+)/)?.[1] ?? ""
-      if (workspaceId) {
-        headers["X-Workspace-Id"] = workspaceId
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/projects`, { headers })
-        if (res.ok) { setProjects(await res.json()); return }
-      }
-      // Fallback: no cookie set yet — show top-level workspaces as projects
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, { headers })
-      if (res.ok) setProjects(await res.json())
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => { fetchProjects() }, [])
-
-  function selectProject(id: string, name?: string) {
-    router.push(`/workflows?project=${id}`)
-  }
-
   function getWorkspaceId(): string {
     return document.cookie.match(/delegator_project_id=([^;]+)/)?.[1] ?? ""
   }
+
+  async function fetchAll() {
+    const wsId = getWorkspaceId()
+    const headers = await authHeaders()
+    if (wsId) headers["X-Workspace-Id"] = wsId
+
+    const [projRes, wfRes] = await Promise.all([
+      wsId
+        ? fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${wsId}/projects`, { headers })
+        : fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, { headers }),
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, { headers: { ...headers, ...(wsId ? { "X-Workspace-ID": wsId } : {}) } }),
+    ])
+
+    if (projRes.ok) setProjects(await projRes.json())
+    if (wfRes.ok) setWorkflows(await wfRes.json())
+    setLoading(false)
+  }
+
+  useEffect(() => { fetchAll() }, [])
 
   async function renameProject(id: string, name: string) {
     const h = await authHeaders()
@@ -175,100 +184,81 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
     setProjects(prev => prev.filter(p => p.id !== id))
   }
 
+  function workflowsForProject(project: Project): Workflow[] {
+    return workflows.filter(w => w.project_name === project.name)
+  }
+
+  const userProjects = projects.filter(p => (p.project_type ?? "user") === "user")
+  const automationProjects = projects.filter(p => p.project_type === "security_automation")
+
+  const filteredProjects = (tab === "projects" ? userProjects : automationProjects)
+    .filter(p => p.name.toLowerCase().includes(q.toLowerCase()))
+
   return (
     <AppShell>
-      <div style={{ maxWidth: 1180, margin: "0 auto", padding: "30px 34px 80px" }}>
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "30px 34px 80px" }}>
         <OnboardingChecklist hasProject={projects.length > 0} getToken={getToken} />
 
         {/* Page header */}
-        <div style={{ display: "flex", alignItems: "flex-end", gap: 16, marginBottom: 24 }}>
+        <div className="page-head" style={{ display: "flex", alignItems: "flex-end" }}>
           <div>
-            <h1 style={{ fontSize: 25, fontWeight: 680, letterSpacing: "-.02em", margin: 0, color: "var(--text)" }}>
-              Projects
-            </h1>
-            <p style={{ color: "var(--text-3)", fontSize: 14, marginTop: 5, marginBottom: 0 }}>
-              Group agents by team or repo. Each one keeps its own runs, memory, and environments.
-            </p>
+            <h1 className="page-title">Projects</h1>
+            <p className="page-sub">Group agents by team or repo. Each project keeps its own runs, memory, and environments.</p>
           </div>
-          <div style={{ marginLeft: "auto", display: "flex", gap: 9, alignItems: "center" }}>
-            {/* Grid / List toggle */}
-            <div style={{ display: "flex", border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
-              {(["grid", "list"] as const).map(v => (
-                <button
-                  key={v}
-                  onClick={() => { setView(v); localStorage.setItem("projects_view", v) }}
-                  style={{
-                    width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
-                    border: "none", cursor: "pointer", background: view === v ? "var(--surface-3)" : "var(--surface)",
-                    color: view === v ? "var(--text)" : "var(--text-3)", transition: "background .1s",
-                  }}
-                  title={v === "grid" ? "Grid view" : "List view"}
-                >
-                  {v === "grid" ? (
-                    <svg width="13" height="13" fill="currentColor" viewBox="0 0 12 12">
-                      <rect x="0" y="0" width="5" height="5" rx="1"/><rect x="7" y="0" width="5" height="5" rx="1"/>
-                      <rect x="0" y="7" width="5" height="5" rx="1"/><rect x="7" y="7" width="5" height="5" rx="1"/>
-                    </svg>
-                  ) : (
-                    <svg width="13" height="13" fill="currentColor" viewBox="0 0 12 12">
-                      <rect x="0" y="1" width="12" height="2" rx="1"/><rect x="0" y="5" width="12" height="2" rx="1"/>
-                      <rect x="0" y="9" width="12" height="2" rx="1"/>
-                    </svg>
-                  )}
-                </button>
-              ))}
-            </div>
-            <Link
-              href="/runs"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 7,
-                height: 36,
-                padding: "0 15px",
-                borderRadius: 9,
-                fontSize: 13.5,
-                fontWeight: 550,
-                border: "1px solid var(--border)",
-                color: "var(--text-2)",
-                background: "var(--surface)",
-                textDecoration: "none",
-              }}
-            >
-              <PulseIcon />
-              Recent runs
-            </Link>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 9 }}>
             <button
               onClick={() => setShowModal(true)}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 7,
-                height: 36,
-                padding: "0 15px",
-                borderRadius: 9,
-                fontSize: 13.5,
-                fontWeight: 550,
-                border: "1px solid transparent",
-                background: "var(--text)",
-                color: "#fff",
-                cursor: "pointer",
-                fontFamily: "inherit",
-              }}
+              className="btn btn-primary"
             >
-              <PlusIcon size={15} />
-              New project
+              <PlusIcon size={14} /> New project
             </button>
           </div>
         </div>
 
-        {/* Tabs */}
+        {/* Toolbar: search + view toggle */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+          <div style={{ position: "relative", flex: 1, minWidth: 220, maxWidth: 340 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ position: "absolute", left: 11, top: 10, color: "var(--text-muted)" }}>
+              <path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zm4.15-2.85 3.7 3.7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            <input
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              placeholder="Search projects…"
+              style={{ width: "100%", height: 36, padding: "0 12px 0 33px", borderRadius: 9, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", fontSize: 13.5, outline: "none" }}
+            />
+          </div>
+          <div style={{ marginLeft: "auto", display: "flex", background: "var(--surface-3)", borderRadius: 8, padding: 3 }}>
+            {(["list", "grid"] as const).map(v => (
+              <button
+                key={v}
+                onClick={() => { setView(v); localStorage.setItem("projects_view", v) }}
+                style={{ border: "none", background: view === v ? "var(--surface)" : "transparent", borderRadius: 6, padding: "5px 9px", cursor: "pointer", color: view === v ? "var(--text)" : "var(--text-3)", boxShadow: view === v ? "var(--shadow-sm)" : "none" }}
+              >
+                {v === "list" ? (
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <rect x="0" y="1" width="14" height="2" rx="1" fill="currentColor" />
+                    <rect x="0" y="6" width="14" height="2" rx="1" fill="currentColor" />
+                    <rect x="0" y="11" width="14" height="2" rx="1" fill="currentColor" />
+                  </svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <rect x="0" y="0" width="6" height="6" rx="1" fill="currentColor" />
+                    <rect x="8" y="0" width="6" height="6" rx="1" fill="currentColor" />
+                    <rect x="0" y="8" width="6" height="6" rx="1" fill="currentColor" />
+                    <rect x="8" y="8" width="6" height="6" rx="1" fill="currentColor" />
+                  </svg>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Tab chips */}
         {!loading && (
-          <div style={{ display: "flex", gap: 6, marginBottom: 20 }}>
+          <div style={{ display: "flex", gap: 7, marginBottom: 16, flexWrap: "wrap" }}>
             {(["projects", "automation"] as const).map(t => {
-              const count = t === "projects"
-                ? projects.filter(p => (p.project_type ?? "user") === "user").length
-                : projects.filter(p => p.project_type === "security_automation").length
+              const count = t === "projects" ? userProjects.length : automationProjects.length
               const on = tab === t
               return (
                 <button
@@ -288,83 +278,30 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
 
         {/* Content */}
         {loading ? (
-          <LoadingGrid />
-        ) : tab === "projects" ? (
-          (() => {
-            const userProjects = projects.filter(p => (p.project_type ?? "user") === "user")
-            return userProjects.length === 0 ? (
-              <EmptyState onNew={() => setShowModal(true)} />
-            ) : view === "grid" ? (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
-                {userProjects.map(p => (
-                  <ProjectCard
-                    key={p.id}
-                    project={p}
-                    onSelect={() => selectProject(p.id, p.name)}
-                    onRename={(name) => renameProject(p.id, name)}
-                    onDelete={() => deleteProject(p.id)}
-                  />
-                ))}
-                <NewProjectTile onClick={() => setShowModal(true)} />
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                {userProjects.map(p => (
-                  <div
-                    key={p.id}
-                    onClick={() => router.push(`/projects/${p.id}`)}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 12,
-                      padding: "10px 16px", borderRadius: 10, cursor: "pointer",
-                      border: "1px solid var(--border)", background: "var(--surface)",
-                      transition: "background .1s",
-                    }}
-                    onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
-                    onMouseLeave={e => (e.currentTarget.style.background = "var(--surface)")}
-                  >
-                    <span style={{
-                      width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-                      background: "var(--surface-3)", color: "var(--text-2)",
-                      fontSize: 13, fontWeight: 700,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                    }}>{p.name[0].toUpperCase()}</span>
-                    <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
-                    <span style={{ fontSize: 12, color: "var(--text-muted)", flexShrink: 0 }}>{p.agent_count} agent{p.agent_count !== 1 ? "s" : ""}</span>
-                  </div>
-                ))}
-                <button
-                  onClick={() => setShowModal(true)}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 10, padding: "10px 16px",
-                    borderRadius: 10, border: "1.5px dashed var(--border)", background: "transparent",
-                    color: "var(--text-muted)", fontSize: 13.5, cursor: "pointer", fontFamily: "inherit",
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
-                  onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-                >
-                  <span style={{ fontSize: 16, lineHeight: 1 }}>+</span> New project
-                </button>
-              </div>
-            )
-          })()
+          <LoadingSkeleton />
+        ) : filteredProjects.length === 0 ? (
+          tab === "automation" ? (
+            <AutomationEmpty />
+          ) : (
+            <EmptyState onNew={() => setShowModal(true)} hasQuery={q.length > 0} />
+          )
+        ) : view === "list" ? (
+          <ListView
+            projects={filteredProjects}
+            workflowsFor={workflowsForProject}
+            onRename={renameProject}
+            onDelete={deleteProject}
+            router={router}
+          />
         ) : (
-          (() => {
-            const automationProjects = projects.filter(p => p.project_type === "security_automation")
-            return automationProjects.length === 0 ? (
-              <div style={{ borderRadius: 14, border: "1.5px dashed var(--border-2)", padding: "56px 40px", textAlign: "center" }}>
-                <p style={{ fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>No automation project yet</p>
-                <p style={{ color: "var(--text-3)", fontSize: 14, maxWidth: 360, margin: "0 auto", lineHeight: 1.6 }}>
-                  Install Security Loop from the marketplace. A Security Automation project will be created automatically — all triage and fix runs live here.
-                </p>
-              </div>
-            ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
-                {automationProjects.map(p => (
-                  <IncidentCard key={p.id} project={p} onSelect={() => selectProject(p.id, p.name)} />
-                ))}
-              </div>
-            )
-          })()
+          <GridView
+            projects={filteredProjects}
+            workflowsFor={workflowsForProject}
+            onRename={renameProject}
+            onDelete={deleteProject}
+            onNew={() => setShowModal(true)}
+            router={router}
+          />
         )}
       </div>
 
@@ -372,80 +309,461 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
         <NewProjectModal
           getToken={getToken}
           onClose={() => setShowModal(false)}
-          onCreate={(id) => selectProject(id)}
+          onCreate={(id) => router.push(`/workflows?project=${id}`)}
         />
       )}
     </AppShell>
   )
 }
 
-// ── Loading grid ──────────────────────────────────────────────────────────────
+// ── List view ─────────────────────────────────────────────────────────────────
 
-function LoadingGrid() {
+function ListView({
+  projects, workflowsFor, onRename, onDelete, router,
+}: {
+  projects: Project[]
+  workflowsFor: (p: Project) => Workflow[]
+  onRename: (id: string, name: string) => Promise<void>
+  onDelete: (id: string) => Promise<void>
+  router: ReturnType<typeof useRouter>
+}) {
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-        gap: 16,
-      }}
-    >
-      {[1, 2, 3].map(i => (
-        <div
-          key={i}
-          style={{
-            height: 188,
-            borderRadius: 14,
-            border: "1px solid var(--border)",
-            background: "var(--surface)",
-            animation: "pulse 1.5s ease-in-out infinite",
-          }}
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {projects.map(p => (
+        <ProjectListSection
+          key={p.id}
+          project={p}
+          agents={workflowsFor(p)}
+          onRename={name => onRename(p.id, name)}
+          onDelete={() => onDelete(p.id)}
+          router={router}
         />
       ))}
     </div>
   )
 }
 
-// ── Empty state ───────────────────────────────────────────────────────────────
+function ProjectListSection({
+  project, agents, onRename, onDelete, router,
+}: {
+  project: Project
+  agents: Workflow[]
+  onRename: (name: string) => Promise<void>
+  onDelete: () => Promise<void>
+  router: ReturnType<typeof useRouter>
+}) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const [nameValue, setNameValue] = useState(project.name)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmValue, setConfirmValue] = useState("")
+  const menuRef = useRef<HTMLDivElement>(null)
+  const renameRef = useRef<HTMLInputElement>(null)
+  const confirmRef = useRef<HTMLInputElement>(null)
+  const color = avatarColor(project.name)
 
-function EmptyState({ onNew }: { onNew: () => void }) {
+  useEffect(() => { if (renaming) renameRef.current?.focus() }, [renaming])
+  useEffect(() => { if (confirmDelete) confirmRef.current?.focus() }, [confirmDelete])
+  useEffect(() => {
+    function h(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
+    }
+    document.addEventListener("mousedown", h)
+    return () => document.removeEventListener("mousedown", h)
+  }, [])
+
+  async function submitRename() {
+    const name = nameValue.trim()
+    if (name && name !== project.name) await onRename(name)
+    else setNameValue(project.name)
+    setRenaming(false)
+  }
+
+  return (
+    <div className="card" style={{ overflow: "hidden" }}>
+      {/* Project header row */}
+      <div
+        style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 18px", borderBottom: agents.length > 0 ? "1px solid var(--border)" : undefined, cursor: "pointer", background: "var(--surface-2)" }}
+        onClick={() => !renaming && router.push(`/projects/${project.id}`)}
+      >
+        <div style={{ width: 32, height: 32, borderRadius: 9, background: color, color: "#fff", display: "grid", placeItems: "center", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
+          {project.name[0].toUpperCase()}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {renaming ? (
+            <input
+              ref={renameRef}
+              value={nameValue}
+              onChange={e => setNameValue(e.target.value)}
+              onClick={e => e.stopPropagation()}
+              onBlur={submitRename}
+              onKeyDown={e => {
+                if (e.key === "Enter") submitRename()
+                if (e.key === "Escape") { setNameValue(project.name); setRenaming(false) }
+              }}
+              style={{ fontWeight: 650, fontSize: 14, background: "transparent", border: "none", borderBottom: "1px solid var(--accent-ring)", outline: "none", width: "100%", fontFamily: "inherit" }}
+            />
+          ) : (
+            <div style={{ fontWeight: 650, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text)" }}>
+              {project.name}
+            </div>
+          )}
+          <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+            {agents.length} agent{agents.length !== 1 ? "s" : ""} · created {timeAgo(project.created_at)}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }} onClick={e => e.stopPropagation()}>
+          <Link
+            href={`/workflows/new?project=${project.id}`}
+            className="btn btn-ghost btn-sm"
+            style={{ fontSize: 11 }}
+            onClick={e => e.stopPropagation()}
+          >
+            + Agent
+          </Link>
+          <div ref={menuRef} style={{ position: "relative" }}>
+            <button
+              className="btn btn-ghost btn-icon btn-sm"
+              onClick={() => setMenuOpen(v => !v)}
+              title="Project actions"
+            >⋯</button>
+            {menuOpen && (
+              <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 20, minWidth: 130, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, boxShadow: "var(--shadow-md)", padding: "4px 0" }}>
+                <button
+                  onClick={() => { setMenuOpen(false); setRenaming(true) }}
+                  style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--text)", background: "none", border: "none", cursor: "pointer" }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}
+                >Rename</button>
+                <button
+                  onClick={() => { setMenuOpen(false); setConfirmDelete(true) }}
+                  style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--err)", background: "none", border: "none", cursor: "pointer" }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}
+                >Delete</button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Delete confirmation */}
+      {confirmDelete && (
+        <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--border)", background: "var(--err-weak, #fff5f5)" }}>
+          <p style={{ fontSize: 13, color: "var(--err)", marginBottom: 8 }}>
+            Type <strong>{project.name}</strong> to permanently delete this project and all its data.
+          </p>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              ref={confirmRef}
+              value={confirmValue}
+              onChange={e => setConfirmValue(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter" && confirmValue === project.name) onDelete()
+                if (e.key === "Escape") { setConfirmDelete(false); setConfirmValue("") }
+              }}
+              placeholder={project.name}
+              style={{ flex: 1, fontSize: 13, border: "1px solid var(--err, #fca5a5)", borderRadius: 7, padding: "5px 10px", outline: "none", background: "var(--surface)" }}
+            />
+            <button
+              onClick={() => onDelete()}
+              disabled={confirmValue !== project.name}
+              className="btn btn-sm"
+              style={{ background: "var(--err)", color: "#fff", opacity: confirmValue !== project.name ? 0.4 : 1 }}
+            >Delete</button>
+            <button
+              onClick={() => { setConfirmDelete(false); setConfirmValue("") }}
+              className="btn btn-ghost btn-sm"
+            >Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Agent rows */}
+      {agents.length === 0 ? (
+        <div style={{ padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontSize: 13, color: "var(--text-muted)" }}>No agents yet</span>
+          <Link href={`/workflows/new?project=${project.id}`} className="btn btn-ghost btn-sm" style={{ fontSize: 11 }}>
+            + New agent
+          </Link>
+        </div>
+      ) : (
+        <>
+          {/* Column headers */}
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 80px", gap: 14, padding: "7px 18px 7px 58px", background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
+            {["Agent", "Status", "Last run", ""].map((h, i) => (
+              <div key={i} className="eyebrow" style={{ fontSize: 9.5 }}>{h}</div>
+            ))}
+          </div>
+          {agents.map((w, idx) => (
+            <AgentRow
+              key={w.id}
+              workflow={w}
+              isLast={idx === agents.length - 1}
+              router={router}
+            />
+          ))}
+        </>
+      )}
+    </div>
+  )
+}
+
+function AgentRow({ workflow: w, isLast, router }: { workflow: Workflow; isLast: boolean; router: ReturnType<typeof useRouter> }) {
+  const status = mapStatus(w.last_run_status)
   return (
     <div
-      style={{
-        borderRadius: 14,
-        border: "1.5px dashed var(--border-2)",
-        padding: "56px 40px",
-        textAlign: "center",
-      }}
+      style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 80px", gap: 14, padding: "11px 18px 11px 58px", borderBottom: isLast ? "none" : "1px solid var(--border)", alignItems: "center", cursor: "pointer", transition: "background .12s" }}
+      onClick={() => router.push(`/workflows/${w.id}/runs`)}
+      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
+      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}
     >
-      <p style={{ fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>Create your first project</p>
-      <p style={{ color: "var(--text-3)", fontSize: 14, marginBottom: 8, maxWidth: 320, margin: "0 auto 8px", lineHeight: 1.6 }}>
-        A project groups your agents, runs, and credentials. Think of it as one repo or one team.
-      </p>
-      <p style={{ color: "var(--text-3)", fontSize: 14, marginBottom: 32, maxWidth: 320, margin: "0 auto 32px", lineHeight: 1.6 }}>
-        Once created, you&apos;ll pick a template and have your first agent running in minutes.
-      </p>
-      <button
-        onClick={onNew}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 7,
-          height: 36,
-          padding: "0 18px",
-          borderRadius: 9,
-          fontSize: 13.5,
-          fontWeight: 550,
-          border: "1px solid transparent",
-          background: "var(--text)",
-          color: "#fff",
-          cursor: "pointer",
-          fontFamily: "inherit",
-        }}
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontWeight: 600, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text)" }}>{w.name}</div>
+        <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>edited {timeAgo(w.updated_at)}</div>
+      </div>
+      <AgentStatusPill s={status} />
+      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+        {w.last_run_at ? timeAgo(w.last_run_at) : "—"}
+      </div>
+      <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }} onClick={e => e.stopPropagation()}>
+        <Link
+          href={`/workflows/${w.id}/runs`}
+          className="btn btn-ghost btn-sm"
+          style={{ fontSize: 11, padding: "3px 9px" }}
+          title="View runs"
+        >Runs</Link>
+        <Link
+          href={`/workflows/${w.id}`}
+          className="btn btn-ghost btn-icon btn-sm"
+          title="Open canvas"
+        >→</Link>
+      </div>
+    </div>
+  )
+}
+
+// ── Grid view ─────────────────────────────────────────────────────────────────
+
+function GridView({
+  projects, workflowsFor, onRename, onDelete, onNew, router,
+}: {
+  projects: Project[]
+  workflowsFor: (p: Project) => Workflow[]
+  onRename: (id: string, name: string) => Promise<void>
+  onDelete: (id: string) => Promise<void>
+  onNew: () => void
+  router: ReturnType<typeof useRouter>
+}) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
+      {projects.map(p => (
+        <ProjectGridCard
+          key={p.id}
+          project={p}
+          agents={workflowsFor(p)}
+          onRename={name => onRename(p.id, name)}
+          onDelete={() => onDelete(p.id)}
+          router={router}
+        />
+      ))}
+      <NewProjectTile onClick={onNew} />
+    </div>
+  )
+}
+
+function ProjectGridCard({
+  project, agents, onRename, onDelete, router,
+}: {
+  project: Project
+  agents: Workflow[]
+  onRename: (name: string) => Promise<void>
+  onDelete: () => Promise<void>
+  router: ReturnType<typeof useRouter>
+}) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const [nameValue, setNameValue] = useState(project.name)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmValue, setConfirmValue] = useState("")
+  const [hovered, setHovered] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const renameRef = useRef<HTMLInputElement>(null)
+  const color = avatarColor(project.name)
+
+  useEffect(() => { if (renaming) renameRef.current?.focus() }, [renaming])
+  useEffect(() => {
+    function h(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
+    }
+    document.addEventListener("mousedown", h)
+    return () => document.removeEventListener("mousedown", h)
+  }, [])
+
+  async function submitRename() {
+    const name = nameValue.trim()
+    if (name && name !== project.name) await onRename(name)
+    else setNameValue(project.name)
+    setRenaming(false)
+  }
+
+  if (confirmDelete) {
+    return (
+      <div className="card" style={{ padding: "16px 18px", border: "1px solid #fecaca", background: "#fef2f2" }}>
+        <p style={{ fontSize: 13, color: "var(--err)", marginBottom: 10 }}>
+          Type <strong>{project.name}</strong> to delete this project.
+        </p>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            autoFocus
+            value={confirmValue}
+            onChange={e => setConfirmValue(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter" && confirmValue === project.name) onDelete()
+              if (e.key === "Escape") { setConfirmDelete(false); setConfirmValue("") }
+            }}
+            placeholder={project.name}
+            style={{ flex: 1, fontSize: 13, border: "1px solid #fecaca", borderRadius: 8, padding: "6px 10px", outline: "none", fontFamily: "inherit" }}
+          />
+          <button
+            onClick={() => onDelete()}
+            disabled={confirmValue !== project.name}
+            className="btn btn-sm"
+            style={{ background: "var(--err)", color: "#fff", opacity: confirmValue !== project.name ? 0.4 : 1 }}
+          >Delete</button>
+          <button onClick={() => { setConfirmDelete(false); setConfirmValue("") }} className="btn btn-ghost btn-sm">Cancel</button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="card"
+      style={{ overflow: "hidden", cursor: "pointer", boxShadow: hovered ? "var(--shadow-md)" : undefined, transition: "box-shadow .15s, border-color .15s", borderColor: hovered ? "var(--border-2)" : undefined }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* Card header */}
+      <div
+        style={{ padding: "16px 18px 14px", display: "flex", alignItems: "center", gap: 10 }}
+        onClick={() => !renaming && router.push(`/projects/${project.id}`)}
       >
-        <PlusIcon size={15} />
-        New project
-      </button>
+        <div style={{ width: 36, height: 36, borderRadius: 10, background: color, color: "#fff", display: "grid", placeItems: "center", fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
+          {project.name[0].toUpperCase()}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {renaming ? (
+            <input
+              ref={renameRef}
+              value={nameValue}
+              onChange={e => setNameValue(e.target.value)}
+              onClick={e => e.stopPropagation()}
+              onBlur={submitRename}
+              onKeyDown={e => {
+                if (e.key === "Enter") submitRename()
+                if (e.key === "Escape") { setNameValue(project.name); setRenaming(false) }
+              }}
+              style={{ fontWeight: 650, fontSize: 15, background: "transparent", border: "none", borderBottom: "1px solid var(--accent-ring)", outline: "none", width: "100%", fontFamily: "inherit" }}
+            />
+          ) : (
+            <div style={{ fontWeight: 650, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)" }}>
+              {project.name}
+            </div>
+          )}
+          <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+            created {timeAgo(project.created_at)}
+          </div>
+        </div>
+        <div ref={menuRef} style={{ position: "relative", flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+          <button
+            className="btn btn-ghost btn-icon btn-sm"
+            style={{ opacity: hovered || menuOpen ? 1 : 0, transition: "opacity .15s" }}
+            onClick={() => setMenuOpen(v => !v)}
+            title="Project actions"
+          >⋯</button>
+          {menuOpen && (
+            <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 20, minWidth: 130, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, boxShadow: "var(--shadow-md)", padding: "4px 0" }}>
+              <button
+                onClick={() => { setMenuOpen(false); setRenaming(true) }}
+                style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--text)", background: "none", border: "none", cursor: "pointer" }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}
+              >Rename</button>
+              <button
+                onClick={() => { setMenuOpen(false); setConfirmDelete(true) }}
+                style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--err)", background: "none", border: "none", cursor: "pointer" }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}
+              >Delete</button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Agent list */}
+      <div style={{ borderTop: "1px solid var(--border)" }}>
+        {agents.length === 0 ? (
+          <div style={{ padding: "12px 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>No agents yet</span>
+            <Link href={`/workflows/new?project=${project.id}`} className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={e => e.stopPropagation()}>
+              + New agent
+            </Link>
+          </div>
+        ) : (
+          <>
+            {agents.slice(0, 4).map((w, idx) => {
+              const status = mapStatus(w.last_run_status)
+              return (
+                <div
+                  key={w.id}
+                  style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 18px", borderBottom: idx < Math.min(agents.length, 4) - 1 ? "1px solid var(--border)" : "none", cursor: "pointer", transition: "background .1s" }}
+                  onClick={e => { e.stopPropagation(); router.push(`/workflows/${w.id}/runs`) }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)" }}>{w.name}</div>
+                  </div>
+                  <AgentStatusPill s={status} />
+                  <Link
+                    href={`/workflows/${w.id}`}
+                    className="btn btn-ghost btn-icon btn-sm"
+                    style={{ opacity: 0.6, fontSize: 12 }}
+                    onClick={e => e.stopPropagation()}
+                    title="Open canvas"
+                  >→</Link>
+                </div>
+              )
+            })}
+            {agents.length > 4 && (
+              <div
+                style={{ padding: "9px 18px", fontSize: 12, color: "var(--text-muted)", cursor: "pointer", textAlign: "center", transition: "background .1s" }}
+                onClick={() => router.push(`/projects/${project.id}`)}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}
+              >
+                +{agents.length - 4} more agents →
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Card footer */}
+      <div style={{ display: "flex", borderTop: "1px solid var(--border)", background: "var(--surface-2)" }}>
+        <div style={{ flex: 1, padding: "10px 18px" }}>
+          <div style={{ fontSize: 16, fontWeight: 650, color: "var(--text)" }}>{agents.length}</div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>agents</div>
+        </div>
+        <div
+          style={{ display: "grid", placeItems: "center", padding: "0 18px", borderLeft: "1px solid var(--border)", color: "var(--text-muted)", cursor: "pointer" }}
+          onClick={() => router.push(`/projects/${project.id}`)}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+        </div>
+      </div>
     </div>
   )
 }
@@ -461,13 +779,8 @@ function NewProjectTile({ onClick }: { onClick: () => void }) {
       onMouseLeave={() => setHovered(false)}
       style={{
         border: `1.5px dashed ${hovered ? "var(--accent-ring)" : "var(--border-2)"}`,
-        borderRadius: 14,
-        display: "grid",
-        placeItems: "center",
-        minHeight: 188,
-        cursor: "pointer",
-        color: hovered ? "var(--accent-text)" : "var(--text-3)",
-        transition: "border-color .15s, color .15s",
+        borderRadius: 14, display: "grid", placeItems: "center", minHeight: 160, cursor: "pointer",
+        color: hovered ? "var(--accent-text)" : "var(--text-3)", transition: "border-color .15s, color .15s",
       }}
     >
       <div style={{ textAlign: "center" }}>
@@ -478,366 +791,47 @@ function NewProjectTile({ onClick }: { onClick: () => void }) {
   )
 }
 
-// ── Incident card ─────────────────────────────────────────────────────────────
+// ── Loading skeleton ──────────────────────────────────────────────────────────
 
-function IncidentCard({ project, onSelect }: { project: Project; onSelect: () => void }) {
-  const [hovered, setHovered] = useState(false)
+function LoadingSkeleton() {
   return (
-    <div
-      onClick={onSelect}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        borderRadius: 14,
-        border: "1px solid #fecaca",
-        background: hovered ? "#fff5f5" : "#fef2f2",
-        overflow: "hidden",
-        cursor: "pointer",
-        boxShadow: hovered ? "var(--shadow-md)" : "none",
-        transition: "background .15s, box-shadow .15s",
-        padding: "18px 20px",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-        <div style={{ width: 36, height: 36, borderRadius: 10, background: "#dc2626", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
-          <ShieldIcon />
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 650, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "#991b1b" }}>
-            {project.name}
-          </div>
-          <div style={{ fontSize: 11, color: "#b91c1c", marginTop: 2 }}>
-            {timeAgo(project.created_at)}
-          </div>
-        </div>
-        <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".04em", padding: "2px 8px", borderRadius: 20, background: "rgba(220,38,38,.12)", color: "#dc2626", border: "1px solid rgba(220,38,38,.25)", flexShrink: 0 }}>
-          {project.project_type === "security_automation" ? "AUTOMATION" : "INCIDENT"}
-        </span>
-      </div>
-      <div style={{ fontSize: 12, color: "#b91c1c", display: "flex", alignItems: "center", gap: 6 }}>
-        <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-        {project.security_finding_id ? `Finding ${project.security_finding_id.slice(0, 8)}` : "Security finding"}
-      </div>
-      <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #fecaca", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 12, color: "#b91c1c" }}>{project.agent_count} agent{project.agent_count !== 1 ? "s" : ""}</span>
-        <span style={{ fontSize: 12, color: "#dc2626", fontWeight: 600 }}>View incident →</span>
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {[1, 2, 3].map(i => (
+        <div key={i} style={{ height: 140, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)", opacity: 0.5, animation: "pulse 1.5s ease-in-out infinite" }} />
+      ))}
     </div>
   )
 }
 
-// ── Project card ──────────────────────────────────────────────────────────────
+// ── Empty states ──────────────────────────────────────────────────────────────
 
-interface ProjectCardProps {
-  project: Project
-  onSelect: () => void
-  onRename: (name: string) => Promise<void>
-  onDelete: () => Promise<void>
+function EmptyState({ onNew, hasQuery }: { onNew: () => void; hasQuery: boolean }) {
+  return (
+    <div style={{ padding: "60px 20px", textAlign: "center" }}>
+      <p style={{ fontWeight: 650, fontSize: 16, color: "var(--text)", marginBottom: 8 }}>
+        {hasQuery ? "No projects match" : "Create your first project"}
+      </p>
+      <p style={{ fontSize: 13.5, color: "var(--text-3)", marginBottom: 20, maxWidth: 360, margin: "0 auto 20px", lineHeight: 1.6 }}>
+        {hasQuery
+          ? "Try a different search term."
+          : "A project groups your agents, runs, and credentials. Think of it as one repo or one team."}
+      </p>
+      {!hasQuery && (
+        <button onClick={onNew} className="btn btn-primary">
+          <PlusIcon size={14} /> New project
+        </button>
+      )}
+    </div>
+  )
 }
 
-function ProjectCard({ project, onSelect, onRename, onDelete }: ProjectCardProps) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [renaming, setRenaming] = useState(false)
-  const [nameValue, setNameValue] = useState(project.name)
-  const [confirmValue, setConfirmValue] = useState<string | null>(null)
-  const [hovered, setHovered] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const confirmInputRef = useRef<HTMLInputElement>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (renaming) inputRef.current?.focus()
-  }, [renaming])
-
-  useEffect(() => {
-    if (confirmValue !== null) confirmInputRef.current?.focus()
-  }, [confirmValue])
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
-    }
-    document.addEventListener("mousedown", handleClick)
-    return () => document.removeEventListener("mousedown", handleClick)
-  }, [])
-
-  async function submitRename() {
-    const name = nameValue.trim()
-    if (name && name !== project.name) await onRename(name)
-    else setNameValue(project.name)
-    setRenaming(false)
-  }
-
-  // Delete confirmation state
-  if (confirmValue !== null) {
-    return (
-      <div
-        style={{
-          borderRadius: 14,
-          border: "1px solid #fecaca",
-          background: "#fef2f2",
-          padding: "16px 20px",
-        }}
-      >
-        <p style={{ fontSize: 13, color: "#b91c1c", marginBottom: 10 }}>
-          Type <strong>{project.name}</strong> to permanently delete this project and all its data.
-        </p>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input
-            ref={confirmInputRef}
-            value={confirmValue}
-            onChange={e => setConfirmValue(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === "Enter" && confirmValue === project.name) onDelete()
-              if (e.key === "Escape") setConfirmValue(null)
-            }}
-            placeholder={project.name}
-            style={{
-              flex: 1,
-              fontSize: 13,
-              border: "1px solid #fecaca",
-              borderRadius: 8,
-              padding: "6px 10px",
-              outline: "none",
-              fontFamily: "inherit",
-            }}
-          />
-          <button
-            onClick={() => onDelete()}
-            disabled={confirmValue !== project.name}
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              color: "#fff",
-              background: "#dc2626",
-              border: "none",
-              padding: "6px 12px",
-              borderRadius: 8,
-              cursor: "pointer",
-              opacity: confirmValue !== project.name ? 0.4 : 1,
-              fontFamily: "inherit",
-            }}
-          >
-            Delete
-          </button>
-          <button
-            onClick={() => setConfirmValue(null)}
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              color: "var(--text-2)",
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              padding: "6px 12px",
-              borderRadius: 8,
-              cursor: "pointer",
-              fontFamily: "inherit",
-            }}
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  const color = avatarColor(project.name)
-
+function AutomationEmpty() {
   return (
-    <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        borderRadius: 14,
-        border: "1px solid var(--border)",
-        background: "var(--surface)",
-        overflow: "hidden",
-        cursor: "pointer",
-        boxShadow: hovered ? "var(--shadow-md)" : "none",
-        transition: "border-color .15s, box-shadow .15s",
-      }}
-    >
-      {/* Top section */}
-      <div
-        style={{ padding: "18px 20px 16px" }}
-        onClick={renaming ? undefined : onSelect}
-      >
-        {/* Header row: avatar + name + repo + 3-dot menu */}
-        <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 12 }}>
-          <div
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              background: color,
-              color: "#fff",
-              display: "grid",
-              placeItems: "center",
-              fontWeight: 700,
-              fontSize: 14,
-              flexShrink: 0,
-            }}
-          >
-            {project.name[0].toUpperCase()}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {renaming ? (
-              <input
-                ref={inputRef}
-                value={nameValue}
-                onChange={e => setNameValue(e.target.value)}
-                onBlur={submitRename}
-                onKeyDown={e => {
-                  if (e.key === "Enter") submitRename()
-                  if (e.key === "Escape") { setNameValue(project.name); setRenaming(false) }
-                }}
-                onClick={e => e.stopPropagation()}
-                style={{
-                  fontSize: 16,
-                  fontWeight: 650,
-                  color: "var(--text)",
-                  background: "transparent",
-                  border: "none",
-                  borderBottom: "1px solid var(--accent-ring)",
-                  outline: "none",
-                  width: "100%",
-                  fontFamily: "inherit",
-                }}
-              />
-            ) : (
-              <div style={{ fontWeight: 650, fontSize: 16, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {project.name}
-              </div>
-            )}
-          </div>
-
-          {/* 3-dot menu */}
-          <div
-            ref={menuRef}
-            style={{ position: "relative", flexShrink: 0 }}
-            onClick={e => e.stopPropagation()}
-          >
-            <button
-              onClick={() => setMenuOpen(v => !v)}
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 7,
-                border: "none",
-                background: "transparent",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "var(--text-muted)",
-                opacity: hovered || menuOpen ? 1 : 0,
-                transition: "opacity .15s, background .15s",
-              }}
-              onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-3)")}
-              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-              aria-label="Project actions"
-            >
-              <DotsIcon />
-            </button>
-            {menuOpen && (
-              <div
-                style={{
-                  position: "absolute",
-                  right: 0,
-                  top: "calc(100% + 4px)",
-                  zIndex: 20,
-                  width: 144,
-                  background: "var(--surface)",
-                  borderRadius: 12,
-                  border: "1px solid var(--border)",
-                  boxShadow: "var(--shadow-md)",
-                  padding: "4px 0",
-                }}
-              >
-                <button
-                  onClick={() => { setMenuOpen(false); setRenaming(true) }}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    padding: "8px 14px",
-                    fontSize: 13,
-                    color: "var(--text-2)",
-                    background: "transparent",
-                    border: "none",
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
-                  onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-                >
-                  Rename
-                </button>
-                <button
-                  onClick={() => { setMenuOpen(false); setConfirmValue("") }}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    padding: "8px 14px",
-                    fontSize: 13,
-                    color: "var(--err)",
-                    background: "transparent",
-                    border: "none",
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.background = "var(--err-bg)")}
-                  onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-                >
-                  Delete
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Description */}
-        <p
-          style={{
-            fontSize: 13,
-            color: "var(--text-3)",
-            margin: "0 0 4px",
-            lineHeight: 1.5,
-          }}
-          onClick={onSelect}
-        >
-          {project.name}
-        </p>
-      </div>
-
-      {/* Footer row */}
-      <div
-        style={{
-          display: "flex",
-          borderTop: "1px solid var(--border)",
-          background: "var(--surface-2)",
-        }}
-        onClick={onSelect}
-      >
-        <div style={{ flex: 1, padding: "11px 20px" }}>
-          <div style={{ fontSize: 17, fontWeight: 650, color: "var(--text)" }}>{project.agent_count ?? 0}</div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>agents</div>
-        </div>
-        <div style={{ flex: 1, padding: "11px 20px", borderLeft: "1px solid var(--border)" }}>
-          <div style={{ fontSize: 17, fontWeight: 650, color: "var(--text)" }}>{timeAgo(project.created_at)}</div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>created</div>
-        </div>
-        <div
-          style={{
-            display: "grid",
-            placeItems: "center",
-            padding: "0 18px",
-            borderLeft: "1px solid var(--border)",
-            color: "var(--text-muted)",
-          }}
-        >
-          <ArrowRightIcon />
-        </div>
-      </div>
+    <div style={{ padding: "60px 20px", textAlign: "center" }}>
+      <p style={{ fontWeight: 650, fontSize: 16, color: "var(--text)", marginBottom: 8 }}>No automation project yet</p>
+      <p style={{ fontSize: 13.5, color: "var(--text-3)", maxWidth: 400, margin: "0 auto", lineHeight: 1.6 }}>
+        Install Security Loop from the marketplace. A Security Automation project will be created automatically — all triage and fix runs live here.
+      </p>
     </div>
   )
 }
