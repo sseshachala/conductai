@@ -125,6 +125,15 @@ function ToolsSection() {
               one when a cheaper one would do.
             </p>
 
+            <a href="/tools/agent-booster" className="block rounded-xl border border-stone-200 bg-stone-50 p-1.5 hover:border-indigo-200 transition-colors">
+              <img
+                src="/tools/agent-booster-demo.gif"
+                alt="Agent Booster CLI demo: booster init claude then booster gain showing token savings"
+                className="w-full rounded-lg"
+                loading="lazy"
+              />
+            </a>
+
             <div className="flex flex-col gap-2">
               <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">What it does</p>
               <ul className="space-y-1.5">
