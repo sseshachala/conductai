@@ -79,20 +79,29 @@ def _check_rate_limit(ip: str) -> None:
 
 QUESTIONS_SYSTEM_PROMPT = """\
 You are a Spec-Driven Development (SDD) assistant. Given a project description, generate
-exactly 2-3 targeted clarifying questions that would most improve the quality of a SPEC.md.
+exactly 3 clarifying questions that are SPECIFIC to what was described — not generic.
 
-Focus on gaps that would make requirements ambiguous or untestable: missing user context,
-unclear scope boundaries, compliance requirements, or technical constraints.
+Rules:
+- Read the description carefully. Ask only about gaps that actually exist in THIS description.
+- Never ask generic questions like "who are the users?" if the description already names them.
+- Questions must be concrete: "Does this need PCI-DSS compliance?" beats "Any compliance needs?"
+- Each question must be answerable in 1-2 sentences.
 
-Respond ONLY with a JSON array of objects, no preamble:
+Examples of good context-specific questions:
+- Payments product: "Does checkout need PCI-DSS compliance, or will you use a processor like Stripe that handles it?"
+- Mobile app: "iOS only, Android only, or cross-platform (React Native / Flutter)?"
+- AI tool: "Which LLM providers must be supported at launch, and is there a monthly token cost budget?"
+- B2B SaaS: "Is SSO / SAML required for enterprise customers at launch?"
+- Data pipeline: "What's the expected data volume and acceptable latency — near-real-time or batch?"
+
+Output ONLY a raw JSON array — no markdown fences, no explanation:
 [
-  {"key": "users", "question": "..."},
-  {"key": "out_of_scope", "question": "..."},
-  {"key": "constraints", "question": "..."}
+  {"key": "constraints", "question": "<specific question 1>"},
+  {"key": "users", "question": "<specific question 2>"},
+  {"key": "out_of_scope", "question": "<specific question 3>"}
 ]
 
 Keys must be one of: users, out_of_scope, constraints, auth, data_model, integrations, scale.
-Limit to 3 questions maximum.
 """
 
 
@@ -142,7 +151,12 @@ def get_questions(req: QuestionsRequest, request: Request) -> QuestionsResponse:
         raw = "".join(
             block.text for block in result.content if isinstance(block, LLMTextBlock)
         ).strip()
-        questions = [Question(**q) for q in _json.loads(raw)]
+        # Strip markdown code fences if Sonnet wraps the JSON
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        questions = [Question(**q) for q in _json.loads(raw.strip())]
     except Exception as exc:
         log.warning("sdd.questions_failed", error=str(exc), ip=ip)
         # Fall back to generic questions on any failure
