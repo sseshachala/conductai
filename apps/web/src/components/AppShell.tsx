@@ -1039,8 +1039,6 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
             active={pathname.startsWith("/settings")}
             collapsed={collapsed}
           />
-          {/* User chip */}
-          <UserChip collapsed={collapsed} userRole={userRole} />
         </div>
       </aside>
 
@@ -1209,39 +1207,8 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
               )}
             </div>
 
-            {/* Context action button */}
-            {isOnCanvas ? (
-              <div style={{ display: "flex", gap: 6 }}>
-                <button style={{
-                  padding: "6px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-                  border: "1px solid var(--border)", background: "var(--surface-2)",
-                  cursor: "pointer", color: "var(--text-2)",
-                }}>
-                  Dry run
-                </button>
-                <button style={{
-                  padding: "6px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-                  border: "none", background: "var(--accent)", color: "#fff",
-                  cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
-                }}>
-                  <Icons.Play />
-                  Run
-                </button>
-              </div>
-            ) : (
-              <Link
-                href="/workflows/new"
-                style={{
-                  display: "flex", alignItems: "center", gap: 6,
-                  padding: "6px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-                  background: "var(--accent)", color: "#fff",
-                  textDecoration: "none",
-                }}
-              >
-                <Icons.Plus />
-                New agent
-              </Link>
-            )}
+            {/* User avatar / settings / logout */}
+            <UserChip collapsed={false} userRole={userRole} topbar />
           </div>
         </header>
 
@@ -1406,13 +1373,13 @@ function SideNavItem({
 
 // ── UserChip ──────────────────────────────────────────────────────────────────
 
-function UserChip({ collapsed, userRole }: { collapsed: boolean; userRole: UserRole }) {
+function UserChip({ collapsed, userRole, topbar }: { collapsed: boolean; userRole: UserRole; topbar?: boolean }) {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   if (!clerkEnabled) return null
-  return <UserChipInner collapsed={collapsed} userRole={userRole} />
+  return <UserChipInner collapsed={collapsed} userRole={userRole} topbar={topbar} />
 }
 
-function UserChipInner({ collapsed, userRole }: { collapsed: boolean; userRole: UserRole }) {
+function UserChipInner({ collapsed, userRole, topbar }: { collapsed: boolean; userRole: UserRole; topbar?: boolean }) {
   const { user } = useUser()
   const { signOut } = useClerk()
   const router = useRouter()
@@ -1444,13 +1411,13 @@ function UserChipInner({ collapsed, userRole }: { collapsed: boolean; userRole: 
         style={{
           display: "flex",
           alignItems: "center",
-          gap: collapsed ? 0 : 10,
-          padding: "7px 8px",
-          borderRadius: 9,
+          gap: topbar ? 0 : collapsed ? 0 : 10,
+          padding: topbar ? "3px" : "7px 8px",
+          borderRadius: topbar ? "50%" : 9,
           background: "transparent",
           border: "none",
           cursor: "pointer",
-          width: "100%",
+          width: topbar ? "auto" : "100%",
           textAlign: "left",
         }}
         onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
@@ -1467,7 +1434,7 @@ function UserChipInner({ collapsed, userRole }: { collapsed: boolean; userRole: 
             ? <img src={avatarUrl} alt={initials} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             : initials}
         </div>
-        {!collapsed && (
+        {!collapsed && !topbar && (
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {fullName}
@@ -1479,10 +1446,11 @@ function UserChipInner({ collapsed, userRole }: { collapsed: boolean; userRole: 
 
       {menuOpen && (
         <div style={{
-          position: "absolute", bottom: "calc(100% + 4px)", left: 0,
+          position: "absolute",
+          ...(topbar ? { top: "calc(100% + 6px)", right: 0 } : { bottom: "calc(100% + 4px)", left: 0 }),
           width: 200, background: "var(--surface)",
           border: "1px solid var(--border)", borderRadius: 10,
-          boxShadow: "var(--shadow-md)", padding: "4px 0", zIndex: 100,
+          boxShadow: "var(--shadow-md)", padding: "4px 0", zIndex: 200,
         }}>
           {email && (
             <>
