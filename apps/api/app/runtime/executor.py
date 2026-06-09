@@ -1355,7 +1355,7 @@ def _execute_output(block: dict, state: dict, credentials: dict, workflow_name: 
 
     if send_slack:
         slack_creds = credentials.get("slack", {})
-        channel = config.get("channel", "#general")
+        channel = _resolve_refs(config.get("channel", "#general"), state)
         if not slack_creds:
             results["slack"] = {"sent": False, "reason": "No Slack credentials configured"}
         elif not channel:
