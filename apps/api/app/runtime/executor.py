@@ -1425,19 +1425,48 @@ def _execute_output(block: dict, state: dict, credentials: dict, workflow_name: 
     return {"sent": True, "integration": integration, **results}
 
 
+def _evaluate_condition_jinja(raw: str, state: dict) -> str | None:
+    """
+    Try evaluating a Jinja2 condition expression against the state.
+    Returns the rendered string ('True'/'False'/etc.) or None on failure.
+    Handles expressions like {{triage.is_real == false}} and
+    {{_trigger.severity == 'critical' or _trigger.severity == 'high'}}.
+    """
+    try:
+        import jinja2
+        env = jinja2.Environment(undefined=jinja2.Undefined)
+        rendered = env.from_string(raw).render(**state).strip()
+        # If the template contained no Jinja2 tags, rendered == raw — skip
+        if rendered == raw:
+            return None
+        return rendered
+    except Exception:
+        return None
+
+
 def _execute_logic(block: dict, state: dict) -> dict:
     """
     Evaluate a condition and return route: 'pass' or 'fail'.
 
     Checks (in order):
     1. Explicit condition expression in block config
+       - Jinja2 evaluation: {{triage.is_real == false}} → 'True'/'False'
        - Equality expression: "value == true/false" evaluated directly
        - Keyword-based: pass/success/true -> pass; fail/error/false -> fail
     2. exit_code == 0 from last shell output
     3. Keywords 'pass', 'success', 'true', '0' in last output
     """
     config = block["data"].get("config", {})
-    condition_expr = _resolve_refs(config.get("condition", ""), state)
+    raw_condition = config.get("condition", "")
+    # Try Jinja2 evaluation first (handles {{expr == value}} patterns)
+    jinja_result = _evaluate_condition_jinja(raw_condition, state)
+    if jinja_result is not None:
+        r = jinja_result.strip().lower()
+        if r in ("true", "1", "yes", "pass", "success"):
+            return {"route": "pass", "condition": raw_condition, "evaluated_on": jinja_result}
+        if r in ("false", "0", "no", "fail", "error"):
+            return {"route": "fail", "condition": raw_condition, "evaluated_on": jinja_result}
+    condition_expr = _resolve_refs(raw_condition, state)
     last_output = str(state.get("__last_output", "")).lower()
 
     # If config has an explicit condition expression, evaluate it
