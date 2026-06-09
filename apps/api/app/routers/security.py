@@ -507,6 +507,7 @@ def trigger_fix(
     """
     from app.models.workflow import Workflow
     from app.models.run import Run
+    from app.models.security_config import SecurityConfig
 
     finding = (
         db.query(SecurityFinding)
@@ -533,6 +534,12 @@ def trigger_fix(
             reason="security-autopilot-fix playbook not installed",
         )
 
+    import uuid as _uuid
+    sec_cfg = db.query(SecurityConfig).filter(
+        SecurityConfig.workspace_id == _uuid.UUID(workspace_id)
+    ).first()
+    slack_channel = (sec_cfg and sec_cfg.security_slack_channel) or "#security"
+
     trigger_data = {
         "finding_id": str(finding.id),
         "severity": finding.severity,
@@ -542,6 +549,7 @@ def trigger_fix(
         "description": finding.description,
         "suggested_fix": finding.suggested_fix,
         "repo_full_name": finding.repo_full_name,
+        "slack_channel": slack_channel,
     }
 
     initial_state = {
