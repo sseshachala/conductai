@@ -31,8 +31,23 @@ def post_session_to_api(session_id: str, transcript_path: str | None, repo: str 
     raw_transcript = None
     if transcript_path:
         try:
-            text = Path(transcript_path).read_text(errors="ignore")
-            raw_transcript = text[:12000]
+            lines = Path(transcript_path).read_text(errors="ignore").splitlines()
+            msgs = []
+            for line in lines:
+                try:
+                    d = json.loads(line)
+                    msg = d.get("message", {})
+                    if isinstance(msg, dict) and msg.get("role") in ("user", "assistant"):
+                        content = msg.get("content", "")
+                        if isinstance(content, list):
+                            for c in content:
+                                if isinstance(c, dict) and c.get("type") == "text" and c.get("text", "").strip():
+                                    msgs.append(f"{msg['role']}: {c['text'][:500]}")
+                        elif isinstance(content, str) and content.strip():
+                            msgs.append(f"{msg['role']}: {content[:500]}")
+                except Exception:
+                    pass
+            raw_transcript = "\n\n".join(msgs)[:12000] if msgs else None
         except Exception:
             pass
 
