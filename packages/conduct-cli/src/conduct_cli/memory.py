@@ -57,7 +57,6 @@ def post_session_to_api(session_id: str, transcript_path: str | None, repo: str 
             pass
 
     developer_id = cfg.get("user_id") or cfg.get("email") or cfg.get("member_email")
-    developer_email = cfg.get("email") or cfg.get("member_email")
 
     payload = json.dumps({
         "session_id": session_id,
@@ -66,7 +65,6 @@ def post_session_to_api(session_id: str, transcript_path: str | None, repo: str 
         "raw_transcript": raw_transcript,
         "files_touched": [],
         "developer_id": developer_id,
-        "developer_email": developer_email,
     }).encode()
 
     def _send():
