@@ -326,7 +326,7 @@ function ToolsSection() {
 
             <div className="mt-auto pt-4 border-t border-stone-100 flex items-center gap-3 flex-wrap">
               <code className="font-mono text-xs bg-stone-900 text-emerald-400 px-3 py-1.5 rounded-lg">conduct session-report</code>
-              <code className="font-mono text-xs text-stone-400 bg-stone-50 px-2 py-1 rounded">pip install conduct-cli==0.4.68</code>
+              <code className="font-mono text-xs text-stone-400 bg-stone-50 px-2 py-1 rounded">pip install conduct-cli==0.4.71</code>
             </div>
           </div>
 
