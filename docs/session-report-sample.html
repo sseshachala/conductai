@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Session Report — sudhiseshachala</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f0f11; color: #e2e2e8; min-height: 100vh; padding: 40px 24px; }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 26px; font-weight: 700; letter-spacing: -.02em; margin-bottom: 4px; }
+  .sub { font-size: 14px; color: #888; margin-bottom: 32px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin-bottom: 32px; }
+  .card { background: #1a1a1f; border: 1px solid #2a2a33; border-radius: 10px; padding: 18px 20px; }
+  .card .label { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #666; margin-bottom: 8px; }
+  .card .value { font-size: 28px; font-weight: 700; color: #fff; letter-spacing: -.02em; }
+  .card .unit { font-size: 13px; color: #888; margin-top: 2px; }
+  .archetype { background: #1a1a1f; border: 1px solid #2a2a33; border-radius: 10px; padding: 20px 24px; margin-bottom: 32px; display: flex; align-items: center; gap: 16px; }
+  .archetype .badge { font-size: 13px; font-weight: 700; background: #7c3aed22; color: #a78bfa; border: 1px solid #7c3aed44; border-radius: 8px; padding: 6px 14px; white-space: nowrap; }
+  .archetype .desc { font-size: 13px; color: #aaa; }
+  .section { margin-bottom: 32px; }
+  .section h2 { font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #666; margin-bottom: 12px; }
+  .tag { display: inline-block; font-size: 12px; font-weight: 600; background: #1e1e28; border: 1px solid #2a2a3a; border-radius: 6px; padding: 4px 10px; margin: 3px; color: #a0aec0; }
+  .report { background: #1a1a1f; border: 1px solid #2a2a33; border-radius: 10px; padding: 20px 24px; font-size: 13px; color: #ccc; line-height: 1.7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Session Report</h1>
+  <div class="sub">sudhiseshachala · generated just now</div>
+
+  <div class="archetype">
+    <span class="badge">Execution-Focused Builder</span>
+    <span class="desc">Autonomy score 66.5/100 &nbsp;·&nbsp; Planning ratio 0.79</span>
+  </div>
+
+  <div class="grid">
+    <div class="card"><div class="label">Sessions</div><div class="value">74</div></div>
+    <div class="card"><div class="label">Prompts</div><div class="value">8313</div></div>
+    <div class="card"><div class="label">Commits</div><div class="value">1793</div></div>
+    <div class="card"><div class="label">Autonomy</div><div class="value">66.5</div><div class="unit">/ 100</div></div>
+  </div>
+
+  <div class="section">
+    <h2>Top Tools</h2>
+    <span class='tag'>Bash</span>  <span class='tag'>Read</span>  <span class='tag'>Edit</span>  <span class='tag'>Grep</span>  <span class='tag'>Write</span>  <span class='tag'>Glob</span>  <span class='tag'>Agent</span>  <span class='tag'>write_stdin</span>
+  </div>
+
+  <div class="section">
+    <h2>Report</h2>
+    <div class="report"># Local Paxel — Builder Stats Report<br><br>_Scope: Sources: claude, codex. Generated entirely on-device — nothing uploaded._<br><br>## Corpus<br>- Sources: **claude** (473 files, 44 sessions, 7,474 prompts), **codex** (30 files, 30 sessions, 839 prompts)<br>- Transcripts parsed: **503** (243,922 events, 0 unparseable)<br>- Date range: **2026-04-20 → 2026-06-10** (51 days span, **50 active days**)<br>- Timezone: CDT (UTC-05:00)<br><br>## Volume<br>- Sessions: **74**<br>- Genuine prompts (human-typed): **8,313**  (+160 slash-command invocations)<br>- Avg prompt length: **370 chars** (median 51)<br>- Assistant turns: 92,600 · tool calls: **53,199** · thinking blocks: 12,443<br><br>## Tools<br>- Tool diversity: **35 distinct tools** (normalized entropy 0.416)<br>- MCP share: **0%** (71 MCP / 53,128 native)<br>- Top tools:<br>  - `Bash` · 24,590 ████████████████████████████<br>  - `Read` · 12,528 ██████████████<br>  - `Edit` · 9,833 ███████████<br>  - `Grep` · 2,056 ██<br>  - `Write` · 1,602 ██<br>  - `Glob` · 1,169 █<br>  - `Agent` · 431 █<br>  - `write_stdin` · 293 █<br>  - `WebSearch` · 180 █<br>  - `WebFetch` · 155 █<br>  - `ToolSearch` · 83 █<br>  - `Skill` · 78 █<br>  - `mcp__agent-booster__smart_read` · 33 █<br>  - `mcp__agent-booster__search_context` · 27 █<br>  - `get_app_state` · 23 █<br>- Category mix: {'explore': 16262, 'execute': 24686, 'delegate': 431, 'produce': 11436, 'ask': 3, 'other': 381}<br><br>## Code velocity<br>- **Git churn (gold standard): 391,156 lines** (+324,822 / -66,334) across 1,793 commits in 6/6 repos on disk<br>  - **708 lines/hour** over 552.4 active hours<br>  - By repo: marshal (205,751), bold-leakey-b84fd2 (163,360), kavacha (13,281), claude-code-workspace (5,158), relai (1,938), maggy (1,668)<br>- Tool-only churn (Edit/Write — what most profilers see): 466,247 lines. Git/tool ratio: **0.8×**<br>- Shell-authored work the Edit/Write path misses entirely: 1,990 file-writing Bash calls, ~53,567 lines of heredoc/redirect content<br><br>## Behavior<br>- Planning ratio (explore : doing): **0.79** (explore 28,705 vs doing 36,553)<br>- Avg session: **448 min** (median 32)<br>- Errors: **1,792 tool errors** (3.4 per 100 tool calls); 1,735 recovered (97%); 99 API retries<br>- Iteration depth (edits/file before commit): mean **1.9**, median 1, p90 4, **max 22** — 8 files hammered &gt;15× in one session<br>- Actions per prompt: **6.4** · questions asked: 3 · background: 94 · scheduled: 18<br><br>## Rhythm<br>- Peak hours (local): **21:00, 22:00, 23:00**<br>- Preferred days: **Tue, Thu, Sun**<br>- Hours:<br>  - 00 █████████ 5599<br>  - 01 ████ 2310<br>  - 02 ███ 1664<br>  - 03 ██ 1418<br>  - 04 ██ 946<br>  - 05 ████████ 4789<br>  - 06 ██████████████ 8470<br>  - 07 █████████████████ 10417<br>  - 08 ███████████ 6818<br>  - 09 ██████████████ 8889<br>  - 10 █████████████ 8466<br>  - 11 ████████████████ 10188<br>  - 12 █████████████ 8105<br>  - 13 ██████████████ 8600<br>  - 14 ██████████████ 8757<br>  - 15 ██████████████ 9077<br>  - 16 ████████████ 7614<br>  - 17 ██████████████ 8873<br>  - 18 ████████████████ 10215<br>  - 19 ████████████████ 9986<br>  - 20 ████████████████ 10222<br>  - 21 ████████████████████████ 15057<br>  - 22 █████████████████████ 13389<br>  - 23 ████████████████████ 12358<br>- Days:<br>  - Mon ████████████████████ 27869<br>  - Tue ████████████████████████ 34238<br>  - Wed █████████████ 18227<br>  - Thu ██████████████████████ 32034<br>  - Fri ██████████████████ 26170<br>  - Sat ████████████████ 22115<br>  - Sun ██████████████████████ 31574<br><br>## Stack<br>- Models: claude-sonnet-4-6 (76071), claude-haiku-4-5-20251001 (6892), claude-opus-4-8 (186), &lt;synthetic&gt; (43), claude-opus-4-7 (32)<br>- Top skills: ai-pm (36), ux-expert (21), vp-eng (3), fullstack (3), update-config (2), db-admin (2), cto (2), vercel:deploy (2), security-review (1), statusline-setup (1)<br>- Subagent types: Explore (223), frontend-engineer (94), api-engineer (51), general-purpose (39), claude-code-guide (10), Plan (6), runtime-engineer (6), e2e-tester (1), ux-expert (1)<br>- Top projects (events, sessions):<br>  - marshal · 84,435 events · 34 sessions<br>  - narratr-website · 77,369 events · 16 sessions<br>  - web · 2,684 events · 11 sessions<br>  - api · 2,650 events · 8 sessions<br>  - sudhiseshachala · 1,600 events · 1 sessions<br>  - kavacha · 930 events · 6 sessions<br>  - mobile · 614 events · 1 sessions<br>  - conduct-cli · 527 events · 3 sessions<br>  - booster · 404 events · 6 sessions<br>  - client · 377 events · 1 sessions<br>  - relai · 365 events · 2 sessions<br>  - explore · 322 events · 1 sessions<br><br>## Autonomy<br>- **Autonomy score: 66.5/100**<br>- Components: {'actions_per_prompt': 11.5, 'delegation': 20.0, 'scheduling_background': 15.0, 'low_question_rate': 20.0}</div>
+  </div>
+</div>
+</body>
+</html>
