@@ -399,17 +399,8 @@ def _install_claude_hook(hook_path: Path) -> None:
     if cleaned:
         changed = True
 
-    # Stop — (1) auto-sync savings, (2) capture session for team memory
+    # Stop — capture session for team memory only (guard sync removed — exits 1 without TTY)
     stop = hooks.setdefault("Stop", [])
-    stop_cmd = "conduct guard sync"
-    stop_already = any(
-        stop_cmd in e.get("command", "")
-        for h in stop
-        for e in h.get("hooks", [])
-    )
-    if not stop_already:
-        stop.append({"hooks": [{"type": "command", "command": stop_cmd}]})
-        changed = True
 
     python = _best_python()
     stop_path = GUARD_DIR / "guard-stop.py"
@@ -430,8 +421,6 @@ def _install_claude_hook(hook_path: Path) -> None:
             print(f"  {GREEN}Claude Code PreToolUse hook registered{RESET}")
         if not post_already or cleaned:
             print(f"  {GREEN}Claude Code PostToolUse hook registered{RESET}")
-        if not stop_already:
-            print(f"  {GREEN}Claude Code Stop hook registered (auto-sync savings){RESET}")
         if not mem_already:
             print(f"  {GREEN}Claude Code Stop hook registered (team memory capture){RESET}")
     else:
