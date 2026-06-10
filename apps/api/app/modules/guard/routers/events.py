@@ -53,6 +53,7 @@ class HookEvent(BaseModel):
     duration_ms: int | None = None
     tool_use_id: str | None = None
     hook_session_id: str | None = None
+    blast_radius: dict | None = None
 
 
 class UsageUpdate(BaseModel):
@@ -89,6 +90,7 @@ class EventOut(BaseModel):
     conductai_run_id: str | None
     conductai_workflow: str | None
     duration_ms: int | None
+    blast_radius: dict | None = None
     ts: str
 
 
@@ -115,6 +117,7 @@ def _event_to_dict(e: GuardAuditEvent) -> dict:
         "conductai_run_id": e.conductai_run_id,
         "conductai_workflow": e.conductai_workflow,
         "duration_ms": e.duration_ms,
+        "blast_radius": e.blast_radius,
         "ts": e.ts.isoformat(),
     }
 
@@ -261,6 +264,7 @@ def ingest_event(
         duration_ms=body.duration_ms,
         tool_use_id=body.tool_use_id,
         hook_session_id=body.hook_session_id,
+        blast_radius=body.blast_radius,
         ts=now,
     )
     db.add(event)
@@ -322,9 +326,12 @@ def ingest_event(
     if body.decision == "blocked" and config.automation_security_scan:
         try:
             from app.routers.security import FindingIn, _ingest_finding_core, _trigger_security_loop
+            severity_map = {"CRITICAL": "critical", "HIGH": "high", "MEDIUM": "medium", "LOW": "low"}
+            br = body.blast_radius or {}
+            severity = severity_map.get(br.get("tier", ""), "medium")
             scan_body = FindingIn(
                 tool=body.ai_tool or "claude_code",
-                severity="medium",
+                severity=severity,
                 type="guard_violation",
                 description=f"Guard blocked: {body.rule_message or body.rule_id or 'policy violation'}",
                 reporter_email=body.user_email,

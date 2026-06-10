@@ -18,9 +18,10 @@ interface AuditEvent {
   ai_tool: string
   tool_call: string
   input_summary: string | null
-  decision: "allowed" | "blocked" | "approval"
+  decision: "allowed" | "blocked" | "warned" | "approval"
   rule_id: string | null
   conductai_run_id: string | null
+  blast_radius: { files: number; symbols: number; tier: string } | null
 }
 
 // ─── Guard Shell ──────────────────────────────────────────────────────────────
@@ -128,6 +129,26 @@ function DecisionBadge({ decision }: { decision: string }) {
   return (
     <span className="sbadge warn" style={{ textTransform: "capitalize" }}>
       {decision}
+    </span>
+  )
+}
+
+// ─── Blast Radius badge ───────────────────────────────────────────────────────
+
+function BlastRadiusBadge({ br }: { br: { tier: string; files: number } }) {
+  const colors: Record<string, { bg: string; text: string }> = {
+    LOW:      { bg: "var(--ok-bg)",   text: "var(--ok)"   },
+    MEDIUM:   { bg: "var(--warn-bg)", text: "var(--warn)"  },
+    HIGH:     { bg: "#fff3e0",        text: "#e65100"      },
+    CRITICAL: { bg: "var(--err-bg)",  text: "var(--err)"   },
+  }
+  const c = colors[br.tier] ?? colors.LOW
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 600, padding: "1px 7px", borderRadius: 20,
+      background: c.bg, color: c.text, whiteSpace: "nowrap",
+    }}>
+      {br.tier} · {br.files}f
     </span>
   )
 }
@@ -431,14 +452,14 @@ function ActivityContent() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "0.8fr 1.4fr 1fr 0.7fr 1.8fr 0.9fr 0.8fr",
+              gridTemplateColumns: "0.8fr 1.4fr 1fr 0.7fr 1.8fr 0.9fr 0.8fr 0.9fr",
               gap: 12,
               padding: "10px 18px",
               borderBottom: "1px solid var(--border)",
               background: "var(--surface-2)",
             }}
           >
-            {["Time", "Developer", "Tool", "Call", "Input", "Decision", "Rule"].map((h, i) => (
+            {["Time", "Developer", "Tool", "Call", "Input", "Decision", "Rule", "Blast Radius"].map((h, i) => (
               <div key={i} className="eyebrow" style={{ fontSize: 9.5 }}>{h}</div>
             ))}
           </div>
@@ -449,7 +470,7 @@ function ActivityContent() {
               key={ev.id}
               style={{
                 display: "grid",
-                gridTemplateColumns: "0.8fr 1.4fr 1fr 0.7fr 1.8fr 0.9fr 0.8fr",
+                gridTemplateColumns: "0.8fr 1.4fr 1fr 0.7fr 1.8fr 0.9fr 0.8fr 0.9fr",
                 gap: 12,
                 padding: "11px 18px",
                 borderBottom: i < events.length - 1 ? "1px solid var(--border)" : "none",
@@ -494,6 +515,15 @@ function ActivityContent() {
               {/* Rule */}
               <div className="mono" style={{ fontSize: 11.5, color: ev.rule_id ? "var(--err)" : "var(--text-muted)" }}>
                 {ev.rule_id ?? "—"}
+              </div>
+
+              {/* Blast Radius */}
+              <div>
+                {ev.blast_radius ? (
+                  <BlastRadiusBadge br={ev.blast_radius} />
+                ) : (
+                  <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>—</span>
+                )}
               </div>
             </div>
           ))}
