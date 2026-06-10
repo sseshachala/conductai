@@ -1269,6 +1269,30 @@ def _execute_tool(block: dict, state: dict, credentials: dict, allowed_hosts: li
 def _build_run_summary(state: dict) -> str:
     """Build a human-readable bullet-point summary from accumulated block outputs."""
     lines = []
+
+    # Prepend finding context when triggered by a security finding
+    trigger = state.get("_trigger") or {}
+    if trigger.get("finding_id"):
+        sev = str(trigger.get("severity") or "unknown").upper()
+        ftype = trigger.get("type") or "finding"
+        repo = trigger.get("repo_full_name") or ""
+        loc = trigger.get("file") or ""
+        if trigger.get("line"):
+            loc = f"{loc}:{trigger['line']}"
+        desc = str(trigger.get("description") or "")[:120]
+        tool = trigger.get("tool") or ""
+        parts = [f"*Triggered by:* [{sev}] {ftype}"]
+        if repo:
+            parts.append(f"Repo: {repo}")
+        if loc:
+            parts.append(f"File: {loc}")
+        if tool:
+            parts.append(f"Tool: {tool}")
+        if desc:
+            parts.append(f"Finding: {desc}")
+        lines.append("\n".join(parts))
+        lines.append("")  # blank separator
+
     for key, val in state.items():
         if key.startswith("__"):
             continue
