@@ -12,6 +12,7 @@ import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface MemoryEntry {
   developer_id: string | null
+  developer_email: string | null
   repo: string | null
   summary: string
   tags: string[]
@@ -24,12 +25,12 @@ interface MemoryEntry {
 // ─── Guard Shell ──────────────────────────────────────────────────────────────
 
 const GUARD_TABS = [
-  { href: "/guard",             label: "Overview"     },
-  { href: "/guard/spend",       label: "Spend"        },
-  { href: "/guard/policies",    label: "Policies"     },
-  { href: "/guard/activity",    label: "Activity"     },
-  { href: "/guard/team-memory", label: "Team Memory"  },
-  { href: "/guard/settings",    label: "Settings"     },
+  { href: "/guard",             label: "Overview"    },
+  { href: "/guard/spend",       label: "Spend"       },
+  { href: "/guard/policies",    label: "Policies"    },
+  { href: "/guard/activity",    label: "Activity"    },
+  { href: "/guard/team-memory", label: "Team Memory" },
+  { href: "/guard/settings",    label: "Settings"    },
 ]
 
 function GuardShell({ children }: { children: React.ReactNode }) {
@@ -84,131 +85,6 @@ function formatDate(ts: string): string {
   }
 }
 
-function truncateDeveloperId(id: string | null): string {
-  if (!id) return "—"
-  if (id.length <= 20) return id
-  return `${id.slice(0, 12)}…${id.slice(-6)}`
-}
-
-// ─── Memory card ─────────────────────────────────────────────────────────────
-
-function MemoryCard({ entry }: { entry: MemoryEntry }) {
-  return (
-    <div
-      className="card"
-      style={{
-        padding: "16px 18px",
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-      }}
-    >
-      {/* Summary */}
-      <p
-        style={{
-          fontSize: 13,
-          fontWeight: 600,
-          color: "var(--text)",
-          margin: 0,
-          lineHeight: 1.5,
-          display: "-webkit-box",
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: "vertical",
-          overflow: "hidden",
-        }}
-      >
-        {entry.summary}
-      </p>
-
-      {/* Tags */}
-      {entry.tags.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-          {entry.tags.map(tag => (
-            <span
-              key={tag}
-              style={{
-                fontSize: 11,
-                fontWeight: 500,
-                color: "var(--accent-text)",
-                background: "var(--accent-weak)",
-                borderRadius: 5,
-                padding: "2px 7px",
-              }}
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Footer */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          flexWrap: "wrap",
-          borderTop: "1px solid var(--border)",
-          paddingTop: 8,
-          marginTop: 2,
-        }}
-      >
-        <span
-          className="mono"
-          style={{ fontSize: 11, color: "var(--text-muted)" }}
-          title={entry.developer_id ?? "unknown"}
-        >
-          {truncateDeveloperId(entry.developer_id)}
-        </span>
-
-        {entry.repo && (
-          <>
-            <span style={{ color: "var(--border)", userSelect: "none" }}>·</span>
-            <span style={{ fontSize: 11, color: "var(--text-3)" }}>
-              {entry.repo}
-            </span>
-          </>
-        )}
-
-        <span style={{ color: "var(--border)", userSelect: "none" }}>·</span>
-        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-          {formatDate(entry.created_at)}
-        </span>
-
-        {entry.distance != null && (
-          <>
-            <span style={{ color: "var(--border)", userSelect: "none" }}>·</span>
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-              relevance {(1 - entry.distance).toFixed(2)}
-            </span>
-          </>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ─── Skeleton card ────────────────────────────────────────────────────────────
-
-function SkeletonCard() {
-  return (
-    <div
-      className="card"
-      style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 10 }}
-    >
-      <div style={{ height: 14, background: "var(--surface-2)", borderRadius: 5, width: "90%", opacity: 0.7 }} />
-      <div style={{ height: 14, background: "var(--surface-2)", borderRadius: 5, width: "65%", opacity: 0.5 }} />
-      <div style={{ display: "flex", gap: 6, marginTop: 2 }}>
-        {[40, 56, 48].map((w, i) => (
-          <div key={i} style={{ height: 20, width: w, background: "var(--surface-2)", borderRadius: 5, opacity: 0.5 }} />
-        ))}
-      </div>
-      <div style={{ height: 1, background: "var(--border)", marginTop: 2 }} />
-      <div style={{ height: 11, background: "var(--surface-2)", borderRadius: 4, width: "50%", opacity: 0.4 }} />
-    </div>
-  )
-}
-
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function TeamMemoryPage() {
@@ -239,16 +115,15 @@ function TeamMemoryContent() {
     const headers: Record<string, string> = { "Content-Type": "application/json" }
     if (token) headers["Authorization"] = `Bearer ${token}`
 
-    const params = new URLSearchParams({
-      q: q.trim() || "recent",
-      limit: "20",
-    })
+    const params = new URLSearchParams({ q: q.trim() || "recent", limit: "20" })
     if (workspaceId) params.set("workspace_id", workspaceId)
 
     try {
       const res = await fetch(`${base}/team-memory/search?${params.toString()}`, { headers })
       if (!res.ok) throw new Error(`Failed to load team memories (${res.status})`)
       const data: MemoryEntry[] = await res.json()
+      // most recent first
+      data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       setEntries(data)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error")
@@ -257,25 +132,16 @@ function TeamMemoryContent() {
     }
   }, [getToken, workspaceId])
 
-  // Initial load and when query changes
   useEffect(() => {
-    if (!teamLoading && !workspaceId) {
-      setLoading(false)
-      return
-    }
-    if (workspaceId) {
-      load(query)
-    }
+    if (!teamLoading && !workspaceId) { setLoading(false); return }
+    if (workspaceId) load(query)
   }, [load, query, teamLoading, workspaceId])
 
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const val = e.target.value
     setInputValue(val)
-
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => {
-      setQuery(val)
-    }, 400)
+    debounceRef.current = setTimeout(() => setQuery(val), 400)
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -285,14 +151,12 @@ function TeamMemoryContent() {
   }
 
   function handleClear() {
-    setInputValue("")
-    setQuery("")
+    setInputValue(""); setQuery("")
     if (debounceRef.current) clearTimeout(debounceRef.current)
   }
 
   return (
     <GuardShell>
-      {/* Header row */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
         <div>
           <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>Team Memory</div>
@@ -303,107 +167,113 @@ function TeamMemoryContent() {
       </div>
 
       {/* Search bar */}
-      <form
-        onSubmit={handleSubmit}
-        style={{ display: "flex", gap: 8, marginBottom: 20 }}
-      >
+      <form onSubmit={handleSubmit} style={{ display: "flex", gap: 8, marginBottom: 20 }}>
         <input
           type="text"
           value={inputValue}
           onChange={handleInputChange}
           placeholder="Search memories — e.g. authentication, bug fix, deployment…"
           style={{
-            flex: 1,
-            fontSize: 13,
-            border: "1px solid var(--border)",
-            borderRadius: 8,
-            padding: "8px 14px",
-            color: "var(--text)",
-            background: "var(--surface)",
-            outline: "none",
+            flex: 1, fontSize: 13,
+            border: "1px solid var(--border)", borderRadius: 8,
+            padding: "8px 14px", color: "var(--text)", background: "var(--surface)", outline: "none",
           }}
         />
         {inputValue && (
-          <button
-            type="button"
-            onClick={handleClear}
-            style={{
-              fontSize: 12,
-              color: "var(--text-muted)",
-              background: "none",
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              padding: "8px 12px",
-              cursor: "pointer",
-            }}
-          >
+          <button type="button" onClick={handleClear}
+            style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", cursor: "pointer" }}>
             Clear
           </button>
         )}
-        <button
-          type="submit"
-          className="btn btn-primary btn-sm"
-          style={{ padding: "8px 18px", fontSize: 13 }}
-        >
+        <button type="submit" className="btn btn-primary btn-sm" style={{ padding: "8px 18px", fontSize: 13 }}>
           Search
         </button>
       </form>
 
-      {/* Error */}
       {error && (
-        <div
-          style={{
-            borderRadius: 8,
-            border: "1px solid var(--err-bd)",
-            background: "var(--err-bg)",
-            padding: "10px 16px",
-            fontSize: 13,
-            color: "var(--err)",
-            marginBottom: 16,
-          }}
-        >
+        <div style={{ borderRadius: 8, border: "1px solid var(--err-bd)", background: "var(--err-bg)", padding: "10px 16px", fontSize: 13, color: "var(--err)", marginBottom: 16 }}>
           {error}
         </div>
       )}
 
-      {/* Content */}
+      {/* Table */}
       {loading ? (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))",
-            gap: 12,
-          }}
-        >
-          {[...Array(6)].map((_, i) => <SkeletonCard key={i} />)}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {[...Array(6)].map((_, i) => (
+            <div key={i} style={{ height: 56, background: "var(--surface-2)", borderRadius: 8, opacity: 0.6 }} />
+          ))}
         </div>
       ) : entries.length === 0 ? (
-        <div
-          className="card"
-          style={{ padding: "48px 24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}
-        >
+        <div className="card" style={{ padding: "48px 24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
           {query
             ? `No memories found for "${query}". Try a different search term.`
             : "No team memories yet. Sessions are captured automatically when developers exit Claude Code."
           }
         </div>
       ) : (
-        <>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))",
-              gap: 12,
-            }}
-          >
-            {entries.map((entry, i) => (
-              <MemoryCard key={`${entry.developer_id ?? "anon"}-${entry.created_at}-${i}`} entry={entry} />
+        <div className="card" style={{ overflow: "hidden" }}>
+          {/* Header */}
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "1.2fr 1fr 2.5fr 1.2fr 0.7fr",
+            gap: 12, padding: "10px 18px",
+            borderBottom: "1px solid var(--border)",
+            background: "var(--surface-2)",
+          }}>
+            {["Developer", "Repo", "Summary", "Tags", "Date"].map(h => (
+              <div key={h} className="eyebrow" style={{ fontSize: 9.5 }}>{h}</div>
             ))}
           </div>
-          <div style={{ marginTop: 12, fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
-            {entries.length} {entries.length === 1 ? "memory" : "memories"}{query ? ` matching "${query}"` : ""}
+
+          {/* Rows */}
+          {entries.map((entry, i) => (
+            <div key={`${entry.developer_id ?? "anon"}-${entry.created_at}-${i}`}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1.2fr 1fr 2.5fr 1.2fr 0.7fr",
+                gap: 12, padding: "13px 18px",
+                borderBottom: i < entries.length - 1 ? "1px solid var(--border)" : "none",
+                alignItems: "start",
+              }}
+            >
+              {/* Developer */}
+              <div className="mono" style={{ fontSize: 12, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                title={entry.developer_id ?? ""}>
+                {entry.developer_email ?? entry.developer_id ?? "—"}
+              </div>
+
+              {/* Repo */}
+              <div style={{ fontSize: 12, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {entry.repo ?? "—"}
+              </div>
+
+              {/* Summary */}
+              <div style={{ fontSize: 12.5, color: "var(--text)", lineHeight: 1.5 }}>
+                {entry.summary}
+              </div>
+
+              {/* Tags */}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {(entry.tags ?? []).slice(0, 3).map(tag => (
+                  <span key={tag} style={{
+                    fontSize: 10, fontWeight: 500,
+                    color: "var(--accent-text)", background: "var(--accent-weak)",
+                    borderRadius: 4, padding: "1px 6px",
+                  }}>{tag}</span>
+                ))}
+              </div>
+
+              {/* Date */}
+              <div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
+                {formatDate(entry.created_at)}
+              </div>
+            </div>
+          ))}
+
+          <div style={{ borderTop: "1px solid var(--border)", padding: "8px 18px", textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>
+            {entries.length} {entries.length === 1 ? "session" : "sessions"}{query ? ` matching "${query}"` : ""}
           </div>
-        </>
+        </div>
       )}
     </GuardShell>
   )
