@@ -22,7 +22,7 @@ def post_session_to_api(session_id: str, transcript_path: str | None, repo: str 
         return False
     server = cfg.get("server", "").rstrip("/")
     api_key = cfg.get("api_key", "")
-    workspace_id = cfg.get("workspace_id", "")
+    workspace_id = cfg.get("workspace_id") or cfg.get("workspace", "")
     if not server or not workspace_id:
         return False
 
@@ -70,7 +70,7 @@ def search_team_memory(query: str, repo: str | None = None, limit: int = 5) -> l
         return []
     server = cfg.get("server", "").rstrip("/")
     api_key = cfg.get("api_key", "")
-    workspace_id = cfg.get("workspace_id", "")
+    workspace_id = cfg.get("workspace_id") or cfg.get("workspace", "")
     if not server or not workspace_id:
         return []
 
