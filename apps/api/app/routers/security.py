@@ -30,7 +30,7 @@ QUEUE_KEY = "marshal:runs:queue"
 QUEUE_MAX_DEPTH = 50_000
 
 _VALID_SEVERITIES = {"critical", "high", "medium", "low", "info"}
-_VALID_TYPES = {"injection", "path-traversal", "secret-leak", "auth-bypass", "crypto", "other"}
+_VALID_TYPES = {"injection", "path-traversal", "secret-leak", "auth-bypass", "crypto", "guard_violation", "other"}
 _VALID_STATUSES = {"open", "triaging", "fixed", "dismissed"}
 
 
@@ -42,16 +42,25 @@ def _redis():
     return redis.from_url(settings.redis_url, decode_responses=True)
 
 
+_ENQUEUE_LUA = """
+local depth = redis.call('LLEN', KEYS[1])
+if depth >= tonumber(ARGV[2]) then
+    return -1
+end
+return redis.call('RPUSH', KEYS[1], ARGV[1])
+"""
+
+
 def _enqueue_run(run_id: str) -> None:
-    """Push run_id onto the Redis queue, refusing when queue is too deep."""
+    """Push run_id onto the Redis queue atomically, refusing when queue is too deep."""
     r = _redis()
-    depth = r.llen(QUEUE_KEY)
-    if depth >= QUEUE_MAX_DEPTH:
+    result = r.eval(_ENQUEUE_LUA, 1, QUEUE_KEY, run_id, QUEUE_MAX_DEPTH)
+    if result == -1:
+        depth = r.llen(QUEUE_KEY)
         raise HTTPException(
             status_code=503,
             detail=f"Run queue is at capacity ({depth} pending). Try again shortly.",
         )
-    r.rpush(QUEUE_KEY, run_id)
 
 
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
@@ -185,6 +194,12 @@ def ingest_finding(
             error=str(exc),
         )
 
+    # Trigger automation workflow if severity threshold met
+    try:
+        _maybe_trigger_automation_workflow(finding, workspace_id, db)
+    except Exception as exc:
+        log.warning("security_finding.automation_workflow_failed", error=str(exc))
+
     db.commit()
     db.refresh(finding)
 
@@ -197,6 +212,13 @@ def ingest_finding(
         tool=finding.tool,
     )
     return finding
+
+
+def _sanitize(s: str | None, max_len: int = 200) -> str:
+    """Strip newlines and truncate a string before embedding it in log/Slack messages."""
+    if not s:
+        return ""
+    return str(s).replace("\n", " ").replace("\r", " ")[:max_len]
 
 
 def _send_security_slack_alert(finding: SecurityFinding, workspace_id: str, db: Session) -> None:
@@ -231,10 +253,10 @@ def _send_security_slack_alert(finding: SecurityFinding, workspace_id: str, db: 
         if not token:
             return
 
-        sev = finding.severity.upper()
-        location = f" in {finding.file}:{finding.line}" if finding.file else ""
-        developer = f" · {finding.reporter_email}" if finding.reporter_email else ""
-        text = f"[{sev}] {finding.type}{location} — {finding.description} · {finding.tool}{developer}"
+        sev = _sanitize(finding.severity, 20).upper()
+        location = f" in {_sanitize(finding.file, 100)}:{finding.line}" if finding.file else ""
+        developer = f" · {_sanitize(finding.reporter_email, 100)}" if finding.reporter_email else ""
+        text = f"[{sev}] {_sanitize(finding.type, 50)}{location} — {_sanitize(finding.description, 200)} · {_sanitize(finding.tool, 50)}{developer}"
         post_message(token=token, channel=channel, text=text)
         log.info("security_finding.slack_sent", finding_id=str(finding.id), channel=channel)
     except Exception as exc:
@@ -254,6 +276,10 @@ def _trigger_security_loop(finding: SecurityFinding, workspace_id: str, db: Sess
     from app.routers.secure import _latest_security_automation_project
     sec_proj = _latest_security_automation_project(db, ws_uuid)
     if not sec_proj:
+        return
+
+    if sec_proj.workspace_id != ws_uuid:
+        log.warning("security_loop.project_workspace_mismatch", workspace_id=workspace_id)
         return
 
     workflow = (
@@ -322,6 +348,70 @@ def _trigger_security_loop(finding: SecurityFinding, workspace_id: str, db: Sess
         run_id=str(run.id),
         workflow_id=str(workflow.id),
     )
+
+def _maybe_trigger_automation_workflow(finding: SecurityFinding, workspace_id: str, db: Session) -> None:
+    """If automation_workflow_on_finding is enabled and severity meets threshold, enqueue a run."""
+    # Skip cascade for guard-originated findings to prevent Guard→SecurityLoop→Guard→... cycles
+    if finding.type == "guard_violation":
+        return
+
+    import uuid as _uuid
+    from app.models.security_config import SecurityConfig
+
+    SEVERITY_RANK = {"critical": 3, "high": 2, "medium": 1, "low": 0}
+
+    ws_uuid = _uuid.UUID(workspace_id)
+    sec_cfg = db.query(SecurityConfig).filter(SecurityConfig.workspace_id == ws_uuid).first()
+    if not sec_cfg or not getattr(sec_cfg, "automation_workflow_on_finding", False):
+        return
+
+    threshold = getattr(sec_cfg, "automation_finding_severity", "critical") or "critical"
+    if SEVERITY_RANK.get(finding.severity, 0) < SEVERITY_RANK.get(threshold, 3):
+        return
+
+    from app.models.workflow import Workflow
+    from app.models.run import Run
+
+    workflow = (
+        db.query(Workflow)
+        .filter(
+            Workflow.workspace_id == workspace_id,
+            Workflow.playbook_slug.in_([
+                "security-incident-response",
+                "security_incident_response",
+                "incident-response",
+            ]),
+        )
+        .first()
+    )
+    if not workflow or not workflow.current_version_id:
+        log.info("security_finding.automation_workflow_no_playbook", finding_id=str(finding.id))
+        return
+
+    if str(workflow.workspace_id) != workspace_id:
+        log.warning("security_automation.workflow_workspace_mismatch", workspace_id=workspace_id)
+        return
+
+    run = Run(
+        workflow_version_id=workflow.current_version_id,
+        triggered_by="security_finding_automation",
+        status="pending",
+        state={
+            "_trigger": {
+                "event_type": "security_finding_automation",
+                "finding_id": str(finding.id),
+                "severity": finding.severity,
+                "type": finding.type,
+                "description": finding.description,
+                "file": finding.file,
+                "repo_full_name": finding.repo_full_name,
+            }
+        },
+    )
+    db.add(run)
+    db.flush()
+    _enqueue_run(str(run.id))
+    log.info("security_finding.automation_workflow_triggered", finding_id=str(finding.id), run_id=str(run.id))
 
 
 @router.get("/summary", response_model=FindingSummary)

@@ -388,9 +388,10 @@ class TestTriggerSecurityLoop:
 
         fake_project = MagicMock()
         fake_project.id = workflow.project_id
+        fake_project.workspace_id = uuid.UUID(ws)
 
         mock_redis = MagicMock()
-        mock_redis.llen.return_value = 0
+        mock_redis.eval.return_value = 1  # Lua script returns queue depth on success
 
         with patch("app.routers.secure._latest_security_automation_project", return_value=fake_project), \
              patch("app.routers.security._redis", return_value=mock_redis):
@@ -401,7 +402,7 @@ class TestTriggerSecurityLoop:
         assert run is not None
         assert run.status == "pending"
         assert run.state["_trigger"]["severity"] == "high"
-        mock_redis.rpush.assert_called_once()
+        mock_redis.eval.assert_called_once()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -456,7 +457,7 @@ class TestTriggerFix:
         db.commit()
 
         mock_redis = MagicMock()
-        mock_redis.llen.return_value = 0
+        mock_redis.eval.return_value = 1  # Lua script returns queue depth on success
 
         with patch("app.routers.security._redis", return_value=mock_redis):
             result = trigger_fix(
@@ -471,4 +472,4 @@ class TestTriggerFix:
 
         db.refresh(f)
         assert f.status == "triaging"
-        mock_redis.rpush.assert_called_once()
+        mock_redis.eval.assert_called_once()

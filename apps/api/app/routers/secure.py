@@ -90,6 +90,8 @@ class ConfigOut(BaseModel):
     security_slack_channel: Optional[str]
     slack_integration_id: Optional[UUID] = None
     autopilot_enabled: bool = False
+    automation_workflow_on_finding: bool = False
+    automation_finding_severity: str = "critical"
     installed_at: Optional[datetime]
     created_at: datetime
     updated_at: Optional[datetime]
@@ -103,6 +105,8 @@ class ConfigPatch(BaseModel):
     security_slack_channel: Optional[str] = None
     slack_integration_id: Optional[UUID] = None
     autopilot_enabled: Optional[bool] = None
+    automation_workflow_on_finding: Optional[bool] = None
+    automation_finding_severity: Optional[str] = None
 
 
 class PolicyOut(BaseModel):
@@ -153,6 +157,8 @@ def _config_to_out(cfg: SecurityConfig) -> ConfigOut:
         security_slack_channel=cfg.security_slack_channel,
         slack_integration_id=cfg.slack_integration_id,
         autopilot_enabled=bool(cfg.autopilot_enabled),
+        automation_workflow_on_finding=bool(getattr(cfg, "automation_workflow_on_finding", False)),
+        automation_finding_severity=getattr(cfg, "automation_finding_severity", "critical") or "critical",
         installed_at=cfg.installed_at,
         created_at=cfg.created_at,
         updated_at=cfg.updated_at,
@@ -378,6 +384,10 @@ def patch_config(
         cfg.autopilot_enabled = body.autopilot_enabled
         if body.autopilot_enabled:
             _ensure_security_automation_project(db, workspace_id, install_fix=True)
+    if body.automation_workflow_on_finding is not None:
+        cfg.automation_workflow_on_finding = body.automation_workflow_on_finding
+    if body.automation_finding_severity is not None:
+        cfg.automation_finding_severity = body.automation_finding_severity
 
     cfg.updated_at = _now()
     db.commit()

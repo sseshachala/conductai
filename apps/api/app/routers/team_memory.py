@@ -146,23 +146,23 @@ def search_session_memory(
             "workspace_id": str(workspace_id),
             "vec": str(embedding),
             "limit": limit * 3,
+            "repo": repo,
         }
-        filters = "tsm.workspace_id = :workspace_id AND tsm.visibility = 'team' AND tsm.embedding IS NOT NULL"
-        if repo:
-            filters += " AND tsm.repo_full_name = :repo"
-            params["repo"] = repo
 
         rows = db.execute(
             text(
-                f"SELECT tsm.id, tsm.developer_id, COALESCE(u.email, tsm.developer_email) AS developer_email, "
-                f"tsm.repo_full_name, tsm.light_summary, tsm.topic_tags, "
-                f"tsm.tool, tsm.confidence, tsm.created_at, "
-                f"(tsm.embedding <=> CAST(:vec AS vector)) AS distance "
-                f"FROM team_session_memory tsm "
-                f"LEFT JOIN users u ON u.clerk_id = tsm.developer_id "
-                f"WHERE {filters} "
-                f"ORDER BY distance ASC "
-                f"LIMIT :limit"
+                "SELECT tsm.id, tsm.developer_id, COALESCE(u.email, tsm.developer_email) AS developer_email, "
+                "tsm.repo_full_name, tsm.light_summary, tsm.topic_tags, "
+                "tsm.tool, tsm.confidence, tsm.created_at, "
+                "(tsm.embedding <=> CAST(:vec AS vector)) AS distance "
+                "FROM team_session_memory tsm "
+                "LEFT JOIN users u ON u.clerk_id = tsm.developer_id "
+                "WHERE tsm.workspace_id = :workspace_id "
+                "  AND tsm.visibility = 'team' "
+                "  AND tsm.embedding IS NOT NULL "
+                "  AND (:repo IS NULL OR tsm.repo_full_name = :repo) "
+                "ORDER BY distance ASC "
+                "LIMIT :limit"
             ),
             params,
         ).fetchall()
@@ -199,22 +199,21 @@ def search_session_memory(
     fallback_params: dict[str, Any] = {
         "workspace_id": str(workspace_id),
         "limit": limit,
+        "repo": repo,
     }
-    fallback_filter = "tsm.workspace_id = :workspace_id AND tsm.visibility = 'team'"
-    if repo:
-        fallback_filter += " AND tsm.repo_full_name = :repo"
-        fallback_params["repo"] = repo
 
     rows_fallback = db.execute(
         text(
-            f"SELECT tsm.id, tsm.developer_id, COALESCE(u.email, tsm.developer_email) AS developer_email, "
-            f"tsm.repo_full_name, tsm.light_summary, tsm.topic_tags, "
-            f"tsm.tool, tsm.confidence, tsm.created_at "
-            f"FROM team_session_memory tsm "
-            f"LEFT JOIN users u ON u.clerk_id = tsm.developer_id "
-            f"WHERE {fallback_filter} "
-            f"ORDER BY tsm.created_at DESC "
-            f"LIMIT :limit"
+            "SELECT tsm.id, tsm.developer_id, COALESCE(u.email, tsm.developer_email) AS developer_email, "
+            "tsm.repo_full_name, tsm.light_summary, tsm.topic_tags, "
+            "tsm.tool, tsm.confidence, tsm.created_at "
+            "FROM team_session_memory tsm "
+            "LEFT JOIN users u ON u.clerk_id = tsm.developer_id "
+            "WHERE tsm.workspace_id = :workspace_id "
+            "  AND tsm.visibility = 'team' "
+            "  AND (:repo IS NULL OR tsm.repo_full_name = :repo) "
+            "ORDER BY tsm.created_at DESC "
+            "LIMIT :limit"
         ),
         fallback_params,
     ).fetchall()

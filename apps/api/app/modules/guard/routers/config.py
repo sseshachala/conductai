@@ -39,8 +39,11 @@ class ConfigOut(BaseModel):
     enforcement_mode: str
     notify_on_block: bool
     notify_on_budget: bool
+    automation_security_scan: bool = False
+    automation_workflow_trigger: bool = False
     created_at: datetime
     updated_at: datetime | None
+    automation_warnings: list[str] = []
 
     class Config:
         from_attributes = True
@@ -52,6 +55,8 @@ class ConfigPatch(BaseModel):
     enforcement_mode: str | None = None
     notify_on_block: bool | None = None
     notify_on_budget: bool | None = None
+    automation_security_scan: bool | None = None
+    automation_workflow_trigger: bool | None = None
 
 
 class InstallStatusOut(BaseModel):
@@ -96,6 +101,8 @@ def _config_to_out(cfg: GuardConfig) -> ConfigOut:
         enforcement_mode=cfg.enforcement_mode,
         notify_on_block=cfg.notify_on_block,
         notify_on_budget=cfg.notify_on_budget,
+        automation_security_scan=bool(cfg.automation_security_scan),
+        automation_workflow_trigger=bool(cfg.automation_workflow_trigger),
         created_at=cfg.created_at,
         updated_at=cfg.updated_at,
     )
@@ -219,10 +226,34 @@ def patch_config(
         config.notify_on_block = body.notify_on_block
     if body.notify_on_budget is not None:
         config.notify_on_budget = body.notify_on_budget
+    if body.automation_security_scan is not None:
+        config.automation_security_scan = body.automation_security_scan
+    if body.automation_workflow_trigger is not None:
+        config.automation_workflow_trigger = body.automation_workflow_trigger
     config.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(config)
-    return _config_to_out(config)
+
+    out = _config_to_out(config)
+
+    # Warn if automation_security_scan is enabled but Security Loop is not installed
+    if config.automation_security_scan:
+        try:
+            import uuid as _uuid
+            from app.models.security_config import SecurityConfig
+            ws_uuid = _uuid.UUID(workspace_id)
+            sec_cfg = db.query(SecurityConfig).filter(
+                SecurityConfig.workspace_id == ws_uuid
+            ).first()
+            if not sec_cfg or not sec_cfg.installed:
+                out.automation_warnings = [
+                    "automation_security_scan is enabled but Security Loop is not installed "
+                    "— automation will be a no-op until Security Loop is installed."
+                ]
+        except Exception:
+            pass
+
+    return out
 
 
 @router.delete("", status_code=204)
