@@ -159,10 +159,12 @@ function SettingsContent() {
       ) : error ? (
         <div style={{ borderRadius: 12, border: "1px solid var(--err-bd)", background: "var(--err-bg)", padding: "12px 16px", fontSize: 13, color: "var(--err)", marginBottom: 16 }}>{error}</div>
       ) : (
-        <div style={{ maxWidth: 640 }}>
+        <div style={{ maxWidth: 900 }}>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20, alignItems: "start" }}>
 
           {/* Covered tools */}
-          <div className="card" style={{ overflow: "hidden", marginBottom: 20 }}>
+          <div className="card" style={{ overflow: "hidden" }}>
             <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--border)" }}>
               <div style={{ fontWeight: 650, fontSize: 14.5 }}>Covered tools</div>
               <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
@@ -202,14 +204,14 @@ function SettingsContent() {
             </div>
           </div>
 
-          <div className="card" style={{ overflow: "hidden", marginBottom: 20 }}>
+          <div className="card" style={{ overflow: "hidden" }}>
             <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ width: 30, height: 30, borderRadius: 8, background: "#dc2626", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
                 <SecureLoopIcon size={15} />
               </span>
               <div style={{ flex: 1 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ fontWeight: 650, fontSize: 14.5 }}>Security Loop for Claude</div>
+                  <div style={{ fontWeight: 650, fontSize: 14.5 }}>Security Loop</div>
                   <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".06em", padding: "2px 7px", borderRadius: 20, background: "linear-gradient(135deg,#7c3aed,#2563eb)", color: "#fff" }}>
                     AGENTIC
                   </span>
@@ -311,6 +313,8 @@ function SettingsContent() {
               )}
             </div>
           </div>
+
+          </div>{/* end 2-col grid */}
 
           {/* Info */}
           <div style={{ background: "var(--info-bg)", border: "1px solid var(--info-bd)", borderRadius: 12, padding: "14px 18px" }}>
