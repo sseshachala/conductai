@@ -4,11 +4,12 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 
 const TABS = [
-  { label: "Overview",  href: "/guard" },
-  { label: "Policies",  href: "/guard/policies" },
-  { label: "Spend",     href: "/guard/spend" },
-  { label: "Activity",  href: "/guard/activity" },
-  { label: "Settings",  href: "/guard/settings" },
+  { label: "Overview",     href: "/guard" },
+  { label: "Policies",     href: "/guard/policies" },
+  { label: "Spend",        href: "/guard/spend" },
+  { label: "Activity",     href: "/guard/activity" },
+  { label: "Team Memory",  href: "/guard/team-memory" },
+  { label: "Settings",     href: "/guard/settings" },
 ]
 
 export default function GuardNav() {
