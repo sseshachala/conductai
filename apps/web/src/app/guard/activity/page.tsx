@@ -31,8 +31,9 @@ const GUARD_TABS = [
   { href: "/guard/spend",       label: "Spend"       },
   { href: "/guard/policies",    label: "Policies"    },
   { href: "/guard/activity",    label: "Activity"    },
-  { href: "/guard/team-memory", label: "Team Memory" },
-  { href: "/guard/settings",    label: "Settings"    },
+  { href: "/guard/session-reports", label: "Session Reports" },
+  { href: "/guard/team-memory",     label: "Team Memory"     },
+  { href: "/guard/settings",        label: "Settings"        },
 ]
 
 function GuardShell({ children }: { children: React.ReactNode }) {

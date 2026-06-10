@@ -186,3 +186,31 @@ class GuardSpendBudget(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+
+
+class SessionReport(Base):
+    __tablename__ = "session_reports"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    clerk_user_id = Column(Text, nullable=True)
+    developer_email = Column(String(255), nullable=False)
+    archetype = Column(String(100), nullable=True)
+    autonomy_score = Column(Float, nullable=True)
+    planning_ratio = Column(Float, nullable=True)
+    sessions = Column(Integer, nullable=False, default=0)
+    prompts = Column(Integer, nullable=False, default=0)
+    commits = Column(Integer, nullable=False, default=0)
+    lines_per_hour = Column(Float, nullable=True)
+    active_days = Column(Integer, nullable=True)
+    tools_json = Column(JSONB, nullable=True)
+    report_md = Column(Text, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
