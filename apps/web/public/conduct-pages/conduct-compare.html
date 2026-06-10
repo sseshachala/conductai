@@ -123,6 +123,22 @@ td.conduct-col{background:rgba(79,70,229,.04)}
 .pick{font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px;background:var(--stone-100);color:var(--stone-700)}
 .pick.highlight{background:var(--indigo-600);color:#fff}
 
+/* MOAT CALLOUT */
+.moat-callout{padding:64px 0;background:#0c0a09;color:#fff;text-align:center}
+.moat-callout .eyebrow{color:#a78bfa}
+.moat-callout h2{color:#fff;max-width:720px;margin:0 auto}
+.moat-callout h2 em{font-style:normal;color:#a78bfa}
+.moat-callout p{font-size:16px;color:#a8a29e;max-width:560px;margin:16px auto 0;line-height:1.7}
+.moat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:44px;max-width:800px;margin-left:auto;margin-right:auto;text-align:left}
+.moat-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:20px 22px}
+.moat-card.highlight{background:rgba(124,58,237,.14);border-color:rgba(124,58,237,.4)}
+.moat-card-name{font-size:12px;font-weight:800;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px}
+.moat-card-name.ours{color:#a78bfa}
+.moat-card-body{font-size:13px;color:rgba(255,255,255,.55);line-height:1.6}
+.moat-card-body strong{color:#e7e5e4;font-weight:700}
+.moat-callout-quote{margin-top:40px;font-size:16px;font-weight:700;color:#e7e5e4;line-height:1.65;max-width:640px;margin-left:auto;margin-right:auto;border-top:1px solid rgba(255,255,255,.08);padding-top:36px}
+.moat-callout-quote em{font-style:normal;color:#a78bfa}
+
 /* CTA */
 .cta{padding:64px 0;text-align:center}
 .cta h2{font-size:clamp(26px,4vw,38px);font-weight:800;letter-spacing:-.025em;margin-bottom:12px}
@@ -284,6 +300,34 @@ h2{font-size:clamp(26px,4vw,38px);font-weight:800;letter-spacing:-.03em;line-hei
   </div>
 </section>
 
+<!-- MOAT CALLOUT -->
+<section class="moat-callout">
+  <div class="container">
+    <div class="eyebrow">The structural divide</div>
+    <h2>Every platform governs AI at the <em>output layer</em>.<br>Guard governs at the <em>tool-call layer</em>.</h2>
+    <p>Most tools reviewed here see what the agent produced. ConductGuard hooks into Claude Code, Cursor, Codex, and Windsurf at the tool-call level — before every file write and bash command executes. That's a layer no other platform in this comparison reaches.</p>
+
+    <div class="moat-row">
+      <div class="moat-card">
+        <div class="moat-card-name">Devin Desktop</div>
+        <div class="moat-card-body"><strong>Output layer:</strong> you see the PR the agent opened. What it tried, abandoned, and rewrote in the sandbox stays invisible. No policy enforcement until after execution ends.</div>
+      </div>
+      <div class="moat-card">
+        <div class="moat-card-name">Rayfin / Augment Cosmos</div>
+        <div class="moat-card-body"><strong>Observation layer:</strong> aggregates outcomes and surfaces insights. Tells you what happened. Doesn't intercept what's <em>about to happen</em> — no blocking, no pre-execution spend control.</div>
+      </div>
+      <div class="moat-card highlight">
+        <div class="moat-card-name ours">ConductGuard</div>
+        <div class="moat-card-body"><strong>Tool-call layer:</strong> hooks fire <em>before</em> the file write. Before the bash command. Before the API call. BLOCK, WARN, or AUDIT — with spend attributed and policy checked, before a single token hits your codebase.</div>
+      </div>
+    </div>
+
+    <div class="moat-callout-quote">
+      "Devin, Rayfin, and Cosmos see what the agent <em>produced</em>. Guard sees what it's <em>about to do</em>.<br>That's the difference between observing AI and governing it."
+    </div>
+  </div>
+</section>
+
 <!-- CTA -->
 <section class="cta">
   <div class="container">
@@ -352,6 +396,8 @@ const MATRIX = [
       { f:"Hard spend caps",             c:["✅","❌","❌","❌","❌","❌","❌","❌"] },
       { f:"Tool-usage audit log",        c:["✅","❌","❌","❌","❌","❌","❌","❌"] },
       { f:"Team policy enforcement",     c:["✅","❌","❌","❌","❌","❌","❌","❌"] },
+      { f:"Pre-execution policy check ⚡",c:["✅","❌","❌","❌","❌","❌","❌","❌"] },
+      { f:"Cross-tool governance (any IDE/agent)",c:["✅","❌","❌","❌","❌","❌","❌","❌"] },
       { f:"RBAC (admin/editor/viewer)",  c:["✅","✅","❌","🟡","✅","🟡","✅","✅"] },
     ]
   },
@@ -387,8 +433,8 @@ const TOOLS = [
     cat:"Autonomous Agent",
     desc:"Devin is a fully autonomous coding agent that takes issues end-to-end in a sandboxed browser+terminal environment. It can browse docs, write code, run tests, and open PRs with minimal human input.",
     strengths:["Most capable end-to-end autonomous agent","Isolated sandbox — no access to production","Handles complex multi-step research and coding tasks","Detailed session logs"],
-    tradeoffs:["Very high cost per task — not for routine automation","No playbook marketplace — every task is custom","No team governance or spend controls","Limited integration with existing CI/CD workflows"],
-    bestFor:"High-value, complex one-off tasks where the premium cost is justified."
+    tradeoffs:["Governance is output-layer only — you see what the agent produced, not what it tried before writing code","No pre-execution policy enforcement — cannot block a risky bash command before it runs","No cross-tool coverage — only Devin sessions, not your team's Cursor/Codex/Claude Code usage","No per-developer spend tracking across your full AI tool fleet","Very high cost per task — not for routine automation"],
+    bestFor:"High-value, complex one-off tasks where the premium cost is justified. Pair with ConductGuard for spend control and cross-tool governance."
   },
   {
     id:"coderabbit", emoji:"🐇", name:"CodeRabbit", maker:"CodeRabbit", url:"https://coderabbit.ai",

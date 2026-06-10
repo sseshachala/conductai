@@ -172,6 +172,41 @@ h2{font-size:clamp(28px,4vw,44px);font-weight:800;letter-spacing:-.03em;line-hei
 .position-vs-divider span{width:1px;height:30px;background:rgba(255,255,255,.1)}
 .position-vs-divider strong{font-size:12px;font-weight:800;color:rgba(255,255,255,.3);letter-spacing:.1em}
 
+/* PRE-EXECUTION MOAT */
+.moat-section{padding:88px 0;background:var(--stone-900);color:#fff}
+.moat-section .eyebrow{color:#a78bfa}
+.moat-section h2{color:#fff}
+.moat-section h2 em{font-style:normal;color:var(--violet-400)}
+.moat-intro{font-size:17px;color:#a8a29e;max-width:620px;margin:18px auto 0;line-height:1.7;text-align:center}
+.moat-timeline{display:grid;grid-template-columns:1fr auto 1fr;gap:0;margin-top:56px;align-items:stretch;max-width:820px;margin-left:auto;margin-right:auto}
+.moat-col{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:28px 26px}
+.moat-col.guard-col{background:linear-gradient(135deg,rgba(124,58,237,.18),rgba(79,70,229,.12));border-color:rgba(124,58,237,.45)}
+.moat-col-label{font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;margin-bottom:16px}
+.moat-col-label.others{color:rgba(255,255,255,.3)}
+.moat-col-label.guard{color:#a78bfa}
+.moat-event{display:flex;flex-direction:column;gap:6px;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.moat-event:last-child{border-bottom:none;padding-bottom:0}
+.moat-event-step{font-size:11px;font-weight:700;color:rgba(255,255,255,.25);letter-spacing:.08em;text-transform:uppercase}
+.moat-event-step.guard{color:#a78bfa}
+.moat-event-title{font-size:14px;font-weight:700;color:#e7e5e4}
+.moat-event-sub{font-size:12.5px;color:rgba(255,255,255,.4);line-height:1.5}
+.moat-event-sub.guard{color:#c4b5fd}
+.moat-divider{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 18px;gap:8px}
+.moat-divider-line{flex:1;width:1px;background:rgba(255,255,255,.08)}
+.moat-divider-vs{font-size:11px;font-weight:800;color:rgba(255,255,255,.2);letter-spacing:.1em}
+.moat-competitors{margin-top:52px;max-width:820px;margin-left:auto;margin-right:auto}
+.moat-comp-header{font-size:12px;font-weight:700;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.1em;text-align:center;margin-bottom:20px}
+.moat-comp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.moat-comp-card{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:18px 20px}
+.moat-comp-name{font-size:13px;font-weight:800;color:#e7e5e4;margin-bottom:4px}
+.moat-comp-type{font-size:10.5px;font-weight:600;color:rgba(255,255,255,.3);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px}
+.moat-comp-point{font-size:12.5px;color:rgba(255,255,255,.45);line-height:1.5;margin-bottom:6px;padding-left:14px;position:relative}
+.moat-comp-point::before{content:'✕';position:absolute;left:0;color:rgba(255,255,255,.2);font-size:10px;top:1px}
+.moat-quote{margin-top:44px;max-width:680px;margin-left:auto;margin-right:auto;text-align:center;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.3);border-radius:16px;padding:28px 32px}
+.moat-quote p{font-size:18px;font-weight:700;color:#e7e5e4;line-height:1.6;letter-spacing:-.01em}
+.moat-quote p em{font-style:normal;color:#a78bfa}
+.moat-quote cite{display:block;font-size:12px;color:rgba(255,255,255,.3);margin-top:12px;font-style:normal;letter-spacing:.04em}
+
 /* FOOTER */
 footer{border-top:1px solid var(--stone-200);padding:28px 0}
 .footer-inner{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px}
@@ -631,6 +666,93 @@ footer{border-top:1px solid var(--stone-200);padding:28px 0}
           <li class="good">Full audit trail, one place</li>
         </ul>
       </div>
+    </div>
+  </div>
+</section>
+
+<!-- PRE-EXECUTION MOAT -->
+<section class="moat-section">
+  <div class="container text-center">
+    <div class="eyebrow violet">The structural advantage</div>
+    <h2>Other tools see what the agent <em>produced</em>.<br>Guard sees what it's <em>about to do</em>.</h2>
+    <p class="moat-intro">Every agent governance tool claims visibility. But there's a fundamental divide: are you watching the output layer, or the tool-call layer? That gap determines whether you're observing AI or actually governing it.</p>
+
+    <div class="moat-timeline">
+      <div class="moat-col">
+        <div class="moat-col-label others">Devin / Rayfin / Augment Cosmos</div>
+        <div class="moat-event">
+          <div class="moat-event-step">Developer intent</div>
+          <div class="moat-event-title">Developer assigns task</div>
+          <div class="moat-event-sub">Agent begins planning and execution inside a sandbox</div>
+        </div>
+        <div class="moat-event">
+          <div class="moat-event-step">Black box</div>
+          <div class="moat-event-title">Agent writes files, runs commands</div>
+          <div class="moat-event-sub">No policy check. No spend tracking. No visibility until done.</div>
+        </div>
+        <div class="moat-event">
+          <div class="moat-event-step">Output layer ← governance starts here</div>
+          <div class="moat-event-title">PR opens / output delivered</div>
+          <div class="moat-event-sub">Review happens after tokens are spent and code is written. Too late to prevent, only to react.</div>
+        </div>
+      </div>
+
+      <div class="moat-divider">
+        <div class="moat-divider-line"></div>
+        <div class="moat-divider-vs">VS</div>
+        <div class="moat-divider-line"></div>
+      </div>
+
+      <div class="moat-col guard-col">
+        <div class="moat-col-label guard">ConductGuard</div>
+        <div class="moat-event">
+          <div class="moat-event-step guard">Developer intent</div>
+          <div class="moat-event-title">Developer assigns task</div>
+          <div class="moat-event-sub guard">Agent begins — Guard hook is already active</div>
+        </div>
+        <div class="moat-event">
+          <div class="moat-event-step guard">Hook fires here ← governance starts here</div>
+          <div class="moat-event-title">Before every file write, bash command, API call</div>
+          <div class="moat-event-sub guard">Policy check runs. BLOCK, WARN, or AUDIT — before tokens are spent, before code is written.</div>
+        </div>
+        <div class="moat-event">
+          <div class="moat-event-step guard">Full trail</div>
+          <div class="moat-event-title">PR opens with audit trail attached</div>
+          <div class="moat-event-sub guard">Every decision recorded. Every blocked call explained. Spend attributed before the PR opens.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="moat-competitors">
+      <div class="moat-comp-header">Why output-layer governance isn't enough</div>
+      <div class="moat-comp-grid">
+        <div class="moat-comp-card">
+          <div class="moat-comp-name">Devin Desktop</div>
+          <div class="moat-comp-type">Autonomous Agent</div>
+          <div class="moat-comp-point">Sandbox visibility ends at the PR — you see what was produced, not what the agent tried and abandoned</div>
+          <div class="moat-comp-point">No cross-tool governance — only covers Devin sessions</div>
+          <div class="moat-comp-point">No spend-per-developer visibility for your VP Eng or CFO</div>
+        </div>
+        <div class="moat-comp-card">
+          <div class="moat-comp-name">Rayfin</div>
+          <div class="moat-comp-type">AI Fleet Dashboard</div>
+          <div class="moat-comp-point">Aggregates outputs and metrics after the fact — no pre-execution policy enforcement</div>
+          <div class="moat-comp-point">Observability layer, not a governance layer — can't block or warn mid-execution</div>
+          <div class="moat-comp-point">Requires separate data pipelines; Guard works from existing Claude Code hooks</div>
+        </div>
+        <div class="moat-comp-card">
+          <div class="moat-comp-name">Augment Cosmos</div>
+          <div class="moat-comp-type">Team Agent Platform</div>
+          <div class="moat-comp-point">Cosmos orchestrates agents within its own platform — governance is in-band, not cross-tool</div>
+          <div class="moat-comp-point">Your Cursor or Windsurf developers aren't covered — only Cosmos-native agents</div>
+          <div class="moat-comp-point">No hook-level telemetry on individual tool calls — only task-level outcomes</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="moat-quote">
+      <p>"Devin, Rayfin, and Cosmos see what the agent <em>produced</em>. Guard sees what it's <em>about to do</em> — before every file write, every bash command, every API call. That's the difference between observing AI and governing it."</p>
+      <cite>ConductGuard — the only governance layer that operates inside the tool call</cite>
     </div>
   </div>
 </section>
