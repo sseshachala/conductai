@@ -22,6 +22,8 @@ interface SessionReport {
   lines_per_hour: number | null
   tools_json: Record<string, number> | null
   created_at: string
+  report_md: string | null
+  planning_ratio: number | null
 }
 
 // ─── Guard Shell (matches all other guard pages) ──────────────────────────────
@@ -110,7 +112,6 @@ function SessionReportsContent() {
   const [reports, setReports] = useState<SessionReport[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [clerkToken, setClerkToken] = useState<string | null>(null)
 
   const wsId = activeWorkspace?.id ?? teamId ?? null
   const { role } = useGuardRole(teamId, wsId)
@@ -127,7 +128,6 @@ function SessionReportsContent() {
       setError(null)
       try {
         const token = await getToken()
-        if (token) setClerkToken(token)
         const base = process.env.NEXT_PUBLIC_API_URL ?? ""
         const headers: Record<string, string> = {}
         if (token) headers["Authorization"] = `Bearer ${token}`
@@ -283,18 +283,12 @@ function SessionReportsContent() {
 
                   {/* Report link */}
                   <div>
-                    {report.id && clerkToken ? (
-                      <a
-                        href={`${process.env.NEXT_PUBLIC_API_URL}/guard/session-reports/${report.id}/html?token=${clerkToken}&workspace_id=${wsId}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ fontSize: 12, color: "var(--accent-text)", textDecoration: "none", fontWeight: 500 }}
-                      >
-                        View ↗
-                      </a>
-                    ) : (
-                      <span style={{ fontSize: 12, color: "var(--text-muted)" }}>—</span>
-                    )}
+                    <Link
+                      href={`/guard/session-reports/${report.id}`}
+                      style={{ fontSize: 12, color: "var(--accent-text)", textDecoration: "none", fontWeight: 500 }}
+                    >
+                      View →
+                    </Link>
                   </div>
                 </div>
               ))}
