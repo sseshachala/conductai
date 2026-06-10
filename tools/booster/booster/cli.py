@@ -523,8 +523,10 @@ def cmd_smart_read(file_path: str, task: str) -> None:
             f"# {s['kind']} {s['name']}  (lines {s['start_line']}–{s['end_line']})\n{s['signature']}"
             for s in symbols
         ]
-        click.echo(f"# Symbol outline: {rel}  ({len(symbols)} symbols)\n")
-        click.echo("\n\n".join(lines))
+        outline = f"# Symbol outline: {rel}  ({len(symbols)} symbols)\n\n" + "\n\n".join(lines)
+        click.echo(outline)
+        tracker = StatsTracker(root)
+        tracker.record(rel, full_text, outline, "outline")
         return
 
     result = smart_read(path, task, indexer)
