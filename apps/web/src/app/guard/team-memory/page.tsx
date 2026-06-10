@@ -1,11 +1,12 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef } from "react"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth, useUser } from "@clerk/nextjs"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import AppShell from "@/components/AppShell"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
+import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -104,6 +105,7 @@ export default function TeamMemoryPage() {
 
 function TeamMemoryContent() {
   const { getToken } = useAuth()
+  const { user } = useUser()
   const { teamId, loading: teamLoading } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
 
@@ -112,11 +114,13 @@ function TeamMemoryContent() {
   const [error, setError] = useState<string | null>(null)
   const [inputValue, setInputValue] = useState("")
   const [query, setQuery] = useState("")
-  const [filterRepo, setFilterRepo] = useState("")
+  const [filterDeveloper, setFilterDeveloper] = useState("")
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const workspaceId = activeWorkspace?.id ?? teamId ?? null
-  const repos = Array.from(new Set(entries.map(e => e.repo).filter(Boolean) as string[])).sort()
+  const { permissions } = useGuardRole(teamId, workspaceId)
+  const currentUserEmail = user?.primaryEmailAddress?.emailAddress ?? null
+  const developers = Array.from(new Set(entries.map(e => e.developer_email).filter(Boolean) as string[])).sort()
 
   const load = useCallback(async (q: string) => {
     if (!workspaceId) return
@@ -162,7 +166,13 @@ function TeamMemoryContent() {
     setQuery(inputValue)
   }
 
-  const filtered = filterRepo ? entries.filter(e => e.repo === filterRepo) : entries
+  // Non-admins can only see their own sessions
+  const effectiveDeveloper = !permissions.canViewAllActivity && currentUserEmail
+    ? currentUserEmail
+    : filterDeveloper
+  const filtered = effectiveDeveloper
+    ? entries.filter(e => e.developer_email === effectiveDeveloper)
+    : entries
 
   return (
     <GuardShell>
@@ -184,13 +194,15 @@ function TeamMemoryContent() {
           )}
         </form>
 
-        <select value={filterRepo} onChange={e => setFilterRepo(e.target.value)} style={selectStyle}>
-          <option value="">All repos</option>
-          {repos.map(r => <option key={r} value={r}>{r}</option>)}
-        </select>
+        {permissions.canViewAllActivity && (
+          <select value={filterDeveloper} onChange={e => setFilterDeveloper(e.target.value)} style={selectStyle}>
+            <option value="">All developers</option>
+            {developers.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+        )}
 
-        {filterRepo && (
-          <button onClick={() => setFilterRepo("")}
+        {filterDeveloper && (
+          <button onClick={() => setFilterDeveloper("")}
             style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}>
             Clear filters
           </button>
@@ -201,6 +213,12 @@ function TeamMemoryContent() {
           Captured on session exit
         </span>
       </div>
+
+      {!permissions.canViewAllActivity && (
+        <div style={{ borderRadius: 8, border: "1px solid var(--warn-bd)", background: "var(--warn-bg)", padding: "8px 16px", fontSize: 12, color: "var(--warn)", marginBottom: 16 }}>
+          You can view your own sessions only. Contact your admin to request broader access.
+        </div>
+      )}
 
       {error && (
         <div style={{ borderRadius: 8, border: "1px solid var(--err-bd)", background: "var(--err-bg)", padding: "10px 16px", fontSize: 13, color: "var(--err)", marginBottom: 16 }}>
