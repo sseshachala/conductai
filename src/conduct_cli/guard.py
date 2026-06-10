@@ -119,16 +119,19 @@ def _write_hook(path: Path) -> None:
 
 
 def _install_session_hooks() -> None:
-    """Write PreCompact + SessionStart hook scripts and register them in ~/.claude/settings.json."""
+    """Write PreCompact + SessionStart + Stop hook scripts and register them in ~/.claude/settings.json."""
     python = _best_python()
 
     precompact_path = GUARD_DIR / "guard-precompact.py"
     session_start_path = GUARD_DIR / "guard-session-start.py"
+    stop_path = GUARD_DIR / "guard-stop.py"
 
     precompact_path.write_text(_read_template("hook_precompact_template.py"))
     precompact_path.chmod(0o755)
     session_start_path.write_text(_read_template("hook_session_start_template.py"))
     session_start_path.chmod(0o755)
+    stop_path.write_text(_read_template("hook_stop_template.py"))
+    stop_path.chmod(0o755)
 
     claude_settings = Path.home() / ".claude" / "settings.json"
     settings: dict = {}
@@ -396,7 +399,7 @@ def _install_claude_hook(hook_path: Path) -> None:
     if cleaned:
         changed = True
 
-    # Stop — auto-sync RTK + Booster savings at end of every session
+    # Stop — (1) auto-sync savings, (2) capture session for team memory
     stop = hooks.setdefault("Stop", [])
     stop_cmd = "conduct guard sync"
     stop_already = any(
@@ -408,6 +411,18 @@ def _install_claude_hook(hook_path: Path) -> None:
         stop.append({"hooks": [{"type": "command", "command": stop_cmd}]})
         changed = True
 
+    python = _best_python()
+    stop_path = GUARD_DIR / "guard-stop.py"
+    mem_cmd = f"{python} {stop_path}"
+    mem_already = any(
+        "guard-stop" in e.get("command", "")
+        for h in stop
+        for e in h.get("hooks", [])
+    )
+    if not mem_already and stop_path.exists():
+        stop.append({"hooks": [{"type": "command", "command": mem_cmd}]})
+        changed = True
+
     if changed:
         claude_settings.parent.mkdir(parents=True, exist_ok=True)
         claude_settings.write_text(json.dumps(settings, indent=2))
@@ -417,6 +432,8 @@ def _install_claude_hook(hook_path: Path) -> None:
             print(f"  {GREEN}Claude Code PostToolUse hook registered{RESET}")
         if not stop_already:
             print(f"  {GREEN}Claude Code Stop hook registered (auto-sync savings){RESET}")
+        if not mem_already:
+            print(f"  {GREEN}Claude Code Stop hook registered (team memory capture){RESET}")
     else:
         print(f"  {GRAY}Claude Code hooks already registered{RESET}")
 
