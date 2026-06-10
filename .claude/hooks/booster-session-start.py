@@ -4,7 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-root = Path(__file__).resolve().parent.parent  # .claude/hooks/ is 2 levels down
+root = Path(__file__).resolve().parent.parent.parent  # .claude/hooks/ is 3 levels down
 
 try:
     result = subprocess.run(

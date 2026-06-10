@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Booster grep nudge — blocks semantic Grep and redirects to search_context."""
+"""Booster grep nudge — runs booster search for semantic patterns, blocking raw Grep."""
 import json
+import subprocess
 import sys
+from pathlib import Path
 
 data = json.load(sys.stdin)
 pattern = data.get("tool_input", {}).get("pattern", "")
-
 if not pattern:
     sys.exit(0)
 
@@ -14,11 +15,23 @@ is_regex = any(c in REGEX_CHARS for c in pattern)
 word_count = len(pattern.split())
 
 if not is_regex and word_count >= 2:
-    print(
-        f"[booster] Grep blocked for semantic pattern \'{pattern}\'. "
-        "Use mcp__agent-booster__search_context instead — it searches by meaning "
-        "across all indexed symbols and returns ranked results with far fewer tokens."
-    )
-    sys.exit(2)
+    root = Path(__file__).resolve().parent.parent.parent
+    db_path = root / ".booster" / "symbols.db"
+    if not db_path.exists():
+        sys.exit(0)  # not indexed — let Grep proceed
+
+    try:
+        r = subprocess.run(
+            ["booster", "search", pattern],
+            capture_output=True, text=True, timeout=10, cwd=str(root),
+        )
+        output = r.stdout.strip()
+        if output:
+            print(f"[booster/search] results for {pattern!r}:\n{output}")
+            sys.exit(2)  # block Grep — search results are the answer
+        else:
+            print(f"[booster] No indexed symbols match {pattern!r} — falling through to Grep.")
+    except Exception:
+        pass
 
 sys.exit(0)

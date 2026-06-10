@@ -740,6 +740,9 @@ def cmd_guard_sync(args):
         pass
     print(f"  {GREEN}Hook script updated{RESET}")
 
+    # Auto-init Agent Booster if installed but not yet set up in this project
+    _ensure_booster(Path.cwd())
+
     # Capture savings from RTK and Agent Booster
     _report_savings(cfg, base_url, api_key)
 
@@ -750,6 +753,48 @@ def cmd_guard_sync(args):
         pass
 
     print(f"\n{BOLD}Policy refreshed ({rule_count} rule(s)).{RESET}")
+
+
+def _ensure_booster(root: Path) -> None:
+    """Auto-init and background-index booster if installed but not yet set up."""
+    import shutil
+    import subprocess
+
+    if not shutil.which("booster"):
+        return  # not installed — conduct-cli 0.4.71+ installs it, but may not be on PATH yet
+
+    db_path = root / ".booster" / "symbols.db"
+    hooks_path = root / ".claude" / "hooks" / "booster-gate.py"
+
+    # Init (writes hook scripts + wires settings.json) — fast, idempotent
+    if not hooks_path.exists():
+        try:
+            subprocess.run(["booster", "init", "--yes"], capture_output=True, timeout=15, cwd=str(root))
+            print(f"  {GREEN}Agent Booster:{RESET} hooks installed")
+        except Exception:
+            return
+
+    # Index in background — may take 10-60s on large repos, never blocks sync
+    if not db_path.exists():
+        try:
+            subprocess.Popen(
+                ["booster", "index", "--embed"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                cwd=str(root),
+            )
+            print(f"  {GREEN}Agent Booster:{RESET} indexing in background (Read/Grep intercept active shortly)")
+        except Exception:
+            pass
+    else:
+        symbols_count = 0
+        try:
+            import sqlite3
+            conn = sqlite3.connect(str(db_path))
+            symbols_count = conn.execute("SELECT COUNT(*) FROM symbols").fetchone()[0]
+            conn.close()
+        except Exception:
+            pass
+        print(f"  {GREEN}Agent Booster:{RESET} {symbols_count} symbols indexed — Read/Grep intercept active")
 
 
 def _report_savings(cfg: dict, base_url: str, api_key: str) -> None:
@@ -1054,7 +1099,99 @@ def register_guard_parser(sub):
         help="Time window: 1h, 24h, 7d, 30d (default: 24h)",
     )
 
+    # conduct guard booster-status
+    guard_sub.add_parser("booster-status", help="Verify Agent Booster intercept is active for this project")
+
     return guard_p, guard_sub
+
+
+def cmd_guard_booster_status(args):
+    """Show whether booster is intercepting Read/Grep in this project."""
+    import shutil, sqlite3, subprocess
+
+    root = Path.cwd()
+    db_path    = root / ".booster" / "symbols.db"
+    hooks_path = root / ".claude" / "hooks" / "booster-gate.py"
+    settings_p = root / ".claude" / "settings.json"
+
+    booster_bin = shutil.which("booster")
+    print(f"\n{BOLD}Agent Booster intercept status — {root.name}{RESET}\n")
+
+    # 1. Binary
+    if booster_bin:
+        print(f"  {GREEN}✓{RESET} booster installed  ({booster_bin})")
+    else:
+        print(f"  {RED}✗{RESET} booster not found on PATH — run: pip install agent-booster")
+        return
+
+    # 2. Hook scripts written
+    if hooks_path.exists():
+        print(f"  {GREEN}✓{RESET} hook scripts present  (.claude/hooks/booster-gate.py)")
+    else:
+        print(f"  {RED}✗{RESET} hook scripts missing — run: conduct guard sync")
+
+    # 3. Wired in settings.json
+    wired = False
+    if settings_p.exists():
+        import json as _json
+        s = _json.loads(settings_p.read_text())
+        for h in s.get("hooks", {}).get("PreToolUse", []):
+            if h.get("matcher") == "Read":
+                wired = True
+                break
+    if wired:
+        print(f"  {GREEN}✓{RESET} Read hook wired in .claude/settings.json")
+    else:
+        print(f"  {RED}✗{RESET} Read hook NOT in .claude/settings.json — run: conduct guard sync")
+
+    # 4. Index
+    if db_path.exists():
+        try:
+            conn = sqlite3.connect(str(db_path))
+            count = conn.execute("SELECT COUNT(*) FROM symbols").fetchone()[0]
+            files = conn.execute("SELECT COUNT(DISTINCT file) FROM symbols").fetchone()[0]
+            conn.close()
+            print(f"  {GREEN}✓{RESET} symbols.db  — {count} symbols across {files} files")
+        except Exception:
+            print(f"  {YELLOW}?{RESET} symbols.db exists but could not be read")
+    else:
+        print(f"  {RED}✗{RESET} symbols.db missing — Read calls fall through unintercepted")
+        print(f"       run: booster index --embed  (or: conduct guard sync to trigger it)")
+        return
+
+    # 5. Live intercept test — try reading a known file and check if smart-read fires
+    print(f"\n  {BOLD}Live intercept test:{RESET}")
+    try:
+        import tempfile, json as _json
+        # Pick the first indexed file
+        conn = sqlite3.connect(str(db_path))
+        row = conn.execute("SELECT file FROM symbols LIMIT 1").fetchone()
+        conn.close()
+        if row:
+            # Prefer a .py/.ts file — more likely to have symbols and trigger smart-read
+            conn = sqlite3.connect(str(db_path))
+            src = conn.execute(
+                "SELECT file FROM symbols WHERE file LIKE '%.py' OR file LIKE '%.ts' LIMIT 1"
+            ).fetchone() or row
+            conn.close()
+            test_file = str(root / src[0])
+            payload = _json.dumps({"tool_name": "Read", "tool_input": {"file_path": test_file}})
+            r = subprocess.run(
+                ["python3", str(hooks_path)],
+                input=payload, capture_output=True, text=True, timeout=10,
+            )
+            if r.returncode == 2:
+                lines = r.stdout.strip().splitlines()
+                print(f"  {GREEN}✓{RESET} Read intercepted → smart-read fired ({len(lines)} lines returned)")
+                print(f"    tested on: {row[0]}")
+            elif r.returncode == 0:
+                print(f"  {YELLOW}~{RESET} Hook ran but passed through (file may not have symbols)")
+            else:
+                print(f"  {RED}✗{RESET} Hook errored (exit {r.returncode})")
+    except Exception as e:
+        print(f"  {YELLOW}?{RESET} Could not run live test: {e}")
+
+    print()
 
 
 def dispatch_guard(args, guard_p):
@@ -1068,6 +1205,8 @@ def dispatch_guard(args, guard_p):
         cmd_guard_savings(args)
     elif guard_command == "audit":
         cmd_guard_audit(args)
+    elif guard_command == "booster-status":
+        cmd_guard_booster_status(args)
     else:
         guard_p.print_help()
         sys.exit(1)

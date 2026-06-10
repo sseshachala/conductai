@@ -73,7 +73,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-root = Path(__file__).resolve().parent.parent  # .claude/hooks/ is 2 levels down
+root = Path(__file__).resolve().parent.parent.parent  # .claude/hooks/ is 3 levels down
 
 try:
     result = subprocess.run(
@@ -104,7 +104,7 @@ if not file_path:
     sys.exit(0)
 
 # Derive project root from this hook\'s known location — .claude/hooks/ is 2 levels down
-root = Path(__file__).resolve().parent.parent
+root = Path(__file__).resolve().parent.parent.parent
 
 db_path = root / ".booster" / "symbols.db"
 if not db_path.exists():
@@ -158,7 +158,7 @@ is_regex = any(c in REGEX_CHARS for c in pattern)
 word_count = len(pattern.split())
 
 if not is_regex and word_count >= 2:
-    root = Path(__file__).resolve().parent.parent
+    root = Path(__file__).resolve().parent.parent.parent
     db_path = root / ".booster" / "symbols.db"
     if not db_path.exists():
         sys.exit(0)  # not indexed — let Grep proceed
@@ -199,7 +199,7 @@ if not message or len(message.strip()) < 10:
 safe_message = re.sub(r\'[\\x00-\\x1f\\x7f]\', \' \', message).strip()[:300]
 
 # Derive project root from this hook\'s known location — never trust external cwd
-safe_cwd = Path(__file__).resolve().parent.parent
+safe_cwd = Path(__file__).resolve().parent.parent.parent
 
 try:
     result = subprocess.run(
