@@ -46,6 +46,28 @@ def main():
         else:
             lines.append("- Memory index:\n  (none)")
 
+        # Booster intercept status
+        try:
+            import shutil, sqlite3
+            root = Path.cwd()
+            if shutil.which("booster"):
+                db_path = root / ".booster" / "symbols.db"
+                hooks_path = root / ".claude" / "hooks" / "booster-gate.py"
+                if hooks_path.exists() and db_path.exists():
+                    try:
+                        conn = sqlite3.connect(str(db_path))
+                        n = conn.execute("SELECT COUNT(*) FROM symbols").fetchone()[0]
+                        conn.close()
+                        lines.append(f"- Agent Booster: ACTIVE — {n} symbols indexed, Read/Grep intercept ON")
+                    except Exception:
+                        lines.append("- Agent Booster: installed (index unavailable)")
+                elif shutil.which("booster"):
+                    lines.append("- Agent Booster: installed but NOT wired — run: conduct guard sync")
+            else:
+                lines.append("- Agent Booster: not installed (pip install 'conduct-cli[booster]')")
+        except Exception:
+            pass
+
         # Inject relevant team memories for the current repo
         try:
             repo = None
