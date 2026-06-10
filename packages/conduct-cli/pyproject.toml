@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "conduct-cli"
-version = "0.4.73"
+version = "0.4.74"
 description = "CLI for Conduct AI — install agents, manage projects, run tests"
 readme = "README.md"
 license = { text = "MIT" }
@@ -23,7 +23,10 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Topic :: Software Development :: Libraries :: Application Frameworks",
 ]
-dependencies = ["pyyaml>=6.0", "rich>=13.0", "agent-booster[watch]>=0.2.23"]
+dependencies = ["pyyaml>=6.0", "rich>=13.0"]
+
+[project.optional-dependencies]
+booster = ["agent-booster[watch]>=0.2.23"]
 
 [project.urls]
 Homepage    = "https://conductai.ai"

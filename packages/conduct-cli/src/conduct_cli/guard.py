@@ -759,9 +759,18 @@ def _ensure_booster(root: Path) -> None:
     """Auto-init and background-index booster if installed but not yet set up."""
     import shutil
     import subprocess
+    import sys
 
     if not shutil.which("booster"):
-        return  # not installed — conduct-cli 0.4.71+ installs it, but may not be on PATH yet
+        if sys.version_info < (3, 10):
+            print(
+                f"  {GRAY}Agent Booster:{RESET} requires Python 3.10+ "
+                f"(you have {sys.version_info.major}.{sys.version_info.minor}). "
+                f"Upgrade Python then: pip install 'conduct-cli[booster]'"
+            )
+        else:
+            print(f"  {GRAY}Agent Booster:{RESET} not installed — run: pip install 'conduct-cli[booster]'")
+        return
 
     db_path = root / ".booster" / "symbols.db"
     hooks_path = root / ".claude" / "hooks" / "booster-gate.py"

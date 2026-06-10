@@ -132,6 +132,7 @@ try:
     )
     output = r.stdout.strip()
     if output:
+        print(f"[booster/smart-read] intercepted Read → {rel}")
         print(output)
         sys.exit(2)  # block raw Read — smart-read result is the content
 except Exception:
