@@ -140,13 +140,8 @@ def get_me(
     from datetime import datetime, timezone
     if row.expires_at and row.expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=401, detail="API key expired")
-    from app.models.user import User
-    from app.core.auth import get_clerk_user_email
-    user = db.query(User).filter(User.clerk_id == row.user_id).first()
-    email = (user.email if user else None) or get_clerk_user_email(row.user_id)
     return {
         "workspace_id": str(row.workspace_id),
         "key_prefix": row.key_prefix,
         "user_id": row.user_id,
-        "email": email,
     }

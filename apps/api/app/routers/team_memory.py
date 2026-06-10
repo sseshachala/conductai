@@ -105,8 +105,8 @@ def store_session_memory(
     row = TeamSessionMemory(
         id=uuid.uuid4(),
         workspace_id=uuid.UUID(str(workspace_id)),
-        developer_id=None,
-        developer_email=body.developer_id,
+        developer_id=body.developer_id,
+        developer_email=None,
         session_id=body.session_id,
         tool=body.tool,
         repo_full_name=body.repo_full_name,
@@ -179,7 +179,7 @@ def search_session_memory(
 
         return [
             {
-                "developer_id": r.developer_email or (str(r.developer_id) if r.developer_id else None),
+                "developer_id": str(r.developer_id) if r.developer_id else None,
                 "repo": r.repo_full_name,
                 "summary": r.light_summary,
                 "tags": r.topic_tags or [],
