@@ -110,6 +110,7 @@ function SessionReportsContent() {
   const [reports, setReports] = useState<SessionReport[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [clerkToken, setClerkToken] = useState<string | null>(null)
 
   const wsId = activeWorkspace?.id ?? teamId ?? null
   const { role } = useGuardRole(teamId, wsId)
@@ -126,6 +127,7 @@ function SessionReportsContent() {
       setError(null)
       try {
         const token = await getToken()
+        if (token) setClerkToken(token)
         const base = process.env.NEXT_PUBLIC_API_URL ?? ""
         const headers: Record<string, string> = {}
         if (token) headers["Authorization"] = `Bearer ${token}`
@@ -201,13 +203,13 @@ function SessionReportsContent() {
               {/* Table header */}
               <div style={{
                 display: "grid",
-                gridTemplateColumns: "1.8fr 1.2fr 0.6fr 0.6fr 0.7fr 0.6fr 0.9fr",
+                gridTemplateColumns: "1.8fr 1.2fr 0.6fr 0.6fr 0.7fr 0.6fr 0.9fr 0.5fr",
                 gap: 12,
                 padding: "10px 18px",
                 borderBottom: "1px solid var(--border)",
                 background: "var(--surface-2)",
               }}>
-                {["Developer", "Archetype", "Sessions", "Commits", "Autonomy", "Lines/hr", "Date"].map(h => (
+                {["Developer", "Archetype", "Sessions", "Commits", "Autonomy", "Lines/hr", "Date", "Report"].map(h => (
                   <div key={h} className="eyebrow" style={{ fontSize: 9.5 }}>{h}</div>
                 ))}
               </div>
@@ -218,7 +220,7 @@ function SessionReportsContent() {
                   key={report.id}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1.8fr 1.2fr 0.6fr 0.6fr 0.7fr 0.6fr 0.9fr",
+                    gridTemplateColumns: "1.8fr 1.2fr 0.6fr 0.6fr 0.7fr 0.6fr 0.9fr 0.5fr",
                     gap: 12,
                     padding: "11px 18px",
                     borderBottom: i < reports.length - 1 ? "1px solid var(--border)" : "none",
@@ -277,6 +279,22 @@ function SessionReportsContent() {
                   {/* Date */}
                   <div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
                     {formatDate(report.created_at)}
+                  </div>
+
+                  {/* Report link */}
+                  <div>
+                    {report.id && clerkToken ? (
+                      <a
+                        href={`${process.env.NEXT_PUBLIC_API_URL}/guard/session-reports/${report.id}/html?token=${clerkToken}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ fontSize: 12, color: "var(--accent-text)", textDecoration: "none", fontWeight: 500 }}
+                      >
+                        View ↗
+                      </a>
+                    ) : (
+                      <span style={{ fontSize: 12, color: "var(--text-muted)" }}>—</span>
+                    )}
                   </div>
                 </div>
               ))}
