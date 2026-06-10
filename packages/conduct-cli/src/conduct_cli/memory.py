@@ -47,7 +47,12 @@ def post_session_to_api(session_id: str, transcript_path: str | None, repo: str 
                             msgs.append(f"{msg['role']}: {content[:500]}")
                 except Exception:
                     pass
-            raw_transcript = "\n\n".join(msgs)[:12000] if msgs else None
+            if msgs:
+                # Take last 60 messages — end of session has the actual decisions/fixes
+                tail = msgs[-60:]
+                raw_transcript = "\n\n".join(tail)[:12000]
+            else:
+                raw_transcript = None
         except Exception:
             pass
 
