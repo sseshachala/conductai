@@ -761,9 +761,10 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
                     { label: "Spend",     href: "/guard/spend" },
                     { label: "Policies",  href: "/guard/policies" },
                     { label: "Activity",     href: "/guard/activity" },
+                    { label: "Session Reports", href: "/guard/session-reports", adminOnly: true },
                     { label: "Team Memory", href: "/guard/team-memory" },
-                    { label: "Settings",    href: "/guard/settings" },
-                  ].map(sub => {
+                    { label: "Settings",    href: "/guard/settings", adminOnly: true },
+                  ].filter(sub => !sub.adminOnly || userRole === "admin").map(sub => {
                     const subActive = sub.href === "/guard" ? pathname === "/guard" : pathname.startsWith(sub.href)
                     return (
                       <Link
