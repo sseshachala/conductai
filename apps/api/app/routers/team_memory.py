@@ -154,10 +154,12 @@ def search_session_memory(
 
         rows = db.execute(
             text(
-                f"SELECT id, developer_id, developer_email, repo_full_name, light_summary, topic_tags, "
-                f"tool, confidence, created_at, "
-                f"(embedding <=> CAST(:vec AS vector)) AS distance "
-                f"FROM team_session_memory "
+                f"SELECT tsm.id, tsm.developer_id, COALESCE(u.email, tsm.developer_email) AS developer_email, "
+                f"tsm.repo_full_name, tsm.light_summary, tsm.topic_tags, "
+                f"tsm.tool, tsm.confidence, tsm.created_at, "
+                f"(tsm.embedding <=> CAST(:vec AS vector)) AS distance "
+                f"FROM team_session_memory tsm "
+                f"LEFT JOIN users u ON u.clerk_id = tsm.developer_id "
                 f"WHERE {filters} "
                 f"ORDER BY distance ASC "
                 f"LIMIT :limit"
@@ -181,7 +183,7 @@ def search_session_memory(
         return [
             {
                 "developer_id": str(r.developer_id) if r.developer_id else None,
-                "developer_email": r.developer_email,
+                "developer_email": r.developer_email or str(r.developer_id) if r.developer_id else None,
                 "repo": r.repo_full_name,
                 "summary": r.light_summary,
                 "tags": r.topic_tags or [],
@@ -205,11 +207,13 @@ def search_session_memory(
 
     rows_fallback = db.execute(
         text(
-            f"SELECT id, developer_id, developer_email, repo_full_name, light_summary, topic_tags, "
-            f"tool, confidence, created_at "
-            f"FROM team_session_memory "
+            f"SELECT tsm.id, tsm.developer_id, COALESCE(u.email, tsm.developer_email) AS developer_email, "
+            f"tsm.repo_full_name, tsm.light_summary, tsm.topic_tags, "
+            f"tsm.tool, tsm.confidence, tsm.created_at "
+            f"FROM team_session_memory tsm "
+            f"LEFT JOIN users u ON u.clerk_id = tsm.developer_id "
             f"WHERE {fallback_filter} "
-            f"ORDER BY created_at DESC "
+            f"ORDER BY tsm.created_at DESC "
             f"LIMIT :limit"
         ),
         fallback_params,

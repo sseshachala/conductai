@@ -22,7 +22,7 @@ interface MemoryEntry {
   distance: number | null
 }
 
-// ─── Guard Shell ──────────────────────────────────────────────────────────────
+// ─── Guard Shell (matches all other guard pages) ──────────────────────────────
 
 const GUARD_TABS = [
   { href: "/guard",             label: "Overview"    },
@@ -75,7 +75,7 @@ function GuardShell({ children }: { children: React.ReactNode }) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatDate(ts: string): string {
+function formatTs(ts: string): string {
   try {
     const d = new Date(ts)
     const pad = (n: number) => String(n).padStart(2, "0")
@@ -83,6 +83,17 @@ function formatDate(ts: string): string {
   } catch {
     return ts
   }
+}
+
+const selectStyle: React.CSSProperties = {
+  fontSize: 12,
+  border: "1px solid var(--border)",
+  borderRadius: 8,
+  padding: "5px 10px",
+  color: "var(--text-2)",
+  background: "var(--surface)",
+  outline: "none",
+  cursor: "pointer",
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -99,11 +110,13 @@ function TeamMemoryContent() {
   const [entries, setEntries] = useState<MemoryEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [query, setQuery] = useState("")
   const [inputValue, setInputValue] = useState("")
+  const [query, setQuery] = useState("")
+  const [filterRepo, setFilterRepo] = useState("")
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const workspaceId = activeWorkspace?.id ?? teamId ?? null
+  const repos = Array.from(new Set(entries.map(e => e.repo).filter(Boolean) as string[])).sort()
 
   const load = useCallback(async (q: string) => {
     if (!workspaceId) return
@@ -115,14 +128,13 @@ function TeamMemoryContent() {
     const headers: Record<string, string> = { "Content-Type": "application/json" }
     if (token) headers["Authorization"] = `Bearer ${token}`
 
-    const params = new URLSearchParams({ q: q.trim() || "recent", limit: "20" })
-    if (workspaceId) params.set("workspace_id", workspaceId)
+    const params = new URLSearchParams({ q: q.trim() || "recent", limit: "50" })
+    params.set("workspace_id", workspaceId)
 
     try {
       const res = await fetch(`${base}/team-memory/search?${params.toString()}`, { headers })
       if (!res.ok) throw new Error(`Failed to load team memories (${res.status})`)
       const data: MemoryEntry[] = await res.json()
-      // most recent first
       data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       setEntries(data)
     } catch (err) {
@@ -150,45 +162,45 @@ function TeamMemoryContent() {
     setQuery(inputValue)
   }
 
-  function handleClear() {
-    setInputValue(""); setQuery("")
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-  }
+  const filtered = filterRepo ? entries.filter(e => e.repo === filterRepo) : entries
 
   return (
     <GuardShell>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>Team Memory</div>
-          <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
-            AI coding session summaries captured automatically when developers exit Claude Code.
-          </div>
-        </div>
-      </div>
+      {/* Filters — same layout as Activity page */}
+      <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 16, flexWrap: "wrap" }}>
+        <form onSubmit={handleSubmit} style={{ display: "flex", gap: 8, flex: 1, minWidth: 260 }}>
+          <input
+            type="text"
+            value={inputValue}
+            onChange={handleInputChange}
+            placeholder="Search sessions — e.g. auth bug, deployment fix…"
+            style={{ ...selectStyle, flex: 1, padding: "5px 12px" }}
+          />
+          {inputValue && (
+            <button type="button" onClick={() => { setInputValue(""); setQuery("") }}
+              style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}>
+              Clear
+            </button>
+          )}
+        </form>
 
-      {/* Search bar */}
-      <form onSubmit={handleSubmit} style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-        <input
-          type="text"
-          value={inputValue}
-          onChange={handleInputChange}
-          placeholder="Search memories — e.g. authentication, bug fix, deployment…"
-          style={{
-            flex: 1, fontSize: 13,
-            border: "1px solid var(--border)", borderRadius: 8,
-            padding: "8px 14px", color: "var(--text)", background: "var(--surface)", outline: "none",
-          }}
-        />
-        {inputValue && (
-          <button type="button" onClick={handleClear}
-            style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", cursor: "pointer" }}>
-            Clear
+        <select value={filterRepo} onChange={e => setFilterRepo(e.target.value)} style={selectStyle}>
+          <option value="">All repos</option>
+          {repos.map(r => <option key={r} value={r}>{r}</option>)}
+        </select>
+
+        {filterRepo && (
+          <button onClick={() => setFilterRepo("")}
+            style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}>
+            Clear filters
           </button>
         )}
-        <button type="submit" className="btn btn-primary btn-sm" style={{ padding: "8px 18px", fontSize: 13 }}>
-          Search
-        </button>
-      </form>
+
+        <span style={{ marginLeft: "auto", fontSize: 12.5, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6 }}>
+          <span className="conduct-pulse-dot" style={{ background: "var(--ok)" }} />
+          Captured on session exit
+        </span>
+      </div>
 
       {error && (
         <div style={{ borderRadius: 8, border: "1px solid var(--err-bd)", background: "var(--err-bg)", padding: "10px 16px", fontSize: 13, color: "var(--err)", marginBottom: 16 }}>
@@ -200,22 +212,22 @@ function TeamMemoryContent() {
       {loading ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {[...Array(6)].map((_, i) => (
-            <div key={i} style={{ height: 56, background: "var(--surface-2)", borderRadius: 8, opacity: 0.6 }} />
+            <div key={i} style={{ height: 44, background: "var(--surface-2)", borderRadius: 8, opacity: 0.6 }} />
           ))}
         </div>
-      ) : entries.length === 0 ? (
-        <div className="card" style={{ padding: "48px 24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
+      ) : filtered.length === 0 ? (
+        <div className="card" style={{ padding: "40px 24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
           {query
-            ? `No memories found for "${query}". Try a different search term.`
+            ? `No sessions found for "${query}".`
             : "No team memories yet. Sessions are captured automatically when developers exit Claude Code."
           }
         </div>
       ) : (
         <div className="card" style={{ overflow: "hidden" }}>
-          {/* Header */}
+          {/* Table header */}
           <div style={{
             display: "grid",
-            gridTemplateColumns: "1.2fr 1fr 2.5fr 1.2fr 0.7fr",
+            gridTemplateColumns: "1.2fr 1fr 2.8fr 1fr 0.6fr",
             gap: 12, padding: "10px 18px",
             borderBottom: "1px solid var(--border)",
             background: "var(--surface-2)",
@@ -225,34 +237,26 @@ function TeamMemoryContent() {
             ))}
           </div>
 
-          {/* Rows */}
-          {entries.map((entry, i) => (
-            <div key={`${entry.developer_id ?? "anon"}-${entry.created_at}-${i}`}
+          {/* Table rows */}
+          {filtered.map((entry, i) => (
+            <div key={`${entry.developer_id}-${entry.created_at}-${i}`}
               style={{
                 display: "grid",
-                gridTemplateColumns: "1.2fr 1fr 2.5fr 1.2fr 0.7fr",
-                gap: 12, padding: "13px 18px",
-                borderBottom: i < entries.length - 1 ? "1px solid var(--border)" : "none",
+                gridTemplateColumns: "1.2fr 1fr 2.8fr 1fr 0.6fr",
+                gap: 12, padding: "11px 18px",
+                borderBottom: i < filtered.length - 1 ? "1px solid var(--border)" : "none",
                 alignItems: "start",
               }}
             >
-              {/* Developer */}
-              <div className="mono" style={{ fontSize: 12, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                title={entry.developer_id ?? ""}>
-                {entry.developer_email ?? entry.developer_id ?? "—"}
+              <div className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {entry.developer_email ?? "—"}
               </div>
-
-              {/* Repo */}
-              <div style={{ fontSize: 12, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <div style={{ fontSize: 11.5, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {entry.repo ?? "—"}
               </div>
-
-              {/* Summary */}
               <div style={{ fontSize: 12.5, color: "var(--text)", lineHeight: 1.5 }}>
                 {entry.summary}
               </div>
-
-              {/* Tags */}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                 {(entry.tags ?? []).slice(0, 3).map(tag => (
                   <span key={tag} style={{
@@ -262,16 +266,14 @@ function TeamMemoryContent() {
                   }}>{tag}</span>
                 ))}
               </div>
-
-              {/* Date */}
               <div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
-                {formatDate(entry.created_at)}
+                {formatTs(entry.created_at)}
               </div>
             </div>
           ))}
 
           <div style={{ borderTop: "1px solid var(--border)", padding: "8px 18px", textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>
-            {entries.length} {entries.length === 1 ? "session" : "sessions"}{query ? ` matching "${query}"` : ""}
+            {filtered.length} {filtered.length === 1 ? "session" : "sessions"}
           </div>
         </div>
       )}
