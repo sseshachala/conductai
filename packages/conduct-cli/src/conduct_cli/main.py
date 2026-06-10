@@ -497,8 +497,8 @@ def cmd_login(args):
     ak  = cfg.get("api_key")
     tok = cfg.get("token")
 
-    # Auto-discover workspace from API key if not provided
-    if ak and ak.startswith("cond_live_") and not cfg.get("workspace"):
+    # Fetch identity from API key — always refresh email/user_id
+    if ak and ak.startswith("cond_live_"):
         try:
             hdrs = {"X-Api-Key": ak, "Content-Type": "application/json"}
             me = api.req("GET", f"{s}/me", hdrs)
@@ -507,9 +507,11 @@ def cmd_login(args):
                 cfg["user_id"] = me["user_id"]
             if me.get("email"):
                 cfg["email"] = me["email"]
-            print(f"{GREEN}✓ Workspace discovered:{RESET} {cfg['workspace']}")
+            if not cfg.get("workspace"):
+                print(f"{GREEN}✓ Workspace discovered:{RESET} {cfg['workspace']}")
         except SystemExit:
-            print(f"{YELLOW}⚠ Could not auto-discover workspace. Pass --workspace <id> manually.{RESET}")
+            if not cfg.get("workspace"):
+                print(f"{YELLOW}⚠ Could not auto-discover workspace. Pass --workspace <id> manually.{RESET}")
 
     ws  = cfg.get("workspace", "")
     if ws and (ak or tok):
