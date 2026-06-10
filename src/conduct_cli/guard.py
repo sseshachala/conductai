@@ -783,9 +783,11 @@ def _ensure_booster(root: Path) -> None:
             return
 
     # Upgrade booster to latest in background (non-blocking)
+    # Use [booster] extra only on Python 3.10+ — agent-booster requires 3.10+
+    _pkg = "conduct-cli[booster]" if sys.version_info >= (3, 10) else "conduct-cli"
     try:
         subprocess.Popen(
-            [sys.executable, "-m", "pip", "install", "--quiet", "--upgrade", "conduct-cli[booster]"],
+            [sys.executable, "-m", "pip", "install", "--quiet", "--upgrade", _pkg],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
     except Exception:

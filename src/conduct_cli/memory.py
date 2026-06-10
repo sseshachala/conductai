@@ -1,4 +1,6 @@
 """Team session memory helpers for Conduct CLI."""
+from __future__ import annotations
+
 import json
 import threading
 import urllib.request
