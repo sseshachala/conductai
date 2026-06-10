@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from sqlalchemy import Column, String, Text, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
+from pgvector.sqlalchemy import Vector
 from app.core.database import Base
 
 
@@ -14,6 +15,6 @@ class AgentMemory(Base):
     scope = Column(String(50), nullable=False)   # repo | issue_type | agent
     key = Column(Text, nullable=False)
     summary = Column(Text, nullable=False)
-    embedding = Column(Text, nullable=True)      # JSON-serialised float list
+    embedding = Column(Vector(1536), nullable=True)  # native pgvector; 1536d = OpenAI text-embedding-3-small
     run_id = Column(UUID(as_uuid=True), ForeignKey("runs.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
