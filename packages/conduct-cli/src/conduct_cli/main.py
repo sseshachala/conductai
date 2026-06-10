@@ -503,6 +503,10 @@ def cmd_login(args):
             hdrs = {"X-Api-Key": ak, "Content-Type": "application/json"}
             me = api.req("GET", f"{s}/me", hdrs)
             cfg["workspace"] = me["workspace_id"]
+            if me.get("user_id"):
+                cfg["user_id"] = me["user_id"]
+            if me.get("email"):
+                cfg["email"] = me["email"]
             print(f"{GREEN}✓ Workspace discovered:{RESET} {cfg['workspace']}")
         except SystemExit:
             print(f"{YELLOW}⚠ Could not auto-discover workspace. Pass --workspace <id> manually.{RESET}")
