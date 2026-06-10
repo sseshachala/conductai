@@ -5,7 +5,7 @@ GET  /guard/session-reports/{id}/html — styled HTML report (API key or Clerk J
 """
 import hashlib
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date as _date
 from typing import Optional
 from uuid import UUID
 
@@ -143,30 +143,39 @@ def create_session_report(
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid workspace_id from token")
 
-    report = SessionReport(
-        workspace_id=ws_uuid,
-        developer_email=body.developer_email,
-        archetype=body.archetype,
-        autonomy_score=body.autonomy_score,
-        planning_ratio=body.planning_ratio,
-        sessions=body.sessions,
-        prompts=body.prompts,
-        commits=body.commits,
-        lines_per_hour=body.lines_per_hour,
-        active_days=body.active_days,
-        tools_json=body.tools_json,
-        report_md=body.report_md,
+    today = _date.today()
+    report = (
+        db.query(SessionReport)
+        .filter(
+            SessionReport.workspace_id == ws_uuid,
+            SessionReport.developer_email == body.developer_email,
+            SessionReport.created_at >= datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc),
+        )
+        .first()
     )
-    db.add(report)
+    created = report is None
+    if report is None:
+        report = SessionReport(workspace_id=ws_uuid, developer_email=body.developer_email)
+        db.add(report)
+
+    report.archetype = body.archetype
+    report.autonomy_score = body.autonomy_score
+    report.planning_ratio = body.planning_ratio
+    report.sessions = body.sessions
+    report.prompts = body.prompts
+    report.commits = body.commits
+    report.lines_per_hour = body.lines_per_hour
+    report.active_days = body.active_days
+    report.tools_json = body.tools_json
+    report.report_md = body.report_md
     db.commit()
 
     log.info(
-        "session_report.created",
+        "session_report.upserted",
         report_id=str(report.id),
         workspace_id=auth_workspace_id,
         developer_email=body.developer_email,
-        archetype=body.archetype,
-        sessions=body.sessions,
+        created=created,
     )
 
     return _report_to_out(report)
