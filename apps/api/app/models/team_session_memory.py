@@ -12,6 +12,7 @@ class TeamSessionMemory(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
     developer_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    developer_email = Column(Text, nullable=True)
     session_id = Column(Text, nullable=False)
     tool = Column(String(50), nullable=False, default="claude_code")
     repo_full_name = Column(Text, nullable=True)
