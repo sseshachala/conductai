@@ -25,6 +25,8 @@ class GuardConfig(Base):
     slack_webhook_url = Column(String(2048), nullable=True)
     slack_integration_id = Column(UUID(as_uuid=True), nullable=True)
     alert_slack_integration_id = Column(UUID(as_uuid=True), nullable=True)
+    automation_security_scan = Column(Boolean, nullable=False, default=False)
+    automation_workflow_trigger = Column(Boolean, nullable=False, default=False)
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,

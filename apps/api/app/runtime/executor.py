@@ -2263,6 +2263,65 @@ def _execute_dag(
     return state
 
 
+
+def _feedback_to_security_finding(run: "Run", db) -> None:
+    """Connection 3 — write run outcome back to the linked SecurityFinding.
+
+    Fires for runs triggered by the Security Loop or automation workflow.
+    Updates finding.status: succeeded → fixed, failed → open (re-open for retry).
+    """
+    triggered_by = getattr(run, "triggered_by", None) or ""
+    if triggered_by not in ("security_finding", "security_finding_automation"):
+        return
+
+    state = getattr(run, "state", None) or {}
+    trigger = state.get("_trigger") or {}
+    finding_id_str = trigger.get("finding_id")
+    if not finding_id_str:
+        return
+
+    try:
+        import uuid as _uuid
+        from app.models.security_finding import SecurityFinding
+
+        finding_uuid = _uuid.UUID(finding_id_str)
+        finding = db.query(SecurityFinding).filter(SecurityFinding.id == finding_uuid).with_for_update().first()
+        if not finding:
+            return
+
+        trigger_event = trigger.get("event_type", "")
+        autopilot = trigger.get("autopilot_enabled", False)
+
+        if run.status == "succeeded":
+            # security_finding runs = triage; only mark fixed if autopilot actually patched it
+            # security_finding_automation runs (incident-response workflow) = handled
+            if trigger_event == "security_finding_automation" or autopilot:
+                finding.status = "fixed"
+            elif finding.status == "open":
+                finding.status = "triaging"
+        elif run.status == "failed" and finding.status == "triaging":
+            finding.status = "open"  # re-open so it can be retried
+
+        finding.source_run_id = str(run.id)
+        finding.updated_at = _now()
+        db.commit()
+        log.info(
+            "security_finding.run_feedback",
+            finding_id=finding_id_str,
+            run_id=str(run.id),
+            run_status=run.status,
+            new_finding_status=finding.status,
+        )
+    except Exception as exc:
+        log.warning("security_finding.run_feedback_failed", run_id=str(run.id), error=str(exc))
+        try:
+            from app.core.config import settings
+            if settings.sentry_dsn:
+                import sentry_sdk
+                sentry_sdk.capture_exception(exc)
+        except Exception:
+            pass
+
 def execute_run(run_id: str):
     """
     Entry point called by the worker.
@@ -2363,6 +2422,7 @@ def execute_run(run_id: str):
         )
         _emit_run_analytics(run, version, final_state, db, outcome=run.status, error="")
         _enqueue_online_eval(str(run.id))
+        _feedback_to_security_finding(run, db)
 
     except Exception as e:
         log.exception("run.executor_crash", run_id=run_id)

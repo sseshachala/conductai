@@ -18,6 +18,8 @@ interface TeamPrefs {
   alert_slack_integration_id: string | null
   notify_on_block: boolean
   notify_on_budget: boolean
+  automation_security_scan: boolean
+  automation_workflow_trigger: boolean
 }
 
 // ─── Guard Shell ──────────────────────────────────────────────────────────────
@@ -125,6 +127,8 @@ function SettingsContent() {
     alert_slack_integration_id: null,
     notify_on_block: true,
     notify_on_budget: true,
+    automation_security_scan: false,
+    automation_workflow_trigger: false,
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -177,6 +181,8 @@ function SettingsContent() {
         alert_slack_integration_id: data.alert_slack_integration_id ?? null,
         notify_on_block: data.notify_on_block ?? true,
         notify_on_budget: data.notify_on_budget ?? true,
+        automation_security_scan: data.automation_security_scan ?? false,
+        automation_workflow_trigger: data.automation_workflow_trigger ?? false,
       })
       if (data.enforcement_mode) setEnforcementMode(data.enforcement_mode as "block" | "warn" | "audit")
       // Load sync coverage in parallel
@@ -615,6 +621,51 @@ function SettingsContent() {
                   />
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* ── Automation ───────────────────────────────────────────────────────── */}
+          <div className="card" style={{ overflow: "hidden", marginTop: 20 }}>
+            <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ width: 30, height: 30, borderRadius: 8, background: "#7c3aed", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                </svg>
+              </span>
+              <div>
+                <div style={{ fontWeight: 650, fontSize: 14.5 }}>Automation</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 1 }}>Connect Guard to Security Loop and Workflows to close the AI-SDLC cycle.</div>
+              </div>
+            </div>
+            <div style={{ padding: "4px 20px 16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 0", borderTop: "1px solid var(--border)" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13.5 }}>Trigger Security Loop on violation</div>
+                  <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+                    When Guard blocks a policy, automatically run a Security Loop scan on the affected session. Surfaces related findings without developer action.
+                  </div>
+                </div>
+                <GuardToggle
+                  on={prefs.automation_security_scan}
+                  onClick={() => isAdmin && handleToggle("automation_security_scan" as any, !prefs.automation_security_scan)}
+                />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 0", borderTop: "1px solid var(--border)" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13.5 }}>Auto-run Workflow on violation</div>
+                  <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+                    Fire a workflow playbook when Guard blocks a call — e.g. notify the team, open a task, or lock the affected repo until reviewed.
+                  </div>
+                </div>
+                <GuardToggle
+                  on={prefs.automation_workflow_trigger}
+                  onClick={() => isAdmin && handleToggle("automation_workflow_trigger" as any, !prefs.automation_workflow_trigger)}
+                />
+              </div>
+              <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 8, padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8 }}>
+                Security Loop and Workflow must be installed for these automations to run.{" "}
+                <a href="/secure/settings" style={{ color: "var(--accent-text)", textDecoration: "none" }}>Configure Security Loop →</a>
+              </div>
             </div>
           </div>
         </>

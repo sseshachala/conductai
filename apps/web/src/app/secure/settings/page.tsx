@@ -25,6 +25,8 @@ interface SecureConfig {
   security_slack_channel: string | null
   slack_integration_id: string | null
   autopilot_enabled: boolean
+  automation_workflow_on_finding: boolean
+  automation_finding_severity: string
 }
 
 function GuardToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
@@ -66,6 +68,8 @@ function SettingsContent() {
     security_slack_channel: null,
     slack_integration_id: null,
     autopilot_enabled: false,
+    automation_workflow_on_finding: false,
+    automation_finding_severity: "critical",
   })
   const [channelInput, setChannelInput] = useState("")
   const [channelSaved, setChannelSaved] = useState(false)
@@ -102,6 +106,8 @@ function SettingsContent() {
           security_slack_channel: data.security_slack_channel ?? null,
           slack_integration_id: data.slack_integration_id ?? null,
           autopilot_enabled: data.autopilot_enabled ?? false,
+          automation_workflow_on_finding: data.automation_workflow_on_finding ?? false,
+          automation_finding_severity: data.automation_finding_severity ?? "critical",
         })
         setChannelInput((data.security_slack_channel ?? "").replace(/^#+/, ""))
       }
@@ -315,6 +321,66 @@ function SettingsContent() {
           </div>
 
           </div>{/* end 2-col grid */}
+
+
+          {/* ── Automation ──────────────────────────────────────────────────── */}
+          <div className="card" style={{ overflow: "hidden", marginBottom: 20 }}>
+            <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ width: 30, height: 30, borderRadius: 8, background: "#7c3aed", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                </svg>
+              </span>
+              <div style={{ fontWeight: 650, fontSize: 14.5 }}>Automation</div>
+            </div>
+            <div style={{ padding: "4px 20px 16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 0", borderTop: "1px solid var(--border)" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13.5 }}>Trigger Workflow on finding</div>
+                  <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
+                    When a finding meets the severity threshold, automatically fire a workflow playbook — e.g. create a task, notify the team, or escalate to on-call.
+                  </div>
+                </div>
+                <GuardToggle
+                  on={config.automation_workflow_on_finding}
+                  onClick={async () => {
+                    if (!isAdmin) return
+                    const next = !config.automation_workflow_on_finding
+                    setConfig(c => ({ ...c, automation_workflow_on_finding: next }))
+                    try { await patch({ automation_workflow_on_finding: next }) }
+                    catch { setConfig(c => ({ ...c, automation_workflow_on_finding: !next })); setError("Save failed") }
+                  }}
+                />
+              </div>
+              {config.automation_workflow_on_finding && (
+                <div style={{ padding: "10px 0", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>Minimum severity to trigger</div>
+                    <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 1 }}>Only findings at or above this level fire the workflow.</div>
+                  </div>
+                  <select
+                    value={config.automation_finding_severity}
+                    onChange={async e => {
+                      const val = e.target.value
+                      setConfig(c => ({ ...c, automation_finding_severity: val }))
+                      try { await patch({ automation_finding_severity: val }) }
+                      catch { setError("Save failed") }
+                    }}
+                    disabled={!isAdmin}
+                    style={{ fontSize: 12, border: "1px solid var(--border)", borderRadius: 8, padding: "5px 10px", color: "var(--text-2)", background: "var(--surface)", outline: "none", cursor: isAdmin ? "pointer" : "default" }}
+                  >
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                  </select>
+                </div>
+              )}
+              <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 8, padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8 }}>
+                Guard violations can also trigger Security Loop scans.{" "}
+                <a href="/guard/settings" style={{ color: "var(--accent-text)", textDecoration: "none" }}>Configure Guard automation →</a>
+              </div>
+            </div>
+          </div>
 
           {/* Info */}
           <div style={{ background: "var(--info-bg)", border: "1px solid var(--info-bd)", borderRadius: 12, padding: "14px 18px" }}>

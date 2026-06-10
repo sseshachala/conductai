@@ -284,7 +284,7 @@ def ingest_event(
             if body.decision in ("blocked", "warned"):
                 session.violations_count += 1
 
-    db.commit()
+    db.flush()
     db.refresh(event)
 
     # 3. Send Slack block/warn notification (non-fatal)
@@ -318,6 +318,27 @@ def ingest_event(
     except Exception as exc:
         log.warning("guard.spend_budget_check_failed", exc=str(exc))
 
+    # 5. Trigger Security Loop scan on block (automation_security_scan toggle)
+    if body.decision == "blocked" and config.automation_security_scan:
+        try:
+            from app.routers.security import FindingIn, _ingest_finding_core, _trigger_security_loop
+            scan_body = FindingIn(
+                tool=body.ai_tool or "claude_code",
+                severity="medium",
+                type="guard_violation",
+                description=f"Guard blocked: {body.rule_message or body.rule_id or 'policy violation'}",
+                reporter_email=body.user_email,
+            )
+            sec_finding = _ingest_finding_core(scan_body, body.workspace_id, db)
+            _trigger_security_loop(sec_finding, body.workspace_id, db)
+            # Also check automation workflow threshold (Connection 2)
+            from app.routers.security import _maybe_trigger_automation_workflow
+            _maybe_trigger_automation_workflow(sec_finding, body.workspace_id, db)
+            log.info("guard.violation_security_scan_triggered", event_id=str(event.id), finding_id=str(sec_finding.id))
+        except Exception as exc:
+            log.warning("guard.violation_security_scan_failed", error=str(exc))
+
+    db.commit()
     return EventOut(**_event_to_dict(event))
 
 
