@@ -760,8 +760,9 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
                     { label: "Overview",  href: "/guard" },
                     { label: "Spend",     href: "/guard/spend" },
                     { label: "Policies",  href: "/guard/policies" },
-                    { label: "Activity",  href: "/guard/activity" },
-                    { label: "Settings",  href: "/guard/settings" },
+                    { label: "Activity",     href: "/guard/activity" },
+                    { label: "Team Memory", href: "/guard/team-memory" },
+                    { label: "Settings",    href: "/guard/settings" },
                   ].map(sub => {
                     const subActive = sub.href === "/guard" ? pathname === "/guard" : pathname.startsWith(sub.href)
                     return (
