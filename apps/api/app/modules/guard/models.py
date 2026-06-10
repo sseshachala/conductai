@@ -119,6 +119,7 @@ class GuardAuditEvent(Base):
     hook_session_id = Column(Text, nullable=True, index=True)  # raw string session_id from hook stdin
     conductai_run_id = Column(String(255), nullable=True)
     conductai_workflow = Column(String(255), nullable=True)
+    blast_radius = Column(JSONB, nullable=True)
     ts = Column(
         DateTime(timezone=True),
         nullable=False,
