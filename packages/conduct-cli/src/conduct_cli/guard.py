@@ -778,8 +778,15 @@ def _ensure_booster(root: Path) -> None:
     # Init (writes hook scripts + wires settings.json) — fast, idempotent
     if not hooks_path.exists():
         try:
-            subprocess.run(["booster", "init", "--yes"], capture_output=True, timeout=15, cwd=str(root))
-            print(f"  {GREEN}Agent Booster:{RESET} hooks installed")
+            r = subprocess.run(
+                ["booster", "init", "claude", "--yes"],
+                capture_output=True, timeout=15, cwd=str(root),
+            )
+            if r.returncode == 0:
+                print(f"  {GREEN}Agent Booster:{RESET} hooks installed")
+            else:
+                print(f"  {GRAY}Agent Booster:{RESET} init failed — {r.stderr.strip()[:120]}")
+                return
         except Exception:
             return
 
@@ -1170,6 +1177,10 @@ def cmd_guard_booster_status(args):
 
     # 5. Live intercept test — try reading a known file and check if smart-read fires
     print(f"\n  {BOLD}Live intercept test:{RESET}")
+    if not hooks_path.exists():
+        print(f"  {YELLOW}~{RESET} Skipped — hook script not present")
+        print()
+        return
     try:
         import tempfile, json as _json
         # Pick the first indexed file
