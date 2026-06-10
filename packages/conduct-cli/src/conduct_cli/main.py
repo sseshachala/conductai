@@ -2286,8 +2286,12 @@ def cmd_session_report(args):
         )
         __import__("urllib.request", fromlist=["urlopen"]).urlopen(req, timeout=10)
         print("✓ Report saved to Guard dashboard.")
-    except Exception:
-        print("  (Could not push to dashboard — run 'conduct login' to enable)")
+    except Exception as _push_err:
+        msg = str(_push_err)
+        if "conduct login" in msg or "No server" in msg or "No workspace" in msg or "No credentials" in msg:
+            print("  (Could not push to dashboard — run 'conduct login' to enable)")
+        else:
+            print(f"  (Dashboard push failed: {_push_err})")
 
 
 def cmd_emit_finding(args):

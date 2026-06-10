@@ -98,15 +98,6 @@ function autonomyColor(score: number): string {
   return "var(--err)"
 }
 
-const eyebrowStyle: React.CSSProperties = {
-  fontSize: 10,
-  fontWeight: 700,
-  letterSpacing: ".1em",
-  textTransform: "uppercase",
-  color: "var(--text-muted)",
-  marginTop: 8,
-}
-
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function SessionReportDetailPage() {
@@ -161,11 +152,9 @@ function SessionReportDetailContent() {
     load()
   }, [getToken, wsId, teamLoading, id])
 
-  // Derive tools table data
-  const toolEntries: [string, number][] = report?.tools_json
-    ? Object.entries(report.tools_json).sort((a, b) => b[1] - a[1])
+  const topTools: [string, number][] = report?.tools_json
+    ? Object.entries(report.tools_json).sort((a, b) => b[1] - a[1]).slice(0, 12)
     : []
-  const maxCount = toolEntries.length > 0 ? toolEntries[0][1] : 1
 
   return (
     <GuardShell>
@@ -213,175 +202,140 @@ function SessionReportDetailContent() {
           {/* Loading skeletons */}
           {loading && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div style={{ height: 32, width: 240, background: "var(--surface-2)", borderRadius: 8, opacity: 0.6 }} />
+              <div style={{ height: 56, background: "var(--surface-2)", borderRadius: 12, opacity: 0.6 }} />
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
                 {[...Array(4)].map((_, i) => (
-                  <div key={i} style={{ height: 88, background: "var(--surface-2)", borderRadius: 14, opacity: 0.6 }} />
+                  <div key={i} style={{ height: 96, background: "var(--surface-2)", borderRadius: 12, opacity: 0.6 }} />
                 ))}
               </div>
-              <div style={{ height: 200, background: "var(--surface-2)", borderRadius: 14, opacity: 0.6 }} />
+              <div style={{ height: 48, background: "var(--surface-2)", borderRadius: 12, opacity: 0.6 }} />
+              <div style={{ height: 300, background: "var(--surface-2)", borderRadius: 12, opacity: 0.6 }} />
             </div>
           )}
 
           {/* Report content */}
           {!loading && !notFound && report && (
             <>
-              {/* Header */}
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-                <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--text)", margin: 0 }}>
-                  {report.developer_email}
-                </h1>
-                {report.archetype && (
+              {/* Page header */}
+              <div style={{ marginBottom: 20 }}>
+                <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--text)", margin: "0 0 4px" }}>
+                  Session Report
+                </h2>
+                <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                  {report.developer_email} · {formatDate(report.created_at)}
+                </div>
+              </div>
+
+              {/* Archetype banner */}
+              {report.archetype && (
+                <div style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 12,
+                  padding: "16px 20px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 16,
+                  marginBottom: 16,
+                }}>
                   <span style={{
+                    fontSize: 13,
+                    fontWeight: 700,
                     background: "var(--accent-weak)",
                     color: "var(--accent-text)",
-                    borderRadius: 6,
-                    padding: "3px 10px",
-                    fontSize: 12,
-                    fontWeight: 600,
+                    border: "1px solid var(--accent-bd, var(--accent-weak))",
+                    borderRadius: 8,
+                    padding: "6px 14px",
+                    whiteSpace: "nowrap",
                   }}>
                     {report.archetype}
                   </span>
-                )}
-                <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: "auto" }}>
-                  {formatDate(report.created_at)}
-                </span>
-              </div>
+                  <span style={{ fontSize: 13, color: "var(--text-3)" }}>
+                    Autonomy score {report.autonomy_score !== null ? report.autonomy_score.toFixed(1) : "—"}/100
+                    {report.planning_ratio !== null && (
+                      <> &nbsp;·&nbsp; Planning ratio {report.planning_ratio.toFixed(2)}</>
+                    )}
+                  </span>
+                </div>
+              )}
 
-              {/* KPI cards */}
+              {/* KPI grid */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12, marginBottom: 24 }}>
-                {/* Autonomy */}
-                <div style={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 14,
-                  padding: "18px 20px",
-                }}>
-                  <div style={{
-                    fontSize: 28,
-                    fontWeight: 700,
+                {[
+                  { label: "Sessions", value: report.sessions, unit: null, color: "var(--text)" },
+                  { label: "Prompts", value: report.prompts, unit: null, color: "var(--text)" },
+                  { label: "Commits", value: report.commits, unit: null, color: "var(--text)" },
+                  {
+                    label: "Autonomy",
+                    value: report.autonomy_score !== null ? report.autonomy_score.toFixed(1) : "—",
+                    unit: "/ 100",
                     color: report.autonomy_score !== null ? autonomyColor(report.autonomy_score) : "var(--text-muted)",
-                    lineHeight: 1,
-                  }}>
-                    {report.autonomy_score !== null ? report.autonomy_score.toFixed(1) : "—"}
-                  </div>
-                  <div style={eyebrowStyle}>Autonomy Score</div>
-                </div>
-
-                {/* Sessions */}
-                <div style={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 14,
-                  padding: "18px 20px",
-                }}>
-                  <div style={{ fontSize: 28, fontWeight: 700, color: "var(--text)", lineHeight: 1 }}>
-                    {report.sessions}
-                  </div>
-                  <div style={eyebrowStyle}>Sessions</div>
-                </div>
-
-                {/* Commits */}
-                <div style={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 14,
-                  padding: "18px 20px",
-                }}>
-                  <div style={{ fontSize: 28, fontWeight: 700, color: "var(--text)", lineHeight: 1 }}>
-                    {report.commits}
-                  </div>
-                  <div style={eyebrowStyle}>Commits</div>
-                </div>
-
-                {/* Lines / hr */}
-                <div style={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 14,
-                  padding: "18px 20px",
-                }}>
-                  <div style={{ fontSize: 28, fontWeight: 700, color: "var(--text)", lineHeight: 1 }}>
-                    {report.lines_per_hour !== null ? Math.round(report.lines_per_hour) : "—"}
-                  </div>
-                  <div style={eyebrowStyle}>Lines / hr</div>
-                </div>
-              </div>
-
-              {/* Tools table */}
-              {toolEntries.length > 0 && (
-                <div style={{ marginBottom: 20 }}>
-                  <div style={{ ...eyebrowStyle, marginTop: 0, marginBottom: 10 }}>Top Tools</div>
-                  <div style={{
+                  },
+                ].map(card => (
+                  <div key={card.label} style={{
                     background: "var(--surface)",
                     border: "1px solid var(--border)",
-                    borderRadius: 14,
-                    overflow: "hidden",
+                    borderRadius: 12,
+                    padding: "18px 20px",
                   }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                      <thead>
-                        <tr>
-                          {["Tool", "Calls", "Usage"].map(h => (
-                            <th key={h} style={{
-                              background: "var(--surface-3)",
-                              padding: "8px 12px",
-                              fontSize: 11,
-                              fontWeight: 700,
-                              textTransform: "uppercase",
-                              letterSpacing: ".08em",
-                              color: "var(--text-muted)",
-                              textAlign: "left",
-                            }}>
-                              {h}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {toolEntries.map(([tool, count]) => (
-                          <tr key={tool}>
-                            <td style={{ padding: "8px 12px", borderBottom: "1px solid var(--border)", color: "var(--text-2)" }}>
-                              {tool}
-                            </td>
-                            <td style={{ padding: "8px 12px", borderBottom: "1px solid var(--border)", color: "var(--text-2)" }}>
-                              {count}
-                            </td>
-                            <td style={{ padding: "8px 12px", borderBottom: "1px solid var(--border)", color: "var(--text-2)" }}>
-                              <div style={{
-                                width: `${Math.round(count / maxCount * 200)}px`,
-                                maxWidth: 200,
-                                height: 6,
-                                borderRadius: 3,
-                                background: "var(--accent-weak)",
-                              }} />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 8 }}>
+                      {card.label}
+                    </div>
+                    <div style={{ fontSize: 28, fontWeight: 700, color: card.color, lineHeight: 1 }}>
+                      {card.value}
+                    </div>
+                    {card.unit && (
+                      <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>{card.unit}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Top Tools — tag pills */}
+              {topTools.length > 0 && (
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 10 }}>
+                    Top Tools
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {topTools.map(([tool]) => (
+                      <span key={tool} style={{
+                        display: "inline-block",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        background: "var(--surface-2)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 6,
+                        padding: "4px 10px",
+                        color: "var(--text-2)",
+                      }}>
+                        {tool}
+                      </span>
+                    ))}
                   </div>
                 </div>
               )}
 
-              {/* Report markdown */}
+              {/* Full report */}
               <div style={{ marginBottom: 20 }}>
-                <div style={{ ...eyebrowStyle, marginTop: 0, marginBottom: 10 }}>Full Report</div>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 10 }}>
+                  Report
+                </div>
                 {report.report_md ? (
-                  <pre style={{
-                    background: "var(--surface-2)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 14,
-                    padding: "20px 24px",
-                    fontFamily: "ui-monospace, monospace",
-                    fontSize: 12.5,
-                    color: "var(--text-2)",
-                    whiteSpace: "pre-wrap",
-                    lineHeight: 1.7,
-                    overflowX: "auto",
-                    margin: 0,
-                  }}>
-                    {report.report_md}
-                  </pre>
+                  <div
+                    style={{
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 12,
+                      padding: "20px 24px",
+                      fontSize: 13,
+                      color: "var(--text-2)",
+                      lineHeight: 1.7,
+                    }}
+                    dangerouslySetInnerHTML={{
+                      __html: report.report_md.replace(/\n/g, "<br>"),
+                    }}
+                  />
                 ) : (
                   <div style={{ padding: "24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
                     No report text available.
