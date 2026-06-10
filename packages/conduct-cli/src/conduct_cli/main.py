@@ -2261,6 +2261,34 @@ def cmd_session_report(args):
     webbrowser.open(f"file://{html_path}")
     print("Opening report in browser…")
 
+    # ── 5. Push report to Guard dashboard ────────────────────────────────────
+    try:
+        server, workspace_id, api_key, token = _require_auth(args)
+        hdrs = api.headers(workspace_id, token, "application/json", api_key)
+        import getpass as _getpass
+        email = getattr(args, "developer", None) or _getpass.getuser()
+        payload = _json.dumps({
+            "developer_email": email,
+            "archetype": archetype,
+            "autonomy_score": float(autonomy_score) if autonomy_score != "?" else None,
+            "planning_ratio": float(planning_ratio) if planning_ratio else None,
+            "sessions": int(sessions) if sessions != "?" else 0,
+            "prompts": int(prompts) if prompts != "?" else 0,
+            "commits": int(commits) if commits != "?" else 0,
+            "lines_per_hour": float(velocity.get("git_lines_per_active_hour", 0) or 0) if isinstance(velocity, dict) else None,
+            "active_days": int(volume.get("active_days", 0) or 0),
+            "tools_json": dict(tools.get("top_tools") or []),
+            "report_md": report_md[:50000] if report_md else None,
+        }).encode()
+        req = __import__("urllib.request", fromlist=["Request"]).Request(
+            f"{server}/session-reports",
+            data=payload, headers=hdrs, method="POST",
+        )
+        __import__("urllib.request", fromlist=["urlopen"]).urlopen(req, timeout=10)
+        print("✓ Report saved to Guard dashboard.")
+    except Exception:
+        print("  (Could not push to dashboard — run 'conduct login' to enable)")
+
 
 def cmd_emit_finding(args):
     """POST a security finding to /security-findings."""
