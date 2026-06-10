@@ -215,7 +215,7 @@ def search_session_memory(
 
     return [
         {
-            "developer_id": r.developer_email or (str(r.developer_id) if r.developer_id else None),
+            "developer_id": str(r.developer_id) if r.developer_id else None,
             "repo": r.repo_full_name,
             "summary": r.light_summary,
             "tags": r.topic_tags or [],
@@ -226,3 +226,20 @@ def search_session_memory(
         }
         for r in rows_fallback
     ]
+
+
+@router.delete("/sessions/unknown", status_code=200)
+def delete_unknown_sessions(
+    workspace_id: str = Depends(get_workspace_id),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Delete all team memory rows with no developer_id for this workspace."""
+    result = db.execute(
+        text(
+            "DELETE FROM team_session_memory "
+            "WHERE workspace_id = :ws AND developer_id IS NULL"
+        ),
+        {"ws": workspace_id},
+    )
+    db.commit()
+    return {"deleted": result.rowcount}
