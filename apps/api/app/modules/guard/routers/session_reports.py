@@ -443,6 +443,7 @@ def _build_html(report: SessionReport) -> str:
 async def get_session_report_html(
     report_id: str,
     token: str | None = Query(None),
+    workspace_id: str | None = Query(None),
     x_api_key: str | None = Header(None),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -467,13 +468,14 @@ async def get_session_report_html(
             return _HTML_401_INVALID
         ws_id = str(key_row.workspace_id)
     else:
-        # Clerk JWT path — same logic as get_guard_hook_auth
+        # Clerk JWT path — verify token, then require workspace_id query param
         claims = _verify_clerk_token(api_key_val)
         if not claims:
             return _HTML_401_INVALID
-        ws_id = claims.get("org_id") or claims.get("sub")
-        if not ws_id:
-            return _HTML_401_INVALID
+        # Clerk org_id is not a UUID — workspace_id must be passed explicitly
+        if not workspace_id:
+            return HTMLResponse("<html><body><h1>400</h1><p>Pass ?workspace_id= alongside ?token= for Clerk auth.</p></body></html>", status_code=400)
+        ws_id = workspace_id
 
     # Fetch the report, enforcing workspace isolation
     try:
