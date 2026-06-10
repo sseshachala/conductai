@@ -140,7 +140,7 @@ def search_session_memory(
 
     if embedding is not None:
         params: dict[str, Any] = {
-            "workspace_id": workspace_id,
+            "workspace_id": str(workspace_id),
             "vec": str(embedding),
             "limit": limit * 3,
         }
@@ -189,15 +189,27 @@ def search_session_memory(
             for r in rows
         ]
 
-    # Fallback: recency-based query (no embedding available)
-    query = db.query(TeamSessionMemory).filter(
-        TeamSessionMemory.workspace_id == uuid.UUID(workspace_id),
-        TeamSessionMemory.visibility == "team",
-    )
+    # Fallback: recency-based raw SQL (avoids ORM deserialising Vector column)
+    fallback_params: dict[str, Any] = {
+        "workspace_id": str(workspace_id),
+        "limit": limit,
+    }
+    fallback_filter = "workspace_id = :workspace_id AND visibility = 'team'"
     if repo:
-        query = query.filter(TeamSessionMemory.repo_full_name == repo)
+        fallback_filter += " AND repo_full_name = :repo"
+        fallback_params["repo"] = repo
 
-    rows_fallback = query.order_by(TeamSessionMemory.created_at.desc()).limit(limit).all()
+    rows_fallback = db.execute(
+        text(
+            f"SELECT id, developer_id, repo_full_name, light_summary, topic_tags, "
+            f"tool, confidence, created_at "
+            f"FROM team_session_memory "
+            f"WHERE {fallback_filter} "
+            f"ORDER BY created_at DESC "
+            f"LIMIT :limit"
+        ),
+        fallback_params,
+    ).fetchall()
 
     return [
         {
