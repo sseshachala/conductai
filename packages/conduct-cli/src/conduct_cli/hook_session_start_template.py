@@ -46,6 +46,29 @@ def main():
         else:
             lines.append("- Memory index:\n  (none)")
 
+        # Inject relevant team memories for the current repo
+        try:
+            repo = None
+            try:
+                import subprocess
+                out = subprocess.check_output(["git", "remote", "get-url", "origin"],
+                                               stderr=subprocess.DEVNULL, text=True).strip()
+                if "github.com" in out:
+                    repo = out.split("github.com")[-1].lstrip("/:").rstrip(".git")
+            except Exception:
+                pass
+
+            from conduct_cli.memory import search_team_memory
+            results = search_team_memory("recent learnings patterns bugs", repo=repo, limit=3)
+            if results:
+                lines.append("- Team knowledge:")
+                for r in results[:3]:
+                    dev = r.get("developer_id", "teammate")[:8]
+                    summary = r.get("summary", "")[:120]
+                    lines.append(f"  {dev}: {summary}")
+        except Exception:
+            pass
+
         print("\n".join(lines))
     except Exception:
         pass

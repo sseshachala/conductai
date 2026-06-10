@@ -2708,6 +2708,28 @@ def cmd_test_guard(args):
     print(f"\n  {CYAN}→ View events: {api_url.replace('api.', 'app.')}/guard/activity{RESET}\n")
 
 
+def cmd_memory(args):
+    from conduct_cli.memory import search_team_memory
+    memory_command = getattr(args, "memory_command", None)
+    if memory_command == "search":
+        query = " ".join(args.query)
+        results = search_team_memory(query, repo=getattr(args, "repo", None), limit=args.limit)
+        if not results:
+            print("No team memories found.")
+            return
+        for r in results:
+            repo = r.get("repo_full_name", "unknown")
+            summary = r.get("summary", "")
+            tags = ", ".join(r.get("topic_tags") or [])
+            created = r.get("created_at", "")[:10]
+            print(f"\n{BOLD}{repo}{RESET}  {GRAY}{created}{RESET}")
+            if tags:
+                print(f"  Tags: {tags}")
+            print(f"  {summary}")
+    else:
+        print("Usage: conduct memory search <query>")
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
@@ -2860,6 +2882,14 @@ def main():
     sr_p = sub.add_parser("session-report", help="Analyse local AI coding sessions with paxel and send report to admin")
     sr_p.add_argument("--developer", default=None, help="Developer name (defaults to OS username)")
 
+    # conduct memory
+    memory_p = sub.add_parser("memory", help="Search team session memories")
+    memory_sub = memory_p.add_subparsers(dest="memory_command")
+    mem_search_p = memory_sub.add_parser("search", help="Search team memories")
+    mem_search_p.add_argument("query", nargs="+", help="Search query")
+    mem_search_p.add_argument("--repo", help="Filter by repo (owner/repo)")
+    mem_search_p.add_argument("--limit", type=int, default=5, help="Max results")
+
     args = parser.parse_args()
 
     if args.command == "login":
@@ -2937,6 +2967,8 @@ def main():
         cmd_test_security_verify(args)
     elif args.command == "session-report":
         cmd_session_report(args)
+    elif args.command == "memory":
+        cmd_memory(args)
     else:
         parser.print_help()
 
