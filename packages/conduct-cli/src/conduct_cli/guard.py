@@ -768,9 +768,28 @@ def _ensure_booster(root: Path) -> None:
                 f"(you have {sys.version_info.major}.{sys.version_info.minor}). "
                 f"Upgrade Python then: pip install 'conduct-cli[booster]'"
             )
-        else:
-            print(f"  {GRAY}Agent Booster:{RESET} not installed — run: pip install 'conduct-cli[booster]'")
-        return
+            return
+        print(f"  {GRAY}Agent Booster:{RESET} installing…")
+        r = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--quiet", "conduct-cli[booster]"],
+            capture_output=True, text=True, timeout=120,
+        )
+        if r.returncode != 0:
+            print(f"  {RED}Agent Booster:{RESET} install failed — {r.stderr.strip()[:120]}")
+            return
+        print(f"  {GREEN}Agent Booster:{RESET} installed")
+        if not shutil.which("booster"):
+            print(f"  {YELLOW}Agent Booster:{RESET} 'booster' not on PATH yet — restart shell or re-run sync")
+            return
+
+    # Upgrade booster to latest in background (non-blocking)
+    try:
+        subprocess.Popen(
+            [sys.executable, "-m", "pip", "install", "--quiet", "--upgrade", "conduct-cli[booster]"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        pass
 
     db_path = root / ".booster" / "symbols.db"
     hooks_path = root / ".claude" / "hooks" / "booster-gate.py"
