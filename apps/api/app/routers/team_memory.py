@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from math import log
+from math import log as math_log
 from typing import Any
 
 import structlog
@@ -169,7 +169,7 @@ def search_session_memory(
             if created_at.tzinfo is None:
                 created_at = created_at.replace(tzinfo=timezone.utc)
             days_ago = max(0.0, (now - created_at).total_seconds() / 86400)
-            score = row.distance * (1.0 / log(days_ago + 2))
+            score = row.distance * (1.0 / math_log(days_ago + 2))
             scored.append((score, row))
 
         scored.sort(key=lambda x: x[0])
