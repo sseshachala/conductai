@@ -34,6 +34,7 @@ class SessionMemoryIn(BaseModel):
     raw_transcript: str | None = None
     files_touched: list[str] = []
     visibility: str = "team"
+    developer_id: str | None = None
 
 
 def _extract_topic_tags(text_content: str) -> list[str]:
@@ -103,8 +104,9 @@ def store_session_memory(
 
     row = TeamSessionMemory(
         id=uuid.uuid4(),
-        workspace_id=uuid.UUID(workspace_id),
+        workspace_id=uuid.UUID(str(workspace_id)),
         developer_id=None,
+        developer_email=body.developer_id,
         session_id=body.session_id,
         tool=body.tool,
         repo_full_name=body.repo_full_name,
@@ -151,7 +153,7 @@ def search_session_memory(
 
         rows = db.execute(
             text(
-                f"SELECT id, developer_id, repo_full_name, light_summary, topic_tags, "
+                f"SELECT id, developer_id, developer_email, repo_full_name, light_summary, topic_tags, "
                 f"tool, confidence, created_at, "
                 f"(embedding <=> CAST(:vec AS vector)) AS distance "
                 f"FROM team_session_memory "
@@ -177,7 +179,7 @@ def search_session_memory(
 
         return [
             {
-                "developer_id": str(r.developer_id) if r.developer_id else None,
+                "developer_id": r.developer_email or (str(r.developer_id) if r.developer_id else None),
                 "repo": r.repo_full_name,
                 "summary": r.light_summary,
                 "tags": r.topic_tags or [],
@@ -201,7 +203,7 @@ def search_session_memory(
 
     rows_fallback = db.execute(
         text(
-            f"SELECT id, developer_id, repo_full_name, light_summary, topic_tags, "
+            f"SELECT id, developer_id, developer_email, repo_full_name, light_summary, topic_tags, "
             f"tool, confidence, created_at "
             f"FROM team_session_memory "
             f"WHERE {fallback_filter} "
@@ -213,7 +215,7 @@ def search_session_memory(
 
     return [
         {
-            "developer_id": str(r.developer_id) if r.developer_id else None,
+            "developer_id": r.developer_email or (str(r.developer_id) if r.developer_id else None),
             "repo": r.repo_full_name,
             "summary": r.light_summary,
             "tags": r.topic_tags or [],
