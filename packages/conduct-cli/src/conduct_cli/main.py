@@ -2281,7 +2281,7 @@ def cmd_session_report(args):
             "report_md": report_md[:50000] if report_md else None,
         }).encode()
         req = __import__("urllib.request", fromlist=["Request"]).Request(
-            f"{server}/session-reports",
+            f"{server}/guard/session-reports",
             data=payload, headers=hdrs, method="POST",
         )
         __import__("urllib.request", fromlist=["urlopen"]).urlopen(req, timeout=10)

@@ -129,7 +129,7 @@ function SessionReportsContent() {
         const base = process.env.NEXT_PUBLIC_API_URL ?? ""
         const headers: Record<string, string> = {}
         if (token) headers["Authorization"] = `Bearer ${token}`
-        const res = await fetch(`${base}/session-reports?workspace_id=${wsId}`, { headers })
+        const res = await fetch(`${base}/guard/session-reports?workspace_id=${wsId}`, { headers })
         if (!res.ok) throw new Error(`Failed to load session reports (${res.status})`)
         const data: SessionReport[] = await res.json()
         data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
