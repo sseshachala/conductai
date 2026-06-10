@@ -36,12 +36,23 @@ def post_session_to_api(session_id: str, transcript_path: str | None, repo: str 
         except Exception:
             pass
 
+    developer_id = cfg.get("user_id") or cfg.get("email") or cfg.get("member_email")
+    if not developer_id:
+        try:
+            import subprocess as _sp
+            developer_id = _sp.check_output(
+                ["git", "config", "user.email"], stderr=_sp.DEVNULL, text=True
+            ).strip() or None
+        except Exception:
+            pass
+
     payload = json.dumps({
         "session_id": session_id,
         "tool": "claude_code",
         "repo_full_name": repo,
         "raw_transcript": raw_transcript,
         "files_touched": [],
+        "developer_id": developer_id,
     }).encode()
 
     def _send():
