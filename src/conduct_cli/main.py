@@ -2724,11 +2724,13 @@ def cmd_memory(args):
             print("No team memories found.")
             return
         for r in results:
-            repo = r.get("repo_full_name", "unknown")
+            dev = r.get("developer_id") or "unknown"
+            repo = r.get("repo_full_name") or ""
             summary = r.get("summary", "")
             tags = ", ".join(r.get("topic_tags") or [])
             created = r.get("created_at", "")[:10]
-            print(f"\n{BOLD}{repo}{RESET}  {GRAY}{created}{RESET}")
+            heading = f"{dev}  {GRAY}{repo}{RESET}" if repo else dev
+            print(f"\n{BOLD}{heading}{RESET}  {GRAY}{created}{RESET}")
             if tags:
                 print(f"  Tags: {tags}")
             print(f"  {summary}")
