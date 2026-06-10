@@ -1791,7 +1791,6 @@ def _execute_memory(block: dict, state: dict, db, run_id: str, workspace_id: str
 
 
 def _execute_memory_inner(block: dict, state: dict, db, run_id: str, workspace_id: str, playbook_slug: str, credentials: dict | None = None) -> dict:
-    import json as _json
     from app.models.agent_memory import AgentMemory
     from app.runtime.embedding_client import create_embedding_client
 
@@ -1822,12 +1821,18 @@ def _execute_memory_inner(block: dict, state: dict, db, run_id: str, workspace_i
             return {"entries": [], "note": "No key resolved"}
 
         if client:
+            # Guard: column is vector(1536); Voyage is 512d and not yet supported natively.
+            if client.dimensions != 1536:
+                log.warning("memory.dimension_mismatch", client_dims=client.dimensions, column_dims=1536)
+                client = None
+
+        if client:
             query_vec = client.embed(key)
-            # Cosine similarity via pgvector — cast stored JSON text to vector
+            # Native vector column — no ::vector cast needed; HNSW index kicks in automatically.
             rows = db.execute(
                 __import__("sqlalchemy").text("""
                     SELECT summary, created_at,
-                           (embedding::vector <=> CAST(:vec AS vector)) AS distance
+                           (embedding <=> CAST(:vec AS vector)) AS distance
                     FROM agent_memory
                     WHERE workspace_id = :ws
                       AND playbook_slug = :slug
@@ -1838,7 +1843,7 @@ def _execute_memory_inner(block: dict, state: dict, db, run_id: str, workspace_i
                     LIMIT :lim
                 """),
                 {
-                    "vec": _json.dumps(query_vec),
+                    "vec": str(query_vec),
                     "ws": workspace_id,
                     "slug": playbook_slug,
                     "scope": scope,
@@ -1847,7 +1852,7 @@ def _execute_memory_inner(block: dict, state: dict, db, run_id: str, workspace_i
                 },
             ).fetchall()
         else:
-            # No embedding provider — fall back to recency-based retrieval
+            # No embedding provider (or dimension mismatch) — fall back to recency.
             rows = db.query(AgentMemory).filter(
                 AgentMemory.workspace_id == workspace_id,
                 AgentMemory.playbook_slug == playbook_slug,
@@ -1864,11 +1869,15 @@ def _execute_memory_inner(block: dict, state: dict, db, run_id: str, workspace_i
         if not summary:
             return {"written": False, "note": "Empty summary — nothing written"}
 
-        embedding_json: str | None = None
+        # Guard dimension mismatch same as read path.
+        if client and client.dimensions != 1536:
+            log.warning("memory.dimension_mismatch", client_dims=client.dimensions, column_dims=1536)
+            client = None
+
+        embedding_vec: list[float] | None = None
         if client:
             try:
-                vec = client.embed(summary)
-                embedding_json = _json.dumps(vec)
+                embedding_vec = client.embed(summary)
             except Exception as e:
                 log.warning("memory.embed_failed", error=str(e))
 
@@ -1878,7 +1887,7 @@ def _execute_memory_inner(block: dict, state: dict, db, run_id: str, workspace_i
             scope=scope,
             key=key,
             summary=summary,
-            embedding=embedding_json,
+            embedding=embedding_vec,
             run_id=run_id if run_id else None,
         )
         db.add(row)
