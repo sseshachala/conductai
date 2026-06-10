@@ -131,6 +131,20 @@ except Exception:
         return None, "allow", None, None
 
 
+def _detect_repo() -> str | None:
+    try:
+        import subprocess
+        out = subprocess.check_output(["git", "remote", "get-url", "origin"],
+                                       stderr=subprocess.DEVNULL, text=True).strip()
+        # github.com/owner/repo or git@github.com:owner/repo
+        if "github.com" in out:
+            parts = out.split("github.com")[-1].lstrip("/:").rstrip(".git")
+            return parts  # owner/repo
+    except Exception:
+        pass
+    return None
+
+
 def _detect_ai_tool():
     import os
     if os.environ.get("CLAUDECODE") or os.environ.get("CLAUDE_CODE_ENTRYPOINT"):
@@ -533,6 +547,16 @@ def main():
     try:
         data = json.load(sys.stdin)
     except Exception:
+        sys.exit(0)
+
+    # Stop hook — session ended, capture for team memory
+    if data.get("hook_event_name") == "Stop" or data.get("stop_hook_active"):
+        session_id = data.get("session_id", "")
+        transcript_path = data.get("transcript_path")
+        # Detect repo from CWD git remote
+        repo = _detect_repo()
+        from conduct_cli.memory import post_session_to_api
+        post_session_to_api(session_id, transcript_path, repo)
         sys.exit(0)
 
     # Policy version check (cached 60s) — auto-syncs if server version differs
