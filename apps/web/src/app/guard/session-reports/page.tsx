@@ -285,7 +285,7 @@ function SessionReportsContent() {
                   <div>
                     {report.id && clerkToken ? (
                       <a
-                        href={`${process.env.NEXT_PUBLIC_API_URL}/guard/session-reports/${report.id}/html?token=${clerkToken}`}
+                        href={`${process.env.NEXT_PUBLIC_API_URL}/guard/session-reports/${report.id}/html?token=${clerkToken}&workspace_id=${wsId}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         style={{ fontSize: 12, color: "var(--accent-text)", textDecoration: "none", fontWeight: 500 }}
