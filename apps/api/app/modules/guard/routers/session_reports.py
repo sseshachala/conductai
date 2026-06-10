@@ -55,6 +55,7 @@ class SessionReportOut(BaseModel):
     lines_per_hour: Optional[float]
     active_days: Optional[int]
     tools_json: Optional[dict]
+    report_md: Optional[str]
     created_at: str
 
 
@@ -75,6 +76,7 @@ def _report_to_out(r: SessionReport) -> SessionReportOut:
         lines_per_hour=r.lines_per_hour,
         active_days=r.active_days,
         tools_json=r.tools_json,
+        report_md=r.report_md,
         created_at=r.created_at.isoformat(),
     )
 
@@ -100,6 +102,25 @@ def list_session_reports(
         .all()
     )
     return [_report_to_out(r) for r in rows]
+
+
+# ── GET /guard/session-reports/{id} ───────────────────────────────────────────
+
+@router.get("/{report_id}", response_model=SessionReportOut)
+def get_session_report(
+    report_id: UUID,
+    workspace_id: UUID = Query(..., description="Workspace UUID"),
+    _: str = Depends(require_permission("guard.activity.view_all")),
+    db: Session = Depends(get_db),
+) -> SessionReportOut:
+    r = (
+        db.query(SessionReport)
+        .filter(SessionReport.id == report_id, SessionReport.workspace_id == workspace_id)
+        .first()
+    )
+    if not r:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return _report_to_out(r)
 
 
 # ── POST /guard/session-reports ───────────────────────────────────────────────
