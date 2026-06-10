@@ -147,9 +147,9 @@ def search_session_memory(
             "vec": str(embedding),
             "limit": limit * 3,
         }
-        filters = "workspace_id = :workspace_id AND visibility = 'team' AND embedding IS NOT NULL"
+        filters = "tsm.workspace_id = :workspace_id AND tsm.visibility = 'team' AND tsm.embedding IS NOT NULL"
         if repo:
-            filters += " AND repo_full_name = :repo"
+            filters += " AND tsm.repo_full_name = :repo"
             params["repo"] = repo
 
         rows = db.execute(
@@ -200,9 +200,9 @@ def search_session_memory(
         "workspace_id": str(workspace_id),
         "limit": limit,
     }
-    fallback_filter = "workspace_id = :workspace_id AND visibility = 'team'"
+    fallback_filter = "tsm.workspace_id = :workspace_id AND tsm.visibility = 'team'"
     if repo:
-        fallback_filter += " AND repo_full_name = :repo"
+        fallback_filter += " AND tsm.repo_full_name = :repo"
         fallback_params["repo"] = repo
 
     rows_fallback = db.execute(
