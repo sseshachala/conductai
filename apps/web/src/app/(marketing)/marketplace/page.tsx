@@ -574,12 +574,9 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                       playbook={p}
                       installing={installing}
                       installCount={installedCount.get(p.slug) ?? 0}
-                      isInstalled={(installedCount.get(p.slug) ?? 0) > 0}
                       grade={scores.get(p.slug)?.grade}
                       onInstall={openInstallModal}
                       onViewYaml={openYamlModal}
-                      onUninstall={uninstallPlaybook}
-                      uninstalling={uninstalling === p.slug}
                     />
                   ))}
                 </div>
@@ -627,12 +624,9 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                     playbook={p}
                     installing={installing}
                     installCount={installedCount.get(p.slug) ?? 0}
-                    isInstalled={(installedCount.get(p.slug) ?? 0) > 0}
                     grade={scores.get(p.slug)?.grade}
                     onInstall={openInstallModal}
                     onViewYaml={openYamlModal}
-                    onUninstall={uninstallPlaybook}
-                    uninstalling={uninstalling === p.slug}
                   />
                 ))}
               </div>
@@ -847,22 +841,16 @@ function PlaybookCard({
   playbook,
   installing,
   installCount,
-  isInstalled,
   grade,
   onInstall,
   onViewYaml,
-  onUninstall,
-  uninstalling,
 }: {
   playbook: Playbook
   installing: boolean
   installCount: number
-  isInstalled: boolean
   grade?: string
   onInstall: (slug: string) => void
   onViewYaml: (slug: string) => void
-  onUninstall: (slug: string) => void
-  uninstalling: boolean
 }) {
   const blockType = CAT_BLOCK[playbook.category] ?? "brain"
   const displayName = FRIENDLY_NAMES[playbook.slug] ?? playbook.name
@@ -995,43 +983,13 @@ function PlaybookCard({
             cursor: installing ? "not-allowed" : "pointer",
             opacity: installing ? 0.5 : 1,
             transition: "all .12s",
-            border: isInstalled ? "1px solid var(--ok-bd)" : "1px solid var(--accent)",
-            background: isInstalled ? "transparent" : "var(--accent)",
-            color: isInstalled ? "var(--ok)" : "#fff",
+            border: "1px solid var(--accent)",
+            background: "var(--accent)",
+            color: "#fff",
           }}
         >
-          {isInstalled ? (
-            <>
-              <svg width={13} height={13} viewBox="0 0 13 13" fill="none">
-                <path d="M2.5 6.5l3 3 5-5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              Installed — open
-            </>
-          ) : (
-            "Install"
-          )}
+          + Install
         </button>
-        {isInstalled && (
-          <button
-            onClick={() => onUninstall(playbook.slug)}
-            disabled={uninstalling}
-            title="Uninstall"
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 7,
-              border: "1px solid var(--err-bd)",
-              background: "transparent",
-              color: "var(--err)",
-              cursor: uninstalling ? "wait" : "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 16,
-              flexShrink: 0,
-            }}
-          >×</button>
-        )}
         <button
           onClick={() => onViewYaml(playbook.slug)}
           title="Preview YAML"
