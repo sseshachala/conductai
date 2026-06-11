@@ -1022,6 +1022,10 @@ def _dispatch_single_block(
         if "github_trigger" in state:
             result["github_trigger"] = state["github_trigger"]
 
+    elif block_type == "sandbox":
+        from app.runtime.blocks.sandbox_block import _execute_sandbox
+        result = _execute_sandbox(block, state, credentials, sandbox_sessions)
+
     elif block_type == "brain":
         if block.get("data", {}).get("isAgentic", False):
             if state.get("__guard_enabled", True):
@@ -1054,9 +1058,11 @@ def _dispatch_single_block(
                     log.warning("guard.auto_hook_failed", block_id=block_id, error=str(_ge))
 
         slug = getattr(getattr(version, "workflow", None), "playbook_slug", None)
+        _runs_in = block.get("data", {}).get("runs_in")
+        _injected_session = sandbox_sessions.get(_runs_in) if _runs_in else None
         result = _execute_brain(block, state, compiled, credentials=credentials,
                                 db=db, run_id=run_id, block_id=block_id,
-                                playbook_slug=slug)
+                                playbook_slug=slug, injected_session=_injected_session)
 
     elif block_type == "tool":
         result = _execute_tool(block, state, credentials, allowed_hosts=allowed_hosts, db=db, workspace_id=workspace_id_str)
@@ -1367,6 +1373,14 @@ def _execute_dag(
                 "next_action": fail_summary["next_action"],
             })
             break
+
+    # Tear down sandbox sessions before cleanup blocks
+    for _sb_id, _sb_session in list(sandbox_sessions.items()):
+        try:
+            _sb_session.close()
+            log.debug("sandbox_block.closed", block_id=_sb_id)
+        except Exception as _sb_err:
+            log.warning("sandbox_block.close_failed", block_id=_sb_id, error=str(_sb_err))
 
     # Always run cleanup blocks
     for block in cleanup_blocks:
