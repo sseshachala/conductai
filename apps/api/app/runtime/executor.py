@@ -1001,8 +1001,10 @@ def _dispatch_single_block(
     workspace_id_str: str,
     logic_routes: dict,
     _logic_routes_version_ref: list,  # mutable single-element list so we can mutate from caller
-    sandbox_sessions: dict,
+    sandbox_sessions: dict | None = None,
 ) -> dict:
+    if sandbox_sessions is None:
+        sandbox_sessions = {}
     """
     Pure dispatch — maps a block's type to its executor and returns the result.
 
