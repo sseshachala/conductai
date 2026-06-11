@@ -24,7 +24,12 @@ def _key() -> bytes:
             "Set a random 32-byte ENCRYPTION_KEY environment variable."
         )
     raw_bytes = raw.encode()
-    return (raw_bytes + b"\x00" * 32)[:32]
+    if len(raw_bytes) < 32:
+        raise RuntimeError(
+            f"ENCRYPTION_KEY must be at least 32 bytes (got {len(raw_bytes)}). "
+            "Generate one with: python3 -c \"import secrets; print(secrets.token_hex(32))\""
+        )
+    return raw_bytes[:32]
 
 
 def encrypt(data: dict) -> str:
