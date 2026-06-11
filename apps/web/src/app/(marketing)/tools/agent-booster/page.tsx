@@ -17,6 +17,7 @@ export default function AgentBoosterPage() {
         <QuickstartSection />
         <WhatsNewSection />
         <ClaudePluginSection />
+        <SubAgentSection />
         <UseCasesSection />
         <McpToolsSection />
         <CliReferenceSection />
@@ -952,6 +953,91 @@ function ClaudePluginSection() {
           </a>
           .
         </p>
+      </div>
+    </section>
+  )
+}
+
+function SubAgentSection() {
+  return (
+    <section className="bg-stone-950 px-6 py-20">
+      <div className="max-w-4xl mx-auto">
+        <p className="text-xs font-semibold text-indigo-400 uppercase tracking-widest text-center mb-3">Fleet-wide savings</p>
+        <h2 className="text-3xl font-bold text-white text-center mb-4">
+          Sub-agents pick it up automatically.
+        </h2>
+        <p className="text-center text-stone-400 text-sm max-w-2xl mx-auto mb-12">
+          Agent Booster is wired as an MCP server at the project level. Every sub-agent you spawn
+          inherits it — no extra config, no extra steps. Savings cascade across your entire agent fleet.
+        </p>
+
+        {/* Terminal mockup */}
+        <div className="rounded-2xl bg-stone-900 border border-stone-700 overflow-hidden mb-10">
+          {/* Title bar */}
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-stone-800">
+            <span className="w-3 h-3 rounded-full bg-red-500/70"></span>
+            <span className="w-3 h-3 rounded-full bg-yellow-500/70"></span>
+            <span className="w-3 h-3 rounded-full bg-green-500/70"></span>
+            <span className="ml-3 text-xs text-stone-500 font-mono">Claude Code — agent run</span>
+          </div>
+          {/* Terminal body */}
+          <div className="px-6 py-5 font-mono text-xs leading-relaxed space-y-1">
+            <p className="text-stone-300">
+              <span className="text-emerald-400">●</span>{" "}
+              <span className="text-white font-semibold">api-engineer</span>
+              <span className="text-stone-400">(Implement Postgres RLS tenant isolation backstop — migration + FastAPI middleware)</span>
+            </p>
+            <p className="text-stone-500 pl-4">└─{" "}
+              <span className="text-indigo-400 font-semibold">agent-booster – get_symbols</span>
+              <span className="text-stone-500"> (MCP)</span>
+              <span className="text-stone-400">(file: &quot;apps/api/app/routers/runs.py&quot;)</span>
+            </p>
+            <p className="text-stone-600 pl-8 italic">Running…</p>
+            <p className="text-stone-500 pl-4">
+              <span className="text-indigo-400 font-semibold">agent-booster – smart_read</span>
+              <span className="text-stone-500"> (MCP)</span>
+              <span className="text-stone-400">(file: &quot;apps/api/app/routers/workflows.py&quot;, task: &quot;Read list_workflows, create_workflow, and delete_workflow function bodies&quot;)</span>
+            </p>
+            <p className="text-stone-600 pl-8 italic">Running…</p>
+            <p className="text-stone-500 pl-4">
+              <span className="text-indigo-400 font-semibold">agent-booster – smart_read</span>
+              <span className="text-stone-500"> (MCP)</span>
+              <span className="text-stone-400">(file: &quot;apps/api/app/routers/runs.py&quot;, task: &quot;Read list_runs and create_run function bodies&quot;)</span>
+            </p>
+            <p className="text-stone-600 pl-8 italic">Running…</p>
+            <p className="text-stone-500 pl-4 pt-1 text-stone-600">+7 more tool uses via agent-booster MCP</p>
+          </div>
+        </div>
+
+        {/* Three proof points */}
+        <div className="grid sm:grid-cols-3 gap-5">
+          {[
+            {
+              icon: "◈",
+              title: "Project-level wiring",
+              desc: "Install once. Every agent spawned in the project — api-engineer, frontend-engineer, any custom agent — inherits the MCP server automatically.",
+              color: "text-indigo-400",
+            },
+            {
+              icon: "⊕",
+              title: "Savings compound",
+              desc: "A swarm of 5 agents all reading the same codebase? Each one uses smart_read and get_symbols instead of full file reads. The savings multiply.",
+              color: "text-emerald-400",
+            },
+            {
+              icon: "✦",
+              title: "Observed in production",
+              desc: "These are real sub-agent runs on the Conduct codebase — Agent Booster MCP calls appearing automatically in every spawned agent session.",
+              color: "text-violet-400",
+            },
+          ].map(item => (
+            <div key={item.title} className="rounded-xl border border-stone-700 bg-stone-900 px-5 py-5 flex flex-col gap-2">
+              <span className={`text-xl font-black ${item.color}`}>{item.icon}</span>
+              <p className="text-sm font-semibold text-white">{item.title}</p>
+              <p className="text-xs text-stone-400 leading-relaxed">{item.desc}</p>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   )
