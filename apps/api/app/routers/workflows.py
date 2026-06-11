@@ -745,6 +745,8 @@ def stream_block_compile(
     _: str = Depends(require_permission("platform.workflows.edit")),
 ):
     """Stream the compiled prompt for a single block using the current editor state."""
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, workspace_id)
     workflow = db.query(Workflow).filter(
         Workflow.id == workflow_id,
         Workflow.workspace_id == workspace_id,
@@ -902,6 +904,8 @@ def preflight_workflow(
     Makes a single cheap Claude call per agentic brain block — no tools, pure reasoning.
     Returns suggested_max_turns and a per-block breakdown.
     """
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, workspace_id)
     workflow = db.query(Workflow).filter(
         Workflow.id == workflow_id,
         Workflow.workspace_id == workspace_id,
@@ -941,6 +945,8 @@ def validate_workflow(
     from app.models.integration import Integration
     from app.core.crypto import decrypt
 
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, workspace_id)
     workflow = db.query(Workflow).filter(
         Workflow.id == workflow_id,
         Workflow.workspace_id == workspace_id,
@@ -1040,6 +1046,8 @@ def estimate_workflow_cost(
     ?issues=N multiplies cost by number of matching GitHub issues.
     Pricing is resolved from the runtime pricing registry.
     """
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, workspace_id)
     workflow = db.query(Workflow).filter(
         Workflow.id == workflow_id,
         Workflow.workspace_id == workspace_id,
@@ -1362,6 +1370,8 @@ def get_workflow_yaml_filename(
     Keeps the naming convention in one place (``app.dsl.naming``) and lets the
     frontend just read it rather than re-implement the slug.
     """
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, workspace_id)
     workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
@@ -1523,6 +1533,8 @@ def test_trigger(
     import redis as _redis_mod
     from app.core.config import settings as _settings
 
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, workspace_id)
     workflow = db.query(Workflow).filter(
         Workflow.id == workflow_id,
         Workflow.workspace_id == workspace_id,
@@ -1675,6 +1687,8 @@ def sync_workflow(
     """
     from app.dsl.sync import SyncError, sync_workflow_from_repo
 
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, workspace_id)
     workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")

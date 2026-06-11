@@ -251,9 +251,16 @@ async def inbound_webhook(
     except Exception:
         payload = {"raw": body.decode(errors="replace")}
 
+    # Webhook auth is via HMAC signature, not workspace cookie — query by ID only.
+    # Use SET LOCAL row_security = off so RLS on workflows does not block this lookup.
+    db.execute(__import__("sqlalchemy").text("SET LOCAL row_security = off"))
     workflow = db.query(Workflow).filter(Workflow.id == workflow_id).first()
     if not workflow or not workflow.current_version:
         raise HTTPException(status_code=404, detail="Workflow not found")
+    # Re-enable RLS and set workspace context from the workflow for subsequent queries.
+    db.execute(__import__("sqlalchemy").text("SET LOCAL row_security = on"))
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, str(workflow.workspace_id))
 
     version = workflow.current_version
     nodes = version.graph.get("nodes", [])
