@@ -328,9 +328,10 @@ def get_user_workspace_role(
 
     # workspace_id must be a valid UUID — Clerk user_ids (user_xxx) are not.
     # This happens when the client cookie holds a personal Clerk ID instead of an org UUID.
-    import re as _re
-    _UUID_RE = _re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", _re.I)
-    if not _UUID_RE.match(workspace_id):
+    import uuid as _uuid
+    try:
+        _uuid.UUID(workspace_id)
+    except ValueError:
         raise HTTPException(status_code=403, detail="Invalid workspace ID — please select a workspace")
 
     from sqlalchemy import text

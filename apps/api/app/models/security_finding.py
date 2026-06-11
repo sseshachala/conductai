@@ -11,7 +11,7 @@ class SecurityFinding(Base):
     __tablename__ = "security_findings"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    workspace_id = Column(String, nullable=False, index=True)
+    workspace_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     tool = Column(String, nullable=False)           # claude-code | codex | cursor | copilot | manual
     severity = Column(String, nullable=False)       # critical | high | medium | low | info
     type = Column(String, nullable=False)           # injection | path-traversal | secret-leak | auth-bypass | crypto | other

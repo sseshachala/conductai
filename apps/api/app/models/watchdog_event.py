@@ -41,7 +41,7 @@ class WatchdogEvent(Base):
         return normalize_event_type(value)
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    workspace_id = Column(String(255), nullable=False)
+    workspace_id = Column(UUID(as_uuid=True), nullable=False)
     run_id = Column(UUID(as_uuid=True), nullable=True)
     workflow_id = Column(UUID(as_uuid=True), nullable=True)
     event_type = Column(String(50), nullable=False)
