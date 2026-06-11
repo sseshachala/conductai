@@ -1,5 +1,7 @@
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime
+import uuid
+from sqlalchemy import Column, DateTime, String
+from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
 
 
@@ -7,7 +9,7 @@ class ConductApiKey(Base):
     __tablename__ = "conduct_api_keys"
 
     id           = Column(String(36),  primary_key=True)
-    workspace_id = Column(String(36),  nullable=False, index=True)
+    workspace_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     user_id      = Column(String(255), nullable=False)
     name         = Column(String(100), nullable=False)
     key_prefix   = Column(String(20),  nullable=False)
