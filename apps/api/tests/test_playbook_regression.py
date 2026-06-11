@@ -16,9 +16,8 @@ PLAYBOOKS_DIR = Path(__file__).resolve().parent.parent / "playbooks"
 PLAYBOOK_FILES = sorted(PLAYBOOKS_DIR.glob("*.yaml"))
 
 # Playbooks that use DSL features not yet implemented — tracked in GH issues
-XFAIL_PLAYBOOKS = {
-    "bughunter-active-scan.yaml": "requires for_each + prompt:/system: fields (#564, #565)",
-}
+# bughunter-active-scan.yaml was unblocked by #565 (system/prompt/for_each/input fields)
+XFAIL_PLAYBOOKS: dict[str, str] = {}
 
 
 def _ids(files):
