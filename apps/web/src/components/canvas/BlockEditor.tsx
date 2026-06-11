@@ -1370,27 +1370,27 @@ export default function BlockEditor({
             <div className={section}>
               <span className={sectionLabel}>Execution</span>
               <select
-                value={(blockData.runs_on as Record<string, string> | undefined)?.provider || "local"}
+                value={(blockData.runs_on as Record<string, string> | undefined)?.provider || ""}
                 onChange={e => {
                   const provider = e.target.value
                   onChange(blockId, {
                     ...blockData,
-                    runs_on: provider === "local" ? undefined : { provider },
+                    runs_on: provider ? { provider } : undefined,
                   })
                 }}
                 className={cn(inputBase)}
                 disabled={isViewer}
               >
-                <option value="local">Local — worker process (default)</option>
+                <option value="">Select a provider…</option>
                 <option value="e2b">E2B — isolated microVM</option>
                 <option value="modal">Modal Labs — serverless GPU / CPU</option>
               </select>
               <p className="text-[10px] text-stone-400 mt-1 leading-relaxed">
                 {(() => {
-                  const p = (blockData.runs_on as Record<string, string> | undefined)?.provider || "local"
-                  if (p === "e2b") return "Each run gets a fresh Firecracker microVM. Needs E2B_API_KEY credential."
-                  if (p === "modal") return "Runs on Modal serverless — ideal for GPU workloads. Needs Modal credentials."
-                  return "Runs on the Conduct worker. Good for lightweight tasks with no isolation needed."
+                  const p = (blockData.runs_on as Record<string, string> | undefined)?.provider
+                  if (p === "e2b") return "Each run gets a fresh Firecracker microVM. Add E2B_API_KEY in credentials."
+                  if (p === "modal") return "Runs on Modal serverless — ideal for GPU / large compute. Add Modal credentials."
+                  return "Choose where this agent step executes. Required for running shell commands safely."
                 })()}
               </p>
             </div>
