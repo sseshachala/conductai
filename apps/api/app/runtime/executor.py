@@ -14,6 +14,7 @@ import os
 import re
 import socket
 import subprocess
+import time
 import structlog
 from collections import defaultdict, deque
 from datetime import datetime, timezone
@@ -395,6 +396,14 @@ class ApprovalRequired(Exception):
         super().__init__(message)
 
 
+class ClarificationRequired(Exception):
+    """Raised by a Brain block when the task context is too ambiguous to proceed."""
+    def __init__(self, block_id: str, question: str):
+        self.block_id = block_id
+        self.question = question
+        super().__init__(question)
+
+
 def _classify_failure(exc: Exception, block_id: str | None = None) -> dict[str, Any]:
     """Normalize runtime failures into a structured, user-actionable summary."""
     msg = str(exc)
@@ -404,7 +413,12 @@ def _classify_failure(exc: Exception, block_id: str | None = None) -> dict[str, 
     stop_reason = "exception"
     next_action = "Inspect the failed block output and rerun after fixing the underlying error."
 
-    if isinstance(exc, PermissionError):
+    if isinstance(exc, ClarificationRequired):
+        code = "CLARIFICATION_REQUIRED"
+        category = "input_contract"
+        stop_reason = "awaiting_clarification"
+        next_action = "Answer the clarification question via POST /runs/{run_id}/clarify to resume the run."
+    elif isinstance(exc, PermissionError):
         code = "EGRESS_POLICY_BLOCKED"
         category = "governance"
         stop_reason = "policy_block"
@@ -438,6 +452,52 @@ def _classify_failure(exc: Exception, block_id: str | None = None) -> dict[str, 
         "block_id": block_id,
         "next_action": next_action,
     }
+
+
+def _with_retry(execute_fn, retry_cfg: dict, *args, **kwargs):
+    """
+    Wrap execute_fn with per-block retry logic.
+
+    retry_cfg keys:
+      max      — int, total attempts (default 1 = no retry)
+      backoff  — "fixed" | "exponential"  (default "fixed")
+      on       — list of error categories to retry: "tool_error" | "timeout"
+                 (default ["tool_error", "timeout"])
+    """
+    max_attempts = int(retry_cfg.get("max", 1))
+    backoff = retry_cfg.get("backoff", "fixed")
+    on_categories = set(retry_cfg.get("on", ["tool_error", "timeout"]))
+
+    # Hard floor — must have at least one attempt
+    max_attempts = max(1, max_attempts)
+
+    last_exc: Exception | None = None
+    for attempt in range(max_attempts):
+        try:
+            return execute_fn(*args, **kwargs)
+        except (ApprovalRequired, ClarificationRequired, PermissionError) as e:
+            # These are flow-control pauses or governance blocks — never retry
+            raise
+        except RuntimeError as e:
+            # Guard blocks and turn/cost budget exhaustion are not retryable
+            raise
+        except TimeoutError as e:
+            if "timeout" not in on_categories:
+                raise
+            last_exc = e
+        except Exception as e:
+            if "tool_error" not in on_categories:
+                raise
+            last_exc = e
+
+        # Not on the last attempt — sleep before retry
+        if attempt < max_attempts - 1:
+            if backoff == "exponential":
+                time.sleep(2 ** attempt)
+            else:
+                time.sleep(2)
+
+    raise last_exc  # type: ignore[misc]
 
 
 # ── tool definitions for Brain agentic mode ───────────────────────────────────
@@ -822,6 +882,12 @@ def _execute_brain(
 
     user_message = f"Workflow context so far:\n{context}{cred_section}\n\nExecute your task."
 
+    # Clarification resume: if a prior run paused this block for clarification,
+    # append the answer so the LLM has full context on the second attempt.
+    clarification_key = f"__clarification_{block['id']}"
+    if clarification_key in state:
+        user_message = f"{user_message}\n\nClarification from user: {state[clarification_key]}"
+
     sufficiency_instruction = (
         "IMPORTANT: Before doing any work, assess whether you have enough information "
         "to complete this task. If the description is vague, missing critical details, "
@@ -908,6 +974,13 @@ def _execute_brain(
         total_cost_usd = 0.0
         full_system = f"{environment_preamble}\n\n{system_prompt}\n\n{sufficiency_instruction}"
 
+        # Feature: allowed_tools — restrict which Brain tools the LLM may call
+        _allowed_tools_cfg = (block["data"].get("config") or {}).get("allowed_tools")
+        _active_tools = [
+            t for t in BRAIN_TOOLS
+            if _allowed_tools_cfg is None or t["name"] in _allowed_tools_cfg
+        ]
+
         while turns < max_turns:
             # Trace: user turn
             if db and run_id and block_id:
@@ -920,7 +993,7 @@ def _execute_brain(
                 model=model_id,
                 max_tokens=4096,
                 system=full_system,
-                tools=BRAIN_TOOLS,
+                tools=_active_tools,
                 messages=messages,
                 cache_system=True,
             )
@@ -972,10 +1045,11 @@ def _execute_brain(
                              input_tokens=response.usage.input_tokens,
                              output_tokens=response.usage.output_tokens)
 
-            # First-turn sufficiency check — fail fast before any tools are used
+            # First-turn sufficiency check — pause for clarification before any tools are used
             if turns == 1 and final_text.strip().startswith("NEEDS_CLARIFICATION:"):
                 _close_session()
-                raise ValueError(final_text.strip())
+                question = final_text.strip()[len("NEEDS_CLARIFICATION:"):].strip()
+                raise ClarificationRequired(block_id=block["id"], question=question)
 
             if response.stop_reason == "end_turn" or not tool_calls:
                 cost_usd = round(total_cost_usd, 6)
@@ -1963,6 +2037,140 @@ def _execute_mcp(block: dict, state: dict, cred_store: object) -> dict:
     return {"tool": tool_name, "output": str(result)}
 
 
+def _resolve_as_list(expr: str, state: dict) -> list:
+    """Resolve a Jinja-style ref or literal expression to a Python list."""
+    resolved = _resolve_refs(expr, state)
+    if isinstance(resolved, list):
+        return resolved
+    if isinstance(resolved, str):
+        import json as _json
+        try:
+            parsed = _json.loads(resolved)
+            if isinstance(parsed, list):
+                return parsed
+        except (ValueError, TypeError):
+            pass
+    return []
+
+
+def _dispatch_single_block(
+    block: dict,
+    state: dict,
+    *,
+    compiled: dict,
+    credentials: dict,
+    allowed_hosts,
+    db,
+    run_id,
+    block_id: str,
+    version,
+    workspace_id_str: str,
+    logic_routes: dict,
+    _logic_routes_version_ref: list,  # mutable single-element list so we can mutate from caller
+) -> dict:
+    """
+    Pure dispatch — maps a block's type to its executor and returns the result.
+
+    This is extracted from the `_execute_dag` try-block so that for_each can
+    call it per-item without duplicating the if/elif chain.
+
+    ``logic_routes`` and ``_logic_routes_version_ref`` are passed by reference
+    so that logic block executions inside for_each iterations still update the
+    route map of the parent loop (though for_each over logic blocks is unusual).
+    """
+    block_type = block["data"].get("type", "tool")
+
+    if block_type == "trigger":
+        result: dict = {"triggered": True}
+        if "github_issue" in state:
+            result.update(state["github_issue"])
+            result["github_issue"] = state["github_issue"]
+        if "github_trigger" in state:
+            result["github_trigger"] = state["github_trigger"]
+
+    elif block_type == "brain":
+        if block.get("data", {}).get("isAgentic", False):
+            if state.get("__guard_enabled", True):
+                try:
+                    import uuid as _uuid
+                    from app.modules.guard.models import GuardConfig as _GuardConfig
+                    _ws_str = str(workspace_id_str)
+                    _gc = (
+                        db.query(_GuardConfig)
+                        .filter(_GuardConfig.workspace_id == _uuid.UUID(_ws_str))
+                        .first()
+                    ) if _ws_str else None
+                    if _gc:
+                        _guard_block = {
+                            "id": f"__guard_{block_id}",
+                            "config": {"enforcement_mode": _gc.enforcement_mode},
+                        }
+                        _guard_result = _execute_guard(_guard_block, state, _ws_str, db)
+                        state[f"__guard_{block_id}"] = _guard_result
+                        _emit(db, run_id, f"__guard_{block_id}", "guard_check", {
+                            "status": _guard_result.get("status"),
+                            "rules_checked": _guard_result.get("rules_checked", 0),
+                            "violations": _guard_result.get("violations", 0),
+                            "enforcement_mode": _guard_result.get("enforcement_mode"),
+                            "warnings": _guard_result.get("warnings", []),
+                        })
+                except RuntimeError:
+                    raise
+                except Exception as _ge:
+                    log.warning("guard.auto_hook_failed", block_id=block_id, error=str(_ge))
+
+        slug = getattr(getattr(version, "workflow", None), "playbook_slug", None)
+        result = _execute_brain(block, state, compiled, credentials=credentials,
+                                db=db, run_id=run_id, block_id=block_id,
+                                playbook_slug=slug)
+
+    elif block_type == "tool":
+        result = _execute_tool(block, state, credentials, allowed_hosts=allowed_hosts, db=db, workspace_id=workspace_id_str)
+
+    elif block_type == "output":
+        wf_name = version.workflow.name if version.workflow else "Agent"
+        trace_url = (
+            f"{settings.app_url.rstrip('/')}/workflows/{version.workflow.id}/runs/{run_id}"
+            if version.workflow else ""
+        )
+        result = _execute_output(block, state, credentials, workflow_name=wf_name, trace_url=trace_url, run_id=run_id)
+
+    elif block_type == "logic":
+        result = _execute_logic(block, state)
+        logic_routes[block_id] = result.get("route", "pass")
+        _logic_routes_version_ref[0] += 1
+
+    elif block_type == "approval":
+        result = _execute_approval(block, state, credentials, run_id)
+
+    elif block_type == "memory":
+        result = _execute_memory(
+            block, state, db, run_id,
+            str(workspace_id_str),
+            version.workflow.playbook_slug or "",
+            credentials=credentials,
+        )
+
+    elif block_type == "guard":
+        result = _execute_guard(block, state, str(workspace_id_str), db)
+        _emit(db, run_id, block_id, "guard_check", {
+            "status":           result.get("status"),
+            "rules_checked":    result.get("rules_checked", 0),
+            "violations":       result.get("violations", 0),
+            "enforcement_mode": result.get("enforcement_mode"),
+            "warnings":         result.get("warnings", []),
+            "team_name":        result.get("team_name"),
+        })
+
+    elif block_type == "mcp":
+        result = _execute_mcp(block, state, credentials)
+
+    else:
+        result = {"status": "skipped", "type": block_type}
+
+    return result
+
+
 def _execute_dag(
     *,
     run: Any,
@@ -2082,109 +2290,93 @@ def _execute_dag(
 
         compiled = version.compiled_artifacts or {}
 
+        # Shared mutable container so _dispatch_single_block can update _logic_routes_version
+        _lrv_ref = [_logic_routes_version]
+
+        def _dispatch(blk: dict, blk_state: dict) -> dict:
+            return _dispatch_single_block(
+                blk, blk_state,
+                compiled=compiled,
+                credentials=credentials,
+                allowed_hosts=allowed_hosts,
+                db=db,
+                run_id=run_id,
+                block_id=blk["id"],
+                version=version,
+                workspace_id_str=workspace_id_str,
+                logic_routes=logic_routes,
+                _logic_routes_version_ref=_lrv_ref,
+            )
+
         try:
-            if block_type == "trigger":
-                # Flatten github_issue fields so {{_trigger.repo_owner}} refs resolve
-                result = {"triggered": True}
-                if "github_issue" in state:
-                    result.update(state["github_issue"])
-                    result["github_issue"] = state["github_issue"]
-                if "github_trigger" in state:
-                    result["github_trigger"] = state["github_trigger"]
-
-            elif block_type == "brain":
-                # Auto-guard hook: run guard before every agentic brain block
-                if block.get("data", {}).get("isAgentic", False):
-                    if state.get("__guard_enabled", True):
-                        try:
-                            import uuid as _uuid
-                            from app.modules.guard.models import GuardConfig as _GuardConfig
-                            _ws_str = str(workspace_id_str)
-                            _gc = (
-                                db.query(_GuardConfig)
-                                .filter(_GuardConfig.workspace_id == _uuid.UUID(_ws_str))
-                                .first()
-                            ) if _ws_str else None
-                            if _gc:
-                                _guard_block = {
-                                    "id": f"__guard_{block_id}",
-                                    "config": {"enforcement_mode": _gc.enforcement_mode},
-                                }
-                                _guard_result = _execute_guard(_guard_block, state, _ws_str, db)
-                                state[f"__guard_{block_id}"] = _guard_result
-                                _emit(db, run_id, f"__guard_{block_id}", "guard_check", {
-                                    "status": _guard_result.get("status"),
-                                    "rules_checked": _guard_result.get("rules_checked", 0),
-                                    "violations": _guard_result.get("violations", 0),
-                                    "enforcement_mode": _guard_result.get("enforcement_mode"),
-                                    "warnings": _guard_result.get("warnings", []),
-                                })
-                        except RuntimeError:
-                            raise  # guard blocked — propagate
-                        except Exception as _ge:
-                            log.warning("guard.auto_hook_failed", block_id=block_id, error=str(_ge))
-
-                slug = getattr(getattr(version, "workflow", None), "playbook_slug", None)
-                result = _execute_brain(block, state, compiled, credentials=credentials,
-                                        db=db, run_id=run_id, block_id=block_id,
-                                        playbook_slug=slug)
-
-            elif block_type == "tool":
-                result = _execute_tool(block, state, credentials, allowed_hosts=allowed_hosts, db=db, workspace_id=workspace_id_str)
-
-            elif block_type == "output":
-                wf_name = version.workflow.name if version.workflow else "Agent"
-                trace_url = (
-                    f"{settings.app_url.rstrip('/')}/workflows/{version.workflow.id}/runs/{run_id}"
-                    if version.workflow else ""
-                )
-                try:
-                    result = _execute_output(block, state, credentials, workflow_name=wf_name, trace_url=trace_url, run_id=run_id)
-                except Exception as out_err:
-                    log.error("block.output_failed", block_id=block_id, error=str(out_err))
-                    result = {"sent": False, "error": str(out_err)}
-                    _emit(db, run_id, block_id, "block_completed", {"output": result, "warning": str(out_err)})
-                    state[block_id] = result
-                    state["__last_output"] = json.dumps(result, default=str)
-                    continue
-
-            elif block_type == "logic":
-                result = _execute_logic(block, state)
-                logic_routes[block_id] = result.get("route", "pass")
-                _logic_routes_version += 1  # invalidate cached skip set
-
-            elif block_type == "approval":
-                result = _execute_approval(block, state, credentials, run_id)
-
-            elif block_type == "memory":
-                result = _execute_memory(
-                    block, state, db, run_id,
-                    str(workspace_id_str),
-                    version.workflow.playbook_slug or "",
-                    credentials=credentials,
-                )
-
-            elif block_type == "guard":
-                result = _execute_guard(block, state, str(workspace_id_str), db)
-                _emit(db, run_id, block_id, "guard_check", {
-                    "status":           result.get("status"),
-                    "rules_checked":    result.get("rules_checked", 0),
-                    "violations":       result.get("violations", 0),
-                    "enforcement_mode": result.get("enforcement_mode"),
-                    "warnings":         result.get("warnings", []),
-                    "team_name":        result.get("team_name"),
+            # ── for_each expansion ────────────────────────────────────────────
+            for_each_expr = (block["data"].get("config") or {}).get("for_each")
+            if for_each_expr:
+                items = _resolve_as_list(for_each_expr, state)
+                item_var = (block["data"].get("config") or {}).get("item_var", "item")
+                results_list = []
+                for idx, item in enumerate(items[:500]):  # hard cap 500 items
+                    item_state = {**state, item_var: item, "__for_each_index": idx}
+                    item_result = _dispatch(block, item_state)
+                    results_list.append(item_result)
+                for_each_result = {"items": results_list, "count": len(results_list)}
+                state[block_id] = for_each_result
+                state["__last_output"] = json.dumps(for_each_result, default=str)
+                _logic_routes_version = _lrv_ref[0]
+                _emit(db, run_id, block_id, "block_completed", {
+                    "output": for_each_result,
+                    "for_each": True,
+                    "items_count": len(results_list),
                 })
+                continue  # skip the normal single-execution path
 
-            elif block_type == "mcp":
-                result = _execute_mcp(block, state, credentials)
+            # ── per-block retry ───────────────────────────────────────────────
+            retry_cfg = (block["data"].get("config") or {}).get("retry")
 
+            if retry_cfg:
+                result = _with_retry(_dispatch, retry_cfg, block, state)
             else:
-                result = {"status": "skipped", "type": block_type}
+                # Special-case output block: soft-fail so the run can continue
+                if block_type == "output":
+                    wf_name = version.workflow.name if version.workflow else "Agent"
+                    trace_url = (
+                        f"{settings.app_url.rstrip('/')}/workflows/{version.workflow.id}/runs/{run_id}"
+                        if version.workflow else ""
+                    )
+                    try:
+                        result = _execute_output(block, state, credentials, workflow_name=wf_name, trace_url=trace_url, run_id=run_id)
+                    except Exception as out_err:
+                        log.error("block.output_failed", block_id=block_id, error=str(out_err))
+                        result = {"sent": False, "error": str(out_err)}
+                        _emit(db, run_id, block_id, "block_completed", {"output": result, "warning": str(out_err)})
+                        state[block_id] = result
+                        state["__last_output"] = json.dumps(result, default=str)
+                        _logic_routes_version = _lrv_ref[0]
+                        continue
+                else:
+                    result = _dispatch(block, state)
 
+            _logic_routes_version = _lrv_ref[0]
             state[block_id] = result
             state["__last_output"] = json.dumps(result, default=str)
 
             _emit(db, run_id, block_id, "block_completed", {"output": result})
+
+        except ClarificationRequired as cr:
+            run.status = "paused_for_clarification"
+            run.paused_at = _now()
+            run.current_block_id = cr.block_id
+            run.state = state
+            try:
+                db.commit()
+            except Exception:
+                pass
+            _emit(db, run_id, cr.block_id, "clarification_requested", {
+                "block_id": cr.block_id,
+                "question": cr.question,
+            })
+            log.info("run.paused_for_clarification", run_id=run_id, block_id=cr.block_id)
+            return state  # Exit without marking failed
 
         except ApprovalRequired as ap:
             run.status = "paused"
