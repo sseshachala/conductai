@@ -134,13 +134,12 @@ def _execute_brain(
     provider, model_id, routing_reason = _router_resolve(playbook_slug, routing_pref, explicit_model, explicit_provider)
     log.debug("brain.model_selected", block_id=block["id"], provider=provider, model=model_id, reason=routing_reason)
 
-    # Resolve remote host (if the YAML's `runs_on:` was set on this block).
-    # When set, all four Brain tools dispatch over SSH to that host rather
-    # than running locally on the worker or in Modal.
+    # Resolve remote host (SSH) or runs_on provider (E2B / Modal / local).
     remote_host = _resolve_remote_host(block, state, credentials or {})
+    runs_on: dict | None = block.get("data", {}).get("runs_on") or None
 
     from app.runtime.sandbox_session import create_session as _create_session
-    session = _create_session(remote_host, credentials)
+    session = _create_session(remote_host, credentials, runs_on=runs_on)
     _session_closed = False
 
     def _close_session():
