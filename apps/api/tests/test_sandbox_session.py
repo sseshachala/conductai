@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch, call
 
 import pytest
 
-from app.runtime.sandbox_session import LocalSession, ModalSession, RemoteSession, create_session
+from app.runtime.sandbox_session import LocalSession, ModalSession, RemoteSession, E2BSession, create_session
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -485,3 +485,29 @@ class TestCreateSession:
         session = create_session(None, creds)
         assert isinstance(session, LocalSession)
         session.close()
+
+    def test_returns_e2b_session_when_e2b_key_present(self):
+        creds = {"env_vars": {"E2B_API_KEY": "e2b-test-key"}}
+        session = create_session(None, creds)
+        assert isinstance(session, E2BSession)
+
+    def test_modal_takes_priority_over_e2b(self):
+        creds = {
+            "modal": {"token_id": "id", "token_secret": "secret"},
+            "env_vars": {"E2B_API_KEY": "e2b-test-key"},
+        }
+        session = create_session(None, creds)
+        assert isinstance(session, ModalSession)
+
+    def test_explicit_e2b_provider_in_runs_on(self):
+        creds = {"env_vars": {"E2B_API_KEY": "e2b-test-key"}}
+        session = create_session(None, creds, runs_on={"provider": "e2b"})
+        assert isinstance(session, E2BSession)
+
+    def test_explicit_modal_provider_overrides_e2b_creds(self):
+        creds = {
+            "modal": {"token_id": "id", "token_secret": "secret"},
+            "env_vars": {"E2B_API_KEY": "e2b-test-key"},
+        }
+        session = create_session(None, creds, runs_on={"provider": "e2b"})
+        assert isinstance(session, E2BSession)
