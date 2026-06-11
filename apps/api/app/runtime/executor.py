@@ -173,6 +173,10 @@ _OUTCOME_MAP: dict[str, tuple[str, list[str], bool]] = {
     "security_patch_updater": ("security_patch_applied", ["pr_url"],   True),
     "docs_drift_detector":    ("docs_updated",           ["issue_url"], True),
     "terraform_reviewer":     ("terraform_reviewed",     [],           False),
+    "multi_repo_scanner":     ("security_findings_fleet", ["aggregate.top_findings"], False),
+    "dependency_audit":       ("deps_audited",            ["fetch_outdated.count"],   False),
+    "bulk_pr_reviewer":       ("prs_reviewed",            ["fetch_prs.count"],        False),
+    "multi_env_smoke_test":   ("smoke_fleet",             ["diff_results.summary"],   False),
 }
 
 

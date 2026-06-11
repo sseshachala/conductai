@@ -1,0 +1,195 @@
+name: Dependency Audit
+version: 1
+description: >
+  Iterate over outdated dependencies in a repository, assess risk per package,
+  and open GitHub issues for major or breaking upgrades. Supports npm, pip,
+  cargo, and go modules.
+
+inputs:
+  repo:
+    label: Repository (owner/repo)
+    type: string
+    placeholder: "owner/repo"
+  package_manager:
+    label: Package Manager
+    type: select
+    default: npm
+    options:
+      - npm
+      - pip
+      - cargo
+      - go
+  risk_threshold:
+    label: Minimum Risk to Act On
+    type: select
+    default: major
+    options:
+      - minor
+      - major
+      - breaking
+  model:
+    label: AI Model
+    type: select
+    default: claude-sonnet-4-6
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+
+on:
+  manual:
+    next: fetch_outdated
+
+blocks:
+  fetch_outdated:
+    type: brain
+    mode: agentic
+    model: "{{ inputs.model }}"
+    label: Fetch outdated dependencies
+    system: |
+      You are a dependency analyst. Read the package manifest from a GitHub
+      repository and compare each dependency against its latest published
+      version. Classify the semver delta for each package.
+    prompt: |
+      Fetch and analyse outdated dependencies for: {{ inputs.repo }}
+      Package manager: {{ inputs.package_manager }}
+
+      Step 1 — Locate and read the manifest file:
+        npm:   GET https://api.github.com/repos/{{ inputs.repo }}/contents/package.json
+        pip:   GET https://api.github.com/repos/{{ inputs.repo }}/contents/requirements.txt
+               (also check pyproject.toml if requirements.txt is absent)
+        cargo: GET https://api.github.com/repos/{{ inputs.repo }}/contents/Cargo.toml
+        go:    GET https://api.github.com/repos/{{ inputs.repo }}/contents/go.mod
+        Headers: Authorization: token $GIT_TOKEN
+
+      Step 2 — For each dependency, determine the latest version:
+        npm:   GET https://registry.npmjs.org/<package>/latest
+        pip:   GET https://pypi.org/pypi/<package>/json
+        cargo: GET https://crates.io/api/v1/crates/<package>
+        go:    Use pkg.go.dev or the module proxy at https://proxy.golang.org/<module>/@latest
+
+      Step 3 — Classify the semver delta for each package:
+        patch   = same major.minor, different patch (e.g. 1.2.3 → 1.2.9)
+        minor   = same major, different minor (e.g. 1.2.x → 1.4.0)
+        major   = different major (e.g. 1.x.x → 2.0.0)
+        breaking = major bump with documented breaking changes in changelog/release notes
+
+      Only include packages where current != latest.
+
+      Output ONLY the following JSON on the last line:
+      {"deps": [{"name": "express", "current": "4.17.1", "latest": "5.0.0", "semver_delta": "major"}], "count": 1}
+    next: has_deps
+
+  has_deps:
+    type: logic
+    label: Any outdated dependencies?
+    condition: "{{ fetch_outdated.count > 0 }}"
+    next:
+      pass: assess_risk
+      fail: notify_clean
+
+  assess_risk:
+    type: brain
+    mode: single
+    model: "{{ inputs.model }}"
+    label: Assess breaking change risk per dependency
+    for_each: "{{ fetch_outdated.deps }}"
+    item_var: item
+    system: |
+      You are a dependency risk analyst. For a single package upgrade, assess
+      whether the version bump introduces breaking API changes or security
+      issues. Use available changelog and release note sources.
+    prompt: |
+      Assess the upgrade risk for this dependency:
+        Package:  {{ item.name }}
+        Current:  {{ item.current }}
+        Latest:   {{ item.latest }}
+        Delta:    {{ item.semver_delta }}
+        Manager:  {{ inputs.package_manager }}
+
+      Check the changelog or release notes for breaking changes:
+        npm:   https://www.npmjs.com/package/{{ item.name }}?activeTab=versions
+        pip:   https://pypi.org/project/{{ item.name }}/#history
+        cargo: https://crates.io/crates/{{ item.name }}/versions
+        go:    pkg.go.dev module page
+
+      Identify:
+        1. Any removed or renamed APIs between {{ item.current }} and {{ item.latest }}
+        2. Required configuration or migration steps
+        3. Security advisories fixed in the new version
+        4. Overall recommendation: upgrade / upgrade-with-care / defer
+
+      Output ONLY the following JSON on the last line:
+      {"name": "{{ item.name }}", "risk": "{{ item.semver_delta }}", "breaking_changes": ["..."], "recommendation": "upgrade-with-care"}
+    next: open_issues
+
+  open_issues:
+    type: tool
+    action: github/create_issue
+    label: Open GitHub issue for risky dependency
+    for_each: "{{ assess_risk }}"
+    item_var: item
+    input:
+      repo: "{{ inputs.repo }}"
+      title: "[dep-audit] Upgrade {{ item.name }} {{ fetch_outdated.deps | selectattr('name', 'equalto', item.name) | map(attribute='current') | first }} → {{ fetch_outdated.deps | selectattr('name', 'equalto', item.name) | map(attribute='latest') | first }} ({{ item.risk }})"
+      body: |
+        ## Dependency Audit — {{ item.name }}
+
+        | Field | Value |
+        |-------|-------|
+        | **Package** | `{{ item.name }}` |
+        | **Current version** | `{{ fetch_outdated.deps | selectattr('name', 'equalto', item.name) | map(attribute='current') | first }}` |
+        | **Latest version** | `{{ fetch_outdated.deps | selectattr('name', 'equalto', item.name) | map(attribute='latest') | first }}` |
+        | **Risk level** | {{ item.risk }} |
+
+        ### Breaking Changes
+        {% for change in item.breaking_changes %}
+        - {{ change }}
+        {% endfor %}
+
+        ### Recommendation
+        {{ item.recommendation }}
+
+        ---
+        *Opened by Dependency Audit via [Conduct](https://conductai.ai)*
+      labels:
+        - dependencies
+        - "risk-{{ item.risk }}"
+        - dep-audit
+    next: notify_results
+
+  notify_results:
+    type: output
+    label: Dependency audit summary
+    channels:
+      - slack
+    template: |
+      *Dependency Audit complete* — `{{ inputs.repo }}`
+
+      *Package manager:* {{ inputs.package_manager }}
+      *Outdated packages found:* {{ fetch_outdated.count }}
+      *Risk threshold:* {{ inputs.risk_threshold }}
+
+      *Packages assessed:*
+      {% for dep in fetch_outdated.deps %}
+      - `{{ dep.name }}` {{ dep.current }} → {{ dep.latest }} ({{ dep.semver_delta }})
+      {% endfor %}
+
+      GitHub issues opened for major/breaking upgrades.
+
+  notify_clean:
+    type: output
+    label: All dependencies current
+    channels:
+      - slack
+    template: |
+      *Dependency Audit complete* — `{{ inputs.repo }}`
+
+      All {{ inputs.package_manager }} dependencies are up to date. No action required.
+
+test_trigger:
+  payload:
+    repo: "sseshachala/conductai"
+    package_manager: npm
+    risk_threshold: major
+    model: claude-sonnet-4-6
