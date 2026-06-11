@@ -16,6 +16,7 @@ modal>=0.64.0
 paramiko==3.5.1
 pytest==9.0.3
 pyyaml==6.0.2
+jsonschema>=4.23.0
 jinja2>=3.1.0
 structlog==24.4.0
 sentry-sdk[fastapi]==2.19.2
