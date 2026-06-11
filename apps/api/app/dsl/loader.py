@@ -341,10 +341,12 @@ def yaml_to_graph(workflow: Workflow) -> dict[str, Any]:
         if nxt is None:
             continue
         if isinstance(nxt, str):
-            edges.append(_make_edge(block_id, nxt))
+            if nxt != "end":
+                edges.append(_make_edge(block_id, nxt))
         else:
             for handle, target in nxt.items():
-                edges.append(_make_edge(block_id, target, source_handle=handle))
+                if target != "end":
+                    edges.append(_make_edge(block_id, target, source_handle=handle))
 
     result: dict[str, Any] = {"nodes": nodes, "edges": edges}
     if workflow.inputs:
