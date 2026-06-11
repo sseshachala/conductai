@@ -68,7 +68,7 @@ on:
 
 blocks:
   # ── 1. Discover skills from upstream repo ───────────────────────────────────
-  - id: discover_skills
+  discover_skills:
     type: brain
     mode: agentic
     model: "{{ inputs.model }}"
@@ -99,7 +99,7 @@ blocks:
       [{"name":"hunt-llm-injection","description":"...","key_patterns":["prompt injection","RAG poisoning"]}]
 
   # ── 2. Recon ─────────────────────────────────────────────────────────────────
-  - id: recon
+  recon:
     type: brain
     mode: agentic
     model: "{{ inputs.model }}"
@@ -126,7 +126,7 @@ blocks:
       and code paths where relevant attack surfaces exist.
 
   # ── 3. Run all hunt skills dynamically ──────────────────────────────────────
-  - id: run_hunts
+  run_hunts:
     type: brain
     mode: agentic
     model: "{{ inputs.model }}"
@@ -170,7 +170,7 @@ blocks:
       If no findings, return: []
 
   # ── 4. Deduplicate and filter ────────────────────────────────────────────────
-  - id: collect_findings
+  collect_findings:
     type: brain
     model: claude-haiku-4-5-20251001
     next: emit_to_security_loop
@@ -193,7 +193,7 @@ blocks:
       Return deduplicated JSON array on the last line. If nothing passes, return [].
 
   # ── 5. Emit to Security Loop ─────────────────────────────────────────────────
-  - id: emit_to_security_loop
+  emit_to_security_loop:
     type: tool
     action: conduct/emit_finding
     for_each: "{{ collect_findings.output }}"
@@ -209,7 +209,7 @@ blocks:
       source_run_id: "{{ _run.id | default('bughunter') }}"
 
   # ── 6. Create GitHub issue for team visibility ───────────────────────────────
-  - id: create_github_issue
+  create_github_issue:
     type: tool
     action: github/create_issue
     for_each: "{{ collect_findings.output }}"
@@ -243,7 +243,7 @@ blocks:
         - autopilot-ready
 
   # ── 7. Summary notification ───────────────────────────────────────────────────
-  - id: notify_complete
+  notify_complete:
     type: output
     channels:
       - slack
