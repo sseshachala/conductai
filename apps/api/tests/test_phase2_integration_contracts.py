@@ -14,6 +14,9 @@ class _DummyRedis:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
 
+    def llen(self, key: str) -> int:
+        return 0
+
     def rpush(self, key: str, value: str) -> None:
         self.calls.append((key, value))
 
