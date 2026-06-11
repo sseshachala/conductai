@@ -1431,42 +1431,39 @@ export default function BlockEditor({
             </p>
           </div>
           {blockData.isAgentic && (() => {
-            const runsIn = blockData.runs_in as string | undefined
-            const provider = (blockData.runs_on as Record<string, string> | undefined)?.provider
-            const flatValue = runsIn ? `sandbox:${runsIn}` : (provider ? `proxy:${provider}` : "")
+            const runsOn = blockData.runs_on as Record<string, string> | undefined
+            const provider = runsOn?.provider ?? ""
+            const mode = runsOn?.mode ?? "proxy"
+            const flatValue = provider ? `${provider}:${mode}` : ""
 
             function setFlat(v: string) {
-              if (v === "proxy:e2b")    onChange(blockId, { ...blockData, runs_in: undefined, runs_on: { provider: "e2b" } })
-              else if (v === "proxy:modal") onChange(blockId, { ...blockData, runs_in: undefined, runs_on: { provider: "modal" } })
-              else if (v.startsWith("sandbox:")) onChange(blockId, { ...blockData, runs_on: undefined, runs_in: v.slice(8) })
-              else onChange(blockId, { ...blockData, runs_in: undefined, runs_on: undefined })
+              if (!v) {
+                onChange(blockId, { ...blockData, runs_in: undefined, runs_on: undefined })
+              } else {
+                const [p, m] = v.split(":")
+                onChange(blockId, { ...blockData, runs_in: undefined, runs_on: { provider: p, mode: m } })
+              }
             }
 
-            const hint =
-              flatValue === "proxy:e2b"   ? "Own session per run. Isolated microVM — needs E2B_API_KEY." :
-              flatValue === "proxy:modal" ? "Own session per run. Serverless CPU/GPU — needs MODAL_TOKEN_ID + MODAL_TOKEN_SECRET." :
-              flatValue.startsWith("sandbox:") ? "Reuses the provisioned sandbox environment — /workspace already set up." :
-              "Single LLM call — no tool use, no remote session."
+            const hints: Record<string, string> = {
+              "modal:proxy":   "Own session per run on Modal serverless. Needs MODAL_TOKEN_ID + MODAL_TOKEN_SECRET.",
+              "modal:sandbox": "Persistent Modal sandbox for the run — workspace stays warm between steps. Needs MODAL_TOKEN_ID + MODAL_TOKEN_SECRET.",
+              "e2b:proxy":     "Own session per run in E2B microVM. Needs E2B_API_KEY.",
+              "e2b:sandbox":   "Persistent E2B sandbox for the run — workspace stays warm between steps. Needs E2B_API_KEY.",
+            }
 
             return (
               <div className={section}>
-                <span className={sectionLabel}>Execution</span>
+                <span className={sectionLabel}>Runs on</span>
                 <select value={flatValue} onChange={e => setFlat(e.target.value)} className={cn(inputBase)} disabled={isViewer}>
-                  <option value="">Not set</option>
-                  <option value="proxy:e2b">Proxy — E2B.dev</option>
-                  <option value="proxy:modal">Proxy — Modal Labs</option>
-                  {sandboxBlocks && sandboxBlocks.length > 0 && (
-                    <optgroup label="Sandbox blocks">
-                      {sandboxBlocks.map(sb => (
-                        <option key={sb.id} value={`sandbox:${sb.id}`}>↳ {sb.label}</option>
-                      ))}
-                    </optgroup>
-                  )}
+                  <option value="">Not set — single LLM call, no tools</option>
+                  <option value="modal:proxy">Modal Labs — Proxy</option>
+                  <option value="modal:sandbox">Modal Labs — Sandbox</option>
+                  <option value="e2b:proxy">E2B.dev — Proxy</option>
+                  <option value="e2b:sandbox">E2B.dev — Sandbox</option>
                 </select>
-                <p className="text-[10px] text-stone-400 mt-1.5 leading-relaxed">{hint}</p>
-                {!flatValue.startsWith("sandbox:") && sandboxBlocks && sandboxBlocks.length === 0 && (
-                  <p className="text-[10px] text-stone-300 mt-0.5">Add a Sandbox block to the canvas to enable shared environments.</p>
-                )}
+                {flatValue && <p className="text-[10px] text-stone-400 mt-1.5 leading-relaxed">{hints[flatValue]}</p>}
+                {!flatValue && <p className="text-[10px] text-stone-400 mt-1.5 leading-relaxed">Proxy = fresh session per run. Sandbox = session stays warm within the run — workspace persists between steps.</p>}
               </div>
             )
           })()}
