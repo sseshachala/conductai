@@ -57,9 +57,10 @@
   --blk-memory-bg:#fffbeb;  --blk-memory-bd:#fde68a;  --blk-memory-tx:#b45309;
   --blk-approval-bg:#fff7ed;--blk-approval-bd:#fed7aa; --blk-approval-tx:#c2410c;
   --blk-output-bg:#fff1f2;  --blk-output-bd:#fecdd3;  --blk-output-tx:#be123c;
-  --blk-cleanup-bg:#fafaf9; --blk-cleanup-bd:#d6d3d1; --blk-cleanup-tx:#78716c;
+  --blk-cleanup-bg:#f0f9ff;  --blk-cleanup-bd:#bae6fd;  --blk-cleanup-tx:#0369a1;
   --blk-guard-bg:#fef2f2;   --blk-guard-bd:#fecaca;   --blk-guard-tx:#b91c1c;
   --blk-mcp-bg:#ecfeff;     --blk-mcp-bd:#a5f3fc;     --blk-mcp-tx:#0e7490;
+  --blk-sandbox-bg:#f0fdf4; --blk-sandbox-bd:#86efac; --blk-sandbox-tx:#15803d;
 }
 
 /* ── Dark theme ─────────────────────────────────────────────────────────────── */
@@ -104,9 +105,10 @@
   --blk-memory-bg:  #2d1f0a;  --blk-memory-bd:  #78350f;  --blk-memory-tx:  #fcd34d;
   --blk-approval-bg:#2a1509;  --blk-approval-bd:#7c2d12;  --blk-approval-tx:#fb923c;
   --blk-output-bg:  #2a0d15;  --blk-output-bd:  #881337;  --blk-output-tx:  #fb7185;
-  --blk-cleanup-bg: #1c1917;  --blk-cleanup-bd: #2a2624;  --blk-cleanup-tx: #78716c;
+  --blk-cleanup-bg: #082f49;  --blk-cleanup-bd: #0c4a6e;  --blk-cleanup-tx: #7dd3fc;
   --blk-guard-bg:   #2a0e0e;  --blk-guard-bd:   #7f1d1d;  --blk-guard-tx:   #fca5a5;
   --blk-mcp-bg:     #052e30;  --blk-mcp-bd:     #164e63;  --blk-mcp-tx:     #67e8f9;
+  --blk-sandbox-bg: #052e16;  --blk-sandbox-bd: #14532d;  --blk-sandbox-tx: #4ade80;
 }
 
 /* Block type card classes — applied to .card and palette items */
@@ -120,6 +122,7 @@
 .bk-cleanup  { background: var(--blk-cleanup-bg);  border-color: var(--blk-cleanup-bd);  color: var(--blk-cleanup-tx); }
 .bk-guard    { background: var(--blk-guard-bg);    border-color: var(--blk-guard-bd);    color: var(--blk-guard-tx); }
 .bk-mcp      { background: var(--blk-mcp-bg);      border-color: var(--blk-mcp-bd);      color: var(--blk-mcp-tx); }
+.bk-sandbox  { background: var(--blk-sandbox-bg);  border-color: var(--blk-sandbox-bd);  color: var(--blk-sandbox-tx); }
 
 body {
   background: var(--background);
