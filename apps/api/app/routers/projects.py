@@ -407,6 +407,38 @@ def delete_project(
 
 
 # ---------------------------------------------------------------------------
+# Direct project lookup (no workspace cookie required — workspace derived from row)
+# ---------------------------------------------------------------------------
+
+@router.get("/{project_id}", response_model=ProjectOut)
+def get_project(
+    project_id: str,
+    user_id: Annotated[str, Depends(get_user_id)],
+    db: Session = Depends(get_db),
+):
+    row = db.execute(text("""
+        SELECT p.id, p.workspace_id, p.name, p.slug, p.created_at, COUNT(w.id) AS agent_count
+        FROM projects p
+        LEFT JOIN workflows w ON w.project_id = p.id
+        WHERE p.id = :pid
+        GROUP BY p.id
+    """), {"pid": project_id}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    proj_ws = str(row.workspace_id)
+    member = db.execute(
+        text("SELECT 1 FROM workspace_users WHERE workspace_id = :ws AND clerk_user_id = :uid"),
+        {"ws": proj_ws, "uid": user_id},
+    ).fetchone()
+    if not member and user_id != "dev":
+        raise HTTPException(status_code=403, detail="Not a member of this workspace")
+
+    return ProjectOut(id=str(row.id), workspace_id=proj_ws, name=row.name,
+                      slug=row.slug or "", created_at=row.created_at, agent_count=row.agent_count or 0)
+
+
+# ---------------------------------------------------------------------------
 # Member management
 # ---------------------------------------------------------------------------
 
