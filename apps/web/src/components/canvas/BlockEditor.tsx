@@ -31,6 +31,7 @@ interface BlockEditorProps {
   projectSlug?: string | null
   onWebhookChange?: (hookId: string | null, hookRepo: string | null) => void
   onClose?: () => void
+  sandboxBlocks?: { id: string; label: string }[]
 }
 
 // ── Client-side model router preview (mirrors model_router.py) ────────────────
@@ -1072,6 +1073,69 @@ function MCPBlockPanel({
   )
 }
 
+// ── Sandbox block config panel ────────────────────────────────────────────────
+
+function SandboxBlockPanel({ blockData, blockId, onChange, isViewer, sectionLabel, section, inputBase }: {
+  blockData: Record<string, unknown>
+  blockId: string
+  onChange: (id: string, data: Record<string, unknown>) => void
+  isViewer: boolean
+  sectionLabel: string
+  section: string
+  inputBase: string
+}) {
+  const config = (blockData.sandbox_config as Record<string, unknown>) || {}
+
+  function updateConfig(patch: Record<string, unknown>) {
+    onChange(blockId, { ...blockData, sandbox_config: { ...config, ...patch } })
+  }
+
+  const setupText = Array.isArray(config.setup) ? (config.setup as string[]).join("\n") : (config.setup as string) || ""
+
+  return (
+    <>
+      {/* Provider */}
+      <div className={section}>
+        <span className={sectionLabel}>Provider</span>
+        <select
+          value={(config.provider as string) || ""}
+          onChange={e => updateConfig({ provider: e.target.value || undefined })}
+          className={inputBase}
+          disabled={isViewer}
+        >
+          <option value="">Select provider…</option>
+          <option value="e2b">E2B — isolated microVM</option>
+          <option value="modal">Modal Labs — serverless GPU / CPU</option>
+        </select>
+        <p className="text-[10px] text-stone-400 mt-1 leading-relaxed">
+          {config.provider === "e2b" && "Needs E2B_API_KEY in your environment credentials."}
+          {config.provider === "modal" && "Needs MODAL_TOKEN_ID + MODAL_TOKEN_SECRET in credentials."}
+          {!config.provider && "Choose where to provision the shared compute environment."}
+        </p>
+      </div>
+
+      {/* Setup commands */}
+      <div className={section}>
+        <span className={sectionLabel}>Setup commands</span>
+        <textarea
+          rows={6}
+          value={setupText}
+          onChange={e => {
+            const lines = e.target.value.split("\n").filter(l => l.trim())
+            updateConfig({ setup: lines })
+          }}
+          placeholder={"git clone https://github.com/org/repo.git /workspace\ncd /workspace && npm install"}
+          className={`${inputBase} resize-none font-mono text-[11px]`}
+          disabled={isViewer}
+        />
+        <p className="text-[10px] text-stone-400 mt-1">
+          One command per line. Runs in order when the sandbox provisions. Failure stops the run.
+        </p>
+      </div>
+    </>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function BlockEditor({
@@ -1093,6 +1157,7 @@ export default function BlockEditor({
   projectSlug,
   onWebhookChange,
   onClose,
+  sandboxBlocks,
 }: BlockEditorProps) {
   const [promptOpen, setPromptOpen] = useState(false)
   const [streamedPrompt, setStreamedPrompt] = useState<string>("")
@@ -1392,6 +1457,28 @@ export default function BlockEditor({
                   if (p === "modal") return "Runs on Modal serverless — ideal for GPU / large compute. Add Modal credentials."
                   return "Choose where this agent step executes. Required for running shell commands safely."
                 })()}
+              </p>
+            </div>
+          )}
+
+          {blockData.isAgentic && sandboxBlocks && sandboxBlocks.length > 0 && (
+            <div className={section}>
+              <span className={sectionLabel}>Shared sandbox</span>
+              <select
+                value={(blockData.runs_in as string) || ""}
+                onChange={e => onChange(blockId, { ...blockData, runs_in: e.target.value || undefined })}
+                className={cn(inputBase)}
+                disabled={isViewer}
+              >
+                <option value="">None — own session per run</option>
+                {sandboxBlocks.map(sb => (
+                  <option key={sb.id} value={sb.id}>{sb.label}</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-stone-400 mt-1 leading-relaxed">
+                {blockData.runs_in
+                  ? "Reuses the provisioned sandbox — /workspace is already cloned and ready."
+                  : "Each run creates its own isolated session from scratch."}
               </p>
             </div>
           )}
@@ -1919,6 +2006,18 @@ export default function BlockEditor({
           blockData={blockData}
           onChange={handleFieldChange}
           isViewer={isViewer}
+        />
+      )}
+
+      {blockType === "sandbox" && (
+        <SandboxBlockPanel
+          blockData={blockData}
+          blockId={blockId}
+          onChange={onChange}
+          isViewer={isViewer}
+          sectionLabel={sectionLabel}
+          section={section}
+          inputBase={inputBase}
         />
       )}
 

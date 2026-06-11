@@ -1218,6 +1218,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                     projectSlug={projectSlug}
                     onWebhookChange={(id, repo) => { setGithubHookId(id); setGithubHookRepo(repo) }}
                     onClose={() => setSelectedNode(null)}
+                    sandboxBlocks={nodes.filter(n => (n.data as Record<string, unknown>).type === "sandbox").map(n => ({ id: n.id, label: (n.data as Record<string, unknown>).label as string || "Sandbox" }))}
                   />
                 </div>
               )}
