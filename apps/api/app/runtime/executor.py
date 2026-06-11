@@ -166,6 +166,7 @@ _OUTCOME_MAP: dict[str, tuple[str, list[str], bool]] = {
     "flaky_test_detective":   ("flaky_test_filed",       ["issue_url"], True),
     "release_readiness":      ("release_reviewed",       [],           False),
     "release_notes":          ("release_notes_drafted",  [],           False),
+    "release_gating":         ("release_tagged",         ["tag_url"],  True),
     "incident_responder":     ("incident_investigated",  [],           False),
     "postmortem_drafter":     ("postmortem_drafted",     ["issue_url"], True),
     "dependency_updater":     ("dependency_updated",     ["pr_url"],   True),

@@ -1,0 +1,209 @@
+name: Release Gating
+version: 1
+description: >
+  Manually trigger a release gate: runs readiness checks, pauses for human
+  approval via a clarification loop, then creates the git tag and posts
+  release notes on approval — or logs and stops on rejection.
+
+inputs:
+  repo:
+    label: Repository (owner/repo)
+    type: string
+  version:
+    label: Version to release (e.g. v1.3.0)
+    type: string
+  notify_channel:
+    label: Slack channel for release notifications
+    default: "#releases"
+    type: string
+  model:
+    label: AI Model
+    default: claude-sonnet-4-6
+    type: select
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+
+on:
+  manual:
+    next: check_readiness
+
+blocks:
+  check_readiness:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    label: Check release readiness
+    description: |
+      Evaluate whether the repository is ready to release {{inputs.version}}.
+
+      Repo: {{inputs.repo}}
+      Version: {{inputs.version}}
+
+      Run these checks and collect results:
+
+      1. **Open PRs targeting the default branch**
+         GET https://api.github.com/repos/{{inputs.repo}}/pulls?state=open&base=main
+         Headers: Authorization: token $GIT_TOKEN
+         List any open PRs — these are potential blockers.
+
+      2. **Recent CI status on default branch**
+         GET https://api.github.com/repos/{{inputs.repo}}/actions/runs?branch=main&per_page=5
+         Headers: Authorization: token $GIT_TOKEN
+         Check if the last workflow run passed.
+
+      3. **Open issues labeled "release-blocker" or "critical"**
+         GET https://api.github.com/search/issues?q=repo:{{inputs.repo}}+is:open+is:issue+label:release-blocker
+         Headers: Authorization: token $GIT_TOKEN
+         Count any open release-blocker issues.
+
+      4. **Commits since last tag**
+         GET https://api.github.com/repos/{{inputs.repo}}/tags?per_page=2
+         Headers: Authorization: token $GIT_TOKEN
+         GET https://api.github.com/repos/{{inputs.repo}}/commits?sha=main&per_page=20
+         Summarise what changed since the last tag (feat/fix/chore).
+
+      5. **Determine go/no-go verdict:**
+         - BLOCKED if: any open release-blocker issues OR CI failing
+         - CAUTION if: open PRs targeting base OR > 15 commits since last tag
+         - GO if: CI green, no blockers, PRs merged
+
+      Output ONLY the following JSON on the last line:
+        {
+          "verdict": "GO" | "CAUTION" | "BLOCKED",
+          "ci_status": "passing" | "failing" | "unknown",
+          "open_prs": 0,
+          "blocker_issues": 0,
+          "commits_since_last_tag": 0,
+          "summary": "one sentence summary",
+          "blockers": []
+        }
+    next: present_and_ask
+
+  present_and_ask:
+    type: brain
+    mode: single
+    model: "{{inputs.model}}"
+    label: Present readiness and ask for approval
+    description: |
+      You are the release approval gate for {{inputs.repo}} version {{inputs.version}}.
+
+      You will be called twice:
+
+      FIRST CALL — pausing for human approval:
+        Format the readiness report from check_readiness output and output exactly:
+        NEEDS_CLARIFICATION: Release {{inputs.version}} is {{check_readiness.verdict}}. CI: {{check_readiness.ci_status}}, open PRs: {{check_readiness.open_prs}}, blockers: {{check_readiness.blocker_issues}}. Summary: {{check_readiness.summary}}. Approve release? Reply YES to tag and publish, NO to abort.
+
+      SECOND CALL — after human responds:
+        The human's answer is provided as context. Parse it:
+        - If the answer starts with YES (case-insensitive), set approved=true.
+        - If the answer starts with NO (case-insensitive) or is anything else, set approved=false.
+        Capture any explanation they gave as the reason.
+
+        Output ONLY the following JSON on the last line:
+          {"approved": true, "reason": "human said yes"}
+    next: approval_gate
+
+  approval_gate:
+    type: logic
+    label: Approval gate — approved or rejected?
+    condition: "{{present_and_ask.approved}} == true"
+    next:
+      pass: create_tag
+      fail: notify_rejected
+
+  create_tag:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    label: Create git tag and generate release notes
+    description: |
+      The release has been approved. Create git tag {{inputs.version}} on {{inputs.repo}}
+      and generate release notes summarising commits since the last tag.
+
+      Step 1 — Find the default branch SHA:
+        GET https://api.github.com/repos/{{inputs.repo}}/git/ref/heads/main
+        Headers: Authorization: token $GIT_TOKEN
+        Extract the SHA from object.sha.
+
+      Step 2 — Create the tag object:
+        POST https://api.github.com/repos/{{inputs.repo}}/git/tags
+        Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
+        Body: {"tag": "{{inputs.version}}", "message": "Release {{inputs.version}}", "object": "<SHA>", "type": "commit"}
+        Note the tag SHA from the response.
+
+      Step 3 — Create the ref (push the tag):
+        POST https://api.github.com/repos/{{inputs.repo}}/git/refs
+        Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
+        Body: {"ref": "refs/tags/{{inputs.version}}", "sha": "<tag SHA>"}
+
+      Step 4 — Create the GitHub release:
+        POST https://api.github.com/repos/{{inputs.repo}}/releases
+        Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
+        Body: {"tag_name": "{{inputs.version}}", "name": "Release {{inputs.version}}", "body": "<release notes>", "draft": false, "prerelease": false}
+        The release notes body should summarise the readiness check: {{check_readiness.summary}}
+        Include bullet points for each recent commit category (feat/fix/chore).
+        Note the release html_url from the response.
+
+      Step 5 — Build the tag URL:
+        https://github.com/{{inputs.repo}}/releases/tag/{{inputs.version}}
+
+      Output ONLY the following JSON on the last line:
+        {
+          "tag_url": "https://github.com/{{inputs.repo}}/releases/tag/{{inputs.version}}",
+          "release_url": "https://github.com/{{inputs.repo}}/releases/tag/{{inputs.version}}",
+          "summary": "Release {{inputs.version}} tagged successfully"
+        }
+    next: record_outcome
+
+  record_outcome:
+    type: memory
+    label: Record release outcome
+    action: write
+    scope: repo
+    key: "{{inputs.repo}}"
+    summary: |
+      Repo: {{inputs.repo}}
+      Version: {{inputs.version}} tagged and released. Tag URL: {{create_tag.tag_url}}
+    next: notify_approved
+
+  notify_approved:
+    type: output
+    label: Notify release tagged
+    description: |
+      Release {{inputs.version}} has been tagged and published.
+      Tag: {{create_tag.tag_url}}
+      Release: {{create_tag.release_url}}
+      Summary: {{create_tag.summary}}
+    output:
+      via: slack
+      slack:
+        channel: "{{inputs.notify_channel}}"
+
+  notify_rejected:
+    type: output
+    label: Notify release aborted
+    description: |
+      Release {{inputs.version}} was aborted by the approver.
+      Reason: {{present_and_ask.reason}}
+      Readiness verdict was: {{check_readiness.verdict}}
+    output:
+      via: slack
+      slack:
+        channel: "{{inputs.notify_channel}}"
+
+test_trigger:
+  payload:
+    repo: "sseshachala/conductai"
+    version: "v1.3.0"
+    notify_channel: "#releases"
+    model: "claude-sonnet-4-6"
+    repository:
+      full_name: "sseshachala/conductai"
+      name: "conductai"
+      owner:
+        login: "sseshachala"
+      default_branch: "main"
+    sender:
+      login: "release-manager"
