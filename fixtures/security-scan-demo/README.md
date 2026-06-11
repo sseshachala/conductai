@@ -1,0 +1,1 @@
+This directory contains intentional demo fixtures for the Conduct CLI security-scan demo. The vulnerabilities and fake credentials here are synthetic — they exist to demonstrate what the security scanner finds.

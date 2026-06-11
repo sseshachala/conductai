@@ -62,3 +62,11 @@ apps/web/e2e/auth-states/*.json
 .vercel
 .rundock/
 .booster/
+
+# Per-app local tooling config (Claude Code, MCP) — not project files
+apps/api/.claude/
+apps/api/.mcp.json
+apps/api/CLAUDE.md
+apps/web/.claude/
+apps/web/.mcp.json
+apps/web/CLAUDE.md
