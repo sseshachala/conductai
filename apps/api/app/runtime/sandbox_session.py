@@ -375,10 +375,112 @@ class RemoteSession:
         log.debug("sandbox_session.remote.closed", host=self._host.get("ip"))
 
 
+
+# ── E2B session ───────────────────────────────────────────────────────────────
+
+@register("e2b")
+class E2BSession:
+    """
+    Persistent E2B sandbox session via subprocess IPC.
+
+    Spawns e2b_session_runner as a subprocess with E2B_API_KEY in its env
+    only — the key never touches the shared API worker process.
+    The runner creates ONE E2B sandbox and handles all tool calls via the
+    E2B REST API, so the sandbox filesystem persists across tool calls.
+    """
+
+    @classmethod
+    def from_config(cls, runs_on: dict, credentials: dict) -> "E2BSession":
+        env_vars = credentials.get("env_vars") or {}
+        api_key = env_vars.get("e2b_api_key") or env_vars.get("E2B_API_KEY") or ""
+        return cls(api_key)
+
+    def __init__(self, api_key: str) -> None:
+        self.working_dir: str | None = "/home/user"
+        self._api_key = api_key
+        self._proc = None
+        self._started = False
+        self._sandbox_id: str | None = None
+
+    def _ensure_started(self) -> None:
+        if self._started:
+            return
+        import sys, json as _json
+        proc_env = {**os.environ, "E2B_API_KEY": self._api_key}
+        self._proc = subprocess.Popen(
+            [sys.executable, "-m", "app.runtime.e2b_session_runner"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=proc_env,
+            text=True,
+        )
+        try:
+            first_line = self._proc.stdout.readline()
+            data = _json.loads(first_line)
+            self._sandbox_id = data.get("sandbox_id")
+        except Exception:
+            self._sandbox_id = None
+        self._started = True
+        log.debug("sandbox_session.e2b.started", sandbox_id=self._sandbox_id)
+
+    def dispatch(self, tool_name: str, tool_input: dict) -> str:
+        import json
+        try:
+            self._ensure_started()
+            payload = json.dumps({"tool_name": tool_name, "tool_input": tool_input}) + "\n"
+            self._proc.stdin.write(payload)
+            self._proc.stdin.flush()
+            response_line = self._proc.stdout.readline()
+            if not response_line:
+                return "Error: E2B session process terminated unexpectedly"
+            data = json.loads(response_line)
+            if wd := data.get("working_dir"):
+                self.working_dir = wd
+            return data.get("result", "(no output)")
+        except Exception as e:
+            log.warning("sandbox_session.e2b.dispatch_error", error=str(e))
+            local = LocalSession()
+            result = local.dispatch(tool_name, tool_input)
+            self.working_dir = local.working_dir
+            local.close()
+            return result
+
+    def capture_artifacts(self) -> tuple[list[dict], str]:
+        if not self.working_dir or not self._started:
+            return [], ""
+        result = self.dispatch(
+            "run_shell",
+            {"command": "git diff --stat HEAD 2>/dev/null || git diff --stat 2>/dev/null",
+             "working_dir": self.working_dir},
+        )
+        files: list[dict] = []
+        for line in result.splitlines():
+            m = re.match(r"^\s*(.+?)\s*\|\s*\d+", line)
+            if m:
+                fname = m.group(1).strip()
+                if not fname.startswith("..."):
+                    files.append({"path": fname, "action": "modified"})
+        return files, result
+
+    def close(self) -> None:
+        if self._started and self._proc:
+            try:
+                self._proc.stdin.write('{"tool_name": "__exit__", "tool_input": {}}' + "\n")
+                self._proc.stdin.flush()
+                self._proc.wait(timeout=15)
+            except Exception:
+                self._proc.kill()
+            log.debug("sandbox_session.e2b.closed", sandbox_id=self._sandbox_id)
+
 # ── Factory ───────────────────────────────────────────────────────────────────
 
 def _infer_provider(remote_host: dict | None, credentials: dict | None) -> str:
-    """Backwards-compat inference when no explicit runs_on.provider is set."""
+    """Backwards-compat inference when no explicit runs_on.provider is set.
+
+    Priority: ssh → modal → e2b → local
+    Use runs_on.provider to be explicit when multiple backends are available.
+    """
     if remote_host and remote_host.get("ip"):
         return "ssh"
     _env_vars = (credentials or {}).get("env_vars") or {}
@@ -387,6 +489,8 @@ def _infer_provider(remote_host: dict | None, credentials: dict | None) -> str:
     token_secret = modal_creds.get("token_secret") or _env_vars.get("modal_token_secret") or _env_vars.get("MODAL_TOKEN_SECRET") or ""
     if token_id and token_secret:
         return "modal"
+    if _env_vars.get("e2b_api_key") or _env_vars.get("E2B_API_KEY"):
+        return "e2b"
     return "local"
 
 
