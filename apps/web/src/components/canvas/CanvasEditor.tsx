@@ -734,7 +734,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
         }
       } catch { /* preflight is best-effort */ }
 
-      await _fireRun(headers, dryRun, initialState, undefined)
+      await _fireRun(headers, dryRun, initialState ?? { __manual: true }, undefined)
     } catch (e) {
       setRunning("idle")
       const msg = e instanceof Error ? e.message : "Failed to start run — check your connection."
@@ -1322,7 +1322,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                     setPreflight(null)
                     setRunning(preflight.pendingDryRun ? "dry" : "live")
                     try {
-                      await _fireRun(headers, preflight.pendingDryRun, preflight.initialState, preflight.suggestedTurns)
+                      await _fireRun(headers, preflight.pendingDryRun, preflight.initialState ?? { __manual: true }, preflight.suggestedTurns)
                     } catch (e) {
                       setRunning("idle")
                       const msg = e instanceof Error ? e.message : "Failed to start run — check your connection."
@@ -1340,7 +1340,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                     setPreflight(null)
                     setRunning(preflight.pendingDryRun ? "dry" : "live")
                     try {
-                      await _fireRun(headers, preflight.pendingDryRun, preflight.initialState, undefined)
+                      await _fireRun(headers, preflight.pendingDryRun, preflight.initialState ?? { __manual: true }, undefined)
                     } catch (e) {
                       setRunning("idle")
                       const msg = e instanceof Error ? e.message : "Failed to start run — check your connection."
