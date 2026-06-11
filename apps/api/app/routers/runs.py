@@ -394,16 +394,16 @@ def stream_run_events(
         def is_terminal() -> str | None:
             stream_db.expire_all()
             current = stream_db.query(Run).filter(Run.id == run_id).first()
-            return current.status if current and current.status in ("succeeded", "failed", "paused", "cancelled") else None
+            return current.status if current and current.status in ("succeeded", "failed", "paused", "paused_for_clarification", "cancelled") else None
 
         try:
             # Flush any events already written before we subscribed
             yield from flush_new_events()
             terminal = is_terminal()
             if terminal:
-                if terminal == "paused":
+                if terminal in ("paused", "paused_for_clarification"):
                     r = stream_db.query(Run).filter(Run.id == run_id).first()
-                    yield f"data: {json.dumps({'kind': 'run_paused', 'block_id': r.current_block_id if r else None, 'payload': {}})}\n\n"
+                    yield f"data: {json.dumps({'kind': 'run_paused', 'block_id': r.current_block_id if r else None, 'payload': {'status': terminal}})}\n\n"
                 yield "data: [DONE]\n\n"
                 return
 
@@ -579,6 +579,76 @@ def approve_run(
 
     log.info("run.approved", run_id=str(run_id), workspace_id=workspace_id, approved_by=body.approver, decision=body.decision)
     return {"run_id": str(run_id), "decision": body.decision, "status": "queued"}
+
+
+# ── Clarification endpoint ────────────────────────────────────────────────────
+
+class ClarifyRequest(BaseModel):
+    answer: str
+
+
+@router.post("/{run_id}/clarify")
+def clarify_run(
+    workflow_id: UUID,
+    run_id: UUID,
+    body: ClarifyRequest,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _role: str = Depends(require_workspace_role("admin", "developer")),
+):
+    """
+    Resume a run that is paused awaiting clarification.
+    Stores the answer in run.state and re-queues the run.
+    """
+    _get_workflow(workflow_id, workspace_id, db)
+    run = _get_run(run_id, workflow_id, db)
+
+    if run.status != "paused_for_clarification":
+        raise HTTPException(status_code=400, detail=f"Run is not awaiting clarification (status: {run.status})")
+
+    block_id = run.current_block_id
+    if not block_id:
+        raise HTTPException(status_code=400, detail="No block recorded on paused run")
+
+    from sqlalchemy import text as _text
+    state = dict(run.state or {})
+    state[f"__clarification_{block_id}"] = body.answer
+
+    cas_result = db.execute(
+        _text(
+            "UPDATE runs SET status='pending', paused_at=NULL, state=:state::jsonb "
+            "WHERE id=:id AND status='paused_for_clarification' "
+            "RETURNING id"
+        ),
+        {"state": json.dumps(state), "id": str(run_id)},
+    ).fetchone()
+    if not cas_result:
+        current_status = db.query(Run).filter(Run.id == run_id).first()
+        status_str = current_status.status if current_status else "unknown"
+        raise HTTPException(
+            status_code=409,
+            detail=f"Run is not paused for clarification — already resumed or in status '{status_str}'.",
+        )
+
+    event = RunEvent(
+        run_id=run_id,
+        block_id=block_id,
+        kind="clarification_answered",
+        payload={"block_id": block_id, "answer_length": len(body.answer)},
+    )
+    db.add(event)
+    db.commit()
+
+    try:
+        _enqueue_run(str(run_id))
+    except HTTPException:
+        raise
+    except Exception as _enqueue_err:
+        log.error("run.clarify_enqueue_failed", run_id=str(run_id), error=str(_enqueue_err))
+        raise HTTPException(status_code=503, detail="Clarification recorded but queue unavailable — retry shortly")
+
+    log.info("run.clarified", run_id=str(run_id), workspace_id=workspace_id, block_id=block_id)
+    return {"run_id": str(run_id), "status": "resumed"}
 
 
 # ── Workspace-wide run endpoints ──────────────────────────────────────────────
