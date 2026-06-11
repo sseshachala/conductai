@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, require_workspace_role
+from app.core.auth import get_workspace_id, require_permission
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.models.run import Run
@@ -81,7 +81,7 @@ class AgentStatus(BaseModel):
 def get_summary(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.runs.view")),
 ):
     cutoff_24h = _now() - timedelta(hours=24)
     stale_cutoff = _stale_cutoff()
@@ -146,7 +146,7 @@ def get_summary(
 def get_agents(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.runs.view")),
 ):
     cutoff_24h = _now() - timedelta(hours=24)
     stale_cutoff = _stale_cutoff()
@@ -427,7 +427,7 @@ class AlertResponse(BaseModel):
 def list_alerts(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.runs.view")),
     event_type: str | None = Query(default=None, description="Filter by event_type"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -472,7 +472,7 @@ def resolve_alert(
     alert_id: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer")),
+    _: str = Depends(require_permission("platform.workflows.run")),
 ):
     """Mark a watchdog event as resolved by setting resolved_at to now."""
     event = (

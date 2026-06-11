@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, require_workspace_role
+from app.core.auth import get_workspace_id, require_permission
 from app.core.database import get_db
 from app.models.run import Run
 from app.models.run_trace import RunTrace
@@ -147,7 +147,7 @@ class DashboardOut(BaseModel):
 def get_dashboard(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.runs.view")),
 ):
     today_midnight = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     week_start = datetime.now(timezone.utc) - timedelta(days=7)

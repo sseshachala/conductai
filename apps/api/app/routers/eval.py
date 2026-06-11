@@ -27,7 +27,7 @@ import structlog
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, require_workspace_role
+from app.core.auth import get_workspace_id, require_permission
 from app.core.config import settings
 from app.core.database import get_db
 
@@ -145,7 +145,7 @@ def _require_super_admin(
 def get_eval_report(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin")),
+    _: str = Depends(require_permission("platform.workspace.edit")),
     refresh: bool = False,
 ):
     """
@@ -245,7 +245,7 @@ def list_playbook_evals():
 def list_fixtures(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.eval.view")),
 ):
     """
     Return a lightweight list of all playbook fixtures.
@@ -280,7 +280,7 @@ def get_fixture(
     slug: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.eval.view")),
 ):
     """
     Return the full fixture for a single playbook: trigger payload,
@@ -306,7 +306,7 @@ def run_playbook_eval(
     slug: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.eval.view")),
 ):
     """
     Re-run structural eval for a single playbook right now, bypassing the
@@ -335,7 +335,7 @@ def run_playbook_eval(
 def run_all_evals(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer")),
+    _: str = Depends(require_permission("platform.eval.view")),
 ):
     """
     Re-run structural eval for all playbooks right now, replacing the cache.
@@ -486,7 +486,7 @@ def start_live_eval(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin")),
+    _: str = Depends(require_permission("platform.workspace.edit")),
 ):
     """
     Queue a live (real LLM) eval run for a single playbook.
@@ -584,7 +584,7 @@ def get_benchmark_edition(edition_slug: str):
 def list_playbook_baselines(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.eval.view")),
 ):
     """
     Return all single-playbook baseline files.
@@ -794,7 +794,7 @@ def get_scenario_set(
     slug: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.eval.view")),
 ):
     """
     Return all scenarios for a playbook that has a multi-scenario fixture file.
@@ -845,7 +845,7 @@ def get_live_job(
     job_id: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin")),
+    _: str = Depends(require_permission("platform.workspace.edit")),
 ):
     """
     Poll the status of a live eval job.

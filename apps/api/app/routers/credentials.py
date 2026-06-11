@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, require_workspace_role, audit, require_permission
+from app.core.auth import get_workspace_id, require_permission, audit
 from app.core.crypto import decrypt, encrypt
 from app.core.database import get_db
 from app.models.integration import Integration
@@ -66,7 +66,7 @@ class CredentialOut(BaseModel):
 
 
 @router.get("", response_model=list[CredentialOut])
-def list_credentials(db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer"))):
+def list_credentials(db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _: str = Depends(require_permission("platform.credentials.manage"))):
     rows = db.query(Integration).filter(
         Integration.workspace_id == workspace_id
     ).order_by(Integration.created_at).all()
@@ -83,7 +83,7 @@ def list_credentials(db: Session = Depends(get_db), workspace_id: str = Depends(
 
 
 @router.post("", status_code=201)
-def upsert_credential(body: CredentialUpsert, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _role: str = Depends(require_workspace_role("admin", "developer"))):
+def upsert_credential(body: CredentialUpsert, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _: str = Depends(require_permission("platform.credentials.manage"))):
     if not body.credentials:
         raise HTTPException(status_code=422, detail="credentials dict must not be empty")
 
@@ -140,7 +140,7 @@ def upsert_credential(body: CredentialUpsert, db: Session = Depends(get_db), wor
 
 
 @router.delete("/{handle}", status_code=204)
-def delete_credential(handle: str, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _role: str = Depends(require_workspace_role("admin"))):
+def delete_credential(handle: str, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _: str = Depends(require_permission("platform.credentials.manage"))):
     row = db.query(Integration).filter(
         Integration.workspace_id == workspace_id,
         Integration.handle == handle,
@@ -179,7 +179,7 @@ def list_credentials_by_environment(
     env_id: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.credentials.manage")),
 ):
     """List credentials scoped to a specific environment."""
     rows = db.query(Integration).filter(
@@ -245,7 +245,7 @@ def list_env_vars(
     env_id: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin")),
+    _: str = Depends(require_permission("platform.credentials.manage")),
 ):
     """Return all credentials for an environment as flat key-value pairs."""
     rows = db.query(Integration).filter(
@@ -278,7 +278,7 @@ def save_env_vars(
     body: list[EnvVarUpsert],
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin")),
+    _: str = Depends(require_permission("platform.credentials.manage")),
 ):
     """Save a full list of env vars for an environment — groups by handle and upserts."""
     from app.models.environment import Environment as _Env
@@ -335,7 +335,7 @@ def reveal_credential(
     environment_id: str | None = None,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin")),
+    _: str = Depends(require_permission("platform.credentials.manage")),
 ):
     """Return decrypted credential fields — admin only. Every access is audit-logged."""
     q = db.query(Integration).filter(
@@ -424,7 +424,7 @@ def list_github_issues(
     label: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.credentials.manage")),
 ):
     """Return open issues in repo with the given label using the stored GitHub token."""
     token = _github_token(workspace_id, db)
@@ -462,7 +462,7 @@ def list_github_repos(
     environment_id: str | None = None,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.credentials.manage")),
 ):
     """Return repos the workspace's git token can access (provider-aware)."""
     token, provider = _git_token(workspace_id, db, environment_id)
@@ -515,7 +515,7 @@ def list_github_branches(
     repo: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.credentials.manage")),
 ):
     """Return branch names for the given repo (provider-aware)."""
     token, provider = _git_token(workspace_id, db)
@@ -561,7 +561,7 @@ def register_github_webhook(
     repo: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin")),
+    _: str = Depends(require_permission("platform.credentials.manage")),
 ):
     """
     Register a GitHub webhook on the given repo pointing at this Delegator instance.
@@ -634,7 +634,7 @@ def register_vercel_webhook(
     body: VercelWebhookRequest,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin")),
+    _: str = Depends(require_permission("platform.credentials.manage")),
 ):
     """
     Register a Vercel webhook scoped to this workspace using the stored Vercel token.
@@ -728,7 +728,7 @@ class CredentialTestRequest(BaseModel):
 def test_credential(
     body: CredentialTestRequest,
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer")),
+    _: str = Depends(require_permission("platform.credentials.manage")),
 ):
     """
     Test whether the supplied credentials can reach the named service.

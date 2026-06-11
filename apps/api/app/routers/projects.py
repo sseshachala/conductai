@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_user_id, get_workspace_id, require_workspace_role, get_clerk_user_email, get_clerk_user_info, find_clerk_user_id_by_email, get_role_description
+from app.core.auth import get_user_id, get_workspace_id, require_permission, get_clerk_user_email, get_clerk_user_info, find_clerk_user_id_by_email, get_role_description
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.email import send_template_email, APP_URL
@@ -317,7 +317,7 @@ def rename_project(
     body: dict,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin")),
+    _: str = Depends(require_permission("platform.workspace.edit")),
 ):
     name = (body.get("name") or "").strip()
     if not name:
@@ -346,7 +346,7 @@ def delete_project(
     project_id: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin")),
+    _: str = Depends(require_permission("platform.workspace.edit")),
     purge: bool = False,  # ?purge=true — also deletes analytics, audit log, API keys, environments
 ):
     if project_id != workspace_id:
@@ -415,7 +415,7 @@ def list_members(
     project_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
     workspace_id: Annotated[str, Depends(get_workspace_id)],
-    _role: Annotated[str, Depends(require_workspace_role("admin", "developer", "security", "viewer"))],
+    _: Annotated[str, Depends(require_permission("platform.members.manage"))],
     db: Session = Depends(get_db),
 ):
     if project_id != workspace_id:
@@ -443,7 +443,7 @@ def get_member_workspaces(
     clerk_user_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
     workspace_id: Annotated[str, Depends(get_workspace_id)],
-    _role: Annotated[str, Depends(require_workspace_role("admin"))],
+    _: Annotated[str, Depends(require_permission("platform.members.manage"))],
     db: Session = Depends(get_db),
 ):
     if project_id != workspace_id:
@@ -467,7 +467,7 @@ def add_member(
     body: MemberAdd,
     user_id: Annotated[str, Depends(get_user_id)],
     workspace_id: Annotated[str, Depends(get_workspace_id)],
-    _role: Annotated[str, Depends(require_workspace_role("admin"))],
+    _: Annotated[str, Depends(require_permission("platform.members.manage"))],
     db: Session = Depends(get_db),
 ):
     if project_id != workspace_id:
@@ -588,7 +588,7 @@ def list_invites(
     project_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
     workspace_id: Annotated[str, Depends(get_workspace_id)],
-    _role: Annotated[str, Depends(require_workspace_role("admin"))],
+    _: Annotated[str, Depends(require_permission("platform.members.manage"))],
     db: Session = Depends(get_db),
 ):
     if project_id != workspace_id:
@@ -609,7 +609,7 @@ def cancel_invite(
     invite_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
     workspace_id: Annotated[str, Depends(get_workspace_id)],
-    _role: Annotated[str, Depends(require_workspace_role("admin"))],
+    _: Annotated[str, Depends(require_permission("platform.members.manage"))],
     db: Session = Depends(get_db),
 ):
     if project_id != workspace_id:
@@ -636,7 +636,7 @@ def update_member_role(
     body: dict,
     user_id: Annotated[str, Depends(get_user_id)],
     workspace_id: Annotated[str, Depends(get_workspace_id)],
-    _role: Annotated[str, Depends(require_workspace_role("admin"))],
+    _: Annotated[str, Depends(require_permission("platform.members.manage"))],
     db: Session = Depends(get_db),
 ):
     if project_id != workspace_id:
@@ -671,7 +671,7 @@ def remove_member(
     clerk_user_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
     workspace_id: Annotated[str, Depends(get_workspace_id)],
-    _role: Annotated[str, Depends(require_workspace_role("admin"))],
+    _: Annotated[str, Depends(require_permission("platform.members.manage"))],
     db: Session = Depends(get_db),
 ):
     if project_id != workspace_id:

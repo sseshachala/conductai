@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_user_id, get_workspace_id, require_workspace_role
+from app.core.auth import get_user_id, get_workspace_id, require_permission
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.email import render_template, _FALLBACK_TEMPLATES, _ROLE_DESCRIPTIONS, APP_URL
@@ -74,7 +74,7 @@ def _require_admin(x_admin_secret: str | None = Header(default=None)) -> None:
 def list_templates(
     db: Session = Depends(get_db),
     _ws: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.workflows.view")),
 ):
     return db.query(EmailTemplate).order_by(EmailTemplate.slug).all()
 
@@ -84,7 +84,7 @@ def get_template(
     slug: str,
     db: Session = Depends(get_db),
     _ws: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.workflows.view")),
 ):
     row = db.query(EmailTemplate).filter(EmailTemplate.slug == slug).first()
     if not row:

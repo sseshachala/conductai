@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, require_workspace_role
+from app.core.auth import get_workspace_id, require_permission
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.playbook_submission import PlaybookSubmission
@@ -143,7 +143,7 @@ def list_submissions(
     status: str | None = Query(default=None, description="Filter by status: pending | promoted | needs_work"),
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.marketplace.browse")),
 ):
     """Return all playbook submission rows, optionally filtered by status."""
     if status and status not in _VALID_STATUSES:
@@ -162,7 +162,7 @@ def get_playbook_score(
     slug: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.marketplace.browse")),
 ):
     """Return the most recent eval score for a playbook slug. 404 if no row exists."""
     row = (
@@ -182,7 +182,7 @@ def patch_submission(
     body: SubmissionPatch,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin")),
+    _: str = Depends(require_permission("platform.workspace.edit")),
 ):
     """Update the status of a playbook submission. Admin only."""
     if body.status not in _VALID_STATUSES:
