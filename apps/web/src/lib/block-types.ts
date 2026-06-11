@@ -8,6 +8,7 @@ export type BlockType =
   | "output"
   | "cleanup"
   | "mcp"
+  | "sandbox"
 
 export interface BlockStyle {
   bg: string
@@ -28,7 +29,8 @@ export const BLOCK_STYLES: Record<BlockType, BlockStyle> = {
   approval: { bg: "bg-orange-50", border: "border-orange-200", label: "bg-orange-50 text-orange-700",labelText: "APPROVAL",   text: "text-orange-700", icon: "approval", buttonClass: "bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100" },
   output:   { bg: "bg-rose-50",   border: "border-rose-200",   label: "bg-rose-50 text-rose-700",    labelText: "NOTIFY",     text: "text-rose-700",   icon: "output",   buttonClass: "bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100"       },
   cleanup:  { bg: "bg-stone-50",  border: "border-stone-300",  label: "bg-stone-100 text-stone-500", labelText: "CLEANUP",    text: "text-stone-500",  icon: "cleanup",  buttonClass: "bg-stone-50 border-stone-300 text-stone-500 hover:bg-stone-100"   },
-  mcp:      { bg: "bg-cyan-50",  border: "border-cyan-200",   label: "bg-cyan-50 text-cyan-700",    labelText: "MCP",        text: "text-cyan-700",   icon: "mcp",      buttonClass: "bg-cyan-50 border-cyan-200 text-cyan-700 hover:bg-cyan-100"       },
+  mcp:      { bg: "bg-cyan-50",   border: "border-cyan-200",   label: "bg-cyan-50 text-cyan-700",     labelText: "MCP",        text: "text-cyan-700",   icon: "mcp",     buttonClass: "bg-cyan-50 border-cyan-200 text-cyan-700 hover:bg-cyan-100"        },
+  sandbox:  { bg: "bg-teal-50",  border: "border-teal-200",   label: "bg-teal-50 text-teal-700",     labelText: "SANDBOX",    text: "text-teal-700",   icon: "tool",    buttonClass: "bg-teal-50 border-teal-200 text-teal-700 hover:bg-teal-100"        },
 }
 
 export const BLOCK_LIBRARY: { type: BlockType; title: string; sub: string; description: string; preferred?: boolean }[] = [
