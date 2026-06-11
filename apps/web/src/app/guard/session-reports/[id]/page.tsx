@@ -333,7 +333,13 @@ function SessionReportDetailContent() {
                       lineHeight: 1.7,
                     }}
                     dangerouslySetInnerHTML={{
-                      __html: report.report_md.replace(/\n/g, "<br>"),
+                      __html: report.report_md
+                        .replace(/&/g, "&amp;")
+                        .replace(/</g, "&lt;")
+                        .replace(/>/g, "&gt;")
+                        .replace(/"/g, "&quot;")
+                        .replace(/'/g, "&#39;")
+                        .replace(/\n/g, "<br>"),
                     }}
                   />
                 ) : (
