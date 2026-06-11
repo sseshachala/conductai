@@ -19,6 +19,8 @@ The executor stays untouched: YAML is layered *over* the runtime, not into it.
 """
 from __future__ import annotations
 
+import functools
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -33,6 +35,39 @@ from app.dsl.schema import (
 
 # Synthetic id reserved for the trigger node we generate from ``on:``.
 TRIGGER_NODE_ID = "_trigger"
+
+
+# ---------------------------------------------------------------------------
+# YAML Schema validation (opt-in, fires only when schema_version: "1")
+# ---------------------------------------------------------------------------
+
+@functools.lru_cache(maxsize=1)
+def _load_v1_schema() -> dict:
+    """Load and cache the JSON Schema draft-07 document from v1.yaml."""
+    schema_path = Path(__file__).parent / "schema" / "v1.yaml"
+    with open(schema_path) as f:
+        return yaml.safe_load(f)
+
+
+def _validate_against_yaml_schema(data: dict) -> None:
+    """Validate *data* against the v1 JSON Schema if schema_version == "1".
+
+    Only fires when the playbook opts in via ``schema_version: "1"``.
+    Raises WorkflowValidationError on any schema violation so callers see a
+    consistent exception type regardless of the validation layer that caught it.
+    """
+    if data.get("schema_version") != "1":
+        return  # opt-in only — existing playbooks are unaffected
+
+    import jsonschema  # deferred import; only needed for schema_version: "1" playbooks
+
+    schema = _load_v1_schema()
+    try:
+        jsonschema.validate(data, schema)
+    except jsonschema.ValidationError as e:
+        raise WorkflowValidationError(
+            f"Playbook schema validation failed: {e.message}"
+        ) from e
 
 
 # ---------------------------------------------------------------------------
@@ -53,6 +88,9 @@ def load_workflow_yaml(yaml_text: str) -> Workflow:
         )
 
     data = _restore_keyword_keys(data)
+
+    # JSON Schema validation (opt-in — only runs when schema_version: "1")
+    _validate_against_yaml_schema(data)
 
     try:
         return Workflow.model_validate(data)
