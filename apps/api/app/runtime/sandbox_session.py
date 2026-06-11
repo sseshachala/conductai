@@ -8,13 +8,16 @@ working directory state across tool calls.
 
 Session lifetime = one Brain block execution.
 
-Backends:
-  LocalSession   — tempdir + direct subprocess (dev / no-Modal)
-  ModalSession   — one persistent Modal sandbox via exec() per tool call
-  RemoteSession  — persistent SSH connection (DigitalOcean / remote host)
+Backends (registered via @register decorator):
+  local   — tempdir + direct subprocess (dev / no-Modal)
+  modal   — one persistent Modal sandbox via exec() per tool call
+  ssh     — persistent SSH connection (DigitalOcean / remote host)
+
+Adding a new backend: create a new file, decorate with @register("provider"),
+implement from_config() + the SandboxSession protocol. No changes needed here.
 
 Factory:
-  create_session(remote_host, credentials) → appropriate session
+  create_session(remote_host, credentials, runs_on) → appropriate session
 """
 from __future__ import annotations
 
@@ -24,6 +27,8 @@ import subprocess
 import tempfile
 import structlog
 from typing import Protocol, runtime_checkable
+
+from app.runtime.sandbox_registry import register
 
 log = structlog.get_logger(__name__)
 
@@ -52,11 +57,16 @@ class SandboxSession(Protocol):
 
 # ── Local session ─────────────────────────────────────────────────────────────
 
+@register("local")
 class LocalSession:
     """
     Persistent local execution session backed by a temporary directory.
     All tool calls share the same filesystem state across the block's lifetime.
     """
+
+    @classmethod
+    def from_config(cls, runs_on: dict, credentials: dict) -> "LocalSession":
+        return cls()
 
     def __init__(self) -> None:
         self._tmpdir = tempfile.mkdtemp(prefix="conduct_brain_")
@@ -167,6 +177,7 @@ class LocalSession:
 
 # ── Modal session ─────────────────────────────────────────────────────────────
 
+@register("modal")
 class ModalSession:
     """
     Persistent Modal sandbox session via subprocess IPC.
@@ -176,6 +187,14 @@ class ModalSession:
     The runner creates ONE Modal sandbox and handles all tool calls via exec(),
     so the sandbox filesystem persists across calls within the block.
     """
+
+    @classmethod
+    def from_config(cls, runs_on: dict, credentials: dict) -> "ModalSession":
+        modal_creds = credentials.get("modal", {})
+        env_vars = credentials.get("env_vars") or {}
+        token_id = modal_creds.get("token_id") or env_vars.get("modal_token_id") or env_vars.get("MODAL_TOKEN_ID") or ""
+        token_secret = modal_creds.get("token_secret") or env_vars.get("modal_token_secret") or env_vars.get("MODAL_TOKEN_SECRET") or ""
+        return cls(token_id, token_secret)
 
     def __init__(self, token_id: str, token_secret: str) -> None:
         self.working_dir: str | None = "/tmp"
@@ -270,12 +289,17 @@ class ModalSession:
 
 # ── Remote session ────────────────────────────────────────────────────────────
 
+@register("ssh")
 class RemoteSession:
     """
     Persistent SSH session for remote host execution.
     Opens one paramiko connection at first use and reuses it across all tool
     calls in the block — eliminates per-call SSH handshake overhead.
     """
+
+    @classmethod
+    def from_config(cls, runs_on: dict, credentials: dict) -> "RemoteSession":
+        return cls(runs_on)
 
     def __init__(self, host_config: dict) -> None:
         self.working_dir: str | None = None
@@ -353,35 +377,46 @@ class RemoteSession:
 
 # ── Factory ───────────────────────────────────────────────────────────────────
 
-def create_session(
-    remote_host: dict | None,
-    credentials: dict | None,
-) -> LocalSession | ModalSession | RemoteSession:
-    """
-    Return the right session backend for this Brain block execution.
-
-    Priority:
-      1. remote_host configured → RemoteSession (persistent SSH)
-      2. Modal credentials in workspace env → ModalSession (persistent sandbox)
-      3. Local fallback (dev mode) → LocalSession
-    """
+def _infer_provider(remote_host: dict | None, credentials: dict | None) -> str:
+    """Backwards-compat inference when no explicit runs_on.provider is set."""
     if remote_host and remote_host.get("ip"):
-        log.debug("sandbox_session.backend", type="remote")
-        return RemoteSession(remote_host)
-
-    modal_creds = (credentials or {}).get("modal", {})
+        return "ssh"
     _env_vars = (credentials or {}).get("env_vars") or {}
+    modal_creds = (credentials or {}).get("modal", {})
     token_id = modal_creds.get("token_id") or _env_vars.get("modal_token_id") or _env_vars.get("MODAL_TOKEN_ID") or ""
     token_secret = modal_creds.get("token_secret") or _env_vars.get("modal_token_secret") or _env_vars.get("MODAL_TOKEN_SECRET") or ""
     if token_id and token_secret:
-        log.debug("sandbox_session.backend", type="modal")
-        return ModalSession(token_id, token_secret)
+        return "modal"
+    return "local"
 
-    from app.core.config import settings
-    if settings.environment == "production":
-        raise RuntimeError(
-            "Sandbox not configured — add Modal credentials to run agent tools in production. "
-            "LocalSession is disabled in production environments."
-        )
-    log.debug("sandbox_session.backend", type="local")
-    return LocalSession()
+
+def create_session(
+    remote_host: dict | None,
+    credentials: dict | None,
+    runs_on: dict | None = None,
+) -> SandboxSession:
+    """
+    Return the right session backend for this Brain block execution.
+
+    Provider resolution order:
+      1. runs_on.provider explicitly set → use registry
+      2. remote_host.ip set → ssh (backwards compat)
+      3. Modal credentials present → modal (backwards compat)
+      4. Fallback → local (dev only; raises in production)
+    """
+    from app.runtime.sandbox_registry import get_provider
+
+    provider = (runs_on or {}).get("provider") or _infer_provider(remote_host, credentials)
+
+    if provider == "local":
+        from app.core.config import settings
+        if settings.environment == "production":
+            raise RuntimeError(
+                "Sandbox not configured — add Modal or E2B credentials to run agent tools in production. "
+                "LocalSession is disabled in production environments."
+            )
+
+    log.debug("sandbox_session.backend", type=provider)
+    cls = get_provider(provider)
+    effective_runs_on = runs_on or ({"ip": remote_host.get("ip"), **remote_host} if remote_host else {})
+    return cls.from_config(effective_runs_on, credentials or {})
