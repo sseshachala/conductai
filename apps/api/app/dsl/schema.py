@@ -125,6 +125,7 @@ class Block(BaseModel):
     integration: str | None = None
     action: str | None = None
     params: dict[str, Any] = Field(default_factory=dict)
+    input: dict[str, Any] | None = None  # alias for params on tool blocks (#565)
 
     # — mcp blocks —
     credential_key: str | None = None
@@ -136,6 +137,9 @@ class Block(BaseModel):
     runs_on: RunsOn | None = None
     custom_instructions: str | None = None  # user-editable zone, appended to description at runtime
     prompt_file: str | None = None  # path relative to playbook dir, e.g. prompts/fetch_issue.txt
+    system: str | None = None   # brain block system prompt (alternative to description) (#565)
+    prompt: str | None = None   # brain block user prompt (#565)
+    allowed_tools: list[str] | None = None  # tool scope restriction for brain blocks (#565)
 
     # — logic blocks —
     condition: str | None = None
@@ -155,6 +159,15 @@ class Block(BaseModel):
 
     # — output blocks —
     output: OutputConfig | None = None
+    channels: list[str] | None = None   # shorthand output channels (#565)
+    template: str | None = None         # shorthand output template (#565)
+
+    # — iteration / loop (#565) —
+    for_each: str | None = None   # iteration expression, e.g. "{{ items.output }}"
+    item_var: str | None = None   # loop variable name (default "item")
+
+    # — retry (#565) —
+    retry: dict[str, Any] | None = None  # retry config (typed properly in #564, dict for now)
 
     # — routing — either a single string or a per-branch dict
     # e.g.  next: create_droplet
@@ -168,13 +181,21 @@ class Block(BaseModel):
     def _validate_by_type(self) -> "Block":
         t = self.type
         if t == "tool":
+            # If action uses slash-format (e.g. "github/create_issue"), derive
+            # integration from it so authors don't have to repeat themselves.
+            if self.action and "/" in self.action and self.integration is None:
+                parts = self.action.split("/", 1)
+                self.integration = parts[0]
+                self.action = parts[1]
             if not self.integration or not self.action:
                 raise ValueError("tool blocks require both `integration` and `action`")
         elif t == "brain":
             if self.mode and self.mode not in BRAIN_MODES:
                 raise ValueError(f"brain mode must be one of {BRAIN_MODES}")
-            if not self.description and not self.prompt_file:
-                raise ValueError("brain blocks require a `description` or `prompt_file`")
+            if not self.description and not self.prompt_file and not self.system and not self.prompt:
+                raise ValueError(
+                    "brain blocks require a `description`, `prompt_file`, `system`, or `prompt`"
+                )
         elif t == "logic":
             if not self.condition:
                 raise ValueError("logic blocks require a `condition`")
@@ -198,8 +219,10 @@ class Block(BaseModel):
             if self.action == "write" and not self.summary:
                 raise ValueError("memory write blocks require a `summary:` template")
         elif t == "output":
-            if not self.output:
-                raise ValueError("output blocks require an `output:` section")
+            if not self.output and not (self.channels and self.template):
+                raise ValueError(
+                    "output blocks require an `output:` section, or `channels` + `template`"
+                )
         elif t == "mcp":
             if not self.credential_key:
                 raise ValueError("mcp blocks require `credential_key`")
@@ -251,6 +274,7 @@ class Workflow(BaseModel):
     workspace_id: str | None = None  # workspace UUID — included when exported from canvas
     name: str
     version: int = 1
+    schema_version: str | None = None  # opt-in JSON Schema validation (#565)
     description: str | None = None
 
     params: dict[str, WorkflowParam] = Field(default_factory=dict)

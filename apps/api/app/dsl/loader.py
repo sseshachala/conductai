@@ -377,10 +377,25 @@ def _block_to_node(block_id: str, block: Block, col: int) -> dict[str, Any]:
 
     config: dict[str, Any] = {}
 
+    # — iteration / loop fields (#565) —
+    if block.for_each:
+        config["for_each"] = block.for_each
+        config["item_var"] = block.item_var or "item"
+
+    # — retry config (#565) —
+    if block.retry:
+        config["retry"] = block.retry
+
     if block.type == "tool":
+        # integration was possibly derived from slash-format action in _validate_by_type;
+        # reflect the (possibly updated) value into data.
+        if block.integration:
+            data["integration"] = block.integration
         config["action"] = block.action
-        if block.params:
-            config["params"] = block.params
+        # Prefer explicit params; fall back to `input` alias (#565)
+        effective_params = block.params if block.params else (block.input or {})
+        if effective_params:
+            config["params"] = effective_params
 
     elif block.type == "brain":
         # The executor reads ``isAgentic`` (legacy field name from the canvas).
@@ -389,6 +404,13 @@ def _block_to_node(block_id: str, block: Block, col: int) -> dict[str, Any]:
             data["model"] = block.model
         if block.custom_instructions:
             data["custom_instructions"] = block.custom_instructions
+        # system/prompt are alternative ways to supply description/user prompt (#565)
+        if block.system:
+            data["description"] = block.system
+        if block.prompt:
+            data["prompt"] = block.prompt
+        if block.allowed_tools:
+            config["allowed_tools"] = block.allowed_tools
         if block.runs_on:
             config["remote_host"] = {
                 "ip_ref": block.runs_on.ip,
@@ -423,18 +445,26 @@ def _block_to_node(block_id: str, block: Block, col: int) -> dict[str, Any]:
             config["message"] = block.message
 
     elif block.type == "output":
-        out = block.output
-        assert out is not None  # validated upstream
-        data["integration"] = out.via
-        config["integration"] = out.via
-        if out.slack:
-            config["channel"] = out.slack.channel
-            if out.slack.approval:
-                config["approval"] = True
-        if out.email:
-            config["to"] = out.email.to
-            if out.email.from_address:
-                config["from_address"] = out.email.from_address
+        if block.output is not None:
+            out = block.output
+            data["integration"] = out.via
+            config["integration"] = out.via
+            if out.slack:
+                config["channel"] = out.slack.channel
+                if out.slack.approval:
+                    config["approval"] = True
+            if out.email:
+                config["to"] = out.email.to
+                if out.email.from_address:
+                    config["from_address"] = out.email.from_address
+        elif block.channels and block.template:
+            # Shorthand channels + template (#565)
+            via = block.channels[0] if block.channels else "slack"
+            data["integration"] = via
+            config["integration"] = via
+            config["template"] = block.template
+            if len(block.channels) > 1:
+                config["channels"] = block.channels
 
     if config:
         data["config"] = config
