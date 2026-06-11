@@ -458,13 +458,14 @@ async def vercel_webhook(
     """
     body = await request.body()
 
-    # Optional signature verification
+    # Fail-closed signature verification — reject if secret not configured
     vercel_secret = settings.vercel_webhook_secret if hasattr(settings, "vercel_webhook_secret") else ""
-    if vercel_secret:
-        sig = request.headers.get("x-vercel-signature", "")
-        expected = hmac.new(vercel_secret.encode(), body, hashlib.sha1).hexdigest()  # type: ignore[attr-defined]
-        if not hmac.compare_digest(sig, expected):
-            raise HTTPException(status_code=401, detail="Invalid Vercel signature")
+    if not vercel_secret:
+        raise HTTPException(status_code=401, detail="Vercel webhook secret not configured")
+    sig = request.headers.get("x-vercel-signature", "")
+    expected = hmac.new(vercel_secret.encode(), body, hashlib.sha1).hexdigest()  # type: ignore[attr-defined]
+    if not hmac.compare_digest(sig, expected):
+        raise HTTPException(status_code=401, detail="Invalid Vercel signature")
 
     try:
         payload = json.loads(body)
