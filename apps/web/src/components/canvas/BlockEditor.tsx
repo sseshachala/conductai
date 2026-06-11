@@ -1433,74 +1433,39 @@ export default function BlockEditor({
           {blockData.isAgentic && (() => {
             const runsIn = blockData.runs_in as string | undefined
             const provider = (blockData.runs_on as Record<string, string> | undefined)?.provider
-            const mode = runsIn ? "sandbox" : (provider ? "proxy" : "")
+            const flatValue = runsIn ? `sandbox:${runsIn}` : (provider ? `proxy:${provider}` : "")
 
-            function setMode(m: string) {
-              if (m === "proxy") onChange(blockId, { ...blockData, runs_in: undefined, runs_on: { provider: "e2b" } })
-              else if (m === "sandbox") onChange(blockId, { ...blockData, runs_on: undefined, runs_in: sandboxBlocks?.[0]?.id || "" })
+            function setFlat(v: string) {
+              if (v === "proxy:e2b")    onChange(blockId, { ...blockData, runs_in: undefined, runs_on: { provider: "e2b" } })
+              else if (v === "proxy:modal") onChange(blockId, { ...blockData, runs_in: undefined, runs_on: { provider: "modal" } })
+              else if (v.startsWith("sandbox:")) onChange(blockId, { ...blockData, runs_on: undefined, runs_in: v.slice(8) })
               else onChange(blockId, { ...blockData, runs_in: undefined, runs_on: undefined })
             }
 
+            const hint =
+              flatValue === "proxy:e2b"   ? "Own session per run. Isolated microVM — needs E2B_API_KEY." :
+              flatValue === "proxy:modal" ? "Own session per run. Serverless CPU/GPU — needs MODAL_TOKEN_ID + MODAL_TOKEN_SECRET." :
+              flatValue.startsWith("sandbox:") ? "Reuses the provisioned sandbox environment — /workspace already set up." :
+              "Single LLM call — no tool use, no remote session."
+
             return (
               <div className={section}>
-                <span className={sectionLabel}>Execution mode</span>
-                <select value={mode} onChange={e => setMode(e.target.value)} className={cn(inputBase)} disabled={isViewer}>
+                <span className={sectionLabel}>Execution</span>
+                <select value={flatValue} onChange={e => setFlat(e.target.value)} className={cn(inputBase)} disabled={isViewer}>
                   <option value="">Not set</option>
-                  <option value="proxy">Proxy</option>
-                  <option value="sandbox">Sandbox</option>
+                  <option value="proxy:e2b">Proxy — E2B.dev</option>
+                  <option value="proxy:modal">Proxy — Modal Labs</option>
+                  {sandboxBlocks && sandboxBlocks.length > 0 && (
+                    <optgroup label="Sandbox blocks">
+                      {sandboxBlocks.map(sb => (
+                        <option key={sb.id} value={`sandbox:${sb.id}`}>↳ {sb.label}</option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
-
-                {mode === "proxy" && (
-                  <>
-                    <span className={sectionLabel + " mt-3"}>Provider</span>
-                    <select
-                      value={provider || "e2b"}
-                      onChange={e => onChange(blockId, { ...blockData, runs_on: { provider: e.target.value } })}
-                      className={cn(inputBase)}
-                      disabled={isViewer}
-                    >
-                      <option value="e2b">E2B.dev</option>
-                      <option value="modal">Modal Labs</option>
-                    </select>
-                    <p className="text-[10px] text-stone-400 mt-1.5 leading-relaxed">
-                      {provider === "modal"
-                        ? "Serverless GPU / CPU. Needs MODAL_TOKEN_ID + MODAL_TOKEN_SECRET."
-                        : "Isolated microVM per run. Needs E2B_API_KEY."}
-                    </p>
-                  </>
-                )}
-
-                {mode === "sandbox" && (
-                  <>
-                    {sandboxBlocks && sandboxBlocks.length > 0 ? (
-                      <>
-                        <span className={sectionLabel + " mt-3"}>Sandbox block</span>
-                        <select
-                          value={runsIn || ""}
-                          onChange={e => onChange(blockId, { ...blockData, runs_in: e.target.value })}
-                          className={cn(inputBase)}
-                          disabled={isViewer}
-                        >
-                          {sandboxBlocks.map(sb => (
-                            <option key={sb.id} value={sb.id}>{sb.label}</option>
-                          ))}
-                        </select>
-                        <p className="text-[10px] text-stone-400 mt-1.5 leading-relaxed">
-                          Reuses the provisioned environment — /workspace already set up.
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-[10px] text-amber-600 mt-1.5 leading-relaxed">
-                        Add a Sandbox block to the canvas first, then connect it here.
-                      </p>
-                    )}
-                  </>
-                )}
-
-                {!mode && (
-                  <p className="text-[10px] text-stone-400 mt-1.5 leading-relaxed">
-                    Proxy — own session per run. Sandbox — shared provisioned environment.
-                  </p>
+                <p className="text-[10px] text-stone-400 mt-1.5 leading-relaxed">{hint}</p>
+                {!flatValue.startsWith("sandbox:") && sandboxBlocks && sandboxBlocks.length === 0 && (
+                  <p className="text-[10px] text-stone-300 mt-0.5">Add a Sandbox block to the canvas to enable shared environments.</p>
                 )}
               </div>
             )
