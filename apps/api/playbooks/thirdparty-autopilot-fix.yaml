@@ -1,8 +1,8 @@
 name: Third-Party Autopilot Fix
-version: 1
+version: 2
 description: >
-  Given an issue number on any third-party repo, fork it, clone the fork,
-  read the issue, apply the fix, push a branch, and open a PR back to upstream.
+  Given an issue number on any third-party repo, fork it, provision a sandbox,
+  clone the fork once, apply the fix, push a branch, and open a PR back to upstream.
   Every step is traced in the Conduct run feed.
 
 inputs:
@@ -18,6 +18,15 @@ inputs:
     label: Issue number
     type: string
     hint: "Issue number describing what needs to be fixed"
+  sandbox_provider:
+    label: Sandbox provider
+    type: select
+    default: e2b
+    options:
+      - e2b
+      - modal
+      - local
+    hint: "Compute environment for the fix. Requires matching credentials in Settings → Environments."
   model:
     label: AI model
     default: claude-sonnet-4-6
@@ -53,55 +62,53 @@ blocks:
     params:
       owner: "{{inputs.upstream_owner}}"
       repo: "{{inputs.upstream_repo}}"
+    next: provision_sandbox
+
+  provision_sandbox:
+    type: sandbox
+    label: Provision sandbox
+    sandbox_config:
+      provider: "{{inputs.sandbox_provider}}"
+      setup:
+        - git config --global user.email "bot@conductai.ai"
+        - git config --global user.name "Conduct AI"
+        - git clone https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git /workspace
+        - cd /workspace && git remote add upstream https://github.com/{{inputs.upstream_owner}}/{{inputs.upstream_repo}}.git
+        - cd /workspace && git fetch upstream --depth=50
+        - cd /workspace && git merge --ff-only upstream/{{fork_upstream.default_branch}} 2>/dev/null || git reset --hard upstream/{{fork_upstream.default_branch}}
+        - cd /workspace && git checkout -b fix/issue-{{inputs.issue_number}}
     next: implement_fix
 
   implement_fix:
     type: brain
+    runs_in: provision_sandbox
     mode: agentic
     model: "{{inputs.model}}"
     label: Implement fix
     description: |
-      You are a software engineer contributing to an open-source repo.
-      The issue below describes what needs to be fixed. Read the repo,
-      understand the codebase, implement the fix, and push the branch.
-      The fork is already created — do NOT re-fork.
+      You are a software engineer contributing to an open-source project.
+      The repo is already cloned at /workspace on the fix branch.
+      Do NOT clone, fork, or create branches — that is already done.
 
-      Fork to clone: {{fork_upstream.fork_full_name}}
-      Upstream:      {{inputs.upstream_owner}}/{{inputs.upstream_repo}}
-      Fix branch:    fix/issue-{{inputs.issue_number}}
-      Issue title:   {{fetch_issue.title}}
+      Your only job: read the issue, understand the codebase, and apply the fix.
+
+      Upstream:    {{inputs.upstream_owner}}/{{inputs.upstream_repo}}
+      Fix branch:  fix/issue-{{inputs.issue_number}}
+      Issue title: {{fetch_issue.title}}
 
       Issue description:
       {{fetch_issue.body}}
 
-      Do ALL of the following in ONE run_shell call:
+      Instructions:
+      - Work in /workspace
+      - Read relevant files first, understand the code before editing
+      - Do NOT hardcode line numbers — search for exact patterns to replace
+      - Verify your changes parse/compile cleanly after editing
+      - When done: cd /workspace && git add -A && git diff --cached --stat
+      - Then commit: git commit -m "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})"
+      - Then push: git push https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git fix/issue-{{inputs.issue_number}}
 
-        set -e
-        rm -rf /tmp/repo
-        git clone https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git /tmp/repo
-        cd /tmp/repo
-
-        # If the fork is a fresh clone (empty or not yet synced), pull from upstream first
-        git remote add upstream https://github.com/{{inputs.upstream_owner}}/{{inputs.upstream_repo}}.git
-        git fetch upstream --depth=50
-        git merge --ff-only upstream/{{fork_upstream.default_branch}} 2>/dev/null || git reset --hard upstream/{{fork_upstream.default_branch}}
-
-        git config user.email "bot@conductai.ai"
-        git config user.name "Conduct AI"
-        git checkout -b fix/issue-{{inputs.issue_number}}
-
-        # Read the relevant files, understand the issue, and apply the fix.
-        # Use python3 or direct file edits — whichever is most reliable for this repo.
-        # Do NOT hardcode line numbers; search for exact patterns to replace.
-        # Verify your changes compile / parse cleanly before committing.
-
-        git add -A
-        git diff --cached --stat
-        git commit -m "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})"
-        git push https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git fix/issue-{{inputs.issue_number}}
-        echo "PUSH_OK"
-
-      After the shell call succeeds, output ONLY this JSON on the last line:
+      After pushing, output ONLY this JSON on the last line:
         {"branch_pushed": "fix/issue-{{inputs.issue_number}}", "fork_owner": "{{fork_upstream.fork_owner}}", "fork_full_name": "{{fork_upstream.fork_full_name}}"}
     next: open_pr
 
@@ -139,6 +146,7 @@ blocks:
 
           Repo: `{{inputs.upstream_owner}}/{{inputs.upstream_repo}}`
           Issue: #{{inputs.issue_number}} — {{fetch_issue.title}}
+          Sandbox: {{inputs.sandbox_provider}}
           PR: {{open_pr.pr_url}}
 
           _Generated by Conduct AI thirdparty-autopilot-fix playbook_
@@ -148,4 +156,5 @@ test_trigger:
     upstream_owner: "elementalsouls"
     upstream_repo: "sample-app"
     issue_number: 42
+    sandbox_provider: e2b
     model: claude-sonnet-4-6
