@@ -377,5 +377,11 @@ def create_session(
         log.debug("sandbox_session.backend", type="modal")
         return ModalSession(token_id, token_secret)
 
+    from app.core.config import settings
+    if settings.environment == "production":
+        raise RuntimeError(
+            "Sandbox not configured — add Modal credentials to run agent tools in production. "
+            "LocalSession is disabled in production environments."
+        )
     log.debug("sandbox_session.backend", type="local")
     return LocalSession()
