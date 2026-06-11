@@ -1,10 +1,16 @@
 """
-Playbook submission scores — eval harness read/write endpoints.
+Playbook catalog + submission scores.
 
-POST  /playbooks/submit                — community YAML submission (auth or reCAPTCHA)
-GET   /playbooks/submissions           — list rows, filterable by ?status=
-GET   /playbooks/{slug}/score          — latest row for a slug (404 if none)
-PATCH /playbooks/{slug}/submission     — update status (promoted | needs_work | pending)
+Catalog endpoints (prefix /workflows — same URLs as before the split):
+  GET  /workflows/playbooks              — list all playbooks from registry
+  GET  /workflows/playbooks/{slug}       — playbook detail + YAML source
+  GET  /workflows/conflict-check         — pre-install conflict detection
+
+Submission endpoints (prefix /playbooks):
+  POST  /playbooks/submit                — community YAML submission (auth or reCAPTCHA)
+  GET   /playbooks/submissions           — list rows, filterable by ?status=
+  GET   /playbooks/{slug}/score          — latest row for a slug (404 if none)
+  PATCH /playbooks/{slug}/submission     — update status (promoted | needs_work | pending)
 """
 from datetime import datetime, timezone
 from typing import Annotated
@@ -18,6 +24,180 @@ from app.core.auth import get_workspace_id, require_permission
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.playbook_submission import PlaybookSubmission
+from app.models.workflow import Workflow
+
+# ── Playbook registry ─────────────────────────────────────────────────────────
+
+
+def _load_registry() -> dict:
+    import yaml as _yaml
+    from pathlib import Path
+    path = Path(__file__).parent.parent.parent / "playbooks" / "registry.yaml"
+    return _yaml.safe_load(path.read_text())
+
+
+_REGISTRY = _load_registry()
+_PLAYBOOKS = _REGISTRY["playbooks"]
+
+_TEMPLATE_PLAYBOOKS: dict[str, str] = {slug: meta["file"] for slug, meta in _PLAYBOOKS.items()}
+_PLAYBOOK_META: dict[str, dict] = {
+    slug: {k: v for k, v in meta.items() if k != "file" and k != "github_events"}
+    for slug, meta in _PLAYBOOKS.items()
+}
+_GITHUB_WEBHOOK_EVENTS: dict[str, list[str]] = {
+    slug: meta["github_events"]
+    for slug, meta in _PLAYBOOKS.items()
+    if "github_events" in meta
+}
+_ALL_GITHUB_EVENTS: list[str] = _REGISTRY.get("all_github_events", [])
+
+
+# ── Catalog router (mounted under /workflows to preserve existing URLs) ───────
+
+catalog_router = APIRouter(prefix="/workflows", tags=["workflows"])
+
+
+@catalog_router.get("/playbooks")
+def list_playbooks():
+    return [
+        {
+            "slug": slug,
+            "name": slug.replace("_", " ").title(),
+            "icon": _PLAYBOOK_META[slug]["icon"],
+            "description": _PLAYBOOK_META[slug]["description"],
+            "tags": _PLAYBOOK_META[slug]["tags"],
+            "featured": _PLAYBOOK_META[slug]["featured"],
+            "category": _PLAYBOOK_META[slug].get("category", "Other"),
+        }
+        for slug in _TEMPLATE_PLAYBOOKS
+        if slug in _PLAYBOOK_META
+    ]
+
+
+@catalog_router.get("/playbooks/{slug}")
+def get_playbook(slug: str):
+    import pathlib
+    import yaml as _yaml
+
+    if slug not in _TEMPLATE_PLAYBOOKS or slug not in _PLAYBOOK_META:
+        raise HTTPException(status_code=404, detail="Playbook not found")
+    meta = _PLAYBOOK_META[slug]
+    inputs: dict = {}
+    yaml_source: str = ""
+    playbook_path = pathlib.Path(__file__).parent.parent.parent / "playbooks" / _TEMPLATE_PLAYBOOKS[slug]
+    blocks: list = []
+    if playbook_path.exists():
+        yaml_source = playbook_path.read_text()
+        raw = _yaml.safe_load(yaml_source) or {}
+        inputs = raw.get("inputs", {})
+        # Trigger block from the `on:` key (PyYAML parses `on` as True)
+        trigger_raw = raw.get(True, {}) or {}
+        if trigger_raw:
+            event = next(iter(trigger_raw), None)
+            blocks.append({
+                "id": "_trigger",
+                "type": "trigger",
+                "label": (event or "trigger").replace(".", " ").replace("_", " ").title(),
+                "description": None,
+                "integration": (trigger_raw.get(event) or {}).get("integration"),
+                "model": None,
+            })
+        for block_id, block_data in (raw.get("blocks") or {}).items():
+            if not isinstance(block_data, dict):
+                continue
+            desc = block_data.get("description") or ""
+            # Trim long descriptions to first non-empty line
+            first_line = next((l.strip() for l in desc.splitlines() if l.strip()), None)
+            blocks.append({
+                "id": block_id,
+                "type": block_data.get("type", "tool"),
+                "label": block_data.get("label", block_id.replace("_", " ").title()),
+                "description": first_line,
+                "integration": block_data.get("integration"),
+                "model": block_data.get("model"),
+            })
+    github_webhook = slug in _GITHUB_WEBHOOK_EVENTS
+    return {
+        "slug": slug,
+        "name": slug.replace("_", " ").title(),
+        "icon": meta["icon"],
+        "description": meta["description"],
+        "tags": meta["tags"],
+        "featured": meta["featured"],
+        "category": meta.get("category", "Other"),
+        "inputs": inputs,
+        "blocks": blocks,
+        "yaml_source": yaml_source,
+        "requires_repo": True,
+        "github_webhook": github_webhook,
+        "github_events": _GITHUB_WEBHOOK_EVENTS.get(slug, []),
+    }
+
+
+@catalog_router.get("/conflict-check")
+def conflict_check(
+    template: str,
+    repo: str,
+    trigger_label: str = "",
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("platform.workflows.view")),
+):
+    """
+    Check for conflicts when installing a playbook on a repo.
+
+    Conflict rules:
+    - ISSUES_LABELED templates (autopilot variants): conflict = same repo + same label
+      -> 3 agents on same repo with different labels is valid
+    - PULL_REQUEST templates (pr-reviewer, security-scanner, copilot-reviewer): never conflict
+      -> they complement each other, all run independently on PR open
+    - SINGLE_TRIGGER templates (issue-triage, ci-notify, release-notes): conflict = same repo
+      -> only one instance makes sense
+    """
+    # Pull-request playbooks never conflict — they complement each other
+    _PR_TEMPLATES = {"pr_reviewer", "copilot_reviewer", "security_scanner"}
+    if template in _PR_TEMPLATES:
+        return {"conflicts": [], "conflict_type": None}
+
+    # Issues-labeled playbooks: conflict only on same label
+    _ISSUES_LABELED = {"autopilot_quick", "autopilot_full", "autopilot_approved", "ai_ready"}
+
+    existing = db.query(Workflow).filter(
+        Workflow.workspace_id == workspace_id,
+        Workflow.github_hook_repo == repo,
+    ).all()
+
+    conflicts = []
+    for wf in existing:
+        if not wf.current_version:
+            continue
+        nodes = (wf.current_version.graph or {}).get("nodes", [])
+        trigger = next((n for n in nodes if n.get("data", {}).get("type") == "trigger"), None)
+        if not trigger:
+            continue
+        cfg = trigger.get("data", {}).get("config", {})
+
+        if template in _ISSUES_LABELED:
+            # Only conflict if the existing agent watches the same label
+            existing_labels = cfg.get("labels", [])
+            if trigger_label and trigger_label in existing_labels:
+                conflicts.append({"id": str(wf.id), "name": wf.name, "label": trigger_label})
+        else:
+            # Single-trigger templates: conflict if same event type on same repo
+            existing_event = cfg.get("event_type", "")
+            new_event = {
+                "issue_triage": "github_issues",
+                "ci_notify": "workflow_run",
+                "release_notes": "create",
+            }.get(template, "")
+            if new_event and existing_event == new_event:
+                conflicts.append({"id": str(wf.id), "name": wf.name, "label": None})
+
+    conflict_type = "label" if template in _ISSUES_LABELED else "duplicate"
+    return {"conflicts": conflicts, "conflict_type": conflict_type if conflicts else None}
+
+
+# ── Submission / eval-score router ────────────────────────────────────────────
 
 router = APIRouter(prefix="/playbooks", tags=["playbooks"])
 
