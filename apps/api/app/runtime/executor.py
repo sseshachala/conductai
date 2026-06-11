@@ -1001,6 +1001,7 @@ def _dispatch_single_block(
     workspace_id_str: str,
     logic_routes: dict,
     _logic_routes_version_ref: list,  # mutable single-element list so we can mutate from caller
+    sandbox_sessions: dict,
 ) -> dict:
     """
     Pure dispatch — maps a block's type to its executor and returns the result.
@@ -1179,6 +1180,7 @@ def _execute_dag(
     fail_error = ""
     fail_summary: dict[str, Any] | None = None
     logic_routes: dict[str, str] = {}  # block_id → 'pass'|'fail'
+    sandbox_sessions: dict[str, Any] = {}  # block_id → live session for sandbox blocks
 
     # Cache the skip set and only recompute when a new logic route is resolved.
     # Previously _find_skipped_blocks was called O(n) times (once per block),
@@ -1246,6 +1248,7 @@ def _execute_dag(
                 workspace_id_str=workspace_id_str,
                 logic_routes=logic_routes,
                 _logic_routes_version_ref=_lrv_ref,
+                sandbox_sessions=sandbox_sessions,
             )
 
         try:
