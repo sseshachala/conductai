@@ -886,12 +886,10 @@ def get_observability_summary(
     cutoff_24h = _now() - timedelta(hours=24)
     stale_cutoff = _stale_cutoff()
 
-    # All runs in workspace joined to workflow
+    # All runs in workspace — single-table filter via denormalized workspace_id
     base_q = (
         db.query(Run)
-        .join(WorkflowVersion, Run.workflow_version_id == WorkflowVersion.id)
-        .join(Workflow, Workflow.id == WorkflowVersion.workflow_id)
-        .filter(Workflow.workspace_id == workspace_id)
+        .filter(Run.workspace_id == workspace_id)
     )
 
     active_runs = base_q.filter(Run.status == "running").count()
