@@ -42,5 +42,6 @@ export const BLOCK_LIBRARY: { type: BlockType; title: string; sub: string; descr
   { type: "memory",   title: "Memory",     sub: "recall or record", description: "Read past context or write outcome for future runs" },
   { type: "approval", title: "Approval",   sub: "wait for human",   description: "Pause the run until a human approves or rejects" },
   { type: "output",   title: "Notify",     sub: "send output",      description: "Post to Slack, send email, or write a comment" },
+  { type: "sandbox",  title: "Sandbox",    sub: "isolated execution", description: "Run code or commands in an isolated sandbox environment" },
   { type: "cleanup",  title: "Cleanup",    sub: "always runs",      description: "Teardown or finalize — executes even if the run fails" },
 ]
