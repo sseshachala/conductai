@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_user_id, get_workspace_id, require_workspace_role
+from app.core.auth import get_user_id, get_workspace_id
 from app.core.database import get_db
 from app.models.organization import Organization
 from app.models.workspace import Workspace

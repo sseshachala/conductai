@@ -7,7 +7,7 @@ from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from app.core.auth import get_workspace_id, get_user_id, require_workspace_role, require_permission, audit
+from app.core.auth import get_workspace_id, get_user_id, require_permission, audit
 from app.core.database import get_db
 
 log = structlog.get_logger(__name__)
@@ -54,7 +54,7 @@ def list_workflows(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
     user_id: str = Depends(get_user_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.workflows.view")),
     project_id: str | None = None,
 ):
     # Resolve the correct workspace from the project when the active workspace cookie
@@ -430,7 +430,7 @@ def conflict_check(
     trigger_label: str = "",
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.workflows.view")),
 ):
     """
     Check for conflicts when installing a playbook on a repo.
@@ -487,7 +487,7 @@ def conflict_check(
 
 
 @router.post("", response_model=WorkflowDetailOut, status_code=201)
-def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _role: str = Depends(require_workspace_role("admin", "developer"))):
+def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _: str = Depends(require_permission("platform.workflows.edit"))):
     import pathlib
 
     graph_data = body.graph.model_dump()
@@ -589,7 +589,7 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
 
 
 @router.get("/{workflow_id}", response_model=WorkflowDetailOut)
-def get_workflow(workflow_id: UUID, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer"))):
+def get_workflow(workflow_id: UUID, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _: str = Depends(require_permission("platform.workflows.view"))):
     workflow = db.query(Workflow).filter(
         Workflow.id == workflow_id,
         Workflow.workspace_id == workspace_id,
@@ -613,7 +613,7 @@ def update_workflow(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer")),
+    _: str = Depends(require_permission("platform.workflows.edit")),
 ):
     # SELECT FOR UPDATE — serialise concurrent saves on the same workflow so two
     # editors can't both read, both create a WorkflowVersion, and silently
@@ -721,7 +721,7 @@ def register_workflow_webhook(
     workflow_id: UUID,
     workspace_id: str = Depends(get_workspace_id),
     db: Session = Depends(get_db),
-    _role: str = Depends(require_workspace_role("admin", "developer")),
+    _: str = Depends(require_permission("platform.workflows.edit")),
 ):
     """Explicitly register (or re-register) the GitHub webhook for this workflow."""
     workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
@@ -831,7 +831,7 @@ def deregister_workflow_webhook(
     workflow_id: UUID,
     workspace_id: str = Depends(get_workspace_id),
     db: Session = Depends(get_db),
-    _role: str = Depends(require_workspace_role("admin", "developer")),
+    _: str = Depends(require_permission("platform.workflows.edit")),
 ):
     """Deregister the GitHub webhook for this workflow."""
     workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
@@ -881,7 +881,7 @@ def stream_block_compile(
     body: BlockCompileRequest,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer")),
+    _: str = Depends(require_permission("platform.workflows.edit")),
 ):
     """Stream the compiled prompt for a single block using the current editor state."""
     workflow = db.query(Workflow).filter(
@@ -1034,7 +1034,7 @@ def preflight_workflow(
     body: PreflightRequest,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer")),
+    _: str = Depends(require_permission("platform.workflows.run")),
 ):
     """
     Estimate the turn budget needed before starting a run.
@@ -1069,7 +1069,7 @@ def validate_workflow(
     workflow_id: UUID,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.workflows.view")),
 ):
     """
     Pre-flight validation before starting a run.
@@ -1171,7 +1171,7 @@ def estimate_workflow_cost(
     issues: int = 1,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.workflows.view")),
 ):
     """
     Estimate token usage and cost for this workflow.
@@ -1370,7 +1370,7 @@ def compile_workflow_now(
     workflow_id: UUID,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer")),
+    _: str = Depends(require_permission("platform.workflows.edit")),
 ):
     """Explicitly trigger compilation for the current version."""
     workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
@@ -1405,7 +1405,7 @@ def update_workflow_yaml(
     yaml_text: str = Body(..., media_type="application/x-yaml"),
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer")),
+    _: str = Depends(require_permission("platform.workflows.edit")),
 ):
     """
     Replace the workflow definition with the provided YAML.
@@ -1448,7 +1448,7 @@ def get_workflow_yaml(
     workflow_id: UUID,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.workflows.view")),
 ):
     """
     Return the YAML source for the workflow's current version.
@@ -1489,7 +1489,7 @@ def get_workflow_yaml_filename(
     workflow_id: UUID,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.workflows.view")),
 ):
     """
     Return the canonical YAML filename + a suggested ``source_path`` for the
@@ -1569,7 +1569,7 @@ def set_workflow_environment(
     body: WorkflowEnvironmentRequest,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer")),
+    _: str = Depends(require_permission("platform.workflows.edit")),
 ):
     """Assign or clear the environment scoping for a workflow."""
     workflow = db.query(Workflow).filter(
@@ -1595,7 +1595,7 @@ def update_turn_settings(
     body: WorkflowTurnSettingsRequest,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer")),
+    _: str = Depends(require_permission("platform.workflows.edit")),
 ):
     """Persist a default turn budget override for this workflow."""
     workflow = db.query(Workflow).filter(
@@ -1621,7 +1621,7 @@ def update_workflow_source(
     body: WorkflowSourceRequest,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer")),
+    _: str = Depends(require_permission("platform.workflows.edit")),
 ):
     """Configure (or clear) the GitHub-repo source binding for a workflow."""
     workflow = db.query(Workflow).filter(
@@ -1643,7 +1643,7 @@ def test_trigger(
     payload: dict = Body(default={}),
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer")),
+    _: str = Depends(require_permission("platform.workflows.run")),
 ):
     """
     Authenticated test trigger. When payload is empty, uses the playbook's
@@ -1797,7 +1797,7 @@ def sync_workflow(
     background_tasks: BackgroundTasks = None,  # type: ignore[assignment]
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer")),
+    _: str = Depends(require_permission("platform.workflows.edit")),
 ):
     """
     Fetch the YAML at ``workflow.source_repo:source_path`` from GitHub,

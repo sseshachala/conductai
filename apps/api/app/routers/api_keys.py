@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_user_id, get_workspace_id, require_workspace_role
+from app.core.auth import get_user_id, get_workspace_id, require_permission, get_user_workspace_role
 from app.core.database import get_db
 from app.models.conduct_api_key import ConductApiKey
 
@@ -58,7 +58,7 @@ def list_api_keys(
     workspace_id: str,
     user_id:      Annotated[str, Depends(get_user_id)],
     _ws:          str = Depends(get_workspace_id),
-    _role:        str = Depends(require_workspace_role("admin", "developer")),
+    _:            str = Depends(require_permission("platform.workspace.edit")),
     db:           Session = Depends(get_db),
 ):
     rows = db.query(ConductApiKey).filter(
@@ -75,7 +75,8 @@ def create_api_key(
     workspace_id: str,
     body:         ApiKeyCreate,
     user_id:      Annotated[str, Depends(get_user_id)],
-    role:         str = Depends(require_workspace_role("admin", "developer")),
+    role:         str = Depends(get_user_workspace_role),
+    _:            str = Depends(require_permission("platform.workspace.edit")),
     db:           Session = Depends(get_db),
 ):
     if not body.name.strip():
@@ -108,7 +109,7 @@ def create_api_key(
 def revoke_api_key(
     workspace_id: str,
     key_id:       str,
-    _role:        str = Depends(require_workspace_role("admin")),
+    _:            str = Depends(require_permission("platform.workspace.edit")),
     db:           Session = Depends(get_db),
 ):
     row = db.query(ConductApiKey).filter(

@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_user_id, get_workspace_id, require_workspace_role, audit as _audit
+from app.core.auth import get_user_id, get_workspace_id, require_permission, audit as _audit
 from app.core.database import get_db
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/projects", tags=["workspace-projects"])
@@ -66,7 +66,7 @@ def _notification_tone(action: str) -> str:
 def list_notifications(
     workspace_id: str,
     active_workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.workflows.view")),
     db: Session = Depends(get_db),
     limit: int = 10,
 ):
@@ -213,7 +213,7 @@ def list_projects(
     workspace_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
     active_workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.workflows.view")),
     db: Session = Depends(get_db),
 ):
     _enforce_workspace(workspace_id, active_workspace_id)
@@ -240,7 +240,7 @@ def create_project(
     body: ProjectCreate,
     user_id: Annotated[str, Depends(get_user_id)],
     active_workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer")),
+    _: str = Depends(require_permission("platform.workflows.edit")),
     db: Session = Depends(get_db),
 ):
     _enforce_workspace(workspace_id, active_workspace_id)
@@ -266,7 +266,7 @@ def rename_project(
     project_id: str,
     body: dict,
     active_workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin")),
+    _: str = Depends(require_permission("platform.workspace.edit")),
     db: Session = Depends(get_db),
 ):
     _enforce_workspace(workspace_id, active_workspace_id)
@@ -301,7 +301,7 @@ def delete_project(
     workspace_id: str,
     project_id: str,
     active_workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin")),
+    _: str = Depends(require_permission("platform.workspace.edit")),
     db: Session = Depends(get_db),
 ):
     _enforce_workspace(workspace_id, active_workspace_id)
@@ -366,7 +366,7 @@ audit_router = APIRouter(prefix="/workspaces/{workspace_id}/audit-log", tags=["a
 def list_audit_log(
     workspace_id: str,
     active_workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin")),
+    _: str = Depends(require_permission("platform.audit_log.view")),
     db: Session = Depends(get_db),
     action: str | None = None,
     actor_id: str | None = None,
@@ -422,7 +422,7 @@ class PreferencesUpdate(BaseModel):
 def get_preferences(
     workspace_id: str,
     active_workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer", "security", "viewer")),
+    _: str = Depends(require_permission("platform.workflows.view")),
     db: Session = Depends(get_db),
 ):
     _enforce_workspace(workspace_id, active_workspace_id)
@@ -439,7 +439,7 @@ def update_preferences(
     workspace_id: str,
     body: PreferencesUpdate,
     active_workspace_id: str = Depends(get_workspace_id),
-    _role: str = Depends(require_workspace_role("admin", "developer")),
+    _: str = Depends(require_permission("platform.workflows.edit")),
     db: Session = Depends(get_db),
 ):
     _enforce_workspace(workspace_id, active_workspace_id)
