@@ -146,6 +146,7 @@ blocks:
     condition: "{{_trigger.slack_alerts_enabled == true}}"
     next:
       pass: alert_slack
+      fail: end
 
   alert_slack:
     type: output
@@ -173,6 +174,7 @@ blocks:
     condition: "{{_trigger.slack_alerts_enabled == true}}"
     next:
       pass: log_false_positive
+      fail: end
 
   log_false_positive:
     type: output
@@ -191,6 +193,7 @@ blocks:
     condition: "{{_trigger.slack_alerts_enabled == true}}"
     next:
       pass: log_only
+      fail: end
 
   log_only:
     type: output

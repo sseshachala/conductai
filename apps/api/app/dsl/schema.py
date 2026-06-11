@@ -311,6 +311,8 @@ class Workflow(BaseModel):
             else:
                 targets = list(nxt.values())
             for t in targets:
+                if t == "end":
+                    continue  # "end" is a reserved terminal sentinel — means stop here
                 if t not in known_ids:
                     raise ValueError(
                         f"block '{block_id}' routes to unknown block '{t}'"

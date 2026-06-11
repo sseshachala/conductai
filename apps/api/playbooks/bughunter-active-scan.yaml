@@ -125,6 +125,9 @@ blocks:
       Output the recon brief as plain text. Be specific — name actual files
       and code paths where relevant attack surfaces exist.
 
+      On the very last line, output a JSON summary:
+      {"tech_stack": ["python", "fastapi"], "auth": "jwt", "ai_surface": true, "top_skills": ["hunt-llm-injection"]}
+
   # ── 3. Run all hunt skills dynamically ──────────────────────────────────────
   run_hunts:
     type: brain
@@ -190,7 +193,9 @@ blocks:
       3. Drop findings below severity threshold
       4. Add field "skill" if missing
 
-      Return deduplicated JSON array on the last line. If nothing passes, return [].
+      Return deduplicated JSON array on the last line:
+      [{"skill":"hunt-llm-injection","severity":"high","type":"injection","endpoint_or_file":"api/chat.py","description":"...","suggested_fix":"...","evidence":"...","cwe":"CWE-77"}]
+      If nothing passes, return: []
 
   # ── 5. Emit to Security Loop ─────────────────────────────────────────────────
   emit_to_security_loop:
@@ -258,3 +263,12 @@ blocks:
 
       View in Security Loop → https://app.conductai.ai/secure/activity
       View GitHub issues → https://github.com/{{ inputs.target_repo }}/issues?q=label%3Abughunter
+
+test_trigger:
+  payload:
+    target_repo: "elementalsouls/sample-vulnerable-app"
+    target_url: ""
+    skills_repo: "elementalsouls/Claude-BugHunter"
+    severity_threshold: high
+    skill_filter: ""
+    model: claude-sonnet-4-6
