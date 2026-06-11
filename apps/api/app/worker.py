@@ -47,6 +47,8 @@ QUEUE_KEY              = "marshal:runs:queue"
 PROCESSING_KEY         = "marshal:runs:processing"        # per-worker in-flight list
 PROCESSING_TIMES_KEY   = "marshal:runs:processing:times"  # run_id -> enqueue timestamp (hash)
 PROCESSING_TTL_SECONDS = 1800                              # 30 min -- stale threshold for recovery
+SWEEP_LOCK_KEY         = "marshal:runs:sweep:lock"         # distributed lock — one sweep at a time
+SWEEP_LOCK_TTL_SECONDS = 30                                # lock expires after 30s (sweep is fast)
 ONLINE_EVAL_KEY        = "marshal:eval:online:queue"
 CONCURRENCY            = int(os.environ.get("WORKER_CONCURRENCY", "1"))
 JUDGE_SAMPLE_RATE      = float(os.environ.get("ONLINE_EVAL_JUDGE_SAMPLE_RATE", "0.20"))
@@ -301,18 +303,25 @@ def _recover_stalled(r) -> int:
 
     Returns the count of runs recovered.
     """
-    cutoff = time.time() - PROCESSING_TTL_SECONDS
-    times = r.hgetall(PROCESSING_TIMES_KEY)  # {run_id: timestamp_str}
-    recovered = 0
-    for run_id, ts in times.items():
-        if float(ts) < cutoff:
-            removed = r.lrem(PROCESSING_KEY, 1, run_id)
-            if removed:
-                r.rpush(QUEUE_KEY, run_id)
-                r.hdel(PROCESSING_TIMES_KEY, run_id)
-                recovered += 1
-                log.warning("worker.recovered_stalled_run", run_id=run_id)
-    return recovered
+    acquired = r.set(SWEEP_LOCK_KEY, "1", nx=True, ex=SWEEP_LOCK_TTL_SECONDS)
+    if not acquired:
+        return 0
+
+    try:
+        cutoff = time.time() - PROCESSING_TTL_SECONDS
+        times = r.hgetall(PROCESSING_TIMES_KEY)  # {run_id: timestamp_str}
+        recovered = 0
+        for run_id, ts in times.items():
+            if float(ts) < cutoff:
+                removed = r.lrem(PROCESSING_KEY, 1, run_id)
+                if removed:
+                    r.rpush(QUEUE_KEY, run_id)
+                    r.hdel(PROCESSING_TIMES_KEY, run_id)
+                    recovered += 1
+                    log.warning("worker.recovered_stalled_run", run_id=run_id)
+        return recovered
+    finally:
+        r.delete(SWEEP_LOCK_KEY)
 
 
 # -- queue worker --------------------------------------------------------------
@@ -342,7 +351,8 @@ def _loop(thread_id: int) -> None:
             if not run_id:
                 continue
 
-            # Record the enqueue timestamp so _recover_stalled can detect TTL breaches.
+            # Record timestamp immediately — before any work — so _recover_stalled
+            # sees an accurate start time regardless of execute_run latency.
             r.hset(PROCESSING_TIMES_KEY, run_id, time.time())
 
             log.info("worker.dequeued", run_id=run_id, thread_id=thread_id)
