@@ -316,9 +316,13 @@ def score_structural(playbook_yaml: str, slug: str) -> PlaybookScore:
         ))
 
     # ── 4. Brain descriptions present (7 pts) ────────────────────────────────
+    # Accept description:, system:, or prompt: as equivalent description fields
+    def _brain_desc(v: dict) -> str:
+        return (v.get("description") or v.get("system") or v.get("prompt") or "").strip()
+
     missing_desc = [
         k for k, v in brain_blocks.items()
-        if not (v.get("description") or "").strip()
+        if not _brain_desc(v)
     ]
     if not missing_desc:
         score.criteria.append(CriterionResult(
@@ -332,11 +336,16 @@ def score_structural(playbook_yaml: str, slug: str) -> PlaybookScore:
         ))
 
     # ── 5. Output contract: last-line JSON (8 pts) ────────────────────────────
+    def _has_json_contract(v: dict) -> bool:
+        for field in ("description", "system", "prompt"):
+            text = (v.get(field) or "").strip()
+            if re.search(r'\{[^}]*"[a-z_]+"\s*:', text):
+                return True
+        return False
+
     contracts_missing = []
     for k, v in brain_blocks.items():
-        desc = (v.get("description") or "").strip()
-        # Accept both explicit JSON literal on last line and template outputs
-        if not re.search(r'\{[^}]*"[a-z_]+"\s*:', desc):
+        if not _has_json_contract(v):
             contracts_missing.append(k)
     if not contracts_missing:
         score.criteria.append(CriterionResult(
