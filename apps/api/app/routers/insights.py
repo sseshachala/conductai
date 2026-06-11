@@ -883,6 +883,8 @@ def get_observability_summary(
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("platform.runs.view")),
 ):
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, workspace_id)
     cutoff_24h = _now() - timedelta(hours=24)
     stale_cutoff = _stale_cutoff()
 

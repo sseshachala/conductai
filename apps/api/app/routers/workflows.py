@@ -66,6 +66,8 @@ def list_workflows(
     _: str = Depends(require_permission("platform.workflows.view")),
     project_id: str | None = None,
 ):
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, workspace_id)
     # Resolve the correct workspace from the project when the active workspace cookie
     # doesn't match the project's workspace (e.g. user navigated across workspace contexts).
     effective_workspace_id = workspace_id
@@ -338,6 +340,8 @@ def _github_hook_exists(token: str, repo: str, hook_id: str) -> bool:
 
 @router.post("", response_model=WorkflowDetailOut, status_code=201)
 def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _: str = Depends(require_permission("platform.workflows.edit"))):
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, workspace_id)
     import pathlib
 
     graph_data = body.graph.model_dump()
@@ -524,6 +528,8 @@ def delete_workflow(
     db: Session = Depends(get_db),
     _: str = Depends(require_permission("platform.workflows.edit")),
 ):
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, workspace_id)
     workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
