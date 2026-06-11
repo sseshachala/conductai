@@ -115,6 +115,11 @@ class FindingOut(BaseModel):
 
     model_config = {"from_attributes": True}
 
+    @field_validator("workspace_id", mode="before")
+    @classmethod
+    def coerce_workspace_id(cls, v):
+        return str(v) if v is not None else v
+
 
 class FindingUpdate(BaseModel):
     status: Optional[str] = None
