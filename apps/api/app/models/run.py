@@ -11,7 +11,7 @@ class Run(Base):
     __tablename__ = "runs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    workflow_version_id = Column(UUID(as_uuid=True), ForeignKey("workflow_versions.id"), nullable=False)
+    workflow_version_id = Column(UUID(as_uuid=True), ForeignKey("workflow_versions.id", ondelete="CASCADE"), nullable=False)
     triggered_by = Column(String(255), nullable=True)  # user_id / 'webhook' / 'schedule'
     status = Column(String(50), nullable=False, default="pending")  # pending/running/paused/succeeded/failed/cancelled
     started_at = Column(DateTime(timezone=True), nullable=True)
@@ -31,14 +31,14 @@ class Run(Base):
     last_heartbeat_time  = Column(DateTime(timezone=True), nullable=True)
 
     workflow_version = relationship("WorkflowVersion", back_populates="runs")
-    events = relationship("RunEvent", back_populates="run", order_by="RunEvent.created_at")
+    events = relationship("RunEvent", back_populates="run", order_by="RunEvent.created_at", cascade="all, delete-orphan")
 
 
 class RunEvent(Base):
     __tablename__ = "run_events"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    run_id = Column(UUID(as_uuid=True), ForeignKey("runs.id"), nullable=False)
+    run_id = Column(UUID(as_uuid=True), ForeignKey("runs.id", ondelete="CASCADE"), nullable=False)
     block_id = Column(String(255), nullable=True)
     kind = Column(String(100), nullable=False)  # block_started/block_completed/block_failed/approval_requested/etc
     payload = Column(JSONB, nullable=False, default=dict)

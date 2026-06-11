@@ -32,6 +32,15 @@ from app.runtime.run_contract import enrich_run_state_contract
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
 
+# Playbook catalog data lives in playbooks.py — import here so workflow CRUD
+# functions (_stamp, create_workflow, register_workflow_webhook, test_trigger)
+# can reference registry constants without duplicating them.
+from app.routers.playbooks import (  # noqa: E402
+    _GITHUB_WEBHOOK_EVENTS,
+    _ALL_GITHUB_EVENTS,
+    _TEMPLATE_PLAYBOOKS,
+)
+
 
 def _run_compiler(version_id, graph: dict):
     """Compile all blocks in a fresh DB session (background task)."""
@@ -142,27 +151,6 @@ FRIENDLY_NAMES_SERVER = {
     "smoke_test":             "Smoke Test",
     "thirdparty_autopilot_fix": "Third-Party Autopilot Fix",
 }
-
-def _load_registry() -> dict:
-    import yaml as _yaml
-    from pathlib import Path
-    path = Path(__file__).parent.parent.parent / "playbooks" / "registry.yaml"
-    return _yaml.safe_load(path.read_text())
-
-_REGISTRY = _load_registry()
-_PLAYBOOKS = _REGISTRY["playbooks"]
-
-_TEMPLATE_PLAYBOOKS: dict[str, str] = {slug: meta["file"] for slug, meta in _PLAYBOOKS.items()}
-_PLAYBOOK_META: dict[str, dict] = {
-    slug: {k: v for k, v in meta.items() if k != "file" and k != "github_events"}
-    for slug, meta in _PLAYBOOKS.items()
-}
-_GITHUB_WEBHOOK_EVENTS: dict[str, list[str]] = {
-    slug: meta["github_events"]
-    for slug, meta in _PLAYBOOKS.items()
-    if "github_events" in meta
-}
-_ALL_GITHUB_EVENTS: list[str] = _REGISTRY.get("all_github_events", [])
 
 
 def _stamp(workflow) -> None:
@@ -346,144 +334,6 @@ def _github_hook_exists(token: str, repo: str, hook_id: str) -> bool:
         return r.status_code == 200
     except Exception:
         return False
-
-
-@router.get("/playbooks")
-def list_playbooks():
-    return [
-        {
-            "slug": slug,
-            "name": slug.replace("_", " ").title(),
-            "icon": _PLAYBOOK_META[slug]["icon"],
-            "description": _PLAYBOOK_META[slug]["description"],
-            "tags": _PLAYBOOK_META[slug]["tags"],
-            "featured": _PLAYBOOK_META[slug]["featured"],
-            "category": _PLAYBOOK_META[slug].get("category", "Other"),
-        }
-        for slug in _TEMPLATE_PLAYBOOKS
-        if slug in _PLAYBOOK_META
-    ]
-
-
-@router.get("/playbooks/{slug}")
-def get_playbook(slug: str):
-    import pathlib, yaml as _yaml
-    if slug not in _TEMPLATE_PLAYBOOKS or slug not in _PLAYBOOK_META:
-        raise HTTPException(status_code=404, detail="Playbook not found")
-    meta = _PLAYBOOK_META[slug]
-    inputs: dict = {}
-    yaml_source: str = ""
-    playbook_path = pathlib.Path(__file__).parent.parent.parent / "playbooks" / _TEMPLATE_PLAYBOOKS[slug]
-    blocks: list = []
-    if playbook_path.exists():
-        yaml_source = playbook_path.read_text()
-        raw = _yaml.safe_load(yaml_source) or {}
-        inputs = raw.get("inputs", {})
-        # Trigger block from the `on:` key (PyYAML parses `on` as True)
-        trigger_raw = raw.get(True, {}) or {}
-        if trigger_raw:
-            event = next(iter(trigger_raw), None)
-            blocks.append({
-                "id": "_trigger",
-                "type": "trigger",
-                "label": (event or "trigger").replace(".", " ").replace("_", " ").title(),
-                "description": None,
-                "integration": (trigger_raw.get(event) or {}).get("integration"),
-                "model": None,
-            })
-        for block_id, block_data in (raw.get("blocks") or {}).items():
-            if not isinstance(block_data, dict):
-                continue
-            desc = block_data.get("description") or ""
-            # Trim long descriptions to first non-empty line
-            first_line = next((l.strip() for l in desc.splitlines() if l.strip()), None)
-            blocks.append({
-                "id": block_id,
-                "type": block_data.get("type", "tool"),
-                "label": block_data.get("label", block_id.replace("_", " ").title()),
-                "description": first_line,
-                "integration": block_data.get("integration"),
-                "model": block_data.get("model"),
-            })
-    github_webhook = slug in _GITHUB_WEBHOOK_EVENTS
-    return {
-        "slug": slug,
-        "name": slug.replace("_", " ").title(),
-        "icon": meta["icon"],
-        "description": meta["description"],
-        "tags": meta["tags"],
-        "featured": meta["featured"],
-        "category": meta.get("category", "Other"),
-        "inputs": inputs,
-        "blocks": blocks,
-        "yaml_source": yaml_source,
-        "requires_repo": True,
-        "github_webhook": github_webhook,
-        "github_events": _GITHUB_WEBHOOK_EVENTS.get(slug, []),
-    }
-
-
-@router.get("/conflict-check")
-def conflict_check(
-    template: str,
-    repo: str,
-    trigger_label: str = "",
-    db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _: str = Depends(require_permission("platform.workflows.view")),
-):
-    """
-    Check for conflicts when installing a playbook on a repo.
-
-    Conflict rules:
-    - ISSUES_LABELED templates (autopilot variants): conflict = same repo + same label
-      → 3 agents on same repo with different labels is valid
-    - PULL_REQUEST templates (pr-reviewer, security-scanner, copilot-reviewer): never conflict
-      → they complement each other, all run independently on PR open
-    - SINGLE_TRIGGER templates (issue-triage, ci-notify, release-notes): conflict = same repo
-      → only one instance makes sense
-    """
-    # Pull-request playbooks never conflict — they complement each other
-    _PR_TEMPLATES = {"pr_reviewer", "copilot_reviewer", "security_scanner"}
-    if template in _PR_TEMPLATES:
-        return {"conflicts": [], "conflict_type": None}
-
-    # Issues-labeled playbooks: conflict only on same label
-    _ISSUES_LABELED = {"autopilot_quick", "autopilot_full", "autopilot_approved", "ai_ready"}
-
-    existing = db.query(Workflow).filter(
-        Workflow.workspace_id == workspace_id,
-        Workflow.github_hook_repo == repo,
-    ).all()
-
-    conflicts = []
-    for wf in existing:
-        if not wf.current_version:
-            continue
-        nodes = (wf.current_version.graph or {}).get("nodes", [])
-        trigger = next((n for n in nodes if n.get("data", {}).get("type") == "trigger"), None)
-        if not trigger:
-            continue
-        cfg = trigger.get("data", {}).get("config", {})
-
-        if template in _ISSUES_LABELED:
-            # Only conflict if the existing agent watches the same label
-            existing_labels = cfg.get("labels", [])
-            if trigger_label and trigger_label in existing_labels:
-                conflicts.append({"id": str(wf.id), "name": wf.name, "label": trigger_label})
-        else:
-            # Single-trigger templates: conflict if same event type on same repo
-            existing_event = cfg.get("event_type", "")
-            new_event = {
-                "issue_triage": "github_issues",
-                "ci_notify": "workflow_run",
-                "release_notes": "create",
-            }.get(template, "")
-            if new_event and existing_event == new_event:
-                conflicts.append({"id": str(wf.id), "name": wf.name, "label": None})
-
-    conflict_type = "label" if template in _ISSUES_LABELED else "duplicate"
-    return {"conflicts": conflicts, "conflict_type": conflict_type if conflicts else None}
 
 
 @router.post("", response_model=WorkflowDetailOut, status_code=201)
@@ -696,19 +546,14 @@ def delete_workflow(
         except Exception as e:
             log.warning("webhook.deregistration_skipped", workflow_id=str(workflow_id), error=str(e))
 
-    from sqlalchemy import text
-    db.execute(text("""
-        DELETE FROM run_events WHERE run_id IN (
-            SELECT r.id FROM runs r
-            JOIN workflow_versions wv ON wv.id = r.workflow_version_id
-            WHERE wv.workflow_id = :wid
-        )
-    """), {"wid": str(workflow_id)})
-    db.execute(text("DELETE FROM runs WHERE workflow_version_id IN (SELECT id FROM workflow_versions WHERE workflow_id = :wid)"), {"wid": str(workflow_id)})
-    # Null out FK before deleting versions to avoid FK violation
-    db.execute(text("UPDATE workflows SET current_version_id = NULL WHERE id = :wid"), {"wid": str(workflow_id)})
-    db.execute(text("DELETE FROM workflow_versions WHERE workflow_id = :wid"), {"wid": str(workflow_id)})
-    db.execute(text("DELETE FROM workflows WHERE id = :wid"), {"wid": str(workflow_id)})
+    # Clear the self-referential pointer before deleting so the DB-level
+    # SET NULL on workflows.current_version_id does not race with the CASCADE
+    # delete of workflow_versions rows.  The FK chain
+    # (workflow_versions → runs → run_events) carries ON DELETE CASCADE, so
+    # a single delete + commit handles the full child tree.
+    workflow.current_version_id = None
+    db.flush()
+    db.delete(workflow)
     db.commit()
     audit(db, workspace_id, "workflow.deleted",
           resource_type="workflow", resource_id=str(workflow_id))
