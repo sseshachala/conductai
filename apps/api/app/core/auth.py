@@ -291,7 +291,7 @@ def get_workspace_id(
             db.commit()
         except Exception:
             db.rollback()
-        return row.workspace_id
+        return str(row.workspace_id)
 
     if not credentials:
         raise HTTPException(status_code=401, detail="Authorization header required")
@@ -440,7 +440,7 @@ def get_guard_org_id(
         row = db.query(ConductApiKey).filter(ConductApiKey.key_hash == key_hash).first()
         if not row:
             raise HTTPException(status_code=401, detail="Invalid API key")
-        return row.workspace_id
+        return str(row.workspace_id)
 
     if not credentials:
         raise HTTPException(status_code=401, detail="Authentication required")
