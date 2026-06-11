@@ -212,7 +212,10 @@ def list_runs(
     ).subquery()
     return (
         db.query(Run)
-        .filter(Run.workflow_version_id.in_(version_ids))
+        .filter(
+            Run.workflow_version_id.in_(version_ids),
+            Run.workspace_id == UUID(workspace_id),
+        )
         .order_by(Run.created_at.desc())
         .all()
     )
@@ -276,6 +279,7 @@ def create_run(
 
     run = Run(
         workflow_version_id=workflow.current_version_id,
+        workspace_id=workflow.workspace_id,
         triggered_by=body.triggered_by,
         status="pending",
         state=initial_state,
