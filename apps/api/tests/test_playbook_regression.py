@@ -13,7 +13,7 @@ import pytest
 from app.dsl import load_workflow_yaml
 
 PLAYBOOKS_DIR = Path(__file__).resolve().parent.parent / "playbooks"
-PLAYBOOK_FILES = sorted(PLAYBOOKS_DIR.glob("*.yaml"))
+PLAYBOOK_FILES = sorted(f for f in PLAYBOOKS_DIR.glob("*.yaml") if f.name != "registry.yaml")
 
 # Playbooks that use DSL features not yet implemented — tracked in GH issues
 # bughunter-active-scan.yaml was unblocked by #565 (system/prompt/for_each/input fields)
