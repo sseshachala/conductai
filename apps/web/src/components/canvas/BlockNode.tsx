@@ -57,6 +57,7 @@ function BlockIcon({ type, className }: { type: string; className?: string }) {
     case "output":   return <svg {...props}><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
     case "cleanup":  return <svg {...props}><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
     case "mcp":      return <svg {...props}><path d="M4 6h16M4 12h16M4 18h7"/><circle cx="17" cy="18" r="3"/><path d="M14.5 18h-1M19.5 18h1M17 15.5v-1M17 20.5v1"/></svg>
+    case "sandbox":  return <svg {...props}><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
     default:         return null
   }
 }
