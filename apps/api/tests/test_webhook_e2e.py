@@ -120,7 +120,7 @@ def test_issue_labeled_routes_to_correct_workflow():
     initial_state = {"github_issue": normalized["issue"], "github_trigger": normalized}
 
     with patch("app.routers.webhooks._redis") as mock_redis_factory:
-        redis_client = MagicMock()
+        redis_client = MagicMock(**{"llen.return_value": 0})
         mock_redis_factory.return_value = redis_client
 
         queued = _trigger_github_workflows(
@@ -151,7 +151,7 @@ def test_issue_labeled_unknown_label_fires_nobody():
     initial_state = {"github_issue": normalized["issue"], "github_trigger": normalized}
 
     with patch("app.routers.webhooks._redis") as mock_redis_factory:
-        redis_client = MagicMock()
+        redis_client = MagicMock(**{"llen.return_value": 0})
         mock_redis_factory.return_value = redis_client
 
         queued = _trigger_github_workflows(

@@ -41,6 +41,7 @@ _cfg_stub.settings = MagicMock(
     clerk_secret_key=None,
     clerk_frontend_api=None,
     environment="test",
+    log_level="INFO",
 )
 sys.modules["app.core.config"] = _cfg_stub
 sys.modules["app.core.database"] = MagicMock()
@@ -85,11 +86,27 @@ sys.modules["app.models.run_online_score"] = _ros_mod
 
 sys.modules.setdefault("app.core.auth", MagicMock())
 
-from app.routers.analytics import get_scorecards  # noqa: E402
+sys.modules["sqlalchemy.dialects"] = MagicMock()
+sys.modules["sqlalchemy.dialects.postgresql"] = MagicMock()
+sys.modules["app.models.run"] = MagicMock()
+sys.modules["app.models.run_trace"] = MagicMock()
+sys.modules["app.models.watchdog_event"] = MagicMock()
+from app.routers.insights import get_scorecards  # noqa: E402
 
 # Restore sqlalchemy so later test files that need the real package can import it.
 sys.modules.pop("sqlalchemy", None)
 sys.modules.pop("sqlalchemy.orm", None)
+sys.modules.pop("sqlalchemy.dialects", None)
+sys.modules.pop("sqlalchemy.dialects.postgresql", None)
+sys.modules.pop("app.models.run", None)
+sys.modules.pop("app.models.run_trace", None)
+sys.modules.pop("app.models.watchdog_event", None)
+sys.modules.pop("app.core.config", None)
+sys.modules.pop("app.core.database", None)
+sys.modules.pop("app.core.auth", None)
+sys.modules.pop("app.routers.insights", None)
+sys.modules.pop("app.routers.runs", None)
+sys.modules.pop("app.main", None)
 
 _WS = "00000000-0000-0000-0000-000000000001"
 
