@@ -208,7 +208,7 @@ def load_fixtures(playbooks_dir: Path = PLAYBOOKS_DIR) -> list[PlaybookFixture]:
     """
     fixtures: list[PlaybookFixture] = []
 
-    for path in sorted(playbooks_dir.glob("*.yaml")):
+    for path in sorted(p for p in playbooks_dir.glob("*.yaml") if p.name != "registry.yaml"):
         slug = _slug_from_path(path)
         raw = yaml.safe_load(path.read_text()) or {}
 

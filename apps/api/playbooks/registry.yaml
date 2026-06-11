@@ -1,0 +1,268 @@
+# Marketplace registry — one entry per playbook.
+# Adding a new playbook to the marketplace only requires editing this file.
+#
+# Fields per entry:
+#   file:         YAML filename in this directory
+#   icon:         emoji shown in the marketplace card
+#   category:     grouping header in the UI
+#   tags:         filter chips
+#   featured:     true = shown in Featured section
+#   description:  one-line card copy
+#   bundled_with: (optional) module slug this playbook ships with
+#   github_events:(optional) list of GitHub webhook events that trigger this playbook
+
+playbooks:
+  autopilot_quick:
+    file: autopilot-quick.yaml
+    icon: "⚡"
+    category: Issue to PR
+    tags: [github, code]
+    featured: true
+    description: "GitHub issue labeled → implement fix → open PR. No test step — CI runs tests on the PR."
+    github_events: [issues]
+
+  autopilot_full:
+    file: autopilot.yaml
+    icon: "🤖"
+    category: Issue to PR
+    tags: [github, code]
+    featured: true
+    description: "GitHub issue labeled → implement fix → run tests with retry → open PR."
+    github_events: [issues]
+
+  autopilot_approved:
+    file: autopilot-approved.yaml
+    icon: "✋"
+    category: Issue to PR
+    tags: [github, code, approval]
+    featured: true
+    description: "Implement fix → run tests → human approves in Slack → open PR. Nothing ships without a gate."
+    github_events: [issues]
+
+  factory:
+    file: factory.yaml
+    icon: "🏭"
+    category: Issue to PR
+    tags: [github, code, tdd, approval]
+    featured: true
+    description: "GitHub issue → spec (Opus) → architecture + ADR → failing tests → implementation → passing tests → human approval → PR. The full software factory pipeline."
+    github_events: [issues]
+
+  thirdparty_autopilot_fix:
+    file: thirdparty-autopilot-fix.yaml
+    icon: "🔀"
+    category: Issue to PR
+    tags: [github, code, oss]
+    featured: true
+    description: "Issue on any third-party repo → AI forks it, clones the fork, reads the issue, applies the fix, and opens a PR back to upstream. Works on any public repo."
+
+  pr_reviewer:
+    file: pr-reviewer.yaml
+    icon: "🔍"
+    category: Code Review
+    tags: [github, code-review]
+    featured: true
+    description: "Any PR opened → AI reviews the diff for bugs, security issues, and style → posts a review comment."
+    github_events: [pull_request]
+
+  copilot_reviewer:
+    file: copilot-reviewer.yaml
+    icon: "🤖"
+    category: Code Review
+    tags: [github, code-review, approval]
+    featured: true
+    description: "PR opened by Copilot/Cursor/Claude Code → AI reviews the diff → human approves before merge. The orchestration layer above your AI coding tool."
+    github_events: [pull_request]
+
+  security_scanner:
+    file: security-scanner.yaml
+    icon: "🔒"
+    category: Code Review
+    tags: [github, code-review, code]
+    featured: true
+    description: "PR opened → AI scans for OWASP Top 10, hardcoded secrets, auth bypasses, weak crypto → posts structured security report → creates fix issue for critical findings."
+    github_events: [pull_request]
+
+  bulk_pr_reviewer:
+    file: bulk-pr-reviewer.yaml
+    icon: "📚"
+    category: Code Review
+    tags: [github, code-review, fleet]
+    featured: true
+    description: "Review every open PR in a repo in one run. Verdict + summary posted as a review comment on each PR, fleet summary to Slack."
+
+  issue_triage:
+    file: issue-triage.yaml
+    icon: "🏷"
+    category: Issue Triage
+    tags: [github, ops]
+    featured: true
+    description: "New issue opened → AI classifies type and priority → adds labels → posts a clarifying comment if vague."
+    github_events: [issues]
+
+  ci_notify:
+    file: ci-notify.yaml
+    icon: "🚨"
+    category: CI/CD
+    tags: [github, notifications]
+    featured: false
+    description: "CI build fails → AI diagnoses the failed step → posts root cause and suggested fix to Slack."
+    github_events: [workflow_run]
+
+  flaky_test_detective:
+    file: flaky-test-detective.yaml
+    icon: "🔬"
+    category: CI/CD
+    tags: [github, ci]
+    featured: true
+    description: "CI run has repeated failures → AI identifies flaky tests, finds the offending commit, posts a fix recommendation."
+    github_events: [workflow_run]
+
+  release_readiness:
+    file: release-readiness.yaml
+    icon: "✅"
+    category: Release Management
+    tags: [github, release]
+    featured: true
+    description: "Release branch cut → AI checks open blockers, failed CI, pending reviews, and unresolved incidents → posts a go/no-go summary."
+    github_events: [create]
+
+  release_gating:
+    file: release-gating.yaml
+    icon: "🚦"
+    category: Release Management
+    tags: [github, release, approval]
+    featured: true
+    description: "Run the full readiness check, pause for human go/no-go in Slack, then create the git tag and publish release notes — only on explicit approval."
+
+  release_notes:
+    file: release-notes.yaml
+    icon: "📝"
+    category: Release Management
+    tags: [github, notifications]
+    featured: false
+    description: "Git tag pushed → AI reads merged PRs → groups by type → writes CHANGELOG entry → posts to Slack."
+    github_events: [create]
+
+  incident_responder:
+    file: incident-responder.yaml
+    icon: "🔥"
+    category: Incidents & Ops
+    tags: [ops, notifications]
+    featured: false
+    description: "Alert fires → AI correlates recent commits and deploys → posts root cause hypothesis to #incidents."
+
+  postmortem_drafter:
+    file: postmortem-drafter.yaml
+    icon: "📋"
+    category: Incidents & Ops
+    tags: [ops, docs]
+    featured: true
+    description: "Incident resolved → AI reads the timeline, alerts, and commits → drafts a structured postmortem with root cause and action items."
+
+  dependency_updater:
+    file: dependency-updater.yaml
+    icon: "📦"
+    category: Security
+    tags: [github, ops]
+    featured: false
+    description: "Weekly cron → AI scans for outdated deps → bumps patch/minor versions → opens a single clean PR."
+
+  security_patch_updater:
+    file: security-patch-updater.yaml
+    icon: "🛡️"
+    category: Security
+    tags: [github, security, ops]
+    featured: true
+    description: "Dependabot alert fires → AI applies the security patch → runs tests → opens a PR with CVE reference. No waiting for the weekly cron."
+    github_events: [repository_vulnerability_alert, dependabot_alert]
+
+  security_loop:
+    file: security_loop.yaml
+    icon: "🔐"
+    category: Security
+    tags: [security, agentic, autopilot]
+    featured: true
+    bundled_with: security-loop-module
+    description: "Security Loop Automation — AI agent triages every finding from Security Loop for Claude. Dismisses false positives instantly, escalates real threats, and with Agentic Autopilot opens fix PRs autonomously."
+
+  security_autopilot_fix:
+    file: security-autopilot-fix.yaml
+    icon: "🔧"
+    category: Security
+    tags: [security, github, autopilot]
+    featured: true
+    bundled_with: security-loop-module
+    description: "Security finding → reads affected file → writes targeted patch → opens PR → notifies Slack. Triggered from the Security Loop activity page."
+
+  bughunter_active_scan:
+    file: bughunter-active-scan.yaml
+    icon: "🔍"
+    category: Security
+    tags: [security, bughunter, scanning]
+    featured: true
+    description: "Dynamically discovers and runs all Claude-BugHunter hunt-* skills against a target repo. Findings flow into Security Loop + GitHub issues automatically."
+
+  multi_repo_scanner:
+    file: multi-repo-scanner.yaml
+    icon: "🔭"
+    category: Security
+    tags: [security, github, fleet]
+    featured: true
+    description: "Run a full security scan across a fleet of repos in one shot. Findings aggregated, deduplicated, and ranked cross-fleet."
+
+  dependency_audit:
+    file: dependency-audit.yaml
+    icon: "🧪"
+    category: Security
+    tags: [security, github, deps]
+    featured: true
+    description: "Fetch all outdated dependencies, assess breaking-change risk per package, and open targeted GitHub issues only for major or breaking upgrades."
+
+  docs_drift_detector:
+    file: docs-drift-detector.yaml
+    icon: "📖"
+    category: Docs
+    tags: [github, docs]
+    featured: true
+    description: "PR merged → AI checks if related docs, README, or runbooks are out of date → opens a follow-up docs PR or creates an issue."
+    github_events: [pull_request]
+
+  terraform_reviewer:
+    file: terraform-reviewer.yaml
+    icon: "🏗️"
+    category: Platform & Infra
+    tags: [github, infra, security]
+    featured: true
+    description: "Terraform plan PR opened → AI reviews for security misconfigs, cost anomalies, and drift from approved patterns → posts structured findings."
+    github_events: [pull_request]
+
+  smoke_test:
+    file: smoke-test.yaml
+    icon: "🏓"
+    category: Testing
+    tags: [ci, ops]
+    featured: false
+    description: "Minimal 1-step pipeline ping. Fires a brain block and returns ok. Use for CI gating and worker health checks — completes in under 30s."
+
+  multi_env_smoke_test:
+    file: multi-env-smoke-test.yaml
+    icon: "🌐"
+    category: Testing
+    tags: [ci, ops, fleet]
+    featured: true
+    description: "Smoke-test staging, prod, and canary in one run. Diffs results to distinguish env-specific failures from universal ones."
+
+# GitHub events Conduct listens for globally (union of all playbook github_events above).
+# Used when registering a repo webhook so GitHub sends everything and we filter in the handler.
+all_github_events:
+  - issues
+  - pull_request
+  - push
+  - issue_comment
+  - create
+  - workflow_run
+  - repository_vulnerability_alert
+  - dependabot_alert
+  - pull_request_review
+  - pull_request_review_comment

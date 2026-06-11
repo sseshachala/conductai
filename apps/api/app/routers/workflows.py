@@ -143,95 +143,26 @@ FRIENDLY_NAMES_SERVER = {
     "thirdparty_autopilot_fix": "Third-Party Autopilot Fix",
 }
 
-_TEMPLATE_PLAYBOOKS = {
-    "autopilot_quick":        "autopilot-quick.yaml",
-    "autopilot_full":         "autopilot.yaml",
-    "autopilot_approved":     "autopilot-approved.yaml",
-    "pr_reviewer":            "pr-reviewer.yaml",
-    "ci_notify":              "ci-notify.yaml",
-    "incident_responder":     "incident-responder.yaml",
-    "dependency_updater":     "dependency-updater.yaml",
-    "release_notes":          "release-notes.yaml",
-    "issue_triage":           "issue-triage.yaml",
-    "copilot_reviewer":       "copilot-reviewer.yaml",
-    "security_scanner":       "security-scanner.yaml",
-    "security_patch_updater": "security-patch-updater.yaml",
-    "flaky_test_detective":   "flaky-test-detective.yaml",
-    "release_readiness":      "release-readiness.yaml",
-    "postmortem_drafter":     "postmortem-drafter.yaml",
-    "docs_drift_detector":    "docs-drift-detector.yaml",
-    "terraform_reviewer":     "terraform-reviewer.yaml",
-    "thirdparty_autopilot_fix": "thirdparty-autopilot-fix.yaml",
-    "smoke_test":             "smoke-test.yaml",
-    "factory":               "factory.yaml",
-    "security_loop":              "security_loop.yaml",
-    "security_autopilot_fix":     "security-autopilot-fix.yaml",
-    "bughunter_active_scan":      "bughunter-active-scan.yaml",
-    "multi_repo_scanner":         "multi-repo-scanner.yaml",
-    "dependency_audit":           "dependency-audit.yaml",
-    "bulk_pr_reviewer":           "bulk-pr-reviewer.yaml",
-    "release_gating":             "release-gating.yaml",
-    "multi_env_smoke_test":       "multi-env-smoke-test.yaml",
+def _load_registry() -> dict:
+    import yaml as _yaml
+    from pathlib import Path
+    path = Path(__file__).parent.parent.parent / "playbooks" / "registry.yaml"
+    return _yaml.safe_load(path.read_text())
+
+_REGISTRY = _load_registry()
+_PLAYBOOKS = _REGISTRY["playbooks"]
+
+_TEMPLATE_PLAYBOOKS: dict[str, str] = {slug: meta["file"] for slug, meta in _PLAYBOOKS.items()}
+_PLAYBOOK_META: dict[str, dict] = {
+    slug: {k: v for k, v in meta.items() if k != "file" and k != "github_events"}
+    for slug, meta in _PLAYBOOKS.items()
 }
-
-_PLAYBOOK_META = {
-    "autopilot_quick":       {"icon": "⚡",  "category": "Issue to PR",        "tags": ["github", "code"],                    "featured": True,  "description": "GitHub issue labeled → implement fix → open PR. No test step — CI runs tests on the PR."},
-    "autopilot_full":        {"icon": "🤖",  "category": "Issue to PR",        "tags": ["github", "code"],                    "featured": True,  "description": "GitHub issue labeled → implement fix → run tests with retry → open PR."},
-    "autopilot_approved":    {"icon": "✋",  "category": "Issue to PR",        "tags": ["github", "code", "approval"],        "featured": True,  "description": "Implement fix → run tests → human approves in Slack → open PR. Nothing ships without a gate."},
-    "pr_reviewer":           {"icon": "🔍",  "category": "Code Review",        "tags": ["github", "code-review"],             "featured": True,  "description": "Any PR opened → AI reviews the diff for bugs, security issues, and style → posts a review comment."},
-    "copilot_reviewer":      {"icon": "🤖",  "category": "Code Review",        "tags": ["github", "code-review", "approval"], "featured": True,  "description": "PR opened by Copilot/Cursor/Claude Code → AI reviews the diff → human approves before merge. The orchestration layer above your AI coding tool."},
-    "security_scanner":      {"icon": "🔒",  "category": "Code Review",        "tags": ["github", "code-review", "code"],     "featured": True,  "description": "PR opened → AI scans for OWASP Top 10, hardcoded secrets, auth bypasses, weak crypto → posts structured security report → creates fix issue for critical findings."},
-    "issue_triage":          {"icon": "🏷",  "category": "Issue Triage",       "tags": ["github", "ops"],                     "featured": True,  "description": "New issue opened → AI classifies type and priority → adds labels → posts a clarifying comment if vague."},
-    "ci_notify":             {"icon": "🚨",  "category": "CI/CD",              "tags": ["github", "notifications"],           "featured": False, "description": "CI build fails → AI diagnoses the failed step → posts root cause and suggested fix to Slack."},
-    "flaky_test_detective":  {"icon": "🔬",  "category": "CI/CD",              "tags": ["github", "ci"],                      "featured": True,  "description": "CI run has repeated failures → AI identifies flaky tests, finds the offending commit, posts a fix recommendation."},
-    "release_readiness":     {"icon": "✅",  "category": "Release Management", "tags": ["github", "release"],                 "featured": True,  "description": "Release branch cut → AI checks open blockers, failed CI, pending reviews, and unresolved incidents → posts a go/no-go summary."},
-    "release_notes":         {"icon": "📝",  "category": "Release Management", "tags": ["github", "notifications"],           "featured": False, "description": "Git tag pushed → AI reads merged PRs → groups by type → writes CHANGELOG entry → posts to Slack."},
-    "incident_responder":    {"icon": "🔥",  "category": "Incidents & Ops",    "tags": ["ops", "notifications"],              "featured": False, "description": "Alert fires → AI correlates recent commits and deploys → posts root cause hypothesis to #incidents."},
-    "postmortem_drafter":    {"icon": "📋",  "category": "Incidents & Ops",    "tags": ["ops", "docs"],                       "featured": True,  "description": "Incident resolved → AI reads the timeline, alerts, and commits → drafts a structured postmortem with root cause and action items."},
-    "dependency_updater":    {"icon": "📦",  "category": "Security",           "tags": ["github", "ops"],                     "featured": False, "description": "Weekly cron → AI scans for outdated deps → bumps patch/minor versions → opens a single clean PR."},
-    "security_patch_updater":{"icon": "🛡️",  "category": "Security",           "tags": ["github", "security", "ops"],         "featured": True,  "description": "Dependabot alert fires → AI applies the security patch → runs tests → opens a PR with CVE reference. No waiting for the weekly cron."},
-    "docs_drift_detector":   {"icon": "📖",  "category": "Docs",               "tags": ["github", "docs"],                    "featured": True,  "description": "PR merged → AI checks if related docs, README, or runbooks are out of date → opens a follow-up docs PR or creates an issue."},
-    "terraform_reviewer":    {"icon": "🏗️",  "category": "Platform & Infra",   "tags": ["github", "infra", "security"],       "featured": True,  "description": "Terraform plan PR opened → AI reviews for security misconfigs, cost anomalies, and drift from approved patterns → posts structured findings."},
-    "thirdparty_autopilot_fix":{"icon": "🔀", "category": "Issue to PR",        "tags": ["github", "code", "oss"],             "featured": True,  "description": "Issue on any third-party repo → AI forks it, clones the fork, reads the issue, applies the fix, and opens a PR back to upstream. Works on any public repo."},
-    "smoke_test":            {"icon": "🏓",  "category": "Testing",            "tags": ["ci", "ops"],                         "featured": False, "description": "Minimal 1-step pipeline ping. Fires a brain block and returns ok. Use for CI gating and worker health checks — completes in under 30s."},
-    "factory":               {"icon": "🏭",  "category": "Issue to PR",        "tags": ["github", "code", "tdd", "approval"],  "featured": True,  "description": "GitHub issue → spec (Opus) → architecture + ADR → failing tests → implementation → passing tests → human approval → PR. The full software factory pipeline."},
-    "security_loop":              {"icon": "🔐",  "category": "Security",    "tags": ["security", "agentic", "autopilot"],                "featured": True,  "bundled_with": "security-loop-module", "description": "Security Loop Automation — AI agent triages every finding from Security Loop for Claude. Dismisses false positives instantly, escalates real threats, and with Agentic Autopilot opens fix PRs autonomously."},
-    "security_autopilot_fix":     {"icon": "🔧",  "category": "Security",    "tags": ["security", "github", "autopilot"],                 "featured": True,  "bundled_with": "security-loop-module", "description": "Security finding → reads affected file → writes targeted patch → opens PR → notifies Slack. Triggered from the Security Loop activity page."},
-    "bughunter_active_scan":      {"icon": "🔍",  "category": "Security",    "tags": ["security", "bughunter", "scanning"],               "featured": True,  "description": "Dynamically discovers and runs all Claude-BugHunter hunt-* skills against a target repo. Findings flow into Security Loop + GitHub issues automatically."},
-    "multi_repo_scanner":         {"icon": "🔭",  "category": "Security",           "tags": ["security", "github", "fleet"],               "featured": True,  "description": "Run a full security scan across a fleet of repos in one shot. Findings aggregated, deduplicated, and ranked cross-fleet."},
-    "dependency_audit":           {"icon": "🧪",  "category": "Security",           "tags": ["security", "github", "deps"],                "featured": True,  "description": "Fetch all outdated dependencies, assess breaking-change risk per package, and open targeted GitHub issues only for major or breaking upgrades."},
-    "bulk_pr_reviewer":           {"icon": "📚",  "category": "Code Review",        "tags": ["github", "code-review", "fleet"],            "featured": True,  "description": "Review every open PR in a repo in one run. Verdict + summary posted as a review comment on each PR, fleet summary to Slack."},
-    "release_gating":             {"icon": "🚦",  "category": "Release Management", "tags": ["github", "release", "approval"],             "featured": True,  "description": "Run the full readiness check, pause for human go/no-go in Slack, then create the git tag and publish release notes — only on explicit approval."},
-    "multi_env_smoke_test":       {"icon": "🌐",  "category": "Testing",            "tags": ["ci", "ops", "fleet"],                        "featured": True,  "description": "Smoke-test staging, prod, and canary in one run. Diffs results to distinguish env-specific failures from universal ones."},
-}
-
-
-# Templates that need a GitHub webhook registered — maps slug → GitHub event list
 _GITHUB_WEBHOOK_EVENTS: dict[str, list[str]] = {
-    "pr_reviewer":           ["pull_request"],
-    "copilot_reviewer":      ["pull_request"],
-    "issue_triage":          ["issues"],
-    "ci_notify":             ["workflow_run"],
-    "release_notes":         ["create"],
-    "autopilot_quick":       ["issues"],
-    "autopilot_full":        ["issues"],
-    "autopilot_approved":    ["issues"],
-    "security_scanner":      ["pull_request"],
-    "security_patch_updater":["repository_vulnerability_alert", "dependabot_alert"],
-    "flaky_test_detective":  ["workflow_run"],
-    "release_readiness":     ["create"],
-    "docs_drift_detector":   ["pull_request"],
-    "terraform_reviewer":    ["pull_request"],
-    "factory":               ["issues"],
+    slug: meta["github_events"]
+    for slug, meta in _PLAYBOOKS.items()
+    if "github_events" in meta
 }
-
-# All GitHub events Conduct ever listens to — used when registering a repo webhook
-# so GitHub sends everything and we filter in the handler.
-_ALL_GITHUB_EVENTS = [
-    "issues", "pull_request", "push", "issue_comment",
-    "create", "workflow_run", "repository_vulnerability_alert", "dependabot_alert",
-    "pull_request_review", "pull_request_review_comment",
-]
+_ALL_GITHUB_EVENTS: list[str] = _REGISTRY.get("all_github_events", [])
 
 
 def _stamp(workflow) -> None:
