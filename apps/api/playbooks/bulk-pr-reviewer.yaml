@@ -1,0 +1,141 @@
+name: Bulk PR Reviewer
+version: 1
+description: >
+  Review all open pull requests in a repository in one run. Fetches up to
+  max_prs open PRs, reviews each diff with an AI model, and posts a fleet
+  summary to Slack.
+
+inputs:
+  repo:
+    label: Repository (owner/repo)
+    type: string
+    placeholder: "owner/repo"
+  max_prs:
+    label: Maximum PRs to review
+    type: string
+    default: "20"
+  model:
+    label: AI Model
+    type: select
+    default: claude-sonnet-4-6
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+
+on:
+  manual:
+    next: fetch_prs
+
+blocks:
+  fetch_prs:
+    type: brain
+    mode: agentic
+    model: "{{ inputs.model }}"
+    label: Fetch open pull requests
+    system: |
+      You are fetching the list of open pull requests from a GitHub repository.
+      Return structured data for each PR including number, title, URL, and author.
+    prompt: |
+      Fetch open pull requests from: {{ inputs.repo }}
+      Maximum to return: {{ inputs.max_prs }}
+
+      GET https://api.github.com/repos/{{ inputs.repo }}/pulls?state=open&per_page={{ inputs.max_prs }}&sort=updated&direction=desc
+      Headers: Authorization: token $GIT_TOKEN
+
+      For each PR extract:
+        - number (integer)
+        - title (string)
+        - url (html_url from response)
+        - author (login from user.login)
+        - created_at
+        - updated_at
+        - draft (boolean)
+        - additions and deletions if available in the response
+
+      Output ONLY the following JSON on the last line:
+      {"prs": [{"number": 42, "title": "feat: add caching", "url": "https://github.com/owner/repo/pull/42", "author": "dev1", "draft": false}], "count": 1}
+    next: prs_exist
+
+  prs_exist:
+    type: logic
+    label: Any open PRs to review?
+    condition: "{{ fetch_prs.count > 0 }}"
+    next:
+      pass: review_pr
+      fail: notify_none
+
+  review_pr:
+    type: brain
+    mode: agentic
+    model: "{{ inputs.model }}"
+    label: Review pull request diff
+    for_each: "{{ fetch_prs.prs }}"
+    item_var: item
+    system: |
+      You are an experienced software engineer performing a thorough pull request
+      review. Evaluate code quality, correctness, security, and adherence to
+      best practices. Be constructive and specific in your feedback.
+    prompt: |
+      Review pull request #{{ item.number }} in {{ inputs.repo }}:
+        Title:  {{ item.title }}
+        Author: {{ item.author }}
+        URL:    {{ item.url }}
+
+      Step 1 — Fetch the PR diff:
+        GET https://api.github.com/repos/{{ inputs.repo }}/pulls/{{ item.number }}/files
+        Headers: Authorization: token $GIT_TOKEN
+        This returns the list of changed files with patch hunks.
+
+      Step 2 — Fetch PR description and comments:
+        GET https://api.github.com/repos/{{ inputs.repo }}/pulls/{{ item.number }}
+        Headers: Authorization: token $GIT_TOKEN
+
+      Step 3 — Review the diff for:
+        - Logic errors or bugs
+        - Security vulnerabilities (injection, auth bypass, secrets in code)
+        - Performance issues (N+1 queries, missing indexes, large allocations)
+        - Missing tests for changed code paths
+        - Style issues only if they affect readability significantly
+
+      Step 4 — Determine verdict:
+        approved           = code looks good, minor nits at most
+        changes_requested  = clear issues that must be addressed before merge
+        comment            = feedback provided but not blocking
+
+      Output ONLY the following JSON on the last line:
+      {"number": {{ item.number }}, "verdict": "approved", "summary": "Clean implementation of caching layer with proper TTL handling.", "issues": ["Missing test for cache invalidation on update"]}
+    next: notify_summary
+
+  notify_summary:
+    type: output
+    label: Fleet PR review summary
+    channels:
+      - slack
+    template: |
+      *Bulk PR Review complete* — `{{ inputs.repo }}`
+
+      *PRs reviewed:* {{ fetch_prs.count }}
+
+      {% for r in review_pr %}
+      *PR #{{ r.number }}* — {{ r.verdict | upper }}
+      {{ r.summary }}
+      {% if r.issues %}Issues:{% for i in r.issues %} • {{ i }}{% endfor %}{% endif %}
+
+      {% endfor %}
+
+  notify_none:
+    type: output
+    label: No open PRs found
+    channels:
+      - slack
+    template: |
+      *Bulk PR Review* — `{{ inputs.repo }}`
+
+      No open pull requests found. Nothing to review.
+
+test_trigger:
+  payload:
+    repo: "sseshachala/conductai"
+    max_prs: "20"
+    model: claude-sonnet-4-6

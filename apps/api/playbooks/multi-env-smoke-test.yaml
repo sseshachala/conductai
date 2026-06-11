@@ -1,0 +1,184 @@
+name: Multi-Env Smoke Test
+version: 1
+description: >
+  Run smoke tests across multiple environments in one run. Checks health
+  endpoints, response times, and critical paths per environment, then
+  diffs results to identify env-specific versus universal failures.
+
+inputs:
+  environments:
+    label: Environments (JSON array)
+    type: string
+    placeholder: '[{"name":"staging","base_url":"https://staging.example.com"},{"name":"prod","base_url":"https://api.example.com"}]'
+    description: JSON array of environment objects, each with name and base_url.
+  notify_channel:
+    label: Slack notification channel
+    type: string
+    default: "#engineering"
+  model:
+    label: AI Model
+    type: select
+    default: claude-sonnet-4-6
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+
+on:
+  manual:
+    next: parse_envs
+
+blocks:
+  parse_envs:
+    type: brain
+    mode: single
+    model: "{{ inputs.model }}"
+    label: Parse environment list
+    system: |
+      You are a data parser. Parse a JSON array string into a structured list
+      of environment objects. Each must have at minimum a name and base_url.
+      Validate that base_url values are valid HTTPS URLs.
+    prompt: |
+      Parse the following environments JSON string and validate each entry.
+
+      Input:
+      {{ inputs.environments }}
+
+      Each environment object must have:
+        - name: string identifier (e.g. "staging", "production")
+        - base_url: valid HTTPS URL (e.g. "https://staging.example.com")
+
+      Strip trailing slashes from base_url values.
+      If an entry is malformed, skip it and continue.
+
+      Output ONLY the following JSON on the last line:
+      {"envs": [{"name": "staging", "base_url": "https://staging.example.com"}, {"name": "prod", "base_url": "https://api.example.com"}], "count": 2}
+    next: smoke_env
+
+  smoke_env:
+    type: brain
+    mode: agentic
+    model: "{{ inputs.model }}"
+    label: Run smoke checks for environment
+    for_each: "{{ parse_envs.envs }}"
+    item_var: item
+    system: |
+      You are a QA engineer running automated smoke tests against a deployed
+      environment. Execute HTTP checks against standard health and readiness
+      endpoints, measure latency, and record pass/fail status for each check.
+    prompt: |
+      Run smoke tests against this environment:
+        Name:     {{ item.name }}
+        Base URL: {{ item.base_url }}
+
+      Execute the following checks in order. For each check record:
+        - name (string identifier)
+        - status: "pass" or "fail"
+        - latency_ms: integer milliseconds
+        - status_code: HTTP status code
+        - error: error message if failed, null otherwise
+
+      Checks to run:
+        1. health — GET {{ item.base_url }}/health
+           Pass condition: HTTP 200 within 2000ms
+        2. ready — GET {{ item.base_url }}/ready
+           Pass condition: HTTP 200 within 2000ms
+           (skip if not implemented — mark as pass with note)
+        3. root — GET {{ item.base_url }}/
+           Pass condition: HTTP 200 or 301/302 within 3000ms
+        4. api_version — GET {{ item.base_url }}/api/v1 or {{ item.base_url }}/version
+           Pass condition: HTTP 200 or 404 within 2000ms (404 is acceptable — endpoint may not exist)
+
+      For each request use curl or equivalent. If the endpoint does not exist
+      (connection refused, DNS failure, or timeout > 5s) mark as fail.
+
+      Set passed=true only if ALL checks return pass status.
+
+      Output ONLY the following JSON on the last line:
+      {"name": "{{ item.name }}", "base_url": "{{ item.base_url }}", "passed": true, "checks": [{"name": "health", "status": "pass", "latency_ms": 120, "status_code": 200, "error": null}], "failures": []}
+    next: diff_results
+
+  diff_results:
+    type: brain
+    mode: single
+    model: "{{ inputs.model }}"
+    label: Diff results across environments
+    system: |
+      You are analysing smoke test results across multiple environments.
+      Identify failures, classify them as universal (all envs) or env-specific,
+      and produce a clear cross-environment comparison summary.
+    prompt: |
+      Compare smoke test results across all environments.
+
+      Per-environment results:
+      {{ smoke_env }}
+
+      Total environments tested: {{ parse_envs.count }}
+
+      Analysis steps:
+      1. Collect all failures across all environments.
+      2. Identify universal failures: checks that failed in EVERY environment
+         (likely a test or config issue rather than an env-specific problem).
+      3. Identify env-specific failures: checks that failed in some but not all
+         environments (deployment or configuration problem in that env).
+      4. Set all_passed=true only if every environment has passed=true.
+      5. Write a one-sentence human summary suitable for a Slack notification.
+
+      Output ONLY the following JSON on the last line:
+      {"all_passed": true, "universal_failures": [], "env_failures": {"staging": ["health", "ready"]}, "summary": "All environments healthy — smoke tests passed."}
+    next: results_gate
+
+  results_gate:
+    type: logic
+    label: All environments healthy?
+    condition: "{{ diff_results.all_passed == true }}"
+    next:
+      pass: notify_pass
+      fail: notify_fail
+
+  notify_pass:
+    type: output
+    label: All environments healthy
+    channels:
+      - slack
+    template: |
+      *Multi-Env Smoke Test passed* — {{ parse_envs.count }} environments checked
+
+      {{ diff_results.summary }}
+
+      {% for env in smoke_env %}
+      - `{{ env.name }}` ({{ env.base_url }}) — all checks passed
+      {% endfor %}
+
+      Channel: {{ inputs.notify_channel }}
+
+  notify_fail:
+    type: output
+    label: Smoke test failures detected
+    channels:
+      - slack
+    template: |
+      *Multi-Env Smoke Test FAILED*
+
+      {{ diff_results.summary }}
+
+      *Universal failures* (all envs): {{ diff_results.universal_failures | join(", ") or "none" }}
+
+      *Per-environment failures:*
+      {% for env_name, failures in diff_results.env_failures.items() %}
+      - `{{ env_name }}`: {{ failures | join(", ") }}
+      {% endfor %}
+
+      *Full results:*
+      {% for env in smoke_env %}
+      - `{{ env.name }}` — {{ "PASS" if env.passed else "FAIL" }} ({{ env.checks | length }} checks)
+        {% if env.failures %}Failures: {{ env.failures | join(", ") }}{% endif %}
+      {% endfor %}
+
+      Channel: {{ inputs.notify_channel }}
+
+test_trigger:
+  payload:
+    environments: '[{"name":"staging","base_url":"https://staging.conductai.ai"},{"name":"prod","base_url":"https://app.conductai.ai"}]'
+    notify_channel: "#engineering"
+    model: claude-sonnet-4-6

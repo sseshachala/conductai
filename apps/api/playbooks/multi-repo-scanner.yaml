@@ -1,0 +1,163 @@
+name: Multi-Repo Scanner
+version: 1
+description: >
+  Run security scanning across a fleet of repositories in one run.
+  Parses a list of repos, scans each one in parallel via for_each,
+  then aggregates and ranks findings across the entire fleet.
+
+inputs:
+  repos:
+    label: Repositories (owner/repo, one per line or comma-separated)
+    type: string
+    placeholder: "org/repo-a\norg/repo-b\norg/repo-c"
+  severity_threshold:
+    label: Minimum Severity
+    type: select
+    default: high
+    options:
+      - critical
+      - high
+      - medium
+      - low
+  model:
+    label: AI Model
+    type: select
+    default: claude-sonnet-4-6
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+
+on:
+  manual:
+    next: parse_repos
+
+blocks:
+  parse_repos:
+    type: brain
+    mode: single
+    model: "{{ inputs.model }}"
+    label: Parse repository list
+    system: |
+      You are a data parser. Extract a clean list of GitHub repository slugs
+      from user input. Accept newline-separated or comma-separated input.
+      Normalise each entry to the owner/repo format and deduplicate.
+    prompt: |
+      Parse the following repository list into a clean JSON array.
+      Accept both newline-separated and comma-separated formats.
+      Each entry must be in owner/repo format (e.g. "acme/api").
+      Deduplicate entries and strip whitespace.
+
+      Input:
+      {{ inputs.repos }}
+
+      Output ONLY the following JSON on the last line:
+      {"repos": ["owner/repo-a", "owner/repo-b"], "count": 2}
+    next: scan_repo
+
+  scan_repo:
+    type: brain
+    mode: agentic
+    model: "{{ inputs.model }}"
+    label: Scan repo for security findings
+    for_each: "{{ parse_repos.repos }}"
+    item_var: item
+    system: |
+      You are a security researcher performing a focused recon scan on a
+      GitHub repository. Identify vulnerabilities, misconfigurations, and
+      exposed secrets using the GitHub API. Only report findings at or above
+      the configured severity threshold.
+    prompt: |
+      Scan this repository for security issues: {{ item }}
+      Severity threshold: {{ inputs.severity_threshold }}
+
+      Use the GitHub API (Authorization: token $GIT_TOKEN) to:
+
+      1. Fetch the file tree:
+         GET https://api.github.com/repos/{{ item }}/git/trees/HEAD?recursive=1
+         Identify high-risk files: *.env, config files, CI/CD workflows,
+         Dockerfiles, IAM/credential files.
+
+      2. Read key files via:
+         GET https://api.github.com/repos/{{ item }}/contents/<path>
+         Focus on: .github/workflows/, requirements.txt / package.json /
+         Cargo.toml, any *.env or *.secret files present.
+
+      3. Check for dependency vulnerabilities in the manifest files.
+
+      4. Check recent workflow runs for failures that leak secrets:
+         GET https://api.github.com/repos/{{ item }}/actions/runs?per_page=5
+
+      5. Check Dependabot alerts if available:
+         GET https://api.github.com/repos/{{ item }}/vulnerability-alerts
+
+      For each confirmed finding record:
+        - type (secret_exposure / dep_vulnerability / misconfiguration / ci_risk)
+        - severity (critical / high / medium / low)
+        - file or endpoint
+        - description
+        - recommendation
+
+      Filter findings to only include severity >= {{ inputs.severity_threshold }}.
+
+      Output ONLY the following JSON on the last line:
+      {"repo": "{{ item }}", "findings": [{"type": "secret_exposure", "severity": "high", "file": ".env.example", "description": "...", "recommendation": "..."}], "severity_counts": {"critical": 0, "high": 0, "medium": 0, "low": 0}}
+    next: aggregate
+
+  aggregate:
+    type: brain
+    mode: single
+    model: "{{ inputs.model }}"
+    label: Aggregate and rank findings across fleet
+    system: |
+      You are aggregating security findings from a multi-repository fleet scan.
+      Deduplicate findings that appear in multiple repos, rank by severity,
+      and produce a concise cross-repo summary.
+    prompt: |
+      Aggregate findings from all scanned repositories.
+
+      Per-repo scan results:
+      {{ scan_repo }}
+
+      Severity threshold applied: {{ inputs.severity_threshold }}
+      Total repos scanned: {{ parse_repos.count }}
+
+      Steps:
+      1. Collect all findings across repos into a single flat list.
+      2. Deduplicate: if the same vulnerability type appears in multiple repos,
+         keep one entry per repo (do not merge across repos — each repo is separate).
+      3. Sort by severity: critical first, then high, medium, low.
+      4. Identify top findings (first 10 by severity).
+      5. Build a per-repo summary with finding counts by severity.
+
+      Output ONLY the following JSON on the last line:
+      {"total_findings": 5, "by_repo": [{"repo": "owner/repo-a", "critical": 0, "high": 2, "medium": 1, "findings": []}], "top_findings": [{"repo": "owner/repo-a", "type": "secret_exposure", "severity": "high", "file": "...", "description": "...", "recommendation": "..."}]}
+    next: notify
+
+  notify:
+    type: output
+    label: Fleet security summary
+    channels:
+      - slack
+    template: |
+      *Multi-Repo Security Scan complete*
+
+      *Repos scanned:* {{ parse_repos.count }}
+      *Total findings:* {{ aggregate.total_findings }}
+      *Severity threshold:* {{ inputs.severity_threshold }}
+
+      *Top findings:*
+      {% for f in aggregate.top_findings %}
+      - [{{ f.severity | upper }}] `{{ f.repo }}` — {{ f.type }}: {{ f.description }}
+      {% endfor %}
+
+      *Per-repo breakdown:*
+      {% for r in aggregate.by_repo %}
+      - `{{ r.repo }}`: critical={{ r.critical }}, high={{ r.high }}
+      {% endfor %}
+
+test_trigger:
+  payload:
+    repos: "sseshachala/conductai\nsseshachala/sample-app"
+    severity_threshold: high
+    model: claude-sonnet-4-6
