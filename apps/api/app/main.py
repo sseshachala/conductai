@@ -5,11 +5,10 @@ import structlog
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.middleware.logging import LoggingMiddleware
-from app.routers import credentials, dashboard, email_templates, environments, playbooks, projects, runs, webhooks, workflows
+from app.routers import credentials, email_templates, environments, playbooks, projects, runs, webhooks, workflows
 from app.routers.playbooks import catalog_router as playbooks_catalog_router
 from app.routers.eval import router as eval_router
-from app.routers.observability import router as observability_router
-from app.routers.analytics import router as analytics_router
+from app.routers.insights import router as insights_router
 from app.modules.guard.routers import config as guard_config
 from app.modules.guard.routers import members as guard_members
 from app.modules.guard.routers import policies as guard_policies
@@ -84,7 +83,6 @@ app.include_router(me_router)
 app.include_router(projects.router)
 app.include_router(playbooks.router)
 app.include_router(playbooks_catalog_router)
-app.include_router(dashboard.router)
 app.include_router(workflows.router)
 app.include_router(runs.router)
 app.include_router(workspace_runs_router)
@@ -93,8 +91,7 @@ app.include_router(environments.router)
 app.include_router(email_templates.router)
 app.include_router(webhooks.router)
 app.include_router(eval_router)
-app.include_router(observability_router)
-app.include_router(analytics_router)
+app.include_router(insights_router)
 app.include_router(guard_config.router)
 app.include_router(guard_config.join_router)
 app.include_router(guard_members.router)
