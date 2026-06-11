@@ -2,7 +2,7 @@
 Runtime worker — polls Redis queue and executes runs.
 
 Concurrency: set WORKER_CONCURRENCY=N (default 1) to run N threads
-each with their own Redis BLPOP loop.  All threads share the same
+each with their own Redis BLMOVE loop.  All threads share the same
 queue key so Redis distributes runs across them automatically.
 
 Scale horizontally by running more worker instances in Render
@@ -19,6 +19,14 @@ STALE_RUN_REAPER_INTERVAL seconds (default 120) and marks any run
 that has been in 'running' state with a lock older than
 STALE_RUN_THRESHOLD_MINUTES (default 20) as 'failed'.  This recovers
 runs whose worker crashed mid-execution.
+
+Reliable queue: the worker uses BLMOVE to atomically pop from QUEUE_KEY
+and push to PROCESSING_KEY.  On completion (success or failure) the
+run_id is removed from PROCESSING_KEY with LREM.  A periodic sweep
+(_recover_stalled) requeues any entry in PROCESSING_KEY whose enqueue
+timestamp (stored in PROCESSING_TIMES_KEY hash) is older than
+PROCESSING_TTL_SECONDS, recovering in-flight runs from crashed workers
+without relying on the watchdog for queue recovery.
 """
 import os
 import threading
@@ -35,19 +43,22 @@ from app.runtime.executor import execute_run
 setup_logging()
 log = structlog.get_logger(__name__)
 
-QUEUE_KEY        = "marshal:runs:queue"
-ONLINE_EVAL_KEY  = "marshal:eval:online:queue"
-CONCURRENCY      = int(os.environ.get("WORKER_CONCURRENCY", "1"))
-JUDGE_SAMPLE_RATE = float(os.environ.get("ONLINE_EVAL_JUDGE_SAMPLE_RATE", "0.20"))
+QUEUE_KEY              = "marshal:runs:queue"
+PROCESSING_KEY         = "marshal:runs:processing"        # per-worker in-flight list
+PROCESSING_TIMES_KEY   = "marshal:runs:processing:times"  # run_id -> enqueue timestamp (hash)
+PROCESSING_TTL_SECONDS = 1800                              # 30 min -- stale threshold for recovery
+ONLINE_EVAL_KEY        = "marshal:eval:online:queue"
+CONCURRENCY            = int(os.environ.get("WORKER_CONCURRENCY", "1"))
+JUDGE_SAMPLE_RATE      = float(os.environ.get("ONLINE_EVAL_JUDGE_SAMPLE_RATE", "0.20"))
 
-# Reaper configuration — tunable via environment variables.
+# Reaper configuration -- tunable via environment variables.
 STALE_RUN_THRESHOLD_MINUTES        = int(os.environ.get("STALE_RUN_THRESHOLD_MINUTES", "20"))
 STALE_PENDING_THRESHOLD_MINUTES    = int(os.environ.get("STALE_PENDING_THRESHOLD_MINUTES", "10"))
 STALE_RUN_REAPER_INTERVAL          = int(os.environ.get("STALE_RUN_REAPER_INTERVAL", "120"))  # seconds
 AUTOMATION_PROJECT_RETENTION_DAYS  = int(os.environ.get("AUTOMATION_PROJECT_RETENTION_DAYS", "30"))
 
 
-# ── stale-run reaper ──────────────────────────────────────────────────────────
+# -- stale-run reaper ----------------------------------------------------------
 
 def _reap_stale_runs() -> int:
     """
@@ -78,7 +89,7 @@ def _reap_stale_runs() -> int:
 
         for run in stale:
             error_msg = (
-                "Run timed out — worker did not complete within the allowed window "
+                "Run timed out -- worker did not complete within the allowed window "
                 f"({STALE_RUN_THRESHOLD_MINUTES} minutes)"
             )
             run.status = "failed"
@@ -136,7 +147,7 @@ def _reap_stale_pending_runs() -> int:
                 run_id=run.id,
                 block_id=None,
                 kind="run_failed",
-                payload={"status": "failed", "error": "Pending run timed out — never picked up by worker", "reaped": True},
+                payload={"status": "failed", "error": "Pending run timed out -- never picked up by worker", "reaped": True},
             ))
 
         db.commit()
@@ -246,7 +257,7 @@ def _reaper_loop() -> None:
             log.exception("reaper.purge_loop_error")
 
 
-# ── online eval scorer ───────────────────────────────────────────────────────
+# -- online eval scorer --------------------------------------------------------
 
 def _online_eval_loop() -> None:
     """Daemon thread: consume the online eval queue and score each completed run."""
@@ -277,20 +288,71 @@ def _online_eval_loop() -> None:
             time.sleep(1)
 
 
-# ── queue worker ──────────────────────────────────────────────────────────────
+# -- processing-list recovery --------------------------------------------------
+
+def _recover_stalled(r) -> int:
+    """
+    Requeue runs stuck in the processing list beyond PROCESSING_TTL_SECONDS.
+
+    Uses the companion PROCESSING_TIMES_KEY hash (run_id -> float timestamp)
+    to determine how long each entry has been in-flight.  Any entry older
+    than the TTL is removed from PROCESSING_KEY with LREM and pushed back
+    onto QUEUE_KEY so another worker can pick it up.
+
+    Returns the count of runs recovered.
+    """
+    cutoff = time.time() - PROCESSING_TTL_SECONDS
+    times = r.hgetall(PROCESSING_TIMES_KEY)  # {run_id: timestamp_str}
+    recovered = 0
+    for run_id, ts in times.items():
+        if float(ts) < cutoff:
+            removed = r.lrem(PROCESSING_KEY, 1, run_id)
+            if removed:
+                r.rpush(QUEUE_KEY, run_id)
+                r.hdel(PROCESSING_TIMES_KEY, run_id)
+                recovered += 1
+                log.warning("worker.recovered_stalled_run", run_id=run_id)
+    return recovered
+
+
+# -- queue worker --------------------------------------------------------------
 
 def _loop(thread_id: int) -> None:
     r = redis.from_url(settings.redis_url, decode_responses=True)
     log.info("worker.thread_started", thread_id=thread_id, queue=QUEUE_KEY)
 
+    last_sweep = time.time()
+
     while True:
+        # Periodic recovery sweep -- every ~60 seconds, requeue stalled runs.
+        now = time.time()
+        if now - last_sweep >= 60:
+            try:
+                recovered = _recover_stalled(r)
+                if recovered:
+                    log.info("worker.recovery_sweep", recovered=recovered, thread_id=thread_id)
+            except Exception:
+                log.exception("worker.recovery_sweep_error", thread_id=thread_id)
+            last_sweep = time.time()
+
         try:
-            item = r.blpop(QUEUE_KEY, timeout=5)
-            if item is None:
+            # Atomically move run_id from QUEUE_KEY (left) to PROCESSING_KEY (right).
+            # redis-py 5.x blmove signature: blmove(first_list, second_list, timeout, src, dest)
+            run_id = r.blmove(QUEUE_KEY, PROCESSING_KEY, 5, "LEFT", "RIGHT")
+            if not run_id:
                 continue
-            _, run_id = item
+
+            # Record the enqueue timestamp so _recover_stalled can detect TTL breaches.
+            r.hset(PROCESSING_TIMES_KEY, run_id, time.time())
+
             log.info("worker.dequeued", run_id=run_id, thread_id=thread_id)
-            execute_run(run_id)
+            try:
+                execute_run(run_id)
+            finally:
+                # Remove from processing list on success or failure -- the run is done.
+                r.lrem(PROCESSING_KEY, 1, run_id)
+                r.hdel(PROCESSING_TIMES_KEY, run_id)
+
         except redis.exceptions.ConnectionError:
             log.warning("worker.redis_disconnected", thread_id=thread_id, retry_in=3)
             time.sleep(3)
@@ -324,7 +386,7 @@ def main() -> None:
     for t in threads:
         t.start()
 
-    # Keep main thread alive — if any worker thread dies, log and exit so the
+    # Keep main thread alive -- if any worker thread dies, log and exit so the
     # process manager (Railway/Docker) restarts the whole worker.
     while True:
         dead = [t for t in threads if not t.is_alive()]
