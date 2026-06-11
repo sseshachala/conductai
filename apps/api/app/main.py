@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.core.logging import setup_logging
 from app.middleware.logging import LoggingMiddleware
 from app.routers import credentials, dashboard, email_templates, environments, playbooks, projects, runs, webhooks, workflows
+from app.routers.playbooks import catalog_router as playbooks_catalog_router
 from app.routers.eval import router as eval_router
 from app.routers.observability import router as observability_router
 from app.routers.analytics import router as analytics_router
@@ -82,6 +83,7 @@ app.include_router(api_keys_router)
 app.include_router(me_router)
 app.include_router(projects.router)
 app.include_router(playbooks.router)
+app.include_router(playbooks_catalog_router)
 app.include_router(dashboard.router)
 app.include_router(workflows.router)
 app.include_router(runs.router)
