@@ -5,12 +5,12 @@ from typing import Annotated
 import structlog
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_user_id
 from app.core.database import get_db
 from app.models.rbac import Permission, Role
+from app.models.workspace_user import WorkspaceUser
 
 log = structlog.get_logger(__name__)
 
@@ -64,10 +64,14 @@ def list_permissions(db: Session = Depends(get_db)) -> list[Permission]:
 
 def _resolve_role(db: Session, workspace_id: str, user_id: str) -> str:
     """Resolve effective role from workspace_users. Returns 'viewer' if not a member."""
-    row = db.execute(
-        text("SELECT role FROM workspace_users WHERE workspace_id = :ws AND clerk_user_id = :uid LIMIT 1"),
-        {"ws": workspace_id, "uid": user_id},
-    ).fetchone()
+    row = (
+        db.query(WorkspaceUser)
+        .filter(
+            WorkspaceUser.workspace_id == workspace_id,
+            WorkspaceUser.clerk_user_id == user_id,
+        )
+        .first()
+    )
     return row.role if row else "viewer"
 
 
@@ -80,19 +84,16 @@ def get_my_permissions(
     """Return the calling user's resolved role and permission names for a workspace."""
     role = _resolve_role(db, workspace_id, user_id)
 
-    rows = db.execute(
-        text("""
-            SELECT p.name
-            FROM permissions p
-            JOIN role_permissions rp ON rp.permission_id = p.id
-            JOIN roles r ON r.id = rp.role_id
-            WHERE r.name = :role
-              AND r.workspace_id IS NULL
-            ORDER BY p.name
-        """),
-        {"role": role},
-    ).fetchall()
+    system_role = (
+        db.query(Role)
+        .filter(Role.name == role, Role.workspace_id.is_(None))
+        .first()
+    )
 
-    permission_names = [row.name for row in rows]
+    if system_role:
+        permission_names = sorted(p.name for p in system_role.permissions)
+    else:
+        permission_names = []
+
     log.info("rbac.permissions_resolved", workspace_id=workspace_id, role=role, count=len(permission_names))
     return PermissionSet(role=role, permissions=permission_names)

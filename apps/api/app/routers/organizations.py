@@ -8,11 +8,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_user_id, get_workspace_id, require_workspace_role
 from app.core.database import get_db
+from app.models.organization import Organization
+from app.models.workspace import Workspace
+from app.models.workspace_user import WorkspaceUser
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
 
@@ -30,51 +32,77 @@ class OrgCreate(BaseModel):
     slug: str
 
 
+def _user_workspace_ids(db: Session, user_id: str) -> list:
+    """Return all workspace IDs the user belongs to (member or owner)."""
+    member_ids = (
+        db.query(WorkspaceUser.workspace_id)
+        .filter(WorkspaceUser.clerk_user_id == user_id)
+        .subquery()
+    )
+    owner_ids = (
+        db.query(Workspace.id)
+        .filter(Workspace.owner_id == user_id)
+        .subquery()
+    )
+    from sqlalchemy import union
+    combined = union(
+        db.query(WorkspaceUser.workspace_id).filter(WorkspaceUser.clerk_user_id == user_id),
+        db.query(Workspace.id).filter(Workspace.owner_id == user_id),
+    ).subquery()
+    return combined
+
+
 @router.get("", response_model=list[OrgOut])
 def list_organizations(
     user_id: Annotated[str, Depends(get_user_id)],
     db: Session = Depends(get_db),
 ):
     """List all orgs the authenticated user belongs to (via their workspaces)."""
-    rows = db.execute(text("""
-        SELECT o.id, o.name, o.slug, o.created_at,
-               COUNT(DISTINCT w.id) AS workspace_count
-        FROM organizations o
-        JOIN workspaces w ON w.org_id = o.id
-        WHERE w.id IN (
-            SELECT workspace_id FROM workspace_users WHERE clerk_user_id = :uid
-            UNION
-            SELECT id FROM workspaces WHERE owner_id = :uid
-        )
-        GROUP BY o.id
-        ORDER BY o.created_at DESC
-    """), {"uid": user_id}).fetchall()
+    from sqlalchemy import func, union
+
+    ws_ids_q = union(
+        db.query(WorkspaceUser.workspace_id).filter(WorkspaceUser.clerk_user_id == user_id),
+        db.query(Workspace.id).filter(Workspace.owner_id == user_id),
+    ).subquery()
+
+    rows = (
+        db.query(Organization, func.count(Workspace.id.distinct()).label("workspace_count"))
+        .join(Workspace, Workspace.org_id == Organization.id)
+        .filter(Workspace.id.in_(db.query(ws_ids_q)))
+        .group_by(Organization.id)
+        .order_by(Organization.created_at.desc())
+        .all()
+    )
 
     if rows:
-        return [OrgOut(id=str(r.id), name=r.name, slug=r.slug,
-                       created_at=r.created_at, workspace_count=r.workspace_count or 0)
-                for r in rows]
+        return [
+            OrgOut(
+                id=str(org.id),
+                name=org.name,
+                slug=org.slug,
+                created_at=org.created_at,
+                workspace_count=count or 0,
+            )
+            for org, count in rows
+        ]
 
     # Auto-create a default org and link the user's workspace to it
-    workspace_row = db.execute(text("""
-        SELECT id FROM workspaces
-        WHERE id IN (
-            SELECT workspace_id FROM workspace_users WHERE clerk_user_id = :uid
-            UNION SELECT id FROM workspaces WHERE owner_id = :uid
-        )
-        ORDER BY created_at ASC LIMIT 1
-    """), {"uid": user_id}).fetchone()
+    workspace = (
+        db.query(Workspace)
+        .filter(Workspace.id.in_(db.query(ws_ids_q)))
+        .order_by(Workspace.created_at.asc())
+        .first()
+    )
 
-    org_id = uuid.uuid4()
     now = datetime.now(timezone.utc)
-    slug = f"org-{str(org_id)[:8]}"
-    db.execute(text("INSERT INTO organizations (id, name, slug, created_at) VALUES (:id, :name, :slug, :now)"),
-               {"id": str(org_id), "name": "My Organization", "slug": slug, "now": now})
-    if workspace_row:
-        db.execute(text("UPDATE workspaces SET org_id = :org WHERE id = :ws"),
-                   {"org": str(org_id), "ws": str(workspace_row.id)})
+    new_org_id = uuid.uuid4()
+    slug = f"org-{str(new_org_id)[:8]}"
+    org = Organization(id=new_org_id, name="My Organization", slug=slug, created_at=now)
+    db.add(org)
+    if workspace:
+        workspace.org_id = new_org_id
     db.commit()
-    return [OrgOut(id=str(org_id), name="My Organization", slug=slug, created_at=now, workspace_count=1 if workspace_row else 0)]
+    return [OrgOut(id=str(new_org_id), name="My Organization", slug=slug, created_at=now, workspace_count=1 if workspace else 0)]
 
 
 @router.post("", response_model=OrgOut, status_code=201)
@@ -89,18 +117,16 @@ def create_organization(
         raise HTTPException(status_code=422, detail="Slug cannot be empty")
 
     slug = body.slug.strip().lower()
-    existing = db.execute(text("SELECT id FROM organizations WHERE slug = :slug"), {"slug": slug}).fetchone()
+    existing = db.query(Organization).filter(Organization.slug == slug).first()
     if existing:
         raise HTTPException(status_code=409, detail="Slug already taken")
 
-    org_id = uuid.uuid4()
     now = datetime.now(timezone.utc)
-    db.execute(text("""
-        INSERT INTO organizations (id, name, slug, created_at)
-        VALUES (:id, :name, :slug, :now)
-    """), {"id": str(org_id), "name": body.name.strip(), "slug": slug, "now": now})
+    new_org_id = uuid.uuid4()
+    org = Organization(id=new_org_id, name=body.name.strip(), slug=slug, created_at=now)
+    db.add(org)
     db.commit()
-    return OrgOut(id=str(org_id), name=body.name.strip(), slug=slug, created_at=now)
+    return OrgOut(id=str(new_org_id), name=body.name.strip(), slug=slug, created_at=now)
 
 
 @router.get("/{org_id}", response_model=OrgOut)
@@ -109,18 +135,25 @@ def get_organization(
     user_id: Annotated[str, Depends(get_user_id)],
     db: Session = Depends(get_db),
 ):
-    row = db.execute(text("""
-        SELECT o.id, o.name, o.slug, o.created_at,
-               COUNT(DISTINCT w.id) AS workspace_count
-        FROM organizations o
-        LEFT JOIN workspaces w ON w.org_id = o.id
-        WHERE o.id = :id
-        GROUP BY o.id
-    """), {"id": org_id}).fetchone()
+    from sqlalchemy import func
+
+    row = (
+        db.query(Organization, func.count(Workspace.id.distinct()).label("workspace_count"))
+        .outerjoin(Workspace, Workspace.org_id == Organization.id)
+        .filter(Organization.id == org_id)
+        .group_by(Organization.id)
+        .first()
+    )
     if not row:
         raise HTTPException(status_code=404, detail="Organization not found")
-    return OrgOut(id=str(row.id), name=row.name, slug=row.slug,
-                  created_at=row.created_at, workspace_count=row.workspace_count or 0)
+    org, workspace_count = row
+    return OrgOut(
+        id=str(org.id),
+        name=org.name,
+        slug=org.slug,
+        created_at=org.created_at,
+        workspace_count=workspace_count or 0,
+    )
 
 
 @router.patch("/{org_id}", response_model=OrgOut)
@@ -133,10 +166,9 @@ def rename_organization(
     name = (body.get("name") or "").strip()
     if not name:
         raise HTTPException(status_code=422, detail="Name cannot be empty")
-    result = db.execute(text(
-        "UPDATE organizations SET name = :name WHERE id = :id RETURNING id"
-    ), {"name": name, "id": org_id})
-    if not result.fetchone():
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
+    org.name = name
     db.commit()
     return get_organization(org_id, user_id, db)
