@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -29,6 +29,11 @@ class ProjectOut(BaseModel):
     agent_count: int = 0
     project_type: str = "user"
     security_finding_id: str | None = None
+
+    @field_validator("workspace_id", mode="before")
+    @classmethod
+    def coerce_workspace_id(cls, v):
+        return str(v) if v is not None else v
 
 
 class ProjectCreate(BaseModel):
