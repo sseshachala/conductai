@@ -254,8 +254,8 @@ function ProjectContent({ getToken, currentUserId }: {
         {/* Page header */}
         <div className="page-head" style={{ display: "flex", alignItems: "flex-end" }}>
           <div>
-            <h1 className="page-title">{project?.name ?? "Loading…"}</h1>
-            <p className="page-sub">{workflows.length} agent{workflows.length !== 1 ? "s" : ""} in this project</p>
+            <h1 className="page-title">{project?.name ?? "…"}</h1>
+            {!loading && <p className="page-sub">{workflows.length} agent{workflows.length !== 1 ? "s" : ""} in this project</p>}
           </div>
           <div style={{ marginLeft: "auto", display: "flex", gap: 9 }}>
             <Link href={`/workflows/new?project_id=${projectId}`} className="btn btn-primary" style={{ textDecoration: "none" }}>
