@@ -167,6 +167,11 @@ _TEMPLATE_PLAYBOOKS = {
     "security_loop":              "security_loop.yaml",
     "security_autopilot_fix":     "security-autopilot-fix.yaml",
     "bughunter_active_scan":      "bughunter-active-scan.yaml",
+    "multi_repo_scanner":         "multi-repo-scanner.yaml",
+    "dependency_audit":           "dependency-audit.yaml",
+    "bulk_pr_reviewer":           "bulk-pr-reviewer.yaml",
+    "release_gating":             "release-gating.yaml",
+    "multi_env_smoke_test":       "multi-env-smoke-test.yaml",
 }
 
 _PLAYBOOK_META = {
@@ -193,6 +198,11 @@ _PLAYBOOK_META = {
     "security_loop":              {"icon": "🔐",  "category": "Security",    "tags": ["security", "agentic", "autopilot"],                "featured": True,  "bundled_with": "security-loop-module", "description": "Security Loop Automation — AI agent triages every finding from Security Loop for Claude. Dismisses false positives instantly, escalates real threats, and with Agentic Autopilot opens fix PRs autonomously."},
     "security_autopilot_fix":     {"icon": "🔧",  "category": "Security",    "tags": ["security", "github", "autopilot"],                 "featured": True,  "bundled_with": "security-loop-module", "description": "Security finding → reads affected file → writes targeted patch → opens PR → notifies Slack. Triggered from the Security Loop activity page."},
     "bughunter_active_scan":      {"icon": "🔍",  "category": "Security",    "tags": ["security", "bughunter", "scanning"],               "featured": True,  "description": "Dynamically discovers and runs all Claude-BugHunter hunt-* skills against a target repo. Findings flow into Security Loop + GitHub issues automatically."},
+    "multi_repo_scanner":         {"icon": "🔭",  "category": "Security",           "tags": ["security", "github", "fleet"],               "featured": True,  "description": "Run a full security scan across a fleet of repos in one shot. Findings aggregated, deduplicated, and ranked cross-fleet."},
+    "dependency_audit":           {"icon": "🧪",  "category": "Security",           "tags": ["security", "github", "deps"],                "featured": True,  "description": "Fetch all outdated dependencies, assess breaking-change risk per package, and open targeted GitHub issues only for major or breaking upgrades."},
+    "bulk_pr_reviewer":           {"icon": "📚",  "category": "Code Review",        "tags": ["github", "code-review", "fleet"],            "featured": True,  "description": "Review every open PR in a repo in one run. Verdict + summary posted as a review comment on each PR, fleet summary to Slack."},
+    "release_gating":             {"icon": "🚦",  "category": "Release Management", "tags": ["github", "release", "approval"],             "featured": True,  "description": "Run the full readiness check, pause for human go/no-go in Slack, then create the git tag and publish release notes — only on explicit approval."},
+    "multi_env_smoke_test":       {"icon": "🌐",  "category": "Testing",            "tags": ["ci", "ops", "fleet"],                        "featured": True,  "description": "Smoke-test staging, prod, and canary in one run. Diffs results to distinguish env-specific failures from universal ones."},
 }
 
 
