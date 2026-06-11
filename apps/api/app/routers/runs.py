@@ -205,6 +205,8 @@ def list_runs(
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("platform.runs.view")),
 ):
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, workspace_id)
     _get_workflow(workflow_id, workspace_id, db)
     # Return runs across ALL versions so autosave version bumps don't hide history
     version_ids = db.query(WorkflowVersion.id).filter(
@@ -229,6 +231,8 @@ def create_run(
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("platform.workflows.run")),
 ):
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, workspace_id)
     workflow = _get_workflow(workflow_id, workspace_id, db)
     if not workflow.current_version_id:
         raise HTTPException(status_code=400, detail="Workflow has no published version")
