@@ -5,7 +5,7 @@ import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { setGuardTeamId, removeGuardTeamId } from "@/lib/guardStorage"
-import { SecureLoopIcon } from "@/app/secure/_components"
+import { SecureLoopIcon } from "@/app/(app)/secure/_components"
 
 interface GuardConfig {
   workspace_id: string
