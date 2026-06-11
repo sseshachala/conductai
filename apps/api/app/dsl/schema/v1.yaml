@@ -1,0 +1,390 @@
+# JSON Schema draft-07 for Conduct DSL v1 playbooks.
+#
+# Validation is opt-in: only fires when the playbook declares
+# `schema_version: "1"`. Existing playbooks without that field are unaffected.
+#
+# Design decisions:
+#   - additionalProperties: true on block objects — unknown fields (credentials,
+#     labels, etc.) are silently ignored by the Pydantic layer and must not cause
+#     false-positive schema failures here.
+#   - if/then constraints per block type for required fields.
+#   - New fields from #564/#565 (retry, allowed_tools, for_each, item_var,
+#     system, prompt, input, channels, template) are declared here so the
+#     schema is forward-looking.
+$schema: "http://json-schema.org/draft-07/schema#"
+title: ConductPlaybookV1
+description: Conduct YAML playbook — schema version 1
+type: object
+
+required:
+  - name
+  - blocks
+
+additionalProperties: true
+
+properties:
+  name:
+    type: string
+    minLength: 1
+    description: Human-readable workflow name.
+
+  version:
+    type: integer
+    minimum: 1
+    description: Playbook version integer (monotonically increasing).
+
+  schema_version:
+    type: string
+    enum: ["1"]
+    description: Opt-in DSL schema version. Must be "1" to trigger this validator.
+
+  description:
+    type: string
+    description: Free-text description shown in the marketplace and console.
+
+  on:
+    type: object
+    description: Trigger definitions keyed by event name (e.g. github.issue_labeled).
+    additionalProperties:
+      $ref: "#/definitions/trigger"
+
+  inputs:
+    type: object
+    description: Install-time configuration fields presented to the user as a form.
+    additionalProperties:
+      $ref: "#/definitions/inputField"
+
+  params:
+    type: object
+    description: Run-time parameters supplied via webhook payload or manually.
+    additionalProperties:
+      $ref: "#/definitions/workflowParam"
+
+  blocks:
+    type: object
+    description: The main execution DAG — keyed by block id.
+    minProperties: 1
+    additionalProperties:
+      $ref: "#/definitions/block"
+
+  cleanup:
+    type: object
+    description: Blocks that always run at the end of a run regardless of routing.
+    additionalProperties:
+      $ref: "#/definitions/block"
+
+
+# ---------------------------------------------------------------------------
+definitions:
+
+  trigger:
+    type: object
+    additionalProperties: true
+    properties:
+      integration:
+        type: string
+      next:
+        type: string
+        description: Entry block id. Defaults to the first key under blocks:.
+
+  inputField:
+    type: object
+    additionalProperties: true
+    properties:
+      label:
+        type: string
+      type:
+        type: string
+        enum: [string, number, boolean, select]
+      description:
+        type: string
+      required:
+        type: boolean
+      default: {}
+      placeholder:
+        type: string
+      options:
+        type: array
+        items:
+          type: string
+
+  workflowParam:
+    type: object
+    additionalProperties: false
+    properties:
+      type:
+        type: string
+        enum: [string, number, boolean]
+        default: string
+      required:
+        type: boolean
+        default: false
+      default: {}
+      description:
+        type: string
+
+  # Retry configuration — typed properly in #564, dict for now.
+  retryConfig:
+    type: object
+    additionalProperties: true
+    properties:
+      max:
+        type: integer
+        minimum: 1
+        description: Maximum number of retry attempts.
+      backoff:
+        type: string
+        enum: [linear, exponential, fixed]
+        description: Backoff strategy between retries.
+      on:
+        type: array
+        items:
+          type: string
+        description: Error codes or exception names that trigger a retry.
+
+  # All block types share this base set of properties; per-type constraints
+  # are applied via if/then below.
+  block:
+    type: object
+    required:
+      - type
+    additionalProperties: true
+
+    properties:
+      type:
+        type: string
+        enum: [tool, brain, logic, approval, memory, output, mcp, guard]
+        description: Block executor type.
+
+      label:
+        type: string
+        description: Human-readable block label shown in the canvas.
+
+      description:
+        type: string
+        description: Block description / brain task description.
+
+      next:
+        description: "Routing: next block id (string) or {pass: id, fail: id} for logic."
+        oneOf:
+          - type: string
+          - type: object
+            additionalProperties:
+              type: string
+
+      # — iteration / loop (#565) —
+      for_each:
+        type: string
+        description: Jinja2 expression yielding the list to iterate over.
+
+      item_var:
+        type: string
+        description: Name of the loop variable (default "item").
+
+      # — retry (#565) —
+      retry:
+        $ref: "#/definitions/retryConfig"
+
+      # — tool blocks —
+      integration:
+        type: string
+        description: Integration handle (e.g. github, slack, linear).
+
+      action:
+        type: string
+        description: "Action name — plain form (create_issue) or slash form (github/create_issue)."
+
+      params:
+        type: object
+        additionalProperties: true
+        description: Named parameters passed to the integration action.
+
+      input:
+        type: object
+        additionalProperties: true
+        description: Alias for params on tool blocks.
+
+      # — brain blocks —
+      mode:
+        type: string
+        enum: [single, agentic]
+        description: Brain execution mode.
+
+      model:
+        type: string
+        description: Claude model ID (e.g. claude-sonnet-4-6).
+
+      system:
+        type: string
+        description: System prompt for the brain block (alternative to description).
+
+      prompt:
+        type: string
+        description: User prompt for the brain block.
+
+      prompt_file:
+        type: string
+        description: Path to a prompt file relative to the playbook directory.
+
+      custom_instructions:
+        type: string
+        description: User-editable instructions appended to the system prompt at runtime.
+
+      allowed_tools:
+        type: array
+        items:
+          type: string
+        description: Restrict the brain block to this tool subset.
+
+      runs_on:
+        type: object
+        additionalProperties: false
+        required: [ip]
+        properties:
+          ip:
+            type: string
+          credentials_from:
+            type: string
+            default: digitalocean
+          username:
+            type: string
+          port:
+            type: integer
+
+      # — logic blocks —
+      condition:
+        type: string
+        description: "Jinja2/Python expression evaluated as truthy (e.g. '{{ pr.merged }}')."
+
+      # — approval blocks —
+      via:
+        type: string
+        enum: [slack, email, both]
+        description: Delivery channel for the approval request.
+
+      channel:
+        type: string
+        description: Slack channel for approval notification.
+
+      slack_user:
+        type: string
+        description: Slack user id for approval DM.
+
+      approval_email:
+        type: string
+        description: Email address for approve/reject link.
+
+      message:
+        type: string
+        description: Custom approval message.
+
+      # — memory blocks —
+      scope:
+        type: string
+        enum: [repo, workspace]
+
+      key:
+        type: string
+
+      limit:
+        type: integer
+        minimum: 1
+
+      summary:
+        type: string
+
+      # — output blocks (structured form) —
+      output:
+        type: object
+        additionalProperties: true
+        properties:
+          via:
+            type: string
+            enum: [slack, email, both]
+          slack:
+            type: object
+            required: [channel]
+            additionalProperties: true
+            properties:
+              channel:
+                type: string
+              approval:
+                type: boolean
+          email:
+            type: object
+            required: [to]
+            additionalProperties: true
+            properties:
+              to:
+                type: string
+              from_address:
+                type: string
+
+      # — output blocks (shorthand form, #565) —
+      channels:
+        type: array
+        items:
+          type: string
+        description: Shorthand output channel list (e.g. [slack]).
+
+      template:
+        type: string
+        description: Jinja2 template string for the output message.
+
+      # — mcp blocks —
+      credential_key:
+        type: string
+      tool_name:
+        type: string
+
+    # — per-type if/then constraints —
+    allOf:
+      - if:
+          properties:
+            type:
+              const: tool
+          required: [type]
+        then:
+          anyOf:
+            - required: [integration, action]
+            - required: [action]
+              properties:
+                action:
+                  type: string
+                  pattern: "^[^/]+/.+"
+
+      - if:
+          properties:
+            type:
+              const: brain
+          required: [type]
+        then:
+          anyOf:
+            - required: [description]
+            - required: [system]
+            - required: [prompt]
+            - required: [prompt_file]
+
+      - if:
+          properties:
+            type:
+              const: logic
+          required: [type]
+        then:
+          required: [condition]
+
+      - if:
+          properties:
+            type:
+              const: memory
+          required: [type]
+        then:
+          required: [action]
+
+      - if:
+          properties:
+            type:
+              const: mcp
+          required: [type]
+        then:
+          required: [credential_key, tool_name]
