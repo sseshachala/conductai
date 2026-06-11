@@ -5,6 +5,7 @@ A "project" is a workspace. Users belong to workspaces via workspace_users
 (many-to-many with per-workspace roles). All signed-in users get immediate
 access — the workspace_users table is the access gate.
 """
+import hmac
 import json
 import uuid
 from datetime import datetime, timezone
@@ -701,7 +702,7 @@ def admin_approve(
     x_admin_secret: Annotated[str | None, Header()] = None,
     db: Session = Depends(get_db),
 ):
-    if not settings.admin_secret or x_admin_secret != settings.admin_secret:
+    if not settings.admin_secret or not hmac.compare_digest(x_admin_secret or "", settings.admin_secret):
         raise HTTPException(status_code=403, detail="Invalid admin secret")
 
     owner_id = body.get("owner_id")
