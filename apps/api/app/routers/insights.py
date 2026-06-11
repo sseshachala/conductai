@@ -1,3 +1,4 @@
+import uuid
 """
 insights router — merges dashboard, analytics, and observability endpoints.
 
@@ -891,7 +892,7 @@ def get_observability_summary(
     # All runs in workspace — single-table filter via denormalized workspace_id
     base_q = (
         db.query(Run)
-        .filter(Run.workspace_id == workspace_id)
+        .filter(Run.workspace_id == uuid.UUID(workspace_id))
     )
 
     active_runs = base_q.filter(Run.status == "running").count()

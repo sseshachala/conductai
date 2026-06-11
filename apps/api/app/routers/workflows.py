@@ -444,6 +444,10 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
 
 @router.get("/{workflow_id}", response_model=WorkflowDetailOut)
 def get_workflow(workflow_id: UUID, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _: str = Depends(require_permission("platform.workflows.view"))):
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, workspace_id)
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, workspace_id)
     workflow = db.query(Workflow).filter(
         Workflow.id == workflow_id,
         Workflow.workspace_id == workspace_id,
@@ -473,6 +477,8 @@ def update_workflow(
     # editors can't both read, both create a WorkflowVersion, and silently
     # discard each other's changes.  The second writer blocks until the first
     # commits, then reads the refreshed row and applies its edit on top.
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, workspace_id)
     workflow = db.query(Workflow).filter(
         Workflow.id == workflow_id, Workflow.workspace_id == workspace_id
     ).with_for_update().first()
@@ -575,6 +581,8 @@ def register_workflow_webhook(
     _: str = Depends(require_permission("platform.workflows.edit")),
 ):
     """Explicitly register (or re-register) the GitHub webhook for this workflow."""
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, workspace_id)
     workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
@@ -685,6 +693,8 @@ def deregister_workflow_webhook(
     _: str = Depends(require_permission("platform.workflows.edit")),
 ):
     """Deregister the GitHub webhook for this workflow."""
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, workspace_id)
     workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
@@ -1224,6 +1234,8 @@ def compile_workflow_now(
     _: str = Depends(require_permission("platform.workflows.edit")),
 ):
     """Explicitly trigger compilation for the current version."""
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, workspace_id)
     workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
@@ -1264,6 +1276,8 @@ def update_workflow_yaml(
     Returns the workflow with its new current_version_id. The compiled
     artifacts are produced in the background — the caller doesn't wait.
     """
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, workspace_id)
     # SELECT FOR UPDATE — same serialisation as the graph PUT endpoint.
     workflow = db.query(Workflow).filter(
         Workflow.id == workflow_id, Workflow.workspace_id == workspace_id
@@ -1423,6 +1437,8 @@ def set_workflow_environment(
     _: str = Depends(require_permission("platform.workflows.edit")),
 ):
     """Assign or clear the environment scoping for a workflow."""
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, workspace_id)
     workflow = db.query(Workflow).filter(
         Workflow.id == workflow_id,
         Workflow.workspace_id == workspace_id,
@@ -1449,6 +1465,8 @@ def update_turn_settings(
     _: str = Depends(require_permission("platform.workflows.edit")),
 ):
     """Persist a default turn budget override for this workflow."""
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, workspace_id)
     workflow = db.query(Workflow).filter(
         Workflow.id == workflow_id,
         Workflow.workspace_id == workspace_id,

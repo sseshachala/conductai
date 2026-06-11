@@ -25,7 +25,7 @@ _TABLES = [
 
 _POLICY_SQL = """
 CREATE POLICY tenant_isolation ON {table}
-  AS PERMISSIVE FOR ALL
+  AS PERMISSIVE FOR SELECT
   USING (workspace_id = current_setting('app.current_workspace', true)::uuid)
 """
 
