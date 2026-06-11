@@ -57,7 +57,7 @@ def _execute_sandbox(
         )
 
     # Validate credential presence before spinning up — fail fast with clear message
-    _check_credentials(provider, credentials, block_id)
+    _check_credentials(provider, credentials, block_id, config=config)
 
     runs_on = None
     if provider == "ssh":
@@ -100,8 +100,9 @@ def _execute_sandbox(
     }
 
 
-def _check_credentials(provider: str, credentials: dict, block_id: str) -> None:
+def _check_credentials(provider: str, credentials: dict, block_id: str, config: dict | None = None) -> None:
     env_vars = credentials.get("env_vars") or {}
+    config = config or {}
 
     if provider == "e2b":
         if not (env_vars.get("E2B_API_KEY") or env_vars.get("e2b_api_key")):
@@ -118,6 +119,14 @@ def _check_credentials(provider: str, credentials: dict, block_id: str) -> None:
                 f"sandbox block '{block_id}' uses provider 'modal' but "
                 f"MODAL_TOKEN_ID / MODAL_TOKEN_SECRET are not set. "
                 f"Add them under Settings → Environments."
+            )
+    elif provider == "ssh":
+        credentials_from = config.get("credentials_from") or credentials.get("credentials_from") or ""
+        if not credentials_from:
+            raise RuntimeError(
+                f"sandbox block '{block_id}' uses provider 'ssh' but "
+                f"credentials_from is not set. Specify the integration handle "
+                f"(e.g. credentials_from: digitalocean) under sandbox_config."
             )
     elif provider == "local":
         from app.core.config import settings
