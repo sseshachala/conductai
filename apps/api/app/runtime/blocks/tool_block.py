@@ -41,8 +41,15 @@ def _execute_tool(
     if integration == "conduct":
         return conduct.execute(action, params, creds={}, db=db, workspace_id=workspace_id)
 
+    _HANDLE_ALIASES_GLOBAL: dict[str, list[str]] = {"github": ["git"]}
+
     if dry_run:
         creds = credentials.get(integration, {})
+        if not creds:
+            for alias in _HANDLE_ALIASES_GLOBAL.get(integration, []):
+                creds = credentials.get(alias) or {}
+                if creds:
+                    break
         if not creds:
             env_vars = credentials.get("env_vars") or {}
             _FLAT_FALLBACKS_DRY: dict[str, list[str]] = {
@@ -60,8 +67,19 @@ def _execute_tool(
 
     creds = credentials.get(integration, {})
     if not creds:
-        # Fall back to flat env_vars — users store keys like GITHUB_TOKEN, SLACK_BOT_TOKEN
-        # as plain key=value pairs rather than under a named integration handle.
+        # Env-var UI stores GITHUB_TOKEN under handle "git", SLACK_BOT_TOKEN under "slack", etc.
+        # Try the canonical handle aliases before falling back to the legacy "env_vars" blob.
+        _HANDLE_ALIASES: dict[str, list[str]] = {
+            "github": ["git"],
+        }
+        for alias in _HANDLE_ALIASES.get(integration, []):
+            aliased = credentials.get(alias) or {}
+            if aliased:
+                creds = aliased
+                break
+
+    if not creds:
+        # Legacy fallback: keys stored raw under "env_vars" handle.
         env_vars = credentials.get("env_vars") or {}
         _FLAT_FALLBACKS: dict[str, list[str]] = {
             "github":       ["GITHUB_TOKEN", "GIT_TOKEN"],

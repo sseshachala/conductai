@@ -958,10 +958,33 @@ def validate_workflow(
     nodes = graph.get("nodes", [])
 
     # Which integrations are configured?
-    cred_rows = db.query(Integration).filter(
-        Integration.workspace_id == workspace_id
-    ).all()
+    # Scope to the workflow's environment (+ Default as fallback), matching executor logic.
+    from app.models.environment import Environment as _ValidatorEnv
+    env_id = workflow.environment_id
+    if env_id:
+        cred_rows = db.query(Integration).filter(
+            Integration.workspace_id == workspace_id,
+            Integration.environment_id == env_id,
+        ).all()
+        # Also pull Default env so globally-connected integrations are visible
+        default_env = db.query(_ValidatorEnv).filter(
+            _ValidatorEnv.workspace_id == workspace_id,
+            _ValidatorEnv.name == "Default",
+        ).first()
+        if default_env and str(default_env.id) != str(env_id):
+            cred_rows += db.query(Integration).filter(
+                Integration.workspace_id == workspace_id,
+                Integration.environment_id == default_env.id,
+            ).all()
+    else:
+        cred_rows = db.query(Integration).filter(
+            Integration.workspace_id == workspace_id
+        ).all()
+
     configured_services = {row.service.lower() for row in cred_rows if row.encrypted_credentials}
+    # "git" handle covers GITHUB_TOKEN / GITLAB_TOKEN stored via env-var UI → counts as "github"
+    if "git" in configured_services:
+        configured_services.add("github")
 
     errors = []
 
