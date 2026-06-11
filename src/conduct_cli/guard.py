@@ -168,6 +168,7 @@ def _load_guard_config() -> dict:
 def _save_guard_config(data: dict):
     GUARD_DIR.mkdir(parents=True, exist_ok=True)
     CONFIG_PATH.write_text(json.dumps(data, indent=2))
+    CONFIG_PATH.chmod(0o600)
 
 
 def _require_guard_config() -> dict:
