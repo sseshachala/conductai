@@ -1430,58 +1430,81 @@ export default function BlockEditor({
               )}
             </p>
           </div>
+          {blockData.isAgentic && (() => {
+            const runsIn = blockData.runs_in as string | undefined
+            const provider = (blockData.runs_on as Record<string, string> | undefined)?.provider
+            const mode = runsIn ? "sandbox" : (provider ? "proxy" : "")
 
-          {blockData.isAgentic && (
-            <div className={section}>
-              <span className={sectionLabel}>Execution</span>
-              <select
-                value={(blockData.runs_on as Record<string, string> | undefined)?.provider || ""}
-                onChange={e => {
-                  const provider = e.target.value
-                  onChange(blockId, {
-                    ...blockData,
-                    runs_on: provider ? { provider } : undefined,
-                  })
-                }}
-                className={cn(inputBase)}
-                disabled={isViewer}
-              >
-                <option value="">Select a provider…</option>
-                <option value="e2b">E2B — isolated microVM</option>
-                <option value="modal">Modal Labs — serverless GPU / CPU</option>
-              </select>
-              <p className="text-[10px] text-stone-400 mt-1 leading-relaxed">
-                {(() => {
-                  const p = (blockData.runs_on as Record<string, string> | undefined)?.provider
-                  if (p === "e2b") return "Each run gets a fresh Firecracker microVM. Add E2B_API_KEY in credentials."
-                  if (p === "modal") return "Runs on Modal serverless — ideal for GPU / large compute. Add Modal credentials."
-                  return "Choose where this agent step executes. Required for running shell commands safely."
-                })()}
-              </p>
-            </div>
-          )}
+            function setMode(m: string) {
+              if (m === "proxy") onChange(blockId, { ...blockData, runs_in: undefined, runs_on: { provider: "e2b" } })
+              else if (m === "sandbox") onChange(blockId, { ...blockData, runs_on: undefined, runs_in: sandboxBlocks?.[0]?.id || "" })
+              else onChange(blockId, { ...blockData, runs_in: undefined, runs_on: undefined })
+            }
 
-          {blockData.isAgentic && sandboxBlocks && sandboxBlocks.length > 0 && (
-            <div className={section}>
-              <span className={sectionLabel}>Shared sandbox</span>
-              <select
-                value={(blockData.runs_in as string) || ""}
-                onChange={e => onChange(blockId, { ...blockData, runs_in: e.target.value || undefined })}
-                className={cn(inputBase)}
-                disabled={isViewer}
-              >
-                <option value="">None — own session per run</option>
-                {sandboxBlocks.map(sb => (
-                  <option key={sb.id} value={sb.id}>{sb.label}</option>
-                ))}
-              </select>
-              <p className="text-[10px] text-stone-400 mt-1 leading-relaxed">
-                {blockData.runs_in
-                  ? "Reuses the provisioned sandbox — /workspace is already cloned and ready."
-                  : "Each run creates its own isolated session from scratch."}
-              </p>
-            </div>
-          )}
+            return (
+              <div className={section}>
+                <span className={sectionLabel}>Execution mode</span>
+                <select value={mode} onChange={e => setMode(e.target.value)} className={cn(inputBase)} disabled={isViewer}>
+                  <option value="">Not set</option>
+                  <option value="proxy">Proxy</option>
+                  <option value="sandbox">Sandbox</option>
+                </select>
+
+                {mode === "proxy" && (
+                  <>
+                    <span className={sectionLabel + " mt-3"}>Provider</span>
+                    <select
+                      value={provider || "e2b"}
+                      onChange={e => onChange(blockId, { ...blockData, runs_on: { provider: e.target.value } })}
+                      className={cn(inputBase)}
+                      disabled={isViewer}
+                    >
+                      <option value="e2b">E2B.dev</option>
+                      <option value="modal">Modal Labs</option>
+                    </select>
+                    <p className="text-[10px] text-stone-400 mt-1.5 leading-relaxed">
+                      {provider === "modal"
+                        ? "Serverless GPU / CPU. Needs MODAL_TOKEN_ID + MODAL_TOKEN_SECRET."
+                        : "Isolated microVM per run. Needs E2B_API_KEY."}
+                    </p>
+                  </>
+                )}
+
+                {mode === "sandbox" && (
+                  <>
+                    {sandboxBlocks && sandboxBlocks.length > 0 ? (
+                      <>
+                        <span className={sectionLabel + " mt-3"}>Sandbox block</span>
+                        <select
+                          value={runsIn || ""}
+                          onChange={e => onChange(blockId, { ...blockData, runs_in: e.target.value })}
+                          className={cn(inputBase)}
+                          disabled={isViewer}
+                        >
+                          {sandboxBlocks.map(sb => (
+                            <option key={sb.id} value={sb.id}>{sb.label}</option>
+                          ))}
+                        </select>
+                        <p className="text-[10px] text-stone-400 mt-1.5 leading-relaxed">
+                          Reuses the provisioned environment — /workspace already set up.
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-[10px] text-amber-600 mt-1.5 leading-relaxed">
+                        Add a Sandbox block to the canvas first, then connect it here.
+                      </p>
+                    )}
+                  </>
+                )}
+
+                {!mode && (
+                  <p className="text-[10px] text-stone-400 mt-1.5 leading-relaxed">
+                    Proxy — own session per run. Sandbox — shared provisioned environment.
+                  </p>
+                )}
+              </div>
+            )
+          })()}
 
           <div className={section}>
             <span className={sectionLabel}>Model routing</span>
