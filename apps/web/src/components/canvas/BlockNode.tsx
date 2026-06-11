@@ -92,7 +92,7 @@ function brainDescription(desc: string | undefined): string | null {
 
 function BlockNode({ data, selected }: NodeProps) {
   const nodeData = data as BlockNodeData
-  const style = BLOCK_STYLES[nodeData.type]
+  const style = BLOCK_STYLES[nodeData.type] ?? BLOCK_STYLES["tool"]
   const isLogic    = nodeData.type === "logic"
   const isApproval = nodeData.type === "approval"
   const isTrigger  = nodeData.type === "trigger"

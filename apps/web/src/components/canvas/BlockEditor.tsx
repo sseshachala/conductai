@@ -1099,7 +1099,7 @@ export default function BlockEditor({
   const [isStreaming, setIsStreaming] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
-  const style = BLOCK_STYLES[blockType]
+  const style = BLOCK_STYLES[blockType] ?? BLOCK_STYLES["tool"]
 
   const isToolLike = ["tool", "cleanup"].includes(blockType)
   const integration = (blockData.integration as string) || ""
