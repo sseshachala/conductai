@@ -203,12 +203,15 @@ def get_user_id(
     # Per-user cond_live_ key — return the stored user_id
     if x_api_key and x_api_key.startswith("cond_live_"):
         import hashlib
+        from datetime import datetime, timezone
         from app.models.conduct_api_key import ConductApiKey
         key_hash = hashlib.sha256(x_api_key.encode()).hexdigest()
         row = db.query(ConductApiKey).filter(ConductApiKey.key_hash == key_hash).first()
-        if row:
-            return row.user_id
-        raise HTTPException(status_code=401, detail="Invalid API key")
+        if not row:
+            raise HTTPException(status_code=401, detail="Invalid API key")
+        if row.expires_at and row.expires_at < datetime.now(timezone.utc):
+            raise HTTPException(status_code=401, detail="API key expired")
+        return row.user_id
 
     if not credentials:
         raise HTTPException(status_code=401, detail="Authorization header required")
