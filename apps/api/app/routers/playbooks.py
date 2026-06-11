@@ -58,8 +58,12 @@ catalog_router = APIRouter(prefix="/workflows", tags=["workflows"])
 
 
 @catalog_router.get("/playbooks")
-def list_playbooks():
-    return [
+def list_playbooks(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("platform.marketplace.browse")),
+):
+    entries = [
         {
             "slug": slug,
             "name": slug.replace("_", " ").title(),
@@ -68,10 +72,33 @@ def list_playbooks():
             "tags": _PLAYBOOK_META[slug]["tags"],
             "featured": _PLAYBOOK_META[slug]["featured"],
             "category": _PLAYBOOK_META[slug].get("category", "Other"),
+            "source": "builtin",
         }
         for slug in _TEMPLATE_PLAYBOOKS
         if slug in _PLAYBOOK_META
     ]
+    db_playbooks = (
+        db.query(Workflow)
+        .filter(
+            Workflow.workspace_id == workspace_id,
+            Workflow.is_template == True,  # noqa: E712
+        )
+        .all()
+    )
+    for wf in db_playbooks:
+        entries.append(
+            {
+                "slug": wf.playbook_slug or str(wf.id),
+                "name": wf.name,
+                "source": "user",
+                "icon": "\U0001f4c4",
+                "category": "custom",
+                "tags": [],
+                "featured": False,
+                "description": "",
+            }
+        )
+    return entries
 
 
 @catalog_router.get("/playbooks/{slug}")
@@ -195,6 +222,86 @@ def conflict_check(
 
     conflict_type = "label" if template in _ISSUES_LABELED else "duplicate"
     return {"conflicts": conflicts, "conflict_type": conflict_type if conflicts else None}
+
+
+# ── User-submitted playbook (stored in DB as is_template=True) ────────────────
+
+class UserPlaybookSubmitBody(BaseModel):
+    yaml: str
+
+
+class UserPlaybookOut(BaseModel):
+    id: str
+    slug: str
+    name: str
+
+
+@catalog_router.post("/playbooks/submit", response_model=UserPlaybookOut, status_code=201)
+def submit_user_playbook(
+    body: UserPlaybookSubmitBody,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    current_user=Depends(require_permission("platform.marketplace.install")),
+):
+    """
+    Store a user-submitted YAML playbook in the workflows table as is_template=True.
+    Returns 422 if the YAML is invalid per the DSL, 409 if the slug already exists
+    for this workspace.
+    """
+    import yaml as _yaml
+    from app.dsl.loader import load_workflow_yaml
+
+    # 1. Parse
+    try:
+        parsed = _yaml.safe_load(body.yaml)
+    except _yaml.YAMLError as exc:
+        raise HTTPException(status_code=422, detail=f"YAML parse error: {exc}")
+
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=422, detail="YAML must be a mapping at the top level")
+
+    # 2. Validate via DSL
+    try:
+        load_workflow_yaml(body.yaml)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    # 3. Derive slug
+    raw_slug = parsed.get("slug") or parsed.get("name", "")
+    slug = raw_slug.lower().replace(" ", "-")[:64]
+    if not slug:
+        slug = "user-playbook"
+
+    # 4. Conflict check
+    existing = (
+        db.query(Workflow)
+        .filter(
+            Workflow.workspace_id == workspace_id,
+            Workflow.is_template == True,  # noqa: E712
+            Workflow.playbook_slug == slug,
+        )
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"A template playbook with slug '{slug}' already exists in this workspace",
+        )
+
+    # 5. Insert
+    name = parsed.get("name") or slug
+    wf = Workflow(
+        name=name,
+        workspace_id=workspace_id,
+        is_template=True,
+        source="user",
+        playbook_slug=slug,
+    )
+    db.add(wf)
+    db.commit()
+    db.refresh(wf)
+
+    return UserPlaybookOut(id=str(wf.id), slug=slug, name=wf.name)
 
 
 # ── Submission / eval-score router ────────────────────────────────────────────
