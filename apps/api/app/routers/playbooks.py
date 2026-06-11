@@ -60,8 +60,8 @@ catalog_router = APIRouter(prefix="/workflows", tags=["workflows"])
 @catalog_router.get("/playbooks")
 def list_playbooks(
     db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    _: str = Depends(require_permission("platform.marketplace.browse")),
+    authorization: str | None = Header(default=None),
+    x_workspace_id: str | None = Header(default=None),
 ):
     entries = [
         {
@@ -77,27 +77,29 @@ def list_playbooks(
         for slug in _TEMPLATE_PLAYBOOKS
         if slug in _PLAYBOOK_META
     ]
-    db_playbooks = (
-        db.query(Workflow)
-        .filter(
-            Workflow.workspace_id == workspace_id,
-            Workflow.is_template == True,  # noqa: E712
+    # Append user-submitted templates when workspace context is available
+    if x_workspace_id:
+        db_playbooks = (
+            db.query(Workflow)
+            .filter(
+                Workflow.workspace_id == x_workspace_id,
+                Workflow.is_template == True,  # noqa: E712
+            )
+            .all()
         )
-        .all()
-    )
-    for wf in db_playbooks:
-        entries.append(
-            {
-                "slug": wf.playbook_slug or str(wf.id),
-                "name": wf.name,
-                "source": "user",
-                "icon": "\U0001f4c4",
-                "category": "custom",
-                "tags": [],
-                "featured": False,
-                "description": "",
-            }
-        )
+        for wf in db_playbooks:
+            entries.append(
+                {
+                    "slug": wf.playbook_slug or str(wf.id),
+                    "name": wf.name,
+                    "source": "user",
+                    "icon": "\U0001f4c4",
+                    "category": "custom",
+                    "tags": [],
+                    "featured": False,
+                    "description": "",
+                }
+            )
     return entries
 
 
