@@ -1,3 +1,4 @@
+import pathlib
 import structlog
 from typing import Optional
 from uuid import UUID
@@ -20,6 +21,10 @@ from app.dsl import (
     yaml_filename_for,
     yaml_to_graph,
 )
+# Base directory for bundled playbooks — used when resolving `extends:` at
+# install time.  Community submissions pass base_dir=None to block extends.
+_PLAYBOOKS_BASE_DIR = pathlib.Path(__file__).parent.parent.parent / "playbooks"
+
 from app.models.run import Run, RunEvent
 from app.models.workflow import Workflow, WorkflowVersion
 from app.schemas.workflow import WorkflowCreate, WorkflowUpdate, WorkflowOut, WorkflowDetailOut
@@ -359,7 +364,7 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
                 for key, val in resolved.items():
                     dsl_text = dsl_text.replace(f"{{{{inputs.{key}}}}}", str(val))
             try:
-                dsl = load_workflow_yaml(dsl_text)
+                dsl = load_workflow_yaml(dsl_text, base_dir=_PLAYBOOKS_BASE_DIR)
                 graph_data = yaml_to_graph(dsl)
             except Exception as _yaml_err:
                 log.error("workflow.yaml_parse_failed", template=body.template, error=str(_yaml_err))
@@ -1425,7 +1430,7 @@ def update_workflow_yaml(
         raise HTTPException(status_code=404, detail="Workflow not found")
 
     try:
-        dsl = load_workflow_yaml(yaml_text)
+        dsl = load_workflow_yaml(yaml_text, base_dir=_PLAYBOOKS_BASE_DIR)
     except WorkflowValidationError as e:
         raise HTTPException(status_code=400, detail=f"Invalid workflow YAML: {e}")
 
@@ -1524,7 +1529,7 @@ def validate_workflow_yaml(body: YamlValidateRequest):
     derived graph on success so the canvas can render it immediately.
     """
     try:
-        dsl = load_workflow_yaml(body.yaml)
+        dsl = load_workflow_yaml(body.yaml, base_dir=_PLAYBOOKS_BASE_DIR)
     except WorkflowValidationError as e:
         return {"ok": False, "error": str(e)}
 

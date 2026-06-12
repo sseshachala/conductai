@@ -1,5 +1,6 @@
+extends: base-autopilot
 name: Security Patch Updater
-version: 1
+version: 2
 description: >
   Dependabot alerts get patched, tested, and PR'd automatically with a clear
   CVE reference. CVEs don't wait for the weekly cron cycle.
@@ -38,12 +39,8 @@ on:
 
 blocks:
   recall_context:
-    type: memory
-    label: Recall prior context
-    action: read
-    scope: repo
+    $use: base-autopilot.recall_context
     key: "{{_trigger.repository.full_name}}"
-    limit: 5
     next: assess_and_patch
 
   assess_and_patch:
@@ -95,8 +92,9 @@ blocks:
          Python:  pytest --tb=short -q 2>&1 | tail -20 || true
          Go:      go test ./... 2>&1 | tail -20 || true
 
-      5. Create branch and commit:
+      5. Create branch, run linter, and commit:
          git checkout -b security/patch-<package>-<cve or date>
+      {{$snippet: lint}}
          git add .
          git commit -m "security: patch <package> for <cve> (<severity> severity)
 
@@ -132,10 +130,7 @@ blocks:
     next: record_outcome
 
   record_outcome:
-    type: memory
-    label: Record outcome
-    action: write
-    scope: repo
+    $use: base-autopilot.record_outcome
     key: "{{_trigger.repository.full_name}}"
     summary: |
       Repo: {{_trigger.repository.full_name}}

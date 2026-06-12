@@ -1,5 +1,6 @@
+extends: base-autopilot
 name: Third-Party Autopilot Fix
-version: 5
+version: 6
 description: >
   Given an issue number on any third-party repo (any language), fork it, apply
   the fix, push a branch, and open a PR back to upstream.
@@ -60,13 +61,8 @@ blocks:
     next: read_memory
 
   read_memory:
-    type: memory
-    action: read
-    label: Load fix history
-    description: Recall previous fixes on this repo to give the brain block useful context
-    scope: repo
+    $use: base-autopilot.recall_context
     key: "{{inputs.upstream_owner}}/{{inputs.upstream_repo}}"
-    limit: 5
     next: implement_fix
 
   implement_fix:
@@ -90,8 +86,7 @@ blocks:
       (Empty if this is the first fix on this repo — no prior context available.)
 
       ── STEP 1: DETECT YOUR EXECUTION MODE ──────────────────────────────────
-      Run this FIRST:
-        if [ -d /workspace/.git ]; then echo "MODE=sandbox"; else echo "MODE=proxy"; fi
+      {{$snippet: detect_mode}}
 
       ── SANDBOX MODE (output was MODE=sandbox) ──────────────────────────────
       The repo is already cloned at /workspace on branch fix/issue-{{inputs.issue_number}}.
@@ -100,22 +95,8 @@ blocks:
       1. Read relevant source files to understand the codebase
       2. Apply the fix — search for exact patterns, never hardcode line numbers
       3. Verify changes parse/compile cleanly
-      4. Run repo linter before committing — auto-detect from repo config:
-           if [ -f .pre-commit-config.yaml ]; then
-             pre-commit run --all-files 2>/dev/null; pre-commit run --all-files 2>/dev/null || true
-           elif [ -f pyproject.toml ] || [ -f ruff.toml ] || [ -f setup.py ]; then
-             ruff check --fix . 2>/dev/null || true && ruff format . 2>/dev/null || true
-           elif command -v black &>/dev/null; then
-             black . 2>/dev/null || true
-           elif [ -f package.json ]; then
-             (npx eslint --fix . 2>/dev/null || true) && (npx prettier --write . 2>/dev/null || true)
-           elif [ -f Cargo.toml ]; then
-             cargo fmt 2>/dev/null || true && cargo clippy --fix --allow-dirty 2>/dev/null || true
-           elif [ -f go.mod ]; then
-             gofmt -w . 2>/dev/null || true
-           elif [ -f Gemfile ]; then
-             bundle exec rubocop -a 2>/dev/null || true
-           fi
+      4. Run repo linter before committing:
+      {{$snippet: lint}}
       5. cd /workspace && git add -A && git diff --cached --stat
       6. git commit -m "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})"
       7. git push https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git fix/issue-{{inputs.issue_number}}
@@ -160,24 +141,11 @@ blocks:
       body: |
         Fixes #{{inputs.issue_number}}
 
-        ---
-
-        This fix was implemented autonomously by **[Conduct AI](https://conductai.ai)** — an open-source platform
-        that turns AI agents into reusable team automations via YAML playbooks.
-
-        - 🔗 Platform: [conductai.ai](https://conductai.ai)
-        - 📦 Source: [github.com/sseshachala/conductai](https://github.com/sseshachala/conductai)
-        - ▶ Playbook: `thirdparty-autopilot-fix` — fork → fix → PR in one automated run
-
-        > Want Conduct AI to fix issues in your repo too? [Get started free →](https://conductai.ai)
+        {{$snippet: pr_attribution}}
     next: write_memory
 
   write_memory:
-    type: memory
-    action: write
-    label: Record fix
-    description: Store what was fixed so future runs on this repo start smarter
-    scope: repo
+    $use: base-autopilot.record_outcome
     key: "{{inputs.upstream_owner}}/{{inputs.upstream_repo}}"
     summary: |
       Issue #{{inputs.issue_number}}: {{fetch_issue.title}}

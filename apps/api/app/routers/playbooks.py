@@ -262,9 +262,9 @@ def submit_user_playbook(
     if not isinstance(parsed, dict):
         raise HTTPException(status_code=422, detail="YAML must be a mapping at the top level")
 
-    # 2. Validate via DSL
+    # 2. Validate via DSL (base_dir=None: community submissions cannot use extends)
     try:
-        load_workflow_yaml(body.yaml)
+        load_workflow_yaml(body.yaml, base_dir=None)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
@@ -391,9 +391,9 @@ async def submit_playbook(
         if not await _verify_recaptcha(body.recaptcha_token):
             raise HTTPException(status_code=403, detail="Human verification failed — please try again")
 
-    # ── Validate YAML against the DSL ─────────────────────────────────────────
+    # ── Validate YAML against the DSL (base_dir=None: extends blocked for community) ──
     try:
-        workflow = load_workflow_yaml(body.yaml_content)
+        workflow = load_workflow_yaml(body.yaml_content, base_dir=None)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Invalid playbook YAML: {e}")
 
