@@ -1434,7 +1434,7 @@ export default function BlockEditor({
             const runsOn = blockData.runs_on as Record<string, string> | undefined
             const provider = runsOn?.provider ?? ""
             const mode = runsOn?.mode ?? "proxy"
-            const flatValue = provider ? `${provider}:${mode}` : ""
+            const flatValue = runsOn?.provider ? `${provider}:${mode}` : "modal:proxy"
 
             function setFlat(v: string) {
               if (!v) {

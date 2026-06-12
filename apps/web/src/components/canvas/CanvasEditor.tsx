@@ -716,6 +716,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
             body: JSON.stringify({
               issue_title: issue?.title ?? "",
               issue_body:  issue?.body  ?? "",
+              run_inputs: initialState ?? {},
             }),
           }
         )

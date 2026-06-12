@@ -23,22 +23,38 @@ def _extract_repo(state: dict | None) -> str | None:
         return inputs["repo_full_name"]
     if inputs.get("owner") and inputs.get("repo"):
         return f"{inputs['owner']}/{inputs['repo']}"
-    # Block outputs: scan for owner+repo or GitHub URL (e.g. fetch_issue html_url)
+    # Block outputs: scan for owner+repo or GitHub URL
     for key, val in state.items():
-        if key.startswith("_") or not isinstance(val, dict):
+        if key.startswith("_") or key == "inputs" or not isinstance(val, dict):
             continue
         block = val
-        # Skip fork blocks — fork_full_name is the fork, not upstream
-        if block.get("fork_full_name"):
-            continue
         if block.get("owner") and block.get("repo"):
-            return f"{block['owner']}/{block['repo']}"
-        if block.get("full_name"):
+            candidate = f"{block['owner']}/{block['repo']}"
+            # Don't return a fork as the repo — only if it matches upstream inputs
+            if candidate != f"{inputs.get('upstream_owner')}/{inputs.get('upstream_repo')}":
+                if not (inputs.get("upstream_owner") and inputs.get("upstream_repo")):
+                    return candidate
+            else:
+                return candidate
+        if block.get("full_name") and "/" in str(block.get("full_name", "")):
             return block["full_name"]
-        for url_field in ("html_url", "url", "clone_url"):
-            url = block.get(url_field)
-            if isinstance(url, str) and "github.com" in url:
-                m = _GH_URL_RE.match(url)
+        # Scan all string values for GitHub URLs (catches url, html_url, pr_url, clone_url, etc.)
+        for field_val in block.values():
+            if isinstance(field_val, str) and "github.com" in field_val:
+                m = _GH_URL_RE.search(field_val)
+                if m:
+                    repo_candidate = m.group(1).rstrip(".git")
+                    # Prefer issue/PR URLs over fork URLs
+                    if "/pull/" not in field_val and "/issues/" not in field_val:
+                        continue  # skip bare repo URLs from fork block — keep scanning
+                    return repo_candidate
+    # Second pass: accept any GitHub URL including repo URLs
+    for key, val in state.items():
+        if key.startswith("_") or key == "inputs" or not isinstance(val, dict):
+            continue
+        for field_val in val.values():
+            if isinstance(field_val, str) and "github.com" in field_val:
+                m = _GH_URL_RE.search(field_val)
                 if m:
                     return m.group(1).rstrip(".git")
     return None

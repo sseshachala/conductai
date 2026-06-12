@@ -777,6 +777,7 @@ def stream_block_compile(
 class PreflightRequest(BaseModel):
     issue_title: str = ""
     issue_body: str = ""
+    run_inputs: dict = {}
 
 
 def _resolve_preflight_key(workspace_id: str | None, db: Session | None) -> str | None:
