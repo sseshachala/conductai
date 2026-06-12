@@ -82,8 +82,14 @@ blocks:
       1. Read relevant source files to understand the codebase
       2. Apply the fix — search for exact patterns, never hardcode line numbers
       3. Verify changes parse/compile cleanly
-      4. Run repo linter before committing — try in order, first one that works:
-           pre-commit run --all-files 2>/dev/null || ruff format . 2>/dev/null || black . 2>/dev/null || true
+      4. Run repo linter before committing — auto-detect from repo config:
+           if [ -f .pre-commit-config.yaml ]; then
+             pre-commit run --all-files 2>/dev/null; pre-commit run --all-files 2>/dev/null || true
+           elif [ -f pyproject.toml ] || [ -f ruff.toml ]; then
+             ruff check --fix . 2>/dev/null || true && ruff format . 2>/dev/null || true
+           elif command -v black &>/dev/null; then
+             black . 2>/dev/null || true
+           fi
       5. cd /workspace && git add -A && git diff --cached --stat
       6. git commit -m "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})"
       7. git push https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git fix/issue-{{inputs.issue_number}}
@@ -103,7 +109,7 @@ blocks:
         git merge --ff-only upstream/{{fork_upstream.default_branch}} 2>/dev/null || \
           git reset --hard upstream/{{fork_upstream.default_branch}} && \
         <APPLY FIX using sed/awk/python -c or heredoc — all inline> && \
-        (pre-commit run --all-files 2>/dev/null || ruff format . 2>/dev/null || black . 2>/dev/null || true) && \
+        (if [ -f .pre-commit-config.yaml ]; then pre-commit run --all-files 2>/dev/null; pre-commit run --all-files 2>/dev/null || true; elif [ -f pyproject.toml ] || [ -f ruff.toml ]; then ruff check --fix . 2>/dev/null || true && ruff format . 2>/dev/null || true; elif command -v black &>/dev/null; then black . 2>/dev/null || true; fi) && \
         git add -A && git diff --cached --stat && \
         git commit -m "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})" && \
         git push https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git fix/issue-{{inputs.issue_number}}
