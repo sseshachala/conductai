@@ -6,10 +6,19 @@ description: >
 
 snippets:
   detect_mode: |
-    ── DETECT EXECUTION MODE (run this FIRST) ──────────────────────────────
-    Run: if [ -d /workspace/.git ]; then echo "MODE=sandbox"; else echo "MODE=proxy"; fi
+    ── DETECT EXECUTION MODE AND REPO TYPE (run this FIRST) ─────────────────
+    if [ -d /workspace/.git ]; then echo "MODE=sandbox"; else echo "MODE=proxy"; fi
     MODE=sandbox → persistent /workspace, use multiple tool calls freely.
     MODE=proxy   → FRESH container per run_shell call — pack ALL git+fix+push into ONE call.
+
+    ── DETECT REPO TYPE ─────────────────────────────────────────────────────
+    if [ "{{fork_upstream.fork_full_name}}" = "{{inputs.upstream_owner}}/{{inputs.upstream_repo}}" ]; then
+      echo "REPO_TYPE=same"   # authenticated user owns the upstream — push directly, no fork
+    else
+      echo "REPO_TYPE=fork"   # fork exists — use fork URL, head_ref = owner:branch
+    fi
+    REPO_TYPE=same → clone/push to upstream directly, head_ref = branch name only
+    REPO_TYPE=fork → clone/push to fork, head_ref = fork_owner:branch
 
   lint: |
     ── AUTO-DETECT AND RUN REPO LINTER (before every commit) ───────────────
