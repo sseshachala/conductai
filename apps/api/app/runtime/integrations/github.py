@@ -72,12 +72,41 @@ def create_branch(token: str, owner: str, repo: str, branch: str, from_branch: s
 
 
 def open_pull_request(token: str, owner: str, repo: str, title: str, head: str, base: str, body: str = "") -> dict:
+    # Verify head branch exists before attempting PR creation
+    branch_name = head.split(":")[-1]
+    branch_owner = head.split(":")[0] if ":" in head else owner
+    branch_check = httpx.get(
+        f"{BASE}/repos/{branch_owner}/{repo}/branches/{branch_name}",
+        headers=_headers(token),
+        timeout=10,
+    )
+    if branch_check.status_code == 404:
+        raise ValueError(
+            f"Branch '{head}' not found on {branch_owner}/{repo}. "
+            "The push likely failed — check that the brain block pushed the branch successfully before opening a PR."
+        )
+
     r = httpx.post(
         f"{BASE}/repos/{owner}/{repo}/pulls",
         headers=_headers(token),
         json={"title": title, "head": head, "base": base, "body": body, "draft": True},
         timeout=15,
     )
+    if r.status_code == 422:
+        errors = r.json().get("errors", [])
+        # PR already exists — find it and return it instead of failing
+        if any("already exists" in str(e) for e in errors):
+            existing = httpx.get(
+                f"{BASE}/repos/{owner}/{repo}/pulls",
+                headers=_headers(token),
+                params={"head": head, "base": base, "state": "open"},
+                timeout=10,
+            )
+            if existing.status_code == 200 and existing.json():
+                d = existing.json()[0]
+                return {"pr_number": d["number"], "pr_url": d["html_url"], "title": d["title"]}
+        msg = "; ".join(e.get("message", str(e)) for e in errors) if errors else r.text
+        raise ValueError(f"GitHub rejected PR creation (422): {msg}")
     r.raise_for_status()
     d = r.json()
     return {"pr_number": d["number"], "pr_url": d["html_url"], "title": d["title"]}
