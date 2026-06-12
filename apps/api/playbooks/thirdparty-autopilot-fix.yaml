@@ -82,9 +82,11 @@ blocks:
       1. Read relevant source files to understand the codebase
       2. Apply the fix — search for exact patterns, never hardcode line numbers
       3. Verify changes parse/compile cleanly
-      4. cd /workspace && git add -A && git diff --cached --stat
-      5. git commit -m "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})"
-      6. git push https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git fix/issue-{{inputs.issue_number}}
+      4. Run repo linter before committing — try in order, first one that works:
+           pre-commit run --all-files 2>/dev/null || ruff format . 2>/dev/null || black . 2>/dev/null || true
+      5. cd /workspace && git add -A && git diff --cached --stat
+      6. git commit -m "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})"
+      7. git push https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git fix/issue-{{inputs.issue_number}}
 
       ── PROXY MODE (output was MODE=proxy) ──────────────────────────────────
       CRITICAL: Each run_shell call gets a FRESH container — filesystem resets between calls.
@@ -101,6 +103,7 @@ blocks:
         git merge --ff-only upstream/{{fork_upstream.default_branch}} 2>/dev/null || \
           git reset --hard upstream/{{fork_upstream.default_branch}} && \
         <APPLY FIX using sed/awk/python -c or heredoc — all inline> && \
+        (pre-commit run --all-files 2>/dev/null || ruff format . 2>/dev/null || black . 2>/dev/null || true) && \
         git add -A && git diff --cached --stat && \
         git commit -m "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})" && \
         git push https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git fix/issue-{{inputs.issue_number}}
