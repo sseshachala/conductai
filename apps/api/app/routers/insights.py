@@ -89,8 +89,8 @@ ATTENTION_STATUSES = ["failed", "paused", "cancelled"]
 _REVIEW_SLUGS   = {"pr_reviewer", "copilot_reviewer", "security_scanner"}
 _INCIDENT_SLUGS = {"incident_responder", "postmortem_drafter"}
 _TRIAGE_SLUGS   = {"issue_triage"}
-_PR_SLUGS       = {"autopilot_quick", "autopilot_full", "autopilot_approved",
-                   "security_patch_updater", "dependency_updater"}
+_PR_SLUGS       = {"autopilot_full", "autopilot_approved",
+                   "security_patch_updater", "dependency_updater", "thirdparty_autopilot_fix"}
 
 
 def _outcome_type(run: Run, slug: str | None) -> str | None:

@@ -1,0 +1,381 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# factory — AI-Operated Software Factory
+#
+# Full pipeline from GitHub issue to merged PR.
+# Phase-aware model routing: Opus for spec + architecture, Sonnet for
+# implementation + tests. ADR captured to workspace memory. TDD enforced
+# (tests must go red before green). Human approval gate before PR opens.
+#
+# Pipeline:
+#   issue → clarify spec (opus) → design arch (opus) → capture ADR (memory)
+#         → write tests (sonnet) → run tests [expect red]
+#         → implement (sonnet) → run tests [expect green]
+#         → approval → open PR → notify
+# ──────────────────────────────────────────────────────────────────────────────
+name: Factory — AI-Operated Software Pipeline
+version: 1
+description: >
+  Issues become merged PRs end-to-end. Claude handles spec, architecture,
+  implementation, and tests — Opus for reasoning, Sonnet for execution.
+
+inputs:
+  trigger_label:
+    label: Trigger label
+    default: factory ready
+    type: select
+    options:
+      - factory ready
+      - factory_ready
+  spec_model:
+    label: Specification & Architecture model
+    default: claude-opus-4-7
+    type: select
+    options:
+      - claude-opus-4-7
+    hint: "Opus used for reasoning-heavy phases — spec, arch, tradeoffs"
+  impl_model:
+    label: Implementation & Testing model
+    default: claude-sonnet-4-6
+    type: select
+    options:
+      - claude-sonnet-4-6
+    hint: "Sonnet used for execution phases — writing code and tests"
+  clone_depth:
+    label: Clone depth
+    default: "1"
+    type: select
+    options:
+      - "1"
+      - "0"
+    hint: "1 = fast (recommended), 0 = full history"
+  approval_channel:
+    label: Slack channel for approval gate
+    default: "#engineering"
+    type: string
+    hint: "Human approval required before PR is opened"
+
+on:
+  github.issue_labeled:
+    integration: github
+    labels:
+      - "{{inputs.trigger_label}}"
+    label_mode: one_of
+    next: recall_context
+
+blocks:
+  recall_context:
+    type: memory
+    label: Recall prior context
+    action: read
+    scope: repo
+    key: "{{_trigger.repo_full_name}}"
+    limit: 5
+    next: fetch_issue
+
+  fetch_issue:
+    type: tool
+    integration: github
+    action: fetch_issue
+    label: Fetch issue
+    description: Get full issue title, body, and metadata
+    params:
+      owner: "{{_trigger.repo_owner}}"
+      repo: "{{_trigger.repo_name}}"
+      issue_number: "{{_trigger.issue_number}}"
+    next: clarify_spec
+
+  clarify_spec:
+    type: brain
+    mode: agentic
+    model: "{{inputs.spec_model}}"
+    label: "Phase 1 — Clarify specification"
+    description: |
+      You are a senior engineering lead. Your job is to turn a rough GitHub issue
+      into a precise, unambiguous specification before any code is written.
+
+      Issue title: {{fetch_issue.title}}
+      Issue body: {{fetch_issue.body}}
+      Repo: {{_trigger.repo_full_name}}
+
+      {% if recall_context.entries %}
+      Prior context for this repo:
+      {% for entry in recall_context.entries %}
+      - {{entry.summary}}
+      {% endfor %}
+      {% endif %}
+
+      Produce a specification covering:
+      1. Problem statement (one sentence)
+      2. Acceptance criteria (bullet list — each must be testable)
+      3. Out of scope (what this change does NOT do)
+      4. Open questions (anything that would block implementation)
+
+      Output ONLY the following JSON on the last line:
+        {"problem": "<one sentence>", "acceptance_criteria": ["<criterion>", ...], "out_of_scope": ["<item>", ...], "open_questions": ["<question>", ...]}
+    next: design_arch
+
+  design_arch:
+    type: brain
+    mode: agentic
+    model: "{{inputs.spec_model}}"
+    label: "Phase 2 — Design architecture"
+    description: |
+      You are a principal architect. Design the implementation approach for the
+      specification below. Reason through tradeoffs before committing to a decision.
+
+      Repo: {{_trigger.repo_full_name}}
+      Problem: {{clarify_spec.problem}}
+      Acceptance criteria: {{clarify_spec.acceptance_criteria}}
+
+      Use read_file to inspect relevant source files before deciding.
+
+      Produce:
+      1. Decision — the chosen approach (one paragraph)
+      2. Rationale — why this approach over alternatives (bullet list)
+      3. Files to change — list of file paths and what changes in each
+      4. Test strategy — what tests will prove the acceptance criteria
+
+      Output ONLY the following JSON on the last line:
+        {"decision": "<approach>", "rationale": ["<reason>", ...], "files_to_change": [{"path": "<file>", "change": "<description>"}, ...], "test_strategy": "<description>"}
+    next: capture_adr
+
+  capture_adr:
+    type: memory
+    label: Capture architectural decision (ADR)
+    action: write
+    scope: workspace
+    key: "adr/{{_trigger.repo_full_name}}/issue-{{_trigger.issue_number}}"
+    summary: |
+      Issue #{{_trigger.issue_number}}: {{fetch_issue.title}}
+      Decision: {{design_arch.decision}}
+      Rationale: {{design_arch.rationale}}
+      Files: {{design_arch.files_to_change}}
+      Test strategy: {{design_arch.test_strategy}}
+    next: write_tests
+
+  write_tests:
+    type: brain
+    mode: agentic
+    model: "{{inputs.impl_model}}"
+    label: "Phase 3 — Write failing tests (red)"
+    description: |
+      You are an expert engineer practicing TDD. Write tests BEFORE any
+      implementation code. The tests must fail on the current codebase.
+
+      Repo: {{_trigger.repo_full_name}}
+      Branch to create: factory/issue-{{_trigger.issue_number}}
+      Test strategy: {{design_arch.test_strategy}}
+      Acceptance criteria: {{clarify_spec.acceptance_criteria}}
+      Files to change: {{design_arch.files_to_change}}
+
+      CRITICAL: Do ALL of the following in a SINGLE run_shell call:
+      - rm -rf /tmp/repo
+      - git clone --depth {{inputs.clone_depth}} https://$GIT_TOKEN@github.com/{{_trigger.repo_full_name}}.git /tmp/repo
+      - cd /tmp/repo && git config user.email "bot@conductai.ai" && git config user.name "Conduct AI"
+      - git checkout -b factory/issue-{{_trigger.issue_number}}
+      - Write tests only (no implementation changes)
+      - git add -A && git commit -m "test: add failing tests for issue #{{_trigger.issue_number}}"
+      - git push https://$GIT_TOKEN@github.com/{{_trigger.repo_full_name}}.git factory/issue-{{_trigger.issue_number}}
+
+      Output ONLY the following JSON on the last line:
+        {"branch_name": "factory/issue-{{_trigger.issue_number}}", "test_files": ["<path>", ...], "summary": "<brief description of tests written>"}
+    next: run_tests_red
+
+  run_tests_red:
+    type: brain
+    mode: agentic
+    model: "{{inputs.impl_model}}"
+    label: "Verify tests are red"
+    description: |
+      Clone the test branch and run the test suite. The tests MUST fail —
+      that proves they are testing real behaviour, not passing vacuously.
+
+      Repo: {{_trigger.repo_full_name}}
+      Branch: {{write_tests.branch_name}}
+
+      CRITICAL: Do ALL of the following in a SINGLE run_shell call:
+      - git clone --branch {{write_tests.branch_name}} https://$GIT_TOKEN@github.com/{{_trigger.repo_full_name}}.git /tmp/repo
+      - cd /tmp/repo
+      - Detect test runner (check package.json / requirements.txt / go.mod / Cargo.toml)
+      - Run the test suite ONCE — do NOT fix failures
+      - Capture pass/fail result and test output summary
+
+      Output ONLY the following JSON on the last line:
+        {"tests_failed": true/false, "test_output": "<brief summary>"}
+    next: gate_red
+
+  gate_red:
+    type: logic
+    label: Tests must be red
+    condition: "{{run_tests_red.tests_failed}} == true"
+    next:
+      pass: implement
+      fail: abort_not_red
+
+  implement:
+    type: brain
+    mode: agentic
+    model: "{{inputs.impl_model}}"
+    label: "Phase 4 — Implement"
+    description: |
+      The tests are red. Now implement the minimum code to make them green.
+      Do NOT rewrite or delete tests.
+
+      Repo: {{_trigger.repo_full_name}}
+      Branch: {{write_tests.branch_name}}
+      Architecture decision: {{design_arch.decision}}
+      Files to change: {{design_arch.files_to_change}}
+
+      CRITICAL: Do ALL of the following in a SINGLE run_shell call:
+      - git clone --branch {{write_tests.branch_name}} https://$GIT_TOKEN@github.com/{{_trigger.repo_full_name}}.git /tmp/repo
+      - cd /tmp/repo && git config user.email "bot@conductai.ai" && git config user.name "Conduct AI"
+      - Implement the changes described in the architecture decision
+      - git add -A && git commit -m "feat: implement fix for issue #{{_trigger.issue_number}}"
+      - git push https://$GIT_TOKEN@github.com/{{_trigger.repo_full_name}}.git {{write_tests.branch_name}}
+
+      Output ONLY the following JSON on the last line:
+        {"summary": "<brief description of implementation>", "files_changed": ["<path>", ...]}
+    next: run_tests_green
+
+  run_tests_green:
+    type: brain
+    mode: agentic
+    model: "{{inputs.impl_model}}"
+    label: "Verify tests are green (up to 3 attempts)"
+    description: |
+      Run the test suite. If tests fail, patch and retry up to 3 times total.
+
+      Repo: {{_trigger.repo_full_name}}
+      Branch: {{write_tests.branch_name}}
+
+      CRITICAL: Do ALL of the following in a SINGLE run_shell call:
+      - git clone --branch {{write_tests.branch_name}} https://$GIT_TOKEN@github.com/{{_trigger.repo_full_name}}.git /tmp/repo
+      - cd /tmp/repo && git config user.email "bot@conductai.ai" && git config user.name "Conduct AI"
+      - Detect test runner
+      - Run tests; if they fail: patch inline, commit, re-run (max 3 attempts)
+      - If fixes were made: git push https://$GIT_TOKEN@github.com/{{_trigger.repo_full_name}}.git {{write_tests.branch_name}}
+      - Stop after 3 attempts regardless of outcome
+
+      Output ONLY the following JSON on the last line:
+        {"passed": true/false, "attempts": <number>, "test_output": "<brief summary>"}
+    next: gate_green
+
+  gate_green:
+    type: logic
+    label: Tests must be green
+    condition: "{{run_tests_green.passed}} == true"
+    next:
+      pass: human_approval
+      fail: notify_failure
+
+  human_approval:
+    type: approval
+    label: "Phase 5 — Human approval gate"
+    via: slack
+    channel: "{{inputs.approval_channel}}"
+    description: |
+      Implementation complete. Tests are green. Review before the PR is opened.
+
+      Issue: #{{_trigger.issue_number}} — {{fetch_issue.title}}
+      Branch: {{write_tests.branch_name}}
+
+      Architecture decision:
+      {{design_arch.decision}}
+
+      Implementation summary:
+      {{implement.summary}}
+
+      Files changed: {{implement.files_changed}}
+      Test result: {{run_tests_green.test_output}} ({{run_tests_green.attempts}} attempt(s))
+    next: open_pr
+
+  open_pr:
+    type: brain
+    mode: agentic
+    model: "{{inputs.impl_model}}"
+    label: "Phase 6 — Open PR"
+    description: |
+      Open a pull request via the GitHub API. Do NOT clone the repo.
+
+      Repo: {{_trigger.repo_full_name}}
+      Branch: {{write_tests.branch_name}}
+      Base: {{_trigger.default_branch}}
+
+      POST https://api.github.com/repos/{{_trigger.repo_full_name}}/pulls
+      Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
+      Body:
+        {
+          "title": "feat: {{fetch_issue.title}} (closes #{{_trigger.issue_number}})",
+          "head": "{{write_tests.branch_name}}",
+          "base": "{{_trigger.default_branch}}",
+          "body": "## Summary\n\n{{implement.summary}}\n\n## Architecture Decision\n\n{{design_arch.decision}}\n\n## Test Results\n\n{{run_tests_green.test_output}}\n\nCloses #{{_trigger.issue_number}}\n\n---\n_Generated by [Conduct AI](https://conductai.ai) — Factory Pipeline_"
+        }
+
+      Output ONLY the following JSON on the last line:
+        {"pr_url": "<full PR URL>"}
+    next: record_outcome
+
+  record_outcome:
+    type: memory
+    label: Record run outcome
+    action: write
+    scope: repo
+    key: "{{_trigger.repo_full_name}}"
+    summary: |
+      Issue #{{_trigger.issue_number}}: {{fetch_issue.title}}
+      Decision: {{design_arch.decision}}
+      Implementation: {{implement.summary}}
+      PR: {{open_pr.pr_url}}
+    next: notify_success
+
+  notify_success:
+    type: output
+    label: Notify — PR ready
+    output:
+      via: slack
+      slack:
+        channel: "{{inputs.approval_channel}}"
+        approval: false
+
+  abort_not_red:
+    type: output
+    label: Abort — tests were not red
+    output:
+      via: slack
+      slack:
+        channel: "{{inputs.approval_channel}}"
+
+  notify_failure:
+    type: output
+    label: Notify — tests still failing
+    output:
+      via: slack
+      slack:
+        channel: "{{inputs.approval_channel}}"
+
+test_trigger:
+  payload:
+    action: labeled
+    label:
+      name: "[TEST] factory ready"
+    issue:
+      number: 1
+      title: "[TEST] feat: add request rate limiting to API endpoints"
+      body: |
+        This is a test run — prefix the branch and PR with [TEST].
+        Add per-user rate limiting to the /api/runs and /api/playbooks endpoints.
+        Limit: 60 requests/minute per user. Return 429 with Retry-After header when exceeded.
+      html_url: "https://github.com/sseshachala/conductai-testbed-node/issues/1"
+      user:
+        login: conductai-test-bot
+      labels:
+        - name: "[TEST] factory ready"
+    repository:
+      full_name: sseshachala/conductai-testbed-node
+      name: conductai-testbed-node
+      owner:
+        login: sseshachala
+      default_branch: main
+      clone_url: "https://github.com/sseshachala/conductai-testbed-node.git"
+    sender:
+      login: conductai-test-bot

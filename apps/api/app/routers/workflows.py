@@ -139,7 +139,6 @@ def list_workflows(
 
 
 FRIENDLY_NAMES_SERVER = {
-    "autopilot_quick":    "Autopilot Quick",
     "autopilot_full":     "Autopilot Full",
     "autopilot_approved": "Autopilot + Approval",
     "pr_reviewer":        "PR Reviewer",
