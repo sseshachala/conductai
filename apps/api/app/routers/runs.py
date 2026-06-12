@@ -372,23 +372,23 @@ def stream_run_events(
         import time as _time
         from app.core.database import SessionLocal
 
-        seen_ids: set = set()
+        last_seen_created_at: datetime | None = None  # cursor for paginated DB queries
         stream_db = SessionLocal()
         pubsub = _redis().pubsub()
         pubsub.subscribe(f"{_RUN_CHANNEL_PREFIX}{str(run_id)}")
         deadline = _time.monotonic() + _SSE_TIMEOUT_SECONDS
 
         def flush_new_events():
-            events = (
-                stream_db.query(RunEvent)
-                .filter(RunEvent.run_id == run_id)
-                .order_by(RunEvent.created_at)
-                .all()
-            )
+            nonlocal last_seen_created_at
+            # Only fetch events newer than the last one we saw — avoids full-table
+            # scan on every Redis notification (perf fix for issue #535).
+            q = stream_db.query(RunEvent).filter(RunEvent.run_id == run_id)
+            if last_seen_created_at is not None:
+                q = q.filter(RunEvent.created_at > last_seen_created_at)
+            events = q.order_by(RunEvent.created_at).limit(100).all()
             for ev in events:
-                if ev.id not in seen_ids:
-                    seen_ids.add(ev.id)
-                    yield f"data: {json.dumps({'id': str(ev.id), 'kind': ev.kind, 'block_id': ev.block_id, 'payload': ev.payload})}\n\n"
+                last_seen_created_at = ev.created_at
+                yield f"data: {json.dumps({'id': str(ev.id), 'kind': ev.kind, 'block_id': ev.block_id, 'payload': ev.payload})}\n\n"
 
         def is_terminal() -> str | None:
             stream_db.expire_all()
