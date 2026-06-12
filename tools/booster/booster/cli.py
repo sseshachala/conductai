@@ -312,6 +312,74 @@ def _remove_rules_block(path: Path, label: str) -> None:
     click.echo(f"  removed booster block from {label}")
 
 
+# ---------------------------------------------------------------------------
+# Verbosity helpers
+# ---------------------------------------------------------------------------
+
+_VERBOSITY_INSTRUCTIONS: dict[str, str] = {
+    "lite": (
+        "Prefer terse responses. Skip filler phrases. Lead with the result. "
+        "Use code over prose where possible."
+    ),
+    "full": (
+        "Be concise. No filler. No preamble. State results directly. "
+        "One sentence per idea. Code examples over explanations."
+    ),
+    "ultra": (
+        "Telegraphic brevity. Fragments OK. No filler. No summaries. "
+        "Output only what changes. Skip all ceremony."
+    ),
+}
+
+_VERBOSITY_START = "<!-- booster-verbosity:start -->"
+_VERBOSITY_END = "<!-- booster-verbosity:end -->"
+
+_INSTRUCTION_FILES = [
+    ("CLAUDE.md", "CLAUDE.md"),
+    ("AGENTS.md", "AGENTS.md"),
+    (".cursorrules", ".cursorrules"),
+    (".windsurfrules", ".windsurfrules"),
+    (".aider.conf.yml", ".aider.conf.yml"),
+]
+
+
+def _get_instruction_files(root: Path) -> list[tuple[Path, str]]:
+    """Return (path, label) for instruction files that exist under root."""
+    found = []
+    for filename, label in _INSTRUCTION_FILES:
+        p = root / filename
+        if p.exists():
+            found.append((p, label))
+    return found
+
+
+def _remove_verbosity_block(path: Path) -> None:
+    """Remove the <!-- booster-verbosity:start/end --> block from path."""
+    if not path.exists():
+        return
+    text = path.read_text()
+    start = text.find(_VERBOSITY_START)
+    end = text.find(_VERBOSITY_END)
+    if start == -1 or end == -1:
+        return
+    end += len(_VERBOSITY_END)
+    cleaned = (text[:start].rstrip() + "\n" + text[end:].lstrip()).strip()
+    if cleaned:
+        path.write_text(cleaned + "\n")
+    else:
+        path.unlink()
+
+
+def _append_verbosity_block(path: Path, mode: str) -> None:
+    """Write the verbosity block for mode into path, replacing any existing one."""
+    _remove_verbosity_block(path)
+    instruction = _VERBOSITY_INSTRUCTIONS[mode]
+    block = f"{_VERBOSITY_START}\n{instruction}\n{_VERBOSITY_END}"
+    existing = path.read_text() if path.exists() else ""
+    sep = "\n\n" if existing and not existing.endswith("\n\n") else ""
+    path.write_text(existing + sep + block + "\n")
+
+
 def _update_mcp_secret(root: Path, token: str) -> None:
     """Write BOOSTER_SECRET into the agent-booster MCP server env in .mcp.json."""
     mcp_path = root / ".mcp.json"
@@ -878,6 +946,203 @@ def cmd_gain(fmt: str, team: bool) -> None:
         for entry in s["top_files"]:
             name = Path(entry["file"]).name
             click.echo(f"  {name:<24} {entry['saved']:,} tokens saved  ({entry['reads']} reads)")
+
+    # --- Output savings section ---
+    root = Path.cwd()
+    verbosity_json = root / ".booster" / "verbosity.json"
+    active_verbosity: str | None = None
+    if verbosity_json.exists():
+        try:
+            vdata = json.loads(verbosity_json.read_text())
+            active_verbosity = vdata.get("mode")
+        except Exception:
+            pass
+
+    os_data = tracker.output_summary()
+    has_output_data = os_data["sessions_count"] > 0 or active_verbosity is not None
+
+    if has_output_data:
+        _VERBOSITY_SAVINGS_RATE = {"lite": 0.30, "full": 0.55, "ultra": 0.75}
+        mode_label = active_verbosity or "unknown"
+        rate = _VERBOSITY_SAVINGS_RATE.get(mode_label, 0.0)
+
+        if os_data["sessions_count"] > 0:
+            estimated_base = os_data["total_estimated"] or 0
+            actual_base = os_data["total_actual"] or 0
+            if estimated_base:
+                est_saved = int(estimated_base * rate / (1 - rate)) if rate < 1 else estimated_base
+            else:
+                est_saved = 0
+            total_output_saved = actual_base + est_saved
+            estimated_note = "  (estimated)" if os_data["sessions_count"] > 0 else ""
+        else:
+            total_output_saved = 0
+            estimated_note = "  (no sessions yet)"
+
+        click.echo()
+        click.echo(f"Output savings (verbosity: {mode_label}):")
+        click.echo(f"  Sessions tracked:   {os_data['sessions_count']:,}")
+        click.echo(f"  Tokens saved:       ~{total_output_saved:,}{estimated_note}")
+        click.echo(f"  Savings rate:       ~{int(rate * 100)}%")
+
+        combined = s["saved_tokens"] + total_output_saved
+        click.echo()
+        click.echo(f"Combined savings:     ~{combined:,} tokens")
+
+
+@main.command("verbosity")
+@click.argument("mode", type=click.Choice(["lite", "full", "ultra", "off"]))
+def cmd_verbosity(mode: str) -> None:
+    """Set verbosity mode for AI coding assistants (lite/full/ultra/off)."""
+    root = Path.cwd()
+    files = _get_instruction_files(root)
+
+    if not files:
+        click.echo(
+            "No instruction files found (CLAUDE.md, AGENTS.md, .cursorrules, "
+            ".windsurfrules, .aider.conf.yml). Create one first."
+        )
+        raise SystemExit(1)
+
+    verbosity_json = root / ".booster" / "verbosity.json"
+    (root / ".booster").mkdir(exist_ok=True)
+
+    if mode == "off":
+        for path, label in files:
+            _remove_verbosity_block(path)
+            click.echo(f"  removed verbosity block from {label}")
+        if verbosity_json.exists():
+            verbosity_json.unlink()
+        click.echo("Verbosity mode disabled.")
+        return
+
+    import datetime as _dt
+    for path, label in files:
+        _append_verbosity_block(path, mode)
+        click.echo(f"  updated {label}")
+
+    verbosity_json.write_text(
+        json.dumps({"mode": mode, "set_at": _dt.datetime.now(_dt.timezone.utc).isoformat()})
+    )
+    click.echo(f"Verbosity set to '{mode}' in {len(files)} file(s).")
+
+
+@main.command("compress")
+@click.option("--dry-run", is_flag=True, default=False, help="Show savings without writing files.")
+def cmd_compress(dry_run: bool) -> None:
+    """Compress memory and instruction files to reduce input context tokens."""
+    import anthropic as _anthropic
+
+    root = Path.cwd()
+    targets: list[Path] = []
+
+    # memory/*.md in cwd
+    mem_dir = root / "memory"
+    if mem_dir.is_dir():
+        targets.extend(sorted(mem_dir.glob("*.md")))
+
+    # CLAUDE.md in cwd
+    claude_md = root / "CLAUDE.md"
+    if claude_md.exists():
+        targets.append(claude_md)
+
+    # ~/.claude/CLAUDE.md (global)
+    global_claude = Path.home() / ".claude" / "CLAUDE.md"
+    if global_claude.exists():
+        targets.append(global_claude)
+
+    if not targets:
+        click.echo("No files found to compress.")
+        return
+
+    # Get API key
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        config_path = root / ".booster" / "config.json"
+        if config_path.exists():
+            try:
+                cfg = json.loads(config_path.read_text())
+                api_key = cfg.get("ANTHROPIC_API_KEY") or cfg.get("api_key")
+            except Exception:
+                pass
+    if not api_key:
+        click.echo("ANTHROPIC_API_KEY not set. Export it or add to .booster/config.json.", err=True)
+        raise SystemExit(1)
+
+    client = _anthropic.Anthropic(api_key=api_key)
+
+    _COMPRESS_PROMPT = """\
+Compress the following instruction/memory file. Rules:
+- Remove filler words, redundant phrases, verbose explanations
+- Preserve ALL facts, rules, file paths, code patterns, decisions
+- Keep code blocks exactly as-is
+- Tighten prose: "In order to" → "To", "It is important that" → "Must", etc.
+- Target: 40-50% reduction in character count
+- Output ONLY the compressed content, no commentary
+
+Content:
+{content}"""
+
+    total_orig = 0
+    total_comp = 0
+
+    click.echo()
+    if dry_run:
+        click.echo("Compress — dry run (no files written)")
+    else:
+        click.echo("Compress — compressing files")
+    click.echo("\u2500" * 40)
+
+    for path in targets:
+        original = path.read_text()
+        if not original.strip():
+            click.echo(f"  {path.name:<32} (empty, skipped)")
+            continue
+
+        try:
+            response = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=4096,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": _COMPRESS_PROMPT.format(content=original),
+                    }
+                ],
+            )
+            compressed = response.content[0].text
+        except Exception as exc:
+            click.echo(f"  {path.name:<32} ERROR: {exc}")
+            continue
+
+        orig_chars = len(original)
+        comp_chars = len(compressed)
+        reduction = round((1 - comp_chars / orig_chars) * 100, 1) if orig_chars else 0.0
+
+        total_orig += orig_chars
+        total_comp += comp_chars
+
+        if dry_run:
+            click.echo(
+                f"  {path.name:<32} {orig_chars:,} → {comp_chars:,} chars  "
+                f"({reduction:.0f}% reduction)"
+            )
+        else:
+            path.write_text(compressed)
+            click.echo(
+                f"  {path.name:<32} {orig_chars:,} → {comp_chars:,} chars  "
+                f"({reduction:.0f}% reduction)  written"
+            )
+
+    if total_orig:
+        total_reduction = round((1 - total_comp / total_orig) * 100, 1)
+        click.echo()
+        click.echo(
+            f"Total: {total_orig:,} → {total_comp:,} chars  "
+            f"({total_reduction:.0f}% reduction)"
+        )
+        if dry_run:
+            click.echo("Run without --dry-run to apply changes.")
 
 
 def _cmd_gain_team(fmt: str) -> None:
