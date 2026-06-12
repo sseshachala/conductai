@@ -66,6 +66,73 @@ def _agent_inject_command(root: Path) -> str:
 def _session_start_command(root: Path) -> str:
     return f"python3 {root / '.claude' / 'hooks' / 'booster-session-start.py'}"
 
+def _stop_command(root: Path) -> str:
+    return f"python3 {root / '.claude' / 'hooks' / 'booster-stop.py'}"
+
+_STOP_SCRIPT = '''\
+#!/usr/bin/env python3
+"""Booster stop hook — captures actual output tokens from the Claude Code session end event."""
+import json
+import sys
+from pathlib import Path
+
+data = json.load(sys.stdin)
+
+# Claude Code stop event schema: {"session_id": "...", "stop_hook_active": bool, "usage": {...}}
+usage = data.get("usage", {})
+output_tokens = usage.get("output_tokens") or usage.get("cache_creation_input_tokens")
+# Prefer output_tokens; fall back to None if not present
+output_tokens_actual = int(output_tokens) if output_tokens is not None else None
+
+root = Path(__file__).resolve().parent.parent.parent  # .claude/hooks/ is 3 levels down
+
+# Read active verbosity mode (if any)
+verbosity_file = root / ".booster" / "verbosity.json"
+verbosity_mode = "none"
+if verbosity_file.exists():
+    try:
+        v = json.loads(verbosity_file.read_text())
+        verbosity_mode = v.get("mode", "none")
+    except Exception:
+        pass
+
+# Estimate tokens saved if verbosity is active
+output_tokens_estimated = None
+if verbosity_mode != "none" and output_tokens_actual is not None:
+    _RATES = {"lite": 0.30, "full": 0.55, "ultra": 0.75}
+    rate = _RATES.get(verbosity_mode, 0.0)
+    if rate > 0:
+        # estimated = what tokens *would* have been without verbosity reduction
+        output_tokens_estimated = int(output_tokens_actual / (1 - rate))
+
+try:
+    import sqlite3
+    from datetime import datetime, timezone
+
+    db_path = root / ".booster" / "stats.db"
+    if db_path.exists():
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            """INSERT INTO output_sessions
+               (ts, platform, verbosity_mode, output_tokens_actual, output_tokens_estimated, is_estimated)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                datetime.now(timezone.utc).date().isoformat(),
+                "claude",
+                verbosity_mode,
+                output_tokens_actual,
+                output_tokens_estimated,
+                0 if output_tokens_actual is not None else 1,
+            ),
+        )
+        conn.commit()
+        conn.close()
+except Exception:
+    pass  # never block session teardown
+
+sys.exit(0)
+'''
+
 _SESSION_START_SCRIPT = '''\
 #!/usr/bin/env python3
 """Auto-start booster daemon if not running — fires on every Claude Code session open."""
@@ -402,11 +469,13 @@ def _install_hook(root: Path) -> None:
     (hooks_dir / "booster-route.py").write_text(_ROUTE_SCRIPT)
     (hooks_dir / "booster-agent-inject.py").write_text(_AGENT_INJECT_SCRIPT)
     (hooks_dir / "booster-session-start.py").write_text(_SESSION_START_SCRIPT)
+    (hooks_dir / "booster-stop.py").write_text(_STOP_SCRIPT)
     click.echo(f"  wrote .claude/hooks/booster-gate.py (Read gate)")
     click.echo(f"  wrote .claude/hooks/booster-grep-nudge.py (Grep nudge)")
     click.echo(f"  wrote .claude/hooks/booster-route.py (route_model on every turn)")
     click.echo(f"  wrote .claude/hooks/booster-agent-inject.py (Agent prompt injection)")
     click.echo(f"  wrote .claude/hooks/booster-session-start.py (auto-start daemon on session open)")
+    click.echo(f"  wrote .claude/hooks/booster-stop.py (output token capture on session end)")
 
     settings_path = root / ".claude" / "settings.json"
     settings: dict = {}
@@ -428,6 +497,7 @@ def _install_hook(root: Path) -> None:
     route_cmd = _route_hook_command(root)
     agent_cmd = _agent_inject_command(root)
     session_cmd = _session_start_command(root)
+    stop_cmd = _stop_command(root)
 
     if not _has("Read", hook_cmd):
         pre.append({"matcher": "Read", "hooks": [{"type": "command", "command": hook_cmd}]})
@@ -443,6 +513,10 @@ def _install_hook(root: Path) -> None:
     session_start = hooks.setdefault("SessionStart", [])
     if not any(e.get("command") == session_cmd for h in session_start for e in h.get("hooks", [])):
         session_start.append({"hooks": [{"type": "command", "command": session_cmd, "async": True}]})
+
+    stop_hooks = hooks.setdefault("Stop", [])
+    if not any(e.get("command") == stop_cmd for h in stop_hooks for e in h.get("hooks", [])):
+        stop_hooks.append({"hooks": [{"type": "command", "command": stop_cmd}]})
 
     _BOOSTER_TOOLS = [
         "mcp__agent-booster__search_context",
@@ -475,7 +549,7 @@ def _install_hook(root: Path) -> None:
 
 def _remove_hook(root: Path) -> None:
     hooks_dir = root / ".claude" / "hooks"
-    for name in ("booster-gate.py", "booster-grep-nudge.py", "booster-route.py", "booster-agent-inject.py", "booster-session-start.py"):
+    for name in ("booster-gate.py", "booster-grep-nudge.py", "booster-route.py", "booster-agent-inject.py", "booster-session-start.py", "booster-stop.py"):
         f = hooks_dir / name
         if f.exists():
             f.unlink()
@@ -485,7 +559,7 @@ def _remove_hook(root: Path) -> None:
     if not settings_path.exists():
         return
     settings = json.loads(settings_path.read_text())
-    booster_cmds = {_hook_command(root), _grep_hook_command(root), _route_hook_command(root), _agent_inject_command(root), _session_start_command(root)}
+    booster_cmds = {_hook_command(root), _grep_hook_command(root), _route_hook_command(root), _agent_inject_command(root), _session_start_command(root), _stop_command(root)}
 
     pre = settings.get("hooks", {}).get("PreToolUse", [])
     settings["hooks"]["PreToolUse"] = [
@@ -500,6 +574,11 @@ def _remove_hook(root: Path) -> None:
     session_start = settings.get("hooks", {}).get("SessionStart", [])
     settings["hooks"]["SessionStart"] = [
         h for h in session_start
+        if not any(e.get("command") in booster_cmds for e in h.get("hooks", []))
+    ]
+    stop_hooks = settings.get("hooks", {}).get("Stop", [])
+    settings["hooks"]["Stop"] = [
+        h for h in stop_hooks
         if not any(e.get("command") in booster_cmds for e in h.get("hooks", []))
     ]
 
@@ -967,14 +1046,14 @@ def cmd_gain(fmt: str, team: bool) -> None:
         rate = _VERBOSITY_SAVINGS_RATE.get(mode_label, 0.0)
 
         if os_data["sessions_count"] > 0:
-            estimated_base = os_data["total_estimated"] or 0
-            actual_base = os_data["total_actual"] or 0
-            if estimated_base:
-                est_saved = int(estimated_base * rate / (1 - rate)) if rate < 1 else estimated_base
-            else:
-                est_saved = 0
-            total_output_saved = actual_base + est_saved
-            estimated_note = "  (estimated)" if os_data["sessions_count"] > 0 else ""
+            # Real savings = baseline (without verbosity) - actual (with verbosity)
+            real_saved = (os_data["total_baseline"] or 0) - (os_data["total_actual"] or 0)
+            # Estimated savings for older sessions that have no actual data
+            est_base = os_data["total_estimated"] or 0
+            est_saved = int(est_base * rate) if est_base and rate else 0
+            total_output_saved = max(0, real_saved + est_saved)
+            has_real = (os_data["total_baseline"] or 0) > 0
+            estimated_note = "" if has_real else "  (estimated)"
         else:
             total_output_saved = 0
             estimated_note = "  (no sessions yet)"
