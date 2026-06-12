@@ -1,8 +1,11 @@
 from __future__ import annotations
+import re
 from typing import Any, Optional
 from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel, model_validator
+
+_GH_URL_RE = re.compile(r"https?://github\.com/([^/]+/[^/]+?)(?:/|$)")
 
 
 def _extract_repo(state: dict | None) -> str | None:
@@ -20,6 +23,24 @@ def _extract_repo(state: dict | None) -> str | None:
         return inputs["repo_full_name"]
     if inputs.get("owner") and inputs.get("repo"):
         return f"{inputs['owner']}/{inputs['repo']}"
+    # Block outputs: scan for owner+repo or GitHub URL (e.g. fetch_issue html_url)
+    for key, val in state.items():
+        if key.startswith("_") or not isinstance(val, dict):
+            continue
+        block = val
+        # Skip fork blocks — fork_full_name is the fork, not upstream
+        if block.get("fork_full_name"):
+            continue
+        if block.get("owner") and block.get("repo"):
+            return f"{block['owner']}/{block['repo']}"
+        if block.get("full_name"):
+            return block["full_name"]
+        for url_field in ("html_url", "url", "clone_url"):
+            url = block.get(url_field)
+            if isinstance(url, str) and "github.com" in url:
+                m = _GH_URL_RE.match(url)
+                if m:
+                    return m.group(1).rstrip(".git")
     return None
 
 
