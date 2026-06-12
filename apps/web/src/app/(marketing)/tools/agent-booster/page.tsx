@@ -425,18 +425,11 @@ function DiagnosticHero() {
                     </div>
                     <div className="pl-1">
                       <div className="grid grid-cols-[72px_1fr_auto] gap-x-3 items-baseline font-mono text-sm">
-                        <span className="text-stone-300 font-semibold">Caveman</span>
-                        <span className="text-stone-500 text-xs">Response verbosity — brain big, mouth small</span>
+                        <span className="text-stone-300 font-semibold">Verbosity</span>
+                        <span className="text-stone-500 text-xs">Response compression — built in, or use <a href="https://github.com/JuliusBrussee/caveman" target="_blank" rel="noopener noreferrer" className="text-stone-400 hover:text-stone-300 transition-colors">Caveman ↗</a></span>
                         <span className="text-violet-400 font-semibold">~75%</span>
                       </div>
-                      <a
-                        href="https://github.com/JuliusBrussee/caveman"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-mono text-xs text-stone-600 hover:text-stone-400 transition-colors ml-[76px] mt-1 inline-block"
-                      >
-                        github.com/JuliusBrussee/caveman ↗
-                      </a>
+                      <p className="font-mono text-xs text-stone-600 ml-[76px] mt-1">$ booster verbosity full</p>
                     </div>
                   </div>
 
