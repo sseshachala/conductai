@@ -146,9 +146,11 @@ class RunDetailOut(RunOut):
     def compute_actual_turns(cls, data: Any) -> Any:
         if hasattr(data, "__dict__"):
             state = getattr(data, "state", None)
-            data.__dict__.setdefault("actual_turns", _compute_actual_turns(state))
+            # Prefer DB value; fall back to computing from state (covers pre-migration runs)
+            if not data.__dict__.get("actual_turns"):
+                data.__dict__["actual_turns"] = _compute_actual_turns(state)
         elif isinstance(data, dict):
-            if "actual_turns" not in data:
+            if not data.get("actual_turns"):
                 data["actual_turns"] = _compute_actual_turns(data.get("state"))
         return data
 
