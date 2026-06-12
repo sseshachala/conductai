@@ -87,6 +87,7 @@ def _execute_brain(
     run_id: str | None = None,
     block_id: str | None = None,
     playbook_slug: str | None = None,
+    injected_session=None,
 ) -> dict:
     # Import helpers from executor to avoid circular imports at module load time.
     from app.runtime.executor import (
@@ -138,8 +139,11 @@ def _execute_brain(
     remote_host = _resolve_remote_host(block, state, credentials or {})
     runs_on: dict | None = block.get("data", {}).get("runs_on") or None
 
-    from app.runtime.sandbox_session import create_session as _create_session
-    session = _create_session(remote_host, credentials, runs_on=runs_on)
+    if injected_session is not None:
+        session = injected_session
+    else:
+        from app.runtime.sandbox_session import create_session as _create_session
+        session = _create_session(remote_host, credentials, runs_on=runs_on)
     _session_closed = False
 
     def _close_session():

@@ -786,12 +786,14 @@ def _execute_brain(
     run_id: str | None = None,
     block_id: str | None = None,
     playbook_slug: str | None = None,
+    injected_session=None,
 ) -> dict:
     from app.runtime.blocks.brain_block import _execute_brain as _brain_impl
     return _brain_impl(
         block, state, compiled_artifacts,
         credentials=credentials, db=db, run_id=run_id,
         block_id=block_id, playbook_slug=playbook_slug,
+        injected_session=injected_session,
     )
 
 def _dry_run_mock(integration: str, action: str, params: dict) -> dict:
