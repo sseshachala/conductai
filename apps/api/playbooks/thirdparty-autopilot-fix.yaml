@@ -1,9 +1,10 @@
 name: Third-Party Autopilot Fix
-version: 2
+version: 3
 description: >
-  Given an issue number on any third-party repo, fork it, provision a sandbox,
-  clone the fork once, apply the fix, push a branch, and open a PR back to upstream.
-  Every step is traced in the Conduct run feed.
+  Given an issue number on any third-party repo, fork it, apply the fix, push a
+  branch, and open a PR back to upstream.
+  Works in two modes automatically — sandbox (persistent /workspace) if credentials
+  are configured, proxy (single-shell-call) otherwise. No manual config needed.
 
 inputs:
   upstream_owner:
@@ -13,20 +14,11 @@ inputs:
   upstream_repo:
     label: Upstream repo name
     type: string
-    hint: "Repo name only, e.g. flask"
+    hint: "Repo name only, e.g. click"
   issue_number:
     label: Issue number
     type: string
     hint: "Issue number describing what needs to be fixed"
-  sandbox_provider:
-    label: Sandbox provider
-    type: select
-    default: e2b
-    options:
-      - e2b
-      - modal
-      - local
-    hint: "Compute environment for the fix. Requires matching credentials in Settings → Environments."
   model:
     label: AI model
     default: claude-sonnet-4-6
@@ -62,52 +54,58 @@ blocks:
     params:
       owner: "{{inputs.upstream_owner}}"
       repo: "{{inputs.upstream_repo}}"
-    next: provision_sandbox
-
-  provision_sandbox:
-    type: sandbox
-    label: Provision sandbox
-    sandbox_config:
-      provider: "{{inputs.sandbox_provider}}"
-      setup:
-        - git config --global user.email "bot@conductai.ai"
-        - git config --global user.name "Conduct AI"
-        - git clone https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git /workspace
-        - cd /workspace && git remote add upstream https://github.com/{{inputs.upstream_owner}}/{{inputs.upstream_repo}}.git
-        - cd /workspace && git fetch upstream --depth=50
-        - cd /workspace && git merge --ff-only upstream/{{fork_upstream.default_branch}} 2>/dev/null || git reset --hard upstream/{{fork_upstream.default_branch}}
-        - cd /workspace && git checkout -b fix/issue-{{inputs.issue_number}}
     next: implement_fix
 
   implement_fix:
     type: brain
-    runs_in: provision_sandbox
     mode: agentic
     model: "{{inputs.model}}"
     label: Implement fix
     description: |
-      You are a software engineer contributing to an open-source project.
-      The repo is already cloned at /workspace on the fix branch.
-      Do NOT clone, fork, or create branches — that is already done.
-
-      Your only job: read the issue, understand the codebase, and apply the fix.
+      You are an expert software engineer contributing a fix to an open-source project.
 
       Upstream:    {{inputs.upstream_owner}}/{{inputs.upstream_repo}}
-      Fix branch:  fix/issue-{{inputs.issue_number}}
+      Fork:        {{fork_upstream.fork_full_name}}
+      Branch:      fix/issue-{{inputs.issue_number}}
       Issue title: {{fetch_issue.title}}
-
-      Issue description:
+      Issue body:
       {{fetch_issue.body}}
 
-      Instructions:
-      - Work in /workspace
-      - Read relevant files first, understand the code before editing
-      - Do NOT hardcode line numbers — search for exact patterns to replace
-      - Verify your changes parse/compile cleanly after editing
-      - When done: cd /workspace && git add -A && git diff --cached --stat
-      - Then commit: git commit -m "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})"
-      - Then push: git push https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git fix/issue-{{inputs.issue_number}}
+      ── STEP 1: DETECT YOUR EXECUTION MODE ──────────────────────────────────
+      Run this FIRST:
+        if [ -d /workspace/.git ]; then echo "MODE=sandbox"; else echo "MODE=proxy"; fi
 
+      ── SANDBOX MODE (output was MODE=sandbox) ──────────────────────────────
+      The repo is already cloned at /workspace on branch fix/issue-{{inputs.issue_number}}.
+      The filesystem persists across tool calls — use multiple calls freely.
+
+      1. Read relevant source files to understand the codebase
+      2. Apply the fix — search for exact patterns, never hardcode line numbers
+      3. Verify changes parse/compile cleanly
+      4. cd /workspace && git add -A && git diff --cached --stat
+      5. git commit -m "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})"
+      6. git push https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git fix/issue-{{inputs.issue_number}}
+
+      ── PROXY MODE (output was MODE=proxy) ──────────────────────────────────
+      CRITICAL: Each run_shell call gets a FRESH container — filesystem resets between calls.
+      Use search_code/read_file to understand the codebase (no filesystem cost), then
+      do ALL git+fix+push operations in ONE single run_shell call:
+
+        git config --global user.email "bot@conductai.ai" && \
+        git config --global user.name "Conduct AI" && \
+        git clone https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git /tmp/repo && \
+        cd /tmp/repo && \
+        git remote add upstream https://github.com/{{inputs.upstream_owner}}/{{inputs.upstream_repo}}.git && \
+        git fetch upstream --depth=50 && \
+        git checkout -b fix/issue-{{inputs.issue_number}} && \
+        git merge --ff-only upstream/{{fork_upstream.default_branch}} 2>/dev/null || \
+          git reset --hard upstream/{{fork_upstream.default_branch}} && \
+        <APPLY FIX using sed/awk/python -c or heredoc — all inline> && \
+        git add -A && git diff --cached --stat && \
+        git commit -m "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})" && \
+        git push https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git fix/issue-{{inputs.issue_number}}
+
+      ── OUTPUT (both modes) ─────────────────────────────────────────────────
       After pushing, output ONLY this JSON on the last line:
         {"branch_pushed": "fix/issue-{{inputs.issue_number}}", "fork_owner": "{{fork_upstream.fork_owner}}", "fork_full_name": "{{fork_upstream.fork_full_name}}"}
     next: open_pr
@@ -146,15 +144,13 @@ blocks:
 
           Repo: `{{inputs.upstream_owner}}/{{inputs.upstream_repo}}`
           Issue: #{{inputs.issue_number}} — {{fetch_issue.title}}
-          Sandbox: {{inputs.sandbox_provider}}
           PR: {{open_pr.pr_url}}
 
-          _Generated by Conduct AI thirdparty-autopilot-fix playbook_
+          _Generated by Conduct AI · thirdparty-autopilot-fix playbook_
 
 test_trigger:
   payload:
-    upstream_owner: "elementalsouls"
-    upstream_repo: "sample-app"
-    issue_number: 42
-    sandbox_provider: e2b
+    upstream_owner: "pallets"
+    upstream_repo: "click"
+    issue_number: "3572"
     model: claude-sonnet-4-6
