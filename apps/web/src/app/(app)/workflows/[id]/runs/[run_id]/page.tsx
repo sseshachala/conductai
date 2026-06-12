@@ -27,6 +27,7 @@ interface RunMeta {
   workflow_version_id: string
   state?: Record<string, unknown> | null
   max_turns?: number | null
+  repo?: string | null
 }
 
 type Tab = "summary" | "trace" | "ai-trace" | "files" | "approvals" | "cost"
@@ -296,7 +297,7 @@ export default function RunDetailPage() {
                   ["Completed",    run.completed_at ? new Date(run.completed_at).toLocaleString() : "—", false],
                   ["Version",      run.workflow_version_id?.slice(0, 8) ?? "—", true],
                   ["Project",      projectName ?? "—", false],
-                  ["Repository",   ((t.repo ?? (triggerCtx as Record<string,unknown> | null | undefined)?.repo) as string | undefined) ?? "—", true],
+                  ["Repository",   run.repo ?? "—", true],
                 ] as [string, string, boolean][]).map(([label, value, mono]) => (
                   <div key={label} style={{ borderBottom: "1px solid var(--border)", paddingBottom: 12 }}>
                     <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>{label}</div>
