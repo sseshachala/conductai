@@ -389,39 +389,70 @@ function DiagnosticHero() {
                 <span className="font-mono text-stone-400 text-sm animate-pulse">_</span>
               ) : answers.pain && answers.size && answers.tool ? (
                 <>
-                  {/* Diagnosis sentence */}
+                  {/* Diagnosis */}
                   <p className="text-white text-base leading-relaxed mb-6">
                     {getDiagnosis(answers.pain)}
                   </p>
 
-                  {/* Tool breakdown */}
-                  <div className="space-y-1 mb-6">
-                    <div className="flex items-baseline gap-3 font-mono text-sm">
-                      <span className="text-stone-400 w-20 shrink-0">RTK</span>
-                      <span className="text-stone-500">→ cuts CLI output (git, test, build)</span>
-                      <span className="text-emerald-400 ml-auto">85–99%</span>
+                  {/* Token flow header */}
+                  <p className="font-mono text-xs text-stone-500 uppercase tracking-widest mb-4">Where tokens go</p>
+
+                  {/* INPUT section */}
+                  <div className="mb-5">
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="font-mono text-xs font-bold text-indigo-400 uppercase tracking-wider">Input</span>
+                      <div className="flex-1 h-px bg-stone-800" />
                     </div>
-                    <div className="flex items-baseline gap-3 font-mono text-sm">
-                      <span className="text-stone-400 w-20 shrink-0">Booster</span>
-                      <span className="text-stone-500">→ cuts file read context</span>
-                      <span className="text-emerald-400 ml-auto">50–77%</span>
-                    </div>
-                    <div className="flex items-baseline gap-3 font-mono text-sm">
-                      <span className="text-stone-400 w-20 shrink-0">Verbosity</span>
-                      <span className="text-stone-500">→ cuts response length</span>
-                      <span className="text-emerald-400 ml-auto">30–75%</span>
+                    <div className="space-y-2 pl-1">
+                      <div className="grid grid-cols-[72px_1fr_auto] gap-x-3 items-baseline font-mono text-sm">
+                        <span className="text-stone-300 font-semibold">RTK</span>
+                        <span className="text-stone-500 text-xs">CLI output (git / test / build / docker)</span>
+                        <span className="text-emerald-400 font-semibold">85–99%</span>
+                      </div>
+                      <div className="grid grid-cols-[72px_1fr_auto] gap-x-3 items-baseline font-mono text-sm">
+                        <span className="text-stone-300 font-semibold">Booster</span>
+                        <span className="text-stone-500 text-xs">File reads → symbol slices, not full files</span>
+                        <span className="text-emerald-400 font-semibold">50–77%</span>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Install commands */}
-                  <div className="space-y-1 mb-4">
+                  {/* OUTPUT section */}
+                  <div className="mb-6">
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="font-mono text-xs font-bold text-violet-400 uppercase tracking-wider">Output</span>
+                      <div className="flex-1 h-px bg-stone-800" />
+                    </div>
+                    <div className="pl-1">
+                      <div className="grid grid-cols-[72px_1fr_auto] gap-x-3 items-baseline font-mono text-sm">
+                        <span className="text-stone-300 font-semibold">Caveman</span>
+                        <span className="text-stone-500 text-xs">Response verbosity — brain big, mouth small</span>
+                        <span className="text-violet-400 font-semibold">~75%</span>
+                      </div>
+                      <a
+                        href="https://github.com/JuliusBrussee/caveman"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-mono text-xs text-stone-600 hover:text-stone-400 transition-colors ml-[76px] mt-1 inline-block"
+                      >
+                        github.com/JuliusBrussee/caveman ↗
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* Divider */}
+                  <div className="h-px bg-stone-800 mb-5" />
+
+                  {/* Install */}
+                  <div className="space-y-1 mb-5">
+                    <p className="font-mono text-xs text-stone-500 uppercase tracking-widest mb-3">Install</p>
                     <p className="font-mono text-emerald-400 text-sm">$ pip install agent-booster</p>
                     <p className="font-mono text-emerald-400 text-sm">$ {getInitCommand(answers.tool)}</p>
                     <p className="font-mono text-emerald-400 text-sm">$ booster verbosity full</p>
                   </div>
 
-                  {/* Savings estimate */}
-                  <p className="font-mono text-amber-400 text-sm mt-4">
+                  {/* Savings */}
+                  <p className="font-mono text-amber-400 text-sm">
                     Est. savings on your setup: {getSavingsEstimate(answers.size)}
                   </p>
                 </>
