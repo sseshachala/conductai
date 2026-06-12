@@ -189,7 +189,7 @@ def conflict_check(
         return {"conflicts": [], "conflict_type": None}
 
     # Issues-labeled playbooks: conflict only on same label
-    _ISSUES_LABELED = {"autopilot_quick", "autopilot_full", "autopilot_approved", "ai_ready"}
+    _ISSUES_LABELED = {"autopilot_full", "autopilot_approved"}
 
     existing = db.query(Workflow).filter(
         Workflow.workspace_id == workspace_id,

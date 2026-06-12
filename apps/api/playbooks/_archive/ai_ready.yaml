@@ -1,0 +1,263 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# ai-ready autopilot
+#
+# When a GitHub issue is labeled `ai-ready`, spin up a fresh DigitalOcean
+# droplet, clone the repo onto it, let Claude implement the fix, run build
+# and tests, push the branch, open a draft PR, and notify the team. The
+# droplet is destroyed at the end whether the run succeeded or failed.
+#
+# Required credentials in the workspace:
+#   - github            { token }
+#   - digitalocean      { token, ssh_key_fingerprint, ssh_private_key }
+#   - slack             { token }
+#   - email             { resend_api_key } (or sendgrid_api_key)
+#
+# To switch the trigger to Linear, change the `on:` section below — the
+# rest of the workflow is source-agnostic.
+# ──────────────────────────────────────────────────────────────────────────────
+name: ai-ready autopilot
+version: 1
+description: >
+  Labeled issues get implemented on a fresh cloud VM and land as a draft PR.
+  Nothing runs on your machine.
+
+params:
+  notify_email:
+    type: string
+    required: true
+    description: Recipient for the post-run email summary.
+  notify_channel:
+    type: string
+    default: "#engineering"
+    description: Slack channel for the post-run summary.
+  droplet_region:
+    type: string
+    default: nyc3
+  droplet_size:
+    type: string
+    default: s-2vcpu-4gb
+
+inputs:
+  trigger_label:
+    label: Trigger label
+    default: ai_ready
+    type: select
+    options:
+      - autopilot ready
+      - ai_pilot_ready
+      - ai_ready
+  model:
+    label: AI Model
+    default: claude-sonnet-4-6
+    type: select
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+  clone_depth:
+    label: Clone depth
+    default: "1"
+    type: select
+    options:
+      - "1"
+      - "0"
+    hint: "1 = fast (recommended), 0 = full history"
+
+on:
+  github.issue_labeled:
+    integration: github
+    labels:
+      - "{{inputs.trigger_label}}"
+      - ai-ready
+    label_mode: one_of
+    next: recall_context
+
+blocks:
+  recall_context:
+    type: memory
+    label: Recall prior context
+    action: read
+    scope: repo
+    key: "{{_trigger.repo_full_name}}"
+    limit: 5
+    next: fetch_issue
+
+  fetch_issue:
+    type: tool
+    label: Fetch issue
+    integration: github
+    action: fetch_issue
+    params:
+      owner: "{{_trigger.repo_owner}}"
+      repo: "{{_trigger.repo_name}}"
+      issue_number: "{{_trigger.issue_number}}"
+    next: create_droplet
+
+  create_droplet:
+    type: tool
+    label: Create Droplet
+    integration: digitalocean
+    action: create_droplet
+    params:
+      name: "ai-ready-{{_trigger.issue_number}}"
+      region: "{{params.droplet_region}}"
+      size: "{{params.droplet_size}}"
+      image: ubuntu-22-04-x64
+      tags: ["conduct-ai", "ai-ready"]
+      ssh_keys:
+        - "{{credentials.digitalocean.ssh_key_fingerprint}}"
+    next: wait_droplet
+
+  wait_droplet:
+    type: tool
+    label: Wait for Droplet
+    integration: digitalocean
+    action: wait_for_droplet
+    params:
+      droplet_id: "{{create_droplet.droplet_id}}"
+      timeout_seconds: 300
+    next: implement
+
+  implement:
+    type: brain
+    label: Implement fix
+    mode: agentic
+    model: "{{inputs.model}}"
+    runs_on:
+      ip: "{{wait_droplet.ip_address}}"
+      credentials_from: digitalocean
+    description: |
+      You are an expert software engineer working on a remote Ubuntu 22.04 droplet.
+      You have shell, file, and search tools that execute on the droplet itself.
+
+      Context from the workflow:
+        Issue title: {{fetch_issue.title}}
+        Issue body:  {{fetch_issue.body}}
+        Repo:        {{fetch_issue.url}}
+      A GitHub token is available at /root/.github_token (you should `cat` it
+      when you need to push or call the API).
+
+      Plan (follow in order, report progress concisely):
+
+      1. Install minimum tooling (apt-get update once, then install git,
+         curl, build-essential). Do NOT install anything else until you know
+         the stack.
+
+      2. Clone the repo into /root/work:
+           git clone https://x-access-token:$(cat /root/.github_token)@github.com/{{fetch_issue.full_name}} /root/work
+         If `full_name` is empty in the context, derive it from the issue url.
+
+      3. Detect the stack by reading manifest files at the repo root:
+           - package.json           -> Node.js / TypeScript
+                                       (npm ci || npm install; npm test; npm run build)
+           - requirements.txt or
+             pyproject.toml         -> Python
+                                       (pip install -r requirements.txt;
+                                        pytest -x || python -m unittest)
+           - go.mod                 -> Go (go build ./...; go test ./...)
+           - Gemfile                -> Ruby
+                                       (bundle install; bundle exec rspec ||
+                                        bundle exec rake test)
+         If no manifest matches, report the detected files and stop.
+
+      4. Create a working branch:
+           git checkout -b ai-ready/issue-{{fetch_issue.issue_number}}
+
+      5. Implement the fix described in the issue. Read existing tests
+         before you write new code so style and patterns match. Keep the
+         diff focused on the issue.
+
+      6. Run the build command for the stack. Then run the test command.
+         If a test fails, read the failure output, patch the code, re-run.
+         Stop after at most 3 fix attempts.
+
+      7. Commit with a clear message:
+           git add -A
+           git commit -m "fix: <one-line summary> (closes #{{fetch_issue.issue_number}})"
+
+      8. Push the branch:
+           git push origin ai-ready/issue-{{fetch_issue.issue_number}}
+
+      9. Open a DRAFT pull request via the GitHub API. POST to
+           https://api.github.com/repos/{{fetch_issue.full_name}}/pulls
+         with body:
+           {"title": "fix: {{fetch_issue.title}} (closes #{{fetch_issue.issue_number}})",
+            "head":  "ai-ready/issue-{{fetch_issue.issue_number}}",
+            "base":  "<default branch>",
+            "body":  "Automated fix by Conduct AI. Closes #{{fetch_issue.issue_number}}.",
+            "draft": true}
+
+      {% if recall_context.entries %}
+      Prior runs on this repo (use to avoid re-exploring known structure):
+      {% for entry in recall_context.entries %}
+      - {{entry.summary}}
+      {% endfor %}
+      {% endif %}
+
+      10. Output as the FINAL line of your response, JSON only:
+           {"pr_url": "<full PR URL>",
+            "stack":   "<node|python|go|ruby>",
+            "tests":   "<passed|failed|skipped>",
+            "summary": "<one sentence>"}
+
+      If anything blocks you (missing token, unrecognised stack, repeated
+      test failures), stop and report — do not push speculative changes.
+    next: record_outcome
+
+  record_outcome:
+    type: memory
+    label: Record outcome
+    action: write
+    scope: repo
+    key: "{{_trigger.repo_full_name}}"
+    summary: |
+      Repo: {{_trigger.repo_full_name}}
+      PR: {{implement.pr_url}}
+      Stack: {{implement.stack}} · Tests: {{implement.tests}}
+      Summary: {{implement.summary}}
+    next: notify
+
+  notify:
+    type: output
+    label: Notify completion
+    output:
+      via: both
+      slack:
+        channel: "{{params.notify_channel}}"
+      email:
+        to: "{{params.notify_email}}"
+
+cleanup:
+  destroy_droplet:
+    type: tool
+    integration: digitalocean
+    action: destroy_droplet
+    params:
+      droplet_id: "{{create_droplet.droplet_id}}"
+
+test_trigger:
+  payload:
+    action: labeled
+    label:
+      name: "[TEST] autopilot ready"
+    issue:
+      number: 9999
+      title: "[TEST] Create conductai_test.py"
+      body: |
+        Create a file `conductai_test.py` in the repo root that prints:
+        print("Hello, Conduct AI!")
+        This is a test run — prefix the branch and PR with [TEST].
+      html_url: "https://github.com/sseshachala/conductai/issues/9999"
+      user:
+        login: conductai-test-bot
+      labels:
+        - name: "[TEST] autopilot ready"
+    repository:
+      full_name: sseshachala/conductai
+      name: conductai
+      owner:
+        login: sseshachala
+      default_branch: main
+      clone_url: "https://github.com/sseshachala/conductai.git"
+    sender:
+      login: conductai-test-bot
