@@ -93,6 +93,14 @@
             "command": "conduct guard sync"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/sudhiseshachala/projects/marshal/.claude/hooks/booster-stop.py"
+          }
+        ]
       }
     ]
   },
