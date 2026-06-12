@@ -1,0 +1,51 @@
+kind: base
+name: base-autopilot
+description: >
+  Shared snippets and block templates for all autopilot-family playbooks.
+  Resolved at compile time — the runtime never sees this file.
+
+snippets:
+  detect_mode: |
+    ── DETECT EXECUTION MODE (run this FIRST) ──────────────────────────────
+    Run: if [ -d /workspace/.git ]; then echo "MODE=sandbox"; else echo "MODE=proxy"; fi
+    MODE=sandbox → persistent /workspace, use multiple tool calls freely.
+    MODE=proxy   → FRESH container per run_shell call — pack ALL git+fix+push into ONE call.
+
+  lint: |
+    ── AUTO-DETECT AND RUN REPO LINTER (before every commit) ───────────────
+    if [ -f .pre-commit-config.yaml ]; then
+      pre-commit run --all-files 2>/dev/null; pre-commit run --all-files 2>/dev/null || true
+    elif [ -f pyproject.toml ] || [ -f ruff.toml ] || [ -f setup.py ]; then
+      ruff check --fix . 2>/dev/null || true && ruff format . 2>/dev/null || true
+    elif command -v black &>/dev/null; then
+      black . 2>/dev/null || true
+    elif [ -f package.json ]; then
+      (npx eslint --fix . 2>/dev/null || true) && (npx prettier --write . 2>/dev/null || true)
+    elif [ -f Cargo.toml ]; then
+      cargo fmt 2>/dev/null || true && cargo clippy --fix --allow-dirty 2>/dev/null || true
+    elif [ -f go.mod ]; then
+      gofmt -w . 2>/dev/null || true
+    elif [ -f Gemfile ]; then
+      bundle exec rubocop -a 2>/dev/null || true
+    fi
+
+  pr_attribution: |
+    ---
+    This fix was implemented autonomously by **[Conduct AI](https://conductai.ai)** — an open-source platform that turns AI agents into reusable team automations via YAML playbooks.
+    - 🔗 Platform: [conductai.ai](https://conductai.ai)
+    - 📦 Source: [github.com/sseshachala/conductai](https://github.com/sseshachala/conductai)
+    > Want Conduct AI to automate fixes in your repo too? [Get started free →](https://conductai.ai)
+
+blocks:
+  recall_context:
+    type: memory
+    label: Recall prior context
+    action: read
+    scope: repo
+    limit: 5
+
+  record_outcome:
+    type: memory
+    label: Record outcome
+    action: write
+    scope: repo

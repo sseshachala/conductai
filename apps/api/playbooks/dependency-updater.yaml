@@ -1,5 +1,6 @@
+extends: base-autopilot
 name: Dependency Updater
-version: 1
+version: 2
 description: >
   Outdated dependencies get bumped and PR'd automatically every week.
   Patch and minor only — never a breaking major version.
@@ -39,12 +40,8 @@ on:
 
 blocks:
   recall_context:
-    type: memory
-    label: Recall prior context
-    action: read
-    scope: repo
+    $use: base-autopilot.recall_context
     key: "{{_trigger.repository.full_name}}"
-    limit: 5
     next: scan_and_update
 
   scan_and_update:
@@ -101,11 +98,14 @@ blocks:
          Python:  python -c "import sys; sys.exit(0)"
          Go:      go build ./...
 
-      8. Commit:
+      8. Run linter before commit:
+      {{$snippet: lint}}
+
+      9. Commit:
          git add .
          git commit -m "chore: auto-update patch/minor dependencies"
 
-      9. Push and open PR:
+      10. Push and open PR:
          git push https://$GIT_TOKEN@github.com/{{_trigger.repo}}.git deps/auto-update-<date>
 
          POST https://api.github.com/repos/{{_trigger.repo}}/pulls
@@ -132,10 +132,7 @@ blocks:
     next: record_outcome
 
   record_outcome:
-    type: memory
-    label: Record outcome
-    action: write
-    scope: repo
+    $use: base-autopilot.record_outcome
     key: "{{_trigger.repository.full_name}}"
     summary: |
       Repo: {{_trigger.repository.full_name}}

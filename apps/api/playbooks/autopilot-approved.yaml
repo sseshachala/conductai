@@ -1,5 +1,6 @@
+extends: base-autopilot
 name: Autopilot Approved — GitHub Issues
-version: 1
+version: 2
 description: >
   Label an issue `autopilot ready`. Claude implements the fix, runs tests, and
   waits for your approval before opening the PR.
@@ -50,12 +51,8 @@ on:
 
 blocks:
   recall_context:
-    type: memory
-    label: Recall prior context
-    action: read
-    scope: repo
+    $use: base-autopilot.recall_context
     key: "{{_trigger.repo_full_name}}"
-    limit: 5
     next: fetch_issue
 
   fetch_issue:
@@ -113,6 +110,7 @@ blocks:
       - git checkout -b autopilot/issue-{{fetch_issue.issue_number}}
       - Read relevant files to understand the codebase (use read_file tool if needed, then come back to one final run_shell)
       - Apply the fix with python3/sed inline in the script
+      {{$snippet: lint}}
       - git add -A && git commit -m "fix: <short description> (closes #{{fetch_issue.issue_number}})"
       - git push https://$GIT_TOKEN@github.com/{{_trigger.repo_full_name}}.git autopilot/issue-{{fetch_issue.issue_number}}
 
@@ -193,17 +191,14 @@ blocks:
          Body: {"title": "fix: {{fetch_issue.title}} (closes #{{fetch_issue.issue_number}})",
                 "head":  "{{implement_fix.branch_name}}",
                 "base":  "{{_trigger.default_branch}}",
-                "body":  "Automated fix by Conduct AI.\n\nCloses #{{fetch_issue.issue_number}}"}
+                "body":  "Automated fix by Conduct AI.\n\nCloses #{{fetch_issue.issue_number}}\n\n{{$snippet: pr_attribution}}"}
 
       Output ONLY the following JSON on the last line:
         {"pr_url": "<full PR URL>"}
     next: record_outcome
 
   record_outcome:
-    type: memory
-    label: Record outcome
-    action: write
-    scope: repo
+    $use: base-autopilot.record_outcome
     key: "{{_trigger.repo_full_name}}"
     summary: |
       Issue #{{_trigger.issue_number}}: {{_trigger.title}}

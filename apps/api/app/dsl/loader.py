@@ -19,7 +19,9 @@ The executor stays untouched: YAML is layered *over* the runtime, not into it.
 """
 from __future__ import annotations
 
+import copy
 import functools
+import re
 from pathlib import Path
 from typing import Any
 
@@ -75,8 +77,14 @@ def _validate_against_yaml_schema(data: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def load_workflow_yaml(yaml_text: str) -> Workflow:
-    """Parse + validate a YAML document. Raises WorkflowValidationError on failure."""
+def load_workflow_yaml(yaml_text: str, base_dir: Path | None = None) -> Workflow:
+    """Parse + validate a YAML document. Raises WorkflowValidationError on failure.
+
+    If *base_dir* is supplied and the document contains an ``extends:`` key, the
+    base file is resolved from *base_dir* and all ``$use`` / ``{{$snippet:}}``
+    references are expanded before Pydantic validation.  When *base_dir* is None
+    (community submissions), ``extends:`` is rejected outright.
+    """
     try:
         data = yaml.safe_load(yaml_text)
     except yaml.YAMLError as e:
@@ -89,6 +97,14 @@ def load_workflow_yaml(yaml_text: str) -> Workflow:
 
     data = _restore_keyword_keys(data)
 
+    # Resolve extends: before Pydantic validation so the model never sees it.
+    if "extends" in data:
+        if base_dir is None:
+            raise WorkflowValidationError(
+                "extends: not supported for community submissions"
+            )
+        data = _resolve_extends(data, base_dir)
+
     # JSON Schema validation (opt-in — only runs when schema_version: "1")
     _validate_against_yaml_schema(data)
 
@@ -96,6 +112,105 @@ def load_workflow_yaml(yaml_text: str) -> Workflow:
         return Workflow.model_validate(data)
     except Exception as e:  # pydantic.ValidationError or our own ValueError
         raise WorkflowValidationError(str(e)) from e
+
+
+# ---------------------------------------------------------------------------
+# extends: resolution helpers
+# ---------------------------------------------------------------------------
+
+def _resolve_extends(data: dict, base_dir: Path) -> dict:
+    """Resolve ``extends:`` in *data* in-place and return the expanded dict.
+
+    Steps:
+    1. Load and validate the base file (must have ``kind: base``).
+    2. For each block that has a ``$use`` key, merge base block fields as
+       defaults with the child block's fields winning on conflict.
+    3. Walk all string values in block descriptions and replace
+       ``{{$snippet: name}}`` with the raw snippet text.
+    4. Delete ``extends`` from the returned dict.
+    """
+    base_name: str = data["extends"]
+    base_path = base_dir / f"{base_name}.yaml"
+
+    try:
+        base_text = base_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        raise WorkflowValidationError(
+            f"extends: base file not found: {base_path}"
+        )
+
+    try:
+        base_data = yaml.safe_load(base_text)
+    except yaml.YAMLError as e:
+        raise WorkflowValidationError(f"extends: invalid YAML in base file: {e}") from e
+
+    if not isinstance(base_data, dict) or base_data.get("kind") != "base":
+        raise WorkflowValidationError(
+            f"extends: '{base_name}' is not a base file (missing kind: base)"
+        )
+
+    base_snippets: dict[str, str] = base_data.get("snippets") or {}
+    base_blocks: dict[str, dict] = base_data.get("blocks") or {}
+
+    # Work on a shallow copy so we don't mutate the caller's dict.
+    data = dict(data)
+
+    # --- Step 2: resolve $use in blocks ------------------------------------
+    if "blocks" in data and isinstance(data["blocks"], dict):
+        resolved_blocks: dict[str, Any] = {}
+        for block_id, block in data["blocks"].items():
+            if not isinstance(block, dict):
+                resolved_blocks[block_id] = block
+                continue
+
+            use_ref = block.get("$use")
+            if use_ref is None:
+                resolved_blocks[block_id] = block
+                continue
+
+            # Strip the "base-autopilot." (or any "<base-name>.") prefix.
+            prefix = f"{base_name}."
+            template_key = use_ref[len(prefix):] if use_ref.startswith(prefix) else use_ref
+
+            if template_key not in base_blocks:
+                raise WorkflowValidationError(
+                    f"extends: unknown block template '{use_ref}' in {base_name}"
+                )
+
+            # Deep-merge: base fields as defaults, child fields WIN.
+            merged = copy.deepcopy(base_blocks[template_key])
+            child_fields = {k: v for k, v in block.items() if k != "$use"}
+            merged.update(child_fields)
+            resolved_blocks[block_id] = merged
+
+        data["blocks"] = resolved_blocks
+
+    # --- Step 3: inject snippets in string values -------------------------
+    def _snippet_replacer(m: re.Match) -> str:
+        name = m.group(1)
+        if name not in base_snippets:
+            raise WorkflowValidationError(
+                f"unknown snippet '{name}' in {base_name}"
+            )
+        return base_snippets[name]
+
+    _SNIPPET_RE = re.compile(r'\{\{\$snippet:\s*(\w+)\s*\}\}')
+
+    def _walk_strings(obj: Any) -> Any:
+        if isinstance(obj, str):
+            return _SNIPPET_RE.sub(_snippet_replacer, obj)
+        if isinstance(obj, dict):
+            return {k: _walk_strings(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_walk_strings(item) for item in obj]
+        return obj
+
+    if "blocks" in data:
+        data["blocks"] = _walk_strings(data["blocks"])
+
+    # --- Step 4: strip extends key ----------------------------------------
+    data.pop("extends")
+    return data
 
 
 # YAML 1.1 (which PyYAML still implements) coerces the bare tokens ``on``,
