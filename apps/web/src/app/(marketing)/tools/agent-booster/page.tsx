@@ -152,7 +152,7 @@ function HeroSection() {
         </a>
       </div>
       <p className="mt-4 text-xs text-stone-400">
-        Python 3.10+ · MIT licensed · v0.2.19 · runs 100% locally · no code leaves your machine
+        Python 3.10+ · MIT licensed · v0.2.25 · runs 100% locally · no code leaves your machine
       </p>
 
       <div className="mt-14 w-full max-w-5xl grid md:grid-cols-2 gap-6">
@@ -527,9 +527,33 @@ function ComparisonSection() {
 
 const WHATS_NEW_ITEMS = [
   {
+    icon: "🛑",
+    title: "Output token tracking",
+    tag: "v0.2.25",
+    desc: "booster-stop.py fires on every Claude Code session end and captures actual output tokens from the stop event. Stores baseline vs. actual in .booster/stats.db. booster gain now shows real savings — not estimates.",
+    color: "text-rose-600",
+    bg: "bg-rose-50 border-rose-200",
+  },
+  {
+    icon: "🔇",
+    title: "Verbosity modes",
+    tag: "v0.2.24",
+    desc: "booster verbosity lite|full|ultra injects a conciseness block into CLAUDE.md, AGENTS.md, .cursorrules, and .windsurfrules. booster verbosity off removes it. Cuts output token count by 30–75% across all AI coding tools.",
+    color: "text-purple-600",
+    bg: "bg-purple-50 border-purple-200",
+  },
+  {
+    icon: "🗜️",
+    title: "Memory compression",
+    tag: "v0.2.24",
+    desc: "booster compress rewrites every file in memory/ through claude-haiku to strip filler and cut token count by ~60%. booster compress --dry-run previews savings without writing. Keeps project memory lean as it grows.",
+    color: "text-teal-600",
+    bg: "bg-teal-50 border-teal-200",
+  },
+  {
     icon: "⚡",
     title: "Background daemon",
-    tag: "v0.2.17",
+    tag: "v0.2.18",
     desc: "booster start launches a persistent Unix socket process that keeps the embedding model loaded. search_context drops from 2–3 s cold-start to ~50 ms. Daemon survives editor restarts — it's not tied to any terminal.",
     color: "text-amber-600",
     bg: "bg-amber-50 border-amber-200",
@@ -575,11 +599,11 @@ function WhatsNewSection() {
         <div className="flex items-center justify-center gap-3 mb-3">
           <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest">What&apos;s new</p>
           <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full uppercase tracking-widest">
-            v0.2.16 – v0.2.18
+            v0.2.16 – v0.2.25
           </span>
         </div>
         <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
-          Daemon, delta indexing, and asymmetric embeddings.
+          Daemon, verbosity modes, and output token tracking.
         </h2>
         <p className="text-center text-stone-500 text-sm max-w-2xl mx-auto mb-12">
           Three releases shipped together. The result: booster start is the only command you need,
