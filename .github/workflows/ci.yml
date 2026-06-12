@@ -41,6 +41,9 @@ jobs:
       - name: Lint
         run: python -m flake8 app --max-line-length 100 || true
         working-directory: apps/api
+      - name: Schema sync check
+        run: make schema-check
+        working-directory: apps/api
       - name: Test
         run: python -m pytest tests/ -v --tb=short || true
         working-directory: apps/api
