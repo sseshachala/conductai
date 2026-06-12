@@ -1,390 +1,710 @@
-# JSON Schema draft-07 for Conduct DSL v1 playbooks.
+# AUTO-GENERATED — do not edit by hand.
+# Source of truth: apps/api/app/dsl/schema.py
+# Regenerate:  cd apps/api && python scripts/generate_schema.py
+# CI check:    cd apps/api && python scripts/generate_schema.py --check
 #
-# Validation is opt-in: only fires when the playbook declares
-# `schema_version: "1"`. Existing playbooks without that field are unaffected.
-#
-# Design decisions:
-#   - additionalProperties: true on block objects — unknown fields (credentials,
-#     labels, etc.) are silently ignored by the Pydantic layer and must not cause
-#     false-positive schema failures here.
-#   - if/then constraints per block type for required fields.
-#   - New fields from #564/#565 (retry, allowed_tools, for_each, item_var,
-#     system, prompt, input, channels, template) are declared here so the
-#     schema is forward-looking.
-$schema: "http://json-schema.org/draft-07/schema#"
-title: ConductPlaybookV1
-description: Conduct YAML playbook — schema version 1
-type: object
-
-required:
-  - name
-  - blocks
-
-additionalProperties: true
-
+# JSON Schema (Pydantic-derived) for Conduct DSL v1 playbooks.
 properties:
+  id:
+    anyOf:
+    - type: string
+    - type: 'null'
+    default: null
+    title: Id
+  workspace_id:
+    anyOf:
+    - type: string
+    - type: 'null'
+    default: null
+    title: Workspace Id
   name:
+    title: Name
     type: string
-    minLength: 1
-    description: Human-readable workflow name.
-
   version:
+    default: 1
+    title: Version
     type: integer
-    minimum: 1
-    description: Playbook version integer (monotonically increasing).
-
   schema_version:
-    type: string
-    enum: ["1"]
-    description: Opt-in DSL schema version. Must be "1" to trigger this validator.
-
+    anyOf:
+    - type: string
+    - type: 'null'
+    default: null
+    title: Schema Version
   description:
-    type: string
-    description: Free-text description shown in the marketplace and console.
-
-  on:
-    type: object
-    description: Trigger definitions keyed by event name (e.g. github.issue_labeled).
-    additionalProperties:
-      $ref: "#/definitions/trigger"
-
-  inputs:
-    type: object
-    description: Install-time configuration fields presented to the user as a form.
-    additionalProperties:
-      $ref: "#/definitions/inputField"
-
+    anyOf:
+    - type: string
+    - type: 'null'
+    default: null
+    title: Description
   params:
-    type: object
-    description: Run-time parameters supplied via webhook payload or manually.
     additionalProperties:
-      $ref: "#/definitions/workflowParam"
-
-  blocks:
-    type: object
-    description: The main execution DAG — keyed by block id.
-    minProperties: 1
-    additionalProperties:
-      $ref: "#/definitions/block"
-
-  cleanup:
-    type: object
-    description: Blocks that always run at the end of a run regardless of routing.
-    additionalProperties:
-      $ref: "#/definitions/block"
-
-
-# ---------------------------------------------------------------------------
-definitions:
-
-  trigger:
-    type: object
-    additionalProperties: true
-    properties:
-      integration:
-        type: string
-      next:
-        type: string
-        description: Entry block id. Defaults to the first key under blocks:.
-
-  inputField:
-    type: object
-    additionalProperties: true
-    properties:
-      label:
-        type: string
-      type:
-        type: string
-        enum: [string, number, boolean, select]
-      description:
-        type: string
-      required:
-        type: boolean
-      default: {}
-      placeholder:
-        type: string
-      options:
-        type: array
-        items:
+      additionalProperties: false
+      description: A typed input the user supplies at run time (or via webhook payload).
+      properties:
+        type:
+          default: string
+          enum:
+          - string
+          - number
+          - boolean
+          title: Type
           type: string
-
-  workflowParam:
-    type: object
-    additionalProperties: false
-    properties:
-      type:
-        type: string
-        enum: [string, number, boolean]
-        default: string
-      required:
-        type: boolean
-        default: false
-      default: {}
-      description:
-        type: string
-
-  # Retry configuration — typed properly in #564, dict for now.
-  retryConfig:
-    type: object
-    additionalProperties: true
-    properties:
-      max:
-        type: integer
-        minimum: 1
-        description: Maximum number of retry attempts.
-      backoff:
-        type: string
-        enum: [linear, exponential, fixed]
-        description: Backoff strategy between retries.
-      on:
-        type: array
-        items:
-          type: string
-        description: Error codes or exception names that trigger a retry.
-
-  # All block types share this base set of properties; per-type constraints
-  # are applied via if/then below.
-  block:
-    type: object
-    required:
-      - type
-    additionalProperties: true
-
-    properties:
-      type:
-        type: string
-        enum: [tool, brain, logic, approval, memory, output, mcp, guard]
-        description: Block executor type.
-
-      label:
-        type: string
-        description: Human-readable block label shown in the canvas.
-
-      description:
-        type: string
-        description: Block description / brain task description.
-
-      next:
-        description: "Routing: next block id (string) or {pass: id, fail: id} for logic."
-        oneOf:
+        required:
+          default: false
+          title: Required
+          type: boolean
+        default:
+          anyOf:
+          - {}
+          - type: 'null'
+          default: null
+          title: Default
+        description:
+          anyOf:
           - type: string
+          - type: 'null'
+          default: null
+          title: Description
+      title: WorkflowParam
+      type: object
+    title: Params
+    type: object
+  inputs:
+    title: Inputs
+    type: object
+  'on':
+    additionalProperties:
+      additionalProperties: true
+      description: One concrete trigger. Keyed in YAML by its event name (e.g. github.issue_labeled).
+      properties:
+        integration:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Integration
+        next:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          description: 'Entry block id. Defaults to the first key under blocks: if
+            omitted.'
+          title: Next
+      title: Trigger
+      type: object
+    title: 'On'
+    type: object
+  blocks:
+    additionalProperties:
+      properties:
+        type:
+          enum:
+          - tool
+          - brain
+          - logic
+          - approval
+          - memory
+          - output
+          - mcp
+          - sandbox
+          - guard
+          title: Type
+          type: string
+        label:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Label
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Description
+        integration:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Integration
+        action:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Action
+        params:
+          title: Params
+          type: object
+        input:
+          anyOf:
           - type: object
-            additionalProperties:
+          - type: 'null'
+          default: null
+          title: Input
+        credential_key:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Credential Key
+        tool_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Tool Name
+        mode:
+          anyOf:
+          - enum:
+            - single
+            - agentic
+            type: string
+          - type: 'null'
+          default: null
+          title: Mode
+        model:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Model
+        runs_on:
+          anyOf:
+          - additionalProperties: false
+            description: Where a Brain block executes its tool calls.
+            properties:
+              ip:
+                description: Host or {{ref}} resolving to one
+                title: Ip
+                type: string
+              credentials_from:
+                default: digitalocean
+                description: Integration handle whose credentials include ssh_private_key
+                title: Credentials From
+                type: string
+              username:
+                anyOf:
+                - type: string
+                - type: 'null'
+                default: null
+                title: Username
+              port:
+                anyOf:
+                - type: integer
+                - type: 'null'
+                default: null
+                title: Port
+            required:
+            - ip
+            title: RunsOn
+            type: object
+          - type: 'null'
+          default: null
+        custom_instructions:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Custom Instructions
+        prompt_file:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Prompt File
+        system:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: System
+        prompt:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Prompt
+        allowed_tools:
+          anyOf:
+          - items:
               type: string
-
-      # — iteration / loop (#565) —
-      for_each:
-        type: string
-        description: Jinja2 expression yielding the list to iterate over.
-
-      item_var:
-        type: string
-        description: Name of the loop variable (default "item").
-
-      # — retry (#565) —
-      retry:
-        $ref: "#/definitions/retryConfig"
-
-      # — tool blocks —
-      integration:
-        type: string
-        description: Integration handle (e.g. github, slack, linear).
-
-      action:
-        type: string
-        description: "Action name — plain form (create_issue) or slash form (github/create_issue)."
-
-      params:
-        type: object
-        additionalProperties: true
-        description: Named parameters passed to the integration action.
-
-      input:
-        type: object
-        additionalProperties: true
-        description: Alias for params on tool blocks.
-
-      # — brain blocks —
-      mode:
-        type: string
-        enum: [single, agentic]
-        description: Brain execution mode.
-
-      model:
-        type: string
-        description: Claude model ID (e.g. claude-sonnet-4-6).
-
-      system:
-        type: string
-        description: System prompt for the brain block (alternative to description).
-
-      prompt:
-        type: string
-        description: User prompt for the brain block.
-
-      prompt_file:
-        type: string
-        description: Path to a prompt file relative to the playbook directory.
-
-      custom_instructions:
-        type: string
-        description: User-editable instructions appended to the system prompt at runtime.
-
-      allowed_tools:
-        type: array
-        items:
-          type: string
-        description: Restrict the brain block to this tool subset.
-
-      runs_on:
-        type: object
-        additionalProperties: false
-        required: [ip]
-        properties:
-          ip:
-            type: string
-          credentials_from:
-            type: string
-            default: digitalocean
-          username:
-            type: string
-          port:
-            type: integer
-
-      # — logic blocks —
-      condition:
-        type: string
-        description: "Jinja2/Python expression evaluated as truthy (e.g. '{{ pr.merged }}')."
-
-      # — approval blocks —
-      via:
-        type: string
-        enum: [slack, email, both]
-        description: Delivery channel for the approval request.
-
-      channel:
-        type: string
-        description: Slack channel for approval notification.
-
-      slack_user:
-        type: string
-        description: Slack user id for approval DM.
-
-      approval_email:
-        type: string
-        description: Email address for approve/reject link.
-
-      message:
-        type: string
-        description: Custom approval message.
-
-      # — memory blocks —
-      scope:
-        type: string
-        enum: [repo, workspace]
-
-      key:
-        type: string
-
-      limit:
-        type: integer
-        minimum: 1
-
-      summary:
-        type: string
-
-      # — output blocks (structured form) —
-      output:
-        type: object
-        additionalProperties: true
-        properties:
-          via:
-            type: string
-            enum: [slack, email, both]
-          slack:
-            type: object
-            required: [channel]
-            additionalProperties: true
-            properties:
-              channel:
-                type: string
-              approval:
-                type: boolean
-          email:
-            type: object
-            required: [to]
-            additionalProperties: true
-            properties:
-              to:
-                type: string
-              from_address:
-                type: string
-
-      # — output blocks (shorthand form, #565) —
-      channels:
-        type: array
-        items:
-          type: string
-        description: Shorthand output channel list (e.g. [slack]).
-
-      template:
-        type: string
-        description: Jinja2 template string for the output message.
-
-      # — mcp blocks —
-      credential_key:
-        type: string
-      tool_name:
-        type: string
-
-    # — per-type if/then constraints —
-    allOf:
-      - if:
-          properties:
-            type:
-              const: tool
-          required: [type]
-        then:
+            type: array
+          - type: 'null'
+          default: null
+          title: Allowed Tools
+        condition:
           anyOf:
-            - required: [integration, action]
-            - required: [action]
-              properties:
-                action:
-                  type: string
-                  pattern: "^[^/]+/.+"
-
-      - if:
-          properties:
-            type:
-              const: brain
-          required: [type]
-        then:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Condition
+        via:
           anyOf:
-            - required: [description]
-            - required: [system]
-            - required: [prompt]
-            - required: [prompt_file]
-
-      - if:
-          properties:
-            type:
-              const: logic
-          required: [type]
-        then:
-          required: [condition]
-
-      - if:
-          properties:
-            type:
-              const: memory
-          required: [type]
-        then:
-          required: [action]
-
-      - if:
-          properties:
-            type:
-              const: mcp
-          required: [type]
-        then:
-          required: [credential_key, tool_name]
+          - enum:
+            - slack
+            - email
+            - both
+            type: string
+          - type: 'null'
+          default: null
+          title: Via
+        channel:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Channel
+        slack_user:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Slack User
+        approval_email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Approval Email
+        message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Message
+        scope:
+          anyOf:
+          - enum:
+            - repo
+            - workspace
+            type: string
+          - type: 'null'
+          default: null
+          title: Scope
+        key:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Key
+        limit:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          default: null
+          title: Limit
+        summary:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Summary
+        output:
+          anyOf:
+          - description: One block per workflow can fan out to multiple channels.
+            properties:
+              via:
+                default: slack
+                enum:
+                - slack
+                - email
+                - both
+                title: Via
+                type: string
+              slack:
+                anyOf:
+                - additionalProperties: true
+                  properties:
+                    channel:
+                      title: Channel
+                      type: string
+                    approval:
+                      default: false
+                      title: Approval
+                      type: boolean
+                  required:
+                  - channel
+                  title: SlackOutput
+                  type: object
+                - type: 'null'
+                default: null
+              email:
+                anyOf:
+                - additionalProperties: true
+                  properties:
+                    to:
+                      title: To
+                      type: string
+                    from_address:
+                      anyOf:
+                      - type: string
+                      - type: 'null'
+                      default: null
+                      title: From Address
+                  required:
+                  - to
+                  title: EmailOutput
+                  type: object
+                - type: 'null'
+                default: null
+            title: OutputConfig
+            type: object
+          - type: 'null'
+          default: null
+        channels:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          default: null
+          title: Channels
+        template:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Template
+        for_each:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: For Each
+        item_var:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Item Var
+        retry:
+          anyOf:
+          - type: object
+          - type: 'null'
+          default: null
+          title: Retry
+        next:
+          anyOf:
+          - type: string
+          - additionalProperties:
+              type: string
+            type: object
+          - type: 'null'
+          default: null
+          title: Next
+      required:
+      - type
+      title: Block
+      type: object
+    title: Blocks
+    type: object
+  cleanup:
+    additionalProperties:
+      description: A block that always executes at the end of a run (success OR failure).
+      properties:
+        type:
+          enum:
+          - tool
+          - brain
+          - logic
+          - approval
+          - memory
+          - output
+          - mcp
+          - sandbox
+          - guard
+          title: Type
+          type: string
+        label:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Label
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Description
+        integration:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Integration
+        action:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Action
+        params:
+          title: Params
+          type: object
+        input:
+          anyOf:
+          - type: object
+          - type: 'null'
+          default: null
+          title: Input
+        credential_key:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Credential Key
+        tool_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Tool Name
+        mode:
+          anyOf:
+          - enum:
+            - single
+            - agentic
+            type: string
+          - type: 'null'
+          default: null
+          title: Mode
+        model:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Model
+        runs_on:
+          anyOf:
+          - additionalProperties: false
+            description: Where a Brain block executes its tool calls.
+            properties:
+              ip:
+                description: Host or {{ref}} resolving to one
+                title: Ip
+                type: string
+              credentials_from:
+                default: digitalocean
+                description: Integration handle whose credentials include ssh_private_key
+                title: Credentials From
+                type: string
+              username:
+                anyOf:
+                - type: string
+                - type: 'null'
+                default: null
+                title: Username
+              port:
+                anyOf:
+                - type: integer
+                - type: 'null'
+                default: null
+                title: Port
+            required:
+            - ip
+            title: RunsOn
+            type: object
+          - type: 'null'
+          default: null
+        custom_instructions:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Custom Instructions
+        prompt_file:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Prompt File
+        system:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: System
+        prompt:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Prompt
+        allowed_tools:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          default: null
+          title: Allowed Tools
+        condition:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Condition
+        via:
+          anyOf:
+          - enum:
+            - slack
+            - email
+            - both
+            type: string
+          - type: 'null'
+          default: null
+          title: Via
+        channel:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Channel
+        slack_user:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Slack User
+        approval_email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Approval Email
+        message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Message
+        scope:
+          anyOf:
+          - enum:
+            - repo
+            - workspace
+            type: string
+          - type: 'null'
+          default: null
+          title: Scope
+        key:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Key
+        limit:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          default: null
+          title: Limit
+        summary:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Summary
+        output:
+          anyOf:
+          - description: One block per workflow can fan out to multiple channels.
+            properties:
+              via:
+                default: slack
+                enum:
+                - slack
+                - email
+                - both
+                title: Via
+                type: string
+              slack:
+                anyOf:
+                - additionalProperties: true
+                  properties:
+                    channel:
+                      title: Channel
+                      type: string
+                    approval:
+                      default: false
+                      title: Approval
+                      type: boolean
+                  required:
+                  - channel
+                  title: SlackOutput
+                  type: object
+                - type: 'null'
+                default: null
+              email:
+                anyOf:
+                - additionalProperties: true
+                  properties:
+                    to:
+                      title: To
+                      type: string
+                    from_address:
+                      anyOf:
+                      - type: string
+                      - type: 'null'
+                      default: null
+                      title: From Address
+                  required:
+                  - to
+                  title: EmailOutput
+                  type: object
+                - type: 'null'
+                default: null
+            title: OutputConfig
+            type: object
+          - type: 'null'
+          default: null
+        channels:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          default: null
+          title: Channels
+        template:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Template
+        for_each:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: For Each
+        item_var:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Item Var
+        retry:
+          anyOf:
+          - type: object
+          - type: 'null'
+          default: null
+          title: Retry
+        next:
+          default: null
+          title: Next
+          type: 'null'
+      required:
+      - type
+      title: CleanupBlock
+      type: object
+    title: Cleanup
+    type: object
+required:
+- name
+- blocks
+title: Workflow
+type: object
