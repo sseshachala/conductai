@@ -1,10 +1,11 @@
 name: Third-Party Autopilot Fix
-version: 4
+version: 5
 description: >
-  Given an issue number on any third-party repo, fork it, apply the fix, push a
-  branch, and open a PR back to upstream.
+  Given an issue number on any third-party repo (any language), fork it, apply
+  the fix, push a branch, and open a PR back to upstream.
   Works in two modes automatically — sandbox (persistent /workspace) if credentials
   are configured, proxy (single-shell-call) otherwise. No manual config needed.
+  Auto-detects the repo's linter (pre-commit, ruff, eslint, cargo, gofmt, rubocop).
   Reads fix history for the repo before starting, writes a summary after success
   so every subsequent run on the same repo gets smarter.
 
@@ -102,10 +103,18 @@ blocks:
       4. Run repo linter before committing — auto-detect from repo config:
            if [ -f .pre-commit-config.yaml ]; then
              pre-commit run --all-files 2>/dev/null; pre-commit run --all-files 2>/dev/null || true
-           elif [ -f pyproject.toml ] || [ -f ruff.toml ]; then
+           elif [ -f pyproject.toml ] || [ -f ruff.toml ] || [ -f setup.py ]; then
              ruff check --fix . 2>/dev/null || true && ruff format . 2>/dev/null || true
            elif command -v black &>/dev/null; then
              black . 2>/dev/null || true
+           elif [ -f package.json ]; then
+             (npx eslint --fix . 2>/dev/null || true) && (npx prettier --write . 2>/dev/null || true)
+           elif [ -f Cargo.toml ]; then
+             cargo fmt 2>/dev/null || true && cargo clippy --fix --allow-dirty 2>/dev/null || true
+           elif [ -f go.mod ]; then
+             gofmt -w . 2>/dev/null || true
+           elif [ -f Gemfile ]; then
+             bundle exec rubocop -a 2>/dev/null || true
            fi
       5. cd /workspace && git add -A && git diff --cached --stat
       6. git commit -m "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})"
@@ -126,7 +135,7 @@ blocks:
         git merge --ff-only upstream/{{fork_upstream.default_branch}} 2>/dev/null || \
           git reset --hard upstream/{{fork_upstream.default_branch}} && \
         <APPLY FIX using sed/awk/python -c or heredoc — all inline> && \
-        (if [ -f .pre-commit-config.yaml ]; then pre-commit run --all-files 2>/dev/null; pre-commit run --all-files 2>/dev/null || true; elif [ -f pyproject.toml ] || [ -f ruff.toml ]; then ruff check --fix . 2>/dev/null || true && ruff format . 2>/dev/null || true; elif command -v black &>/dev/null; then black . 2>/dev/null || true; fi) && \
+        (if [ -f .pre-commit-config.yaml ]; then pre-commit run --all-files 2>/dev/null; pre-commit run --all-files 2>/dev/null || true; elif [ -f pyproject.toml ] || [ -f ruff.toml ] || [ -f setup.py ]; then ruff check --fix . 2>/dev/null || true && ruff format . 2>/dev/null || true; elif command -v black &>/dev/null; then black . 2>/dev/null || true; elif [ -f package.json ]; then (npx eslint --fix . 2>/dev/null || true) && (npx prettier --write . 2>/dev/null || true); elif [ -f Cargo.toml ]; then cargo fmt 2>/dev/null || true && cargo clippy --fix --allow-dirty 2>/dev/null || true; elif [ -f go.mod ]; then gofmt -w . 2>/dev/null || true; elif [ -f Gemfile ]; then bundle exec rubocop -a 2>/dev/null || true; fi) && \
         git add -A && git diff --cached --stat && \
         git commit -m "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})" && \
         git push https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git fix/issue-{{inputs.issue_number}}
