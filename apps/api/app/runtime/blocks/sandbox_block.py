@@ -51,10 +51,7 @@ def _execute_sandbox(
 
     provider = config.get("provider")
     if not provider:
-        raise ValueError(
-            f"sandbox block '{block_id}' requires sandbox_config.provider. "
-            f"Supported: {sorted(_PROVIDER_CRED_HINTS)}"
-        )
+        return {"skipped": True, "reason": "No provider configured — set a provider on the sandbox block to use it."}
 
     # Validate credential presence before spinning up — fail fast with clear message
     _check_credentials(provider, credentials, block_id, config=config)
