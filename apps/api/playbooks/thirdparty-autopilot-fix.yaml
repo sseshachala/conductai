@@ -1,10 +1,12 @@
 name: Third-Party Autopilot Fix
-version: 3
+version: 4
 description: >
   Given an issue number on any third-party repo, fork it, apply the fix, push a
   branch, and open a PR back to upstream.
   Works in two modes automatically — sandbox (persistent /workspace) if credentials
   are configured, proxy (single-shell-call) otherwise. No manual config needed.
+  Reads fix history for the repo before starting, writes a summary after success
+  so every subsequent run on the same repo gets smarter.
 
 inputs:
   upstream_owner:
@@ -54,6 +56,16 @@ blocks:
     params:
       owner: "{{inputs.upstream_owner}}"
       repo: "{{inputs.upstream_repo}}"
+    next: read_memory
+
+  read_memory:
+    type: memory
+    action: read
+    label: Load fix history
+    description: Recall previous fixes on this repo to give the brain block useful context
+    scope: repo
+    key: "{{inputs.upstream_owner}}/{{inputs.upstream_repo}}"
+    limit: 5
     next: implement_fix
 
   implement_fix:
@@ -70,6 +82,11 @@ blocks:
       Issue title: {{fetch_issue.title}}
       Issue body:
       {{fetch_issue.body}}
+
+      ── PRIOR FIXES ON THIS REPO ────────────────────────────────────────────
+      Use this context to avoid repeating mistakes and reuse known-good patterns:
+      {{read_memory.entries}}
+      (Empty if this is the first fix on this repo — no prior context available.)
 
       ── STEP 1: DETECT YOUR EXECUTION MODE ──────────────────────────────────
       Run this FIRST:
@@ -116,7 +133,7 @@ blocks:
 
       ── OUTPUT (both modes) ─────────────────────────────────────────────────
       After pushing, output ONLY this JSON on the last line (use the ACTUAL branch name you created):
-        {"branch_pushed": "<actual-branch-name>", "fork_owner": "{{fork_upstream.fork_owner}}", "fork_full_name": "{{fork_upstream.fork_full_name}}"}
+        {"branch_pushed": "<actual-branch-name>", "fork_owner": "{{fork_upstream.fork_owner}}", "fork_full_name": "{{fork_upstream.fork_full_name}}", "fix_summary": "<one line: which file(s) changed and what the fix was>"}
     next: open_pr
 
   open_pr:
@@ -144,6 +161,19 @@ blocks:
         - ▶ Playbook: `thirdparty-autopilot-fix` — fork → fix → PR in one automated run
 
         > Want Conduct AI to fix issues in your repo too? [Get started free →](https://conductai.ai)
+    next: write_memory
+
+  write_memory:
+    type: memory
+    action: write
+    label: Record fix
+    description: Store what was fixed so future runs on this repo start smarter
+    scope: repo
+    key: "{{inputs.upstream_owner}}/{{inputs.upstream_repo}}"
+    summary: |
+      Issue #{{inputs.issue_number}}: {{fetch_issue.title}}
+      PR: {{open_pr.pr_url}}
+      Fix: {{implement_fix.fix_summary}}
     next: notify_slack
 
   notify_slack:
