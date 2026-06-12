@@ -114,7 +114,12 @@ async def slack_interactions(request: Request, db: Session = Depends(get_db)):
     timestamp = request.headers.get("X-Slack-Request-Timestamp", "0")
     signature = request.headers.get("X-Slack-Signature", "")
 
-    # Parse payload first so we can look up workspace signing secret
+    # Verify with platform-level signing secret first — before any DB access.
+    # This prevents unauthenticated requests from triggering DB reads.
+    if not _verify_slack_signature(body, timestamp, signature, settings.slack_signing_secret):
+        raise HTTPException(status_code=401, detail="Invalid Slack signature")
+
+    # Parse payload
     body_str = body.decode()
     if body_str.startswith("payload="):
         payload_str = unquote_plus(body_str[len("payload="):])
@@ -151,10 +156,12 @@ async def slack_interactions(request: Request, db: Session = Depends(get_db)):
         log.warning("slack.unknown_run", run_id=run_id_str)
         return {"ok": True}
 
-    # Verify signature using workspace's Slack signing secret
+    # For confirmed requests, optionally re-verify with workspace-level signing secret
+    # (workspace-level lookup is safe here because signature is already validated above)
     signing_secret = _get_slack_signing_secret(run, db)
-    if not _verify_slack_signature(body, timestamp, signature, signing_secret):
-        raise HTTPException(status_code=401, detail="Invalid Slack signature")
+    if signing_secret and signing_secret != settings.slack_signing_secret:
+        if not _verify_slack_signature(body, timestamp, signature, signing_secret):
+            raise HTTPException(status_code=401, detail="Invalid Slack signature")
 
     block_id = run.current_block_id or ""
     approver = payload.get("user", {}).get("name", "slack-user")
