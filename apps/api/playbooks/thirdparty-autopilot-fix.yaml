@@ -122,8 +122,11 @@ blocks:
         git push https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git fix/issue-{{inputs.issue_number}}
 
       ── OUTPUT (both modes) ─────────────────────────────────────────────────
-      After pushing, output ONLY this JSON on the last line (use the ACTUAL branch name you created):
-        {"branch_pushed": "<actual-branch-name>", "fork_owner": "{{fork_upstream.fork_owner}}", "fork_full_name": "{{fork_upstream.fork_full_name}}", "fix_summary": "<one line: which file(s) changed and what the fix was>"}
+      After pushing, output ONLY this JSON on the last line (use the ACTUAL branch name you created).
+      Set head_ref based on REPO_TYPE:
+        REPO_TYPE=same → head_ref = "<branch-name>"  (no owner prefix)
+        REPO_TYPE=fork → head_ref = "{{fork_upstream.fork_owner}}:<branch-name>"
+        {"branch_pushed": "<actual-branch-name>", "head_ref": "<head_ref>", "fork_owner": "{{fork_upstream.fork_owner}}", "fork_full_name": "{{fork_upstream.fork_full_name}}", "fix_summary": "<one line: which file(s) changed and what the fix was>"}
     next: open_pr
 
   open_pr:
@@ -136,7 +139,7 @@ blocks:
       owner: "{{inputs.upstream_owner}}"
       repo: "{{inputs.upstream_repo}}"
       title: "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})"
-      head: "{{implement_fix.fork_owner}}:{{implement_fix.branch_pushed}}"
+      head: "{{implement_fix.head_ref}}"
       base: "{{fork_upstream.default_branch}}"
       body: |
         Fixes #{{inputs.issue_number}}
