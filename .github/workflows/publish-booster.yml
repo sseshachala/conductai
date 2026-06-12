@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "booster-v*"
+      - "booster/v*"
 
 jobs:
   publish:
