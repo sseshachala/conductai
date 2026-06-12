@@ -20,6 +20,8 @@ class Run(Base):
     completed_at = Column(DateTime(timezone=True), nullable=True)
     current_block_id = Column(String(255), nullable=True)
     max_turns = Column(sa.Integer, nullable=True)
+    actual_turns = Column(sa.Integer, nullable=True)     # turns actually used (set at run completion)
+    budget_exhausted = Column(sa.Boolean, nullable=True) # True when stopped by max_turns_reached
     state = Column(JSONB, nullable=False, default=dict)  # accumulated block outputs
     outcome = Column(JSONB, nullable=True)               # {type, artifact_url} written at run completion
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
