@@ -52,6 +52,7 @@ export default function RunDetailPage() {
   const [projectId, setProjectId] = useState<string | null>(null)
   const [agentModel, setAgentModel] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [stopping, setStopping] = useState(false)
   const [activeTab, setActiveTab] = useState<Tab>("summary")
@@ -71,6 +72,7 @@ export default function RunDetailPage() {
   async function fetchRun(headers: Record<string, string>) {
     const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}`, { headers })
     if (res.ok) { const data = await res.json(); setRun(data); return data as RunMeta }
+    setFetchError(res.status === 403 ? "Access denied — you may not be a member of this workspace." : res.status === 404 ? "Run not found." : `Error ${res.status} — could not load run.`)
     return null
   }
 
@@ -142,7 +144,7 @@ export default function RunDetailPage() {
   }, [workflowId, runId, isLoaded])
 
   if (loading) return <AppShell><div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 256 }}><p style={{ fontSize: 14, color: "var(--text-muted)" }}>Loading…</p></div></AppShell>
-  if (!run) return <AppShell><div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 256 }}><p style={{ fontSize: 14, color: "var(--text-3)" }}>Run not found.</p></div></AppShell>
+  if (!run) return <AppShell><div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 256 }}><p style={{ fontSize: 14, color: "var(--text-3)" }}>{fetchError ?? "Run not found."}</p></div></AppShell>
 
   const s = statusStyle(run.status)
   const tabs: { id: Tab; label: string }[] = [
