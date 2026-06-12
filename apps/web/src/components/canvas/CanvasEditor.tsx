@@ -1312,7 +1312,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
               </p>
               {preflight.files.length > 0 && (
                 <p className="text-xs text-amber-700 mb-2 font-mono truncate">
-                  Files: {preflight.files.join(", ")}
+                  Files likely to be modified: {preflight.files.join(", ")}
                 </p>
               )}
               <div className="flex items-center gap-2">
