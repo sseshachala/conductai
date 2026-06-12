@@ -986,6 +986,27 @@ def validate_workflow(
     if "git" in configured_services:
         configured_services.add("github")
 
+    # Collect available env var keys (uppercased) for provider credential checks.
+    # Handles: env_vars (flat keys), modal (token_id/token_secret), anthropic (api_key).
+    available_env_keys: set[str] = set()
+    for row in cred_rows:
+        if not row.encrypted_credentials:
+            continue
+        decrypted = decrypt(row.encrypted_credentials) or {}
+        if row.handle == "env_vars":
+            available_env_keys.update(k.upper() for k in decrypted.keys())
+        elif row.handle == "modal":
+            if decrypted.get("token_id"):
+                available_env_keys.add("MODAL_TOKEN_ID")
+            if decrypted.get("token_secret"):
+                available_env_keys.add("MODAL_TOKEN_SECRET")
+        elif row.handle == "anthropic":
+            if decrypted.get("api_key"):
+                available_env_keys.add("ANTHROPIC_API_KEY")
+
+    from app.core.config import settings as _cfg
+    _server_has_anthropic = bool(_cfg.anthropic_api_key)
+
     errors = []
 
     for node in nodes:
@@ -1018,6 +1039,28 @@ def validate_workflow(
             if not description:
                 errors.append({"block_id": block_id, "label": label,
                                 "message": "Description is required for Brain blocks"})
+
+            # ANTHROPIC_API_KEY required for every brain block
+            if not _server_has_anthropic and "ANTHROPIC_API_KEY" not in available_env_keys:
+                errors.append({"block_id": block_id, "label": label,
+                                "message": "ANTHROPIC_API_KEY is not set — add it under Settings → Environments"})
+
+            # Execution provider credential checks
+            runs_on = data.get("runs_on") or {}
+            provider = runs_on.get("provider") if isinstance(runs_on, dict) else None
+            if provider == "modal":
+                missing = []
+                if "MODAL_TOKEN_ID" not in available_env_keys:
+                    missing.append("MODAL_TOKEN_ID")
+                if "MODAL_TOKEN_SECRET" not in available_env_keys:
+                    missing.append("MODAL_TOKEN_SECRET")
+                if missing:
+                    errors.append({"block_id": block_id, "label": label,
+                                   "message": f"Modal Labs credentials not set — add {' and '.join(missing)} under Settings → Environments"})
+            elif provider == "e2b":
+                if "E2B_API_KEY" not in available_env_keys:
+                    errors.append({"block_id": block_id, "label": label,
+                                   "message": "E2B_API_KEY is not set — add it under Settings → Environments"})
 
         # ── Tool / cleanup blocks ────────────────────────────────────────────
         elif block_type in ("tool", "cleanup"):
