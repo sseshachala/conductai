@@ -110,7 +110,7 @@ function ToolsSection() {
             <div className="flex items-start justify-between">
               <div>
                 <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-1 rounded-full mb-3">
-                  v0.2.15 · PyPI
+                  v0.2.25 · PyPI
                 </span>
                 <h2 className="text-2xl font-bold text-stone-900">Agent Booster</h2>
                 <p className="text-sm text-stone-500 mt-1">Cut AI running costs by up to 15×</p>
@@ -141,7 +141,9 @@ function ToolsSection() {
                   "Sends only the relevant code — not the whole file",
                   "Finds the right code by meaning, not just keywords",
                   "Picks the cheapest model that can handle the task",
-                  "Shows you how much you've saved over time",
+                  "booster verbosity: cuts output tokens 30–75% across Claude Code, Cursor, Codex",
+                  "booster compress: shrinks memory files via haiku — keeps context lean",
+                  "booster gain: shows real input + output savings from actual session data",
                 ].map(item => (
                   <li key={item} className="flex items-start gap-2 text-sm text-stone-600">
                     <span className="text-emerald-500 mt-0.5 shrink-0">✓</span>
@@ -176,7 +178,7 @@ function ToolsSection() {
             <div className="flex items-start justify-between">
               <div>
                 <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-100 px-2.5 py-1 rounded-full mb-3">
-                  v0.4.49 · PyPI
+                  v0.4.93 · PyPI
                 </span>
                 <h2 className="text-2xl font-bold text-stone-900">Conduct CLI</h2>
                 <p className="text-sm text-stone-500 mt-1">Run agents. Enforce policies. Switch workspaces.</p>
@@ -207,6 +209,7 @@ function ToolsSection() {
                   "conduct switch: swap workspaces + re-sync policies atomically",
                   "ConductGuard MCP enforces team AI policies on every tool call",
                   "conduct whoami: instant view of workspace, Guard, and Booster status",
+                  "Preflight: shows actual files and realistic turn estimates before a run",
                 ].map(item => (
                   <li key={item} className="flex items-start gap-2 text-sm text-stone-600">
                     <span className="text-violet-500 mt-0.5 shrink-0">✓</span>

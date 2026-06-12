@@ -1212,26 +1212,30 @@ rtk gain
         <p className="text-stone-500 text-sm mb-3 leading-relaxed">
           Agent Booster indexes your codebase and serves only the relevant symbol slice when Claude reads a file — the
           function, class, or block it actually needs, not the entire 800-line file. 62% savings on file reads observed in practice.
-          Stacks on top of RTK — both run in the same session.
+          Also cuts <strong>output</strong> tokens via verbosity modes and compresses project memory. Stacks on top of RTK.
         </p>
         <Pre>{`# Install
 pip install agent-booster
 
-# Index your repo (one-time, re-runs incrementally)
-booster index
+# Index your repo + wire hooks
+booster init claude
 
-# See your savings
+# Set verbosity mode — cuts output tokens 30–75%
+booster verbosity full     # lite | full | ultra | off
+
+# Compress memory files via haiku (~60% smaller)
+booster compress           # add --dry-run to preview
+
+# See combined input + output savings
 booster gain
 
-# Real output (1 active day, 30 reads):
-# Total reads:   30
-# Tokens served: 57,764
-# Tokens saved:  96,324  (62%)
-# Top file:      executor.py — 22,904 tokens saved`}</Pre>
+# Real output (6 active days):
+# Tokens saved (reads):   1,208,085  (77%)
+# Tokens saved (output):  ~1,833     (full verbosity)
+# Combined savings:       ~1,209,918 tokens`}</Pre>
         <div className="mt-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 mb-4">
-          <strong>Guard integration (coming soon):</strong> Guard reads <Code>booster gain</Code> at each sync alongside RTK.
-          The combined RTK + Booster delta is posted as <strong>Est. savings</strong> on the Spend dashboard.
-          Admins see exactly how much each tool is contributing.
+          <strong>Guard integration:</strong> The <Code>booster-stop.py</Code> Stop hook captures actual output tokens at each session end and stores them locally. <Code>conduct guard sync</Code> ships them to Guard alongside RTK savings.
+          The combined RTK + Booster delta appears as <strong>Est. savings</strong> on the Guard Spend dashboard — broken down by developer.
         </div>
 
         {/* Savings breakdown table */}
@@ -1248,9 +1252,10 @@ booster gain
             </thead>
             <tbody className="divide-y divide-stone-100">
               {[
-                ["RTK",           "Command output — git, test, build, docker, grep", "85–99%", "rtk gain -f json"],
-                ["Agent Booster", "File reads — serves symbol slices, not full files",  "50–70%", "booster gain"],
-                ["Combined",      "Both layers stacked in the same session",            "90–94%", "Guard sync posts delta"],
+                ["RTK",               "Command output — git, test, build, docker, grep", "85–99%", "rtk gain -f json"],
+                ["Booster — reads",   "File reads — serves symbol slices, not full files",  "50–70%", "booster gain"],
+                ["Booster — output",  "Response verbosity (lite/full/ultra modes)",          "30–75%", "booster gain"],
+                ["Combined",          "All layers stacked in the same session",              "90–94%", "Guard sync posts delta"],
               ].map(([src, what, rate, how]) => (
                 <tr key={src}>
                   <td className="px-4 py-3 text-xs font-semibold text-stone-800">{src}</td>
@@ -1670,7 +1675,7 @@ New tool calls are paused until the limit is raised. Contact your security team.
 
         <SubHeading>How Guard surfaces savings</SubHeading>
         <p className="text-sm text-stone-600 leading-relaxed mb-4">
-          Every time a developer runs <Code>conduct guard sync</Code>, the CLI reads <Code>rtk gain</Code> and <Code>booster gain</Code> locally and posts the totals to the Guard API. The <strong>Est. savings</strong> card on the Guard dashboard aggregates this across all team members in real time — no extra setup required.
+          At session end the <Code>booster-stop.py</Code> Stop hook automatically records actual output tokens (input savings come from the Read/Grep intercept hooks). When a developer runs <Code>conduct guard sync</Code>, the CLI reads <Code>rtk gain</Code> and <Code>booster gain</Code> and posts the totals to the Guard API. The <strong>Est. savings</strong> card on the Guard Spend dashboard shows the combined RTK + Booster delta per developer — no extra setup required.
         </p>
         <Pre>{`conduct guard sync\n\n#   Policy refreshed: 19 rule(s)\n#   Hook script updated\n#   Savings reported`}</Pre>
 
