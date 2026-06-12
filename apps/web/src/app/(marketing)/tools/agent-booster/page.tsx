@@ -8,7 +8,7 @@ export default function AgentBoosterPage() {
     <div className="min-h-screen bg-white flex flex-col">
       <Nav />
       <main>
-        <HeroSection />
+        <DiagnosticHero />
         <InspirationSection />
         <ProblemSection />
         <HowItWorksSection />
@@ -117,73 +117,357 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-function HeroSection() {
+/* ─── Diagnostic Hero ──────────────────────────────────────────────────── */
+
+type Tool = "Claude Code" | "Cursor" | "Codex" | "Windsurf" | "Multiple tools" | "Not sure yet"
+type Size = "Small — under 50 files" | "Medium — 50 to 500 files" | "Large — 500+ files"
+type Pain =
+  | "Context window fills up too fast"
+  | "AI tool costs are climbing"
+  | "CI and build logs flood everything"
+  | "Just want to see what's possible"
+
+type Answers = {
+  tool: Tool | null
+  size: Size | null
+  pain: Pain | null
+}
+
+type FollowUpKey =
+  | "What's the catch?"
+  | "Does anything leave my machine?"
+  | "How is this different from just using the model directly?"
+  | "What's RTK?"
+  | "How does verbosity work?"
+  | "Will this slow down my editor?"
+  | "How do I see my savings?"
+  | "Does it need an account?"
+
+const FOLLOW_UP_ANSWERS: Record<FollowUpKey, string> = {
+  "What's the catch?":
+    "Needs Python 3.10+. First index takes 10–30 seconds depending on repo size. Verbosity mode changes your CLAUDE.md — you can turn it off with `booster verbosity off`. Everything else is invisible once installed.",
+  "Does anything leave my machine?":
+    "Nothing. Index lives in `.booster/` in your project root. Stats in `.booster/stats.db`. Hooks wire into your local Claude/Cursor settings. No telemetry, no cloud sync, no account.",
+  "How is this different from just using the model directly?":
+    "The model reads what you give it. Booster changes what you give it — symbol slices instead of full files, relevant functions instead of 800-line modules. The model gets better context, not just less context.",
+  "What's RTK?":
+    "Rust Token Killer — a CLI proxy that filters command output before it hits your context. `rtk git diff` instead of `git diff` — same output, 80% fewer tokens. Works for pytest, docker, npm, grep, everything.",
+  "How does verbosity work?":
+    "`booster verbosity full` injects a conciseness instruction into your CLAUDE.md. The model gives shorter responses — same quality, less ceremony. 30–75% output token reduction. `booster verbosity off` removes it.",
+  "Will this slow down my editor?":
+    "No. The daemon runs as a background process, keeps the index warm. File reads that hit the index are faster than cold reads. Grep calls get intercepted but return in the same time window.",
+  "How do I see my savings?":
+    "Run `booster gain` from your project root after one session. Shows tokens saved, savings rate, top files. Resets nothing — cumulative across all sessions.",
+  "Does it need an account?":
+    "No. Fully local. No signup, no API key, no cloud. If you later want team-wide visibility, that's Conduct Guard — but it's optional and separate.",
+}
+
+const FOLLOW_UPS_BY_PAIN: Record<Pain, FollowUpKey[]> = {
+  "Context window fills up too fast": [
+    "What's the catch?",
+    "Does anything leave my machine?",
+    "How is this different from just using the model directly?",
+  ],
+  "AI tool costs are climbing": [
+    "How does verbosity work?",
+    "How do I see my savings?",
+    "Does it need an account?",
+  ],
+  "CI and build logs flood everything": [
+    "What's RTK?",
+    "Will this slow down my editor?",
+    "Does anything leave my machine?",
+  ],
+  "Just want to see what's possible": [
+    "What's the catch?",
+    "Does it need an account?",
+    "How do I see my savings?",
+  ],
+}
+
+function getDiagnosis(pain: Pain): string {
+  const map: Record<Pain, string> = {
+    "Context window fills up too fast":
+      "You're sending full files when the model needs 40 lines. On a large repo that's 800-line files, 60–80% waste per read. Across a session: easily 1M+ tokens gone before you've done anything useful.",
+    "AI tool costs are climbing":
+      "Two separate leaks: file reads sending way more context than needed, and responses that are longer than they have to be. RTK handles CLI output. Booster handles file reads. Verbosity mode handles responses. Stack all three.",
+    "CI and build logs flood everything":
+      "Raw CI output is brutal — a failed pytest run is 4,000 lines when you need 12. RTK filters to failures only. Same for git diff, docker logs, npm install. 85–99% reduction on every command.",
+    "Just want to see what's possible":
+      "Three tools, one problem: too many tokens. RTK cuts CLI output. Booster cuts file reads. Verbosity cuts responses. None of them require an account. All run locally. Here's where to start:",
+  }
+  return map[pain]
+}
+
+function getSavingsEstimate(size: Size): string {
+  const map: Record<Size, string> = {
+    "Small — under 50 files": "~50–150k tokens/session",
+    "Medium — 50 to 500 files": "~300–600k tokens/session",
+    "Large — 500+ files": "~1M+ tokens/session (we observed 1.2M in 6 days)",
+  }
+  return map[size]
+}
+
+function getInitCommand(tool: Tool): string {
+  const map: Record<Tool, string> = {
+    "Claude Code": "booster init claude",
+    "Cursor": "booster init cursor",
+    "Codex": "booster init codex",
+    "Windsurf": "booster init windsurf",
+    "Multiple tools": "booster init --all",
+    "Not sure yet": "booster init claude",
+  }
+  return map[tool]
+}
+
+function DiagnosticHero() {
+  const [answers, setAnswers] = useState<Answers>({ tool: null, size: null, pain: null })
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
+  const [visible, setVisible] = useState(true)
+  const [pulsing, setPulsing] = useState<string | null>(null)
+  const [thinking, setThinking] = useState(false)
+  const [openFollowUp, setOpenFollowUp] = useState<FollowUpKey | null>(null)
+
+  function transition(next: 1 | 2 | 3 | 4, updateAnswers: () => void) {
+    setVisible(false)
+    setTimeout(() => {
+      updateAnswers()
+      setStep(next)
+      if (next === 4) {
+        setThinking(true)
+        setTimeout(() => {
+          setThinking(false)
+          setVisible(true)
+        }, 300)
+      } else {
+        setVisible(true)
+      }
+    }, 200)
+  }
+
+  function pickTool(tool: Tool) {
+    setPulsing(tool)
+    setTimeout(() => {
+      setPulsing(null)
+      transition(2, () => setAnswers(a => ({ ...a, tool })))
+    }, 150)
+  }
+
+  function pickSize(size: Size) {
+    setPulsing(size)
+    setTimeout(() => {
+      setPulsing(null)
+      transition(3, () => setAnswers(a => ({ ...a, size })))
+    }, 150)
+  }
+
+  function pickPain(pain: Pain) {
+    setPulsing(pain)
+    setTimeout(() => {
+      setPulsing(null)
+      transition(4, () => setAnswers(a => ({ ...a, pain })))
+    }, 150)
+  }
+
+  function reset() {
+    setVisible(false)
+    setTimeout(() => {
+      setAnswers({ tool: null, size: null, pain: null })
+      setStep(1)
+      setThinking(false)
+      setOpenFollowUp(null)
+      setVisible(true)
+    }, 200)
+  }
+
+  const chipBase =
+    "border border-stone-200 rounded-full px-5 py-2.5 text-sm font-medium text-stone-700 hover:border-indigo-400 hover:text-indigo-700 hover:bg-indigo-50 transition-all cursor-pointer select-none"
+  const chipSelected = "border-indigo-500 bg-indigo-50 text-indigo-700"
+
+  const followUpChipBase =
+    "border border-stone-200 rounded-full px-4 py-2 text-xs font-medium text-stone-700 hover:border-indigo-400 hover:text-indigo-700 hover:bg-indigo-50 transition-all cursor-pointer select-none"
+
   return (
     <section className="flex flex-col items-center justify-center px-6 pt-16 pb-24 text-center">
-      {/* Badge */}
-      <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 border border-indigo-100 text-xs font-semibold px-3 py-1.5 rounded-full mb-8 uppercase tracking-widest">
-        Open Source Developer Tool
+      {/* Progress dots */}
+      <div className="flex items-center gap-2 mb-10">
+        {([1, 2, 3] as const).map(dot => (
+          <div
+            key={dot}
+            className={`w-2 h-2 rounded-full transition-all duration-300 ${
+              step > dot
+                ? "bg-indigo-500"
+                : step === dot
+                ? "bg-indigo-400"
+                : "bg-stone-300"
+            }`}
+          />
+        ))}
       </div>
 
-      <h1 className="text-5xl sm:text-6xl font-bold text-stone-900 leading-[1.1] tracking-tight max-w-3xl">
-        Every token you don&apos;t send is a token{" "}
-        <span className="text-indigo-600">you don&apos;t pay for.</span>
-      </h1>
-
-      <p className="mt-6 text-xl text-stone-500 max-w-2xl leading-relaxed">
-        Swarm-style AI development costs up to $2,500/day — not because models are expensive,
-        but because stuck context cycles keep resending the same architecture docs, source files,
-        and conversation history on every call. Agent Booster breaks the cycle.
-      </p>
-
-      <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
-        <div className="flex items-center rounded-xl bg-stone-950 px-5 py-3">
-          <code className="font-mono text-sm text-emerald-400">pip install agent-booster[full]</code>
-          <CopyButton text="pip install 'agent-booster[full]'" />
-        </div>
-        <a
-          href="https://github.com/sseshachala/conductai"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-6 py-3 text-sm font-semibold text-stone-700 hover:border-stone-300 hover:shadow-sm transition-all"
-        >
-          <GitHubIcon />
-          View on GitHub
-        </a>
-      </div>
-      <p className="mt-4 text-xs text-stone-400">
-        Python 3.10+ · MIT licensed · v0.2.25 · runs 100% locally · no code leaves your machine
-      </p>
-
-      <div className="mt-14 w-full max-w-5xl grid md:grid-cols-2 gap-6">
-        <div>
-          <p className="text-xs font-semibold text-indigo-600 uppercase tracking-widest mb-3">Claude Code</p>
-          <div className="rounded-2xl border border-stone-200 bg-stone-50 p-2 shadow-sm">
-            <img
-              src="/tools/agent-booster-demo.gif"
-              alt="Agent Booster with Claude Code: booster init claude wires hooks, then booster gain shows the token and cost savings per run"
-              className="w-full rounded-xl"
-              loading="lazy"
-            />
+      <div
+        className="w-full max-w-2xl transition-opacity duration-200"
+        style={{ opacity: visible ? 1 : 0 }}
+      >
+        {/* Step 1 */}
+        {step === 1 && (
+          <div>
+            <h2 className="text-3xl font-semibold text-stone-900">What are you working with?</h2>
+            <p className="text-stone-400 text-sm mt-2">Pick the AI coding tool you use most.</p>
+            <div className="flex flex-wrap justify-center gap-3 mt-8">
+              {(["Claude Code", "Cursor", "Codex", "Windsurf", "Multiple tools", "Not sure yet"] as Tool[]).map(
+                chip => (
+                  <button
+                    key={chip}
+                    onClick={() => pickTool(chip)}
+                    className={`${chipBase} ${pulsing === chip ? "scale-95" : ""} ${
+                      answers.tool === chip ? chipSelected : ""
+                    }`}
+                  >
+                    {chip}
+                  </button>
+                )
+              )}
+            </div>
           </div>
-          <p className="mt-3 text-xs text-stone-400">
-            <code className="font-mono">booster init claude</code> → <code className="font-mono">booster gain</code> — less sent, less spent, same result.
-          </p>
-        </div>
-        <div>
-          <p className="text-xs font-semibold text-emerald-600 uppercase tracking-widest mb-3">OpenAI Codex</p>
-          <div className="rounded-2xl border border-stone-200 bg-stone-50 p-2 shadow-sm">
-            <img
-              src="/tools/agent-booster-codex-demo.gif"
-              alt="Agent Booster with OpenAI Codex: booster init codex wires the MCP server and AGENTS.md, booster start indexes the project, and booster gain shows token savings"
-              className="w-full rounded-xl"
-              loading="lazy"
-            />
+        )}
+
+        {/* Step 2 */}
+        {step === 2 && (
+          <div>
+            <h2 className="text-3xl font-semibold text-stone-900">How big is your codebase?</h2>
+            <p className="text-stone-400 text-sm mt-2">Rough estimate is fine.</p>
+            <div className="flex flex-wrap justify-center gap-3 mt-8">
+              {(["Small — under 50 files", "Medium — 50 to 500 files", "Large — 500+ files"] as Size[]).map(
+                chip => (
+                  <button
+                    key={chip}
+                    onClick={() => pickSize(chip)}
+                    className={`${chipBase} ${pulsing === chip ? "scale-95" : ""} ${
+                      answers.size === chip ? chipSelected : ""
+                    }`}
+                  >
+                    {chip}
+                  </button>
+                )
+              )}
+            </div>
           </div>
-          <p className="mt-3 text-xs text-stone-400">
-            <code className="font-mono">booster init codex</code> → <code className="font-mono">booster start</code> → <code className="font-mono">booster gain</code>.
-          </p>
-        </div>
+        )}
+
+        {/* Step 3 */}
+        {step === 3 && (
+          <div>
+            <h2 className="text-3xl font-semibold text-stone-900">What&apos;s hurting most?</h2>
+            <p className="text-stone-400 text-sm mt-2">Pick the one that stings the most right now.</p>
+            <div className="flex flex-wrap justify-center gap-3 mt-8">
+              {([
+                "Context window fills up too fast",
+                "AI tool costs are climbing",
+                "CI and build logs flood everything",
+                "Just want to see what's possible",
+              ] as Pain[]).map(chip => (
+                <button
+                  key={chip}
+                  onClick={() => pickPain(chip)}
+                  className={`${chipBase} ${pulsing === chip ? "scale-95" : ""} ${
+                    answers.pain === chip ? chipSelected : ""
+                  }`}
+                >
+                  {chip}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Step 4 — Result */}
+        {step === 4 && (
+          <div>
+            <div className="bg-stone-950 rounded-2xl p-8 max-w-2xl mx-auto mt-10 text-left">
+              {thinking ? (
+                <span className="font-mono text-stone-400 text-sm animate-pulse">_</span>
+              ) : answers.pain && answers.size && answers.tool ? (
+                <>
+                  {/* Diagnosis sentence */}
+                  <p className="text-white text-base leading-relaxed mb-6">
+                    {getDiagnosis(answers.pain)}
+                  </p>
+
+                  {/* Tool breakdown */}
+                  <div className="space-y-1 mb-6">
+                    <div className="flex items-baseline gap-3 font-mono text-sm">
+                      <span className="text-stone-400 w-20 shrink-0">RTK</span>
+                      <span className="text-stone-500">→ cuts CLI output (git, test, build)</span>
+                      <span className="text-emerald-400 ml-auto">85–99%</span>
+                    </div>
+                    <div className="flex items-baseline gap-3 font-mono text-sm">
+                      <span className="text-stone-400 w-20 shrink-0">Booster</span>
+                      <span className="text-stone-500">→ cuts file read context</span>
+                      <span className="text-emerald-400 ml-auto">50–77%</span>
+                    </div>
+                    <div className="flex items-baseline gap-3 font-mono text-sm">
+                      <span className="text-stone-400 w-20 shrink-0">Verbosity</span>
+                      <span className="text-stone-500">→ cuts response length</span>
+                      <span className="text-emerald-400 ml-auto">30–75%</span>
+                    </div>
+                  </div>
+
+                  {/* Install commands */}
+                  <div className="space-y-1 mb-4">
+                    <p className="font-mono text-emerald-400 text-sm">$ pip install agent-booster</p>
+                    <p className="font-mono text-emerald-400 text-sm">$ {getInitCommand(answers.tool)}</p>
+                    <p className="font-mono text-emerald-400 text-sm">$ booster verbosity full</p>
+                  </div>
+
+                  {/* Savings estimate */}
+                  <p className="font-mono text-amber-400 text-sm mt-4">
+                    Est. savings on your setup: {getSavingsEstimate(answers.size)}
+                  </p>
+                </>
+              ) : null}
+            </div>
+
+            {/* Follow-up chips */}
+            {!thinking && answers.pain && (
+              <div className="mt-8">
+                {openFollowUp ? (
+                  <div className="max-w-2xl mx-auto text-left">
+                    <p className="text-stone-700 text-sm leading-relaxed">{FOLLOW_UP_ANSWERS[openFollowUp]}</p>
+                    <button
+                      onClick={() => setOpenFollowUp(null)}
+                      className="mt-4 text-stone-400 text-xs underline cursor-pointer hover:text-stone-600 transition-colors"
+                    >
+                      back
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap justify-center gap-3">
+                    {FOLLOW_UPS_BY_PAIN[answers.pain].map(chip => (
+                      <button
+                        key={chip}
+                        onClick={() => setOpenFollowUp(chip)}
+                        className={followUpChipBase}
+                      >
+                        {chip}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Start over */}
+            {!thinking && (
+              <button
+                onClick={reset}
+                className="mt-8 text-stone-400 text-xs underline cursor-pointer hover:text-stone-600 transition-colors"
+              >
+                Start over
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </section>
   )
