@@ -107,7 +107,7 @@ class Settings(BaseSettings):
 settings = Settings()
 
 _DEFAULT_ENCRYPTION_KEY = "dev-only-32-byte-key-change-this!"
-if settings.environment != "local" and settings.encryption_key == _DEFAULT_ENCRYPTION_KEY:
+if settings.environment not in ("local", "development") and settings.encryption_key == _DEFAULT_ENCRYPTION_KEY:
     raise RuntimeError(
         "ENCRYPTION_KEY must be set in non-local environments. Refusing to start."
     )
