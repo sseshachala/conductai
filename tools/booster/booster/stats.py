@@ -127,11 +127,13 @@ class StatsTracker:
         )
         total_actual: int = cur.fetchone()[0] or 0
 
-        # Baseline = what tokens would have cost without verbosity (stored at insert time)
+        # Savings from sessions where we have both actual and baseline (verbosity was active)
         cur.execute(
-            "SELECT SUM(output_tokens_estimated) FROM output_sessions WHERE is_estimated = 0"
+            """SELECT SUM(output_tokens_estimated - output_tokens_actual)
+               FROM output_sessions
+               WHERE is_estimated = 0 AND output_tokens_estimated IS NOT NULL"""
         )
-        total_baseline: int = cur.fetchone()[0] or 0
+        total_real_saved: int = max(0, cur.fetchone()[0] or 0)
 
         cur.execute(
             "SELECT SUM(output_tokens_estimated) FROM output_sessions WHERE is_estimated = 1"
@@ -152,7 +154,7 @@ class StatsTracker:
         return {
             "sessions_count": sessions_count,
             "total_actual": total_actual,
-            "total_baseline": total_baseline,
+            "total_real_saved": total_real_saved,
             "total_estimated": total_estimated,
             "savings_pct_by_mode": savings_pct_by_mode,
         }
