@@ -1042,27 +1042,29 @@ def cmd_gain(fmt: str, team: bool) -> None:
 
     if has_output_data:
         _VERBOSITY_SAVINGS_RATE = {"lite": 0.30, "full": 0.55, "ultra": 0.75}
-        mode_label = active_verbosity or "unknown"
-        rate = _VERBOSITY_SAVINGS_RATE.get(mode_label, 0.0)
+        mode_label = active_verbosity or "none"
 
         if os_data["sessions_count"] > 0:
-            # Real savings = baseline (without verbosity) - actual (with verbosity)
-            real_saved = (os_data["total_baseline"] or 0) - (os_data["total_actual"] or 0)
-            # Estimated savings for older sessions that have no actual data
+            # Savings from sessions where actual tokens were captured by stop hook
+            real_saved = os_data["total_real_saved"] or 0
+            # Savings from legacy estimated-only sessions (pre-stop-hook)
             est_base = os_data["total_estimated"] or 0
+            rate = _VERBOSITY_SAVINGS_RATE.get(mode_label, 0.0)
             est_saved = int(est_base * rate) if est_base and rate else 0
-            total_output_saved = max(0, real_saved + est_saved)
-            has_real = (os_data["total_baseline"] or 0) > 0
+            total_output_saved = real_saved + est_saved
+            has_real = real_saved > 0
             estimated_note = "" if has_real else "  (estimated)"
+            display_rate = int(rate * 100) if rate else 0
         else:
             total_output_saved = 0
             estimated_note = "  (no sessions yet)"
+            display_rate = 0
 
         click.echo()
         click.echo(f"Output savings (verbosity: {mode_label}):")
         click.echo(f"  Sessions tracked:   {os_data['sessions_count']:,}")
         click.echo(f"  Tokens saved:       ~{total_output_saved:,}{estimated_note}")
-        click.echo(f"  Savings rate:       ~{int(rate * 100)}%")
+        click.echo(f"  Savings rate:       ~{display_rate}%")
 
         combined = s["saved_tokens"] + total_output_saved
         click.echo()
