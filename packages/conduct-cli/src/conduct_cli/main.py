@@ -2372,12 +2372,30 @@ def cmd_run(args):
             print(f"  {GRAY}{k}={v}{RESET}")
     print()
 
+    # Preflight: estimate turns + show files likely to be modified
+    try:
+        pf = api.req("POST", f"{server}/workflows/{workflow_id}/preflight", json_h, {
+            "issue_title": initial_state.get("title", ""),
+            "issue_body": initial_state.get("body", ""),
+        })
+        suggested = pf.get("suggested_max_turns", 20)
+        files = pf.get("total_files", [])
+        print(f"  {BOLD}Estimated turns:{RESET} {suggested}")
+        if files:
+            print(f"  {BOLD}Files likely to be modified:{RESET} {', '.join(files)}")
+        print()
+    except Exception:
+        suggested = 20
+
     # Call the test-trigger endpoint so the YAML's built-in test_trigger.payload
     # (PR fixture, issue fixture, etc.) is loaded and the configured repo is
     # injected — instead of running with an empty trigger context.
     body: dict = {**initial_state}
+    # Use preflight suggestion unless user explicitly passed --max-turns
     if getattr(args, "max_turns", None):
         body["__max_turns"] = args.max_turns
+    elif suggested > 20:
+        body["__max_turns"] = suggested
     run = api.req("POST", f"{server}/workflows/{workflow_id}/trigger", json_h, body)
     _stream_run(server, workflow_id, run["id"], workspace_id, token, api_key)
 
