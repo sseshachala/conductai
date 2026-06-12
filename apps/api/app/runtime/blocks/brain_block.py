@@ -278,6 +278,20 @@ def _execute_brain(
 
     pricing_rates, pricing_version = get_model_rates(provider, model_id, pricing_snapshot)
 
+    def _record_turns(db, run_id: str | None, actual: int, exhausted: bool) -> None:
+        """Persist actual_turns + budget_exhausted on the Run row for future estimation."""
+        if not db or not run_id:
+            return
+        try:
+            from app.models.run import Run as _Run
+            db.query(_Run).filter(_Run.id == run_id).update(
+                {"actual_turns": actual, "budget_exhausted": exhausted},
+                synchronize_session=False,
+            )
+            db.commit()
+        except Exception:
+            pass  # never block the run on telemetry writes
+
     if is_agentic:
         # Bounded agentic loop — deterministic retry boundaries from run state
         messages: list[dict] = [{"role": "user", "content": user_message}]
@@ -411,6 +425,7 @@ def _execute_brain(
                             result.update(_extracted)
                     except Exception:
                         pass
+                _record_turns(db, run_id, turns, False)
                 _close_session()
                 return result
 
@@ -493,6 +508,7 @@ def _execute_brain(
                 "pricing_rates": pricing_rates,
                 "next_action": "Reduce scope or increase max_turns before retrying.",
             })
+        _record_turns(db, run_id, max_turns, True)
         _close_session()
         raise RuntimeError(
             f"Turn budget exhausted: agent did not reach end_turn after {max_turns} turns "

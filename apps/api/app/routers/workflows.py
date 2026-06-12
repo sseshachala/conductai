@@ -808,6 +808,61 @@ def _resolve_preflight_key(workspace_id: str | None, db: Session | None) -> str 
     return settings.anthropic_api_key
 
 
+def _task_type_floor(description: str) -> int:
+    """
+    Static floor based on task keywords in brain block description.
+    Avoids assigning 20 turns to an inherently complex task when there's no history.
+    """
+    desc = description.lower()
+    if any(k in desc for k in ("implement", "fix", "refactor", "rewrite", "clone", "fork", "patch", "migrate")):
+        return 50
+    if any(k in desc for k in ("create", "write", "build", "generate", "add feature", "develop")):
+        return 40
+    if any(k in desc for k in ("review", "analyze", "audit", "test", "check", "investigate")):
+        return 30
+    return 20
+
+
+def _historical_floor(workflow_id: str | None, db: Session | None) -> int:
+    """
+    Query the last 10 completed runs of this workflow.
+    Returns p75 of actual_turns * 1.2, with doubling if the last run was exhausted.
+    Falls back to 0 (no opinion) if no history exists.
+    """
+    if not workflow_id or not db:
+        return 0
+    try:
+        from app.models.run import Run as _Run
+        from app.models.workflow_version import WorkflowVersion as _WV
+        rows = (
+            db.query(_Run.actual_turns, _Run.budget_exhausted)
+            .join(_WV, _Run.workflow_version_id == _WV.id)
+            .filter(
+                _WV.workflow_id == workflow_id,
+                _Run.actual_turns.isnot(None),
+                _Run.status.in_(["succeeded", "failed"]),
+            )
+            .order_by(_Run.created_at.desc())
+            .limit(10)
+            .all()
+        )
+        if not rows:
+            return 0
+
+        turns_list = sorted(r.actual_turns for r in rows)
+        p75_idx = int(len(turns_list) * 0.75)
+        p75 = turns_list[min(p75_idx, len(turns_list) - 1)]
+        estimate = int(p75 * 1.2)
+
+        # If the most recent run hit the wall, double it
+        if rows[0].budget_exhausted:
+            estimate = max(estimate, rows[0].actual_turns * 2)
+
+        return max(estimate, 20)
+    except Exception:
+        return 0
+
+
 def _estimate_turns_for_graph(
     graph: dict,
     issue_title: str = "",
@@ -815,14 +870,17 @@ def _estimate_turns_for_graph(
     min_turns: int = 0,
     workspace_id: str | None = None,
     db: Session | None = None,
+    workflow_id: str | None = None,
 ) -> dict:
     """
     Core turn-budget estimation logic — shared between the preflight HTTP endpoint
     and server-side webhook queueing.
 
-    Makes one cheap Haiku call per agentic brain block and returns:
-      { suggested_max_turns, blocks, total_files }
-    Falls back to defaults on any error so callers are never blocked.
+    Priority (highest wins):
+      1. Historical p75 * 1.2  (or 2× if last run exhausted)
+      2. Haiku LLM estimate per brain block
+      3. Task-type floor from description keywords
+      4. min_turns from YAML / workflow settings
     """
     import anthropic, json, re
 
@@ -836,6 +894,9 @@ def _estimate_turns_for_graph(
     if not brain_blocks:
         return {"suggested_max_turns": 20, "blocks": [], "total_files": []}
 
+    # Signal 1: history (most accurate for repeat runs)
+    history_floor = _historical_floor(workflow_id, db)
+
     api_key = _resolve_preflight_key(workspace_id, db)
     client = anthropic.Anthropic(api_key=api_key)
     block_estimates = []
@@ -846,13 +907,17 @@ def _estimate_turns_for_graph(
         label = data.get("label", block.get("id", "?"))
         description = data.get("description", "")
 
+        # Signal 3: task-type floor from description
+        kw_floor = _task_type_floor(description)
+
         prompt = (
             f"You are estimating work for an AI coding agent.\n\n"
             f"Issue title: {issue_title}\n"
             f"Issue body: {issue_body}\n\n"
             f"Brain block task:\n{description}\n\n"
-            f"Estimate: how many tool calls (shell commands, file reads, file writes) "
-            f"will this block need to complete this task?\n"
+            f"Estimate: how many tool calls (shell commands, file reads, file writes, "
+            f"git operations) will this block need to complete this task? "
+            f"Be generous — it is better to over-estimate than under-estimate.\n"
             f"Respond with JSON only, no explanation:\n"
             f'{{ "files": ["path/to/file", ...], "estimated_turns": <number>, "reasoning": "<one line>" }}'
         )
@@ -866,11 +931,14 @@ def _estimate_turns_for_graph(
             text = resp.content[0].text.strip()
             m = re.search(r"\{.*\}", text, re.DOTALL)
             parsed = json.loads(m.group()) if m else {}
-            est = int(parsed.get("estimated_turns", 20))
+            est = int(parsed.get("estimated_turns", kw_floor))
             files = parsed.get("files", [])
             reasoning = parsed.get("reasoning", "")
         except Exception:
-            est, files, reasoning = 20, [], ""
+            est, files, reasoning = kw_floor, [], ""
+
+        # Take the max of LLM estimate and keyword floor
+        est = max(est, kw_floor)
 
         block_estimates.append({
             "block_id": block.get("id"),
@@ -881,8 +949,8 @@ def _estimate_turns_for_graph(
         })
         all_files.extend(files)
 
-    total = sum(b["estimated_turns"] for b in block_estimates)
-    suggested = max(total + 5, 20, min_turns)
+    llm_total = sum(b["estimated_turns"] for b in block_estimates)
+    suggested = max(llm_total + 5, history_floor, min_turns, 20)
 
     return {
         "suggested_max_turns": suggested,
@@ -924,7 +992,7 @@ def preflight_workflow(
         except Exception:
             pass
     min_turns = max(yaml_min, workflow.default_max_turns or 0)
-    result = _estimate_turns_for_graph(graph, body.issue_title, body.issue_body, min_turns, workspace_id, db)
+    result = _estimate_turns_for_graph(graph, body.issue_title, body.issue_body, min_turns, workspace_id, db, workflow_id=str(workflow_id))
     result["min_turns"] = min_turns
     return result
 
@@ -1657,7 +1725,7 @@ def test_trigger(
             except Exception:
                 pass
         min_turns = max(yaml_min, workflow.default_max_turns or 0)
-        pf = _estimate_turns_for_graph(graph, payload.get("title", ""), payload.get("body", ""), min_turns, workspace_id, db)
+        pf = _estimate_turns_for_graph(graph, payload.get("title", ""), payload.get("body", ""), min_turns, workspace_id, db, workflow_id=str(workflow.id))
         suggested_turns = pf["suggested_max_turns"]
     except Exception:
         suggested_turns = max(20, workflow.default_max_turns or 0)
