@@ -15,9 +15,12 @@ import re
 import socket
 import subprocess
 import time
+import functools
 import structlog
+import yaml
 from collections import defaultdict, deque
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from app.core.config import settings
@@ -32,6 +35,12 @@ from app.models.run import Run, RunEvent
 from app.models.workflow import WorkflowVersion
 
 log = structlog.get_logger(__name__)
+
+@functools.lru_cache(maxsize=1)
+def _agent_config() -> dict:
+    path = Path(__file__).parent / "agent_config.yaml"
+    with open(path) as f:
+        return yaml.safe_load(f)
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -1073,10 +1082,18 @@ def _dispatch_single_block(
                 _injected_session = sandbox_sessions[_auto_key]
             else:
                 _complexity = (state.get("plan_fix") or {}).get("complexity", "small")
+
+                # Inject complexity-derived turn budget — overrides YAML max_turns
+                _budgets = _agent_config().get("turn_budgets", {})
+                _derived_turns = _budgets.get(_complexity) or _budgets.get("default") or 25
+                block["data"] = {**block.get("data", {}), "max_turns": _derived_turns}
+
                 if _complexity in ("medium", "large"):
                     try:
                         from app.runtime.blocks.sandbox_block import _detect_provider
-                        _provider = _detect_provider(credentials)
+                        # Honour explicit UI selection first, fall back to credential detection
+                        _preferred = (block.get("data", {}).get("runs_on") or {}).get("provider") or ""
+                        _provider = _preferred if _preferred in ("modal", "e2b") else _detect_provider(credentials)
                         if _provider:
                             from app.runtime.sandbox_session import create_session as _cs
                             _auto_session = _cs(None, credentials, runs_on={"provider": _provider})

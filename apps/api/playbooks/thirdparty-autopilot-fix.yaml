@@ -77,7 +77,7 @@ blocks:
     mode: agentic
     sandbox: auto
     model: "{{inputs.model}}"
-    max_turns: 20
+    max_turns: 25  # floor — executor overrides with agent_config.yaml turn_budgets[plan_fix.complexity]
     label: Implement fix
     description: |
       You are implementing a targeted code fix. The plan is already done.
