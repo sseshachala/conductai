@@ -117,7 +117,7 @@ class OutputConfig(BaseModel):
 # don't have to context-switch between subclasses while authoring YAML.
 # ---------------------------------------------------------------------------
 class Block(BaseModel):
-    type: Literal["tool", "brain", "logic", "approval", "memory", "output", "mcp", "sandbox", "guard"]
+    type: Literal["tool", "brain", "logic", "approval", "memory", "output", "mcp", "sandbox", "guard", "for_each"]
     label: str | None = None
     description: str | None = None
 
