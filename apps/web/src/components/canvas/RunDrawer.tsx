@@ -29,6 +29,7 @@ interface RunDrawerProps {
   runId: string
   getToken?: (() => Promise<string | null>) | null
   onBlockStatus: (blockId: string, status: BlockStatus) => void
+  onBlockTurns?: (blockId: string, turn: number) => void
   onClose: () => void
   onRunDone?: () => void
 }
@@ -53,7 +54,7 @@ function statusColor(status: BlockStatus) {
   return "border-l-stone-200 bg-stone-50/50"
 }
 
-export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, onClose, onRunDone }: RunDrawerProps) {
+export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, onBlockTurns, onClose, onRunDone }: RunDrawerProps) {
   const [rows, setRows] = useState<BlockRow[]>([])
   const [done, setDone] = useState(false)
   const [runStatus, setRunStatus] = useState<"running" | "succeeded" | "failed" | "cancelled">("running")
@@ -187,6 +188,7 @@ export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, 
             toolCalls: [...(rowMapRef.current[block_id].toolCalls ?? []), call],
           }
           setRows(Object.values(rowMapRef.current))
+          onBlockTurns?.(block_id, payload.turn as number)
         }
 
         if (kind === "run_completed")  { setRunStatus("succeeded");  onRunDone?.() }

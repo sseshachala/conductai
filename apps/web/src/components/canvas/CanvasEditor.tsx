@@ -870,6 +870,12 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     ))
   }, [setNodes])
 
+  const handleBlockTurns = useCallback((blockId: string, turn: number) => {
+    setNodes(nds => nds.map(n =>
+      n.id === blockId ? { ...n, data: { ...n.data, liveTurn: turn } } : n
+    ))
+  }, [setNodes])
+
   const handleDrawerHide = useCallback(() => {
     setDrawerVisible(false)
   }, [])
@@ -879,7 +885,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     setActiveRunId(null)
     setDrawerVisible(false)
     setRunning("idle")
-    setNodes(nds => nds.map(n => ({ ...n, data: { ...n.data, runStatus: undefined } })))
+    setNodes(nds => nds.map(n => ({ ...n, data: { ...n.data, runStatus: undefined, liveTurn: undefined } })))
   }, [setNodes, STORAGE_KEY])
 
   const handleBlockChange = useCallback(
@@ -1179,6 +1185,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                   runId={activeRunId}
                   getToken={getToken}
                   onBlockStatus={handleBlockStatus}
+                  onBlockTurns={handleBlockTurns}
                   onClose={handleDrawerHide}
                   onRunDone={() => { localStorage.removeItem(STORAGE_KEY); setRunning("idle"); setActiveRunId(null) }}
                 />
