@@ -1,5 +1,135 @@
 import { type BlockType } from "./block-types"
 
+// ── Trigger type config map ───────────────────────────────────────────────────
+
+export interface TriggerTypeConfig {
+  label: string
+  fields: ConfigField[]
+}
+
+// Shared field definitions reused across trigger types
+const TRIGGER_REPO_FIELD: ConfigField = {
+  key: "config.repo",
+  label: "Repository",
+  type: "text",
+  required: true,
+  placeholder: "owner/repo",
+  hint: "GitHub repository that fires this trigger",
+}
+const TRIGGER_BRANCH_FIELD: ConfigField = {
+  key: "config.branch_filter",
+  label: "Branch filter",
+  type: "text",
+  required: false,
+  placeholder: "main",
+  hint: "Only fire when the branch matches (leave blank for all branches)",
+}
+const TRIGGER_BRANCH_PATTERN_FIELD: ConfigField = {
+  key: "config.branch_pattern",
+  label: "Branch pattern",
+  type: "text",
+  required: false,
+  placeholder: "main",
+  hint: "Glob pattern — e.g. release/* (leave blank for all branches)",
+}
+const TRIGGER_WORKFLOW_NAME_FIELD: ConfigField = {
+  key: "config.workflow_name",
+  label: "Workflow name",
+  type: "text",
+  required: false,
+  placeholder: "CI",
+  hint: "GitHub Actions workflow file name or display name",
+}
+const TRIGGER_PROJECT_FIELD: ConfigField = {
+  key: "config.project_name",
+  label: "Project name",
+  type: "text",
+  required: false,
+  placeholder: "my-vercel-project",
+  hint: "Vercel project name (leave blank for any project)",
+}
+const TRIGGER_CRON_FIELD: ConfigField = {
+  key: "config.cron",
+  label: "Cron expression",
+  type: "text",
+  required: true,
+  placeholder: "0 9 * * 1-5",
+  hint: "Standard cron — e.g. 0 9 * * 1-5 for weekdays at 09:00 UTC",
+}
+
+export const TRIGGER_CONFIG: Record<string, TriggerTypeConfig> = {
+  manual: {
+    label: "Manual run",
+    fields: [],  // manual inputs rendered separately as badges
+  },
+  github_issue_labeled: {
+    label: "GitHub — issue labeled",
+    fields: [
+      TRIGGER_REPO_FIELD,
+      {
+        key: "config.label",
+        label: "Label",
+        type: "text",
+        required: true,
+        placeholder: "autopilot-ready",
+        hint: "GitHub issue label that fires this trigger",
+      },
+    ],
+  },
+  github_issue_opened: {
+    label: "GitHub — issue opened",
+    fields: [TRIGGER_REPO_FIELD],
+  },
+  github_pr_opened: {
+    label: "GitHub — PR opened",
+    fields: [TRIGGER_REPO_FIELD, TRIGGER_BRANCH_FIELD],
+  },
+  github_pr_updated: {
+    label: "GitHub — PR updated",
+    fields: [TRIGGER_REPO_FIELD, TRIGGER_BRANCH_FIELD],
+  },
+  github_pr_merged: {
+    label: "GitHub — PR merged",
+    fields: [TRIGGER_REPO_FIELD, TRIGGER_BRANCH_FIELD],
+  },
+  github_pr_review_requested: {
+    label: "GitHub — PR review requested",
+    fields: [TRIGGER_REPO_FIELD],
+  },
+  github_push: {
+    label: "GitHub — push to branch",
+    fields: [TRIGGER_REPO_FIELD, TRIGGER_BRANCH_PATTERN_FIELD],
+  },
+  github_issue_comment: {
+    label: "GitHub — issue commented",
+    fields: [TRIGGER_REPO_FIELD],
+  },
+  github_workflow_run: {
+    label: "GitHub — CI run completed",
+    fields: [TRIGGER_REPO_FIELD, TRIGGER_WORKFLOW_NAME_FIELD],
+  },
+  "deployment.succeeded": {
+    label: "Vercel — deployment succeeded",
+    fields: [TRIGGER_PROJECT_FIELD],
+  },
+  "deployment.ready": {
+    label: "Vercel — deployment ready",
+    fields: [TRIGGER_PROJECT_FIELD],
+  },
+  "deployment.failed": {
+    label: "Vercel — deployment failed",
+    fields: [TRIGGER_PROJECT_FIELD],
+  },
+  webhook: {
+    label: "Inbound webhook",
+    fields: [],  // webhook URL rendered separately
+  },
+  schedule: {
+    label: "Schedule",
+    fields: [TRIGGER_CRON_FIELD],
+  },
+}
+
 export interface ConfigField {
   key: string          // dot-path into block.data, e.g. "config.params.owner"
   label: string
