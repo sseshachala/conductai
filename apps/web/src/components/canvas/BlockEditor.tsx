@@ -502,6 +502,47 @@ function TagInput({
   )
 }
 
+// ── Template ref chip — shown when a field's entire value is {{...}} ──────────
+
+function TemplateRefChip({
+  value,
+  onEdit,
+  onClear,
+}: {
+  value: string
+  onEdit: () => void
+  onClear: () => void
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="flex-1 flex items-center gap-1.5 px-2.5 py-1.5 bg-stone-50 border border-stone-200 rounded-lg min-w-0">
+        <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-mono font-medium bg-violet-100 text-violet-700 border border-violet-200 min-w-0 max-w-full truncate">
+          {value}
+        </span>
+        <button
+          type="button"
+          onClick={onClear}
+          title="Clear"
+          className="shrink-0 text-stone-300 hover:text-stone-500 transition-colors leading-none"
+          style={{ fontSize: 14 }}
+        >
+          ×
+        </button>
+      </div>
+      <button
+        type="button"
+        onClick={onEdit}
+        title="Edit expression"
+        className="shrink-0 flex items-center justify-center w-7 h-7 rounded-lg border border-stone-200 bg-white text-stone-400 hover:text-violet-600 hover:border-violet-300 transition-colors"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+          <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+        </svg>
+      </button>
+    </div>
+  )
+}
+
 // ── Config field renderer ─────────────────────────────────────────────────────
 
 function FieldInput({
@@ -516,6 +557,11 @@ function FieldInput({
   const strVal = value === undefined || value === null ? (field.defaultValue !== undefined ? String(field.defaultValue) : "") : String(value)
   const boolVal = value === undefined ? (field.defaultValue as boolean ?? false) : Boolean(value)
   const [visible, setVisible] = React.useState(false)
+  const [editingRef, setEditingRef] = React.useState(false)
+  const editInputRef = React.useRef<HTMLInputElement | HTMLTextAreaElement>(null)
+
+  // A single {{...}} expression that fills the entire field value
+  const isTemplateRef = (v: string) => /^\{\{[^{}]+\}\}$/.test(v.trim())
 
   const base = "w-full border border-stone-200 rounded-lg px-2.5 py-1.5 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-200 bg-white"
 
@@ -596,13 +642,26 @@ function FieldInput({
   }
 
   if (field.type === "textarea") {
+    // Chip mode when entire value is a single {{...}} ref
+    if (!field.readOnly && isTemplateRef(strVal) && !editingRef) {
+      return (
+        <TemplateRefChip
+          value={strVal}
+          onEdit={() => { setEditingRef(true); setTimeout(() => editInputRef.current?.focus(), 0) }}
+          onClear={() => onChange("")}
+        />
+      )
+    }
     return (
       <textarea
+        ref={editInputRef as React.RefObject<HTMLTextAreaElement>}
         value={strVal}
         onChange={e => onChange(e.target.value)}
+        onBlur={() => { if (isTemplateRef(strVal)) setEditingRef(false) }}
         rows={2}
         placeholder={field.placeholder}
         className={cn(base, "resize-none")}
+        autoFocus={editingRef}
       />
     )
   }
@@ -619,13 +678,27 @@ function FieldInput({
     )
   }
 
+  // Default: text — chip mode when entire value is a single {{...}} ref
+  if (!field.readOnly && isTemplateRef(strVal) && !editingRef) {
+    return (
+      <TemplateRefChip
+        value={strVal}
+        onEdit={() => { setEditingRef(true); setTimeout(() => editInputRef.current?.focus(), 0) }}
+        onClear={() => onChange("")}
+      />
+    )
+  }
+
   return (
     <input
+      ref={editInputRef as React.RefObject<HTMLInputElement>}
       type="text"
       value={strVal}
       onChange={e => onChange(e.target.value)}
+      onBlur={() => { if (isTemplateRef(strVal)) setEditingRef(false) }}
       placeholder={field.placeholder}
       className={base}
+      autoFocus={editingRef}
     />
   )
 }
