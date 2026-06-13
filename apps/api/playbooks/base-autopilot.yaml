@@ -88,4 +88,4 @@ blocks:
         large  — 5+ files, architectural change
 
       Your response must be ONLY a single line of compact JSON — no prose before or after, no markdown, no newlines inside the JSON:
-      {"files":["relative/path/to/file.py"],"functions":["FunctionOrClassName"],"subsystem":"short description","approach":"one sentence: what to change and how","complexity":"small|medium|large","grep_pattern":"exact string to grep for when no file path is known"}
+      {"files":["relative/path/to/file.py"],"functions":["FunctionOrClassName"],"subsystem":"short description","approach":"one sentence: what to change and how","complexity":"small|medium|large","grep_pattern":"simple keyword only — package name, function name, or plain string (NO version specifiers, operators, or special chars — e.g. 'urllib3' not 'urllib3>=1.2.3')"}
