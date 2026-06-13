@@ -322,6 +322,37 @@ def add_repo_secret(token: str, owner: str, repo: str, secret_name: str, secret_
         return {"secret": secret_name, "repo": f"{owner}/{repo}", "set": False, "reason": "PyNaCl not installed on server"}
 
 
+def search_code(token: str, query: str, per_page: int = 10) -> dict:
+    """Search code across GitHub repos. Returns file paths matching the query."""
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    r = httpx.get(
+        "https://api.github.com/search/code",
+        headers=headers,
+        params={"q": query, "per_page": min(per_page, 30)},
+        timeout=15,
+    )
+    r.raise_for_status()
+    data = r.json()
+    items = [
+        {
+            "path": item["path"],
+            "repo": item["repository"]["full_name"],
+            "url": item["html_url"],
+            "sha": item["sha"],
+        }
+        for item in data.get("items", [])
+    ]
+    return {
+        "total_count": data.get("total_count", 0),
+        "items": items,
+        "paths": [i["path"] for i in items],
+    }
+
+
 TOOL_MAP = {
     "fetch_issue": fetch_issue,
     "list_issues": list_issues,
@@ -334,6 +365,7 @@ TOOL_MAP = {
     "read_file": read_file,
     "fork_repo": fork_repo,
     "update_file": update_file,
+    "search_code": search_code,
 }
 
 
