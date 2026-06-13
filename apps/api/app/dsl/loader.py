@@ -590,7 +590,7 @@ def _block_to_node(block_id: str, block: Block, col: int) -> dict[str, Any]:
             data["description"] = block.system
         if block.prompt:
             data["prompt"] = block.prompt
-        if block.allowed_tools:
+        if block.allowed_tools is not None:
             config["allowed_tools"] = block.allowed_tools
         if block.runs_on:
             config["remote_host"] = {
