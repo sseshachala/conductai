@@ -154,7 +154,7 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
 
     // Load workflows in the background — agents populate without blocking the page
     const wfRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, {
-      headers: { ...headers, ...(wsId ? { "X-Workspace-ID": wsId } : {}) },
+      headers: { ...headers, ...(wsId ? { "X-Workspace-Id": wsId } : {}) },
     })
     if (wfRes.ok) setWorkflows(await wfRes.json())
   }
@@ -418,7 +418,7 @@ function ProjectListSection({
 
         <div style={{ display: "flex", gap: 6, alignItems: "center" }} onClick={e => e.stopPropagation()}>
           <Link
-            href={`/workflows/new?project=${project.id}`}
+            href={`/workflows/new?project_id=${project.id}`}
             className="btn btn-ghost btn-sm"
             style={{ fontSize: 11 }}
             onClick={e => e.stopPropagation()}
@@ -693,7 +693,7 @@ function ProjectGridCard({
         {agents.length === 0 ? (
           <div style={{ padding: "12px 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span style={{ fontSize: 12, color: "var(--text-muted)" }}>No agents yet</span>
-            <Link href={`/workflows/new?project=${project.id}`} className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={e => e.stopPropagation()}>
+            <Link href={`/workflows/new?project_id=${project.id}`} className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={e => e.stopPropagation()}>
               + New agent
             </Link>
           </div>
