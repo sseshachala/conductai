@@ -174,23 +174,40 @@ const GITHUB_ACTION_FIELDS: Record<string, ConfigField[]> = {
     { key: "config.params.owner", label: "Owner", type: "text", required: true, placeholder: "my-org" },
     { key: "config.params.repo",  label: "Repo",  type: "text", required: true, placeholder: "my-repo" },
   ],
+  fork_repo: [
+    { key: "config.params.owner", label: "Owner", type: "text", required: true, placeholder: "my-org" },
+    { key: "config.params.repo",  label: "Repo",  type: "text", required: true, placeholder: "my-repo" },
+  ],
+  list_issues: [
+    { key: "config.params.owner", label: "Owner", type: "text",   required: true,  placeholder: "my-org" },
+    { key: "config.params.repo",  label: "Repo",  type: "text",   required: true,  placeholder: "my-repo" },
+    { key: "config.params.label", label: "Label", type: "text",   required: false, placeholder: "bug", hint: "Filter by label (blank = all)" },
+    { key: "config.params.state", label: "State", type: "select", required: false, defaultValue: "open", options: [{ value: "open", label: "Open" }, { value: "closed", label: "Closed" }, { value: "all", label: "All" }] },
+  ],
+  read_file: [
+    { key: "config.params.owner", label: "Owner",  type: "text", required: true,  placeholder: "my-org" },
+    { key: "config.params.repo",  label: "Repo",   type: "text", required: true,  placeholder: "my-repo" },
+    { key: "config.params.path",  label: "Path",   type: "text", required: true,  placeholder: "src/index.py", hint: "File path relative to repo root" },
+    { key: "config.params.ref",   label: "Branch", type: "text", required: false, placeholder: "main", hint: "Branch or commit SHA (blank = default branch)" },
+  ],
+  update_file: [
+    { key: "config.params.owner",   label: "Owner",          type: "text",     required: true,  placeholder: "my-org" },
+    { key: "config.params.repo",    label: "Repo",           type: "text",     required: true,  placeholder: "my-repo" },
+    { key: "config.params.path",    label: "File path",      type: "text",     required: true,  placeholder: "src/index.py" },
+    { key: "config.params.content", label: "Content",        type: "textarea", required: true,  placeholder: "File content..." },
+    { key: "config.params.message", label: "Commit message", type: "text",     required: true,  placeholder: "fix: update file" },
+    { key: "config.params.branch",  label: "Branch",         type: "text",     required: true,  placeholder: "main" },
+    { key: "config.params.sha",     label: "File SHA",       type: "text",     required: false, hint: "Required when updating existing file — use {{read_file.sha}}" },
+  ],
+  add_repo_secret: [
+    { key: "config.params.owner",        label: "Owner",        type: "text", required: true, placeholder: "my-org" },
+    { key: "config.params.repo",         label: "Repo",         type: "text", required: true, placeholder: "my-repo" },
+    { key: "config.params.secret_name",  label: "Secret name",  type: "text", required: true, placeholder: "MY_API_KEY" },
+    { key: "config.params.secret_value", label: "Secret value", type: "text", required: true, placeholder: "{{inputs.api_key}}", hint: "Use a template ref — never hardcode secrets" },
+  ],
   search_code: [
-    {
-      key: "config.params.query",
-      label: "Search query",
-      type: "text",
-      required: true,
-      placeholder: "urllib3 repo:{{inputs.upstream_owner}}/{{inputs.upstream_repo}}",
-      hint: "GitHub code search query — supports repo:, language:, path: filters",
-    },
-    {
-      key: "config.params.per_page",
-      label: "Max results",
-      type: "number",
-      required: false,
-      placeholder: "10",
-      hint: "Maximum file results to return (max 30)",
-    },
+    { key: "config.params.query",    label: "Search query", type: "text",   required: true,  placeholder: "urllib3 repo:{{inputs.upstream_owner}}/{{inputs.upstream_repo}}", hint: "GitHub code search — supports repo:, language:, path: filters" },
+    { key: "config.params.per_page", label: "Max results",  type: "number", required: false, placeholder: "10", hint: "Maximum file results to return (max 30)" },
   ],
 }
 
@@ -311,6 +328,11 @@ export const INTEGRATION_ACTIONS: Record<string, { value: string; label: string 
     { value: "create_branch",      label: "Create branch" },
     { value: "open_pull_request",  label: "Open pull request" },
     { value: "list_pull_requests", label: "List pull requests" },
+    { value: "fork_repo",          label: "Fork repo" },
+    { value: "list_issues",        label: "List issues" },
+    { value: "read_file",          label: "Read file" },
+    { value: "update_file",        label: "Update file" },
+    { value: "add_repo_secret",    label: "Add repo secret" },
     { value: "search_code",        label: "Search code" },
   ],
   slack: [
