@@ -42,6 +42,7 @@ const GRADE_STYLES: Record<string, string> = {
 interface Project {
   id: string
   name: string
+  project_type?: string
 }
 
 interface Environment {
@@ -339,7 +340,13 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
       const promises: Promise<void>[] = [
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/projects`, { headers }).then(async res => {
           if (res.ok) {
-            const data: Project[] = await res.json()
+            const raw: Project[] = await res.json()
+            const seen = new Set<string>()
+            const data = raw.filter(p => {
+              if (p.project_type && p.project_type !== "user") return false
+              if (seen.has(p.id)) return false
+              seen.add(p.id); return true
+            })
             setProjects(data)
             setSelectedProjectId(data[0]?.id ?? "")
           }
