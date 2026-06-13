@@ -1,14 +1,13 @@
 extends: base-autopilot
 name: Third-Party Autopilot Fix
-version: 6
+version: 7
 description: >
   Given an issue number on any third-party repo (any language), fork it, apply
   the fix, push a branch, and open a PR back to upstream.
-  Works in two modes automatically — sandbox (persistent /workspace) if credentials
-  are configured, proxy (single-shell-call) otherwise. No manual config needed.
-  Auto-detects the repo's linter (pre-commit, ruff, eslint, cargo, gofmt, rubocop).
-  Reads fix history for the repo before starting, writes a summary after success
-  so every subsequent run on the same repo gets smarter.
+  Dynamically routes by complexity: small fixes run in proxy (one shell call),
+  medium/large fixes spin up an E2B or Modal sandbox for iterative editing.
+  Auto-detects the repo's linter. Reads fix history before starting, writes
+  a summary after success so every subsequent run on the same repo gets smarter.
 
 inputs:
   upstream_owner:
@@ -30,6 +29,13 @@ inputs:
     options:
       - claude-sonnet-4-6
       - claude-opus-4-7
+  sandbox_provider:
+    label: Sandbox provider (for medium/large fixes)
+    type: select
+    default: e2b
+    options:
+      - e2b
+      - modal
 
 on:
   manual:
@@ -67,13 +73,24 @@ blocks:
 
   plan_fix:
     $use: base-autopilot.plan_fix
+    next: route_by_complexity
+
+  route_by_complexity:
+    $use: base-autopilot.route_by_complexity
+    next:
+      pass: provision_sandbox
+      fail: implement_fix
+
+  provision_sandbox:
+    $use: base-autopilot.provision_sandbox
     next: implement_fix
 
   implement_fix:
     type: brain
     mode: agentic
     model: "{{inputs.model}}"
-    max_turns: 8
+    runs_in: provision_sandbox
+    max_turns: 12
     label: Implement fix
     description: |
       You are implementing a targeted code fix. The plan is already done.
