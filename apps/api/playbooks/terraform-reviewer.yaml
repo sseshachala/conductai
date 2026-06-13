@@ -26,9 +26,18 @@ inputs:
 
 on:
   webhook:
-    next: check_tf_changes
+    next: read_memory
 
 blocks:
+  read_memory:
+    type: memory
+    label: Recall prior Terraform review context
+    action: read
+    scope: repo
+    limit: 5
+    key: "{{_trigger.repository.full_name}}"
+    next: check_tf_changes
+
   check_tf_changes:
     type: brain
     mode: agentic
@@ -141,6 +150,19 @@ blocks:
           "findings_summary": "one sentence summary of key findings",
           "has_critical": true/false
         }
+    next: write_memory
+
+  write_memory:
+    type: memory
+    label: Record Terraform review outcome
+    action: write
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    summary: |
+      Terraform review for PR #{{_trigger.pull_request.number}} in {{_trigger.repository.full_name}}
+      Verdict: {{review_plan.verdict}}
+      {{review_plan.findings_summary}}
+      Critical: {{review_plan.has_critical}} · Warnings: {{review_plan.warning_count}}
     next: critical_gate
 
   critical_gate:
