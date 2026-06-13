@@ -214,6 +214,8 @@ interface BlockRow {
   provider?: string
   model?: string
   routingReason?: string
+  sandboxProvider?: string
+  sandboxDecision?: string
   timedOut?: boolean
   failure?: FailureSummary
   nextAction?: string
@@ -385,6 +387,27 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
               style={{ fontSize: 10.5, color: "var(--text-muted, #a8a29e)", cursor: "default" }}
             >
               {formatModelLabel(row.model)}
+            </span>
+          )}
+
+          {/* Sandbox routing badge — proxy/modal/e2b */}
+          {row.type === "brain" && row.sandboxDecision && (
+            <span
+              title={row.sandboxProvider ? `Provider: ${row.sandboxProvider}` : row.sandboxDecision}
+              style={{
+                fontSize: 9,
+                fontWeight: 600,
+                padding: "1px 6px",
+                borderRadius: 4,
+                background: row.sandboxDecision === "proxy" ? "#f5f5f4" : "#f0fdf4",
+                color: row.sandboxDecision === "proxy" ? "#78716c" : "#15803d",
+                border: `1px solid ${row.sandboxDecision === "proxy" ? "#d6d3d1" : "#bbf7d0"}`,
+                cursor: "default",
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+              }}
+            >
+              {row.sandboxProvider ?? row.sandboxDecision}
             </span>
           )}
 
@@ -794,6 +817,9 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
         maxTurns: ev.payload.max_turns as number | undefined,
         maxCostUsd: ev.payload.max_cost_usd as number | undefined,
       }
+    } else if (ev.kind === "sandbox_routing" && blockMap[ev.block_id]) {
+      blockMap[ev.block_id].sandboxProvider = (ev.payload.provider as string) || undefined
+      blockMap[ev.block_id].sandboxDecision = ev.payload.decision as string
     } else if (ev.kind === "brain_tool_call" && blockMap[ev.block_id]) {
       const call: ToolCall = {
         tool:    ev.payload.tool as string,
