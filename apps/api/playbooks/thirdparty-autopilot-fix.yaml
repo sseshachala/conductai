@@ -69,6 +69,7 @@ blocks:
     type: brain
     mode: agentic
     model: "{{inputs.model}}"
+    max_turns: 15
     label: Implement fix
     description: |
       You are an expert software engineer contributing a fix to an open-source project.
@@ -103,8 +104,22 @@ blocks:
 
       ── PROXY MODE (output was MODE=proxy) ──────────────────────────────────
       CRITICAL: Each run_shell call gets a FRESH container — filesystem resets between calls.
-      Use search_code/read_file to understand the codebase (no filesystem cost), then
-      do ALL git+fix+push operations in ONE single run_shell call:
+
+      STEP A — EXTRACT FILE TARGETS FROM ISSUE (do this first, before any tool calls):
+        Read the issue title and body carefully. Extract:
+        - Any file paths mentioned (e.g. awscli/customizations/login.py)
+        - Any function or class names mentioned
+        - Any error messages that reference a file + line
+        Start your search with those exact paths. Do NOT do a broad tree walk first.
+
+      STEP B — EXPLORATION (at most 5 tool calls total):
+        Use search_code/read_file targeted at the extracted paths.
+        If a file is mentioned in the issue → read it directly.
+        If only a function name is given → search_code for that name.
+        After 5 exploration calls you MUST proceed to Step C, even if uncertain.
+        Make your best inference from what you found — do not keep exploring.
+
+      STEP C — ONE run_shell call with ALL of: clone + fix + push:
 
         git config --global user.email "bot@conductai.ai" && \
         git config --global user.name "Conduct AI" && \

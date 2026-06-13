@@ -166,6 +166,9 @@ class Block(BaseModel):
     for_each: str | None = None   # iteration expression, e.g. "{{ items.output }}"
     item_var: str | None = None   # loop variable name (default "item")
 
+    # — per-block turn budget override for agentic brain blocks —
+    max_turns: int | None = None  # overrides the run-level __max_turns for this block only
+
     # — retry (#565) —
     retry: dict[str, Any] | None = None  # retry config (typed properly in #564, dict for now)
 
