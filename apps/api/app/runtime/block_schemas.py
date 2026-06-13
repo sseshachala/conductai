@@ -207,6 +207,21 @@ BLOCK_SCHEMAS: dict[str, BlockDef] = {
         ],
     },
 
+    "for_each": {
+        "label": "For Each",
+        "icon": "repeat",
+        "fields": [
+            _f("config.for_each", "Iterate over", "text", required=True,
+               placeholder="{{fetch_prs.items}}",
+               hint="Expression resolving to a list — each element runs the connected block"),
+            _f("config.item_var", "Item variable", "text",
+               placeholder="item",
+               default="item",
+               hint="Name available as {{item}} in downstream blocks (default: item)"),
+            _f("config.label", "Label", "text"),
+        ],
+    },
+
     "approval": {
         "label": "Approval",
         "icon": "check-circle",
@@ -329,7 +344,7 @@ def validate_yaml_block(block_type: str, yaml_data: dict) -> list[str]:
     shapes (e.g. slash-format tool actions resolved by Pydantic).
     """
     # Block types already fully validated by Pydantic._validate_by_type — skip.
-    PYDANTIC_VALIDATED = {"brain", "tool", "logic", "approval", "memory", "output", "mcp"}
+    PYDANTIC_VALIDATED = {"brain", "tool", "logic", "approval", "memory", "output", "mcp", "for_each"}
     if block_type in PYDANTIC_VALIDATED:
         return []
 
