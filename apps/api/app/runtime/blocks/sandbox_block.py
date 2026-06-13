@@ -29,6 +29,18 @@ _PROVIDER_CRED_HINTS = {
 }
 
 
+def _detect_provider(credentials: dict) -> str | None:
+    """Return the first sandbox provider whose credentials are present."""
+    env = credentials.get("env_vars") or {}
+    if env.get("E2B_API_KEY") or env.get("e2b_api_key"):
+        return "e2b"
+    modal = credentials.get("modal", {})
+    if (modal.get("token_id") or env.get("MODAL_TOKEN_ID")) and \
+       (modal.get("token_secret") or env.get("MODAL_TOKEN_SECRET")):
+        return "modal"
+    return None
+
+
 def _execute_sandbox(
     block: dict,
     state: dict,
@@ -50,8 +62,10 @@ def _execute_sandbox(
     config = data.get("sandbox_config") or data.get("config") or {}
 
     provider = config.get("provider")
+    if not provider or provider == "auto":
+        provider = _detect_provider(credentials)
     if not provider:
-        return {"skipped": True, "reason": "No provider configured — set a provider on the sandbox block to use it."}
+        return {"skipped": True, "reason": "No sandbox credentials found — add E2B_API_KEY or MODAL_TOKEN_ID + MODAL_TOKEN_SECRET under Settings → Environments."}
 
     # Validate credential presence before spinning up — fail fast with clear message
     _check_credentials(provider, credentials, block_id, config=config)

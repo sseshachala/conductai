@@ -29,13 +29,6 @@ inputs:
     options:
       - claude-sonnet-4-6
       - claude-opus-4-7
-  sandbox_provider:
-    label: Sandbox provider (for medium/large fixes)
-    type: select
-    default: e2b
-    options:
-      - e2b
-      - modal
 
 on:
   manual:

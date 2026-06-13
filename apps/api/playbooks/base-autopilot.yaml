@@ -69,7 +69,7 @@ blocks:
     label: Provision sandbox
     description: "Clone the fork into /workspace so implement_fix runs in a persistent sandbox"
     config:
-      provider: "{{inputs.sandbox_provider}}"
+      provider: auto
       setup:
         - "git config --global user.email 'bot@conductai.ai' && git config --global user.name 'Conduct AI'"
         - "git clone https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git /workspace"
