@@ -344,7 +344,7 @@ def validate_yaml_block(block_type: str, yaml_data: dict) -> list[str]:
     shapes (e.g. slash-format tool actions resolved by Pydantic).
     """
     # Block types already fully validated by Pydantic._validate_by_type — skip.
-    PYDANTIC_VALIDATED = {"brain", "tool", "logic", "approval", "memory", "output", "mcp", "for_each"}
+    PYDANTIC_VALIDATED = {"brain", "tool", "logic", "approval", "memory", "output", "mcp"}
     if block_type in PYDANTIC_VALIDATED:
         return []
 
