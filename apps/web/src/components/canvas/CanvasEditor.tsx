@@ -1186,8 +1186,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
               >
                 <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#E7E5E4" />
                 <Controls className="!shadow-none !border !border-stone-200 !rounded-xl" showInteractive={false} />
-                {/* Canvas toolbar — Organize + Focus, floats bottom-right above ReactFlow controls */}
-                <div className="absolute bottom-28 right-3 z-10 flex flex-col gap-1.5">
+                {/* Canvas toolbar — Organize + Focus, floats top-left inside canvas */}
+                <div className="absolute top-3 right-3 z-10 flex flex-col gap-1.5">
                   <button
                     onClick={() => {
                       const laid = autoLayout(nodes, edges)
