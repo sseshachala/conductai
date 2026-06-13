@@ -345,7 +345,7 @@ def get_run(
 
 
 _RUN_CHANNEL_PREFIX = "marshal:run:"
-_SSE_TIMEOUT_SECONDS = 300  # close stream after 5 min of silence; client reconnects
+_SSE_TIMEOUT_SECONDS = 1200  # close stream after 20 min; covers long E2B/Modal sandbox runs
 
 
 def publish_run_event(run_id: str) -> None:
@@ -409,6 +409,8 @@ def stream_run_events(
             # Poll using get_message with a short timeout so the deadline is enforced.
             # pubsub.listen() has no timeout; get_message(timeout=N) yields control
             # every N seconds so we can check both the deadline and run status.
+            _last_keepalive = _time.monotonic()
+            _KEEPALIVE_INTERVAL = 15  # seconds — Render drops idle SSE after ~30s
             while _time.monotonic() < deadline:
                 message = pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
                 if message and message["type"] == "message":
@@ -421,6 +423,11 @@ def stream_run_events(
                         yield "data: [DONE]\n\n"
                         return
                 elif message is None:
+                    # Emit SSE comment ping every 15s to prevent Render/proxy idle timeout.
+                    now = _time.monotonic()
+                    if now - _last_keepalive >= _KEEPALIVE_INTERVAL:
+                        yield ": keepalive\n\n"
+                        _last_keepalive = now
                     # No pub/sub message — poll DB periodically (every ~5 s) to catch
                     # runs that completed without publishing (e.g. Redis pub/sub miss).
                     terminal = is_terminal()
