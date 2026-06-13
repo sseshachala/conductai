@@ -38,6 +38,7 @@ class Workflow(Base):
 
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    archived_at = Column(DateTime(timezone=True), nullable=True)
 
     project = relationship("Project", back_populates="workflows")
     workspace = relationship("Workspace", back_populates="workflows")

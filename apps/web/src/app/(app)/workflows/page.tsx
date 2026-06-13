@@ -510,7 +510,37 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
                         <div style={{ fontWeight: 650, fontSize: 15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.name}</div>
                         <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>edited {timeAgo(w.updated_at)}</div>
                       </div>
-                      <Toggle on={!!enabled[w.id]} onClick={() => setEnabled(s => ({ ...s, [w.id]: !s[w.id] }))} />
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }} onClick={e => e.stopPropagation()}>
+                        <Toggle on={!!enabled[w.id]} onClick={() => setEnabled(s => ({ ...s, [w.id]: !s[w.id] }))} />
+                        {isAdmin && (
+                          <div style={{ position: "relative" }}>
+                            <button
+                              className="btn btn-ghost btn-icon btn-sm"
+                              title="More"
+                              onClick={e => { e.stopPropagation(); setMenuOpen(menuOpen === w.id ? null : w.id) }}
+                            >⋯</button>
+                            {menuOpen === w.id && (
+                              <div
+                                onMouseDown={e => e.stopPropagation()}
+                                style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, zIndex: 20, minWidth: 130, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, boxShadow: "var(--shadow-md)", padding: "4px 0" }}
+                              >
+                                <button
+                                  onClick={e => { e.stopPropagation(); setMenuOpen(null); setRenaming(w.id); setRenameValue(w.name) }}
+                                  style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--text)", background: "none", border: "none", cursor: "pointer" }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}
+                                >Rename</button>
+                                <button
+                                  onMouseDown={e => { e.stopPropagation(); setMenuOpen(null); setConfirming(w.id); setConfirmValue("") }}
+                                  style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--err, #dc2626)", background: "none", border: "none", cursor: "pointer" }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}
+                                >Delete</button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 12, borderTop: "1px solid var(--border)" }}>
                       <AgentStatusPill s={mapStatus(w.last_run_status)} />

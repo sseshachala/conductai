@@ -88,7 +88,7 @@ def list_workflows(
             if member:
                 effective_workspace_id = proj_ws
 
-    q = db.query(Workflow).filter(Workflow.workspace_id == effective_workspace_id)
+    q = db.query(Workflow).filter(Workflow.workspace_id == effective_workspace_id, Workflow.archived_at.is_(None))
     if project_id:
         q = q.filter(Workflow.project_id == project_id)
     workflows = q.order_by(Workflow.updated_at.desc()).all()
@@ -540,7 +540,7 @@ def delete_workflow(
 ):
     from app.core.workspace_context import set_workspace_rls
     set_workspace_rls(db, workspace_id)
-    workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
+    workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id, Workflow.archived_at.is_(None)).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
 
@@ -554,6 +554,7 @@ def delete_workflow(
                 Workflow.github_hook_repo == workflow.github_hook_repo,
                 Workflow.github_hook_id == workflow.github_hook_id,
                 Workflow.id != workflow.id,
+                Workflow.archived_at.is_(None),
             ).count()
             if siblings == 0:
                 _deregister_git_webhook(token, workflow.github_hook_repo, workflow.github_hook_id, provider=provider)
@@ -562,16 +563,10 @@ def delete_workflow(
         except Exception as e:
             log.warning("webhook.deregistration_skipped", workflow_id=str(workflow_id), error=str(e))
 
-    # Clear the self-referential pointer before deleting so the DB-level
-    # SET NULL on workflows.current_version_id does not race with the CASCADE
-    # delete of workflow_versions rows.  The FK chain
-    # (workflow_versions → runs → run_events) carries ON DELETE CASCADE, so
-    # a single delete + commit handles the full child tree.
-    workflow.current_version_id = None
-    db.flush()
-    db.delete(workflow)
+    from datetime import datetime, timezone as _tz
+    workflow.archived_at = datetime.now(_tz.utc)
     db.commit()
-    audit(db, workspace_id, "workflow.deleted",
+    audit(db, workspace_id, "workflow.archived",
           resource_type="workflow", resource_id=str(workflow_id))
 
 
@@ -587,7 +582,7 @@ def register_workflow_webhook(
     """Explicitly register (or re-register) the GitHub webhook for this workflow."""
     from app.core.workspace_context import set_workspace_rls
     set_workspace_rls(db, workspace_id)
-    workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
+    workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id, Workflow.archived_at.is_(None)).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
     if not workflow.github_hook_repo:
@@ -699,7 +694,7 @@ def deregister_workflow_webhook(
     """Deregister the GitHub webhook for this workflow."""
     from app.core.workspace_context import set_workspace_rls
     set_workspace_rls(db, workspace_id)
-    workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
+    workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id, Workflow.archived_at.is_(None)).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
     if not workflow.github_hook_id:
@@ -1386,7 +1381,7 @@ def compile_workflow_now(
     """Explicitly trigger compilation for the current version."""
     from app.core.workspace_context import set_workspace_rls
     set_workspace_rls(db, workspace_id)
-    workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
+    workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id, Workflow.archived_at.is_(None)).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
     if not workflow.current_version_id:
@@ -1472,7 +1467,7 @@ def get_workflow_yaml(
     file as ``<projectname>-delegator.yml`` — the same convention the canvas
     suggests and the customer is expected to commit to their repo.
     """
-    workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
+    workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id, Workflow.archived_at.is_(None)).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
     if not workflow.current_version_id:
@@ -1514,7 +1509,7 @@ def get_workflow_yaml_filename(
     """
     from app.core.workspace_context import set_workspace_rls
     set_workspace_rls(db, workspace_id)
-    workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
+    workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id, Workflow.archived_at.is_(None)).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
     filename = yaml_filename_for(workflow.name)
@@ -1845,7 +1840,7 @@ def sync_workflow(
 
     from app.core.workspace_context import set_workspace_rls
     set_workspace_rls(db, workspace_id)
-    workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id).first()
+    workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.workspace_id == workspace_id, Workflow.archived_at.is_(None)).first()
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
 

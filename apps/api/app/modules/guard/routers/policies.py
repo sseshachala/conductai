@@ -274,7 +274,7 @@ def sync_policies(
 
     active_policies = (
         db.query(GuardPolicy)
-        .filter(GuardPolicy.workspace_id == ws_uuid, GuardPolicy.enabled.is_(True))
+        .filter(GuardPolicy.workspace_id == ws_uuid, GuardPolicy.enabled.is_(True), GuardPolicy.archived_at.is_(None))
         .order_by(GuardPolicy.updated_at.desc())
         .all()
     )
@@ -326,7 +326,7 @@ def list_policies(
 
     policies = (
         db.query(GuardPolicy)
-        .filter(GuardPolicy.workspace_id == ws_uuid)
+        .filter(GuardPolicy.workspace_id == ws_uuid, GuardPolicy.archived_at.is_(None))
         .order_by(GuardPolicy.builtin.desc(), GuardPolicy.created_at.asc())
         .all()
     )
@@ -419,5 +419,6 @@ def delete_policy(
             detail="Built-in rules cannot be deleted. Disable the rule instead.",
         )
 
-    db.delete(policy)
+    from datetime import datetime, timezone as _tz
+    policy.archived_at = datetime.now(_tz.utc)
     db.commit()
