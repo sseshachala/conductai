@@ -323,34 +323,92 @@ def add_repo_secret(token: str, owner: str, repo: str, secret_name: str, secret_
 
 
 def search_code(token: str, query: str, per_page: int = 10) -> dict:
-    """Search code across GitHub repos. Returns file paths matching the query."""
+    """Search code across GitHub repos. Returns file paths matching the query.
+
+    Falls back to the Git Trees API when the Code Search API returns 0 results
+    or an unresolved template ref slips through as the keyword.
+    """
+    import re as _re
+
+    _empty = {"total_count": 0, "items": [], "paths": []}
+
+    # Bail early if the query contains an unresolved template placeholder
+    # (e.g. plan_fix JSON was truncated and grep_pattern never landed in state).
+    if _re.search(r"\{\{[\w.]+\}\}", query):
+        return {**_empty, "error": f"unresolved_template: {query}"}
+
+    # Extract the repo qualifier so we can fall back to Trees API.
+    repo_match = _re.search(r"repo:([\w.\-]+/[\w.\-]+)", query)
+    repo_full = repo_match.group(1) if repo_match else None
+
+    # Strip the keyword (everything before the first qualifier).
+    keyword = _re.sub(r"\s+\w+:[^\s]+", "", query).strip()
+
     headers = {
         "Authorization": f"token {token}",
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }
-    r = httpx.get(
-        "https://api.github.com/search/code",
-        headers=headers,
-        params={"q": query, "per_page": min(per_page, 30)},
-        timeout=15,
-    )
-    r.raise_for_status()
-    data = r.json()
-    items = [
-        {
-            "path": item["path"],
-            "repo": item["repository"]["full_name"],
-            "url": item["html_url"],
-            "sha": item["sha"],
+
+    # ── 1. Try GitHub Code Search ─────────────────────────────────────────────
+    if keyword:
+        try:
+            r = httpx.get(
+                "https://api.github.com/search/code",
+                headers=headers,
+                params={"q": query, "per_page": min(per_page, 30)},
+                timeout=15,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                items = [
+                    {
+                        "path": item["path"],
+                        "repo": item["repository"]["full_name"],
+                        "url": item["html_url"],
+                        "sha": item["sha"],
+                    }
+                    for item in data.get("items", [])
+                ]
+                if items:
+                    return {
+                        "total_count": data.get("total_count", 0),
+                        "items": items,
+                        "paths": [i["path"] for i in items],
+                    }
+            # 422 = invalid query, 403 = rate-limited — fall through to Trees
+        except Exception:
+            pass
+
+    # ── 2. Fallback: scan repo file tree for paths containing the keyword ─────
+    if not repo_full or not keyword:
+        return _empty
+
+    try:
+        # Resolve default branch HEAD SHA
+        r2 = httpx.get(
+            f"https://api.github.com/repos/{repo_full}/git/trees/HEAD",
+            headers=headers,
+            params={"recursive": "1"},
+            timeout=20,
+        )
+        if r2.status_code != 200:
+            return _empty
+        tree = r2.json().get("tree", [])
+        kw_lower = keyword.lower()
+        matched = [
+            {"path": node["path"], "repo": repo_full, "url": "", "sha": node.get("sha", "")}
+            for node in tree
+            if node.get("type") == "blob" and kw_lower in node["path"].lower()
+        ][:per_page]
+        return {
+            "total_count": len(matched),
+            "items": matched,
+            "paths": [m["path"] for m in matched],
+            "source": "trees_fallback",
         }
-        for item in data.get("items", [])
-    ]
-    return {
-        "total_count": data.get("total_count", 0),
-        "items": items,
-        "paths": [i["path"] for i in items],
-    }
+    except Exception:
+        return _empty
 
 
 TOOL_MAP = {
