@@ -77,7 +77,7 @@ blocks:
     mode: agentic
     sandbox: auto
     model: "{{inputs.model}}"
-    max_turns: 12
+    max_turns: 20
     label: Implement fix
     description: |
       You are implementing a targeted code fix. The plan is already done.
@@ -87,6 +87,7 @@ blocks:
       Files:    {{plan_fix.files}}
       Approach: {{plan_fix.approach}}
       Grep:     {{plan_fix.grep_pattern}}
+      Base branch: {{plan_fix.base_branch}} (use this branch as the fix base; if "default", use {{fork_upstream.default_branch}})
       Prior:    {{read_memory.entries}}
 
       ── YOUR ONE SHELL CALL ───────────────────────────────────────────────────
@@ -95,22 +96,24 @@ blocks:
 
         git config --global user.email "bot@conductai.ai" && \
         git config --global user.name "Conduct AI" && \
+        BASE_BRANCH="{{plan_fix.base_branch}}" && \
+        if [ "$BASE_BRANCH" = "default" ] || [ -z "$BASE_BRANCH" ]; then BASE_BRANCH="{{fork_upstream.default_branch}}"; fi && \
         if [ -d /workspace/.git ]; then
           cd /workspace
         elif [ -w /workspace ] || mkdir -p /workspace 2>/dev/null; then
           git clone https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git /workspace && \
           cd /workspace && \
           git remote add upstream https://github.com/{{inputs.upstream_owner}}/{{inputs.upstream_repo}}.git && \
-          git fetch upstream --depth=50 && \
+          git fetch upstream "$BASE_BRANCH" --depth=50 && \
           git checkout -b fix/issue-{{inputs.issue_number}} && \
-          git reset --hard upstream/{{fork_upstream.default_branch}}
+          git reset --hard upstream/"$BASE_BRANCH"
         else
           git clone https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git /tmp/repo && \
           cd /tmp/repo && \
           git remote add upstream https://github.com/{{inputs.upstream_owner}}/{{inputs.upstream_repo}}.git && \
-          git fetch upstream --depth=50 && \
+          git fetch upstream "$BASE_BRANCH" --depth=50 && \
           git checkout -b fix/issue-{{inputs.issue_number}} && \
-          git reset --hard upstream/{{fork_upstream.default_branch}}
+          git reset --hard upstream/"$BASE_BRANCH"
         fi && \
         \
         # ── LOCATE TARGET FILES (any codebase, any branch) ───────────────────
@@ -151,7 +154,7 @@ blocks:
       Set head_ref based on REPO_TYPE:
         REPO_TYPE=same → head_ref = "<branch-name>"
         REPO_TYPE=fork → head_ref = "{{fork_upstream.fork_owner}}:<branch-name>"
-        {"branch_pushed": "<actual-branch-name>", "head_ref": "<head_ref>", "fork_owner": "{{fork_upstream.fork_owner}}", "fork_full_name": "{{fork_upstream.fork_full_name}}", "fix_summary": "<one line: which file(s) changed and what the fix was>", "lesson": "<one line: what to know for future fixes in this repo — pitfalls found, patterns that worked, anything surprising>"}
+        {"branch_pushed": "<actual-branch-name>", "head_ref": "<head_ref>", "base_branch": "<the resolved BASE_BRANCH value — e.g. v2, main, develop>", "fork_owner": "{{fork_upstream.fork_owner}}", "fork_full_name": "{{fork_upstream.fork_full_name}}", "fix_summary": "<one line: which file(s) changed and what the fix was>", "lesson": "<one line: what to know for future fixes in this repo — pitfalls found, patterns that worked, anything surprising>"}
     next: open_pr
 
   open_pr:
@@ -165,7 +168,7 @@ blocks:
       repo: "{{inputs.upstream_repo}}"
       title: "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})"
       head: "{{implement_fix.head_ref}}"
-      base: "{{fork_upstream.default_branch}}"
+      base: "{{implement_fix.base_branch}}"
       body: |
         Fixes #{{inputs.issue_number}}
 
