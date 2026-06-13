@@ -62,6 +62,7 @@ blocks:
   plan_fix:
     type: brain
     mode: single
+    allowed_tools: []
     label: Plan fix
     description: |
       You are a senior engineer planning a targeted code fix for an open-source issue.
