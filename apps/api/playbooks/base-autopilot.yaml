@@ -86,12 +86,5 @@ blocks:
         medium — 2–5 files, logic change
         large  — 5+ files, architectural change
 
-      Output ONLY this JSON (no prose, no markdown):
-      {
-        "files": ["relative/path/to/file.py"],
-        "functions": ["FunctionOrClassName"],
-        "subsystem": "short description of which part of the codebase",
-        "approach": "one sentence: what to change and how",
-        "complexity": "small|medium|large",
-        "grep_pattern": "exact string to grep for when no file path is known"
-      }
+      Your response must be ONLY a single line of compact JSON — no prose before or after, no markdown, no newlines inside the JSON:
+      {"files":["relative/path/to/file.py"],"functions":["FunctionOrClassName"],"subsystem":"short description","approach":"one sentence: what to change and how","complexity":"small|medium|large","grep_pattern":"exact string to grep for when no file path is known"}

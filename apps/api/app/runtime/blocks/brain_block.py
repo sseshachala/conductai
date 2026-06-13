@@ -78,6 +78,50 @@ BRAIN_TOOLS = [
 ]
 
 
+def _extract_last_json_object(text: str) -> dict | None:
+    """
+    Find the last well-formed JSON object in text.
+    Handles three cases: compact JSON on last line, whole output is JSON,
+    and prose followed by a multi-line JSON block.
+    """
+    text = text.strip()
+    # 1. Last line (compact single-line JSON)
+    last_line = text.rsplit("\n", 1)[-1].strip()
+    if last_line.startswith("{") and last_line.endswith("}"):
+        try:
+            obj = json.loads(last_line)
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            pass
+    # 2. Whole output is JSON (multi-line, no prose prefix)
+    if text.startswith("{") and text.endswith("}"):
+        try:
+            obj = json.loads(text)
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            pass
+    # 3. Prose + trailing JSON block — brace-match from the last closing brace
+    last_close = text.rfind("}")
+    if last_close != -1:
+        depth = 0
+        for i in range(last_close, -1, -1):
+            if text[i] == "}":
+                depth += 1
+            elif text[i] == "{":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        obj = json.loads(text[i : last_close + 1])
+                        if isinstance(obj, dict):
+                            return obj
+                    except Exception:
+                        pass
+                    break
+    return None
+
+
 def _execute_brain(
     block: dict,
     state: dict,
@@ -417,19 +461,11 @@ def _execute_brain(
                     "pricing_version": pricing_version,
                     "pricing_rates": pricing_rates,
                 }
-                # Extract structured values from the last JSON line of the output
-                # so brain blocks can surface keys like pr_url, passed, etc. as
-                # direct refs (e.g. {{push_pr.pr_url}}).
-                import json as _json
-                _output_text = result.get("output", "")
-                _last_line = _output_text.strip().rsplit("\n", 1)[-1].strip()
-                if _last_line.startswith("{") and _last_line.endswith("}"):
-                    try:
-                        _extracted = _json.loads(_last_line)
-                        if isinstance(_extracted, dict):
-                            result.update(_extracted)
-                    except Exception:
-                        pass
+                # Extract structured values from brain output so keys like
+                # pr_url, files, approach etc. are available as direct refs.
+                _extracted = _extract_last_json_object(result.get("output", ""))
+                if _extracted:
+                    result.update(_extracted)
                 _record_turns(db, run_id, turns, False)
                 _close_session()
                 return result
@@ -554,16 +590,8 @@ def _execute_brain(
             "pricing_version": pricing_version,
             "pricing_rates": pricing_rates,
         }
-        # Extract structured values from the last JSON line of the output
-        import json as _json
-        _output_text = result.get("output", "")
-        _last_line = _output_text.strip().rsplit("\n", 1)[-1].strip()
-        if _last_line.startswith("{") and _last_line.endswith("}"):
-            try:
-                _extracted = _json.loads(_last_line)
-                if isinstance(_extracted, dict):
-                    result.update(_extracted)
-            except Exception:
-                pass
+        _extracted = _extract_last_json_object(result.get("output", ""))
+        if _extracted:
+            result.update(_extracted)
         _close_session()
         return result
