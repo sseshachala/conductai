@@ -1,6 +1,6 @@
 extends: base-autopilot
 name: Third-Party Autopilot Fix
-version: 10
+version: 11
 description: >
   Given an issue number on any third-party repo (any language), fork it, apply
   the fix, push a branch, and open a PR back to upstream.
@@ -119,13 +119,30 @@ blocks:
           git reset --hard upstream/{{fork_upstream.default_branch}}
         fi && \
         \
+        # ── LOCATE TARGET FILES (any codebase, any branch) ───────────────────
+        # search_code covers default branch only — fall back to in-repo grep
+        TARGETS="{{search_code.paths}}" && \
+        if [ -z "$TARGETS" ]; then \
+          TARGETS=$(grep -rln "{{plan_fix.grep_pattern}}" . \
+            --include="*.py" --include="*.toml" --include="*.cfg" \
+            --include="*.txt" --include="*.go" --include="*.js" \
+            --include="*.ts" --include="*.tsx" --include="*.jsx" \
+            --include="*.rb" --include="*.java" --include="*.cs" \
+            --include="*.cpp" --include="*.c" --include="*.h" \
+            --include="*.rs" --include="*.swift" --include="*.kt" \
+            --include="*.html" --include="*.json" --include="*.yaml" --include="*.yml" \
+            --exclude-dir=".git" --exclude-dir="node_modules" --exclude-dir="vendor" \
+            2>/dev/null | head -5); \
+          echo "search_code empty — in-repo grep found: $TARGETS"; \
+        fi && \
+        echo "Target files: $TARGETS" && \
+        \
         # ── FIX SECTION ── fill this in based on the plan above ──────────────
         # Approach: {{plan_fix.approach}}
-        # Verified file paths from GitHub code search: {{search_code.paths}}
-        # Use these paths directly — they are confirmed to exist in the repo.
+        # Target files are in $TARGETS — verified to exist in this repo and branch.
         # Read the file inline if needed: python3 -c "c=open('file.py').read(); open('file.py','w').write(c.replace(...))"
-        # Or use sed: sed -i 's/old/new/' file.py
-        <YOUR INLINE FIX HERE — use {{search_code.paths}} as the target files> && \
+        # Or use sed: sed -i 's/old/new/' $TARGETS
+        <YOUR INLINE FIX HERE — operate on $TARGETS, no separate exploration calls> && \
         # ── END FIX SECTION ───────────────────────────────────────────────────
         \
         (if [ -f .pre-commit-config.yaml ]; then pre-commit run --all-files 2>/dev/null || true; \
