@@ -1239,13 +1239,15 @@ def _execute_dag(
     state: dict[str, Any] = dict(initial_state)
 
     # Seed inputs defaults so {{inputs.x}} refs resolve for auto-triggered runs.
-    if "inputs" not in state:
-        inputs_spec = graph.get("inputs_spec") or {}
-        if inputs_spec:
-            state["inputs"] = {
-                k: (v.get("default") if isinstance(v, dict) else v)
-                for k, v in inputs_spec.items()
-            }
+    # Always merge spec defaults first, then let caller-supplied values win.
+    # This ensures CLI --input values override canvas-installed defaults.
+    inputs_spec = graph.get("inputs_spec") or {}
+    if inputs_spec:
+        spec_defaults = {
+            k: (v.get("default") if isinstance(v, dict) else v)
+            for k, v in inputs_spec.items()
+        }
+        state["inputs"] = {**spec_defaults, **state.get("inputs", {})}
 
     failed = False
     fail_error = ""
