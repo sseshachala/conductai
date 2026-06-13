@@ -3,6 +3,7 @@
 import { memo } from "react"
 import { Handle, Position, type NodeProps } from "@xyflow/react"
 import { BLOCK_STYLES, type BlockType } from "@/lib/block-types"
+import { TRIGGER_CONFIG } from "@/lib/config-schemas"
 import { cn } from "@/lib/utils"
 
 export interface BlockNodeData {
@@ -68,12 +69,8 @@ function handleClass(color: string) {
 
 // Derive intent-oriented trigger label from config
 function triggerLabel(config: BlockNodeData["config"]): string {
-  const et = config?.event_type
-  if (et === "webhook")             return "Webhook"
-  if (et === "schedule")            return "Schedule"
-  if (et === "github_issue_labeled") return "Issue labeled"
-  if (et === "github_issue")        return "GitHub issue"
-  if (et === "pull_request")        return "Pull request"
+  const et = config?.event_type as string | undefined
+  if (et && TRIGGER_CONFIG[et]) return TRIGGER_CONFIG[et].label
   return "Trigger"
 }
 
