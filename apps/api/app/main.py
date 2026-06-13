@@ -30,6 +30,7 @@ from app.routers.secure import router as secure_router
 from app.routers.sdd import router as sdd_router
 from app.routers.session_reports import router as session_reports_router
 from app.routers.team_memory import router as team_memory_router
+from app.routers.meta import router as meta_router
 
 setup_logging()
 log = structlog.get_logger(__name__)
@@ -110,6 +111,7 @@ app.include_router(secure_router)
 app.include_router(sdd_router)
 app.include_router(session_reports_router)
 app.include_router(team_memory_router)
+app.include_router(meta_router)
 
 
 @app.on_event("startup")
