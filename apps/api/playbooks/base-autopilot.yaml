@@ -58,3 +58,40 @@ blocks:
     label: Record outcome
     action: write
     scope: repo
+
+  plan_fix:
+    type: brain
+    mode: single
+    label: Plan fix
+    description: |
+      You are a senior engineer planning a targeted code fix for an open-source issue.
+
+      Repository: {{inputs.upstream_owner}}/{{inputs.upstream_repo}}
+      Issue #{{inputs.issue_number}}: {{fetch_issue.title}}
+
+      Issue body:
+      {{fetch_issue.body}}
+
+      Prior context from this repo:
+      {{read_memory.entries}}
+
+      Extract from the issue body:
+      1. File paths mentioned (any .py / .go / .js / .ts / .java / .rb etc.)
+      2. Function or class names mentioned
+      3. Error messages or tracebacks — these always point to a file + line
+      4. The subsystem described (e.g. "SSO login", "token refresh", "auth middleware")
+
+      Classify complexity:
+        small  — 1 file, ≤5 line change
+        medium — 2–5 files, logic change
+        large  — 5+ files, architectural change
+
+      Output ONLY this JSON (no prose, no markdown):
+      {
+        "files": ["relative/path/to/file.py"],
+        "functions": ["FunctionOrClassName"],
+        "subsystem": "short description of which part of the codebase",
+        "approach": "one sentence: what to change and how",
+        "complexity": "small|medium|large",
+        "grep_pattern": "exact string to grep for when no file path is known"
+      }
