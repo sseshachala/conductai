@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 
-interface Project   { id: string; name: string }
+interface Project   { id: string; name: string; project_type?: string }
 interface Environment { id: string; name: string }
 interface Repo      { full_name: string }
 interface PlaybookInput {
@@ -23,8 +23,7 @@ const MODEL_HINTS: Record<string, string> = {
 }
 
 const FRIENDLY_NAMES: Record<string, string> = {
-  autopilot_quick:    "Autopilot Quick",
-  autopilot_full:     "Autopilot Full",
+  autopilot_full:     "Autopilot",
   autopilot_approved: "Autopilot + Approval",
   pr_reviewer:        "PR Reviewer",
   issue_triage:       "Issue Triage",
@@ -39,15 +38,14 @@ const FRIENDLY_NAMES: Record<string, string> = {
 const GITHUB_WEBHOOK_SLUGS = new Set([
   "pr_reviewer", "copilot_reviewer", "issue_triage",
   "ci_notify", "release_notes", "security_scanner",
-  "autopilot_quick", "autopilot_full", "autopilot_approved",
+  "autopilot_full", "autopilot_approved",
   "security_patch_updater",
 ])
 
 const MANUAL_WEBHOOK_SLUGS = new Set(["incident_responder", "dependency_updater"])
 
 const TEMPLATES = [
-  { id: "autopilot_quick",    label: "Autopilot Quick",         description: "Issue labeled → implement fix → open PR immediately.", tags: ["GitHub", "Slack"] },
-  { id: "autopilot_full",     label: "Autopilot Full",          description: "Issue labeled → implement fix → run tests → open PR.", tags: ["GitHub", "Slack"] },
+  { id: "autopilot_full",     label: "Autopilot",               description: "Issue labeled → implement fix → open PR.", tags: ["GitHub", "Slack"] },
   { id: "autopilot_approved", label: "Autopilot + Approval",    description: "Fix → tests → human approves in Slack → open PR.", tags: ["GitHub", "Slack"] },
   { id: "pr_reviewer",        label: "PR Reviewer",             description: "PR opened → AI reviews diff → posts comment.", tags: ["GitHub", "Slack"] },
   { id: "issue_triage",       label: "Issue Triage",            description: "New issue → AI classifies and adds labels.", tags: ["GitHub", "Slack"] },
@@ -134,7 +132,13 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
       await Promise.all([
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/projects`, { headers }).then(async res => {
           if (res.ok) {
-            const data: Project[] = await res.json()
+            const raw: Project[] = await res.json()
+            const seen = new Set<string>()
+            const data = raw.filter(p => {
+              if (p.project_type && p.project_type !== "user") return false
+              if (seen.has(p.id)) return false
+              seen.add(p.id); return true
+            })
             setProjects(data)
             if (!urlProjectId) setSelectedProjectId(data[0]?.id ?? "")
           }
