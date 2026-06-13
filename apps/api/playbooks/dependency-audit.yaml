@@ -38,9 +38,18 @@ inputs:
 
 on:
   manual:
-    next: fetch_outdated
+    next: read_memory
 
 blocks:
+  read_memory:
+    type: memory
+    label: Recall prior dependency audit context
+    action: read
+    scope: repo
+    limit: 5
+    key: "{{inputs.repo}}"
+    next: fetch_outdated
+
   fetch_outdated:
     type: brain
     mode: agentic
@@ -156,6 +165,21 @@ blocks:
         - dependencies
         - "risk-{{ item.risk }}"
         - dep-audit
+    next: write_memory
+
+  write_memory:
+    type: memory
+    label: Record audit outcome
+    action: write
+    scope: repo
+    key: "{{inputs.repo}}"
+    summary: |
+      Dependency audit for {{inputs.repo}} ({{inputs.package_manager}})
+      Outdated packages: {{fetch_outdated.count}}
+      Risk threshold: {{inputs.risk_threshold}}
+      {% for dep in fetch_outdated.deps %}
+      {{dep.name}} {{dep.current}} → {{dep.latest}} ({{dep.semver_delta}})
+      {% endfor %}
     next: notify_results
 
   notify_results:

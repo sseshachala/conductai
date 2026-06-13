@@ -25,9 +25,18 @@ inputs:
 
 on:
   manual:
-    next: fetch_prs
+    next: read_memory
 
 blocks:
+  read_memory:
+    type: memory
+    label: Recall prior PR review context
+    action: read
+    scope: repo
+    limit: 5
+    key: "{{inputs.repo}}"
+    next: fetch_prs
+
   fetch_prs:
     type: brain
     mode: agentic
@@ -105,6 +114,19 @@ blocks:
 
       Output ONLY the following JSON on the last line:
       {"number": {{ item.number }}, "verdict": "approved", "summary": "Clean implementation of caching layer with proper TTL handling.", "issues": ["Missing test for cache invalidation on update"]}
+    next: write_memory
+
+  write_memory:
+    type: memory
+    label: Record PR review outcomes
+    action: write
+    scope: repo
+    key: "{{inputs.repo}}"
+    summary: |
+      Bulk PR review for {{inputs.repo}} — {{fetch_prs.count}} PRs reviewed
+      {% for r in review_pr %}
+      PR #{{r.number}}: {{r.verdict | upper}} — {{r.summary}}
+      {% endfor %}
     next: notify_summary
 
   notify_summary:

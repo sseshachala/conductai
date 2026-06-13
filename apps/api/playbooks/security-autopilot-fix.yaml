@@ -29,8 +29,17 @@ blocks:
     label: Repo context available?
     condition: "{{_trigger.repo_full_name}} != null and {{_trigger.repo_full_name}} != ''"
     next:
-      pass: read_file
+      pass: read_memory
       fail: generate_fix_text_only
+
+  read_memory:
+    type: memory
+    label: Recall prior fix context
+    action: read
+    scope: repo
+    limit: 5
+    key: "{{_trigger.repo_full_name}}"
+    next: read_file
 
   # ── Happy path: repo is known ─────────────────────────────────────────────
 
@@ -166,6 +175,19 @@ blocks:
         ---
         *Automated security patch by [Conduct AI](https://conductai.ai) · security-autopilot-fix playbook*
         *Review the diff, verify CI is green, then merge.*
+    next: write_memory
+
+  write_memory:
+    type: memory
+    label: Record fix outcome
+    action: write
+    scope: repo
+    key: "{{_trigger.repo_full_name}}"
+    summary: |
+      Security fix applied to {{_trigger.repo_full_name}}
+      Finding: {{_trigger.finding_id}} — {{_trigger.type}} ({{_trigger.severity}})
+      File: {{_trigger.file}}:{{_trigger.line}}
+      PR: {{open_pr.pr_url}}
     next: notify
 
   notify:

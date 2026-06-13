@@ -64,9 +64,18 @@ inputs:
 
 on:
   manual:
-    next: discover_skills
+    next: read_memory
 
 blocks:
+  read_memory:
+    type: memory
+    label: Recall prior scan context
+    action: read
+    scope: repo
+    limit: 5
+    key: "{{inputs.target_repo}}"
+    next: discover_skills
+
   # ── 1. Discover skills from upstream repo ───────────────────────────────────
   discover_skills:
     type: brain
@@ -218,7 +227,7 @@ blocks:
     type: tool
     action: github/create_issue
     for_each: "{{ collect_findings.output }}"
-    next: notify_complete
+    next: write_memory
     input:
       repo: "{{ inputs.target_repo }}"
       title: "[{{ item.severity | upper }}] {{ item.type }} in {{ item.endpoint_or_file }}"
@@ -246,6 +255,21 @@ blocks:
         - "severity-{{ item.severity }}"
         - bughunter
         - autopilot-ready
+
+  write_memory:
+    type: memory
+    label: Record scan outcome
+    action: write
+    scope: repo
+    key: "{{inputs.target_repo}}"
+    summary: |
+      BugHunter scan of {{inputs.target_repo}}
+      Skills discovered: {{discover_skills.output | length}}
+      Findings: {{collect_findings.output | length}}
+      {% for f in collect_findings.output %}
+      [{{f.severity | upper}}] {{f.type}} — {{f.endpoint_or_file}}
+      {% endfor %}
+    next: notify_complete
 
   # ── 7. Summary notification ───────────────────────────────────────────────────
   notify_complete:
