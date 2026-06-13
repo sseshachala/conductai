@@ -2334,18 +2334,75 @@ def cmd_emit_finding(args):
         print(finding_id)
 
 
+def _gh_api_get(url: str, token: str) -> dict | list:
+    import urllib.request, urllib.error
+    req = urllib.request.Request(url, headers={
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    })
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read())
+
+
+def _fetch_github_issue(repo: str, issue_number: int, token: str) -> dict:
+    return _gh_api_get(f"https://api.github.com/repos/{repo}/issues/{issue_number}", token)  # type: ignore[return-value]
+
+
+def _fetch_issues_by_label(repo: str, label: str, token: str) -> list:
+    return _gh_api_get(
+        f"https://api.github.com/repos/{repo}/issues?labels={label}&state=open&per_page=20",
+        token,
+    )  # type: ignore[return-value]
+
+
+def _build_issue_trigger_payload(issue: dict, repo: str) -> dict:
+    owner, repo_name = (repo.split("/", 1) + [""])[:2]
+    return {
+        "action": "labeled",
+        "issue": {
+            "number": issue["number"],
+            "title": issue["title"],
+            "body": issue.get("body") or "",
+            "html_url": issue.get("html_url", ""),
+            "user": issue.get("user") or {},
+            "labels": issue.get("labels") or [],
+        },
+        "repository": {
+            "full_name": repo,
+            "name": repo_name,
+            "owner": {"login": owner},
+            "clone_url": f"https://github.com/{repo}.git",
+            "default_branch": "main",
+        },
+    }
+
+
+def _prompt_issue_choice(issues: list) -> dict:
+    print(f"\n{BOLD}Multiple open issues found — choose one:{RESET}\n")
+    for i, iss in enumerate(issues):
+        print(f"  {BOLD}{i + 1}.{RESET} #{iss['number']} — {iss['title']}")
+    print()
+    while True:
+        raw = input(f"Enter number [1–{len(issues)}]: ").strip()
+        if raw.isdigit() and 1 <= int(raw) <= len(issues):
+            return issues[int(raw) - 1]
+        print(f"{RED}Invalid choice.{RESET}")
+
+
 def cmd_run(args):
     server, workspace_id, api_key, token = _require_auth(args)
     json_h = api.headers(workspace_id, token, "application/json", api_key)
 
-    # Parse --input key=value pairs into initial_state
-    initial_state: dict = {}
+    # Fix 1: --input values go into state["inputs"], not top-level state.
+    # {{inputs.key}} refs in YAML only resolve when the executor finds state["inputs"].
+    run_inputs: dict = {}
     for kv in (args.input or []):
         if "=" not in kv:
             print(f"{RED}Bad --input format '{kv}' — expected key=value{RESET}")
             sys.exit(1)
         k, v = kv.split("=", 1)
-        initial_state[k] = v
+        run_inputs[k] = v
 
     # Resolve agent by name
     target = args.agent
@@ -2366,17 +2423,22 @@ def cmd_run(args):
         sys.exit(1)
 
     workflow_id = wf["id"]
+
+    # Fix 4: determine trigger type from workflow metadata.
+    is_github_webhook = bool(wf.get("github_webhook"))
+    slug = wf.get("playbook_slug") or ""
+    is_issue_trigger = is_github_webhook and "issue" in slug
+
     print(f"\n{BOLD}▶ conduct run — {wf['name']}{RESET}")
-    if initial_state:
-        for k, v in initial_state.items():
+    if run_inputs:
+        for k, v in run_inputs.items():
             print(f"  {GRAY}{k}={v}{RESET}")
     print()
 
-    # Preflight: estimate turns + show files likely to be modified
+    # Fix 2: preflight receives run_inputs so turn estimates use real input context.
     try:
         pf = api.req("POST", f"{server}/workflows/{workflow_id}/preflight", json_h, {
-            "issue_title": initial_state.get("title", ""),
-            "issue_body": initial_state.get("body", ""),
+            "run_inputs": run_inputs,
         })
         suggested = pf.get("suggested_max_turns", 20)
         files = pf.get("total_files", [])
@@ -2387,17 +2449,56 @@ def cmd_run(args):
     except Exception:
         suggested = 20
 
-    # Call the test-trigger endpoint so the YAML's built-in test_trigger.payload
-    # (PR fixture, issue fixture, etc.) is loaded and the configured repo is
-    # injected — instead of running with an empty trigger context.
-    body: dict = {**initial_state}
-    # Use preflight suggestion unless user explicitly passed --max-turns
+    # Fix 4: extract github_token before building body so it never lands in state["inputs"].
+    import os as _os
+    gh_token = run_inputs.pop("github_token", None) or _os.environ.get("GITHUB_TOKEN")
+
+    # Build the trigger body.
+    # Fix 1: send inputs under "inputs" key so server puts them in state["inputs"].
+    body: dict = {}
+    if run_inputs:
+        body["inputs"] = run_inputs
+
+    # Fix 4: non-webhook triggers (manual/schedule) — flag so server skips trigger validation.
+    if not is_github_webhook:
+        body["__manual"] = True
+
+    # Fix 4: github_issue_labeled — fire against a real issue when possible.
+    if is_issue_trigger:
+        repo = wf.get("github_hook_repo") or run_inputs.get("repo")
+        label = wf.get("github_hook_label") or ""
+        issue_number_raw = run_inputs.get("issue_number")
+        if gh_token and repo:
+            try:
+                if issue_number_raw:
+                    issue = _fetch_github_issue(repo, int(issue_number_raw), gh_token)
+                    body.update(_build_issue_trigger_payload(issue, repo))
+                    print(f"  {GRAY}issue: #{issue['number']} — {issue['title']}{RESET}\n")
+                elif label:
+                    issues = _fetch_issues_by_label(repo, label, gh_token)
+                    if not issues:
+                        print(f"{YELLOW}⚠ No open issues with label '{label}' in {repo}. Using test payload.{RESET}\n")
+                    elif len(issues) == 1:
+                        body.update(_build_issue_trigger_payload(issues[0], repo))
+                        print(f"  {GRAY}issue: #{issues[0]['number']} — {issues[0]['title']}{RESET}\n")
+                    else:
+                        chosen = _prompt_issue_choice(issues)
+                        body.update(_build_issue_trigger_payload(chosen, repo))
+                        print(f"  {GRAY}issue: #{chosen['number']} — {chosen['title']}{RESET}\n")
+            except Exception as _gh_err:
+                print(f"{YELLOW}⚠ GitHub fetch failed ({_gh_err}). Using test payload.{RESET}\n")
+        else:
+            hint = "export GITHUB_TOKEN=<token>" if not gh_token else "workflow has no github_hook_repo"
+            print(f"  {GRAY}No GitHub token — using test payload. ({hint}){RESET}\n")
+
+    # Fix 3: /trigger returns run_id, not id.
     if getattr(args, "max_turns", None):
         body["__max_turns"] = args.max_turns
     elif suggested > 20:
         body["__max_turns"] = suggested
     run = api.req("POST", f"{server}/workflows/{workflow_id}/trigger", json_h, body)
-    _stream_run(server, workflow_id, run["id"], workspace_id, token, api_key)
+    run_id = run.get("run_id") or run.get("id")
+    _stream_run(server, workflow_id, run_id, workspace_id, token, api_key)
 
 
 # ── conduct sync / test-guard / test-security ────────────────────────────────

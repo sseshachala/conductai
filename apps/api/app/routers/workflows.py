@@ -1679,6 +1679,12 @@ def test_trigger(
     if not workflow or not workflow.current_version:
         raise HTTPException(status_code=404, detail="Workflow not found")
 
+    # Extract CLI-only keys before merging with the YAML test payload.
+    # inputs: dict of {{inputs.x}} values supplied via `conduct run --input key=val`.
+    # __manual: True signals a manual/schedule trigger — bypasses trigger-shape validation.
+    run_inputs: dict = payload.pop("inputs", {})
+    is_manual_flag: bool = bool(payload.pop("__manual", False))
+
     # Always load the playbook's built-in test_trigger.payload, then merge any
     # caller-supplied overrides on top. This lets --repo override the repo fields
     # without wiping advisory/issue data baked into the test_trigger.
@@ -1762,9 +1768,16 @@ def test_trigger(
             "clone_url": _repo.get("clone_url", ""),
         }
         _initial_state["github_trigger"] = payload
+    elif is_manual_flag:
+        # Manual/schedule trigger from CLI — no trigger envelope needed.
+        _initial_state["__manual"] = True
     else:
         # Non-GitHub trigger — keep raw payload as _trigger
         _initial_state["_trigger"] = payload
+
+    # Propagate CLI --input values into state["inputs"] so {{inputs.x}} refs resolve.
+    if run_inputs:
+        _initial_state["inputs"] = run_inputs
 
     _initial_state = enrich_run_state_contract(
         _initial_state,
