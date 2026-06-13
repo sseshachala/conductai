@@ -1016,41 +1016,6 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
               </button>
             ))}
           </div>
-          <button
-            onClick={() => {
-              const laid = autoLayout(nodes, edges)
-              setNodes(laid.nodes)
-              setTimeout(() => fitView({ padding: 0.15, duration: 400 }), 50)
-            }}
-            title="Re-layout all blocks cleanly"
-            className="rounded-lg border border-indigo-200 px-3 py-1.5 text-xs font-medium text-indigo-500 hover:bg-indigo-50 transition-colors"
-          >
-            ⬡ Organize
-          </button>
-          <button
-            onClick={() => {
-              if (focusMode) {
-                setFocusMode(false)
-                setLeftOpen(true)
-                setRightOpen(true)
-              } else {
-                setFocusMode(true)
-                setLeftOpen(false)
-                setRightOpen(false)
-                const laid = autoLayout(nodes, edges)
-                setNodes(laid.nodes)
-                setTimeout(() => fitView({ padding: 0.2, minZoom: 0.5, duration: 400 }), 80)
-              }
-            }}
-            title={focusMode ? "Exit focus mode" : "Focus mode — show all blocks readable"}
-            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-              focusMode
-                ? "border-stone-400 bg-stone-900 text-white hover:bg-stone-700"
-                : "border-stone-300 text-stone-500 hover:bg-stone-50"
-            }`}
-          >
-            {focusMode ? "⊠ Exit Focus" : "⊡ Focus"}
-          </button>
           {!isViewer && (
             <>
               {prefs.show_test_trigger && playbookSlug && (
@@ -1222,6 +1187,52 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
               >
                 <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#E7E5E4" />
                 <Controls className="!shadow-none !border !border-stone-200 !rounded-xl" showInteractive={false} />
+                {/* Canvas toolbar — Organize + Focus, floats bottom-right above ReactFlow controls */}
+                <div className="absolute bottom-28 right-3 z-10 flex flex-col gap-1.5">
+                  <button
+                    onClick={() => {
+                      const laid = autoLayout(nodes, edges)
+                      setNodes(laid.nodes)
+                      setTimeout(() => fitView({ padding: 0.15, duration: 400 }), 50)
+                    }}
+                    title="Re-layout all blocks cleanly"
+                    className="flex items-center justify-center w-8 h-8 bg-white border border-stone-200 rounded-lg shadow-sm text-stone-500 hover:text-indigo-500 hover:border-indigo-200 hover:bg-indigo-50 transition-colors"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                      <polygon points="11 2 2 7 11 12 20 7 11 2"/><polyline points="2 17 11 22 20 17"/><polyline points="2 12 11 17 20 12"/>
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (focusMode) {
+                        setFocusMode(false)
+                        setLeftOpen(true)
+                        setRightOpen(true)
+                      } else {
+                        setFocusMode(true)
+                        setLeftOpen(false)
+                        setRightOpen(false)
+                        const laid = autoLayout(nodes, edges)
+                        setNodes(laid.nodes)
+                        setTimeout(() => fitView({ padding: 0.2, minZoom: 0.5, duration: 400 }), 80)
+                      }
+                    }}
+                    title={focusMode ? "Exit focus mode" : "Focus — hide panels, fit all blocks"}
+                    className={cn(
+                      "flex items-center justify-center w-8 h-8 border rounded-lg shadow-sm transition-colors",
+                      focusMode
+                        ? "bg-stone-900 border-stone-900 text-white hover:bg-stone-700"
+                        : "bg-white border-stone-200 text-stone-500 hover:text-stone-900 hover:border-stone-400"
+                    )}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                      {focusMode
+                        ? <><path d="M8 3H5a2 2 0 00-2 2v3"/><path d="M21 8V5a2 2 0 00-2-2h-3"/><path d="M3 16v3a2 2 0 002 2h3"/><path d="M16 21h3a2 2 0 002-2v-3"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></>
+                        : <><path d="M8 3H5a2 2 0 00-2 2v3"/><path d="M21 8V5a2 2 0 00-2-2h-3"/><path d="M3 16v3a2 2 0 002 2h3"/><path d="M16 21h3a2 2 0 002-2v-3"/></>
+                      }
+                    </svg>
+                  </button>
+                </div>
                 <MiniMap
                   nodeColor="#e7e5e4"
                   maskColor="rgba(250,250,249,0.7)"
