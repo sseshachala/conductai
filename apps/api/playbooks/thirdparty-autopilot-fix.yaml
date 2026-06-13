@@ -63,6 +63,10 @@ blocks:
   read_memory:
     $use: base-autopilot.recall_context
     key: "{{inputs.upstream_owner}}/{{inputs.upstream_repo}}"
+    next: plan_fix
+
+  plan_fix:
+    $use: base-autopilot.plan_fix
     next: implement_fix
 
   implement_fix:
@@ -72,67 +76,53 @@ blocks:
     max_turns: 20
     label: Implement fix
     description: |
-      You are an expert software engineer contributing a fix to an open-source project.
+      You are an expert software engineer. The plan is already done — execute it exactly.
 
       Upstream:    {{inputs.upstream_owner}}/{{inputs.upstream_repo}}
       Fork:        {{fork_upstream.fork_full_name}}
       Branch:      fix/issue-{{inputs.issue_number}}
       Issue title: {{fetch_issue.title}}
-      Issue body:
-      {{fetch_issue.body}}
+
+      ── PRE-COMPUTED PLAN (from plan_fix — do NOT re-derive) ─────────────────
+      Files to edit:   {{plan_fix.files}}
+      Functions:       {{plan_fix.functions}}
+      Subsystem:       {{plan_fix.subsystem}}
+      Approach:        {{plan_fix.approach}}
+      Complexity:      {{plan_fix.complexity}}
+      Grep pattern:    {{plan_fix.grep_pattern}}
 
       ── PRIOR FIXES ON THIS REPO ────────────────────────────────────────────
-      Use this context to avoid repeating mistakes and reuse known-good patterns:
       {{read_memory.entries}}
-      (Empty if this is the first fix on this repo — no prior context available.)
 
       ── STEP 1: DETECT YOUR EXECUTION MODE ──────────────────────────────────
       {{$snippet: detect_mode}}
 
       ── SANDBOX MODE (output was MODE=sandbox) ──────────────────────────────
-      The repo is already cloned at /workspace on branch fix/issue-{{inputs.issue_number}}.
-      The filesystem persists across tool calls — use multiple calls freely.
-      DO NOT make GitHub API calls to explore — use local grep/find instead (faster, no rate limits).
+      The repo is at /workspace on branch fix/issue-{{inputs.issue_number}}.
+      Filesystem persists — use multiple tool calls freely.
+      NO GitHub API calls. NO broad exploration. The plan already tells you what to read.
 
-      STEP A — EXTRACT FILE TARGETS FROM ISSUE (before any tool calls):
-        Read the issue title and body. Extract:
-        - Any file paths mentioned (e.g. awscli/customizations/login.py)
-        - Any function or class names mentioned
-        - Any error messages with file references
-        If paths are mentioned → go directly to those files.
-        If only a function/class name → run: grep -r "function_name" /workspace --include="*.py" -l
+      STEP A — READ EXACTLY WHAT THE PLAN SAYS (at most 2 tool calls):
+        - If plan_fix.files is non-empty → cat /workspace/<each file in plan_fix.files>
+        - If plan_fix.files is empty → grep -r "{{plan_fix.grep_pattern}}" /workspace -l --include="*.py" (or appropriate extension)
+        Read only those files. Do not explore further.
 
-      STEP B — FIND AND READ (at most 3 tool calls):
-        cd /workspace && grep / find / cat to locate and read the relevant code.
-        Do not explore broadly — target only what the issue points to.
+      STEP B — APPLY FIX (1-2 tool calls):
+        Edit using sed/awk/python -c or write_file.
+        Apply exactly the approach: {{plan_fix.approach}}
+        python3 -m py_compile <file> 2>&1  (or equivalent for the repo language)
 
-      STEP C — APPLY FIX:
-      1. Edit the file(s) directly in /workspace using sed/awk/python -c or write_file
-      2. Verify changes parse cleanly: python3 -m py_compile <file> 2>&1
-      3. Run repo linter:
+      STEP C — LINT, COMMIT, PUSH:
       {{$snippet: lint}}
-      4. cd /workspace && git add -A && git diff --cached --stat
-      5. git commit -m "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})"
-      6. git push https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git fix/issue-{{inputs.issue_number}}
+        cd /workspace && git add -A && git diff --cached --stat
+        git commit -m "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})"
+        git push https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git fix/issue-{{inputs.issue_number}}
 
       ── PROXY MODE (output was MODE=proxy) ──────────────────────────────────
       CRITICAL: Each run_shell call gets a FRESH container — filesystem resets between calls.
+      The plan is already done. You have the file paths and approach. Use at most 1 read call if needed.
 
-      STEP A — EXTRACT FILE TARGETS FROM ISSUE (do this first, before any tool calls):
-        Read the issue title and body carefully. Extract:
-        - Any file paths mentioned (e.g. awscli/customizations/login.py)
-        - Any function or class names mentioned
-        - Any error messages that reference a file + line
-        Start your search with those exact paths. Do NOT do a broad tree walk first.
-
-      STEP B — EXPLORATION (at most 5 tool calls total):
-        Use search_code/read_file targeted at the extracted paths.
-        If a file is mentioned in the issue → read it directly.
-        If only a function name is given → search_code for that name.
-        After 5 exploration calls you MUST proceed to Step C, even if uncertain.
-        Make your best inference from what you found — do not keep exploring.
-
-      STEP C — ONE run_shell call with ALL of: clone + fix + push:
+      ONE run_shell call with ALL of: clone + read + fix + push:
 
         git config --global user.email "bot@conductai.ai" && \
         git config --global user.name "Conduct AI" && \
@@ -143,7 +133,7 @@ blocks:
         git checkout -b fix/issue-{{inputs.issue_number}} && \
         git merge --ff-only upstream/{{fork_upstream.default_branch}} 2>/dev/null || \
           git reset --hard upstream/{{fork_upstream.default_branch}} && \
-        <APPLY FIX using sed/awk/python -c or heredoc — all inline> && \
+        <READ {{plan_fix.files}} then APPLY FIX using sed/awk/python -c — approach: {{plan_fix.approach}}> && \
         (if [ -f .pre-commit-config.yaml ]; then pre-commit run --all-files 2>/dev/null; pre-commit run --all-files 2>/dev/null || true; elif [ -f pyproject.toml ] || [ -f ruff.toml ] || [ -f setup.py ]; then ruff check --fix . 2>/dev/null || true && ruff format . 2>/dev/null || true; elif command -v black &>/dev/null; then black . 2>/dev/null || true; elif [ -f package.json ]; then (npx eslint --fix . 2>/dev/null || true) && (npx prettier --write . 2>/dev/null || true); elif [ -f Cargo.toml ]; then cargo fmt 2>/dev/null || true && cargo clippy --fix --allow-dirty 2>/dev/null || true; elif [ -f go.mod ]; then gofmt -w . 2>/dev/null || true; elif [ -f Gemfile ]; then bundle exec rubocop -a 2>/dev/null || true; fi) && \
         git add -A && git diff --cached --stat && \
         git commit -m "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})" && \
