@@ -173,6 +173,9 @@ class Block(BaseModel):
     # — per-block turn budget override for agentic brain blocks —
     max_turns: int | None = None  # overrides the run-level __max_turns for this block only
 
+    # — canvas display flags —
+    is_readonly: bool = False  # True for blocks resolved from $use — canvas shows read-only banner
+
     # — retry (#565) —
     retry: dict[str, Any] | None = None  # retry config (typed properly in #564, dict for now)
 

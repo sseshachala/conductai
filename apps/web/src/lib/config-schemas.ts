@@ -141,6 +141,7 @@ export interface ConfigField {
   options?: { value: string; label: string }[]
   suggestions?: string[]
   defaultValue?: string | boolean | number
+  section?: "basic" | "advanced"
 }
 
 // ── GitHub ────────────────────────────────────────────────────────────────────
@@ -355,6 +356,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       type: "toggle",
       hint: "AI loops autonomously — reads files, writes code, runs commands",
       defaultValue: false,
+      section: "basic",
     },
     {
       key: "routingPreference",
@@ -368,6 +370,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
         { value: "speed",    label: "Speed — faster response" },
         { value: "cost",     label: "Cost — efficient model" },
       ],
+      section: "advanced",
     },
   ],
   logic: [
@@ -378,6 +381,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       required: true,
       placeholder: "exit_code == 0",
       hint: "Expression evaluated against the previous block's output",
+      section: "basic",
     },
   ],
   approval: [
@@ -387,6 +391,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       type: "textarea",
       required: true,
       placeholder: "PR ready for review: {{github_pr.pr_url}} — approve to merge.",
+      section: "basic",
     },
     {
       key: "config.channel",
@@ -394,6 +399,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       type: "text",
       required: true,
       placeholder: "#eng-approvals",
+      section: "basic",
     },
   ],
   trigger: [
@@ -417,6 +423,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
         { value: "deployment.failed",          label: "Vercel — deployment failed / error" },
         { value: "webhook",                    label: "Inbound webhook" },
       ],
+      section: "basic",
     },
     {
       key: "config.labels",
@@ -426,6 +433,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       placeholder: "Add a label…",
       hint: "GitHub labels that fire this trigger — any match triggers the workflow",
       suggestions: ["autopilot ready", "ai_pilot_ready", "ai_ready"],
+      section: "basic",
     },
     {
       key: "config.repo_allowlist",
@@ -433,6 +441,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       type: "text",
       placeholder: "my-org/my-repo",
       hint: "Comma-separated owner/repo — only these repos will fire the trigger",
+      section: "basic",
     },
     {
       key: "config.webhook_secret",
@@ -442,6 +451,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       placeholder: "auto-generated on install",
       hint: "Requires X-Webhook-Signature header when set",
       readOnly: true,
+      section: "advanced",
     },
   ],
   mcp: [
@@ -452,6 +462,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       required: true,
       placeholder: "mcp-vercel",
       hint: "Handle saved in Settings → Credentials",
+      section: "basic",
     },
     {
       key: "config.tool_name",
@@ -459,6 +470,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       type: "text",
       required: true,
       placeholder: "get_logs",
+      section: "basic",
     },
     {
       key: "config.transport",
@@ -470,6 +482,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
         { value: "http", label: "HTTP (Streamable)" },
         { value: "sse",  label: "SSE" },
       ],
+      section: "advanced",
     },
   ],
   output: [
@@ -485,6 +498,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
         { value: "both",    label: "Slack + Email" },
         { value: "webhook", label: "Outbound webhook" },
       ],
+      section: "basic",
     },
     {
       key: "config.channel",
@@ -492,6 +506,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       type: "text",
       required: true,
       placeholder: "#general",
+      section: "basic",
     },
     {
       key: "config.to",
@@ -499,6 +514,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       type: "text",
       required: true,
       placeholder: "you@example.com",
+      section: "basic",
     },
     {
       key: "config.webhook_url",
@@ -507,6 +523,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       required: true,
       placeholder: "https://hooks.example.com/...",
       hint: "Conduct will POST the run result as JSON",
+      section: "basic",
     },
     {
       key: "config.webhook_secret",
@@ -515,6 +532,7 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
       required: false,
       placeholder: "optional",
       hint: "Signs the payload — receiver checks X-Conduct-Signature: sha256=<hmac>",
+      section: "advanced",
     },
   ],
 }
