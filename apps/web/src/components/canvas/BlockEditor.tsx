@@ -12,6 +12,7 @@ import {
 } from "@/lib/config-schemas"
 import { GitHubRepoField, GitHubBranchField, GitHubRepoAllowlistField } from "./GitHubRepoField"
 import { cn } from "@/lib/utils"
+import { useBlockSchemas, getSchemaRequiredKeys } from "@/hooks/useBlockSchemas"
 
 interface BlockEditorProps {
   workflowId: string
@@ -1167,6 +1168,9 @@ export default function BlockEditor({
   const abortRef = useRef<AbortController | null>(null)
   const style = BLOCK_STYLES[blockType] ?? BLOCK_STYLES["tool"]
 
+  // Block schema registry — drives required-field markers and fallback rendering
+  const { schemas: blockSchemas } = useBlockSchemas()
+
   const isToolLike = ["tool", "cleanup"].includes(blockType)
   const integration = (blockData.integration as string) || ""
   const action = (getNestedValue(blockData, "config.action") as string) || ""
@@ -1176,8 +1180,26 @@ export default function BlockEditor({
   const VERCEL_EVENT_TYPES = new Set(["deployment.succeeded", "deployment.ready", "deployment.failed", "deployment.error"])
   const isVercelTrigger = VERCEL_EVENT_TYPES.has(triggerEventType)
 
-  // Trigger block has its own dedicated rendering section — excluded from staticFields
-  const allStaticFields = BLOCK_CONFIG_SCHEMAS[blockType] || []
+  // Required keys from registry — used to show missing-field badges
+  const schemaRequiredKeys = getSchemaRequiredKeys(blockSchemas, blockType, triggerEventType || undefined)
+
+  // Trigger block has its own dedicated rendering section — excluded from staticFields.
+  // For unknown block types (not in the static schema map), fall back to registry fields.
+  const staticSchemaFields: ConfigField[] = (() => {
+    const apiDef = blockSchemas?.[blockType]
+    if (!apiDef) return []
+    return apiDef.fields.map(f => ({
+      key: f.key,
+      label: f.label,
+      type: (f.type as ConfigField["type"]) || "text",
+      required: f.required,
+      placeholder: f.placeholder,
+      hint: f.hint,
+      options: f.options,
+      defaultValue: f.default,
+    }))
+  })()
+  const allStaticFields = BLOCK_CONFIG_SCHEMAS[blockType as keyof typeof BLOCK_CONFIG_SCHEMAS] || staticSchemaFields
   const staticFields = blockType === "trigger"
     ? []
     : blockType === "output"
@@ -2222,8 +2244,25 @@ export default function BlockEditor({
       )}
 
       {/* Footer — close only; changes auto-save on every edit */}
-      <div style={{ padding: "10px 18px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "flex-end" }} className="shrink-0 bg-white sticky bottom-0">
-        <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
+      <div style={{ padding: "10px 18px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }} className="shrink-0 bg-white sticky bottom-0">
+        {schemaRequiredKeys.length > 0 && (() => {
+          const missing = schemaRequiredKeys.filter(key => {
+            const val = getNestedValue(blockData, key)
+            return !val
+          })
+          return missing.length > 0 ? (
+            <p className="text-[10px] text-amber-600 flex items-center gap-1">
+              <span>⚠</span>
+              {missing.length === 1
+                ? `Missing required field`
+                : `${missing.length} required fields missing`}
+            </p>
+          ) : (
+            <p className="text-[10px] text-emerald-600 flex items-center gap-1"><span>✓</span> All required fields set</p>
+          )
+        })()}
+        {schemaRequiredKeys.length === 0 && <span />}
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>Done</button>
       </div>
 
     </div>

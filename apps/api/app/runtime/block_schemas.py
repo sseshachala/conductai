@@ -314,3 +314,38 @@ def get_required_keys(block_type: str, event_type: str | None = None) -> list[st
         keys += [f["key"] for f in subtype.get("fields", []) if f.get("required")]
 
     return keys
+
+
+def validate_yaml_block(block_type: str, yaml_data: dict) -> list[str]:
+    """
+    Check a raw YAML block dict for missing required fields.
+
+    Only validates block types whose required fields are NOT already enforced
+    by the Pydantic Block model (currently: sandbox).  Returns a list of
+    missing YAML-level field names (empty list = valid).
+
+    Intentionally conservative: only checks top-level YAML keys (no deep
+    params.x paths) so it never breaks playbooks that use valid alternate
+    shapes (e.g. slash-format tool actions resolved by Pydantic).
+    """
+    # Block types already fully validated by Pydantic._validate_by_type — skip.
+    PYDANTIC_VALIDATED = {"brain", "tool", "logic", "approval", "memory", "output", "mcp"}
+    if block_type in PYDANTIC_VALIDATED:
+        return []
+
+    schema = BLOCK_SCHEMAS.get(block_type)
+    if not schema:
+        return []
+
+    missing = []
+    for field in schema.get("fields", []):
+        if not field.get("required"):
+            continue
+        key = field["key"]
+        yaml_key = key.removeprefix("config.")
+        if "." in yaml_key:
+            continue  # skip deeply nested paths (params.x)
+        if not yaml_data.get(yaml_key):
+            missing.append(yaml_key)
+
+    return missing

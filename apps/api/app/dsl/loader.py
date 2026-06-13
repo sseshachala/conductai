@@ -73,6 +73,27 @@ def _validate_against_yaml_schema(data: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Registry-driven block validation
+# ---------------------------------------------------------------------------
+
+
+def _validate_blocks_against_registry(blocks: dict) -> None:
+    """Check block configs against the schema registry for types not covered by Pydantic."""
+    from app.runtime.block_schemas import validate_yaml_block
+
+    for block_id, block_data in blocks.items():
+        if not isinstance(block_data, dict):
+            continue
+        block_type = block_data.get("type", "")
+        missing = validate_yaml_block(block_type, block_data)
+        if missing:
+            raise WorkflowValidationError(
+                f"Block '{block_id}' ({block_type}) is missing required fields: "
+                + ", ".join(missing)
+            )
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -109,9 +130,14 @@ def load_workflow_yaml(yaml_text: str, base_dir: Path | None = None) -> Workflow
     _validate_against_yaml_schema(data)
 
     try:
-        return Workflow.model_validate(data)
+        workflow = Workflow.model_validate(data)
     except Exception as e:  # pydantic.ValidationError or our own ValueError
         raise WorkflowValidationError(str(e)) from e
+
+    # Registry-driven validation for block types not covered by Pydantic
+    _validate_blocks_against_registry(data.get("blocks") or {})
+
+    return workflow
 
 
 # ---------------------------------------------------------------------------
