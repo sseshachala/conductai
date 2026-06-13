@@ -53,6 +53,7 @@ function BlockIcon({ type, className }: { type: string; className?: string }) {
     case "brain":    return <svg {...props}><path d="M12 2a4 4 0 014 4c0 .34-.04.67-.1 1H17a3 3 0 010 6h-.5M12 2a4 4 0 00-4 4c0 .34.04.67.1 1H7a3 3 0 000 6h.5"/><path d="M12 2v18M8.5 13h7"/></svg>
     case "tool":     return <svg {...props}><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
     case "logic":    return <svg {...props}><path d="M16 3h5v5M4 20L21 3"/><path d="M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
+    case "for_each": return <svg {...props}><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
     case "memory":   return <svg {...props}><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0018 0V5"/><path d="M3 12a9 3 0 0018 0"/></svg>
     case "approval": return <svg {...props}><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
     case "output":   return <svg {...props}><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
