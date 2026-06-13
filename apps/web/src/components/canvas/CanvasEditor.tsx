@@ -866,7 +866,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
 
   const handleBlockStatus = useCallback((blockId: string, status: "running" | "completed" | "failed" | "skipped") => {
     setNodes(nds => nds.map(n =>
-      n.id === blockId ? { ...n, data: { ...n.data, runStatus: status } } : n
+      n.id === blockId ? { ...n, data: { ...n.data, runStatus: status, ...(status === "running" ? { liveTurn: undefined } : {}) } } : n
     ))
   }, [setNodes])
 

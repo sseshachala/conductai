@@ -135,9 +135,9 @@ function BlockNode({ data, selected }: NodeProps) {
         runStatus === "running"   && "ring-2 ring-violet-400 shadow-violet-100 shadow-md",
         runStatus === "completed" && "ring-1 ring-emerald-400",
         runStatus === "failed"    && "ring-2 ring-red-400",
-        !runStatus && (selected
-          ? "ring-1 ring-[var(--accent)] shadow-md"
-          : "hover:shadow-md hover:ring-1 hover:ring-[var(--border-2)]")
+        selected && runStatus  && "outline outline-1 outline-[var(--accent)]",
+        selected && !runStatus && "ring-1 ring-[var(--accent)] shadow-md",
+        !selected && !runStatus && "hover:shadow-md hover:ring-1 hover:ring-[var(--border-2)]"
       )}
     >
       {/* Run status overlay */}
