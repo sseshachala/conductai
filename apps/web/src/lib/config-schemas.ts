@@ -174,6 +174,24 @@ const GITHUB_ACTION_FIELDS: Record<string, ConfigField[]> = {
     { key: "config.params.owner", label: "Owner", type: "text", required: true, placeholder: "my-org" },
     { key: "config.params.repo",  label: "Repo",  type: "text", required: true, placeholder: "my-repo" },
   ],
+  search_code: [
+    {
+      key: "config.params.query",
+      label: "Search query",
+      type: "text",
+      required: true,
+      placeholder: "urllib3 repo:{{inputs.upstream_owner}}/{{inputs.upstream_repo}}",
+      hint: "GitHub code search query — supports repo:, language:, path: filters",
+    },
+    {
+      key: "config.params.per_page",
+      label: "Max results",
+      type: "number",
+      required: false,
+      placeholder: "10",
+      hint: "Maximum file results to return (max 30)",
+    },
+  ],
 }
 
 // ── Slack ─────────────────────────────────────────────────────────────────────
@@ -293,6 +311,7 @@ export const INTEGRATION_ACTIONS: Record<string, { value: string; label: string 
     { value: "create_branch",      label: "Create branch" },
     { value: "open_pull_request",  label: "Open pull request" },
     { value: "list_pull_requests", label: "List pull requests" },
+    { value: "search_code",        label: "Search code" },
   ],
   slack: [
     { value: "post_message",          label: "Post message" },

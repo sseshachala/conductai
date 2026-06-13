@@ -1,6 +1,6 @@
 extends: base-autopilot
 name: Third-Party Autopilot Fix
-version: 9
+version: 10
 description: >
   Given an issue number on any third-party repo (any language), fork it, apply
   the fix, push a branch, and open a PR back to upstream.
@@ -66,6 +66,16 @@ blocks:
 
   plan_fix:
     $use: base-autopilot.plan_fix
+    next: search_code
+
+  search_code:
+    type: tool
+    integration: github
+    action: search_code
+    label: Search code
+    description: Find files matching the grep pattern in the upstream repo
+    params:
+      query: "{{plan_fix.grep_pattern}} repo:{{inputs.upstream_owner}}/{{inputs.upstream_repo}}"
     next: implement_fix
 
   implement_fix:
@@ -109,24 +119,13 @@ blocks:
           git reset --hard upstream/{{fork_upstream.default_branch}}
         fi && \
         \
-        # ── LOCATE FILES (grep_pattern fallback) ─────────────────────────────
-        # plan_fix.files are hints from the issue text — verify they exist.
-        # If none exist, grep for the actual file using grep_pattern.
-        PLAN_FILES="{{plan_fix.files}}" && \
-        GREP_PAT="{{plan_fix.grep_pattern}}" && \
-        FOUND_FILES="" && \
-        for f in $PLAN_FILES; do [ -f "$f" ] && FOUND_FILES="$FOUND_FILES $f"; done && \
-        if [ -z "$FOUND_FILES" ] && [ -n "$GREP_PAT" ]; then \
-          FOUND_FILES=$(grep -rln "$GREP_PAT" . --include="*.py" --include="*.toml" --include="*.cfg" --include="*.txt" --include="*.go" --include="*.js" --include="*.ts" --include="*.rb" --include="*.java" --exclude-dir=".git" 2>/dev/null | head -5); \
-          echo "plan_fix files not on disk — grep located: $FOUND_FILES"; \
-        fi && \
-        \
         # ── FIX SECTION ── fill this in based on the plan above ──────────────
         # Approach: {{plan_fix.approach}}
-        # Target files: use $FOUND_FILES (verified on disk) not {{plan_fix.files}} directly
+        # Verified file paths from GitHub code search: {{search_code.paths}}
+        # Use these paths directly — they are confirmed to exist in the repo.
         # Read the file inline if needed: python3 -c "c=open('file.py').read(); open('file.py','w').write(c.replace(...))"
         # Or use sed: sed -i 's/old/new/' file.py
-        <YOUR INLINE FIX HERE — operate on $FOUND_FILES, no separate exploration calls> && \
+        <YOUR INLINE FIX HERE — use {{search_code.paths}} as the target files> && \
         # ── END FIX SECTION ───────────────────────────────────────────────────
         \
         (if [ -f .pre-commit-config.yaml ]; then pre-commit run --all-files 2>/dev/null || true; \
