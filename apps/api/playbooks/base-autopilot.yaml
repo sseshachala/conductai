@@ -62,9 +62,7 @@ blocks:
   route_by_complexity:
     type: logic
     label: Route by complexity
-    description: "Branch on plan_fix complexity — medium/large get a sandbox, small uses proxy"
-    config:
-      condition: "{{plan_fix.complexity}} != 'small'"
+    condition: "{{plan_fix.complexity}} != 'small'"
 
   provision_sandbox:
     type: sandbox
