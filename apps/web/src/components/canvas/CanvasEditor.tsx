@@ -6,7 +6,6 @@ import { useAuth } from "@clerk/nextjs"
 import {
   ReactFlow,
   Background,
-  Controls,
   addEdge,
   useNodesState,
   useEdgesState,
@@ -140,7 +139,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
   const historyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
-  const { screenToFlowPosition, setCenter, fitView } = useReactFlow()
+  const { screenToFlowPosition, setCenter, fitView, zoomIn, zoomOut } = useReactFlow()
   const router = useRouter()
   const [canvasLoading, setCanvasLoading] = useState(true)
   const [running, setRunning] = useState<"idle" | "dry" | "live">("idle")
@@ -1185,52 +1184,60 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                 }}
               >
                 <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#E7E5E4" />
-                <Controls className="!shadow-none !border !border-stone-200 !rounded-xl" showInteractive={false} />
-                {/* Canvas toolbar — Organize + Focus, floats top-left inside canvas */}
-                <div className="absolute top-3 right-3 z-10 flex flex-col gap-1.5">
-                  <button
-                    onClick={() => {
-                      const laid = autoLayout(nodes, edges)
-                      setNodes(laid.nodes)
-                      setTimeout(() => fitView({ padding: 0.15, duration: 400 }), 50)
-                    }}
-                    title="Re-layout all blocks cleanly"
-                    className="flex items-center justify-center w-8 h-8 bg-white border border-stone-200 rounded-lg shadow-sm text-stone-500 hover:text-indigo-500 hover:border-indigo-200 hover:bg-indigo-50 transition-colors"
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                      <polygon points="11 2 2 7 11 12 20 7 11 2"/><polyline points="2 17 11 22 20 17"/><polyline points="2 12 11 17 20 12"/>
-                    </svg>
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (focusMode) {
-                        setFocusMode(false)
-                        setLeftOpen(true)
-                        setRightOpen(true)
-                      } else {
-                        setFocusMode(true)
-                        setLeftOpen(false)
-                        setRightOpen(false)
-                        const laid = autoLayout(nodes, edges)
-                        setNodes(laid.nodes)
-                        setTimeout(() => fitView({ padding: 0.2, minZoom: 0.5, duration: 400 }), 80)
-                      }
-                    }}
-                    title={focusMode ? "Exit focus mode" : "Focus — hide panels, fit all blocks"}
-                    className={cn(
-                      "flex items-center justify-center w-8 h-8 border rounded-lg shadow-sm transition-colors",
-                      focusMode
-                        ? "bg-stone-900 border-stone-900 text-white hover:bg-stone-700"
-                        : "bg-white border-stone-200 text-stone-500 hover:text-stone-900 hover:border-stone-400"
-                    )}
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                      {focusMode
-                        ? <><path d="M8 3H5a2 2 0 00-2 2v3"/><path d="M21 8V5a2 2 0 00-2-2h-3"/><path d="M3 16v3a2 2 0 002 2h3"/><path d="M16 21h3a2 2 0 002-2v-3"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></>
-                        : <><path d="M8 3H5a2 2 0 00-2 2v3"/><path d="M21 8V5a2 2 0 00-2-2h-3"/><path d="M3 16v3a2 2 0 002 2h3"/><path d="M16 21h3a2 2 0 002-2v-3"/></>
-                      }
-                    </svg>
-                  </button>
+                {/* Unified canvas toolbar — replaces ReactFlow Controls + custom buttons */}
+                <div className="absolute top-3 right-3 z-10 flex flex-col bg-white border border-stone-200 rounded-xl shadow-sm overflow-hidden">
+                  {[
+                    {
+                      title: "Zoom in",
+                      onClick: () => zoomIn({ duration: 200 }),
+                      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+                      active: false,
+                    },
+                    {
+                      title: "Zoom out",
+                      onClick: () => zoomOut({ duration: 200 }),
+                      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5"><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+                      active: false,
+                    },
+                    {
+                      title: "Fit view",
+                      onClick: () => fitView({ padding: 0.2, duration: 400 }),
+                      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="M8 3H5a2 2 0 00-2 2v3"/><path d="M21 8V5a2 2 0 00-2-2h-3"/><path d="M3 16v3a2 2 0 002 2h3"/><path d="M16 21h3a2 2 0 002-2v-3"/></svg>,
+                      active: false,
+                    },
+                    {
+                      title: "Organize — auto-layout all blocks",
+                      onClick: () => { const laid = autoLayout(nodes, edges); setNodes(laid.nodes); setTimeout(() => fitView({ padding: 0.15, duration: 400 }), 50) },
+                      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polygon points="11 2 2 7 11 12 20 7 11 2"/><polyline points="2 17 11 22 20 17"/><polyline points="2 12 11 17 20 12"/></svg>,
+                      active: false,
+                    },
+                    {
+                      title: focusMode ? "Exit focus mode" : "Focus — hide panels, fit all blocks",
+                      onClick: () => {
+                        if (focusMode) { setFocusMode(false); setLeftOpen(true); setRightOpen(true) }
+                        else { setFocusMode(true); setLeftOpen(false); setRightOpen(false); const laid = autoLayout(nodes, edges); setNodes(laid.nodes); setTimeout(() => fitView({ padding: 0.2, minZoom: 0.5, duration: 400 }), 80) }
+                      },
+                      icon: focusMode
+                        ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="M8 3H5a2 2 0 00-2 2v3"/><path d="M21 8V5a2 2 0 00-2-2h-3"/><path d="M3 16v3a2 2 0 002 2h3"/><path d="M16 21h3a2 2 0 002-2v-3"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>
+                        : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>,
+                      active: focusMode,
+                    },
+                  ].map((btn, i, arr) => (
+                    <button
+                      key={i}
+                      onClick={btn.onClick}
+                      title={btn.title}
+                      className={cn(
+                        "flex items-center justify-center w-9 h-9 transition-colors",
+                        i < arr.length - 1 && "border-b border-stone-100",
+                        btn.active
+                          ? "bg-stone-900 text-white"
+                          : "text-stone-500 hover:text-stone-900 hover:bg-stone-50"
+                      )}
+                    >
+                      {btn.icon}
+                    </button>
+                  ))}
                 </div>
               </ReactFlow>
               {activeRunId && drawerVisible && (
