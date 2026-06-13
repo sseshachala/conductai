@@ -7,7 +7,6 @@ import {
   ReactFlow,
   Background,
   Controls,
-  MiniMap,
   addEdge,
   useNodesState,
   useEdgesState,
@@ -1233,13 +1232,6 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                     </svg>
                   </button>
                 </div>
-                <MiniMap
-                  nodeColor="#e7e5e4"
-                  maskColor="rgba(250,250,249,0.7)"
-                  className="!border !border-stone-200 !rounded-xl !shadow-none"
-                  pannable
-                  zoomable
-                />
               </ReactFlow>
               {activeRunId && drawerVisible && (
                 <RunDrawer
