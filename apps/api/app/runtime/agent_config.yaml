@@ -1,0 +1,8 @@
+# Agent runtime configuration
+# Edit these values to tune turn budgets and sandbox routing without touching code.
+
+turn_budgets:
+  small: 25      # simple single-file changes, typical 10-15 turns
+  medium: 50     # multi-file fixes, typical 20-35 turns
+  large: 100     # complex refactors across subsystems, typical 50-75 turns
+  default: 25    # fallback when plan_fix.complexity is missing or unrecognised
