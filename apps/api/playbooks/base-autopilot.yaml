@@ -59,6 +59,25 @@ blocks:
     action: write
     scope: repo
 
+  route_by_complexity:
+    type: logic
+    label: Route by complexity
+    description: "Branch on plan_fix complexity — medium/large get a sandbox, small uses proxy"
+    config:
+      condition: "{{plan_fix.complexity}} != 'small'"
+
+  provision_sandbox:
+    type: sandbox
+    label: Provision sandbox
+    description: "Clone the fork into /workspace so implement_fix runs in a persistent sandbox"
+    config:
+      provider: "{{inputs.sandbox_provider}}"
+      setup:
+        - "git config --global user.email 'bot@conductai.ai' && git config --global user.name 'Conduct AI'"
+        - "git clone https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git /workspace"
+        - "cd /workspace && git remote add upstream https://github.com/{{inputs.upstream_owner}}/{{inputs.upstream_repo}}.git && git fetch upstream --depth=50"
+        - "cd /workspace && git checkout -b fix/issue-{{inputs.issue_number}} && git reset --hard upstream/{{fork_upstream.default_branch}}"
+
   plan_fix:
     type: brain
     mode: single
