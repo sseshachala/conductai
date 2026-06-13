@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Database,
   Network,
+  Repeat2,
 } from "lucide-react"
 import { BLOCK_LIBRARY, BLOCK_STYLES, type BlockType } from "@/lib/block-types"
 import { cn } from "@/lib/utils"
@@ -21,6 +22,7 @@ function BlockIcon({ type, className }: { type: BlockType; className?: string })
     case "brain":    return <Sparkles {...props} />
     case "tool":     return <Plug {...props} />
     case "logic":    return <GitBranch {...props} />
+    case "for_each": return <Repeat2 {...props} />
     case "approval": return <ShieldCheck {...props} />
     case "output":   return <Bell {...props} />
     case "cleanup":  return <RefreshCw {...props} />
