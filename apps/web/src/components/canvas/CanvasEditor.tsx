@@ -32,6 +32,7 @@ import YamlPanel from "./YamlPanel"
 import { autoLayout } from "@/lib/auto-layout"
 import { type BlockType } from "@/lib/block-types"
 import { usePreferences } from "@/lib/PreferencesContext"
+import { cn } from "@/lib/utils"
 
 const nodeTypes = { block: BlockNode }
 
@@ -156,6 +157,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
   const [focusMode, setFocusMode] = useState(false)
+  const [canvasMode, setCanvasMode] = useState<"engineer" | "liverun" | "reviewer">("engineer")
   const [activeView, setActiveView] = useState<"canvas" | "yaml" | "runs">("canvas")
   const [runs, setRuns] = useState<{id:string;status:string;triggered_by:string|null;created_at:string}[]>([])
   const [runsLoading, setRunsLoading] = useState(false)
@@ -744,6 +746,25 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     }
   }, [workflowId, getToken, router, nodes, selectedEnvId])
 
+  const handleModeChange = useCallback((m: "engineer" | "liverun" | "reviewer") => {
+    setCanvasMode(m)
+    if (m === "engineer") {
+      setLeftOpen(true)
+      setNodes(nds => nds.map(n => ({ ...n, data: { ...n.data, reviewerDim: false } })))
+    } else if (m === "liverun") {
+      setLeftOpen(false)
+      setNodes(nds => nds.map(n => ({ ...n, data: { ...n.data, reviewerDim: false } })))
+      if (running === "idle" && !activeRunId) startRun(false)
+    } else if (m === "reviewer") {
+      setLeftOpen(false)
+      setNodes(nds => nds.map(n => {
+        const type = (n.data as BlockNodeData).type
+        const isDecision = type === "brain" || type === "approval" || type === "trigger"
+        return { ...n, data: { ...n.data, reviewerDim: !isDecision } }
+      }))
+    }
+  }, [setLeftOpen, setNodes, running, activeRunId, startRun])
+
   const startWebhookRun = useCallback(async (dryRun: boolean, repo: string, prNumber: string) => {
     setWebhookModal(null)
     setRunning(dryRun ? "dry" : "live")
@@ -979,6 +1000,22 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
           </span>
           <CostEstimate workflowId={workflowId} nodes={nodes} getToken={getToken} />
 
+          <div className="flex items-center bg-stone-100 rounded-lg p-0.5 gap-0.5">
+            {(["engineer", "liverun", "reviewer"] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => handleModeChange(m)}
+                className={cn(
+                  "px-3 py-1 rounded-md text-xs font-medium transition-all",
+                  canvasMode === m
+                    ? "bg-white text-stone-900 shadow-sm"
+                    : "text-stone-500 hover:text-stone-700"
+                )}
+              >
+                {m === "engineer" ? "Engineer" : m === "liverun" ? "▶ Live Run" : "👁 Reviewer"}
+              </button>
+            ))}
+          </div>
           <button
             onClick={() => {
               const laid = autoLayout(nodes, edges)
@@ -1045,6 +1082,20 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
           )}
         </div>
       </header>
+
+      {/* Reviewer mode banner */}
+      {canvasMode === "reviewer" && (
+        <div className="shrink-0 flex items-center gap-3 px-4 py-2 bg-amber-50 border-b border-amber-200 text-xs">
+          <span className="text-amber-700 font-semibold">👁 Reviewer mode</span>
+          <span className="text-amber-600">Only decision points shown. Everything else runs automatically.</span>
+          <button
+            onClick={() => handleModeChange("engineer")}
+            className="ml-auto text-amber-700 font-medium hover:text-amber-900"
+          >
+            Exit →
+          </button>
+        </div>
+      )}
 
       {/* Three-panel layout (or YAML view) */}
       <div className="flex flex-1 overflow-hidden">
@@ -1187,7 +1238,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                   onBlockStatus={handleBlockStatus}
                   onBlockTurns={handleBlockTurns}
                   onClose={handleDrawerHide}
-                  onRunDone={() => { localStorage.removeItem(STORAGE_KEY); setRunning("idle"); setActiveRunId(null) }}
+                  onRunDone={() => { localStorage.removeItem(STORAGE_KEY); setRunning("idle"); setActiveRunId(null); if (canvasMode === "liverun") { setCanvasMode("engineer"); setLeftOpen(true) } }}
                 />
               )}
             </div>
