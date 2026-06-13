@@ -59,6 +59,15 @@ blocks:
     action: write
     scope: repo
 
+  search_code:
+    type: tool
+    integration: github
+    action: search_code
+    label: Search code
+    description: Find files matching the grep pattern in the upstream repo (default branch)
+    params:
+      query: "{{plan_fix.grep_pattern}} repo:{{inputs.upstream_owner}}/{{inputs.upstream_repo}}"
+
   plan_fix:
     type: brain
     mode: single

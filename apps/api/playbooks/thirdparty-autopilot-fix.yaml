@@ -1,6 +1,6 @@
 extends: base-autopilot
 name: Third-Party Autopilot Fix
-version: 11
+version: 12
 description: >
   Given an issue number on any third-party repo (any language), fork it, apply
   the fix, push a branch, and open a PR back to upstream.
@@ -69,13 +69,7 @@ blocks:
     next: search_code
 
   search_code:
-    type: tool
-    integration: github
-    action: search_code
-    label: Search code
-    description: Find files matching the grep pattern in the upstream repo
-    params:
-      query: "{{plan_fix.grep_pattern}} repo:{{inputs.upstream_owner}}/{{inputs.upstream_repo}}"
+    $use: base-autopilot.search_code
     next: implement_fix
 
   implement_fix:
