@@ -99,6 +99,7 @@ function BlockNode({ data, selected }: NodeProps) {
   const isOutput   = nodeData.type === "output"
   const isMemory   = nodeData.type === "memory"
 
+  const reviewerDim = nodeData.reviewerDim === true
   const runStatus = nodeData.runStatus as "running" | "completed" | "failed" | "skipped" | undefined
   const liveTurn = typeof nodeData.liveTurn === "number" ? nodeData.liveTurn : undefined
   const maxTurns = typeof nodeData.max_turns === "number" ? nodeData.max_turns : 20
@@ -137,7 +138,8 @@ function BlockNode({ data, selected }: NodeProps) {
         runStatus === "failed"    && "ring-2 ring-red-400",
         selected && runStatus  && "outline outline-1 outline-[var(--accent)]",
         selected && !runStatus && "ring-1 ring-[var(--accent)] shadow-md",
-        !selected && !runStatus && "hover:shadow-md hover:ring-1 hover:ring-[var(--border-2)]"
+        !selected && !runStatus && "hover:shadow-md hover:ring-1 hover:ring-[var(--border-2)]",
+        reviewerDim && "opacity-30 pointer-events-none"
       )}
     >
       {/* Run status overlay */}
