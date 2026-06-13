@@ -98,6 +98,10 @@ function BlockNode({ data, selected }: NodeProps) {
   const isBrain    = nodeData.type === "brain"
   const isOutput   = nodeData.type === "output"
   const isMemory   = nodeData.type === "memory"
+
+  const runStatus = nodeData.runStatus as "running" | "completed" | "failed" | "skipped" | undefined
+  const liveTurn = typeof nodeData.liveTurn === "number" ? nodeData.liveTurn : undefined
+  const maxTurns = typeof nodeData.max_turns === "number" ? nodeData.max_turns : 20
   const memoryAction = isMemory ? ((nodeData.config as Record<string, string>)?.action || "read") : null
 
   const missingCondition = isLogic && !(nodeData.config as Record<string, unknown>)?.condition
@@ -126,13 +130,42 @@ function BlockNode({ data, selected }: NodeProps) {
     <div
       style={{ width: 212 }}
       className={cn(
-        "group rounded-xl border-2 px-3 py-2.5 cursor-pointer transition-all shadow-sm",
+        "relative group rounded-xl border-2 px-3 py-2.5 cursor-pointer transition-all shadow-sm",
         `bk-${nodeData.type}`,
-        selected
+        runStatus === "running"   && "ring-2 ring-violet-400 shadow-violet-100 shadow-md",
+        runStatus === "completed" && "ring-1 ring-emerald-400",
+        runStatus === "failed"    && "ring-2 ring-red-400",
+        !runStatus && (selected
           ? "ring-1 ring-[var(--accent)] shadow-md"
-          : "hover:shadow-md hover:ring-1 hover:ring-[var(--border-2)]"
+          : "hover:shadow-md hover:ring-1 hover:ring-[var(--border-2)]")
       )}
     >
+      {/* Run status overlay */}
+      {runStatus && (
+        <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
+          <div className="flex items-center gap-1">
+            {runStatus === "running" && (
+              <span className="w-2.5 h-2.5 rounded-full border-2 border-violet-500 border-t-transparent animate-spin block" />
+            )}
+            {runStatus === "completed" && (
+              <span className="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center">
+                <svg width="8" height="8" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </span>
+            )}
+            {runStatus === "failed" && (
+              <span className="w-4 h-4 rounded-full bg-red-500 flex items-center justify-center">
+                <svg width="8" height="8" viewBox="0 0 12 12" fill="none"><path d="M3 3l6 6M9 3l-6 6" stroke="white" strokeWidth="1.8" strokeLinecap="round"/></svg>
+              </span>
+            )}
+          </div>
+          {isBrain && runStatus === "running" && liveTurn !== undefined && (
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 border border-violet-200">
+              Turn {liveTurn}/{maxTurns}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Target handle */}
       <Handle
         type="target"
