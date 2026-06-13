@@ -360,7 +360,8 @@ def validate_yaml_block(block_type: str, yaml_data: dict) -> list[str]:
         yaml_key = key.removeprefix("config.")
         if "." in yaml_key:
             continue  # skip deeply nested paths (params.x)
-        if not yaml_data.get(yaml_key):
+        val = yaml_data.get(yaml_key) or (yaml_data.get("config") or {}).get(yaml_key)
+        if not val:
             missing.append(yaml_key)
 
     return missing
