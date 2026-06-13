@@ -13,6 +13,7 @@ import {
 import { GitHubRepoField, GitHubBranchField, GitHubRepoAllowlistField } from "./GitHubRepoField"
 import { cn } from "@/lib/utils"
 import { useBlockSchemas, getSchemaRequiredKeys } from "@/hooks/useBlockSchemas"
+import { useRoutingTable, type RoutingTable } from "@/hooks/useRoutingTable"
 
 interface BlockEditorProps {
   workflowId: string
@@ -101,13 +102,25 @@ const PROVIDER_DEFAULTS: Record<string, Record<string, [string, string]>> = {
   },
 }
 
-function previewModel(playbookSlug: string | null | undefined, pref: string, providerOverride?: string): [string, string, string] {
+function previewModel(
+  playbookSlug: string | null | undefined,
+  pref: string,
+  providerOverride?: string,
+  routingTable?: RoutingTable | null,
+): [string, string, string] {
   const p = (pref || "balanced").toLowerCase()
   const category = SLUG_CATEGORY[playbookSlug ?? ""] ?? ""
   const override = (providerOverride || "").toLowerCase()
   if (override === "anthropic" || override === "openai") {
     const [model, reason] = PROVIDER_DEFAULTS[override][category || "unknown"] ?? PROVIDER_DEFAULTS[override].unknown
     return [PROVIDER_LABELS[override] ?? override, MODEL_LABELS[model] ?? model, reason]
+  }
+  // Prefer live DB table when available
+  if (routingTable) {
+    const row = routingTable[category]?.[p] ?? routingTable[""]?.[p]
+    if (row) {
+      return [PROVIDER_LABELS[row.provider] ?? row.provider, MODEL_LABELS[row.model_id] ?? row.model_id, row.reason]
+    }
   }
   const [provider, model, reason] = (category ? POLICY[category]?.[p] : null) ?? PREF_DEFAULTS[p] ?? ["anthropic", "claude-sonnet-4-6", "default"]
   return [PROVIDER_LABELS[provider] ?? provider, MODEL_LABELS[model] ?? model, reason]
@@ -1263,6 +1276,8 @@ export default function BlockEditor({
 
   // Block schema registry — drives required-field markers and fallback rendering
   const { schemas: blockSchemas } = useBlockSchemas()
+  // Model routing table — fetched from DB, falls back to hardcoded POLICY when loading
+  const { table: routingTable } = useRoutingTable()
 
   const isToolLike = ["tool", "cleanup"].includes(blockType)
   const integration = (blockData.integration as string) || ""
@@ -1554,43 +1569,12 @@ export default function BlockEditor({
               className={cn(inputBase)}
               disabled={isViewer}
             >
-              <option value="balanced">Balanced — best default</option>
-              <option value="quality">Quality — strongest model</option>
-              <option value="speed">Speed — faster response</option>
-              <option value="cost">Cost — efficient model</option>
+              {(["balanced", "quality", "speed", "cost"] as const).map(pref => {
+                const [provider, model] = previewModel(playbookSlug, pref, undefined, routingTable)
+                const prefLabel = pref.charAt(0).toUpperCase() + pref.slice(1)
+                return <option key={pref} value={pref}>{prefLabel} — {provider} · {model}</option>
+              })}
             </select>
-            {(() => {
-              const [provider, model, reason] = previewModel(
-                playbookSlug,
-                (blockData.routingPreference as string) || "balanced",
-                (blockData.provider as string) || "",
-              )
-              return (
-                <p className="text-[10px] text-stone-500 mt-1">
-                  <span className="font-medium text-violet-700">{provider} · {model}</span>
-                  {" "}— {reason}
-                </p>
-              )
-            })()}
-            {!showAdvanced && (() => {
-              const providerValue = ((blockData.provider as string) || "auto").toLowerCase()
-              const providerLabel = providerValue === "auto"
-                ? "Auto — let Conduct choose"
-                : (PROVIDER_LABELS[providerValue] ?? providerValue)
-              return (
-                <p className="text-[10px] text-stone-500 mt-1">
-                  Provider override: <span className="font-medium text-stone-700">{providerLabel}</span>
-                  {" "}·{" "}
-                  <button
-                    type="button"
-                    onClick={() => setShowAdvanced(true)}
-                    className="text-violet-600 hover:text-violet-700 underline"
-                  >
-                    change in Advanced
-                  </button>
-                </p>
-              )
-            })()}
           </div>
 
           <button
@@ -1672,22 +1656,6 @@ export default function BlockEditor({
                 </p>
               </div>
 
-              <div className={section}>
-                <span className={sectionLabel}>Provider override</span>
-                <select
-                  value={(blockData.provider as string) || "auto"}
-                  onChange={e => onChange(blockId, { ...blockData, provider: e.target.value === "auto" ? "" : e.target.value })}
-                  className={cn(inputBase)}
-                  disabled={isViewer}
-                >
-                  <option value="auto">Auto — let Conduct choose</option>
-                  <option value="anthropic">Anthropic</option>
-                  <option value="openai">OpenAI</option>
-                </select>
-                <p className="text-[10px] text-stone-500 mt-1">
-                  Use auto for policy-based routing, or pin a provider while still letting Conduct choose the safest model within it.
-                </p>
-              </div>
             </>
           )}
         </>
