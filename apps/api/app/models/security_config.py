@@ -55,3 +55,4 @@ class SecurityPolicy(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+    archived_at = Column(DateTime(timezone=True), nullable=True)

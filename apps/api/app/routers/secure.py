@@ -402,7 +402,7 @@ def list_policies(
     _: str = Depends(require_permission("guard.activity.view_all")),
 ) -> list[PolicyOut]:
     ws_uuid = uuid.UUID(workspace_id)
-    return db.query(SecurityPolicy).filter(SecurityPolicy.workspace_id == ws_uuid).order_by(
+    return db.query(SecurityPolicy).filter(SecurityPolicy.workspace_id == ws_uuid, SecurityPolicy.archived_at.is_(None)).order_by(
         SecurityPolicy.builtin.desc(), SecurityPolicy.created_at.asc()
     ).all()
 
@@ -449,6 +449,7 @@ def update_policy(
     policy = db.query(SecurityPolicy).filter(
         SecurityPolicy.id == policy_id,
         SecurityPolicy.workspace_id == uuid.UUID(workspace_id),
+        SecurityPolicy.archived_at.is_(None),
     ).first()
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
@@ -488,5 +489,6 @@ def delete_policy(
         raise HTTPException(status_code=404, detail="Policy not found")
     if policy.builtin:
         raise HTTPException(status_code=403, detail="Cannot delete a builtin policy")
-    db.delete(policy)
+    from datetime import datetime, timezone as _tz
+    policy.archived_at = datetime.now(_tz.utc)
     db.commit()
