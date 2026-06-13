@@ -144,7 +144,7 @@ blocks:
       Set head_ref based on REPO_TYPE:
         REPO_TYPE=same → head_ref = "<branch-name>"  (no owner prefix)
         REPO_TYPE=fork → head_ref = "{{fork_upstream.fork_owner}}:<branch-name>"
-        {"branch_pushed": "<actual-branch-name>", "head_ref": "<head_ref>", "fork_owner": "{{fork_upstream.fork_owner}}", "fork_full_name": "{{fork_upstream.fork_full_name}}", "fix_summary": "<one line: which file(s) changed and what the fix was>"}
+        {"branch_pushed": "<actual-branch-name>", "head_ref": "<head_ref>", "fork_owner": "{{fork_upstream.fork_owner}}", "fork_full_name": "{{fork_upstream.fork_full_name}}", "fix_summary": "<one line: which file(s) changed and what the fix was>", "lesson": "<one line: what to know for future fixes in this repo — pitfalls found, patterns that worked, anything surprising>"}
     next: open_pr
 
   open_pr:
@@ -170,8 +170,12 @@ blocks:
     key: "{{inputs.upstream_owner}}/{{inputs.upstream_repo}}"
     summary: |
       Issue #{{inputs.issue_number}}: {{fetch_issue.title}}
-      PR: {{open_pr.pr_url}}
+      PR: {{open_pr.pr_url}} — status: opened, pending review
+      Complexity: {{plan_fix.complexity}} | Prior fixes on this repo: {{read_memory.count}}
+      Files: {{plan_fix.files}}
+      Approach: {{plan_fix.approach}}
       Fix: {{implement_fix.fix_summary}}
+      Lesson: {{implement_fix.lesson}}
     next: notify_slack
 
   notify_slack:
