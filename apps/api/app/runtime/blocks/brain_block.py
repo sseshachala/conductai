@@ -296,8 +296,13 @@ def _execute_brain(
         # Bounded agentic loop — deterministic retry boundaries from run state
         messages: list[dict] = [{"role": "user", "content": user_message}]
         turns = 0
-        max_turns = int(state.get("__max_turns", 20))
-        max_turns = max(1, max_turns)
+        # Per-block override takes priority over run-level budget
+        block_max_turns = block.get("data", {}).get("max_turns")
+        if block_max_turns is not None:
+            max_turns = max(1, int(block_max_turns))
+        else:
+            max_turns = int(state.get("__max_turns", 20))
+            max_turns = max(1, max_turns)
         max_cost_usd = float(state.get("__max_cost_usd", 5.0) or 5.0)
         max_cost_usd = max(0.01, max_cost_usd)
         total_input_tokens = 0
