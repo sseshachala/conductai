@@ -69,7 +69,7 @@ blocks:
     type: brain
     mode: agentic
     model: "{{inputs.model}}"
-    max_turns: 15
+    max_turns: 20
     label: Implement fix
     description: |
       You are an expert software engineer contributing a fix to an open-source project.
@@ -92,15 +92,28 @@ blocks:
       ── SANDBOX MODE (output was MODE=sandbox) ──────────────────────────────
       The repo is already cloned at /workspace on branch fix/issue-{{inputs.issue_number}}.
       The filesystem persists across tool calls — use multiple calls freely.
+      DO NOT make GitHub API calls to explore — use local grep/find instead (faster, no rate limits).
 
-      1. Read relevant source files to understand the codebase
-      2. Apply the fix — search for exact patterns, never hardcode line numbers
-      3. Verify changes parse/compile cleanly
-      4. Run repo linter before committing:
+      STEP A — EXTRACT FILE TARGETS FROM ISSUE (before any tool calls):
+        Read the issue title and body. Extract:
+        - Any file paths mentioned (e.g. awscli/customizations/login.py)
+        - Any function or class names mentioned
+        - Any error messages with file references
+        If paths are mentioned → go directly to those files.
+        If only a function/class name → run: grep -r "function_name" /workspace --include="*.py" -l
+
+      STEP B — FIND AND READ (at most 3 tool calls):
+        cd /workspace && grep / find / cat to locate and read the relevant code.
+        Do not explore broadly — target only what the issue points to.
+
+      STEP C — APPLY FIX:
+      1. Edit the file(s) directly in /workspace using sed/awk/python -c or write_file
+      2. Verify changes parse cleanly: python3 -m py_compile <file> 2>&1
+      3. Run repo linter:
       {{$snippet: lint}}
-      5. cd /workspace && git add -A && git diff --cached --stat
-      6. git commit -m "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})"
-      7. git push https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git fix/issue-{{inputs.issue_number}}
+      4. cd /workspace && git add -A && git diff --cached --stat
+      5. git commit -m "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})"
+      6. git push https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git fix/issue-{{inputs.issue_number}}
 
       ── PROXY MODE (output was MODE=proxy) ──────────────────────────────────
       CRITICAL: Each run_shell call gets a FRESH container — filesystem resets between calls.
