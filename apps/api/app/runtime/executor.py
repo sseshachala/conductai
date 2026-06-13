@@ -1110,6 +1110,13 @@ def _dispatch_single_block(
     elif block_type == "mcp":
         result = _execute_mcp(block, state, credentials)
 
+    elif block_type == "for_each":
+        # Called per-item by the for_each expansion loop (lines ~1260).
+        # Returns the current iteration item under its variable name so
+        # downstream blocks can reference {{block_id.items[N].<item_var>}}.
+        item_var = (block["data"].get("config") or {}).get("item_var", "item")
+        result = {item_var: state.get(item_var), "__index": state.get("__for_each_index")}
+
     else:
         result = {"status": "skipped", "type": block_type}
 
