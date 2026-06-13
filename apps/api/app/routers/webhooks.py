@@ -370,6 +370,7 @@ async def inbound_webhook(
 
     run = Run(
         workflow_version_id=version.id,
+        workspace_id=workflow.workspace_id,
         triggered_by="webhook:inbound",
         status="pending",
         state=initial_state,
@@ -428,6 +429,7 @@ def _trigger_webhook_workflows(
 
         run = Run(
             workflow_version_id=version.id,
+            workspace_id=uuid_mod.UUID(workspace_id) if workspace_id else None,
             triggered_by=f"webhook:{event_type}",
             status="pending",
             state={**initial_state, "__triggered_by": f"webhook:{event_type}"},
@@ -830,6 +832,7 @@ def _trigger_github_workflows(
 
         run = Run(
             workflow_version_id=version.id,
+            workspace_id=wf_obj.workspace_id,
             triggered_by=f"github:{event_type}",
             status="pending",
             state=run_state,
@@ -968,6 +971,7 @@ async def github_webhook_by_slug(
 
     run = Run(
         workflow_version_id=version.id,
+        workspace_id=workflow.workspace_id,
         triggered_by=f"github:github_issue:{normalized['label']}",
         status="pending",
         state=run_state,

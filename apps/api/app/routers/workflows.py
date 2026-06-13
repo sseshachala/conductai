@@ -1795,6 +1795,7 @@ def test_trigger(
 
     run = Run(
         workflow_version_id=version.id,
+        workspace_id=workflow.workspace_id,
         triggered_by="manual:test_trigger",
         status="pending",
         state=_initial_state,
