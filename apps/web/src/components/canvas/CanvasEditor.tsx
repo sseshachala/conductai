@@ -1024,7 +1024,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                   disabled={running !== "idle" || testRunning}
                   className="rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-medium text-emerald-600 hover:bg-emerald-50 transition-colors disabled:opacity-50"
                 >
-                  {testRunning ? "Starting…" : "⚗ Test Run"}
+                  {testRunning ? "Starting…" : "⚗ Dry Run"}
                 </button>
               )}
               {prefs.show_dry_run && (
@@ -1529,7 +1529,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6 flex flex-col gap-4">
             <div>
-              <h2 className="text-sm font-semibold text-stone-900">⚗ Test Run</h2>
+              <h2 className="text-sm font-semibold text-stone-900">⚗ Dry Run</h2>
               <p className="text-xs text-stone-500 mt-1">
                 This fires a real run using a built-in dummy payload. All artifacts (branches, PRs, files) are prefixed with <span className="font-mono font-medium text-stone-700">[TEST]</span> — safe to close without merging.
               </p>
