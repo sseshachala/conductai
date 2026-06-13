@@ -17,6 +17,8 @@ import { useBlockSchemas, getSchemaRequiredKeys } from "@/hooks/useBlockSchemas"
 interface BlockEditorProps {
   workflowId: string
   blockId: string
+  previousBlockId?: string
+  isReadOnly?: boolean
   blockType: BlockType
   label: string
   description: string
@@ -109,6 +111,21 @@ function previewModel(playbookSlug: string | null | undefined, pref: string, pro
   }
   const [provider, model, reason] = (category ? POLICY[category]?.[p] : null) ?? PREF_DEFAULTS[p] ?? ["anthropic", "claude-sonnet-4-6", "default"]
   return [PROVIDER_LABELS[provider] ?? provider, MODEL_LABELS[model] ?? model, reason]
+}
+
+// ── Schedule cron presets ─────────────────────────────────────────────────────
+
+const CRON_PRESETS: { label: string; value: string }[] = [
+  { label: "Every hour",             value: "0 * * * *"   },
+  { label: "Every day at 9am",       value: "0 9 * * *"   },
+  { label: "Every weekday at 9am",   value: "0 9 * * 1-5" },
+  { label: "Every week on Monday",   value: "0 9 * * 1"   },
+  { label: "Every month on the 1st", value: "0 9 1 * *"   },
+  { label: "Custom (enter cron)",    value: "__custom__"  },
+]
+
+function matchPreset(cron: string): string {
+  return CRON_PRESETS.find(p => p.value === cron)?.value ?? "__custom__"
 }
 
 // ── GitHub webhook status panel ───────────────────────────────────────────────
@@ -1231,6 +1248,8 @@ export default function BlockEditor({
   playbookSlug,
   projectSlug,
   onWebhookChange,
+  previousBlockId,
+  isReadOnly = false,
   onClose,
   sandboxBlocks,
 }: BlockEditorProps) {
@@ -1238,6 +1257,7 @@ export default function BlockEditor({
   const [streamedPrompt, setStreamedPrompt] = useState<string>("")
   const [isStreaming, setIsStreaming] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [showVarsHint, setShowVarsHint] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const style = BLOCK_STYLES[blockType] ?? BLOCK_STYLES["tool"]
 
@@ -1471,6 +1491,13 @@ export default function BlockEditor({
         />
       </div>
 
+      {isReadOnly && (
+        <div className="mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-700 flex items-center gap-2">
+          <span>🔒</span>
+          <span>Defined in base template — edit the playbook YAML to change this block.</span>
+        </div>
+      )}
+
       {/* Basic section header */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 18px 0" }}>
         <span className="eyebrow" style={{ fontSize: 10 }}>Basic</span>
@@ -1519,44 +1546,6 @@ export default function BlockEditor({
               )}
             </p>
           </div>
-          {blockData.isAgentic && (() => {
-            const runsOn = blockData.runs_on as Record<string, string> | undefined
-            const provider = runsOn?.provider ?? ""
-            const mode = runsOn?.mode ?? "proxy"
-            const flatValue = runsOn?.provider ? `${provider}:${mode}` : "modal:proxy"
-
-            function setFlat(v: string) {
-              if (!v) {
-                onChange(blockId, { ...blockData, runs_in: undefined, runs_on: undefined })
-              } else {
-                const [p, m] = v.split(":")
-                onChange(blockId, { ...blockData, runs_in: undefined, runs_on: { provider: p, mode: m } })
-              }
-            }
-
-            const hints: Record<string, string> = {
-              "modal:proxy":   "Own session per run on Modal serverless. Needs MODAL_TOKEN_ID + MODAL_TOKEN_SECRET.",
-              "modal:sandbox": "Persistent Modal sandbox for the run — workspace stays warm between steps. Needs MODAL_TOKEN_ID + MODAL_TOKEN_SECRET.",
-              "e2b:proxy":     "Own session per run in E2B microVM. Needs E2B_API_KEY.",
-              "e2b:sandbox":   "Persistent E2B sandbox for the run — workspace stays warm between steps. Needs E2B_API_KEY.",
-            }
-
-            return (
-              <div className={section}>
-                <span className={sectionLabel}>Runs on</span>
-                <select value={flatValue} onChange={e => setFlat(e.target.value)} className={cn(inputBase)} disabled={isViewer}>
-                  <option value="">Not set — single LLM call, no tools</option>
-                  <option value="modal:proxy">Modal Labs — Proxy</option>
-                  <option value="modal:sandbox">Modal Labs — Sandbox</option>
-                  <option value="e2b:proxy">E2B.dev — Proxy</option>
-                  <option value="e2b:sandbox">E2B.dev — Sandbox</option>
-                </select>
-                {flatValue && <p className="text-[10px] text-stone-400 mt-1.5 leading-relaxed">{hints[flatValue]}</p>}
-                {!flatValue && <p className="text-[10px] text-stone-400 mt-1.5 leading-relaxed">Proxy = fresh session per run. Sandbox = session stays warm within the run — workspace persists between steps.</p>}
-              </div>
-            )
-          })()}
-
           <div className={section}>
             <span className={sectionLabel}>Model routing</span>
             <select
@@ -1612,12 +1601,50 @@ export default function BlockEditor({
           >
             <span style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.14s", display: "inline-block", fontSize: 12, color: "var(--text-3)" }}>›</span>
             <span className="eyebrow" style={{ fontSize: 10 }}>Advanced</span>
-            <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>5 settings</span>
+            <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>settings</span>
             <div style={{ flex: 1, height: 1, background: "var(--border)", marginLeft: 2 }} />
           </button>
 
           {showAdvanced && (
             <>
+              {blockData.isAgentic && (() => {
+                const runsOn = blockData.runs_on as Record<string, string> | undefined
+                const provider = runsOn?.provider ?? ""
+                const mode = runsOn?.mode ?? "proxy"
+                const flatValue = runsOn?.provider ? `${provider}:${mode}` : "modal:proxy"
+
+                function setFlat(v: string) {
+                  if (!v) {
+                    onChange(blockId, { ...blockData, runs_in: undefined, runs_on: undefined })
+                  } else {
+                    const [p, m] = v.split(":")
+                    onChange(blockId, { ...blockData, runs_in: undefined, runs_on: { provider: p, mode: m } })
+                  }
+                }
+
+                const hints: Record<string, string> = {
+                  "modal:proxy":   "Own session per run on Modal serverless. Needs MODAL_TOKEN_ID + MODAL_TOKEN_SECRET.",
+                  "modal:sandbox": "Persistent Modal sandbox for the run — workspace stays warm between steps. Needs MODAL_TOKEN_ID + MODAL_TOKEN_SECRET.",
+                  "e2b:proxy":     "Own session per run in E2B microVM. Needs E2B_API_KEY.",
+                  "e2b:sandbox":   "Persistent E2B sandbox for the run — workspace stays warm between steps. Needs E2B_API_KEY.",
+                }
+
+                return (
+                  <div className={section}>
+                    <span className={sectionLabel}>Runs on</span>
+                    <select value={flatValue} onChange={e => setFlat(e.target.value)} className={cn(inputBase)} disabled={isViewer}>
+                      <option value="">Not set — single LLM call, no tools</option>
+                      <option value="modal:proxy">Modal Labs — Proxy</option>
+                      <option value="modal:sandbox">Modal Labs — Sandbox</option>
+                      <option value="e2b:proxy">E2B.dev — Proxy</option>
+                      <option value="e2b:sandbox">E2B.dev — Sandbox</option>
+                    </select>
+                    {flatValue && <p className="text-[10px] text-stone-400 mt-1.5 leading-relaxed">{hints[flatValue]}</p>}
+                    {!flatValue && <p className="text-[10px] text-stone-400 mt-1.5 leading-relaxed">Proxy = fresh session per run. Sandbox = session stays warm within the run — workspace persists between steps.</p>}
+                  </div>
+                )
+              })()}
+
               <div className={section}>
                 <div className="flex items-center justify-between">
                   <span className={sectionLabel}>System prompt</span>
@@ -1851,7 +1878,46 @@ export default function BlockEditor({
               </div>
 
               {/* ── Per-type fields ── */}
-              {typeFields.map(field => {
+              {triggerEventType === "schedule" ? (() => {
+                const cronValue = (getNestedValue(blockData, "config.cron") as string) || ""
+                const presetValue = matchPreset(cronValue)
+                const isCustom = presetValue === "__custom__"
+                return (
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">Schedule</label>
+                      <span className="text-red-500 text-[10px] font-bold">*</span>
+                    </div>
+                    <select
+                      value={presetValue}
+                      onChange={e => {
+                        const v = e.target.value
+                        if (v !== "__custom__") handleFieldChange("config.cron", v)
+                        else handleFieldChange("config.cron", "")
+                      }}
+                      className={inputBase}
+                      disabled={isViewer}
+                    >
+                      {CRON_PRESETS.map(p => (
+                        <option key={p.value} value={p.value}>{p.label}</option>
+                      ))}
+                    </select>
+                    {isCustom && (
+                      <input
+                        type="text"
+                        value={cronValue}
+                        onChange={e => handleFieldChange("config.cron", e.target.value)}
+                        placeholder="0 9 * * 1-5"
+                        className={`${inputBase} mt-2 font-mono`}
+                        disabled={isViewer}
+                      />
+                    )}
+                    {!isCustom && cronValue && (
+                      <p className="text-[10px] text-stone-400 mt-1 font-mono">{cronValue}</p>
+                    )}
+                  </div>
+                )
+              })() : typeFields.map(field => {
                 const rendered = renderField(field)
                 if (rendered === null) return null
                 return (
@@ -1968,6 +2034,34 @@ export default function BlockEditor({
                 </div>
               )}
 
+              {/* ── Signing secret (advanced) ── */}
+              {triggerEventType && triggerEventType !== "manual" && (() => {
+                const secret = (getNestedValue(blockData, "config.webhook_secret") as string) || ""
+                return (
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">Signing secret</label>
+                      <span className="text-[10px] text-stone-400">optional</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="flex-1 font-mono text-[11px] text-stone-500 bg-stone-50 border border-stone-200 rounded px-2.5 py-1.5 truncate">
+                        {secret || "auto-generated on install"}
+                      </span>
+                      {secret && (
+                        <button
+                          type="button"
+                          onClick={() => navigator.clipboard.writeText(secret)}
+                          className="text-[10px] font-medium text-stone-500 hover:text-stone-700 border border-stone-200 rounded px-1.5 py-1 transition-colors shrink-0"
+                        >
+                          Copy
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-stone-400 mt-1">Requires X-Webhook-Signature header when set.</p>
+                  </div>
+                )
+              })()}
+
             </div>
           </div>
         )
@@ -1979,10 +2073,12 @@ export default function BlockEditor({
           <span className={sectionLabel}>Configuration</span>
           <div className="space-y-3">
             {(() => {
-              const requiredStaticFields = staticFields.filter(f => f.required)
-              const basicStaticFields = requiredStaticFields.length > 0 ? requiredStaticFields : staticFields
+              const hasSections = staticFields.some(f => f.section)
+              const basicStaticFields = hasSections
+                ? staticFields.filter(f => !f.section || f.section === "basic")
+                : (staticFields.filter(f => f.required).length > 0 ? staticFields.filter(f => f.required) : staticFields)
               const visibleStaticFields = showAdvanced ? staticFields : basicStaticFields
-              const hasAdvanced = requiredStaticFields.length > 0 && staticFields.length > basicStaticFields.length
+              const hasAdvanced = staticFields.length > basicStaticFields.length
 
               return (
                 <>
@@ -1997,6 +2093,46 @@ export default function BlockEditor({
                           {field.hint && <span className="text-[10px] text-stone-400">{field.hint}</span>}
                         </div>
                         {rendered}
+                        {/* Logic block — available variables hint */}
+                        {blockType === "logic" && field.key === "config.condition" && (
+                          <div className="mt-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setShowVarsHint(v => !v)}
+                              className="flex items-center gap-1 text-[10px] text-stone-400 hover:text-stone-600 transition-colors"
+                            >
+                              <span style={{ display: "inline-block", transform: showVarsHint ? "rotate(90deg)" : "none", transition: "transform 0.14s", fontSize: 10 }}>›</span>
+                              Available variables
+                            </button>
+                            {showVarsHint && (
+                              <div className="mt-1.5 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 text-[10px] text-stone-600 space-y-1.5">
+                                <p className="font-semibold text-stone-500 uppercase tracking-wide text-[9px]">Reference syntax</p>
+                                <p className="font-mono text-stone-700">{"{{block_id.field}}"}</p>
+                                {previousBlockId && (
+                                  <p className="text-stone-500">Previous block: <span className="font-mono text-stone-700">{previousBlockId}</span></p>
+                                )}
+                                <div className="border-t border-stone-200 pt-1.5 space-y-1">
+                                  <p className="font-semibold text-stone-500 uppercase tracking-wide text-[9px]">Common fields</p>
+                                  {[
+                                    ["exit_code", "0 (success) or 1 (failure) from shell steps"],
+                                    ["status",    '"success" | "failed" | "skipped"'],
+                                    ["output",    "raw text output from the previous step"],
+                                  ].map(([k, v]) => (
+                                    <div key={k} className="flex gap-2">
+                                      <span className="font-mono text-stone-700 shrink-0">{k}</span>
+                                      <span className="text-stone-400">{v}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                                {previousBlockId && (
+                                  <p className="text-[9px] text-stone-400 border-t border-stone-200 pt-1.5">
+                                    e.g. <span className="font-mono text-stone-600">{"{{" + previousBlockId + ".exit_code}} == 0"}</span>
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
                         {/* GitHub issue-labeled — webhook URL card + compact register panel */}
                         {blockType === "trigger" && field.key === "config.event_type" && triggerEventType === "github_issue_labeled" && (() => {
                           const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")

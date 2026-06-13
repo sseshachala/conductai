@@ -207,6 +207,7 @@ def _resolve_extends(data: dict, base_dir: Path) -> dict:
             merged = copy.deepcopy(base_blocks[template_key])
             child_fields = {k: v for k, v in block.items() if k != "$use"}
             merged.update(child_fields)
+            merged["is_readonly"] = True  # mark so canvas shows read-only banner
             resolved_blocks[block_id] = merged
 
         data["blocks"] = resolved_blocks
@@ -550,6 +551,7 @@ def _block_to_node(block_id: str, block: Block, col: int) -> dict[str, Any]:
     data: dict[str, Any] = {
         "type": block.type,
         "label": block.label or block_id,
+        "is_readonly": block.is_readonly,
     }
     if block.description:
         data["description"] = block.description

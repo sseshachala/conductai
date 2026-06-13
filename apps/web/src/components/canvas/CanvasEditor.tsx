@@ -1204,6 +1204,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                   <BlockEditor
                     workflowId={workflowId}
                     blockId={selectedNode.id}
+                    previousBlockId={edges.find(e => e.target === selectedNode.id)?.source ?? undefined}
+                    isReadOnly={!!(selectedNode.data as Record<string, unknown>).is_readonly}
                     blockType={selectedData.type}
                     label={selectedData.label}
                     description={(selectedData.description as string) ?? ""}
