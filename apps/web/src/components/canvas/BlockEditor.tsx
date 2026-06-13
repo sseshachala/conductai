@@ -1611,12 +1611,14 @@ export default function BlockEditor({
                 return (
                   <div className={section}>
                     <span className={sectionLabel}>Runs on</span>
-                    <select value={provider} onChange={e => setProvider(e.target.value)} className={cn(inputBase)} disabled={isViewer}>
-                      <option value="">Not set — single LLM call, no tools</option>
+                    <p className="text-[10px] text-stone-400 mb-2 leading-relaxed">
+                      Execution provider for agentic tool use — runs shell commands, edits files, and pushes code. Proxy vs sandbox mode is chosen automatically based on task complexity.
+                    </p>
+                    <select value={provider || "modal"} onChange={e => setProvider(e.target.value)} className={cn(inputBase)} disabled={isViewer}>
                       <option value="modal">Modal Labs</option>
                       <option value="e2b">E2B.dev</option>
                     </select>
-                    {provider && <p className="text-[10px] text-stone-400 mt-1.5 leading-relaxed">{hints[provider]}</p>}
+                    <p className="text-[10px] text-stone-400 mt-1.5 leading-relaxed">{hints[provider || "modal"]}</p>
                   </div>
                 )
               })()}
