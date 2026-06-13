@@ -1065,6 +1065,49 @@ def _dispatch_single_block(
         slug = getattr(getattr(version, "workflow", None), "playbook_slug", None)
         _runs_in = block.get("data", {}).get("runs_in")
         _injected_session = sandbox_sessions.get(_runs_in) if _runs_in else None
+
+        # Auto-provision sandbox based on plan_fix.complexity when sandbox=auto
+        if block.get("data", {}).get("sandbox") == "auto" and _injected_session is None:
+            _auto_key = f"__auto_{block_id}"
+            if _auto_key in sandbox_sessions:
+                _injected_session = sandbox_sessions[_auto_key]
+            else:
+                _complexity = (state.get("plan_fix") or {}).get("complexity", "small")
+                if _complexity in ("medium", "large"):
+                    try:
+                        from app.runtime.blocks.sandbox_block import _detect_provider
+                        _provider = _detect_provider(credentials)
+                        if _provider:
+                            from app.runtime.sandbox_session import create_session as _cs
+                            _auto_session = _cs(None, credentials, runs_on={"provider": _provider})
+                            sandbox_sessions[_auto_key] = _auto_session
+                            _injected_session = _auto_session
+                            _emit(db, run_id, block_id, "sandbox_routing", {
+                                "decision": "sandbox",
+                                "complexity": _complexity,
+                                "provider": _provider,
+                                "reason": f"complexity={_complexity} → {_provider} sandbox auto-provisioned",
+                            })
+                        else:
+                            _emit(db, run_id, block_id, "sandbox_routing", {
+                                "decision": "proxy",
+                                "complexity": _complexity,
+                                "reason": f"complexity={_complexity} but no sandbox credentials → proxy mode",
+                            })
+                    except Exception as _sb_err:
+                        log.warning("executor.auto_sandbox_failed", block_id=block_id, error=str(_sb_err))
+                        _emit(db, run_id, block_id, "sandbox_routing", {
+                            "decision": "proxy_fallback",
+                            "complexity": _complexity,
+                            "reason": f"sandbox provision failed ({_sb_err}) → proxy mode",
+                        })
+                else:
+                    _emit(db, run_id, block_id, "sandbox_routing", {
+                        "decision": "proxy",
+                        "complexity": _complexity,
+                        "reason": f"complexity={_complexity} → proxy mode",
+                    })
+
         result = _execute_brain(block, state, compiled, credentials=credentials,
                                 db=db, run_id=run_id, block_id=block_id,
                                 playbook_slug=slug, injected_session=_injected_session)
