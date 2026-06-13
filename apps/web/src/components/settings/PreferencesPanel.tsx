@@ -188,7 +188,7 @@ export default function PreferencesPanel() {
       <div className="card" style={{ padding: "0 18px" }}>
         <ToggleRow
           label="Show Test Trigger button"
-          description="Adds a 'Test Run' button to the canvas toolbar — fires a real run with a safe dummy payload."
+          description="Adds a 'Dry Run' button to the canvas toolbar — fires a real run with a safe dummy payload."
           checked={prefs.show_test_trigger}
           onChange={v => update({ show_test_trigger: v })}
         />
