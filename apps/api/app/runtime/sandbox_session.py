@@ -246,7 +246,8 @@ class ModalSession:
             log.warning("sandbox_session.modal.dispatch_error", error=str(e))
             local = LocalSession()
             result = local.dispatch(tool_name, tool_input)
-            self.working_dir = local.working_dir
+            # Don't adopt the fallback tmpdir as working_dir — it's deleted on close()
+            # and would cause FileNotFoundError in capture_artifacts.
             local.close()
             return result
 
