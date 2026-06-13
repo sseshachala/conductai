@@ -945,6 +945,11 @@ def _estimate_turns_for_graph(
         # Take the max of LLM estimate and keyword floor
         est = max(est, kw_floor)
 
+        # Per-block max_turns cap overrides the estimate
+        block_max_turns = data.get("max_turns")
+        if block_max_turns is not None:
+            est = min(est, int(block_max_turns))
+
         block_estimates.append({
             "block_id": block.get("id"),
             "label": label,
