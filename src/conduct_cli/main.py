@@ -2334,7 +2334,7 @@ def cmd_emit_finding(args):
         print(finding_id)
 
 
-def _gh_api_get(url: str, token: str) -> dict | list:
+def _gh_api_get(url: str, token: str):
     import urllib.request, urllib.error
     req = urllib.request.Request(url, headers={
         "Authorization": f"Bearer {token}",
@@ -2346,14 +2346,14 @@ def _gh_api_get(url: str, token: str) -> dict | list:
 
 
 def _fetch_github_issue(repo: str, issue_number: int, token: str) -> dict:
-    return _gh_api_get(f"https://api.github.com/repos/{repo}/issues/{issue_number}", token)  # type: ignore[return-value]
+    return _gh_api_get(f"https://api.github.com/repos/{repo}/issues/{issue_number}", token)
 
 
 def _fetch_issues_by_label(repo: str, label: str, token: str) -> list:
     return _gh_api_get(
         f"https://api.github.com/repos/{repo}/issues?labels={label}&state=open&per_page=20",
         token,
-    )  # type: ignore[return-value]
+    )
 
 
 def _build_issue_trigger_payload(issue: dict, repo: str) -> dict:
