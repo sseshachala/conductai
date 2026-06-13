@@ -1594,37 +1594,29 @@ export default function BlockEditor({
               {blockData.isAgentic && (() => {
                 const runsOn = blockData.runs_on as Record<string, string> | undefined
                 const provider = runsOn?.provider ?? ""
-                const mode = runsOn?.mode ?? "proxy"
-                const flatValue = runsOn?.provider ? `${provider}:${mode}` : "modal:proxy"
 
-                function setFlat(v: string) {
+                function setProvider(v: string) {
                   if (!v) {
                     onChange(blockId, { ...blockData, runs_in: undefined, runs_on: undefined })
                   } else {
-                    const [p, m] = v.split(":")
-                    onChange(blockId, { ...blockData, runs_in: undefined, runs_on: { provider: p, mode: m } })
+                    onChange(blockId, { ...blockData, runs_in: undefined, runs_on: { provider: v, mode: "auto" } })
                   }
                 }
 
                 const hints: Record<string, string> = {
-                  "modal:proxy":   "Own session per run on Modal serverless. Needs MODAL_TOKEN_ID + MODAL_TOKEN_SECRET.",
-                  "modal:sandbox": "Persistent Modal sandbox for the run — workspace stays warm between steps. Needs MODAL_TOKEN_ID + MODAL_TOKEN_SECRET.",
-                  "e2b:proxy":     "Own session per run in E2B microVM. Needs E2B_API_KEY.",
-                  "e2b:sandbox":   "Persistent E2B sandbox for the run — workspace stays warm between steps. Needs E2B_API_KEY.",
+                  "modal": "Runs on Modal Labs. Proxy or sandbox mode is chosen automatically based on task complexity. Needs MODAL_TOKEN_ID + MODAL_TOKEN_SECRET.",
+                  "e2b":   "Runs on E2B.dev. Proxy or sandbox mode is chosen automatically based on task complexity. Needs E2B_API_KEY.",
                 }
 
                 return (
                   <div className={section}>
                     <span className={sectionLabel}>Runs on</span>
-                    <select value={flatValue} onChange={e => setFlat(e.target.value)} className={cn(inputBase)} disabled={isViewer}>
+                    <select value={provider} onChange={e => setProvider(e.target.value)} className={cn(inputBase)} disabled={isViewer}>
                       <option value="">Not set — single LLM call, no tools</option>
-                      <option value="modal:proxy">Modal Labs — Proxy</option>
-                      <option value="modal:sandbox">Modal Labs — Sandbox</option>
-                      <option value="e2b:proxy">E2B.dev — Proxy</option>
-                      <option value="e2b:sandbox">E2B.dev — Sandbox</option>
+                      <option value="modal">Modal Labs</option>
+                      <option value="e2b">E2B.dev</option>
                     </select>
-                    {flatValue && <p className="text-[10px] text-stone-400 mt-1.5 leading-relaxed">{hints[flatValue]}</p>}
-                    {!flatValue && <p className="text-[10px] text-stone-400 mt-1.5 leading-relaxed">Proxy = fresh session per run. Sandbox = session stays warm within the run — workspace persists between steps.</p>}
+                    {provider && <p className="text-[10px] text-stone-400 mt-1.5 leading-relaxed">{hints[provider]}</p>}
                   </div>
                 )
               })()}
