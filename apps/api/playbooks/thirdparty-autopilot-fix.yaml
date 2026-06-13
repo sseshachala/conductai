@@ -73,56 +73,43 @@ blocks:
     type: brain
     mode: agentic
     model: "{{inputs.model}}"
-    max_turns: 20
+    max_turns: 25
     label: Implement fix
     description: |
       You are an expert software engineer. The plan is already done — execute it exactly.
+      DO NOT re-analyze the issue. DO NOT explore broadly. Start from the plan below.
 
       Upstream:    {{inputs.upstream_owner}}/{{inputs.upstream_repo}}
       Fork:        {{fork_upstream.fork_full_name}}
       Branch:      fix/issue-{{inputs.issue_number}}
       Issue title: {{fetch_issue.title}}
 
-      ── PRE-COMPUTED PLAN (from plan_fix — do NOT re-derive) ─────────────────
-      Files to edit:   {{plan_fix.files}}
-      Functions:       {{plan_fix.functions}}
-      Subsystem:       {{plan_fix.subsystem}}
-      Approach:        {{plan_fix.approach}}
-      Complexity:      {{plan_fix.complexity}}
-      Grep pattern:    {{plan_fix.grep_pattern}}
+      ── PRE-COMPUTED PLAN ── use this, do not re-derive ─────────────────────
+      Files:       {{plan_fix.files}}
+      Functions:   {{plan_fix.functions}}
+      Subsystem:   {{plan_fix.subsystem}}
+      Approach:    {{plan_fix.approach}}
+      Complexity:  {{plan_fix.complexity}}
+      Grep:        {{plan_fix.grep_pattern}}
 
       ── PRIOR FIXES ON THIS REPO ────────────────────────────────────────────
       {{read_memory.entries}}
 
-      ── STEP 1: DETECT YOUR EXECUTION MODE ──────────────────────────────────
-      {{$snippet: detect_mode}}
+      ══════════════════════════════════════════════════════════════════════════
+      STEP 0 — RUN THIS FIRST (exactly one shell call, nothing else before it):
 
-      ── SANDBOX MODE (output was MODE=sandbox) ──────────────────────────────
-      The repo is at /workspace on branch fix/issue-{{inputs.issue_number}}.
-      Filesystem persists — use multiple tool calls freely.
-      NO GitHub API calls. NO broad exploration. The plan already tells you what to read.
+        if [ -d /workspace/.git ]; then echo "MODE=sandbox"; else echo "MODE=proxy"; fi
+        if [ "{{fork_upstream.fork_full_name}}" = "{{inputs.upstream_owner}}/{{inputs.upstream_repo}}" ]; then echo "REPO_TYPE=same"; else echo "REPO_TYPE=fork"; fi
 
-      STEP A — READ EXACTLY WHAT THE PLAN SAYS (at most 2 tool calls):
-        - If plan_fix.files is non-empty → cat /workspace/<each file in plan_fix.files>
-        - If plan_fix.files is empty → grep -r "{{plan_fix.grep_pattern}}" /workspace -l --include="*.py" (or appropriate extension)
-        Read only those files. Do not explore further.
+      Read the output. Then follow ONLY the matching section below.
+      ══════════════════════════════════════════════════════════════════════════
 
-      STEP B — APPLY FIX (1-2 tool calls):
-        Edit using sed/awk/python -c or write_file.
-        Apply exactly the approach: {{plan_fix.approach}}
-        python3 -m py_compile <file> 2>&1  (or equivalent for the repo language)
+      ── IF MODE=proxy ────────────────────────────────────────────────────────
+      ⚠ PROXY: every shell call is a FRESH container. After Step 0, you have
+        EXACTLY ONE more shell call. Pack clone + read + fix + commit + push into it.
+        Do NOT make any other calls.
 
-      STEP C — LINT, COMMIT, PUSH:
-      {{$snippet: lint}}
-        cd /workspace && git add -A && git diff --cached --stat
-        git commit -m "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})"
-        git push https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git fix/issue-{{inputs.issue_number}}
-
-      ── PROXY MODE (output was MODE=proxy) ──────────────────────────────────
-      CRITICAL: Each run_shell call gets a FRESH container — filesystem resets between calls.
-      The plan is already done. You have the file paths and approach. Use at most 1 read call if needed.
-
-      ONE run_shell call with ALL of: clone + read + fix + push:
+      Your ONE shell call:
 
         git config --global user.email "bot@conductai.ai" && \
         git config --global user.name "Conduct AI" && \
@@ -131,11 +118,31 @@ blocks:
         git remote add upstream https://github.com/{{inputs.upstream_owner}}/{{inputs.upstream_repo}}.git && \
         git fetch upstream --depth=50 && \
         git checkout -b fix/issue-{{inputs.issue_number}} && \
-        git merge --ff-only upstream/{{fork_upstream.default_branch}} 2>/dev/null || \
-          git reset --hard upstream/{{fork_upstream.default_branch}} && \
-        <READ {{plan_fix.files}} then APPLY FIX using sed/awk/python -c — approach: {{plan_fix.approach}}> && \
-        (if [ -f .pre-commit-config.yaml ]; then pre-commit run --all-files 2>/dev/null; pre-commit run --all-files 2>/dev/null || true; elif [ -f pyproject.toml ] || [ -f ruff.toml ] || [ -f setup.py ]; then ruff check --fix . 2>/dev/null || true && ruff format . 2>/dev/null || true; elif command -v black &>/dev/null; then black . 2>/dev/null || true; elif [ -f package.json ]; then (npx eslint --fix . 2>/dev/null || true) && (npx prettier --write . 2>/dev/null || true); elif [ -f Cargo.toml ]; then cargo fmt 2>/dev/null || true && cargo clippy --fix --allow-dirty 2>/dev/null || true; elif [ -f go.mod ]; then gofmt -w . 2>/dev/null || true; elif [ -f Gemfile ]; then bundle exec rubocop -a 2>/dev/null || true; fi) && \
+        (git merge --ff-only upstream/{{fork_upstream.default_branch}} 2>/dev/null || git reset --hard upstream/{{fork_upstream.default_branch}}) && \
+        echo "=== TARGET FILE ===" && cat {{plan_fix.files[0]}} && \
+        <APPLY FIX inline using python3 -c, sed, or heredoc — approach: {{plan_fix.approach}}> && \
+        ([ -f pyproject.toml ] || [ -f ruff.toml ]) && (ruff check --fix . 2>/dev/null; ruff format . 2>/dev/null) || true && \
+        [ -f .pre-commit-config.yaml ] && (pre-commit run --all-files 2>/dev/null || true) || true && \
         git add -A && git diff --cached --stat && \
+        git commit -m "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})" && \
+        git push https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git fix/issue-{{inputs.issue_number}}
+
+      ── IF MODE=sandbox ──────────────────────────────────────────────────────
+      Repo is at /workspace on branch fix/issue-{{inputs.issue_number}}.
+      Filesystem persists. NO GitHub API calls. NO broad exploration.
+
+      STEP A — READ (at most 2 calls):
+        Files from plan: {{plan_fix.files}}
+        → cat /workspace/<file> for each file listed above.
+        If files is empty → grep -r "{{plan_fix.grep_pattern}}" /workspace -l | head -5
+
+      STEP B — APPLY FIX (1-2 calls):
+        sed/awk/python -c — approach: {{plan_fix.approach}}
+        Verify: python3 -m py_compile <file> 2>&1
+
+      STEP C — LINT, COMMIT, PUSH (1 call):
+      {{$snippet: lint}}
+        cd /workspace && git add -A && git diff --cached --stat && \
         git commit -m "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})" && \
         git push https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git fix/issue-{{inputs.issue_number}}
 
