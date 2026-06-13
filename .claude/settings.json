@@ -15,6 +15,10 @@
           {
             "type": "command",
             "command": "bash /Users/sudhiseshachala/projects/marshal/.claude/hooks/block-dangerous-git.sh"
+          },
+          {
+            "type": "command",
+            "command": "python3 /Users/sudhiseshachala/projects/marshal/.claude/hooks/validate-playbooks.py"
           }
         ]
       },

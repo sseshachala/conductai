@@ -166,6 +166,10 @@ class Block(BaseModel):
     for_each: str | None = None   # iteration expression, e.g. "{{ items.output }}"
     item_var: str | None = None   # loop variable name (default "item")
 
+    # — sandbox routing (brain blocks) —
+    # "auto" = executor decides proxy vs sandbox based on plan_fix.complexity
+    sandbox: str | None = None
+
     # — per-block turn budget override for agentic brain blocks —
     max_turns: int | None = None  # overrides the run-level __max_turns for this block only
 

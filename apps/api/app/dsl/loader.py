@@ -603,6 +603,8 @@ def _block_to_node(block_id: str, block: Block, col: int) -> dict[str, Any]:
                 config["remote_host"]["port"] = block.runs_on.port
         if block.max_turns is not None:
             data["max_turns"] = block.max_turns
+        if block.sandbox:
+            data["sandbox"] = block.sandbox
 
     elif block.type == "memory":
         if block.action:
