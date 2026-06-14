@@ -4,6 +4,14 @@
 **Owner:** Sudhi
 **Purpose:** Building Conduct — a YAML playbook platform that turns AI agents into reusable team automations, with a FastAPI backend, Next.js canvas UI, Redis worker, and 22 pre-built playbooks covering GitHub, Slack, CI/CD, and incident response workflows.
 
+## Agent Work — Always-On Watchdog
+When working on playbooks (`apps/api/playbooks/`), brain block prompts, turn budgets, or block chaining: activate `/agent-builder` skill. It enforces the review checklist for every agent capability change:
+- Per-block `max_turns` set explicitly
+- `plan_fix` (mode: single) before any `mode: agentic` block
+- Memory blocks: `recall_context` before, `record_outcome` after
+- Single-turn blocks output JSON only — no prose
+- Proxy mode: one `run_shell` packs everything; sandbox: no GitHub API calls
+
 ---
 
 <!-- rtk-instructions v2 -->
@@ -206,3 +214,8 @@ MCP tools (Agent Booster, any future Conduct MCP server) are transport, not auth
 
 ### No path traversal in file-reading tools
 Any tool that reads files by user-supplied path must resolve the path and verify it stays within the project root before reading. Pattern: `resolved.relative_to(root.resolve())` — raise/return error if this throws.
+
+
+<!-- booster-verbosity:start -->
+Be concise. No filler. No preamble. State results directly. One sentence per idea. Code examples over explanations.
+<!-- booster-verbosity:end -->

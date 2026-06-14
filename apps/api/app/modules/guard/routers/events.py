@@ -37,7 +37,7 @@ class HookEvent(BaseModel):
     clerk_user_id: str | None = None
     session_id: str | None = None
     user_email: str | None = None
-    ai_tool: str                      # claude_code | codex | cursor | copilot | windsurf | gemini
+    ai_tool: str                      # claude_code | claude_chat | claude_desktop | claude_work | codex | codex_cli | codex_chat | cursor | copilot | windsurf | gemini
     tool_call: str                    # bash | edit | write | read
     input_summary: str | None = None
     decision: str                     # allowed | blocked | warned | approval
@@ -352,12 +352,39 @@ def ingest_event(
 # ── POST /guard/events/usage — PostToolUse token backfill ────────────────────
 
 TOOL_PRICING = {
-    "claude-code": {"input": 3.0,  "output": 15.0},
-    "codex":       {"input": 2.5,  "output": 10.0},
-    "cursor":      {"input": 3.0,  "output": 15.0},
-    "windsurf":    {"input": 3.0,  "output": 15.0},
-    "unknown":     {"input": 3.0,  "output": 15.0},
+    # Claude surfaces (all billed at Sonnet-class rates)
+    "claude-code":    {"input": 3.0,  "output": 15.0},
+    "claude_code":    {"input": 3.0,  "output": 15.0},
+    "claude-chat":    {"input": 3.0,  "output": 15.0},
+    "claude_chat":    {"input": 3.0,  "output": 15.0},
+    "claude-desktop": {"input": 3.0,  "output": 15.0},
+    "claude_desktop": {"input": 3.0,  "output": 15.0},
+    "claude-work":    {"input": 3.0,  "output": 15.0},
+    "claude_work":    {"input": 3.0,  "output": 15.0},
+    # Codex surfaces
+    "codex":          {"input": 2.5,  "output": 10.0},
+    "codex-cli":      {"input": 2.5,  "output": 10.0},
+    "codex_cli":      {"input": 2.5,  "output": 10.0},
+    "codex-chat":     {"input": 2.5,  "output": 10.0},
+    "codex_chat":     {"input": 2.5,  "output": 10.0},
+    # Other tools
+    "cursor":         {"input": 3.0,  "output": 15.0},
+    "windsurf":       {"input": 3.0,  "output": 15.0},
+    "copilot":        {"input": 3.0,  "output": 15.0},
+    "gemini":         {"input": 1.25, "output": 5.0},
+    "unknown":        {"input": 3.0,  "output": 15.0},
 }
+
+
+def _tool_pricing(tool_key: str) -> dict:
+    """Lookup pricing by exact key, then prefix (claude* / codex*), else unknown."""
+    if tool_key in TOOL_PRICING:
+        return TOOL_PRICING[tool_key]
+    if tool_key.startswith("claude"):
+        return TOOL_PRICING["claude-code"]
+    if tool_key.startswith("codex"):
+        return TOOL_PRICING["codex"]
+    return TOOL_PRICING["unknown"]
 
 
 @router.post("/usage", response_model=UsageOut, status_code=200)
@@ -397,7 +424,7 @@ def update_usage(
         return UsageOut(updated=False)
 
     tool_key = (body.ai_tool or "unknown").lower()
-    pricing = TOOL_PRICING.get(tool_key, TOOL_PRICING["unknown"])
+    pricing = _tool_pricing(tool_key)
     input_price  = pricing["input"]
     output_price = pricing["output"]
 
@@ -428,7 +455,7 @@ def list_events(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
     decision: str | None = Query(default=None, description="allowed|blocked|warned|approval"),
-    ai_tool: str | None = Query(default=None, description="claude_code|codex|cursor|copilot|windsurf|gemini"),
+    ai_tool: str | None = Query(default=None, description="claude_code|claude_chat|claude_desktop|claude_work|codex|codex_cli|codex_chat|cursor|copilot|windsurf|gemini"),
     user_email: str | None = Query(default=None),
     since: datetime | None = Query(default=None, description="ISO datetime lower bound"),
     until: datetime | None = Query(default=None, description="ISO datetime upper bound"),
