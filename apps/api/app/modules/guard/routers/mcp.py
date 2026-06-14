@@ -340,6 +340,8 @@ async def mcp_endpoint(
 
             elif tool_name == "guard_enable":
                 rules = _get_rules(db, ws_uuid)
+                # Record a connection event so Tool Coverage surfaces this user
+                _record_event(db, ws_uuid, "guard_enable", {}, "allowed", None, ai_tool, user_email, session_id)
                 snippet = (
                     "You have ConductGuard active. "
                     "ALWAYS call guard_check before running shell commands, reading or writing files, "
