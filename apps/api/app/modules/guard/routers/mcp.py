@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from sqlalchemy import text as _text
@@ -179,6 +179,32 @@ def _text(msg_id, text: str) -> dict:
 
 
 # ── Main endpoint ─────────────────────────────────────────────────────────────
+
+@router.get("")
+async def mcp_sse(
+    workspace_id: str = Query(...),
+    token: str       = Query(...),
+):
+    """SSE endpoint required by MCP Streamable HTTP transport (GET establishes the stream).
+    For stateless policy checks we don't push server-initiated messages, so this just
+    holds the connection open with keepalive pings until the client disconnects."""
+    import asyncio
+
+    async def event_stream():
+        yield ": keepalive\n\n"
+        while True:
+            await asyncio.sleep(15)
+            yield ": keepalive\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
 
 @router.post("")
 async def mcp_endpoint(
