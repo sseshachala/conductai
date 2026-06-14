@@ -172,6 +172,7 @@ class Block(BaseModel):
 
     # — per-block turn budget override for agentic brain blocks —
     max_turns: int | None = None  # overrides the run-level __max_turns for this block only
+    complexity: str | None = None  # "small" | "medium" | "large" — resolved to max_turns via agent_config.yaml
 
     # — canvas display flags —
     is_readonly: bool = False  # True for blocks resolved from $use — canvas shows read-only banner
