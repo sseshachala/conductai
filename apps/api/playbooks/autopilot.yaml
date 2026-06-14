@@ -75,6 +75,17 @@ blocks:
       owner: "{{_trigger.repo_owner}}"
       repo: "{{_trigger.repo_name}}"
       issue_number: "{{_trigger.issue_number}}"
+    next: detect_fork
+
+  detect_fork:
+    type: tool
+    integration: github
+    action: get_repo
+    label: Detect fork / upstream
+    description: Check if the triggered repo is a fork and resolve the upstream PR target
+    params:
+      owner: "{{_trigger.repo_owner}}"
+      repo: "{{_trigger.repo_name}}"
     next: implement_fix
 
   implement_fix:
@@ -102,16 +113,8 @@ blocks:
       SINGLE run_shell call. Do NOT split across multiple calls — /tmp is gone after each call.
       You MUST push the branch to the remote before this block finishes.
 
-      BEFORE ANYTHING ELSE — verify token write access in one shell call:
-        STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X GET \
-          -H "Authorization: token $GIT_TOKEN" \
-          https://api.github.com/repos/{{_trigger.repo_full_name}})
-        if [ "$STATUS" != "200" ]; then
-          echo '{"pr_url": null, "approach": null, "files_changed": null, "error": "GIT_TOKEN cannot access repo — HTTP '$STATUS'"}'
-          exit 0
-        fi
-      If the above check fails OR if any subsequent git push / API call returns 403,
-      output the failure JSON immediately and stop — do NOT retry with alternate auth formats.
+      {{$snippet: token_check_trigger}}
+      If git push returns 403 at any point, output the failure JSON immediately and stop — do NOT retry.
 
       Do ALL of the following in ONE run_shell call:
       - rm -rf /tmp/repo
@@ -180,10 +183,10 @@ blocks:
 
       1. Retrieve the GitHub token from the Conduct AI credentials vault
       2. Open a PR via the GitHub API:
-         POST https://api.github.com/repos/{{_trigger.repo_full_name}}/pulls
+         POST https://api.github.com/repos/{{detect_fork.pr_target_full_name}}/pulls
          Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
          Body: {"title": "fix: {{fetch_issue.title}} (closes #{{fetch_issue.issue_number}})",
-                "head":  "{{implement_fix.branch_name}}",
+                "head":  "{{detect_fork.pr_head_prefix}}{{implement_fix.branch_name}}",
                 "base":  "{{_trigger.default_branch}}",
                 "body":  "Automated fix by Conduct AI.\n\nCloses #{{fetch_issue.issue_number}}\n\n{{$snippet: pr_attribution}}"}
 

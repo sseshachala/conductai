@@ -12,7 +12,7 @@ snippets:
     MODE=proxy   → FRESH container per run_shell call — pack ALL git+fix+push into ONE call.
 
     ── DETECT REPO TYPE ─────────────────────────────────────────────────────
-    if [ "{{fork_upstream.fork_full_name}}" = "{{inputs.upstream_owner}}/{{inputs.upstream_repo}}" ]; then
+    if [ "{{fork_upstream.fork_full_name}}" = "{{fetch_issue.owner}}/{{fetch_issue.repo}}" ]; then
       echo "REPO_TYPE=same"   # authenticated user owns the upstream — push directly, no fork
     else
       echo "REPO_TYPE=fork"   # fork exists — use fork URL, head_ref = owner:branch
@@ -36,6 +36,41 @@ snippets:
       gofmt -w . 2>/dev/null || true
     elif [ -f Gemfile ]; then
       bundle exec rubocop -a 2>/dev/null || true
+    fi
+
+  token_check_fork: |
+    ── VERIFY TOKEN WRITE ACCESS (FORK) — run this before any git work ──────
+    TOKEN_CHECK=$(curl -s -o /dev/null -w "%{http_code}" \
+      -H "Authorization: token $GIT_TOKEN" \
+      https://api.github.com/repos/{{fork_upstream.fork_full_name}})
+    if [ "$TOKEN_CHECK" != "200" ]; then
+      echo '{"branch_pushed":null,"head_ref":null,"base_branch":null,"fork_owner":null,"fork_full_name":null,"fix_summary":null,"lesson":null,"error":"GIT_TOKEN cannot access fork {{fork_upstream.fork_full_name}} — HTTP '$TOKEN_CHECK' — token needs repo scope or Contents:write"}'
+      exit 0
+    fi
+    # Also verify push by checking push permission field in repo metadata
+    PUSH_OK=$(curl -s -H "Authorization: token $GIT_TOKEN" \
+      https://api.github.com/repos/{{fork_upstream.fork_full_name}} | \
+      python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('permissions',{}).get('push','false'))" 2>/dev/null)
+    if [ "$PUSH_OK" != "True" ] && [ "$PUSH_OK" != "true" ]; then
+      echo '{"branch_pushed":null,"head_ref":null,"base_branch":null,"fork_owner":null,"fork_full_name":null,"fix_summary":null,"lesson":null,"error":"GIT_TOKEN has read but NOT write access to {{fork_upstream.fork_full_name}} — update PAT to include Contents:write or repo scope"}'
+      exit 0
+    fi
+
+  token_check_trigger: |
+    ── VERIFY TOKEN WRITE ACCESS — run this before any git work ─────────────
+    TOKEN_CHECK=$(curl -s -o /dev/null -w "%{http_code}" \
+      -H "Authorization: token $GIT_TOKEN" \
+      https://api.github.com/repos/{{_trigger.repo_full_name}})
+    if [ "$TOKEN_CHECK" != "200" ]; then
+      echo '{"pr_url":null,"branch_name":null,"summary":null,"error":"GIT_TOKEN cannot access {{_trigger.repo_full_name}} — HTTP '$TOKEN_CHECK' — token needs repo scope or Contents:write"}'
+      exit 0
+    fi
+    PUSH_OK=$(curl -s -H "Authorization: token $GIT_TOKEN" \
+      https://api.github.com/repos/{{_trigger.repo_full_name}} | \
+      python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('permissions',{}).get('push','false'))" 2>/dev/null)
+    if [ "$PUSH_OK" != "True" ] && [ "$PUSH_OK" != "true" ]; then
+      echo '{"pr_url":null,"branch_name":null,"summary":null,"error":"GIT_TOKEN has read but NOT write access to {{_trigger.repo_full_name}} — update PAT to include Contents:write or repo scope"}'
+      exit 0
     fi
 
   pr_attribution: |
@@ -66,7 +101,7 @@ blocks:
     label: Search code
     description: Find files matching the grep pattern in the upstream repo (default branch)
     params:
-      query: "{{plan_fix.grep_pattern}} repo:{{inputs.upstream_owner}}/{{inputs.upstream_repo}}"
+      query: "{{plan_fix.grep_pattern}} repo:{{fetch_issue.owner}}/{{fetch_issue.repo}}"
 
   plan_fix:
     type: brain
@@ -76,7 +111,7 @@ blocks:
     description: |
       You are a senior engineer planning a targeted code fix for an open-source issue.
 
-      Repository: {{inputs.upstream_owner}}/{{inputs.upstream_repo}}
+      Repository: {{fetch_issue.owner}}/{{fetch_issue.repo}}
       Issue #{{inputs.issue_number}}: {{fetch_issue.title}}
 
       Issue body:

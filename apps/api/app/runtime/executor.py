@@ -319,13 +319,23 @@ def _enqueue_online_eval(run_id: str) -> None:
 def _resolve_refs(value: Any, state: dict) -> Any:
     """Replace {{block_id.field}} references with values from run state."""
     if isinstance(value, str):
+        _MISSING = object()
+
         def replace(m):
             parts = m.group(1).split(".")
-            obj = state.get(parts[0], {})
+            obj = state.get(parts[0], _MISSING)
+            if obj is _MISSING:
+                log.debug("unresolved_template_ref", ref=m.group(1), top_key=parts[0])
+                return m.group(0)
             for p in parts[1:]:
                 if isinstance(obj, dict):
-                    obj = obj.get(p, m.group(0))
+                    nxt = obj.get(p, _MISSING)
+                    if nxt is _MISSING:
+                        log.debug("unresolved_template_ref", ref=m.group(1), missing_key=p)
+                        return m.group(0)
+                    obj = nxt
             return str(obj)
+
         return re.sub(r"\{\{([\w.]+)\}\}", replace, value)
     if isinstance(value, dict):
         return {k: _resolve_refs(v, state) for k, v in value.items()}

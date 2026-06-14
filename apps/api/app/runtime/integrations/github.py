@@ -25,6 +25,8 @@ def fetch_issue(token: str, owner: str, repo: str, issue_number: int) -> dict:
         "body": d.get("body") or "",
         "state": d["state"],
         "url": d["html_url"],
+        "owner": owner,
+        "repo": repo,
         "labels": [l["name"] for l in d.get("labels", [])],
         "author": d["user"]["login"],
     }
@@ -49,7 +51,24 @@ def get_repo(token: str, owner: str, repo: str) -> dict:
     r = httpx.get(f"{BASE}/repos/{owner}/{repo}", headers=_headers(token), timeout=15)
     r.raise_for_status()
     d = r.json()
-    return {"full_name": d["full_name"], "default_branch": d["default_branch"], "clone_url": d["clone_url"]}
+    is_fork = bool(d.get("fork"))
+    parent = d.get("parent") or {}
+    parent_full = parent.get("full_name", d["full_name"])
+    parent_owner, _, parent_repo = parent_full.partition("/")
+    return {
+        "full_name": d["full_name"],
+        "default_branch": d["default_branch"],
+        "clone_url": d["clone_url"],
+        "is_fork": is_fork,
+        "parent_full_name": parent_full,
+        "parent_owner": parent_owner,
+        "parent_repo": parent_repo,
+        # pr_target_* = upstream if fork, self if not
+        "pr_target_full_name": parent_full if is_fork else d["full_name"],
+        "pr_target_owner": parent_owner if is_fork else owner,
+        "pr_target_repo": parent_repo if is_fork else repo,
+        "pr_head_prefix": f"{owner}:" if is_fork else "",
+    }
 
 
 def create_branch(token: str, owner: str, repo: str, branch: str, from_branch: str = "main") -> dict:

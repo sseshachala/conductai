@@ -206,7 +206,7 @@ const GITHUB_ACTION_FIELDS: Record<string, ConfigField[]> = {
     { key: "config.params.secret_value", label: "Secret value", type: "text", required: true, placeholder: "{{inputs.api_key}}", hint: "Use a template ref — never hardcode secrets" },
   ],
   search_code: [
-    { key: "config.params.query",    label: "Search query", type: "text",   required: true,  placeholder: "urllib3 repo:{{inputs.upstream_owner}}/{{inputs.upstream_repo}}", hint: "GitHub code search — supports repo:, language:, path: filters" },
+    { key: "config.params.query",    label: "Search query", type: "text",   required: true,  placeholder: "{{plan_fix.grep_pattern}} repo:{{fetch_issue.owner}}/{{fetch_issue.repo}}", hint: "GitHub code search — supports repo:, language:, path: filters" },
     { key: "config.params.per_page", label: "Max results",  type: "number", required: false, placeholder: "10", hint: "Maximum file results to return (max 30)" },
   ],
 }
