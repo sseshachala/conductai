@@ -347,7 +347,12 @@ blocks:
   notify_report:
     type: output
     label: Post report to Slack
-    description: "{{compile_report.report}}"
+    description: |
+      {{compile_report.report}}
+
+      {% if create_tracking_issue.issue_url %}
+      📋 *GitHub Issue:* {{create_tracking_issue.issue_url}}
+      {% endif %}
     output:
       via: slack
       slack:
