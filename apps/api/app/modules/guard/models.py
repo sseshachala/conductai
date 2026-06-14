@@ -61,6 +61,7 @@ class GuardPolicy(Base):
     match_tool = Column(String(255), nullable=True)
     match_pattern = Column(String(500), nullable=True)
     match_path_pattern = Column(String(500), nullable=True)
+    match_tokens_before_gt = Column(Integer, nullable=True)
     action = Column(String(20), nullable=False)
     message = Column(Text, nullable=True)
     enabled = Column(Boolean, nullable=False, default=True)
