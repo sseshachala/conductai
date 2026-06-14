@@ -20,7 +20,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
-from sqlalchemy import text as _text
+from sqlalchemy import text as _sql
 
 from app.core.database import SessionLocal
 from app.modules.guard.models import GuardAuditEvent, GuardConfig, GuardMemberConfig, GuardPolicy
@@ -231,7 +231,7 @@ async def mcp_endpoint(
     try:
         # Validate token against guard_member_config
         member_row = db.execute(
-            _text("SELECT clerk_user_id FROM guard_member_config WHERE workspace_id = :w AND member_token = :t AND active = true LIMIT 1"),
+            _sql("SELECT clerk_user_id FROM guard_member_config WHERE workspace_id = :w AND member_token = :t AND active = true LIMIT 1"),
             {"w": str(ws_uuid), "t": token},
         ).fetchone()
         if not member_row:
@@ -241,7 +241,7 @@ async def mcp_endpoint(
 
         # Resolve email from workspace_users
         email_row = db.execute(
-            _text("SELECT email FROM workspace_users WHERE workspace_id = :w AND clerk_user_id = :u LIMIT 1"),
+            _sql("SELECT email FROM workspace_users WHERE workspace_id = :w AND clerk_user_id = :u LIMIT 1"),
             {"w": str(ws_uuid), "u": clerk_user_id},
         ).fetchone()
         user_email = email_row.email if email_row else clerk_user_id
