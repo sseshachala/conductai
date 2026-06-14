@@ -636,7 +636,7 @@ function SettingsContent() {
                 </div>
               )}
               <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 5 }}>
-                <li style={{ fontSize: 12.5, color: "var(--text-3)" }}><strong style={{ color: "var(--text-2)" }}>Claude.ai</strong> — Settings &rarr; MCP Servers &rarr; Add &rarr; paste URL, then type <code style={{ fontFamily: "ui-monospace,monospace", background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4 }}>load mcp</code> in chat</li>
+                <li style={{ fontSize: 12.5, color: "var(--text-3)" }}><strong style={{ color: "var(--text-2)" }}>Claude.ai</strong> — Settings &rarr; MCP Servers &rarr; Add &rarr; paste URL, then type <code style={{ fontFamily: "ui-monospace,monospace", background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4 }}>load mcp</code> or <code style={{ fontFamily: "ui-monospace,monospace", background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4 }}>enable guard</code> in chat</li>
                 <li style={{ fontSize: 12.5, color: "var(--text-3)" }}><strong style={{ color: "var(--text-2)" }}>Claude Desktop</strong> — run <code style={{ fontFamily: "ui-monospace,monospace", background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4 }}>conduct guard sync</code> in your terminal</li>
                 <li style={{ fontSize: 12.5, color: "var(--text-3)" }}><strong style={{ color: "var(--text-2)" }}>Claude for Work</strong> — Admin Console &rarr; Integrations &rarr; MCP &rarr; paste URL, then type <code style={{ fontFamily: "ui-monospace,monospace", background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4 }}>load mcp</code> in chat</li>
               </ul>
