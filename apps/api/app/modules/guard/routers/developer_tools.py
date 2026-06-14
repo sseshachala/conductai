@@ -2,17 +2,23 @@
 POST /guard/developer-tools  — CLI pushes tool coverage snapshot
 GET  /guard/developer-tools  — dashboard reads per-developer coverage
 """
-from datetime import datetime, timezone
+import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from sqlalchemy import text as _sql
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.auth import get_workspace_id
 from app.core.database import get_db
-from app.modules.guard.models import GuardDeveloperTools
+from app.modules.guard.models import GuardAuditEvent, GuardDeveloperTools
+
+# MCP-sourced surfaces that should appear in Tool Coverage
+_MCP_SURFACES = {"claude_chat", "claude_desktop", "claude_work", "claude-chat", "claude-desktop", "claude-work"}
+_MCP_SURFACE_LABEL = "claude_chat"  # canonical key for "connected via remote MCP"
 
 router = APIRouter(prefix="/guard/developer-tools", tags=["guard"])
 
@@ -72,20 +78,65 @@ def get_developer_tools(
     workspace_id: str = Depends(get_workspace_id),
     db: Session = Depends(get_db),
 ):
-    """Return the latest tool coverage snapshot for every developer in the workspace."""
+    """Return the latest tool coverage snapshot for every developer in the workspace.
+    Also injects MCP-sourced surfaces (claude_chat, claude_desktop, claude_work) from
+    recent audit events so Claude.ai connections show up in Tool Coverage."""
     rows = (
         db.query(GuardDeveloperTools)
         .filter(GuardDeveloperTools.workspace_id == workspace_id)
         .order_by(GuardDeveloperTools.reported_at.desc())
         .all()
     )
-    return [
-        DeveloperToolsOut(
-            email=row.user_email,
-            detected_tools=row.detected_tools or [],
-            mcp_registered=row.mcp_registered or [],
-            hook_registered=row.hook_registered or [],
+
+    # Find users with recent MCP-sourced events (last 7 days)
+    since = datetime.now(timezone.utc) - timedelta(days=7)
+    ws_uuid = uuid.UUID(workspace_id)
+    mcp_rows = db.execute(
+        _sql("""
+            SELECT DISTINCT user_email, ai_tool
+            FROM guard_audit_events
+            WHERE workspace_id = :w AND ts >= :since AND ai_tool = ANY(:surfaces)
+        """),
+        {"w": ws_uuid, "since": since, "surfaces": list(_MCP_SURFACES)},
+    ).fetchall()
+
+    # Build map: email → set of MCP surfaces seen
+    mcp_by_email: dict[str, set[str]] = {}
+    for r in mcp_rows:
+        email = r.user_email or ""
+        if email:
+            mcp_by_email.setdefault(email, set()).add("claude_chat")
+
+    result = []
+    seen_emails = set()
+    for row in rows:
+        email = row.user_email
+        seen_emails.add(email)
+        detected = list(row.detected_tools or [])
+        mcp_reg  = list(row.mcp_registered or [])
+        hook_reg = list(row.hook_registered or [])
+
+        if email in mcp_by_email and "claude_chat" not in detected:
+            detected.append("claude_chat")
+            mcp_reg.append("claude_chat")
+
+        result.append(DeveloperToolsOut(
+            email=email,
+            detected_tools=detected,
+            mcp_registered=mcp_reg,
+            hook_registered=hook_reg,
             reported_at=row.reported_at,
-        )
-        for row in rows
-    ]
+        ))
+
+    # Also surface MCP-only users who never ran CLI sync
+    for email, _ in mcp_by_email.items():
+        if email not in seen_emails:
+            result.append(DeveloperToolsOut(
+                email=email,
+                detected_tools=["claude_chat"],
+                mcp_registered=["claude_chat"],
+                hook_registered=[],
+                reported_at=datetime.now(timezone.utc),
+            ))
+
+    return result

@@ -931,8 +931,8 @@ function GuardDashboard() {
             {/* Tool coverage panel */}
             {!loading && toolCoverage.length > 0 && (() => {
               const TOOL_LABEL: Record<string, string> = {
-                "claude-code": "Claude", "codex": "Codex", "cursor": "Cursor",
-                "windsurf": "Windsurf", "vscode": "VS Code",
+                "claude-code": "Claude", "claude_chat": "Claude.ai", "claude_desktop": "Claude Desktop", "claude_work": "Claude Work",
+                "codex": "Codex", "cursor": "Cursor", "windsurf": "Windsurf", "vscode": "VS Code",
               }
               return (
                 <div className="card" style={{ marginBottom: 20, padding: "16px 18px" }}>
