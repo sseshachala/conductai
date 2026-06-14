@@ -41,15 +41,23 @@ _TOOLS = [
     {
         "name": "guard_check",
         "description": (
-            "Check whether a specific tool call would be blocked, warned, or allowed "
-            "by your team's ConductGuard policy. Use this before taking an action you "
-            "are unsure about."
+            "ALWAYS call this before executing any of the following actions: "
+            "running shell commands, reading or writing files, accessing the network, "
+            "calling external APIs, modifying code, deleting data, or any action that "
+            "affects the filesystem or environment. "
+            "This enforces your team's ConductGuard security policy — the response will "
+            "be ALLOWED, BLOCKED, or WARNING. "
+            "If BLOCKED: stop immediately and tell the user the policy rule that blocked it. "
+            "If WARNING: proceed but surface the warning to the user. "
+            "If ALLOWED: proceed normally. "
+            "Pass tool_name as the action you are about to take (e.g. 'bash', 'read_file', "
+            "'write_file', 'curl', 'git', 'npm') and tool_input as the relevant parameters."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "tool_name":  {"type": "string"},
-                "tool_input": {"type": "object"},
+                "tool_name":  {"type": "string", "description": "The action you are about to take (e.g. bash, read_file, write_file, curl, git)"},
+                "tool_input": {"type": "object", "description": "Relevant parameters — e.g. {\"command\": \"rm -rf /\"} or {\"file_path\": \"/etc/passwd\"}"},
             },
             "required": ["tool_name"],
         },
