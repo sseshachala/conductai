@@ -256,7 +256,13 @@ async def mcp_endpoint(
             return JSONResponse(status_code=401, content=_err(msg_id, -32600, "invalid token"))
 
         clerk_user_id = member_row.clerk_user_id
-        user_email = clerk_user_id  # workspace_users has no email column; use clerk_user_id as identifier
+
+        # Resolve email from users table via clerk_id
+        email_row = db.execute(
+            _sql("SELECT email FROM users WHERE clerk_id = :u LIMIT 1"),
+            {"u": clerk_user_id},
+        ).fetchone()
+        user_email = email_row.email if email_row else clerk_user_id
 
         config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
         if not config:
@@ -282,8 +288,8 @@ async def mcp_endpoint(
         elif method == "tools/call":
             tool_name = params.get("name", "")
             arguments = params.get("arguments") or {}
-            client_info = params.get("_clientInfo") or {}
-            ai_tool    = _detect_surface(client_info)
+            # Remote MCP = always a web surface; clientInfo not available on tools/call
+            ai_tool = request.headers.get("x-claude-surface") or "claude_chat"
             session_id = request.headers.get("x-session-id", str(uuid.uuid4()))
 
             if tool_name == "guard_status":
