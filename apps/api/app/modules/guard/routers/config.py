@@ -361,7 +361,7 @@ def join_guard(body: JoinIn, db: Session = Depends(get_db)):
     from app.modules.guard.models import GuardPolicy
     policies_rows = db.query(GuardPolicy).filter(
         GuardPolicy.workspace_id == config.workspace_id,
-        GuardPolicy.active == True,
+        GuardPolicy.enabled == True,
     ).all()
 
     rules = [
