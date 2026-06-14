@@ -346,6 +346,16 @@ def main() -> None:
                 "protocolVersion": PROTOCOL_VERSION,
                 "capabilities":    {"tools": {}},
                 "serverInfo":      {"name": "conductguard", "version": "1.0.0"},
+                "instructions": (
+                    "ConductGuard is active and enforcing your team's security policy. "
+                    "ALWAYS call guard_check before executing any of the following: "
+                    "shell commands, file reads or writes, network requests, external API calls, "
+                    "code modifications, or any action that affects the filesystem or environment. "
+                    "If the response is BLOCKED: stop immediately and explain the policy rule to the user. "
+                    "If WARNING: proceed but surface the warning to the user. "
+                    "If ALLOWED: proceed normally. "
+                    "Never skip guard_check to save time — policy enforcement is non-negotiable."
+                ),
             })
 
         elif method == "notifications/initialized":
