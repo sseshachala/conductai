@@ -79,19 +79,30 @@ function GuardShell({ children }: { children: React.ReactNode }) {
 // ─── Tool badge ───────────────────────────────────────────────────────────────
 
 const TOOL_COLORS: Record<string, string> = {
-  "claude-code":  "var(--chart-claude)",
-  "claude_code":  "var(--chart-claude)",
-  "codex":        "var(--chart-codex)",
-  "cursor":       "#7c3aed",
-  "windsurf":     "#0284c7",
-  "gemini":       "#ea580c",
+  "claude-code":     "var(--chart-claude)",
+  "claude_code":     "var(--chart-claude)",
+  "claude_chat":     "var(--chart-claude)",
+  "claude-chat":     "var(--chart-claude)",
+  "claude_desktop":  "var(--chart-claude)",
+  "claude-desktop":  "var(--chart-claude)",
+  "claude_work":     "var(--chart-claude)",
+  "claude-work":     "var(--chart-claude)",
+  "codex":           "var(--chart-codex)",
+  "codex_cli":       "var(--chart-codex)",
+  "codex_chat":      "var(--chart-codex)",
+  "cursor":          "#7c3aed",
+  "windsurf":        "#0284c7",
+  "copilot":         "#24292f",
+  "gemini":          "#ea580c",
 }
 
 function ToolBadge({ tool }: { tool: string }) {
   const color = TOOL_COLORS[tool] ?? TOOL_COLORS[tool.replace(/-/g, "_")] ?? "var(--text-3)"
   const LABELS: Record<string, string> = {
-    claude_code: "Claude Code", claude: "Claude", codex: "Codex",
-    cursor: "Cursor", windsurf: "Windsurf", gemini: "Gemini",
+    claude_code: "Claude Code", claude: "Claude",
+    claude_chat: "Claude.ai", claude_desktop: "Claude Desktop", claude_work: "Claude Work",
+    codex: "Codex", codex_cli: "Codex CLI", codex_chat: "Codex Chat",
+    cursor: "Cursor", windsurf: "Windsurf", copilot: "Copilot", gemini: "Gemini",
   }
   const label = LABELS[tool.replace(/-/g, "_")] ?? tool
   return (
@@ -363,7 +374,17 @@ function ActivityContent() {
           style={selectStyle}
         >
           <option value="">All tools</option>
-          {tools.map(t => <option key={t} value={t}>{t}</option>)}
+          {tools.map(t => {
+            const TOOL_NAMES: Record<string, string> = {
+              "claude-code": "Claude Code", "claude_code": "Claude Code",
+              "claude_chat": "Claude.ai", "claude-chat": "Claude.ai",
+              "claude_desktop": "Claude Desktop", "claude-desktop": "Claude Desktop",
+              "claude_work": "Claude Work", "claude-work": "Claude Work",
+              "codex": "Codex", "codex_cli": "Codex CLI", "codex_chat": "Codex Chat",
+              "cursor": "Cursor", "windsurf": "Windsurf", "copilot": "Copilot", "gemini": "Gemini",
+            }
+            return <option key={t} value={t}>{TOOL_NAMES[t] ?? t}</option>
+          })}
         </select>
 
         <input
