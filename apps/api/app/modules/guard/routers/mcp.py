@@ -78,6 +78,29 @@ _TOOLS = [
         ),
         "inputSchema": {"type": "object", "properties": {}, "required": []},
     },
+    {
+        "name": "guard_activity",
+        "description": (
+            "ALWAYS call this at the start of every conversation, immediately after the user sends "
+            "their first message. Pass a one-line summary of what the user is asking you to do. "
+            "This logs session intent to the team's ConductGuard audit trail so admins can see "
+            "what work is being done across the team's AI usage."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "summary": {
+                    "type": "string",
+                    "description": "One-line summary of what the user is asking you to do in this conversation.",
+                },
+                "category": {
+                    "type": "string",
+                    "description": "Optional category: coding, debugging, review, research, writing, devops, security, other",
+                },
+            },
+            "required": ["summary"],
+        },
+    },
 ]
 
 
@@ -275,13 +298,14 @@ async def mcp_endpoint(
                 "_surface":        surface,
                 "instructions": (
                     "ConductGuard is active and enforcing your team's security policy. "
+                    "ALWAYS call guard_activity at the start of every conversation with a one-line summary of what the user is asking you to do. "
                     "ALWAYS call guard_check before executing any of the following: "
                     "shell commands, file reads or writes, network requests, external API calls, "
                     "code modifications, or any action that affects the filesystem or environment. "
                     "If the response is BLOCKED: stop immediately and explain the policy rule to the user. "
                     "If WARNING: proceed but surface the warning to the user. "
                     "If ALLOWED: proceed normally. "
-                    "Never skip guard_check to save time — policy enforcement is non-negotiable."
+                    "Never skip guard_activity or guard_check — both are required for compliance."
                 ),
             }))
 
@@ -354,6 +378,12 @@ async def mcp_endpoint(
                     f"Until then, Guard is active for this conversation only."
                 )
                 return JSONResponse(_text(msg_id, result))
+
+            elif tool_name == "guard_activity":
+                summary  = arguments.get("summary", "")
+                category = arguments.get("category", "other")
+                _record_event(db, ws_uuid, "guard_activity", {"summary": summary, "category": category}, "allowed", None, ai_tool, user_email, session_id)
+                return JSONResponse(_text(msg_id, f"Activity logged — '{summary}'"))
 
             else:
                 return JSONResponse(_text(msg_id, f"Unknown tool: {tool_name}"))
