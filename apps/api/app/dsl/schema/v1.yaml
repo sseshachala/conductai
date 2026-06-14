@@ -109,6 +109,7 @@ properties:
           - mcp
           - sandbox
           - guard
+          - for_each
           title: Type
           type: string
         label:
@@ -380,6 +381,22 @@ properties:
           - type: 'null'
           default: null
           title: Item Var
+        sandbox:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Sandbox
+        max_turns:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          default: null
+          title: Max Turns
+        is_readonly:
+          default: false
+          title: Is Readonly
+          type: boolean
         retry:
           anyOf:
           - type: object
@@ -416,6 +433,7 @@ properties:
           - mcp
           - sandbox
           - guard
+          - for_each
           title: Type
           type: string
         label:
@@ -687,6 +705,22 @@ properties:
           - type: 'null'
           default: null
           title: Item Var
+        sandbox:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Sandbox
+        max_turns:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          default: null
+          title: Max Turns
+        is_readonly:
+          default: false
+          title: Is Readonly
+          type: boolean
         retry:
           anyOf:
           - type: object
