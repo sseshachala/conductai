@@ -153,3 +153,31 @@ def remove_member(
 
     db.commit()
     log.info("guard.member_removed", workspace_id=workspace_id, user_id=clerk_user_id)
+
+
+class MemberTokenOut(BaseModel):
+    workspace_id: str
+    member_token: str | None
+
+
+@router.get("/me/token", response_model=MemberTokenOut)
+def get_my_token(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    caller: str = Depends(get_user_id),
+):
+    """Return the calling member's token from guard_member_config (200 with null if not yet initialised)."""
+    row = db.execute(
+        text("""
+            SELECT member_token
+            FROM guard_member_config
+            WHERE workspace_id = :ws AND clerk_user_id = :uid
+            LIMIT 1
+        """),
+        {"ws": workspace_id, "uid": caller},
+    ).fetchone()
+
+    return MemberTokenOut(
+        workspace_id=workspace_id,
+        member_token=row.member_token if row else None,
+    )
