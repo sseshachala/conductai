@@ -349,6 +349,14 @@ async def mcp_endpoint(
                     _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", rule_id, ai_tool, user_email, session_id)
                     return JSONResponse(_text(msg_id, f"BLOCKED — {message}  [rule: {rule_id}]"))
                 if action in ("warn", "approval"):
+                    already_warned = db.query(GuardAuditEvent).filter(
+                        GuardAuditEvent.workspace_id == ws_uuid,
+                        GuardAuditEvent.hook_session_id == session_id,
+                        GuardAuditEvent.rule_id == rule_id,
+                        GuardAuditEvent.decision == "warned",
+                    ).first()
+                    if already_warned:
+                        return JSONResponse(_text(msg_id, f"ALLOWED — warning already issued this session [rule: {rule_id}]"))
                     _record_event(db, ws_uuid, inner_tool, inner_input, "warned", rule_id, ai_tool, user_email, session_id)
                     return JSONResponse(_text(msg_id, f"WARNING — {message}  [rule: {rule_id}]"))
 
