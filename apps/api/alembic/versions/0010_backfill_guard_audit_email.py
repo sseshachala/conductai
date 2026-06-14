@@ -12,13 +12,11 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("""
-        UPDATE guard_audit_events e
-        SET user_email = wu.email
-        FROM workspace_users wu
-        WHERE wu.clerk_user_id = e.user_email
-          AND e.user_email LIKE 'user_%'
-    """)
+    # workspace_users has no email column; users.clerk_id is unpopulated.
+    # Email resolution now happens at runtime via get_clerk_user_email().
+    # Old events with clerk_user_id stored as user_email are left as-is;
+    # the activity UI resolves display labels server-side going forward.
+    pass
 
 
 def downgrade() -> None:

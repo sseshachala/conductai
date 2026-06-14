@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text as _sql
 
 from app.core.database import SessionLocal
+from app.core.auth import get_clerk_user_email
 from app.modules.guard.models import GuardAuditEvent, GuardConfig, GuardMemberConfig, GuardPolicy
 
 router = APIRouter(prefix="/guard/mcp", tags=["guard-mcp"])
@@ -257,12 +258,8 @@ async def mcp_endpoint(
 
         clerk_user_id = member_row.clerk_user_id
 
-        # Resolve email from workspace_users (has email column keyed on clerk_user_id)
-        email_row = db.execute(
-            _sql("SELECT email FROM workspace_users WHERE clerk_user_id = :u AND workspace_id = :w LIMIT 1"),
-            {"u": clerk_user_id, "w": str(ws_uuid)},
-        ).fetchone()
-        user_email = email_row.email if email_row else clerk_user_id
+        # Resolve email from Clerk API (workspace_users has no email column)
+        user_email = get_clerk_user_email(clerk_user_id) or clerk_user_id
 
         config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
         if not config:
