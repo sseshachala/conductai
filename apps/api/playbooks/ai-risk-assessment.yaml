@@ -288,7 +288,7 @@ blocks:
   has_action_items:
     type: logic
     label: Create GitHub issue?
-    condition: "{{inputs.create_github_issue}} == 'yes'"
+    condition: "{{inputs.create_github_issue == 'yes'}}"
     next:
       pass: create_tracking_issue
       fail: record_outcome
