@@ -430,6 +430,18 @@ def search_code(token: str, query: str, per_page: int = 10) -> dict:
         return _empty
 
 
+def create_issue(token: str, owner: str, repo: str, title: str, body: str = "", labels: list | None = None) -> dict:
+    r = httpx.post(
+        f"{BASE}/repos/{owner}/{repo}/issues",
+        headers=_headers(token),
+        json={"title": title, "body": body, "labels": labels or []},
+        timeout=15,
+    )
+    r.raise_for_status()
+    d = r.json()
+    return {"issue_url": d.get("html_url", ""), "issue_number": d.get("number")}
+
+
 TOOL_MAP = {
     "fetch_issue": fetch_issue,
     "list_issues": list_issues,
@@ -443,6 +455,7 @@ TOOL_MAP = {
     "fork_repo": fork_repo,
     "update_file": update_file,
     "search_code": search_code,
+    "create_issue": create_issue,
 }
 
 
