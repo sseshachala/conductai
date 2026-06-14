@@ -578,6 +578,12 @@ def _execute_brain(
                 "input_tokens": response.usage.input_tokens,
                 "output_tokens": response.usage.output_tokens,
             })
+            _write_trace(db, run_id, block_id, 1, "user",
+                         content=user_message[:8000] if user_message else None)
+            _write_trace(db, run_id, block_id, 1, "assistant",
+                         content=text[:8000] if text else None,
+                         input_tokens=response.usage.input_tokens,
+                         output_tokens=response.usage.output_tokens)
         result = {
             "output": text,
             "turns": 1,
