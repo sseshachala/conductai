@@ -95,9 +95,9 @@ def get_developer_tools(
     mcp_rows = db.execute(
         _sql("""
             SELECT DISTINCT
-                COALESCE(u.email, e.user_email) AS resolved_email
+                COALESCE(wu.email, e.user_email) AS resolved_email
             FROM guard_audit_events e
-            LEFT JOIN users u ON u.clerk_id = e.user_email
+            LEFT JOIN workspace_users wu ON wu.clerk_user_id = e.user_email
             WHERE e.workspace_id = :w AND e.ts >= :since AND e.ai_tool = ANY(:surfaces)
         """),
         {"w": ws_uuid, "since": since, "surfaces": list(_MCP_SURFACES)},

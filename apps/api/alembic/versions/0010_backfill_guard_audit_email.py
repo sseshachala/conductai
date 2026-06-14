@@ -14,9 +14,9 @@ depends_on = None
 def upgrade() -> None:
     op.execute("""
         UPDATE guard_audit_events e
-        SET user_email = u.email
-        FROM users u
-        WHERE u.clerk_id = e.user_email
+        SET user_email = wu.email
+        FROM workspace_users wu
+        WHERE wu.clerk_user_id = e.user_email
           AND e.user_email LIKE 'user_%'
     """)
 
