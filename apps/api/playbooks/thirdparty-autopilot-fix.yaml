@@ -61,7 +61,7 @@ blocks:
 
   read_memory:
     $use: base-autopilot.recall_context
-    key: "{{inputs.upstream_owner}}/{{inputs.upstream_repo}}"
+    key: "{{fetch_issue.owner}}/{{fetch_issue.repo}}"
     next: plan_fix
 
   plan_fix:
@@ -94,6 +94,9 @@ blocks:
       Fill in the FIX SECTION below and run it as a single run_shell call.
       The script auto-detects its mode — do NOT make a separate detection call.
 
+      {{$snippet: token_check_fork}}
+      If git push returns 403 at any point, output the failure JSON immediately and stop — do NOT retry.
+
         git config --global user.email "bot@conductai.ai" && \
         git config --global user.name "Conduct AI" && \
         BASE_BRANCH="{{plan_fix.base_branch}}" && \
@@ -103,14 +106,14 @@ blocks:
         elif [ -w /workspace ] || mkdir -p /workspace 2>/dev/null; then
           git clone https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git /workspace && \
           cd /workspace && \
-          git remote add upstream https://github.com/{{inputs.upstream_owner}}/{{inputs.upstream_repo}}.git && \
+          git remote add upstream https://github.com/{{fetch_issue.owner}}/{{fetch_issue.repo}}.git && \
           git fetch upstream "$BASE_BRANCH" --depth=50 && \
           git checkout -b fix/issue-{{inputs.issue_number}} && \
           git reset --hard upstream/"$BASE_BRANCH"
         else
           git clone https://$GIT_TOKEN@github.com/{{fork_upstream.fork_full_name}}.git /tmp/repo && \
           cd /tmp/repo && \
-          git remote add upstream https://github.com/{{inputs.upstream_owner}}/{{inputs.upstream_repo}}.git && \
+          git remote add upstream https://github.com/{{fetch_issue.owner}}/{{fetch_issue.repo}}.git && \
           git fetch upstream "$BASE_BRANCH" --depth=50 && \
           git checkout -b fix/issue-{{inputs.issue_number}} && \
           git reset --hard upstream/"$BASE_BRANCH"
@@ -164,8 +167,8 @@ blocks:
     label: Open pull request
     description: Open PR from fork branch back to upstream
     params:
-      owner: "{{inputs.upstream_owner}}"
-      repo: "{{inputs.upstream_repo}}"
+      owner: "{{fetch_issue.owner}}"
+      repo: "{{fetch_issue.repo}}"
       title: "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})"
       head: "{{implement_fix.head_ref}}"
       base: "{{implement_fix.base_branch}}"
@@ -177,7 +180,7 @@ blocks:
 
   write_memory:
     $use: base-autopilot.record_outcome
-    key: "{{inputs.upstream_owner}}/{{inputs.upstream_repo}}"
+    key: "{{fetch_issue.owner}}/{{fetch_issue.repo}}"
     summary: |
       Issue #{{inputs.issue_number}}: {{fetch_issue.title}}
       PR: {{open_pr.pr_url}} — status: opened, pending review
