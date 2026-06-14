@@ -67,6 +67,16 @@ _TOOLS = [
         "description": "Returns current active ruleset (no-op for remote MCP — policy is always live).",
         "inputSchema": {"type": "object", "properties": {}, "required": []},
     },
+    {
+        "name": "guard_enable",
+        "description": (
+            "Call this when the user asks to 'enable conductguard', 'load mcp', 'activate guard', "
+            "or any similar onboarding request. Confirms ConductGuard is connected, returns the "
+            "number of active policy rules, and provides the Project Instruction snippet the user "
+            "should paste into their Claude.ai Project settings to make guard_check fire automatically."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
 ]
 
 
@@ -312,6 +322,24 @@ async def mcp_endpoint(
             elif tool_name == "guard_sync":
                 rules = _get_rules(db, ws_uuid)
                 return JSONResponse(_text(msg_id, f"Policy is live — {len(rules)} active rule(s). Remote MCP always uses latest."))
+
+            elif tool_name == "guard_enable":
+                rules = _get_rules(db, ws_uuid)
+                snippet = (
+                    "You have ConductGuard active. "
+                    "ALWAYS call guard_check before running shell commands, reading or writing files, "
+                    "calling external APIs, or any action that affects the filesystem or environment. "
+                    "If the response is BLOCKED, stop immediately and explain the policy rule to the user. "
+                    "If WARNING, proceed but surface the warning."
+                )
+                result = (
+                    f"✓ ConductGuard is connected — {len(rules)} active rule(s).\n\n"
+                    f"To make Guard fire automatically on every conversation, paste this into your "
+                    f"Claude.ai Project Instructions (Projects → your project → Instructions):\n\n"
+                    f"---\n{snippet}\n---\n\n"
+                    f"Until then, Guard is active for this conversation only."
+                )
+                return JSONResponse(_text(msg_id, result))
 
             else:
                 return JSONResponse(_text(msg_id, f"Unknown tool: {tool_name}"))
