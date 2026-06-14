@@ -15,6 +15,7 @@ BUDGET_CACHE_PATH   = GUARD_DIR / "budget_cache.json"
 BUDGET_CACHE_TTL    = 300  # 5 minutes
 VERSION_CACHE_PATH  = GUARD_DIR / "version_cache.json"
 VERSION_CACHE_TTL   = 60   # 1 minute — matches server poll window
+WARNED_RULES_PATH   = GUARD_DIR / "warned_rules.json"
 
 
 def _maybe_sync_policy():
@@ -157,6 +158,35 @@ def _detect_ai_tool():
     if "windsurf" in path.lower():
         return "windsurf"
     return "unknown"
+
+
+def _already_warned_this_session(session_id: str, rule_id: str) -> bool:
+    """Return True if this rule already fired a warning in the current session."""
+    try:
+        data = json.loads(WARNED_RULES_PATH.read_text()) if WARNED_RULES_PATH.exists() else {}
+    except Exception:
+        data = {}
+    return rule_id in data.get(session_id, [])
+
+
+def _record_session_warn(session_id: str, rule_id: str) -> None:
+    try:
+        data = json.loads(WARNED_RULES_PATH.read_text()) if WARNED_RULES_PATH.exists() else {}
+    except Exception:
+        data = {}
+    data.setdefault(session_id, [])
+    if rule_id not in data[session_id]:
+        data[session_id].append(rule_id)
+    # Trim to last 50 sessions to prevent unbounded growth
+    if len(data) > 50:
+        oldest = list(data.keys())[:-50]
+        for k in oldest:
+            del data[k]
+    try:
+        GUARD_DIR.mkdir(parents=True, exist_ok=True)
+        WARNED_RULES_PATH.write_text(json.dumps(data))
+    except Exception:
+        pass
 
 
 def _post_event(tool_name, tool_input, decision, rule_id=None, message=None, session_id=None):
@@ -533,7 +563,12 @@ def post_usage_main():
         _, action, rule_id, message = _check_policy(tool_name, {}, tokens_before=tokens_input)
         if action in ("warn", "block"):
             decision = "warned" if action == "warn" else "blocked"
-            _post_event(tool_name, {}, decision, rule_id, message, session_id=session_id)
+            if action == "warn" and session_id and rule_id and _already_warned_this_session(session_id, rule_id):
+                pass  # already warned once this session — skip
+            else:
+                if action == "warn" and session_id and rule_id:
+                    _record_session_warn(session_id, rule_id)
+                _post_event(tool_name, {}, decision, rule_id, message, session_id=session_id)
 
     # Security classifier runs regardless of transcript_path — scan every tool response
     tool_response = data.get("tool_response") or data.get("output") or ""
@@ -584,6 +619,10 @@ def main():
 
     # Always post an event — "allowed" for normal calls, "blocked"/"warned" for violations
     decision = {"block": "blocked", "warn": "warned", "approval": "blocked"}.get(action, "allowed")
+    if action == "warn" and session_id and rule_id and _already_warned_this_session(session_id, rule_id):
+        sys.exit(0)  # already warned once this session — skip silently
+    if action == "warn" and session_id and rule_id:
+        _record_session_warn(session_id, rule_id)
     _post_event(tool_name, tool_input, decision, rule_id, message, session_id=session_id)
 
     if action == "block":
