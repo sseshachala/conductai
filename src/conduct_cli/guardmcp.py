@@ -80,6 +80,16 @@ _TOOLS = [
         ),
         "inputSchema": {"type": "object", "properties": {}, "required": []},
     },
+    {
+        "name": "guard_enable",
+        "description": (
+            "Call this when the user asks to 'enable conductguard', 'load mcp', 'activate guard', "
+            "or any similar onboarding request. Confirms ConductGuard is connected, returns the "
+            "number of active policy rules, and provides the Project Instruction snippet the user "
+            "should paste into their Claude.ai Project settings to make guard_check fire automatically."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
 ]
 
 
@@ -266,6 +276,23 @@ def _dispatch_tool(name: str, arguments: dict, workspace_id: str, token: str, ai
         return _handle_guard_check(arguments, workspace_id, token, ai_tool)
     if name == "guard_sync":
         return _handle_guard_sync(workspace_id, token)
+    if name == "guard_enable":
+        policy = _load_policy()
+        rule_count = len(policy.get("rules", []))
+        snippet = (
+            "You have ConductGuard active. "
+            "ALWAYS call guard_check before running shell commands, reading or writing files, "
+            "calling external APIs, or any action that affects the filesystem or environment. "
+            "If the response is BLOCKED, stop immediately and explain the policy rule to the user. "
+            "If WARNING, proceed but surface the warning."
+        )
+        return (
+            f"✓ ConductGuard is connected — {rule_count} active rule(s).\n\n"
+            f"To make Guard fire automatically on every conversation, paste this into your "
+            f"Claude.ai Project Instructions (Projects → your project → Instructions):\n\n"
+            f"---\n{snippet}\n---\n\n"
+            f"Until then, Guard is active for this conversation only."
+        )
     return f"Unknown tool: {name}"
 
 
