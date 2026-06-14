@@ -77,8 +77,7 @@ function SettingsContent() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [detectedTools, setDetectedTools] = useState<Set<string>>(new Set())
-  const [memberToken, setMemberToken] = useState<string | null | undefined>(undefined)
-  const [mcpCopied, setMcpCopied] = useState(false)
+
 
   const base = process.env.NEXT_PUBLIC_API_URL ?? ""
   const wsId = activeWorkspace?.id
@@ -96,10 +95,9 @@ function SettingsContent() {
     setLoading(true)
     try {
       const headers = await authHeaders()
-      const [configRes, toolsRes, tokenRes] = await Promise.all([
+      const [configRes, toolsRes] = await Promise.all([
         fetch(`${base}/secure/config?workspace_id=${wsId}`, { headers }),
         fetch(`${base}/guard/developer-tools?workspace_id=${wsId}`, { headers }),
-        fetch(`${base}/guard/members/me/token?workspace_id=${wsId}`, { headers }),
       ])
       if (configRes.ok) {
         const data = await configRes.json()
@@ -119,12 +117,7 @@ function SettingsContent() {
         const all = new Set(devs.flatMap(d => d.detected_tools ?? []))
         setDetectedTools(all)
       }
-      if (tokenRes.ok) {
-        const td: { member_token: string | null; workspace_id: string } = await tokenRes.json()
-        setMemberToken(td.member_token)
-      } else {
-        setMemberToken(null)
-      }
+
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load settings")
     } finally {
@@ -387,74 +380,6 @@ function SettingsContent() {
               <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 8, padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8 }}>
                 Guard violations can also trigger Security Loop scans.{" "}
                 <a href="/guard/settings" style={{ color: "var(--accent-text)", textDecoration: "none" }}>Configure Guard automation →</a>
-              </div>
-            </div>
-          </div>
-
-          {/* ── MCP Integration ─────────────────────────────────────────────── */}
-          <div className="card" style={{ overflow: "hidden", marginBottom: 20 }}>
-            <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ width: 30, height: 30, borderRadius: 8, background: "#2563eb", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="2" y="3" width="20" height="14" rx="2" />
-                  <path d="M8 21h8M12 17v4" />
-                </svg>
-              </span>
-              <div style={{ fontWeight: 650, fontSize: 14.5 }}>MCP Integration</div>
-            </div>
-            <div style={{ padding: "16px 20px" }}>
-              <div style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 14 }}>
-                Connect Claude.ai, Claude Desktop, or Claude for Work to ConductGuard. Every tool call will be audited and policy-enforced.
-              </div>
-
-              {memberToken === undefined ? (
-                // loading skeleton
-                <div style={{ height: 36, borderRadius: 8, background: "var(--surface-2)", marginBottom: 14 }} />
-              ) : memberToken === null ? (
-                <div style={{ fontSize: 12, color: "var(--text-muted)", background: "var(--surface-2)", borderRadius: 8, padding: "10px 14px", marginBottom: 14 }}>
-                  Run <code style={{ fontFamily: "ui-monospace,monospace", background: "var(--surface)", padding: "1px 5px", borderRadius: 4 }}>conduct guard init</code> in your terminal first to generate your token.
-                </div>
-              ) : (
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <code style={{
-                      flex: 1, fontFamily: "ui-monospace,monospace", fontSize: 11.5,
-                      background: "var(--surface-2)", border: "1px solid var(--border)",
-                      borderRadius: 8, padding: "8px 12px", color: "var(--text-2)",
-                      wordBreak: "break-all", display: "block", lineHeight: 1.5,
-                    }}>
-                      {`https://api.conductai.ai/guard/mcp?workspace_id=${wsId ?? ""}&token=${memberToken}`}
-                    </code>
-                    <button
-                      onClick={async () => {
-                        await navigator.clipboard.writeText(`https://api.conductai.ai/guard/mcp?workspace_id=${wsId ?? ""}&token=${memberToken}`)
-                        setMcpCopied(true)
-                        setTimeout(() => setMcpCopied(false), 2000)
-                      }}
-                      style={{
-                        flexShrink: 0, fontSize: 12, fontWeight: 600, padding: "7px 14px",
-                        borderRadius: 8, border: "1px solid var(--border)",
-                        background: mcpCopied ? "var(--ok-bg)" : "var(--surface-2)",
-                        color: mcpCopied ? "var(--ok)" : "var(--text-2)",
-                        cursor: "pointer", transition: "all .15s",
-                      }}
-                    >
-                      {mcpCopied ? "Copied!" : "Copy"}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div style={{ fontSize: 12, color: "var(--text-3)" }}>
-                <div style={{ marginBottom: 5 }}>
-                  <strong style={{ color: "var(--text-2)" }}>Claude.ai</strong> — Settings &rarr; MCP Servers &rarr; Add &rarr; paste URL
-                </div>
-                <div style={{ marginBottom: 5 }}>
-                  <strong style={{ color: "var(--text-2)" }}>Claude Desktop</strong> — Settings &rarr; Developer &rarr; MCP Servers &rarr; paste URL
-                </div>
-                <div>
-                  <strong style={{ color: "var(--text-2)" }}>Claude for Work</strong> — Admin Console &rarr; Integrations &rarr; MCP &rarr; paste URL
-                </div>
               </div>
             </div>
           </div>

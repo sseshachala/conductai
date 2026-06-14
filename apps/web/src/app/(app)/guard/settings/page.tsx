@@ -156,6 +156,10 @@ function SettingsContent() {
   // Sync status
   const [toolCoverage, setToolCoverage] = useState<Array<{ detected_tools: string[]; mcp_registered: string[]; hook_registered: string[] }> | null>(null)
 
+  // MCP connect
+  const [memberToken, setMemberToken] = useState<string | null | undefined>(undefined)
+  const [mcpCopied, setMcpCopied] = useState(false)
+
   const base = process.env.NEXT_PUBLIC_API_URL ?? ""
   const wsId = activeWorkspace?.id ?? null
   const isAdmin = permissions.canEditSettings
@@ -186,11 +190,15 @@ function SettingsContent() {
         automation_workflow_trigger: data.automation_workflow_trigger ?? false,
       })
       if (data.enforcement_mode) setEnforcementMode(data.enforcement_mode as "block" | "warn" | "audit")
-      // Load sync coverage in parallel
+      // Load sync coverage + member token in parallel
       fetch(`${base}/guard/developer-tools?workspace_id=${wsId}`, { headers })
         .then(r => r.ok ? r.json() : null)
         .then(d => { if (d) setToolCoverage(d) })
         .catch(() => {})
+      fetch(`${base}/guard/members/me/token?workspace_id=${wsId}`, { headers })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => setMemberToken(d?.member_token ?? null))
+        .catch(() => setMemberToken(null))
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load settings")
     } finally {
@@ -586,6 +594,52 @@ function SettingsContent() {
                 </button>
               </div>
 
+            </div>
+          </div>
+
+          {/* ── MCP Integration ─────────────────────────────────────────────── */}
+          <div className="card" style={{ overflow: "hidden", marginTop: 20 }}>
+            <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent)", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                </svg>
+              </span>
+              <div style={{ fontWeight: 650, fontSize: 14.5 }}>MCP Integration</div>
+            </div>
+            <div style={{ padding: "18px 20px" }}>
+              <p style={{ fontSize: 13, color: "var(--text-2)", marginBottom: 14 }}>
+                Connect Claude.ai, Claude Desktop, or Claude for Work to ConductGuard. Every tool call will be audited and policy-enforced.
+              </p>
+              {memberToken === undefined ? (
+                <div style={{ height: 38, borderRadius: 8, background: "var(--surface-2)", marginBottom: 14 }} />
+              ) : memberToken === null ? (
+                <p style={{ fontSize: 12.5, color: "var(--text-3)", marginBottom: 14 }}>
+                  Run <code style={{ background: "var(--surface-2)", padding: "1px 6px", borderRadius: 4, fontFamily: "ui-monospace,monospace" }}>conduct guard init</code> in your terminal first to generate your token.
+                </p>
+              ) : (
+                <div style={{ display: "flex", gap: 8, alignItems: "stretch", marginBottom: 14 }}>
+                  <code style={{ flex: 1, fontSize: 11.5, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px", fontFamily: "ui-monospace,monospace", color: "var(--text-2)", wordBreak: "break-all" }}>
+                    {`https://api.conductai.ai/guard/mcp?workspace_id=${wsId ?? ""}&token=${memberToken}`}
+                  </code>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ flexShrink: 0, background: mcpCopied ? "var(--ok-bg)" : undefined, color: mcpCopied ? "var(--ok)" : undefined }}
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(`https://api.conductai.ai/guard/mcp?workspace_id=${wsId ?? ""}&token=${memberToken}`)
+                      setMcpCopied(true)
+                      setTimeout(() => setMcpCopied(false), 2000)
+                    }}
+                  >
+                    {mcpCopied ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+              )}
+              <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 5 }}>
+                <li style={{ fontSize: 12.5, color: "var(--text-3)" }}><strong style={{ color: "var(--text-2)" }}>Claude.ai</strong> — Settings &rarr; MCP Servers &rarr; Add &rarr; paste URL</li>
+                <li style={{ fontSize: 12.5, color: "var(--text-3)" }}><strong style={{ color: "var(--text-2)" }}>Claude Desktop</strong> — Settings &rarr; Developer &rarr; MCP Servers &rarr; paste URL</li>
+                <li style={{ fontSize: 12.5, color: "var(--text-3)" }}><strong style={{ color: "var(--text-2)" }}>Claude for Work</strong> — Admin Console &rarr; Integrations &rarr; MCP &rarr; paste URL</li>
+              </ul>
             </div>
           </div>
 
