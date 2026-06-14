@@ -68,8 +68,8 @@ def _execute_logic(block: dict, state: dict) -> dict:
         # Handle equality expressions: "<value> == true/false" or "<value> == <value>"
         eq_match = re.match(r"^(.+?)\s*==\s*(.+)$", cond_stripped, re.IGNORECASE)
         if eq_match:
-            lhs = eq_match.group(1).strip().lower()
-            rhs = eq_match.group(2).strip().lower()
+            lhs = eq_match.group(1).strip().lower().strip("'\"")
+            rhs = eq_match.group(2).strip().lower().strip("'\"")
             # Normalise Python/JSON booleans
             lhs_val = lhs in ("true", "1", "yes")  if lhs in ("true", "false", "1", "0", "yes", "no") else lhs
             rhs_val = rhs in ("true", "1", "yes") if rhs in ("true", "false", "1", "0", "yes", "no") else rhs
