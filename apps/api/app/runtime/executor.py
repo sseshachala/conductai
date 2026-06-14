@@ -1085,6 +1085,13 @@ def _dispatch_single_block(
         _runs_in = block.get("data", {}).get("runs_in")
         _injected_session = sandbox_sessions.get(_runs_in) if _runs_in else None
 
+        # Resolve complexity → max_turns from agent_config for all agentic blocks
+        _block_complexity = block.get("data", {}).get("complexity")
+        if _block_complexity and not block.get("data", {}).get("max_turns"):
+            _budgets = _agent_config().get("turn_budgets", {})
+            _resolved_turns = _budgets.get(_block_complexity) or _budgets.get("default") or 25
+            block["data"] = {**block.get("data", {}), "max_turns": _resolved_turns}
+
         # Auto-provision sandbox based on plan_fix.complexity when sandbox=auto
         if block.get("data", {}).get("sandbox") == "auto" and _injected_session is None:
             _auto_key = f"__auto_{block_id}"

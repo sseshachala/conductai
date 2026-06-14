@@ -76,7 +76,7 @@ blocks:
     mode: single
     model: "{{inputs.model}}"
     label: Surface risks
-    max_turns: 1
+
     description: |
       You are an AI governance expert performing a pre-deploy risk assessment.
 
@@ -122,7 +122,7 @@ blocks:
     mode: single
     model: "{{inputs.model}}"
     label: Set data boundaries
-    max_turns: 1
+
     description: |
       AI tool: {{inputs.tool_name}}
       Team: {{inputs.team}}
@@ -154,7 +154,7 @@ blocks:
     mode: single
     model: "{{inputs.model}}"
     label: Define human controls
-    max_turns: 1
+
     description: |
       AI tool: {{inputs.tool_name}}
       Use case: {{inputs.use_case}}
@@ -184,7 +184,7 @@ blocks:
     mode: single
     model: "{{inputs.model}}"
     label: Build incident response plan
-    max_turns: 1
+
     description: |
       AI tool: {{inputs.tool_name}}
       Team: {{inputs.team}}
@@ -216,7 +216,7 @@ blocks:
     mode: single
     model: "{{inputs.model}}"
     label: Compile governance report
-    max_turns: 1
+
     description: |
       Compile the full AI governance assessment into a structured report.
 
@@ -298,7 +298,7 @@ blocks:
     mode: agentic
     model: "{{inputs.model}}"
     label: Create GitHub tracking issue
-    max_turns: 10
+    complexity: small
     credentials:
       github: github
     description: |
