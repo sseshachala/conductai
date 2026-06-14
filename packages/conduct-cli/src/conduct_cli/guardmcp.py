@@ -16,6 +16,7 @@ import argparse
 import json
 import re
 import sys
+import uuid
 import urllib.request
 import urllib.error
 from pathlib import Path
@@ -25,6 +26,12 @@ POLICY_PATH = GUARD_DIR / "policy.json"
 CONFIG_PATH = GUARD_DIR / "config.json"
 
 PROTOCOL_VERSION = "2024-11-05"
+
+# Session ID shared across all events in this MCP server process
+_SESSION_ID = str(uuid.uuid4())
+
+# Populated during MCP initialize handshake — used to identify the surface
+_CLIENT_INFO: dict = {}
 
 _TOOLS = [
     {
@@ -88,6 +95,64 @@ def _load_config() -> dict:
     return {}
 
 
+def _detect_surface(client_info: dict) -> str:
+    """Map MCP clientInfo.name → ai_tool label sent to Guard API."""
+    name = (client_info.get("name") or "").lower()
+    if "desktop" in name:
+        return "claude_desktop"
+    if "work" in name or "teams" in name or "enterprise" in name:
+        return "claude_work"
+    if "claude" in name:
+        return "claude_chat"
+    if "codex" in name:
+        return "codex"
+    if "cursor" in name:
+        return "cursor"
+    if "windsurf" in name:
+        return "windsurf"
+    return "unknown"
+
+
+def _post_audit_event(
+    tool_name: str,
+    tool_input: dict,
+    decision: str,
+    rule_id: str | None,
+    workspace_id: str,
+    token: str,
+    ai_tool: str,
+) -> None:
+    """Fire-and-forget: post a guard audit event to the Conduct API."""
+    if not workspace_id:
+        return
+    cfg     = _load_config()
+    api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+    payload = json.dumps({
+        "workspace_id":    workspace_id,
+        "clerk_user_id":   cfg.get("user_email", ""),
+        "user_email":      cfg.get("user_email", ""),
+        "ai_tool":         ai_tool,
+        "tool_call":       tool_name,
+        "input_summary":   json.dumps(tool_input)[:200],
+        "decision":        decision,
+        "rule_id":         rule_id,
+        "hook_session_id": _SESSION_ID,
+    }).encode()
+    try:
+        req = urllib.request.Request(
+            f"{api_url}/guard/events",
+            data=payload,
+            headers={
+                "Content-Type":  "application/json",
+                "Authorization": f"Bearer {token}",
+            },
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=5)
+    except Exception:
+        pass  # never crash the MCP server over telemetry
+
+
 def _match_policy(tool_name: str, tool_input: dict) -> dict | None:
     """Return the first matching rule dict, or None if no rule fires."""
     policy    = _load_policy()
@@ -137,12 +202,13 @@ def _handle_guard_status(workspace_id: str) -> str:
     }, indent=2)
 
 
-def _handle_guard_check(arguments: dict) -> str:
+def _handle_guard_check(arguments: dict, workspace_id: str, token: str, ai_tool: str) -> str:
     tool_name  = arguments.get("tool_name", "")
     tool_input = arguments.get("tool_input") or {}
 
     rule = _match_policy(tool_name, tool_input)
     if rule is None:
+        _post_audit_event(tool_name, tool_input, "allowed", None, workspace_id, token, ai_tool)
         return f"ALLOWED — no policy rule matches '{tool_name}'."
 
     action  = rule.get("action", "audit")
@@ -150,9 +216,13 @@ def _handle_guard_check(arguments: dict) -> str:
     message = rule.get("message") or f"Policy violation ({rule_id})"
 
     if action == "block":
+        _post_audit_event(tool_name, tool_input, "blocked", rule_id, workspace_id, token, ai_tool)
         return f"BLOCKED — {message}  [rule: {rule_id}]"
     if action in ("warn", "approval"):
+        _post_audit_event(tool_name, tool_input, "warned", rule_id, workspace_id, token, ai_tool)
         return f"WARNING — {message}  [rule: {rule_id}]"
+
+    _post_audit_event(tool_name, tool_input, "audited", rule_id, workspace_id, token, ai_tool)
     return f"AUDITED — {message}  [rule: {rule_id}]"
 
 
@@ -181,11 +251,11 @@ def _handle_guard_sync(workspace_id: str, token: str) -> str:
         return f"Sync failed — {e}"
 
 
-def _dispatch_tool(name: str, arguments: dict, workspace_id: str, token: str) -> str:
+def _dispatch_tool(name: str, arguments: dict, workspace_id: str, token: str, ai_tool: str) -> str:
     if name == "guard_status":
         return _handle_guard_status(workspace_id)
     if name == "guard_check":
-        return _handle_guard_check(arguments)
+        return _handle_guard_check(arguments, workspace_id, token, ai_tool)
     if name == "guard_sync":
         return _handle_guard_sync(workspace_id, token)
     return f"Unknown tool: {name}"
@@ -217,6 +287,7 @@ def main() -> None:
     cfg = _load_config()
     workspace_id = args.workspace or cfg.get("workspace_id", "")
     token        = args.token     or cfg.get("member_token", "")
+    ai_tool      = "unknown"  # resolved from clientInfo during initialize
 
     for raw in sys.stdin:
         raw = raw.strip()
@@ -233,6 +304,9 @@ def main() -> None:
         params = msg.get("params") or {}
 
         if method == "initialize":
+            client_info = params.get("clientInfo") or {}
+            _CLIENT_INFO.update(client_info)
+            ai_tool = _detect_surface(client_info)
             _ok(msg_id, {
                 "protocolVersion": PROTOCOL_VERSION,
                 "capabilities":    {"tools": {}},
@@ -248,7 +322,7 @@ def main() -> None:
         elif method == "tools/call":
             tool_name  = params.get("name", "")
             arguments  = params.get("arguments") or {}
-            text       = _dispatch_tool(tool_name, arguments, workspace_id, token)
+            text       = _dispatch_tool(tool_name, arguments, workspace_id, token, ai_tool)
             _ok(msg_id, {"content": [{"type": "text", "text": text}]})
 
         elif method == "ping":

@@ -149,3 +149,8 @@ Prefer booster MCP tools over native file reads:
 
 Run `booster gain` to see token savings.
 <!-- booster:end -->
+
+
+<!-- booster-verbosity:start -->
+Be concise. No filler. No preamble. State results directly. One sentence per idea. Code examples over explanations.
+<!-- booster-verbosity:end -->
