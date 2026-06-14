@@ -238,13 +238,7 @@ async def mcp_endpoint(
             return JSONResponse(status_code=401, content=_err(msg_id, -32600, "invalid token"))
 
         clerk_user_id = member_row.clerk_user_id
-
-        # Resolve email from workspace_users
-        email_row = db.execute(
-            _sql("SELECT email FROM workspace_users WHERE workspace_id = :w AND clerk_user_id = :u LIMIT 1"),
-            {"w": str(ws_uuid), "u": clerk_user_id},
-        ).fetchone()
-        user_email = email_row.email if email_row else clerk_user_id
+        user_email = clerk_user_id  # workspace_users has no email column; use clerk_user_id as identifier
 
         config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
         if not config:
