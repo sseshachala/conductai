@@ -56,6 +56,14 @@ playbooks:
     description: "PR opened by Copilot/Cursor/Claude Code → AI reviews the diff → human approves before merge. The orchestration layer above your AI coding tool."
     github_events: [pull_request]
 
+  ai_risk_assessment:
+    file: ai-risk-assessment.yaml
+    icon: "🛡️"
+    category: AI Governance
+    tags: [governance, compliance, security, manual]
+    featured: true
+    description: "Pre-deploy AI governance checklist. Surfaces risks, sets data boundaries, defines human controls, and generates a one-page incident response plan before you roll out any AI tool."
+
   security_scanner:
     file: security-scanner.yaml
     icon: "🔒"

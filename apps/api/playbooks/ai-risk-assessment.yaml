@@ -1,0 +1,371 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# ai-risk-assessment — Pre-deploy AI governance checklist
+#
+# Run this before rolling out any new AI tool to your team.
+# Covers the 7-point AI Governance Playbook: surface risks, set data
+# boundaries, vet for fairness, define human controls, ensure explainability,
+# watch for drift, and prepare an incident response plan.
+#
+# Outputs a structured risk report to Slack and optionally creates a GitHub
+# tracking issue for open action items.
+# ──────────────────────────────────────────────────────────────────────────────
+name: AI Risk Assessment
+version: 1
+description: >
+  Pre-deploy AI governance checklist. Run before rolling out any new AI tool
+  to your team. Surfaces risks, sets data boundaries, defines human controls,
+  and generates a one-page incident response plan.
+
+inputs:
+  model:
+    label: AI Model
+    default: claude-sonnet-4-6
+    type: select
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+  tool_name:
+    label: AI Tool / System Being Assessed
+    type: text
+    placeholder: "e.g. GitHub Copilot, ChatGPT Enterprise, Claude Code"
+  team:
+    label: Team or Department
+    type: text
+    placeholder: "e.g. Engineering, Sales, Customer Support"
+  use_case:
+    label: Intended Use Case
+    type: text
+    placeholder: "e.g. Code review assistance, customer email drafting, data analysis"
+  data_access:
+    label: What data will this tool access?
+    type: text
+    placeholder: "e.g. source code, customer records, financial reports, internal docs"
+  slack_channel:
+    label: Slack Channel for Report
+    type: text
+    default: "#ai-governance"
+  create_github_issue:
+    label: Create GitHub tracking issue for action items?
+    type: select
+    default: "yes"
+    options:
+      - "yes"
+      - "no"
+  github_repo:
+    label: GitHub Repo (if creating issue)
+    type: text
+    placeholder: "org/repo"
+
+on:
+  manual:
+    next: recall_prior_assessments
+
+blocks:
+  recall_prior_assessments:
+    type: memory
+    label: Recall prior assessments
+    action: read
+    scope: workspace
+    key: "ai-risk-assessment-{{inputs.tool_name}}"
+    limit: 3
+    next: surface_risks
+
+  surface_risks:
+    type: brain
+    mode: single
+    model: "{{inputs.model}}"
+    label: Surface risks
+    max_turns: 1
+    description: |
+      You are an AI governance expert performing a pre-deploy risk assessment.
+
+      Tool being assessed: {{inputs.tool_name}}
+      Team: {{inputs.team}}
+      Use case: {{inputs.use_case}}
+      Data access: {{inputs.data_access}}
+
+      {% if recall_prior_assessments.entries %}
+      Prior assessments for this tool:
+      {% for entry in recall_prior_assessments.entries %}
+      - {{entry.summary}}
+      {% endfor %}
+      {% endif %}
+
+      Identify the top risks for deploying this AI tool to this team for this use case.
+      For each risk, assign:
+      - Severity: Critical / High / Medium / Low
+      - Likelihood: High / Medium / Low
+      - Risk owner role (e.g. "Engineering Lead", "Legal", "CISO")
+
+      Categories to cover:
+      1. Data leakage (sensitive data sent to external AI provider)
+      2. Output accuracy (hallucinations, wrong answers, code bugs)
+      3. Bias and fairness (unfair outputs across user groups)
+      4. Compliance (GDPR, HIPAA, SOC2, IP ownership)
+      5. Over-reliance (humans stop reviewing AI output)
+      6. Shadow usage (employees use unapproved AI tools instead)
+      7. Supply chain (AI provider breach, model updates changing behaviour)
+
+      Output ONLY the following JSON on the last line:
+        {
+          "risks": [
+            {"category": "<category>", "description": "<1-2 sentences>", "severity": "<Critical|High|Medium|Low>", "likelihood": "<High|Medium|Low>", "owner": "<role>"}
+          ],
+          "critical_count": <number>,
+          "high_count": <number>
+        }
+    next: set_data_boundaries
+
+  set_data_boundaries:
+    type: brain
+    mode: single
+    model: "{{inputs.model}}"
+    label: Set data boundaries
+    max_turns: 1
+    description: |
+      AI tool: {{inputs.tool_name}}
+      Team: {{inputs.team}}
+      Data access: {{inputs.data_access}}
+      Risks identified: {{surface_risks.critical_count}} critical, {{surface_risks.high_count}} high
+
+      Define clear data boundaries for this deployment.
+      Categorise each data type the tool may encounter as ALLOWED, RESTRICTED, or FORBIDDEN.
+
+      Always FORBIDDEN: customer PII, financial records, credentials/secrets, health data, unreleased IP.
+      Context-dependent: source code (check IP policy), internal docs (check NDA scope), support tickets (check customer agreements).
+
+      Also specify:
+      - Required anonymisation steps before data can be shared
+      - Any contractual obligations (DPA, BAA, etc.) that must be in place first
+
+      Output ONLY the following JSON on the last line:
+        {
+          "boundaries": [
+            {"data_type": "<type>", "classification": "<ALLOWED|RESTRICTED|FORBIDDEN>", "reason": "<1 sentence>"}
+          ],
+          "blockers": ["<contractual or compliance blocker if any>"],
+          "forbidden_count": <number>
+        }
+    next: define_human_controls
+
+  define_human_controls:
+    type: brain
+    mode: single
+    model: "{{inputs.model}}"
+    label: Define human controls
+    max_turns: 1
+    description: |
+      AI tool: {{inputs.tool_name}}
+      Use case: {{inputs.use_case}}
+      Team: {{inputs.team}}
+
+      Define where humans must stay in the loop. For each decision type, specify:
+      - Who reviews AI output before it takes effect
+      - The threshold that triggers escalation
+      - The timeline for review
+
+      Focus on high-stakes decisions: code merged to production, customer-facing content,
+      financial approvals, legal documents, security configurations.
+
+      Also define the escalation path when the AI produces uncertain or high-stakes output.
+
+      Output ONLY the following JSON on the last line:
+        {
+          "controls": [
+            {"decision_type": "<type>", "reviewer": "<role>", "threshold": "<condition>", "timeline": "<SLA>"}
+          ],
+          "escalation_path": "<who → who → who>"
+        }
+    next: build_incident_plan
+
+  build_incident_plan:
+    type: brain
+    mode: single
+    model: "{{inputs.model}}"
+    label: Build incident response plan
+    max_turns: 1
+    description: |
+      AI tool: {{inputs.tool_name}}
+      Team: {{inputs.team}}
+      Critical risks: {{surface_risks.critical_count}}
+      Forbidden data types: {{set_data_boundaries.forbidden_count}}
+
+      Write a one-page AI incident response plan covering:
+      1. Trigger conditions — what constitutes an AI incident for this tool
+      2. First 15 minutes — who contacts whom, what gets disabled first
+      3. Rollback — how to disable/suspend the tool immediately
+      4. Communication — who notifies customers/legal/execs and when
+      5. Review — post-incident review within 48h
+
+      Keep it short. Under pressure, people don't read documentation.
+      Use bullet points. Name roles, not people.
+
+      Output ONLY the following JSON on the last line:
+        {
+          "triggers": ["<condition>"],
+          "first_15_min": ["<step>"],
+          "rollback_steps": ["<step>"],
+          "comms_owner": "<role>",
+          "review_sla": "<timeframe>"
+        }
+    next: compile_report
+
+  compile_report:
+    type: brain
+    mode: single
+    model: "{{inputs.model}}"
+    label: Compile governance report
+    max_turns: 1
+    description: |
+      Compile the full AI governance assessment into a structured report.
+
+      Tool: {{inputs.tool_name}}
+      Team: {{inputs.team}}
+      Use case: {{inputs.use_case}}
+
+      ## Risk Summary
+      {{surface_risks.risks}}
+      Critical: {{surface_risks.critical_count}} · High: {{surface_risks.high_count}}
+
+      ## Data Boundaries
+      {{set_data_boundaries.boundaries}}
+      Blockers: {{set_data_boundaries.blockers}}
+
+      ## Human Controls
+      {{define_human_controls.controls}}
+      Escalation: {{define_human_controls.escalation_path}}
+
+      ## Incident Response
+      Triggers: {{build_incident_plan.triggers}}
+      First 15 min: {{build_incident_plan.first_15_min}}
+      Rollback: {{build_incident_plan.rollback_steps}}
+      Comms owner: {{build_incident_plan.comms_owner}}
+
+      Format as a clean Slack-ready markdown report using this structure:
+
+      ## 🛡️ AI Risk Assessment — {{inputs.tool_name}}
+      **Team:** {{inputs.team}} | **Use case:** {{inputs.use_case}}
+      **Date:** <today's date>
+
+      ### ⚠️ Risk Summary
+      | Severity | Count |
+      |---|---|
+      | 🔴 Critical | N |
+      | 🟠 High | N |
+      | 🟡 Medium | N |
+
+      Top risks:
+      (list critical + high risks only, one bullet each)
+
+      ### 🔒 Data Boundaries
+      ❌ **Forbidden:** (list forbidden types)
+      ⚠️ **Restricted:** (list restricted types)
+      ✅ **Allowed:** (list allowed types)
+      **Blockers before go-live:** (list blockers or "None")
+
+      ### 👤 Human Controls
+      (list controls as: Decision → Reviewer → Threshold → SLA)
+      **Escalation path:** (path)
+
+      ### 🚨 Incident Response (1-pager)
+      **Triggers:** (bullets)
+      **First 15 min:** (bullets)
+      **Rollback:** (bullets)
+      **Comms owner:** (role) | **Review SLA:** (timeframe)
+
+      ### ✅ Go / No-Go Recommendation
+      Based on the above, state clearly: APPROVED TO DEPLOY / DEPLOY WITH CONDITIONS / DO NOT DEPLOY
+      List 3 required actions before go-live if conditions exist.
+
+      ---
+      *Generated by [Conduct AI](https://conductai.ai) · AI Risk Assessment*
+
+      Output ONLY the following JSON on the last line:
+        {"report": "<the full formatted report above>", "recommendation": "<APPROVED|CONDITIONS|NO_GO>", "action_items": ["<item>"]}
+    next: has_action_items
+
+  has_action_items:
+    type: logic
+    label: Create GitHub issue?
+    condition: "{{inputs.create_github_issue}} == 'yes'"
+    next:
+      pass: create_tracking_issue
+      fail: record_outcome
+
+  create_tracking_issue:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    label: Create GitHub tracking issue
+    max_turns: 5
+    credentials:
+      github: github
+    description: |
+      Create a GitHub issue to track AI governance action items.
+      Use the GitHub tool for all API calls. Do NOT log or output any credential values.
+
+      Repo: {{inputs.github_repo}}
+      Tool assessed: {{inputs.tool_name}}
+      Recommendation: {{compile_report.recommendation}}
+      Action items: {{compile_report.action_items}}
+
+      Steps:
+      1. Create an issue using the GitHub tool:
+         - Tool: github.create_issue
+         - Repo: {{inputs.github_repo}}
+         - Title: "ai-governance: {{inputs.tool_name}} deployment checklist ({{inputs.team}})"
+         - Body: |
+             ## AI Governance Checklist — {{inputs.tool_name}}
+
+             **Team:** {{inputs.team}}
+             **Use case:** {{inputs.use_case}}
+             **Recommendation:** {{compile_report.recommendation}}
+
+             ## Required Actions Before Go-Live
+             {% for item in compile_report.action_items %}
+             - [ ] {{item}}
+             {% endfor %}
+
+             ## Full Report
+             See Slack {{inputs.slack_channel}} for the complete assessment.
+
+             ---
+             *Generated by [Conduct AI](https://conductai.ai) · AI Risk Assessment*
+         - Labels: ["ai-governance"]
+
+      Output ONLY the following JSON on the last line:
+        {"issue_url": "<url>", "issue_number": <number>}
+    next: record_outcome
+
+  record_outcome:
+    type: memory
+    label: Record outcome
+    action: write
+    scope: workspace
+    key: "ai-risk-assessment-{{inputs.tool_name}}"
+    summary: |
+      Tool: {{inputs.tool_name}} | Team: {{inputs.team}} | Recommendation: {{compile_report.recommendation}}
+      Critical risks: {{surface_risks.critical_count}} | Forbidden data types: {{set_data_boundaries.forbidden_count}}
+      Action items: {{compile_report.action_items}}
+    next: notify_report
+
+  notify_report:
+    type: output
+    label: Post report to Slack
+    description: "{{compile_report.report}}"
+    output:
+      via: slack
+      slack:
+        channel: "{{inputs.slack_channel}}"
+
+test_trigger:
+  payload:
+    inputs:
+      tool_name: "GitHub Copilot"
+      team: "Engineering"
+      use_case: "Code completion and review assistance"
+      data_access: "source code, GitHub issues, pull requests"
+      slack_channel: "#ai-governance"
+      create_github_issue: "yes"
+      github_repo: "sseshachala/conductai-testbed-node"
