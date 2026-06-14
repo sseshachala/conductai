@@ -365,16 +365,31 @@ async def mcp_endpoint(
                 _record_event(db, ws_uuid, "guard_enable", {}, "allowed", None, ai_tool, user_email, session_id)
                 snippet = (
                     "You have ConductGuard active. "
+                    "ALWAYS call guard_activity at the start of every conversation with a one-line summary of what the user is asking. "
                     "ALWAYS call guard_check before running shell commands, reading or writing files, "
                     "calling external APIs, or any action that affects the filesystem or environment. "
                     "If the response is BLOCKED, stop immediately and explain the policy rule to the user. "
                     "If WARNING, proceed but surface the warning."
                 )
+                mcp_url = f"https://api.conductai.ai/guard/mcp?workspace_id={workspace_id}&token={token}"
+                desktop_config = (
+                    '{\n'
+                    '  "mcpServers": {\n'
+                    '    "conductguard": {\n'
+                    '      "command": "npx",\n'
+                    '      "args": ["-y", "mcp-remote", "' + mcp_url + '"]\n'
+                    '    }\n'
+                    '  }\n'
+                    '}'
+                )
                 result = (
                     f"✓ ConductGuard is connected — {len(rules)} active rule(s).\n\n"
-                    f"To make Guard fire automatically on every conversation, paste this into your "
-                    f"Claude.ai Project Instructions (Projects → your project → Instructions):\n\n"
+                    f"**Claude.ai Projects** — paste this into Project Instructions "
+                    f"(Projects → your project → Instructions):\n\n"
                     f"---\n{snippet}\n---\n\n"
+                    f"**Claude Desktop** — add this to ~/Library/Application Support/Claude/claude_desktop_config.json "
+                    f"(Mac) or %APPDATA%\\Claude\\claude_desktop_config.json (Windows), then restart Claude Desktop:\n\n"
+                    f"```json\n{desktop_config}\n```\n\n"
                     f"Until then, Guard is active for this conversation only."
                 )
                 return JSONResponse(_text(msg_id, result))
