@@ -53,11 +53,17 @@ interface ToolCoverageRow {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const AI_TOOL_BADGES: Record<string, { label: string; bg: string; color: string }> = {
-  claude_code: { label: "Claude Code", bg: "var(--accent-weak)",                color: "var(--accent-text)"       },
-  codex:       { label: "Codex",       bg: "var(--ok-bg)",                      color: "var(--ok)"                },
-  cursor:      { label: "Cursor",      bg: "rgba(147,51,234,0.10)",             color: "rgb(126,34,206)"          },
-  windsurf:    { label: "Windsurf",    bg: "rgba(14,165,233,0.10)",             color: "rgb(2,132,199)"           },
-  gemini:      { label: "Gemini",      bg: "rgba(249,115,22,0.10)",             color: "rgb(234,88,12)"           },
+  claude_code:    { label: "Claude Code",    bg: "var(--accent-weak)",           color: "var(--accent-text)"  },
+  claude_chat:    { label: "Claude.ai",      bg: "var(--accent-weak)",           color: "var(--accent-text)"  },
+  claude_desktop: { label: "Claude Desktop", bg: "var(--accent-weak)",           color: "var(--accent-text)"  },
+  claude_work:    { label: "Claude Work",    bg: "var(--accent-weak)",           color: "var(--accent-text)"  },
+  codex:          { label: "Codex",          bg: "var(--ok-bg)",                 color: "var(--ok)"           },
+  codex_cli:      { label: "Codex CLI",      bg: "var(--ok-bg)",                 color: "var(--ok)"           },
+  codex_chat:     { label: "Codex Chat",     bg: "var(--ok-bg)",                 color: "var(--ok)"           },
+  cursor:         { label: "Cursor",         bg: "rgba(147,51,234,0.10)",        color: "rgb(126,34,206)"     },
+  windsurf:       { label: "Windsurf",       bg: "rgba(14,165,233,0.10)",        color: "rgb(2,132,199)"      },
+  copilot:        { label: "Copilot",        bg: "rgba(36,41,47,0.08)",          color: "rgb(36,41,47)"       },
+  gemini:         { label: "Gemini",         bg: "rgba(249,115,22,0.10)",        color: "rgb(234,88,12)"      },
 }
 
 const DECISION_CONFIG: Record<
@@ -70,7 +76,7 @@ const DECISION_CONFIG: Record<
   approval: { label: "approval pending", bg: "var(--info-bg)",  color: "var(--info)"              },
 }
 
-const ALL_TOOLS     = ["claude_code", "codex", "cursor", "windsurf", "gemini"]
+const ALL_TOOLS     = ["claude_code", "claude_chat", "claude_desktop", "claude_work", "codex", "codex_cli", "cursor", "windsurf", "copilot", "gemini"]
 const ALL_DECISIONS = ["allowed", "blocked", "warned", "approval"]
 
 // ─── Guard Shell ──────────────────────────────────────────────────────────────
@@ -153,11 +159,16 @@ const normTool = (t: string) => t.replace(/-/g, "_")
 
 const canonicalTool = (t: string): string => {
   const n = normTool(t ?? "").toLowerCase()
-  if (n.includes("claude"))   return "claude_code"
-  if (n.includes("codex"))    return "codex"
-  if (n.includes("cursor"))   return "cursor"
-  if (n.includes("windsurf")) return "windsurf"
-  if (n.includes("gemini"))   return "gemini"
+  if (n === "claude_chat" || n === "claude-chat")       return "claude_chat"
+  if (n === "claude_desktop" || n === "claude-desktop") return "claude_desktop"
+  if (n === "claude_work" || n === "claude-work")       return "claude_work"
+  if (n.includes("claude"))                             return "claude_code"
+  if (n === "codex_cli" || n === "codex-cli")           return "codex_cli"
+  if (n.includes("codex"))                              return "codex"
+  if (n.includes("cursor"))                             return "cursor"
+  if (n.includes("windsurf"))                           return "windsurf"
+  if (n.includes("copilot"))                            return "copilot"
+  if (n.includes("gemini"))                             return "gemini"
   return n
 }
 

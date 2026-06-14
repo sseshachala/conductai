@@ -127,11 +127,23 @@ function GuardShell({ children }: { children: React.ReactNode }) {
 // ─── Tool coverage ────────────────────────────────────────────────────────────
 
 const TOOL_LABELS: Record<string, string> = {
-  "claude-code": "Claude",
-  "codex":       "Codex",
-  "cursor":      "Cursor",
-  "windsurf":    "Windsurf",
-  "vscode":      "VS Code",
+  "claude-code":    "Claude Code",
+  "claude_code":    "Claude Code",
+  "claude_chat":    "Claude.ai",
+  "claude-chat":    "Claude.ai",
+  "claude_desktop": "Claude Desktop",
+  "claude-desktop": "Claude Desktop",
+  "claude_work":    "Claude Work",
+  "claude-work":    "Claude Work",
+  "codex":          "Codex",
+  "codex_cli":      "Codex CLI",
+  "codex_chat":     "Codex Chat",
+  "cursor":         "Cursor",
+  "windsurf":       "Windsurf",
+  "copilot":        "Copilot",
+  "gemini":         "Gemini",
+  "vscode":         "VS Code",
+  "unknown":        "Claude.ai",
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
