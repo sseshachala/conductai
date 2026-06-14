@@ -88,14 +88,17 @@ def get_developer_tools(
         .all()
     )
 
-    # Find users with recent MCP-sourced events (last 7 days)
+    # Find users with recent MCP-sourced events (last 7 days).
+    # Resolve clerk_user_ids (user_3D6E...) to real emails via users table.
     since = datetime.now(timezone.utc) - timedelta(days=7)
     ws_uuid = uuid.UUID(workspace_id)
     mcp_rows = db.execute(
         _sql("""
-            SELECT DISTINCT user_email, ai_tool
-            FROM guard_audit_events
-            WHERE workspace_id = :w AND ts >= :since AND ai_tool = ANY(:surfaces)
+            SELECT DISTINCT
+                COALESCE(u.email, e.user_email) AS resolved_email
+            FROM guard_audit_events e
+            LEFT JOIN users u ON u.clerk_id = e.user_email
+            WHERE e.workspace_id = :w AND e.ts >= :since AND e.ai_tool = ANY(:surfaces)
         """),
         {"w": ws_uuid, "since": since, "surfaces": list(_MCP_SURFACES)},
     ).fetchall()
@@ -103,7 +106,7 @@ def get_developer_tools(
     # Build map: email → set of MCP surfaces seen
     mcp_by_email: dict[str, set[str]] = {}
     for r in mcp_rows:
-        email = r.user_email or ""
+        email = r.resolved_email or ""
         if email:
             mcp_by_email.setdefault(email, set()).add("claude_chat")
 
