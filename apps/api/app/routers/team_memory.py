@@ -62,10 +62,10 @@ def _summarise(raw_transcript: str | None) -> str | None:
             max_tokens=300,
             system=(
                 "You are extracting team-useful learnings from an AI coding session. "
-                "Extract: key decisions made, bugs found and how fixed, architectural patterns "
-                "discovered, gotchas encountered. If the session contains no team-useful findings "
-                "(pure exploration, no decisions), return exactly: NULL. "
-                "Otherwise return 2-5 sentences max."
+                "Extract: key decisions made, bugs found and how fixed, patterns discovered, gotchas. "
+                "Even brief sessions are worth storing if any file was touched or any question was answered. "
+                "Only return exactly NULL for sessions with zero code work (pure chat, no files, no tools). "
+                "Otherwise return 1-5 sentences."
             ),
             messages=[{"role": "user", "content": truncated}],
         )
