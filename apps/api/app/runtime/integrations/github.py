@@ -430,6 +430,74 @@ def search_code(token: str, query: str, per_page: int = 10) -> dict:
         return _empty
 
 
+def get_repo_context(token: str, repo: str, owner: str = "") -> dict:
+    """Fetch repo metadata, languages, contributors, and key governance files for risk assessment."""
+    if "/" in repo:
+        owner, repo = repo.split("/", 1)
+    h = _headers(token)
+
+    # Basic repo info
+    r = httpx.get(f"{BASE}/repos/{owner}/{repo}", headers=h, timeout=15)
+    r.raise_for_status()
+    d = r.json()
+    default_branch = d.get("default_branch", "main")
+
+    # Languages
+    rl = httpx.get(f"{BASE}/repos/{owner}/{repo}/languages", headers=h, timeout=15)
+    languages = list(rl.json().keys()) if rl.status_code == 200 else []
+
+    # Contributors count
+    rc = httpx.get(f"{BASE}/repos/{owner}/{repo}/contributors", headers=h,
+                   params={"per_page": 1, "anon": "false"}, timeout=15)
+    contributor_count = int(rc.headers.get("x-total", len(rc.json()))) if rc.status_code == 200 else 0
+
+    # File tree (top-level only, to find governance files)
+    rt = httpx.get(f"{BASE}/repos/{owner}/{repo}/git/trees/{default_branch}",
+                   headers=h, timeout=15)
+    tree_files = [n["path"] for n in rt.json().get("tree", []) if n.get("type") == "blob"] if rt.status_code == 200 else []
+
+    # Try to read key governance files
+    def _read_file(path: str) -> str:
+        import base64
+        rf = httpx.get(f"{BASE}/repos/{owner}/{repo}/contents/{path}",
+                       headers=h, params={"ref": default_branch}, timeout=15)
+        if rf.status_code != 200:
+            return ""
+        content = rf.json().get("content", "")
+        try:
+            return base64.b64decode(content).decode("utf-8", errors="ignore")[:3000]
+        except Exception:
+            return ""
+
+    readme = _read_file("README.md") or _read_file("readme.md")
+    security_md = _read_file("SECURITY.md") or _read_file(".github/SECURITY.md")
+
+    # CI workflows present?
+    ci_files = [f for f in tree_files if f.startswith(".github/workflows/") or f in ("Jenkinsfile", ".circleci/config.yml")]
+
+    # Secrets referenced in CI (naive scan)
+    secret_refs: list[str] = []
+    for ci_path in ci_files[:3]:
+        ci_content = _read_file(ci_path)
+        import re
+        secret_refs += re.findall(r'secrets\.(\w+)', ci_content)
+
+    return {
+        "full_name": f"{owner}/{repo}",
+        "description": d.get("description") or "",
+        "languages": languages,
+        "contributor_count": contributor_count,
+        "is_private": d.get("private", False),
+        "has_security_md": bool(security_md),
+        "has_ci": bool(ci_files),
+        "ci_files": ci_files[:5],
+        "secret_refs": list(set(secret_refs))[:10],
+        "readme_excerpt": readme[:1500],
+        "security_md_excerpt": security_md[:1500],
+        "top_files": tree_files[:30],
+    }
+
+
 def create_issue(token: str, repo: str, title: str, body: str = "", labels: list | None = None, owner: str = "") -> dict:
     if "/" in repo:
         owner, repo = repo.split("/", 1)
@@ -458,6 +526,7 @@ TOOL_MAP = {
     "update_file": update_file,
     "search_code": search_code,
     "create_issue": create_issue,
+    "get_repo_context": get_repo_context,
 }
 
 
