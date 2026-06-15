@@ -348,8 +348,7 @@ blocks:
     type: output
     label: Post report to Slack
     description: |
-      🛡️ *AI Risk Assessment complete — {{inputs.tool_name}} / {{inputs.team}}*
-      *Recommendation:* {{compile_report.recommendation}}
+      {{compile_report.report}}
       {% if create_tracking_issue.issue_url %}📋 *GitHub Issue:* {{create_tracking_issue.issue_url}}{% endif %}
     output:
       via: slack
