@@ -80,9 +80,9 @@ def _execute_logic(block: dict, state: dict) -> dict:
         # Keyword-only expressions
         if any(k in cond_lower for k in ("fail", "error")):
             return {"route": "fail", "condition": condition_expr, "evaluated_on": last_output[:200]}
-        if cond_lower in ("true", "pass", "success"):
+        if cond_lower in ("true", "pass", "success", "yes", "1"):
             return {"route": "pass", "condition": condition_expr, "evaluated_on": cond_lower}
-        if cond_lower in ("false",):
+        if cond_lower in ("false", "no", "0"):
             return {"route": "fail", "condition": condition_expr, "evaluated_on": cond_lower}
 
     # Check exit_code in last output (JSON blob from run_shell)
