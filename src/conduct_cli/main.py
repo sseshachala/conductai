@@ -676,47 +676,38 @@ def cmd_test(args):
             })
         return payload
 
-    if parallel:
-        _run_tests_parallel(server, workspace_id, api_key, token, hdrs, targets, _build_payload)
-    else:
-        _run_tests_serial(server, workspace_id, api_key, token, hdrs, targets, _build_payload)
+    _run_tests(server, workspace_id, api_key, token, hdrs, targets, _build_payload, parallel=parallel)
 
 
-def _run_tests_serial(server, workspace_id, api_key, token, hdrs, targets, build_payload):
-    results = []
-    for wf in targets:
-        name  = wf["name"]
-        wf_id = str(wf["id"])
-        slug  = wf.get("playbook_slug", "")
-
-        print(f"{CYAN}── {name}{RESET} {GRAY}({slug}){RESET}")
-        try:
-            run = api.req("POST", f"{server}/workflows/{wf_id}/trigger", hdrs, build_payload(slug))
-        except SystemExit:
-            results.append((name, False, None))
-            print()
-            continue
-
-        run_id = run.get("run_id")
-        print(f"  {GRAY}run: {run_id}{RESET}")
-
-        try:
-            ok = _stream_run(server, wf_id, run_id, workspace_id, token, api_key)
-        except Exception:
-            ok = _poll_run(server, wf_id, run_id, hdrs)
-
-        results.append((name, ok, run_id))
-        print()
-
-    _print_results(results)
-
-
-def _run_tests_parallel(server, workspace_id, api_key, token, hdrs, targets, build_payload):
-    """Fire all triggers immediately, then poll all runs concurrently."""
+def _run_tests(server, workspace_id, api_key, token, hdrs, targets, build_payload, *, parallel: bool = False):
     import threading
 
-    # Phase 1: fire all triggers at once
-    pending = []  # list of (name, run_id) or (name, None) on trigger failure
+    if not parallel:
+        results = []
+        for wf in targets:
+            name  = wf["name"]
+            wf_id = str(wf["id"])
+            slug  = wf.get("playbook_slug", "")
+            print(f"{CYAN}── {name}{RESET} {GRAY}({slug}){RESET}")
+            try:
+                run = api.req("POST", f"{server}/workflows/{wf_id}/trigger", hdrs, build_payload(slug))
+            except SystemExit:
+                results.append((name, False, None))
+                print()
+                continue
+            run_id = run.get("run_id")
+            print(f"  {GRAY}run: {run_id}{RESET}")
+            try:
+                ok = _stream_run(server, wf_id, run_id, workspace_id, token, api_key)
+            except Exception:
+                ok = _poll_run(server, wf_id, run_id, hdrs)
+            results.append((name, ok, run_id))
+            print()
+        _print_results(results)
+        return
+
+    # parallel: fire all triggers, then poll concurrently
+    pending = []
     for wf in targets:
         name  = wf["name"]
         wf_id = str(wf["id"])
@@ -731,7 +722,6 @@ def _run_tests_parallel(server, workspace_id, api_key, token, hdrs, targets, bui
             pending.append((name, wf_id, None))
 
     print(f"\n  Polling {len(pending)} runs concurrently…\n")
-
     results_lock = threading.Lock()
     results: list = [None] * len(pending)
 
@@ -754,7 +744,6 @@ def _run_tests_parallel(server, workspace_id, api_key, token, hdrs, targets, bui
         t.start()
     for t in threads:
         t.join()
-
     _print_results(results)
 
 
