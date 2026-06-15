@@ -32,7 +32,7 @@ def test_playbook_loads_without_error(playbook_path):
         pytest.xfail(reason)
 
     yaml_text = playbook_path.read_text()
-    workflow = load_workflow_yaml(yaml_text)
+    workflow = load_workflow_yaml(yaml_text, base_dir=playbook_path.parent)
     assert workflow is not None, f"{playbook_path.name} returned None"
     assert workflow.blocks, f"{playbook_path.name} produced no blocks"
 
