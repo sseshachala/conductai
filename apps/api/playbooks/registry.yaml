@@ -64,6 +64,30 @@ playbooks:
     featured: true
     description: "Pre-deploy AI governance checklist. Surfaces risks, sets data boundaries, defines human controls, and generates a one-page incident response plan before you roll out any AI tool."
 
+  ai_output_auditor:
+    file: ai-output-auditor.yaml
+    icon: "📊"
+    category: AI Governance
+    tags: [governance, compliance, scheduled, slack]
+    featured: true
+    description: "Weekly AI output audit — samples team usage, scores quality and bias signals, posts governance scorecard to Slack."
+
+  ai_drift_detector:
+    file: ai-drift-detector.yaml
+    icon: "📡"
+    category: AI Governance
+    tags: [governance, compliance, scheduled, monitoring]
+    featured: true
+    description: "Daily drift detection — monitors AI usage patterns, flags policy violation spikes, budget anomalies, and shadow usage. Silent on healthy days, alerts only when thresholds are breached."
+
+  ai_incident_drill:
+    file: ai-incident-drill.yaml
+    icon: "🚨"
+    category: AI Governance
+    tags: [governance, compliance, manual, incident-response]
+    featured: true
+    description: "Quarterly AI incident drill — simulates a realistic governance failure scenario, scores your team's readiness against the response plan, and posts a gap analysis to Slack."
+
   security_scanner:
     file: security-scanner.yaml
     icon: "🔒"
