@@ -37,16 +37,7 @@ E2B_TEMPLATE  = "base"          # default sandbox template — has git, python3,
 CMD_TIMEOUT   = 120             # seconds per command
 STARTUP_RETRIES = 5
 
-_FORBIDDEN_SHELL_PATTERNS = [
-    r"rm\s+-rf\s+/",
-    r"rm\s+-fr\s+/",
-    r"mkfs",
-    r"dd\s+if=",
-    r":\(\)\{.*\}",
-    r">\s*/dev/sd",
-    r"chmod\s+777\s+/",
-    r"chown.*root",
-]
+from app.runtime.sandbox_constants import _FORBIDDEN_SHELL_PATTERNS
 
 
 def _headers(api_key: str) -> dict:

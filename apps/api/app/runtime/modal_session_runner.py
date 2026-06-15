@@ -20,16 +20,7 @@ import re
 import shlex
 import sys
 
-_FORBIDDEN_SHELL_PATTERNS = [
-    r"rm\s+-rf\s+/",
-    r"rm\s+-fr\s+/",
-    r"mkfs",
-    r"dd\s+if=",
-    r":\(\)\{.*\}",
-    r">\s*/dev/sd",
-    r"chmod\s+777\s+/",
-    r"chown.*root",
-]
+from app.runtime.sandbox_constants import _FORBIDDEN_SHELL_PATTERNS
 
 
 def _exec(sandbox, *args: str, envs: dict | None = None) -> str:
