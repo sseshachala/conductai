@@ -41,27 +41,23 @@ def brain_prompt(
     is_agentic: bool,
     integration: str | None,
 ) -> str:
-    constraints_text = (
-        "\n".join(f"- {c}" for c in constraints) if constraints else "- Use good judgment"
-    )
-    tool_hint = (
-        f"\n\nThis block is connected to the `{integration}` integration."
-        if integration
-        else ""
-    )
+    rules_lines = list(constraints) if constraints else ["Use good judgment"]
+    if integration:
+        rules_lines.append(f"Use the `{integration}` integration.")
+
     mode_hint = (
-        "\n\nYou are running in **agentic mode**. Think through the problem carefully across "
-        "multiple reasoning steps. Work iteratively. Stop when the goal is fully achieved or "
-        "you hit your budget."
+        "\nYou are in agentic mode. Work iteratively across multiple steps. "
+        "Stop when the goal is fully achieved or you hit your turn budget."
         if is_agentic
-        else "\n\nYou are running in **single-call mode**. Produce your complete answer in one response."
+        else "\nYou are in single-call mode. Produce your complete answer in one response."
     )
+
     return _render(
         "brain.jinja2",
         goal=goal,
-        constraints_text=constraints_text,
+        context="Use context injected by the runtime via {{variable}} references above.",
+        rules="\n".join(f"- {r}" for r in rules_lines),
         output_description=output_description,
-        tool_hint=tool_hint,
         mode_hint=mode_hint,
     )
 
