@@ -55,54 +55,18 @@ _SLUG_TO_CATEGORY: dict[str, str] = {
     "terraform_reviewer":     "reasoning",
 }
 
-# ── Static policy: (task_category, routing_preference) -> (provider, model, reason) ─
+# ── Static policy table: category → (quality, balanced, speed, cost) ─────────
+# Each tuple: (provider, model). Preference index: 0=quality 1=balanced 2=speed 3=cost.
 
-_POLICY: dict[tuple[str, str], tuple[str, str, str]] = {
-    # code_implementation — needs strong tool use + multi-file reasoning
-    ("code_implementation", "quality"):  (ANTHROPIC, OPUS,   "code implementation benefits from strongest reasoning"),
-    ("code_implementation", "balanced"): (ANTHROPIC, SONNET, "balanced model for code implementation"),
-    ("code_implementation", "speed"):    (ANTHROPIC, SONNET, "sonnet is fast enough for code tasks"),
-    ("code_implementation", "cost"):     (OPENAI,    GPT_41_M, "cost-efficient model for code implementation"),
+_PREFS = ("quality", "balanced", "speed", "cost")
 
-    # code_review — diff reasoning, precise feedback
-    ("code_review", "quality"):  (ANTHROPIC, OPUS,   "code review benefits from strongest reasoning model"),
-    ("code_review", "balanced"): (ANTHROPIC, SONNET, "balanced model for code review"),
-    ("code_review", "speed"):    (OPENAI,    GPT_41_M, "fast and efficient for code review"),
-    ("code_review", "cost"):     (OPENAI,    GPT_41_M, "cost-efficient for structured code review output"),
-
-    # security — must not miss findings; cost secondary
-    ("security", "quality"):  (ANTHROPIC, OPUS,   "security scanning requires highest-precision model"),
-    ("security", "balanced"): (ANTHROPIC, OPUS,   "security scanning: quality always preferred over cost"),
-    ("security", "speed"):    (ANTHROPIC, SONNET, "sonnet for security when speed is prioritized"),
-    ("security", "cost"):     (ANTHROPIC, SONNET, "sonnet minimum viable for security"),
-
-    # triage — classification, labeling, simple decisions
-    ("triage", "quality"):  (ANTHROPIC, SONNET, "sonnet sufficient for structured triage tasks"),
-    ("triage", "balanced"): (OPENAI,    GPT_41_M, "balanced and efficient for triage"),
-    ("triage", "speed"):    (OPENAI,    GPT_41_M, "fast triage classification"),
-    ("triage", "cost"):     (OPENAI,    GPT_41_M, "cost-optimal for simple triage tasks"),
-
-    # summarization — extraction and formatting, not reasoning
-    ("summarization", "quality"):  (ANTHROPIC, SONNET, "sonnet more than sufficient for summarization"),
-    ("summarization", "balanced"): (OPENAI,    GPT_41_M, "balanced model for summarization"),
-    ("summarization", "speed"):    (OPENAI,    GPT_41_M, "fast summarization"),
-    ("summarization", "cost"):     (OPENAI,    GPT_41_M, "cost-optimal for summarization"),
-
-    # reasoning — log analysis, incident response, complex decisions
-    ("reasoning", "quality"):  (ANTHROPIC, OPUS,   "reasoning tasks benefit from strongest model"),
-    ("reasoning", "balanced"): (ANTHROPIC, SONNET, "balanced model for reasoning tasks"),
-    ("reasoning", "speed"):    (ANTHROPIC, SONNET, "sonnet balances speed and reasoning depth"),
-    ("reasoning", "cost"):     (OPENAI,    GPT_41_M, "cost-efficient minimum viable reasoning"),
-}
-
-# Defaults when category or preference is not matched
-_CATEGORY_DEFAULT: dict[str, tuple[str, str, str]] = {
-    "code_implementation": (ANTHROPIC, SONNET, "default: balanced model for code implementation"),
-    "code_review":         (ANTHROPIC, SONNET, "default: balanced model for code review"),
-    "security":            (ANTHROPIC, OPUS,   "default: strongest model for security tasks"),
-    "triage":              (OPENAI,    GPT_41_M, "default: cost-efficient model for triage"),
-    "summarization":       (OPENAI,    GPT_41_M, "default: cost-efficient model for summarization"),
-    "reasoning":           (ANTHROPIC, SONNET, "default: balanced model for reasoning"),
+_POLICY: dict[str, list[tuple[str, str]]] = {
+    "code_implementation": [(ANTHROPIC, OPUS),   (ANTHROPIC, SONNET), (ANTHROPIC, SONNET), (OPENAI, GPT_41_M)],
+    "code_review":         [(ANTHROPIC, OPUS),   (ANTHROPIC, SONNET), (OPENAI, GPT_41_M),  (OPENAI, GPT_41_M)],
+    "security":            [(ANTHROPIC, OPUS),   (ANTHROPIC, OPUS),   (ANTHROPIC, SONNET), (ANTHROPIC, SONNET)],
+    "triage":              [(ANTHROPIC, SONNET), (OPENAI, GPT_41_M),  (OPENAI, GPT_41_M),  (OPENAI, GPT_41_M)],
+    "summarization":       [(ANTHROPIC, SONNET), (OPENAI, GPT_41_M),  (OPENAI, GPT_41_M),  (OPENAI, GPT_41_M)],
+    "reasoning":           [(ANTHROPIC, OPUS),   (ANTHROPIC, SONNET), (ANTHROPIC, SONNET), (OPENAI, GPT_41_M)],
 }
 
 _GLOBAL_DEFAULT = (ANTHROPIC, SONNET, "default: balanced model")
@@ -192,8 +156,10 @@ def resolve(
             )
             return requested_provider, model, reason
 
-        if category:
-            provider, model, reason = _POLICY.get((category, pref), _CATEGORY_DEFAULT.get(category, _GLOBAL_DEFAULT))
+        if category and category in _POLICY:
+            idx = _PREFS.index(pref) if pref in _PREFS else 1
+            provider, model = _POLICY[category][idx]
+            reason = f"{category}/{pref}: {provider} {model}"
         else:
             # Unknown slug — fall back by preference only
             pref_defaults: dict[str, tuple[str, str, str]] = {

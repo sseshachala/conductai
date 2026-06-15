@@ -6,7 +6,7 @@ def test_resolve_returns_provider_model_and_reason_for_known_slug():
 
     assert provider == "anthropic"
     assert model == "claude-sonnet-4-6"
-    assert reason == "balanced model for code review"
+    assert reason == "code_review/balanced: anthropic claude-sonnet-4-6"
 
 
 def test_resolve_uses_openai_for_cost_sensitive_triage():
@@ -14,7 +14,7 @@ def test_resolve_uses_openai_for_cost_sensitive_triage():
 
     assert provider == "openai"
     assert model == "gpt-4.1-mini"
-    assert reason == "cost-optimal for simple triage tasks"
+    assert reason == "triage/cost: openai gpt-4.1-mini"
 
 
 def test_resolve_infers_provider_from_pinned_model():
