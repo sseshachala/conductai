@@ -324,8 +324,7 @@ blocks:
     credentials:
       github: github
     params:
-      owner: "{{inputs.github_repo.split('/')[0]}}"
-      repo: "{{inputs.github_repo.split('/')[1]}}"
+      repo: "{{inputs.github_repo}}"
       title: "ai-governance: {{inputs.tool_name}} deployment checklist ({{inputs.team}})"
       body: "{{compile_report.report}}"
       labels:
