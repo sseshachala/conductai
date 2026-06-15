@@ -375,39 +375,48 @@ def _topological_sort(nodes: list[dict], edges: list[dict]) -> list[dict]:
 def _find_skipped_blocks(nodes: list[dict], edges: list[dict], logic_routes: dict[str, str]) -> set[str]:
     """
     Given resolved logic block routes {block_id: 'pass'|'fail'}, return the set
-    of block IDs that should be skipped because they're on the non-taken branch.
+    of block IDs that are unreachable via live edges.
 
-    A block is skipped if:
-    1. It is the direct target of a wrong-route edge from a logic block, OR
-    2. ALL of its incoming edges come from skipped blocks (propagation).
+    Uses forward reachability: start from entry blocks (no incoming edges),
+    follow only live edges (excluding non-taken logic branches), and mark
+    everything not reached as skipped.
+
+    This correctly handles convergent paths where a block is both the
+    non-taken target of a logic block AND reachable via a live edge from
+    another block (e.g. record_outcome after create_tracking_issue).
     """
     if not logic_routes:
         return set()
 
     all_node_ids = {n["id"] for n in nodes}
-    skipped: set[str] = set()
 
-    # Direct targets of non-chosen branches
+    # Build set of dead (source, target) pairs — non-taken logic branch edges
+    dead_edges: set[tuple[str, str]] = set()
     for edge in edges:
         src = edge.get("source", "")
         if src in logic_routes:
             handle = edge.get("sourceHandle") or "pass"
             if handle != logic_routes[src]:
-                skipped.add(edge["target"])
+                dead_edges.add((src, edge["target"]))
 
-    # Propagate: if every incoming edge comes from a skipped node, skip this node too
+    # Entry blocks: no incoming edges at all
+    has_incoming = {e["target"] for e in edges}
+    reachable: set[str] = all_node_ids - has_incoming
+
+    # Forward BFS following only live edges
     changed = True
     while changed:
         changed = False
-        for node_id in all_node_ids:
-            if node_id in skipped:
+        for edge in edges:
+            src = edge.get("source", "")
+            tgt = edge.get("target", "")
+            if (src, tgt) in dead_edges:
                 continue
-            incoming = [e for e in edges if e["target"] == node_id]
-            if incoming and all(e["source"] in skipped for e in incoming):
-                skipped.add(node_id)
+            if src in reachable and tgt not in reachable:
+                reachable.add(tgt)
                 changed = True
 
-    return skipped
+    return all_node_ids - reachable
 
 
 # ── special exceptions ────────────────────────────────────────────────────────
