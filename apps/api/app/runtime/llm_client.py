@@ -107,14 +107,18 @@ class LLMClient(Protocol):
         ...
 
 
-def _anthropic_cost(model: str, usage: LLMUsage, pricing_snapshot: dict[str, Any] | None = None) -> float:
-    rates, _ = get_model_rates("anthropic", model, pricing_snapshot)
+def _compute_cost(provider: str, model: str, usage: LLMUsage, pricing_snapshot: dict[str, Any] | None = None) -> float:
+    rates, _ = get_model_rates(provider, model, pricing_snapshot)
     return round((
         usage.input_tokens         * rates["input"]
         + usage.output_tokens      * rates["output"]
-        + usage.cache_read_tokens  * rates["cache_read"]
-        + usage.cache_write_tokens * rates["cache_write"]
+        + usage.cache_read_tokens  * rates.get("cache_read", 0)
+        + usage.cache_write_tokens * rates.get("cache_write", 0)
     ) / 1_000_000, 6)
+
+
+def _anthropic_cost(model: str, usage: LLMUsage, pricing_snapshot: dict[str, Any] | None = None) -> float:
+    return _compute_cost("anthropic", model, usage, pricing_snapshot)
 
 
 class AnthropicClient:
@@ -202,11 +206,7 @@ class AnthropicClient:
 
 
 def _openai_cost(model: str, usage: LLMUsage, pricing_snapshot: dict[str, Any] | None = None) -> float:
-    rates, _ = get_model_rates("openai", model, pricing_snapshot)
-    return round((
-        usage.input_tokens * rates["input"]
-        + usage.output_tokens * rates["output"]
-    ) / 1_000_000, 6)
+    return _compute_cost("openai", model, usage, pricing_snapshot)
 
 
 class OpenAIClient:
@@ -334,11 +334,7 @@ class OpenAIClient:
 
 
 def _perplexity_cost(model: str, usage: LLMUsage, pricing_snapshot: dict[str, Any] | None = None) -> float:
-    rates, _ = get_model_rates("perplexity", model, pricing_snapshot)
-    return round((
-        usage.input_tokens * rates["input"]
-        + usage.output_tokens * rates["output"]
-    ) / 1_000_000, 6)
+    return _compute_cost("perplexity", model, usage, pricing_snapshot)
 
 
 class PerplexityClient:
