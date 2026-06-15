@@ -1414,12 +1414,14 @@ def _execute_dag(
                 })
                 continue  # skip the normal single-execution path
 
-            # ── per-block retry ───────────────────────────────────────────────
-            retry_cfg = (block["data"].get("config") or {}).get("retry")
+            # ── per-block retry + fallback_block ─────────────────────────────
+            retry_cfg = (block["data"].get("config") or {}).get("retry") or block["data"].get("retry")
+            fallback_block_id = block["data"].get("fallback_block")
 
-            if retry_cfg:
-                result = _with_retry(_dispatch, retry_cfg, block, state)
-            else:
+            try:
+                if retry_cfg:
+                    result = _with_retry(_dispatch, retry_cfg, block, state)
+                else:
                 # Special-case output block: soft-fail so the run can continue
                 if block_type == "output":
                     wf_name = version.workflow.name if version.workflow else "Agent"
@@ -1439,6 +1441,21 @@ def _execute_dag(
                         continue
                 else:
                     result = _dispatch(block, state)
+
+            except (ApprovalRequired, ClarificationRequired, PermissionError):
+                raise  # flow-control — never swallow
+            except Exception as _block_err:
+                if fallback_block_id:
+                    log.warning("block.fallback_triggered", block_id=block_id,
+                                fallback=fallback_block_id, error=str(_block_err))
+                    _emit(db, run_id, block_id, "block_failed", {
+                        "error": str(_block_err), "fallback_block": fallback_block_id
+                    })
+                    state[block_id] = {"error": str(_block_err), "fallback_triggered": True}
+                    state["__next_block"] = fallback_block_id
+                    _logic_routes_version = _lrv_ref[0]
+                    continue
+                raise
 
             _logic_routes_version = _lrv_ref[0]
             state[block_id] = result
