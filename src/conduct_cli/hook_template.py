@@ -588,11 +588,20 @@ def main():
     if data.get("hook_event_name") == "Stop" or data.get("stop_hook_active"):
         session_id = data.get("session_id", "")
         transcript_path = data.get("transcript_path")
-        # Detect repo from CWD git remote
         repo = _detect_repo()
-        from conduct_cli.memory import post_session_to_api
+        from conduct_cli.memory import post_session_to_api, mark_flushed
         post_session_to_api(session_id, transcript_path, repo)
+        mark_flushed()
         sys.exit(0)
+
+    # Periodic flush — fire at most once every 8 hours mid-session
+    from conduct_cli.memory import should_periodic_flush, mark_flushed, post_session_to_api
+    if should_periodic_flush():
+        session_id = data.get("session_id", "")
+        transcript_path = data.get("transcript_path")
+        repo = _detect_repo()
+        post_session_to_api(session_id, transcript_path, repo)
+        mark_flushed()
 
     # Policy version check (cached 60s) — auto-syncs if server version differs
     _maybe_sync_policy()
