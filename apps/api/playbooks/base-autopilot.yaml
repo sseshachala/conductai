@@ -93,6 +93,7 @@ blocks:
     label: Record outcome
     action: write
     scope: repo
+    summary: "{{brain.fix_summary | default(brain.error, true) | default('completed', true)}}"
 
   search_code:
     type: tool
