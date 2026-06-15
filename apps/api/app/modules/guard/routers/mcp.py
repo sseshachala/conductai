@@ -24,6 +24,7 @@ from sqlalchemy import text as _sql
 
 from app.core.database import SessionLocal
 from app.core.auth import get_clerk_user_email
+from app.core.pii import redact_secrets
 from app.modules.guard.models import GuardAuditEvent, GuardConfig, GuardMemberConfig, GuardPolicy
 
 router = APIRouter(prefix="/guard/mcp", tags=["guard-mcp"])
@@ -196,7 +197,7 @@ def _record_event(
         user_email=user_email,
         ai_tool=ai_tool,
         tool_call=tool_name,
-        input_summary=json.dumps(tool_input)[:200],
+        input_summary=redact_secrets(json.dumps(tool_input)[:500])[0][:200],
         decision=decision,
         rule_id=rule_id,
         hook_session_id=session_id,
@@ -335,6 +336,17 @@ async def mcp_endpoint(
                 inner_tool  = arguments.get("tool_name", "")
                 inner_input = arguments.get("tool_input") or {}
                 rules = _get_rules(db, ws_uuid)
+
+                # Secret scan — fires before pattern matching so raw values never reach the log
+                _secret_rule = next((r for r in rules if r.get("rule_id") == "secret-redact"), None)
+                if _secret_rule:
+                    _inp_text = json.dumps(inner_input)
+                    _, _found = redact_secrets(_inp_text)
+                    if _found:
+                        _secret_msg = _secret_rule.get("message") or "Credential detected in tool input."
+                        _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", "secret-redact", ai_tool, user_email, session_id)
+                        return JSONResponse(_text(msg_id, f"BLOCKED — {_secret_msg}  [types: {', '.join(_found)}]"))
+
                 rule  = _match_policy(inner_tool, inner_input, rules)
 
                 if rule is None:

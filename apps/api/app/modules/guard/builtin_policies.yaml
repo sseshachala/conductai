@@ -249,3 +249,9 @@
   match_tool: "*"
   action: audit
   message: PII detected in workflow context — redacted before LLM call (email, phone, SSN, card, IP).
+
+- rule_id: secret-redact
+  description: Block tool calls that contain API keys, tokens, or passwords and redact them from the audit log
+  match_tool: "*"
+  action: block
+  message: "Credential detected in tool input (API key, token, or password). Remove it and use an environment variable or Conduct's credential vault instead. The value has been redacted from the audit log."
