@@ -430,7 +430,9 @@ def search_code(token: str, query: str, per_page: int = 10) -> dict:
         return _empty
 
 
-def create_issue(token: str, owner: str, repo: str, title: str, body: str = "", labels: list | None = None) -> dict:
+def create_issue(token: str, repo: str, title: str, body: str = "", labels: list | None = None, owner: str = "") -> dict:
+    if "/" in repo:
+        owner, repo = repo.split("/", 1)
     r = httpx.post(
         f"{BASE}/repos/{owner}/{repo}/issues",
         headers=_headers(token),
