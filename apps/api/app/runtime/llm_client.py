@@ -55,6 +55,38 @@ class LLMResponse:
     cost_usd: float = 0.0  # computed by adapter from usage + model pricing; executor sums across turns
     _raw_content: Any = field(default=None, repr=False)  # provider-native content; used by make_assistant_turn
 
+    def to_cache_dict(self) -> dict:
+        def _block_to_dict(b: Any) -> dict:
+            if hasattr(b, "model_dump"):
+                return b.model_dump()
+            if isinstance(b, (LLMTextBlock, LLMToolUseBlock)):
+                return b.__dict__
+            return b if isinstance(b, dict) else {}
+
+        raw = [_block_to_dict(b) for b in self._raw_content] if self._raw_content else None
+        return {
+            "content": [c.__dict__ for c in self.content],
+            "stop_reason": self.stop_reason,
+            "usage": self.usage.__dict__,
+            "cost_usd": self.cost_usd,
+            "_raw_content": raw,
+        }
+
+    @classmethod
+    def from_cache_dict(cls, d: dict) -> "LLMResponse":
+        usage = LLMUsage(**d["usage"])
+        content = [
+            LLMToolUseBlock(**b) if b.get("type") == "tool_use" else LLMTextBlock(**b)
+            for b in d["content"]
+        ]
+        return cls(
+            content=content,
+            stop_reason=d["stop_reason"],
+            usage=usage,
+            cost_usd=d.get("cost_usd", 0.0),
+            _raw_content=d.get("_raw_content"),  # plain dicts — accepted by Anthropic/OpenAI APIs
+        )
+
 
 # ── Protocol ──────────────────────────────────────────────────────────────────
 

@@ -24,6 +24,38 @@ from app.runtime.pricing import freeze_pricing_snapshot, get_model_rates
 
 log = structlog.get_logger(__name__)
 
+_LLM_CACHE_TTL = 86400  # 24 hours
+
+
+def _cache_key(run_id: str, block_id: str, turn: int) -> str:
+    return f"llm_cache:{run_id}:{block_id}:{turn}"
+
+
+def _get_redis():
+    import redis as _redis
+    return _redis.from_url(settings.redis_url, decode_responses=True)
+
+
+def _cache_get(run_id: str | None, block_id: str | None, turn: int, _r=None):
+    if not run_id or not block_id:
+        return None
+    try:
+        r = _r or _get_redis()
+        raw = r.get(_cache_key(run_id, block_id, turn))
+        return json.loads(raw) if raw else None
+    except Exception:
+        return None
+
+
+def _cache_set(run_id: str | None, block_id: str | None, turn: int, response_json: dict, _r=None) -> None:
+    if not run_id or not block_id:
+        return
+    try:
+        r = _r or _get_redis()
+        r.setex(_cache_key(run_id, block_id, turn), _LLM_CACHE_TTL, json.dumps(response_json))
+    except Exception:
+        pass
+
 # Re-imported here so block files can be imported standalone; also re-exported for
 # any caller that used to import BRAIN_TOOLS from executor.
 BRAIN_TOOLS = [
@@ -375,14 +407,21 @@ def _execute_brain(
                 _write_trace(db, run_id, block_id, turns + 1, "user",
                              content=user_content[:8000] if user_content else None)
 
-            response = llm.create(
-                model=model_id,
-                max_tokens=4096,
-                system=full_system,
-                tools=_active_tools,
-                messages=messages,
-                cache_system=True,
-            )
+            _cached = _cache_get(run_id, block_id, turns)
+            if _cached is not None:
+                from app.runtime.llm_client import LLMResponse as _LLMResponse
+                response = _LLMResponse.from_cache_dict(_cached)
+                log.debug("brain.llm_cache_hit", run_id=run_id, block_id=block_id, turn=turns)
+            else:
+                response = llm.create(
+                    model=model_id,
+                    max_tokens=4096,
+                    system=full_system,
+                    tools=_active_tools,
+                    messages=messages,
+                    cache_system=True,
+                )
+                _cache_set(run_id, block_id, turns, response.to_cache_dict())
             turns += 1
             total_input_tokens       += response.usage.input_tokens
             total_output_tokens      += response.usage.output_tokens
@@ -562,13 +601,20 @@ def _execute_brain(
 
     else:
         # Single call (no tools)
-        response = llm.create(
-            model=model_id,
-            max_tokens=2048,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_message}],
-            cache_system=True,
-        )
+        _cached = _cache_get(run_id, block_id, 0)
+        if _cached is not None:
+            from app.runtime.llm_client import LLMResponse as _LLMResponse
+            response = _LLMResponse.from_cache_dict(_cached)
+            log.debug("brain.llm_cache_hit", run_id=run_id, block_id=block_id, turn=0)
+        else:
+            response = llm.create(
+                model=model_id,
+                max_tokens=2048,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_message}],
+                cache_system=True,
+            )
+            _cache_set(run_id, block_id, 0, response.to_cache_dict())
         text = next((b.text for b in response.content if isinstance(b, LLMTextBlock)), "")
         if db and run_id and block_id:
             _emit(db, run_id, block_id, "brain_tool_call", {
