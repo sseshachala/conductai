@@ -37,7 +37,7 @@ E2B_TEMPLATE  = "base"          # default sandbox template — has git, python3,
 CMD_TIMEOUT   = 120             # seconds per command
 STARTUP_RETRIES = 5
 
-from app.runtime.sandbox_constants import _FORBIDDEN_SHELL_PATTERNS
+from app.runtime.sandbox_constants import _FORBIDDEN_SHELL_PATTERNS, dispatch_tool
 
 
 def _headers(api_key: str) -> dict:
@@ -130,47 +130,20 @@ def _dispatch(
     tool_input: dict,
     working_dir: str,
 ) -> str:
-    if tool_name == "read_file":
-        path = tool_input.get("path", "")
-        if not path:
-            return "Error: missing required parameter 'path'"
-        out = _read_file(client, api_key, sandbox_id, path)
-        return (out[:20_000] + "\n[... truncated]") if len(out) > 20_000 else out
+    def _exec_shell(cmd: str, wd: str, env: dict | None) -> str:
+        return _run_command(client, api_key, sandbox_id, cmd, envs=env or None, working_dir=wd)
 
-    if tool_name == "write_file":
-        path = tool_input.get("path", "")
-        content = tool_input.get("content", "")
-        if not path:
-            return "Error: missing required parameter 'path'"
-        # Ensure parent directory exists
+    def _read(path: str) -> str:
+        return _read_file(client, api_key, sandbox_id, path)
+
+    def _write(path: str, content: str) -> str:
         parent = "/".join(path.split("/")[:-1])
         if parent:
             _run_command(client, api_key, sandbox_id, f"mkdir -p {shlex.quote(parent)}")
         return _write_file(client, api_key, sandbox_id, path, content)
 
-    if tool_name == "run_shell":
-        command = tool_input.get("command", "")
-        if not command:
-            return "Error: missing required parameter 'command'"
-        for pattern in _FORBIDDEN_SHELL_PATTERNS:
-            if re.search(pattern, command):
-                return f"Refused: command matches forbidden pattern '{pattern}'"
-        wd = tool_input.get("working_dir") or working_dir
-        env = tool_input.get("env") or {}
-        out = _run_command(client, api_key, sandbox_id, command, envs=env or None, working_dir=wd)
-        return (out[:10_000] + "\n[... truncated]") if len(out) > 10_000 else out or "(no output)"
-
-    if tool_name == "search_code":
-        pattern = tool_input.get("pattern", "")
-        if not pattern:
-            return "Error: missing required parameter 'pattern'"
-        path = tool_input.get("path", ".")
-        file_glob = tool_input.get("file_glob", "*")
-        cmd = f"grep -r --include={shlex.quote(file_glob)} -n {shlex.quote(pattern)} {shlex.quote(path)}"
-        out = _run_command(client, api_key, sandbox_id, cmd, working_dir=working_dir)
-        return (out[:8_000] + "\n[... truncated]") if len(out) > 8_000 else out or "(no matches)"
-
-    return f"Unknown tool: {tool_name}"
+    return dispatch_tool(tool_name, tool_input, working_dir,
+                         exec_shell=_exec_shell, read_file=_read, write_file=_write)
 
 
 def main() -> None:

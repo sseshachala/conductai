@@ -20,7 +20,7 @@ import re
 import shlex
 import sys
 
-from app.runtime.sandbox_constants import _FORBIDDEN_SHELL_PATTERNS
+from app.runtime.sandbox_constants import _FORBIDDEN_SHELL_PATTERNS, dispatch_tool
 
 
 def _exec(sandbox, *args: str, envs: dict | None = None) -> str:
@@ -90,19 +90,15 @@ def main() -> None:
 
 
 def _dispatch(sandbox, tool_name: str, tool_input: dict, working_dir: str) -> str:
-    if tool_name == "read_file":
-        path = tool_input.get("path", "")
-        if not path:
-            return "Error: missing required parameter 'path'"
-        out = _exec(sandbox, "bash", "-c", f"cat {shlex.quote(path)} 2>&1")
-        return (out[:20_000] + "\n[... truncated]") if len(out) > 20_000 else out
+    def _exec_shell(cmd: str, wd: str, env: dict | None) -> str:
+        # cd into working_dir then run; env vars passed via `env K=V` prefix
+        return _exec(sandbox, "bash", "-c", f"cd {shlex.quote(wd)} && {cmd}", envs=env or None)
 
-    if tool_name == "write_file":
-        path = tool_input.get("path", "")
-        content = tool_input.get("content", "")
-        if not path:
-            return "Error: missing required parameter 'path'"
-        # Base64-encode content so arbitrary bytes survive shell quoting
+    def _read(path: str) -> str:
+        return _exec(sandbox, "bash", "-c", f"cat {shlex.quote(path)} 2>&1")
+
+    def _write(path: str, content: str) -> str:
+        # Base64-encode so arbitrary bytes survive shell quoting
         b64 = base64.b64encode(content.encode()).decode()
         script = (
             f"import base64,os; p={path!r}; "
@@ -113,31 +109,8 @@ def _dispatch(sandbox, tool_name: str, tool_input: dict, working_dir: str) -> st
         out = _exec(sandbox, "python3", "-c", script)
         return out.strip() or f"Written {len(content)} bytes to {path}"
 
-    if tool_name == "run_shell":
-        command = tool_input.get("command", "")
-        if not command:
-            return "Error: missing required parameter 'command'"
-        for pattern in _FORBIDDEN_SHELL_PATTERNS:
-            if re.search(pattern, command):
-                return f"Refused: command matches forbidden pattern '{pattern}'"
-        wd = tool_input.get("working_dir") or working_dir
-        env = tool_input.get("env") or {}
-        full_cmd = f"cd {shlex.quote(wd)} && {command}"
-        # Pass env vars via `env KEY=value bash -c '...'` — keeps tokens out of the script string.
-        out = _exec(sandbox, "bash", "-c", full_cmd, envs=env or None)
-        return (out[:10_000] + "\n[... truncated]") if len(out) > 10_000 else out or "(no output)"
-
-    if tool_name == "search_code":
-        pattern = tool_input.get("pattern", "")
-        if not pattern:
-            return "Error: missing required parameter 'pattern'"
-        path = tool_input.get("path", ".")
-        file_glob = tool_input.get("file_glob", "*")
-        cmd = f"grep -r --include={shlex.quote(file_glob)} -n {shlex.quote(pattern)} {shlex.quote(path)}"
-        out = _exec(sandbox, "bash", "-c", cmd)
-        return (out[:8_000] + "\n[... truncated]") if len(out) > 8_000 else out or "(no matches)"
-
-    return f"Unknown tool: {tool_name}"
+    return dispatch_tool(tool_name, tool_input, working_dir,
+                         exec_shell=_exec_shell, read_file=_read, write_file=_write)
 
 
 if __name__ == "__main__":
