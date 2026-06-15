@@ -208,7 +208,11 @@ def _execute_brain(
             tool_input = {**tool_input, "env": resolved_env}
         return session.dispatch(tool_name, tool_input)
 
-    context = json.dumps({k: v for k, v in state.items() if not k.startswith("__")}, default=str)[:4000]
+    _ctx_raw = json.dumps({k: v for k, v in state.items() if not k.startswith("__")}, default=str)[:4000]
+    if state.get("__guard_enabled"):
+        from app.core.pii import redact_pii
+        _ctx_raw = redact_pii(_ctx_raw)
+    context = _ctx_raw
 
     # Credential placeholder pattern: model and DB see placeholder tokens, never raw secrets.
     # Real values live only in _cred_real and are swapped into subprocess env at dispatch time.

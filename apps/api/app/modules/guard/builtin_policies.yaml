@@ -241,3 +241,11 @@
   match_tokens_before_gt: 50000
   action: warn
   message: Large context detected (>50K tokens). Use Agent Booster smart_read to retrieve only relevant symbols instead of dumping the full file or repo.
+
+# ── Privacy ────────────────────────────────────────────────────────────────────
+
+- rule_id: pii-redact
+  description: Strip PII from Brain block context before LLM calls
+  match_tool: "*"
+  action: audit
+  message: PII detected in workflow context — redacted before LLM call (email, phone, SSN, card, IP).
