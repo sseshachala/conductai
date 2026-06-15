@@ -524,12 +524,14 @@ def _with_retry(execute_fn, retry_cfg: dict, *args, **kwargs):
     retry_cfg keys:
       max      — int, total attempts (default 1 = no retry)
       backoff  — "fixed" | "exponential"  (default "fixed")
-      on       — list of error categories to retry: "tool_error" | "timeout"
+      on       — list of error categories to retry:
+                 "tool_error" | "timeout" | "llm_parse_error"
                  (default ["tool_error", "timeout"])
     """
-    max_attempts = int(retry_cfg.get("max", 1))
-    backoff = retry_cfg.get("backoff", "fixed")
-    on_categories = set(retry_cfg.get("on", ["tool_error", "timeout"]))
+    max_attempts = int(retry_cfg.get("max", 1)) if isinstance(retry_cfg, dict) else int(getattr(retry_cfg, "max", 1))
+    backoff = retry_cfg.get("backoff", "fixed") if isinstance(retry_cfg, dict) else getattr(retry_cfg, "backoff", "fixed")
+    _on_raw = retry_cfg.get("on", ["tool_error", "timeout"]) if isinstance(retry_cfg, dict) else getattr(retry_cfg, "on", ["tool_error", "timeout"])
+    on_categories = set(_on_raw)
 
     # Hard floor — must have at least one attempt
     max_attempts = max(1, max_attempts)
@@ -546,6 +548,10 @@ def _with_retry(execute_fn, retry_cfg: dict, *args, **kwargs):
             raise
         except TimeoutError as e:
             if "timeout" not in on_categories:
+                raise
+            last_exc = e
+        except (json.JSONDecodeError, ValueError) as e:
+            if "llm_parse_error" not in on_categories:
                 raise
             last_exc = e
         except Exception as e:
