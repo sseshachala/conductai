@@ -8,6 +8,27 @@ import time
 import urllib.request
 from pathlib import Path
 
+_FLUSH_INTERVAL = 8 * 3600
+_FLUSH_STAMP = Path.home() / ".conduct" / "last_memory_flush"
+
+
+def _should_periodic_flush() -> bool:
+    try:
+        if not _FLUSH_STAMP.exists():
+            return True
+        return time.time() - float(_FLUSH_STAMP.read_text().strip()) >= _FLUSH_INTERVAL
+    except Exception:
+        return True
+
+
+def _mark_flushed() -> None:
+    try:
+        _FLUSH_STAMP.parent.mkdir(parents=True, exist_ok=True)
+        _FLUSH_STAMP.write_text(str(time.time()))
+    except Exception:
+        pass
+
+
 GUARD_DIR           = Path.home() / ".conductguard"
 POLICY_PATH         = GUARD_DIR / "policy.json"
 CONFIG_PATH         = GUARD_DIR / "config.json"
@@ -589,19 +610,19 @@ def main():
         session_id = data.get("session_id", "")
         transcript_path = data.get("transcript_path")
         repo = _detect_repo()
-        from conduct_cli.memory import post_session_to_api, mark_flushed
+        from conduct_cli.memory import post_session_to_api
         post_session_to_api(session_id, transcript_path, repo)
-        mark_flushed()
+        _mark_flushed()
         sys.exit(0)
 
     # Periodic flush — fire at most once every 8 hours mid-session
-    from conduct_cli.memory import should_periodic_flush, mark_flushed, post_session_to_api
-    if should_periodic_flush():
+    if _should_periodic_flush():
         session_id = data.get("session_id", "")
         transcript_path = data.get("transcript_path")
         repo = _detect_repo()
+        from conduct_cli.memory import post_session_to_api
         post_session_to_api(session_id, transcript_path, repo)
-        mark_flushed()
+        _mark_flushed()
 
     # Policy version check (cached 60s) — auto-syncs if server version differs
     _maybe_sync_policy()
