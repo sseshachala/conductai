@@ -1,0 +1,214 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# ai-drift-detector — Daily AI governance drift detection
+#
+# Part 3 of the AI Governance lifecycle (runs daily while teams actively use
+# AI tools). Monitors for shadow usage, policy violation spikes, budget
+# anomalies, and quality degradation signals. Silent on healthy days —
+# alerts only when thresholds are breached.
+#
+# Lifecycle:
+#   1. ai-risk-assessment   — pre-deploy
+#   2. ai-output-auditor    — weekly
+#   3. ai-drift-detector    — daily ongoing (this playbook)
+#   4. incident-drill       — quarterly
+# ──────────────────────────────────────────────────────────────────────────────
+name: AI Drift Detector
+version: 1
+description: >
+  Daily check for AI governance drift. Monitors policy violation spikes,
+  budget anomalies, shadow usage, and quality degradation signals.
+  Silent on healthy days — alerts only when thresholds are breached.
+
+inputs:
+  model:
+    label: AI Model
+    default: claude-haiku-4-5-20251001
+    type: select
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+  slack_channel:
+    label: Slack Channel for Alerts
+    type: text
+    default: "#ai-governance"
+  team:
+    label: Team or Department
+    type: text
+    placeholder: "Engineering"
+  alert_threshold:
+    label: Alert Sensitivity
+    type: select
+    default: "medium"
+    options:
+      - "low"
+      - "medium"
+      - "high"
+
+on:
+  webhook:
+    next: plan
+
+blocks:
+  plan:
+    type: brain
+    mode: single
+    model: "{{inputs.model}}"
+    label: Plan check complexity
+    description: |
+      You are a workflow planner. This is a daily drift detection run — it should
+      almost always be lightweight.
+
+      Team: {{inputs.team}}
+      Alert threshold: {{inputs.alert_threshold}}
+
+      Rules:
+      - "small"  — standard daily check, single team (default for drift detection)
+      - "medium" — org-wide rollout or elevated alert_threshold requiring deeper analysis
+      - "large"  — reserved for post-incident forensic runs (not typical here)
+
+      Output ONLY the following JSON on the last line:
+        {"complexity": "<small|medium|large>", "reason": "<one sentence>"}
+    next: recall_baseline
+
+  recall_baseline:
+    type: memory
+    label: Recall baseline patterns
+    action: read
+    scope: workspace
+    key: "ai-drift-baseline-{{inputs.team}}"
+    limit: 5
+    next: detect_drift
+
+  detect_drift:
+    type: brain
+    mode: single
+    model: "{{inputs.model}}"
+    label: Detect drift signals
+    description: |
+      You are an AI governance analyst performing a daily drift check.
+
+      Team: {{inputs.team}}
+      Alert threshold: {{inputs.alert_threshold}}
+
+      {% if recall_baseline.entries %}
+      Baseline patterns for this team (most recent first):
+      {% for entry in recall_baseline.entries %}
+      - {{entry.summary}}
+      {% endfor %}
+      {% endif %}
+
+      Analyze the team's AI usage patterns for today against the baseline above.
+      Check for the following drift signals:
+
+      1. Policy violation rate spike — daily violation count exceeds 2x the baseline average
+      2. Budget burn rate anomaly — spend exceeds 150% of the daily average from baseline
+      3. New tool or command patterns — tools or shell commands not seen in prior baseline entries
+      4. Shadow usage signals — AI tool usage outside approved hours, unapproved tools,
+         or users not in the approved access list
+      5. Quality score drop — output quality metrics below the floor established in the last
+         ai-output-auditor run (if present in baseline)
+      6. Over-reliance patterns — repeated identical or near-identical prompts from the same
+         user with no variation, suggesting copy-paste automation without review
+
+      Calibrate sensitivity to the alert_threshold:
+      - "low"    — flag only Critical signals; suppress Medium and below
+      - "medium" — flag Critical and High signals; suppress Medium and below
+      - "high"   — flag Critical, High, and Medium signals
+
+      If no baseline entries exist yet, treat today as day one: set drift_detected to false
+      and note in the recommendation that a baseline is being established.
+
+      Output ONLY the following JSON on the last line:
+        {
+          "drift_detected": <true|false>,
+          "signals": [
+            {"type": "<policy_spike|budget_anomaly|new_pattern|shadow_usage|quality_drop|over_reliance>", "severity": "<Critical|High|Medium>", "description": "<one sentence observable evidence>"}
+          ],
+          "critical_count": <N>,
+          "recommendation": "<one concrete action or 'No action required — baseline healthy'>"
+        }
+    next: has_drift
+
+  has_drift:
+    type: logic
+    label: Drift detected?
+    condition: "{{detect_drift.drift_detected}}"
+    next:
+      pass: alert_team
+      fail: record_clean
+
+  alert_team:
+    type: brain
+    mode: single
+    model: "{{inputs.model}}"
+    label: Format drift alert
+    description: |
+      You are an AI governance analyst. Drift has been detected. Write a concise
+      Slack alert — not a full report. Focus on what changed and what to do.
+
+      Team: {{inputs.team}}
+      Signals detected: {{detect_drift.signals}}
+      Critical signals: {{detect_drift.critical_count}}
+      Recommendation: {{detect_drift.recommendation}}
+
+      Format as a tight Slack message using this structure:
+
+      ## 📡 AI Drift Alert — {{inputs.team}}
+      **Date:** <today's date> | **Threshold:** {{inputs.alert_threshold}}
+
+      ### Signals Detected
+      (one bullet per signal: **[Type]** — description. Severity: Critical/High/Medium)
+
+      ### What Changed
+      (1-2 sentences on what pattern shifted vs baseline)
+
+      ### Action Required
+      {{detect_drift.recommendation}}
+
+      ---
+      *Generated by [Conduct AI](https://conductai.ai) · AI Drift Detector*
+
+      Output ONLY the following JSON on the last line:
+        {"alert": "<full formatted Slack message above>", "action_required": "<one sentence summary of the required action>"}
+    next: record_outcome
+
+  record_outcome:
+    type: memory
+    label: Record drift outcome
+    action: write
+    scope: workspace
+    key: "ai-drift-baseline-{{inputs.team}}"
+    summary: |
+      Team: {{inputs.team}} | Date: today | drift_detected: true | signals: {{detect_drift.signals | length}} | critical: {{detect_drift.critical_count}}
+      Signals: {{detect_drift.signals}}
+      Action: {{detect_drift.recommendation}}
+    next: notify_alert
+
+  record_clean:
+    type: memory
+    label: Record clean check
+    action: write
+    scope: workspace
+    key: "ai-drift-baseline-{{inputs.team}}"
+    summary: |
+      Team: {{inputs.team}} | Date: today | drift_detected: false | signals: 0
+      Baseline healthy — no drift signals above {{inputs.alert_threshold}} threshold.
+
+  notify_alert:
+    type: output
+    label: Post drift alert to Slack
+    description: |
+      {{alert_team.alert}}
+    output:
+      via: slack
+      slack:
+        channel: "{{inputs.slack_channel}}"
+
+test_trigger:
+  payload:
+    inputs:
+      model: claude-haiku-4-5-20251001
+      slack_channel: "#ai-governance"
+      team: "Engineering"
+      alert_threshold: "medium"

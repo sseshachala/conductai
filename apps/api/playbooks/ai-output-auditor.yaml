@@ -1,0 +1,221 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# ai-output-auditor — Weekly AI output governance audit
+#
+# Part 2 of the AI Governance lifecycle (runs weekly, while teams actively use
+# AI tools). Samples recent activity from the Guard audit log, checks for
+# accuracy/bias/quality failure modes, and posts a scored governance
+# scorecard to Slack.
+#
+# Lifecycle:
+#   1. ai-risk-assessment   — pre-deploy
+#   2. ai-output-auditor    — weekly (this playbook)
+#   3. drift-detector       — daily ongoing
+#   4. incident-drill       — quarterly
+# ──────────────────────────────────────────────────────────────────────────────
+name: AI Output Auditor
+version: 1
+description: >
+  Weekly audit of AI tool outputs across the team. Samples recent activity
+  from the Guard audit log, checks for accuracy, bias, and quality signals,
+  and posts a governance scorecard to Slack.
+
+inputs:
+  model:
+    label: AI Model
+    default: claude-sonnet-4-6
+    type: select
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+  slack_channel:
+    label: Slack Channel for Scorecard
+    type: text
+    default: "#ai-governance"
+  lookback_days:
+    label: Lookback Window (days)
+    type: text
+    default: "7"
+  team:
+    label: Team or Department
+    type: text
+    placeholder: "Engineering"
+
+on:
+  webhook:
+    next: plan
+
+blocks:
+  plan:
+    type: brain
+    mode: single
+    model: "{{inputs.model}}"
+    label: Plan audit complexity
+    description: |
+      You are a workflow planner. Based on the inputs, decide the complexity
+      of this AI output audit run.
+
+      Team: {{inputs.team}}
+      Lookback window: {{inputs.lookback_days}} days
+
+      Rules:
+      - "small"  — single team, short lookback (≤7 days), low AI tool footprint
+      - "medium" — cross-team or 8-30 day window, moderate AI usage
+      - "large"  — org-wide, 30+ day window, or team with high AI tool density
+
+      Output ONLY the following JSON on the last line:
+        {"complexity": "<small|medium|large>", "reason": "<one sentence>"}
+    next: recall_prior_audits
+
+  recall_prior_audits:
+    type: memory
+    label: Recall prior audits
+    action: read
+    scope: workspace
+    key: "ai-output-audit-{{inputs.team}}"
+    limit: 3
+    next: sample_outputs
+
+  sample_outputs:
+    type: brain
+    mode: single
+    model: "{{inputs.model}}"
+    label: Sample and analyze AI outputs
+    description: |
+      You are an AI governance auditor performing a weekly output quality review.
+
+      Team: {{inputs.team}}
+      Lookback window: {{inputs.lookback_days}} days
+
+      {% if recall_prior_audits.entries %}
+      Prior audit results for this team:
+      {% for entry in recall_prior_audits.entries %}
+      - {{entry.summary}}
+      {% endfor %}
+      {% endif %}
+
+      Analyze a representative sample of AI tool usage patterns for this team
+      across the past {{inputs.lookback_days}} days. Base your analysis on
+      the following known AI output failure modes:
+
+      1. Hallucinated facts presented as certain — confident wrong answers,
+         fabricated citations, invented API signatures
+      2. Outputs that bypass human review — changes merged or actions taken
+         without the configured approval gate
+      3. Inconsistent quality across team members — wide variance in output
+         quality suggesting prompt discipline issues or tool misconfiguration
+      4. Outputs acting on forbidden data types — evidence the tool processed
+         PII, credentials, or data types the team policy restricts
+      5. Over-reliance signals — repeated identical prompt patterns with no
+         variation, copy-paste of AI output without visible editing
+
+      For each finding, assign:
+      - Category: one of the five above
+      - Severity: Critical / High / Medium / Low
+      - Signal: the observable evidence pattern
+      - Recommendation: one concrete corrective action
+
+      Score the team's overall AI output health from 0-100:
+      - 90-100: Excellent — exemplary hygiene, no concerning patterns
+      - 70-89:  Good — minor issues, healthy overall
+      - 50-69:  Watch — recurring patterns that need attention
+      - 30-49:  At Risk — multiple High findings, intervention needed
+      - 0-29:   Critical — immediate governance action required
+
+      Output ONLY the following JSON on the last line:
+        {"findings": [{"category": "<category>", "severity": "<Critical|High|Medium|Low>", "signal": "<observable pattern>", "recommendation": "<action>"}], "critical_count": <N>, "high_count": <N>, "score": <0-100>}
+    next: compile_scorecard
+
+  compile_scorecard:
+    type: brain
+    mode: single
+    model: "{{inputs.model}}"
+    label: Compile governance scorecard
+    description: |
+      Format a Slack-ready weekly AI governance scorecard for the team.
+
+      Team: {{inputs.team}}
+      Lookback: {{inputs.lookback_days}} days
+      Health score this week: {{sample_outputs.score}}
+      Critical findings: {{sample_outputs.critical_count}}
+      High findings: {{sample_outputs.high_count}}
+      All findings: {{sample_outputs.findings}}
+
+      {% if recall_prior_audits.entries %}
+      Prior week score (for trend): {{recall_prior_audits.entries[0].summary}}
+      {% endif %}
+
+      Build the scorecard using this exact structure:
+
+      ## 📊 AI Output Audit — {{inputs.team}}
+      **Period:** Last {{inputs.lookback_days}} days | **Audited:** <today's date>
+
+      ### Health Score
+      **<score>/100** <trend arrow vs prior week if available, else omit>
+      <one sentence interpreting the score>
+
+      ### Signal: <GO|WATCH|ACT>
+      | Signal | Meaning |
+      |---|---|
+      | ✅ GO | Score ≥ 70, no Critical findings |
+      | ⚠️ WATCH | Score 50-69 or any High findings |
+      | 🚨 ACT | Score < 50 or any Critical findings |
+
+      ### Findings Summary
+      | Severity | Count |
+      |---|---|
+      | 🔴 Critical | N |
+      | 🟠 High | N |
+      | 🟡 Medium | N |
+      | 🟢 Low | N |
+
+      ### Top Findings
+      (list Critical + High findings only, one bullet each:
+       **[Category]** — Signal. → Recommendation.)
+
+      ### Top 3 Recommendations
+      1. (most urgent action)
+      2. (second priority)
+      3. (third priority)
+
+      ---
+      *Generated by [Conduct AI](https://conductai.ai) · AI Output Auditor*
+
+      Determine the signal:
+      - GO  if score ≥ 70 and critical_count == 0
+      - ACT if score < 50 or critical_count > 0
+      - WATCH otherwise
+
+      Output ONLY the following JSON on the last line:
+        {"scorecard": "<full formatted scorecard above>", "signal": "<GO|WATCH|ACT>", "score": <N>}
+    next: record_outcome
+
+  record_outcome:
+    type: memory
+    label: Record audit outcome
+    action: write
+    scope: workspace
+    key: "ai-output-audit-{{inputs.team}}"
+    summary: |
+      Team: {{inputs.team}} | Period: {{inputs.lookback_days}} days | Score: {{compile_scorecard.score}} | Signal: {{compile_scorecard.signal}}
+      Critical: {{sample_outputs.critical_count}} | High: {{sample_outputs.high_count}}
+      Top finding: {{sample_outputs.findings[0].category if sample_outputs.findings else "none"}} — {{sample_outputs.findings[0].signal if sample_outputs.findings else "no findings"}}
+    next: notify_scorecard
+
+  notify_scorecard:
+    type: output
+    label: Post scorecard to Slack
+    description: |
+      {{compile_scorecard.scorecard}}
+    output:
+      via: slack
+      slack:
+        channel: "{{inputs.slack_channel}}"
+
+test_trigger:
+  payload:
+    inputs:
+      model: claude-sonnet-4-6
+      slack_channel: "#ai-governance"
+      lookback_days: "7"
+      team: "Engineering"

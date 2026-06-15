@@ -78,3 +78,4 @@ ConductGuard works by registering a **PreToolUse hook** and **PostToolUse hook**
 - [Roles & Permissions](roles_permissions.md)
 - [Team Onboarding](team_onboarding.md)
 - [Test Scenarios Runbook](../guard_scenarios.md)
+- [AI Governance Playbooks](ai_governance_playbooks.md)
