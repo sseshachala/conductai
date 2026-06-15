@@ -103,11 +103,17 @@ def store_session_memory(
     tags = _extract_topic_tags(summary)
     embedding = _embed(summary)
 
+    # Resolve email at write time so the DEVELOPER column never shows a raw Clerk user ID
+    resolved_email = body.developer_email
+    if not resolved_email and body.developer_id:
+        from app.core.auth import get_clerk_user_email
+        resolved_email = get_clerk_user_email(body.developer_id) or None
+
     row = TeamSessionMemory(
         id=uuid.uuid4(),
         workspace_id=uuid.UUID(str(workspace_id)),
         developer_id=body.developer_id,
-        developer_email=body.developer_email,
+        developer_email=resolved_email,
         session_id=body.session_id,
         tool=body.tool,
         repo_full_name=body.repo_full_name,
@@ -183,7 +189,7 @@ def search_session_memory(
         return [
             {
                 "developer_id": str(r.developer_id) if r.developer_id else None,
-                "developer_email": r.developer_email or str(r.developer_id) if r.developer_id else None,
+                "developer_email": r.developer_email or None,
                 "repo": r.repo_full_name,
                 "summary": r.light_summary,
                 "tags": r.topic_tags or [],
