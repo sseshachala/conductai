@@ -38,9 +38,9 @@ inputs:
     type: text
     placeholder: "e.g. Code review assistance, customer email drafting, data analysis"
   data_access:
-    label: What data will this tool access?
+    label: What data will this tool access? (optional — auto-detected from repo)
     type: text
-    placeholder: "e.g. source code, customer records, financial reports, internal docs"
+    placeholder: "Leave blank to auto-detect from GitHub repo, or e.g. source code, customer records"
   slack_channel:
     label: Slack Channel for Report
     type: text
@@ -83,6 +83,17 @@ blocks:
 
       Output ONLY the following JSON on the last line:
         {"complexity": "<small|medium|large>", "reason": "<one sentence>"}
+    next: fetch_repo_context
+
+  fetch_repo_context:
+    type: tool
+    integration: github
+    action: get_repo_context
+    label: Fetch repo context
+    credentials:
+      github: github
+    params:
+      repo: "{{inputs.github_repo}}"
     next: recall_prior_assessments
 
   recall_prior_assessments:
@@ -106,7 +117,19 @@ blocks:
       Tool being assessed: {{inputs.tool_name}}
       Team: {{inputs.team}}
       Use case: {{inputs.use_case}}
-      Data access: {{inputs.data_access}}
+      Data access: {% if inputs.data_access %}{{inputs.data_access}}{% else %}auto-detected from repo{% endif %}
+
+      ## Repository Context (from {{fetch_repo_context.full_name}})
+      Languages: {{fetch_repo_context.languages}}
+      Contributors: {{fetch_repo_context.contributor_count}}
+      Private repo: {{fetch_repo_context.is_private}}
+      Has SECURITY.md: {{fetch_repo_context.has_security_md}}
+      Has CI: {{fetch_repo_context.has_ci}} ({{fetch_repo_context.ci_files}})
+      Secrets referenced in CI: {{fetch_repo_context.secret_refs}}
+      README excerpt: {{fetch_repo_context.readme_excerpt}}
+      {% if fetch_repo_context.security_md_excerpt %}SECURITY.md: {{fetch_repo_context.security_md_excerpt}}{% endif %}
+
+      Use the repo context above to infer what data the tool will actually access if not specified by the user.
 
       {% if recall_prior_assessments.entries %}
       Prior assessments for this tool:
@@ -149,8 +172,14 @@ blocks:
     description: |
       AI tool: {{inputs.tool_name}}
       Team: {{inputs.team}}
-      Data access: {{inputs.data_access}}
+      Data access: {% if inputs.data_access %}{{inputs.data_access}}{% else %}auto-detected from repo{% endif %}
       Risks identified: {{surface_risks.critical_count}} critical, {{surface_risks.high_count}} high
+
+      ## Repository Context
+      Languages: {{fetch_repo_context.languages}}
+      Private: {{fetch_repo_context.is_private}}
+      Secrets in CI: {{fetch_repo_context.secret_refs}}
+      Has SECURITY.md: {{fetch_repo_context.has_security_md}}
 
       Define clear data boundaries for this deployment.
       Categorise each data type the tool may encounter as ALLOWED, RESTRICTED, or FORBIDDEN.
