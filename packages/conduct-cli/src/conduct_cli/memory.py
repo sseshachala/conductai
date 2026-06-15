@@ -3,8 +3,30 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 import urllib.request
 from pathlib import Path
+
+_FLUSH_INTERVAL = 8 * 3600  # 8 hours in seconds
+_FLUSH_STAMP = Path.home() / ".conduct" / "last_memory_flush"
+
+
+def should_periodic_flush() -> bool:
+    """True if 8+ hours have passed since the last periodic memory flush."""
+    try:
+        if not _FLUSH_STAMP.exists():
+            return True
+        return time.time() - float(_FLUSH_STAMP.read_text().strip()) >= _FLUSH_INTERVAL
+    except Exception:
+        return True
+
+
+def mark_flushed() -> None:
+    try:
+        _FLUSH_STAMP.parent.mkdir(parents=True, exist_ok=True)
+        _FLUSH_STAMP.write_text(str(time.time()))
+    except Exception:
+        pass
 
 
 def _load_config():
