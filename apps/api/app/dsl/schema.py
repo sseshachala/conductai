@@ -116,6 +116,14 @@ class OutputConfig(BaseModel):
 # them all at the top level rather than splitting per-type models so users
 # don't have to context-switch between subclasses while authoring YAML.
 # ---------------------------------------------------------------------------
+class RetryPolicy(BaseModel):
+    max: int = Field(default=1, ge=1, le=10)
+    backoff: Literal["fixed", "exponential"] = "fixed"
+    on: list[Literal["tool_error", "timeout", "llm_parse_error"]] = ["tool_error", "timeout"]
+
+    model_config = ConfigDict(extra="ignore")
+
+
 class Block(BaseModel):
     type: Literal["tool", "brain", "logic", "approval", "memory", "output", "mcp", "sandbox", "guard", "for_each"]
     label: str | None = None
@@ -177,9 +185,9 @@ class Block(BaseModel):
     # — canvas display flags —
     is_readonly: bool = False  # True for blocks resolved from $use — canvas shows read-only banner
 
-    # — retry (#565) —
-    retry: dict[str, Any] | None = None  # retry config (typed properly in #564, dict for now)
-    fallback_block: str | None = None    # block id to route to when retries exhausted (#643)
+    # — retry (#643) —
+    retry: "RetryPolicy | None" = None
+    fallback_block: str | None = None    # block id to route to when retries exhausted
 
     # — routing — either a single string or a per-branch dict
     # e.g.  next: create_droplet
