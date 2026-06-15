@@ -302,6 +302,36 @@ _ONLINE_EVAL_QUEUE = "marshal:eval:online:queue"
 _ONLINE_EVAL_QUEUE_MAX = 10_000  # cap to prevent unbounded growth when worker is down
 
 
+_STATE_CHECKPOINT_TTL = 86400  # 24 hours — same as LLM cache
+
+
+def _checkpoint_state(run_id: str | None, state: dict) -> None:
+    """Persist run state to Redis after each block so a crash can resume."""
+    if not run_id:
+        return
+    try:
+        import redis as _redis
+        import json as _json
+        r = _redis.from_url(settings.redis_url, decode_responses=True)
+        r.setex(f"run_state:{run_id}", _STATE_CHECKPOINT_TTL, _json.dumps(state, default=str))
+    except Exception:
+        pass
+
+
+def _load_checkpoint(run_id: str | None) -> dict | None:
+    """Load checkpointed state from Redis. Returns None if no checkpoint exists."""
+    if not run_id:
+        return None
+    try:
+        import redis as _redis
+        import json as _json
+        r = _redis.from_url(settings.redis_url, decode_responses=True)
+        raw = r.get(f"run_state:{run_id}")
+        return _json.loads(raw) if raw else None
+    except Exception:
+        return None
+
+
 def _enqueue_online_eval(run_id: str) -> None:
     """Push run_id to the online eval queue. Fire-and-forget — never raises."""
     try:
@@ -1270,6 +1300,12 @@ def _execute_dag(
 
     state: dict[str, Any] = dict(initial_state)
 
+    # Resume from checkpoint if this run was interrupted mid-flight.
+    _checkpoint = _load_checkpoint(str(run_id))
+    if _checkpoint:
+        state.update(_checkpoint)
+        log.info("run.resumed_from_checkpoint", run_id=run_id, completed_blocks=[k for k in _checkpoint if not k.startswith("__")])
+
     # Seed inputs defaults so {{inputs.x}} refs resolve for auto-triggered runs.
     # Always merge spec defaults first, then let caller-supplied values win.
     # This ensures CLI --input values override canvas-installed defaults.
@@ -1407,6 +1443,7 @@ def _execute_dag(
             _logic_routes_version = _lrv_ref[0]
             state[block_id] = result
             state["__last_output"] = json.dumps(result, default=str)
+            _checkpoint_state(run_id, state)
 
             _emit(db, run_id, block_id, "block_completed", {"output": result})
 

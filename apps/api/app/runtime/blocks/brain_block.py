@@ -411,6 +411,7 @@ def _execute_brain(
             if _cached is not None:
                 from app.runtime.llm_client import LLMResponse as _LLMResponse
                 response = _LLMResponse.from_cache_dict(_cached)
+                response.cost_usd = 0.0  # ponytail: no charge on replay
                 log.debug("brain.llm_cache_hit", run_id=run_id, block_id=block_id, turn=turns)
             else:
                 response = llm.create(
@@ -605,6 +606,7 @@ def _execute_brain(
         if _cached is not None:
             from app.runtime.llm_client import LLMResponse as _LLMResponse
             response = _LLMResponse.from_cache_dict(_cached)
+            response.cost_usd = 0.0  # ponytail: no charge on replay
             log.debug("brain.llm_cache_hit", run_id=run_id, block_id=block_id, turn=0)
         else:
             response = llm.create(
