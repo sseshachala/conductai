@@ -8,6 +8,7 @@ import AppShell from "@/components/AppShell"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import ShareButton from "@/components/ShareButton"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -218,9 +219,12 @@ function SessionReportDetailContent() {
             <>
               {/* Page header */}
               <div style={{ marginBottom: 20 }}>
-                <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--text)", margin: "0 0 4px" }}>
-                  Session Report
-                </h2>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                  <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--text)", margin: 0 }}>
+                    Session Report
+                  </h2>
+                  <ShareButton resourceType="session_report" resourceId={id as string} />
+                </div>
                 <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
                   {report.developer_email} · {formatDate(report.created_at)}
                 </div>

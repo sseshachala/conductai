@@ -1,6 +1,8 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 import structlog
 from app.core.config import settings
 from app.core.logging import setup_logging
@@ -32,6 +34,7 @@ from app.routers.sdd import router as sdd_router
 from app.routers.session_reports import router as session_reports_router
 from app.routers.team_memory import router as team_memory_router
 from app.routers.meta import router as meta_router
+from app.routers.share import router as share_router
 
 setup_logging()
 log = structlog.get_logger(__name__)
@@ -49,6 +52,13 @@ if settings.sentry_dsn:
     )
 
 app = FastAPI(title="Marshal API", version="0.1.0")
+
+_STATIC = Path(__file__).parent / "static"
+
+@app.get("/favicon.ico", include_in_schema=False)
+@app.get("/favicon.png", include_in_schema=False)
+async def favicon():
+    return FileResponse(_STATIC / "favicon.png", media_type="image/png")
 
 _origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
 
@@ -114,6 +124,7 @@ app.include_router(sdd_router)
 app.include_router(session_reports_router)
 app.include_router(team_memory_router)
 app.include_router(meta_router)
+app.include_router(share_router)
 
 
 @app.on_event("startup")
