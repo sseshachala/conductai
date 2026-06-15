@@ -156,7 +156,7 @@ def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, t
             print(f"{RED}    ✗ {prefix}{err}{RESET}")
         elif kind == "brain_tool_call":
             summary = payload.get("summary", payload.get("tool", ""))
-            print(f"{GRAY}      · {summary}{RESET}")
+            print(f"      · {summary}{RESET}")
         elif kind == "run_completed":
             print(f"{BOLD}{GREEN}    ✓ done{RESET}")
         elif kind == "run_failed":
