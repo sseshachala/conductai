@@ -1427,9 +1427,8 @@ def _execute_dag(
             try:
                 if retry_cfg:
                     result = _with_retry(_dispatch, retry_cfg, block, state)
-                else:
-                # Special-case output block: soft-fail so the run can continue
-                if block_type == "output":
+                elif block_type == "output":
+                    # Special-case output block: soft-fail so the run can continue
                     wf_name = version.workflow.name if version.workflow else "Agent"
                     trace_url = (
                         f"{settings.app_url.rstrip('/')}/workflows/{version.workflow.id}/runs/{run_id}"
