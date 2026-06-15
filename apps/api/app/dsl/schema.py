@@ -179,6 +179,7 @@ class Block(BaseModel):
 
     # — retry (#565) —
     retry: dict[str, Any] | None = None  # retry config (typed properly in #564, dict for now)
+    fallback_block: str | None = None    # block id to route to when retries exhausted (#643)
 
     # — routing — either a single string or a per-branch dict
     # e.g.  next: create_droplet

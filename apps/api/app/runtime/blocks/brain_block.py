@@ -107,7 +107,34 @@ BRAIN_TOOLS = [
             "required": ["pattern"],
         },
     },
+    {
+        "name": "mark_complete",
+        "description": (
+            "Signal that the task is complete and return a structured result. "
+            "Call this instead of stop_reason end_turn when you have a definitive outcome. "
+            "Always pass a 'result' key summarising what was accomplished."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "result": {"type": "string", "description": "Summary of what was accomplished"},
+                "output": {"type": "object", "description": "Optional structured output data"},
+            },
+            "required": ["result"],
+        },
+    },
 ]
+
+
+def _classify_tool_error(result: str) -> str:
+    """Prefix tool results with a structured error category for LLM signal."""
+    if result.startswith("Refused:"):
+        return f"[permission_denied] {result}"
+    if "timed out" in result.lower() or "timeout" in result.lower():
+        return f"[timeout] {result}"
+    if result.startswith("Error:") or result.startswith("error:"):
+        return f"[tool_error] {result}"
+    return result
 
 
 def _extract_last_json_object(text: str) -> dict | None:
@@ -537,8 +564,28 @@ def _execute_brain(
                                  tool_input=tc.input or None,
                                  tool_use_id=tc.id)
 
+                # mark_complete — structured early exit
+                if tc.name == "mark_complete":
+                    _close_session()
+                    _record_turns(db, run_id, turns, False)
+                    files_changed, diff_stat = session.capture_artifacts() if session else ([], "")
+                    return {
+                        "output": tc.input.get("result", ""),
+                        "structured_output": tc.input.get("output"),
+                        "turns": turns,
+                        "stop_reason": "mark_complete",
+                        "input_tokens": total_input_tokens,
+                        "output_tokens": total_output_tokens,
+                        "cost_usd": round(total_cost_usd, 6),
+                        "files_changed": files_changed,
+                        "diff_stat": diff_stat,
+                        "provider": provider,
+                        "model": model_id,
+                    }
+
                 try:
                     result_content = _dispatch_with_creds(tc.name, tc.input)
+                    result_content = _classify_tool_error(result_content)
                 except RuntimeError as sandbox_err:
                     if db and run_id:
                         _emit(db, run_id, block_id, "brain_tool_call", {
