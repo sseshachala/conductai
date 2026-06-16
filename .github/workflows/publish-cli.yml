@@ -11,9 +11,12 @@ jobs:
     environment: pypi
     permissions:
       id-token: write   # required for trusted publishing (no API token needed)
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-python@v5
         with:
