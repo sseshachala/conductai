@@ -26,6 +26,7 @@ from app.core.database import SessionLocal
 from app.core.auth import get_clerk_user_email
 from app.core.pii import redact_secrets
 from app.modules.guard.models import GuardAuditEvent, GuardConfig, GuardMemberConfig, GuardPolicy
+from app.modules.guard.routers.events import _send_guard_slack as _slack_notify
 
 router = APIRouter(prefix="/guard/mcp", tags=["guard-mcp"])
 
@@ -205,6 +206,21 @@ def _record_event(
     )
     db.add(event)
     db.commit()
+
+    # Slack notification — one path for all blocks/warns
+    if decision in ("blocked", "warned"):
+        try:
+            cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
+            if cfg and cfg.notify_on_block:
+                icon = "🚨" if decision == "blocked" else "⚠️"
+                _slack_notify(db, cfg, (
+                    f"{icon} *Guard {decision}* — `{rule_id or 'unknown'}`\n"
+                    f"• User: `{user_email or 'unknown'}`\n"
+                    f"• Tool: `{tool_name}`\n"
+                    f"• Session: `{session_id or 'n/a'}`"
+                ))
+        except Exception:
+            pass  # never crash event recording on Slack failure
 
 
 # ── JSON-RPC response helpers ─────────────────────────────────────────────────

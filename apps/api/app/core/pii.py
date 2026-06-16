@@ -28,6 +28,30 @@ _SECRET_PATTERNS: list[tuple[re.Pattern, str]] = [
     # Generic sk-/pk- (OpenAI, Stripe, Anthropic, etc.)
     (re.compile(r"\bsk-[A-Za-z0-9\-_]{20,}\b"), "secret_key"),
     (re.compile(r"\bpk-[A-Za-z0-9\-_]{20,}\b"), "public_key"),
+    # Anthropic API keys
+    (re.compile(r"\bak-[A-Za-z0-9\-_]{10,}\b"), "anthropic_key"),
+    # PyPI tokens
+    (re.compile(r"\bpypi-[A-Za-z0-9\-_]{32,}\b"), "pypi_token"),
+    # npm tokens
+    (re.compile(r"\bnpm_[A-Za-z0-9]{36,}\b"), "npm_token"),
+    (re.compile(r"\bnp_[A-Za-z0-9]{20,}\b"), "npm_token"),
+    # Render deploy keys
+    (re.compile(r"\brk_[A-Za-z0-9]{32,}\b"), "render_key"),
+    # GitHub fine-grained PATs
+    (re.compile(r"\bgithub_pat_[A-Za-z0-9_]{50,}\b"), "github_fine_grained_pat"),
+    # Vercel tokens
+    (re.compile(r"\bvercel_[A-Za-z0-9]{24,}\b"), "vercel_token"),
+    # Stripe keys
+    (re.compile(r"\b(?:sk|pk|rk|whsec)_(?:live|test)_[A-Za-z0-9]{24,}\b"), "stripe_key"),
+    # Twilio
+    (re.compile(r"\bSK[a-f0-9]{32}\b"), "twilio_key"),
+    (re.compile(r"\bAC[a-f0-9]{32}\b"), "twilio_account_sid"),
+    # SendGrid
+    (re.compile(r"\bSG\.[A-Za-z0-9\-_]{22,}\.[A-Za-z0-9\-_]{43,}\b"), "sendgrid_key"),
+    # HuggingFace
+    (re.compile(r"\bhf_[A-Za-z0-9]{34,}\b"), "huggingface_token"),
+    # Generic high-entropy bearer tokens (≥32 alphanumeric chars after common prefixes)
+    (re.compile(r"\b(?:Bearer|bearer)\s+([A-Za-z0-9\-_\.]{32,})\b"), "bearer_token"),
     # PEM private keys
     (re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"), "private_key"),
     # URL-embedded passwords: scheme://user:password@host
