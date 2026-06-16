@@ -474,6 +474,7 @@ def cmd_guard_install(args):
         pass
 
     # Persist guard config — include api_key so CLI commands can authenticate
+    import time as _time
     _save_guard_config({
         "workspace_id":          workspace_id,
         "member_token":          member_token,
@@ -482,6 +483,7 @@ def cmd_guard_install(args):
         "api_key":               api_key,
         "api_url":               server,
         "security_emit_enabled": security_emit,
+        "last_synced_at":        _time.time(),
     })
     if security_emit:
         print(f"  {GREEN}Security Loop:{RESET} installed — classifier active")
@@ -545,10 +547,12 @@ def cmd_guard_join(args):
     print(f"  {GREEN}Policy downloaded:{RESET} {rule_count} rule(s)")
 
     # Persist guard config
+    import time as _time
     cfg = {
-        "workspace_id": workspace_id,
-        "user_email":   email,
-        "api_url":      base_url,
+        "workspace_id":   workspace_id,
+        "user_email":     email,
+        "api_url":        base_url,
+        "last_synced_at": _time.time(),
     }
     if member_token:
         cfg["member_token"] = member_token
