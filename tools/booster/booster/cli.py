@@ -1070,6 +1070,15 @@ def cmd_gain(fmt: str, team: bool) -> None:
         click.echo()
         click.echo(f"Combined savings:     ~{combined:,} tokens")
 
+    # SmartCrusher stats
+    cs = tracker.crusher_summary()
+    if cs["count"] > 0:
+        click.echo()
+        click.echo("SmartCrusher (output compression):")
+        click.echo(f"  Compressions:       {cs['count']:,}")
+        click.echo(f"  Bytes saved:        {cs['saved_bytes']:,}")
+        click.echo(f"  Savings rate:       {cs['savings_pct']:.0f}%")
+
     # Cache-alignment: only meaningful for Anthropic (KV cache prefix stabilization)
     provider_file = root / ".booster" / "provider"
     if provider_file.exists() and provider_file.read_text().strip() == "anthropic":
