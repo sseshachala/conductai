@@ -62,8 +62,10 @@ _CONTEXT_KEYWORDS = (
     r"client[_\-]?id|bearer|api[_\-]?token|service[_\-]?key"
 )
 _CONTEXT_AWARE: list[tuple[re.Pattern, str]] = [
+    # Separator is = or : only — not " — to avoid matching dict key lookups like
+    # headers["Authorization"] where the closing " of the key triggers a false positive.
     (re.compile(
-        rf"(?i)(?:{_CONTEXT_KEYWORDS})\s*[=:\"]\s*['\"]?([A-Za-z0-9\-_\.+/!@#$%^&*(){{}}]{{8,}})['\"]?"
+        rf"(?i)(?:{_CONTEXT_KEYWORDS})\s*[=:]\s*['\"]?([A-Za-z0-9\-_\.+/!@#$%^&*(){{}}]{{8,}})['\"]?"
     ), "credential"),
 ]
 
