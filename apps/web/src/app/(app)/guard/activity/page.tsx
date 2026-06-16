@@ -24,6 +24,21 @@ interface AuditEvent {
   blast_radius: { files: number; symbols: number; tier: string } | null
 }
 
+interface GuardSession {
+  id: string
+  user_email: string | null
+  ai_tool: string
+  started_at: string | null
+  ended_at: string | null
+  event_count: number
+  violations_count: number
+  total_cost_usd: number
+  total_saved_usd: number
+  client_ip: string | null
+  os_info: string | null
+  hostname: string | null
+}
+
 // ─── Guard Shell ──────────────────────────────────────────────────────────────
 
 const GUARD_TABS = [
@@ -224,7 +239,10 @@ function ActivityContent() {
   const { teamId, loading: teamLoading } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
   const { permissions } = useGuardRole(teamId, activeWorkspace?.id ?? null)
+  const [activeView, setActiveView] = useState<"events" | "sessions">("events")
   const [events, setEvents] = useState<AuditEvent[]>([])
+  const [sessions, setSessions] = useState<GuardSession[]>([])
+  const [sessionsLoading, setSessionsLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(false)
@@ -313,6 +331,23 @@ function ActivityContent() {
     }
   }
 
+  async function loadSessions() {
+    if (!teamId) return
+    setSessionsLoading(true)
+    const token = await getToken()
+    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    if (token) headers["Authorization"] = `Bearer ${token}`
+    try {
+      const p = new URLSearchParams({ limit: "100", offset: "0" })
+      if (teamId) p.set("workspace_id", teamId)
+      const res = await fetch(`${base}/guard/spend/sessions?${p}`, { headers })
+      if (res.ok) setSessions(await res.json())
+    } catch { /* non-fatal */ } finally {
+      setSessionsLoading(false)
+    }
+  }
+
   return (
     <GuardShell>
       {/* Viewer-scoped notice */}
@@ -332,8 +367,28 @@ function ActivityContent() {
         </div>
       )}
 
+      {/* View toggle */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+        {(["events", "sessions"] as const).map(v => (
+          <button
+            key={v}
+            onClick={() => { setActiveView(v); if (v === "sessions") loadSessions() }}
+            style={{
+              fontSize: 12, fontWeight: 600, padding: "5px 14px", borderRadius: 20,
+              border: "1px solid",
+              borderColor: activeView === v ? "var(--accent-ring)" : "var(--border)",
+              background: activeView === v ? "var(--accent-weak)" : "var(--surface)",
+              color: activeView === v ? "var(--accent-text)" : "var(--text-2)",
+              cursor: "pointer",
+            }}
+          >
+            {v === "events" ? "Audit Events" : "Sessions & Machines"}
+          </button>
+        ))}
+      </div>
+
       {/* Filter chips + realtime indicator */}
-      <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 16, flexWrap: "wrap" }}>
+      {activeView === "events" && (<div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 16, flexWrap: "wrap" }}>
         {/* Decision filter chips */}
         {["", "blocked", "warned", "allowed"].map(d => {
           const label = d === "" ? "All" : d.charAt(0).toUpperCase() + d.slice(1)
@@ -431,9 +486,67 @@ function ActivityContent() {
             Export CSV
           </button>
         )}
-      </div>
+      </div>)}
 
-      {error && (
+      {/* Sessions & Machines view */}
+      {activeView === "sessions" && (
+        <div className="card" style={{ overflow: "hidden" }}>
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "1.4fr 1fr 0.9fr 0.8fr 0.8fr 0.7fr 0.7fr 1.2fr 1.4fr",
+            gap: 12, padding: "10px 18px",
+            borderBottom: "1px solid var(--border)", background: "var(--surface-2)",
+          }}>
+            {["Developer", "Tool", "Started", "Events", "Violations", "Cost", "Saved", "Machine / IP", "OS"].map((h, i) => (
+              <div key={i} className="eyebrow" style={{ fontSize: 9.5 }}>{h}</div>
+            ))}
+          </div>
+          {sessionsLoading ? (
+            [...Array(4)].map((_, i) => (
+              <div key={i} style={{ height: 44, background: "var(--surface-2)", borderRadius: 0, opacity: 0.5, borderBottom: "1px solid var(--border)" }} />
+            ))
+          ) : sessions.length === 0 ? (
+            <div style={{ padding: "32px 18px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
+              No sessions found.
+            </div>
+          ) : sessions.map((s, i) => (
+            <div key={s.id} style={{
+              display: "grid",
+              gridTemplateColumns: "1.4fr 1fr 0.9fr 0.8fr 0.8fr 0.7fr 0.7fr 1.2fr 1.4fr",
+              gap: 12, padding: "11px 18px", alignItems: "center",
+              borderBottom: i < sessions.length - 1 ? "1px solid var(--border)" : "none",
+            }}>
+              <div className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {s.user_email ?? "—"}
+              </div>
+              <div><ToolBadge tool={s.ai_tool} /></div>
+              <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                {s.started_at ? formatTs(s.started_at) : "—"}
+              </div>
+              <div style={{ fontSize: 12 }}>{s.event_count}</div>
+              <div style={{ fontSize: 12, color: s.violations_count > 0 ? "var(--err)" : "var(--text-muted)", fontWeight: s.violations_count > 0 ? 600 : 400 }}>
+                {s.violations_count}
+              </div>
+              <div className="mono" style={{ fontSize: 11.5 }}>${s.total_cost_usd.toFixed(4)}</div>
+              <div className="mono" style={{ fontSize: 11.5, color: "var(--ok)" }}>${s.total_saved_usd.toFixed(4)}</div>
+              <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+                <div className="mono" style={{ fontWeight: 600, color: "var(--text-2)" }}>{s.hostname ?? "—"}</div>
+                <div style={{ marginTop: 2, color: "var(--text-muted)" }}>{s.client_ip ?? ""}</div>
+              </div>
+              <div className="mono" style={{ fontSize: 11, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {s.os_info ?? "—"}
+              </div>
+            </div>
+          ))}
+          {sessions.length > 0 && (
+            <div style={{ borderTop: "1px solid var(--border)", padding: "8px 18px", fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
+              {sessions.length} session{sessions.length !== 1 ? "s" : ""}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeView === "events" && error && (
         <div
           style={{
             borderRadius: 8,
@@ -450,7 +563,7 @@ function ActivityContent() {
       )}
 
       {/* Events table */}
-      {loading ? (
+      {activeView === "events" && (loading ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {[...Array(6)].map((_, i) => (
             <div
@@ -569,7 +682,7 @@ function ActivityContent() {
             </div>
           )}
         </div>
-      )}
+      ))}
     </GuardShell>
   )
 }
