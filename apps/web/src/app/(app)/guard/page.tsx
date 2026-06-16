@@ -50,6 +50,18 @@ interface ToolCoverageRow {
   reported_at: string
 }
 
+interface GuardSessionRow {
+  id: string
+  user_email: string | null
+  ai_tool: string
+  started_at: string | null
+  event_count: number
+  violations_count: number
+  client_ip: string | null
+  os_info: string | null
+  hostname: string | null
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const AI_TOOL_BADGES: Record<string, { label: string; bg: string; color: string }> = {
@@ -547,6 +559,7 @@ function GuardDashboard() {
   const [events, setEvents]           = useState<GuardEvent[]>([])
   const [stats, setStats]             = useState<SpendStats | null>(null)
   const [loading, setLoading]         = useState(true)
+  const [recentSessions, setRecentSessions] = useState<GuardSessionRow[]>([])
   const [toolCoverage, setToolCoverage] = useState<ToolCoverageRow[]>([])
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore]         = useState(true)
@@ -664,6 +677,17 @@ function GuardDashboard() {
     }
   }, [buildHeaders, teamId])
 
+  const loadRecentSessions = useCallback(async () => {
+    if (!teamId) return
+    const headers = await buildHeaders()
+    const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
+    const params  = new URLSearchParams({ limit: "10", offset: "0", workspace_id: teamId })
+    try {
+      const res = await fetch(`${base}/guard/spend/sessions?${params}`, { headers })
+      if (res.ok) setRecentSessions(await res.json())
+    } catch { /* non-fatal */ }
+  }, [buildHeaders, teamId])
+
   const connectSSE = useCallback(async () => {
     if (!teamId) return
     const token  = await getToken()
@@ -717,16 +741,19 @@ function GuardDashboard() {
     loadEvents()
     loadStats()
     loadToolCoverage()
+    loadRecentSessions()
     const statsInterval        = setInterval(() => { loadStats() }, 60_000)
     const coverageInterval     = setInterval(() => { loadToolCoverage() }, 60_000)
+    const sessionsInterval     = setInterval(() => { loadRecentSessions() }, 60_000)
     const refreshInterval      = setInterval(() => { refreshRecent() }, 10_000)
     return () => {
       clearInterval(statsInterval)
       clearInterval(coverageInterval)
+      clearInterval(sessionsInterval)
       clearInterval(refreshInterval)
       esRef.current?.close()
     }
-  }, [connectSSE, loadEvents, loadStats, loadToolCoverage, refreshRecent])
+  }, [connectSSE, loadEvents, loadStats, loadToolCoverage, loadRecentSessions, refreshRecent])
 
   useEffect(() => {
     loadEvents(filterDecision !== "all" ? filterDecision : undefined, filterDateRange)
@@ -1349,7 +1376,7 @@ function GuardDashboard() {
         )}
 
         {/* KPI cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 24 }}>
           <GuardStatCard label="Tool calls" value={events.length} tone="plain" sub="in period" />
           <GuardStatCard
             label="Blocks"
@@ -1363,6 +1390,12 @@ function GuardDashboard() {
             value={savingsLoading ? "…" : `$${insightsStats.totalSaved.toFixed(2)}`}
             tone="accent"
             sub={savingsLoading ? undefined : `${formatTotalTokensSaved(insightsStats.totalSavedTok)} tokens`}
+          />
+          <GuardStatCard
+            label="Active machines"
+            value={new Set(recentSessions.map(s => s.hostname).filter(Boolean)).size}
+            tone="plain"
+            sub="distinct hostnames"
           />
         </div>
 
@@ -1430,6 +1463,40 @@ function GuardDashboard() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Recent sessions panel */}
+        <div className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 16 }}>
+          <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Recent sessions</span>
+            <a href="/guard/activity" style={{ fontSize: 11, color: "var(--accent-text)", textDecoration: "none" }}>View all →</a>
+          </div>
+          {recentSessions.length === 0 ? (
+            <div style={{ padding: 24, color: "var(--text-3)", fontSize: 13 }}>No sessions yet</div>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: "var(--surface-2)" }}>
+                  {["Developer", "Tool", "Machine", "IP", "OS", "Events", "Started"].map(h => (
+                    <th key={h} style={{ padding: "8px 16px", textAlign: "left", fontWeight: 600, color: "var(--text-3)", fontSize: 11 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {recentSessions.slice(0, 8).map((s, i) => (
+                  <tr key={s.id} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none" }}>
+                    <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 11, color: "var(--text-2)", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.user_email ?? "—"}</td>
+                    <td style={{ padding: "9px 16px" }}><span style={{ fontSize: 11, fontWeight: 600, color: "var(--accent-text)", background: "var(--surface-3)", borderRadius: 4, padding: "1px 6px" }}>{s.ai_tool}</span></td>
+                    <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 11, fontWeight: 600, color: "var(--text)" }}>{s.hostname ?? "—"}</td>
+                    <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 11, color: "var(--text-3)" }}>{s.client_ip ?? "—"}</td>
+                    <td style={{ padding: "9px 16px", fontSize: 11, color: "var(--text-3)", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.os_info ?? "—"}</td>
+                    <td style={{ padding: "9px 16px", fontSize: 12, color: s.violations_count > 0 ? "var(--err)" : "var(--text-2)", fontWeight: s.violations_count > 0 ? 600 : 400 }}>{s.event_count}{s.violations_count > 0 ? ` (${s.violations_count} ⚠)` : ""}</td>
+                    <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 11, color: "var(--text-muted)" }}>{s.started_at ? new Date(s.started_at).toLocaleTimeString() : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
 
         {/* Developer coverage */}

@@ -96,6 +96,9 @@ class SessionOut(BaseModel):
     total_saved_usd: float
     event_count: int
     violations_count: int
+    client_ip: str | None = None
+    os_info: str | None = None
+    hostname: str | None = None
 
 
 class BudgetCreate(BaseModel):
@@ -359,6 +362,9 @@ def list_sessions(
             total_saved_usd=s.total_saved_usd,
             event_count=s.event_count,
             violations_count=s.violations_count,
+            client_ip=s.client_ip,
+            os_info=s.os_info,
+            hostname=s.hostname,
         )
         for s in rows
     ]
