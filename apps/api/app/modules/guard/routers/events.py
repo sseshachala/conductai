@@ -55,6 +55,7 @@ class HookEvent(BaseModel):
     hook_session_id: str | None = None
     blast_radius: dict | None = None
     os_info: str | None = None
+    hostname: str | None = None
 
 
 class UsageUpdate(BaseModel):
@@ -295,6 +296,8 @@ def ingest_event(
                 session.client_ip = (forwarded.split(",")[0].strip() if forwarded else None) or (request.client.host if request.client else None)
             if not session.os_info and body.os_info:
                 session.os_info = body.os_info[:128]
+            if not session.hostname and body.hostname:
+                session.hostname = body.hostname[:255]
 
     db.flush()
     db.refresh(event)
