@@ -15,7 +15,10 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
+import threading
+import time
 import uuid
 import urllib.request
 import urllib.error
@@ -134,6 +137,32 @@ def _load_config() -> dict:
         except Exception:
             pass
     return {}
+
+
+_sync_lock = threading.Lock()
+_SYNC_INTERVAL = 300  # 5 minutes
+
+
+def _maybe_sync() -> None:
+    """If config is stale (>5 min since last sync), run `conduct guard sync` in background."""
+    cfg = _load_config()
+    last_sync = cfg.get("last_synced_at", 0)
+    if time.time() - last_sync < _SYNC_INTERVAL:
+        return
+    if not _sync_lock.acquire(blocking=False):
+        return  # another thread is already syncing
+    def _run():
+        try:
+            subprocess.run(
+                ["conduct", "guard", "sync"],
+                timeout=15,
+                capture_output=True,
+            )
+        except Exception:
+            pass
+        finally:
+            _sync_lock.release()
+    threading.Thread(target=_run, daemon=True, name="guard-auto-sync").start()
 
 
 def _detect_surface(client_info: dict) -> str:
@@ -293,6 +322,12 @@ def _handle_guard_sync(workspace_id: str, token: str) -> str:
 
 
 def _dispatch_tool(name: str, arguments: dict, workspace_id: str, token: str, ai_tool: str) -> str:
+    # Always re-read config so workspace_id/token stay fresh between syncs
+    _maybe_sync()
+    cfg = _load_config()
+    workspace_id = cfg.get("workspace_id") or workspace_id
+    token        = cfg.get("member_token") or token
+
     if name == "guard_status":
         return _handle_guard_status(workspace_id)
     if name == "guard_check":
