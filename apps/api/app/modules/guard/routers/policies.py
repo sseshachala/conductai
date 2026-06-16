@@ -422,3 +422,40 @@ def delete_policy(
     from datetime import datetime, timezone as _tz
     policy.archived_at = datetime.now(_tz.utc)
     db.commit()
+
+
+@router.post("/refresh-builtins")
+def refresh_builtins(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    """Upsert all built-in policies from builtin_policies.yaml into the workspace.
+
+    - New rules (not yet in DB) are inserted enabled=True.
+    - Existing rules have description, match_pattern, match_path_pattern, action,
+      message, and match_tokens_before_gt refreshed from YAML.
+    - User-toggled enabled state is preserved.
+    """
+    ws_uuid = uuid.UUID(str(workspace_id))
+    added = updated = 0
+    for rule in _BUILTIN_RULES:
+        existing = (
+            db.query(GuardPolicy)
+            .filter(GuardPolicy.workspace_id == ws_uuid, GuardPolicy.rule_id == rule["rule_id"])
+            .first()
+        )
+        if existing is None:
+            db.add(GuardPolicy(workspace_id=ws_uuid, builtin=True, enabled=True, **rule))
+            added += 1
+        else:
+            existing.description = rule.get("description", existing.description)
+            existing.match_pattern = rule.get("match_pattern")
+            existing.match_path_pattern = rule.get("match_path_pattern")
+            existing.action = rule.get("action", existing.action)
+            existing.message = rule.get("message", existing.message)
+            if "match_tokens_before_gt" in rule:
+                existing.match_tokens_before_gt = rule["match_tokens_before_gt"]
+            existing.updated_at = datetime.now(timezone.utc)
+            updated += 1
+    db.commit()
+    return {"added": added, "updated": updated, "total": added + updated}

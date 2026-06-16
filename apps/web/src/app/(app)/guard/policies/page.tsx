@@ -573,6 +573,7 @@ function PoliciesContent() {
   const [error, setError] = useState<string | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [confirmDeleteValue, setConfirmDeleteValue] = useState("")
 
@@ -612,6 +613,26 @@ function PoliciesContent() {
     }
     load()
   }, [apiUrl, authHeaders, teamId])
+
+  async function handleRefreshBuiltins() {
+    if (!teamId) return
+    setRefreshing(true)
+    try {
+      const headers = await authHeaders()
+      const res = await fetch(
+        `${apiUrl}/guard/policies/refresh-builtins?workspace_id=${encodeURIComponent(teamId)}`,
+        { method: "POST", headers }
+      )
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      // reload policies list
+      const listRes = await fetch(`${apiUrl}/guard/policies?workspace_id=${encodeURIComponent(teamId)}`, { headers })
+      if (listRes.ok) setPolicies(await listRes.json())
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Refresh failed.")
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   async function handleToggle(id: string) {
     const prev = policies.find(p => p.id === id)
@@ -706,16 +727,30 @@ function PoliciesContent() {
             {" "}{policies.filter(p => p.enabled).length} active.
           </span>
           {canWrite && (
-            <button
-              onClick={() => setShowModal(true)}
-              className="btn btn-primary btn-sm"
-              style={{ marginLeft: "auto" }}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-              New policy
-            </button>
+            <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+              <button
+                onClick={handleRefreshBuiltins}
+                disabled={refreshing}
+                className="btn btn-sm"
+                style={{ opacity: refreshing ? 0.6 : 1 }}
+                title="Re-sync built-in policies from latest YAML definitions"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="23 4 23 10 17 10" />
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                </svg>
+                {refreshing ? "Refreshing…" : "Refresh built-ins"}
+              </button>
+              <button
+                onClick={() => setShowModal(true)}
+                className="btn btn-primary btn-sm"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                New policy
+              </button>
+            </div>
           )}
         </div>
 
