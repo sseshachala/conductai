@@ -113,6 +113,7 @@ class PolicyOut(BaseModel):
     id: UUID
     workspace_id: UUID
     rule_id: str
+    category: Optional[str] = None
     description: Optional[str]
     pattern: Optional[str]
     finding_type: str
@@ -127,6 +128,7 @@ class PolicyOut(BaseModel):
 
 class PolicyIn(BaseModel):
     rule_id: str
+    category: Optional[str] = None
     description: Optional[str] = None
     pattern: str
     finding_type: str = "other"
@@ -135,6 +137,7 @@ class PolicyIn(BaseModel):
 
 class PolicyPatch(BaseModel):
     enabled: Optional[bool] = None
+    category: Optional[str] = None
     description: Optional[str] = None
     pattern: Optional[str] = None
     finding_type: Optional[str] = None
@@ -423,6 +426,7 @@ def create_policy(
         id=uuid.uuid4(),
         workspace_id=uuid.UUID(workspace_id),
         rule_id=body.rule_id,
+        category=body.category,
         description=body.description,
         pattern=body.pattern,
         finding_type=body.finding_type,
@@ -455,6 +459,8 @@ def update_policy(
         raise HTTPException(status_code=404, detail="Policy not found")
     if body.enabled is not None:
         policy.enabled = body.enabled
+    if body.category is not None:
+        policy.category = body.category
     if not policy.builtin:
         if body.description is not None:
             policy.description = body.description

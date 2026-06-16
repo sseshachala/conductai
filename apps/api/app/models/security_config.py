@@ -40,6 +40,7 @@ class SecurityPolicy(Base):
     rule_id = Column(String(100), nullable=False)
     description = Column(String(255), nullable=True)
     pattern = Column(String(500), nullable=True)
+    category = Column(String(100), nullable=True)
     finding_type = Column(String(50), nullable=False, default="other")
     severity = Column(String(20), nullable=False, default="medium")
     enabled = Column(Boolean, nullable=False, default=True)
