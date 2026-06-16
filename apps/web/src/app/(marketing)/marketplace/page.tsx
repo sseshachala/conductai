@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
@@ -146,6 +146,59 @@ const FRIENDLY_NAMES: Record<string, string> = {
   factory:              "Software Factory",
 }
 
+const PACK_CATALOG = [
+  {
+    id: "owasp_top10",
+    name: "OWASP Top 10",
+    badge: "OWASP",
+    badgeColor: "#e44d26",
+    description: "Guards and scan rules for the 10 most critical web application security risks — injection, XSS, path traversal, broken crypto, and more.",
+    tags: ["Security", "Web"],
+    guardRules: 3,
+    securityRules: 4,
+  },
+  {
+    id: "soc2",
+    name: "SOC 2",
+    badge: "SOC2",
+    badgeColor: "#0070f3",
+    description: "Rules aligned to SOC 2 Trust Service Criteria — block hardcoded secrets (CC6.1), warn on PII logging (CC7.2), flag debug mode in production.",
+    tags: ["Compliance", "Audit"],
+    guardRules: 2,
+    securityRules: 3,
+  },
+  {
+    id: "hipaa",
+    name: "HIPAA",
+    badge: "HIPAA",
+    badgeColor: "#7c3aed",
+    description: "Block PHI patterns in source (patient IDs, SSNs, DOBs) and flag unencrypted health data transmission. §164.312 aligned.",
+    tags: ["Healthcare", "PII"],
+    guardRules: 2,
+    securityRules: 3,
+  },
+  {
+    id: "pci_dss",
+    name: "PCI DSS",
+    badge: "PCI",
+    badgeColor: "#dc2626",
+    description: "Block card numbers (PANs) and CVVs in source, flag weak TLS. Covers PCI DSS Requirements 3 and 4.",
+    tags: ["Finance", "Payments"],
+    guardRules: 2,
+    securityRules: 3,
+  },
+  {
+    id: "startup_baseline",
+    name: "Startup Baseline",
+    badge: "BASE",
+    badgeColor: "#059669",
+    description: "Lightweight starter pack — hardcoded API keys, weak random for security, and stack traces leaking to clients. Zero-friction first install.",
+    tags: ["Starter", "General"],
+    guardRules: 1,
+    securityRules: 3,
+  },
+]
+
 export default function MarketplacePage() {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   if (clerkEnabled) return <MarketplaceWithAuth />
@@ -160,9 +213,11 @@ function MarketplaceWithAuth() {
 function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [marketTab, setMarketTab] = useState<"templates" | "modules">(
-    searchParams?.get("tab") === "modules" ? "modules" : "templates"
+  const [marketTab, setMarketTab] = useState<"templates" | "modules" | "compliance">(
+    searchParams?.get("tab") === "compliance" ? "compliance" : searchParams?.get("tab") === "modules" ? "modules" : "templates"
   )
+  const [installedPacks, setInstalledPacks] = useState<Set<string>>(new Set())
+  const [packInstalling, setPackInstalling] = useState<string | null>(null)
   const [playbooks, setPlaybooks] = useState<Playbook[]>([])
   const [loading, setLoading] = useState(true)
   const [activeCategory, setActiveCategory] = useState("All")
@@ -183,6 +238,15 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
     fetch(`${process.env.NEXT_PUBLIC_API_URL}/secure/installed?workspace_id=${wsId}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.installed) setSecureInstalled(true) })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const wsId = getWorkspaceId()
+    if (!wsId) return
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/compliance/packs/installed?workspace_id=${wsId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.installed) setInstalledPacks(new Set(d.installed)) })
       .catch(() => {})
   }, [])
 
@@ -471,6 +535,34 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   const featuredPlaybooks = playbooks.filter(p => p.featured)
   const showFeatured = activeCategory === "All" && !searchActive && featuredPlaybooks.length > 0
 
+  async function installPack(packId: string) {
+    const wsId = getWorkspaceId()
+    if (!wsId || packInstalling) return
+    setPackInstalling(packId)
+    try {
+      const token = getToken ? await getToken() : null
+      const h: Record<string, string> = { "Content-Type": "application/json" }
+      if (token) h["Authorization"] = `Bearer ${token}`
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/compliance/packs/${packId}/install?workspace_id=${wsId}`, { method: "POST", headers: h })
+      if (res.ok) setInstalledPacks(prev => new Set([...prev, packId]))
+    } catch {}
+    finally { setPackInstalling(null) }
+  }
+
+  async function uninstallPack(packId: string) {
+    const wsId = getWorkspaceId()
+    if (!wsId || packInstalling) return
+    setPackInstalling(packId)
+    try {
+      const token = getToken ? await getToken() : null
+      const h: Record<string, string> = {}
+      if (token) h["Authorization"] = `Bearer ${token}`
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/compliance/packs/${packId}/uninstall?workspace_id=${wsId}`, { method: "DELETE", headers: h })
+      if (res.ok) setInstalledPacks(prev => { const s = new Set(prev); s.delete(packId); return s })
+    } catch {}
+    finally { setPackInstalling(null) }
+  }
+
   return (
     <AppShell>
       <div className="mx-auto max-w-5xl px-6 py-10">
@@ -482,27 +574,130 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
           </h1>
         </div>
 
-        {/* Top tabs */}
-        <div style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border)", marginBottom: 24 }}>
-          {(["templates", "modules"] as const).map(t => (
-            <button
-              key={t}
-              onClick={() => { setMarketTab(t); router.replace(t === "modules" ? "/marketplace?tab=modules" : "/marketplace") }}
+        {/* Vertical sidebar + content layout */}
+        <div style={{ display: "flex", gap: 0 }}>
+
+          {/* Left sidebar */}
+          <div style={{ width: 188, flexShrink: 0, borderRight: "1px solid var(--border)", paddingRight: 0, marginRight: 28 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".08em", padding: "0 10px 6px" }}>Templates</div>
+            {(["templates", "modules"] as const).map(t => {
+              const active = marketTab === t
+              return (
+                <button key={t} onClick={() => { setMarketTab(t); router.replace(t === "modules" ? "/marketplace?tab=modules" : "/marketplace") }}
+                  style={{
+                    display: "block", width: "100%", textAlign: "left", padding: "7px 10px", borderRadius: 7,
+                    background: active ? "var(--surface-2)" : "transparent",
+                    color: active ? "var(--text)" : "var(--text-2)",
+                    fontWeight: active ? 600 : 500, fontSize: 13.5, border: "none", cursor: "pointer",
+                    marginBottom: 1, fontFamily: "inherit",
+                  }}
+                >
+                  {t === "templates" ? "Agent Templates" : "Modules"}
+                </button>
+              )
+            })}
+
+            <div style={{ height: 1, background: "var(--border)", margin: "12px 10px" }} />
+
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".08em", padding: "0 10px 6px" }}>Compliance</div>
+            <button onClick={() => { setMarketTab("compliance"); router.replace("/marketplace?tab=compliance") }}
               style={{
-                background: "none", border: "none", padding: "9px 16px", fontSize: 13.5, cursor: "pointer",
-                fontWeight: marketTab === t ? 600 : 500, marginBottom: -1,
-                color: marketTab === t ? "var(--text)" : "var(--text-3)",
-                borderBottom: `2px solid ${marketTab === t ? "var(--accent)" : "transparent"}`,
-                fontFamily: "inherit",
+                display: "block", width: "100%", textAlign: "left", padding: "7px 10px", borderRadius: 7,
+                background: marketTab === "compliance" ? "var(--surface-2)" : "transparent",
+                color: marketTab === "compliance" ? "var(--text)" : "var(--text-2)",
+                fontWeight: marketTab === "compliance" ? 600 : 500, fontSize: 13.5, border: "none", cursor: "pointer",
+                marginBottom: 1, fontFamily: "inherit",
               }}
             >
-              {t === "templates" ? "Agent Templates" : "Modules"}
+              Compliance Packs
             </button>
-          ))}
-        </div>
+          </div>
+
+          {/* Right content */}
+          <div style={{ flex: 1, minWidth: 0 }}>
 
         {/* Modules tab */}
         {marketTab === "modules" && <ModulesManager />}
+
+        {/* Compliance Packs tab */}
+        {marketTab === "compliance" && (
+          <div>
+            <p style={{ fontSize: 13, color: "var(--text-2)", marginBottom: 20, lineHeight: 1.5 }}>
+              One-click bundles that install both Guard runtime rules and Security scan rules together. Installing twice is safe — rules are updated in place.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {PACK_CATALOG.map(pack => {
+                const installed = installedPacks.has(pack.id)
+                const busy = packInstalling === pack.id
+                return (
+                  <div key={pack.id} style={{
+                    border: `1px solid ${installed ? "var(--accent-ring)" : "var(--border)"}`,
+                    borderRadius: 12,
+                    padding: "16px 20px",
+                    background: installed ? "var(--accent-weak)" : "var(--surface)",
+                    display: "flex", alignItems: "flex-start", gap: 16,
+                  }}>
+                    <div style={{
+                      width: 42, height: 42, borderRadius: 10, flexShrink: 0,
+                      background: pack.badgeColor, display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 11, fontWeight: 800, color: "#fff", letterSpacing: ".02em",
+                    }}>
+                      {pack.badge}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{pack.name}</span>
+                        {installed && <span style={{ fontSize: 11, fontWeight: 600, color: "var(--accent-text)", background: "var(--accent-ring)", padding: "1px 8px", borderRadius: 20 }}>Installed</span>}
+                      </div>
+                      <p style={{ fontSize: 12.5, color: "var(--text-2)", margin: "0 0 8px", lineHeight: 1.5 }}>{pack.description}</p>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 11, color: "var(--text-muted)", background: "var(--surface-3)", padding: "2px 8px", borderRadius: 20 }}>
+                          {pack.guardRules} Guard {pack.guardRules === 1 ? "rule" : "rules"}
+                        </span>
+                        <span style={{ fontSize: 11, color: "var(--text-muted)", background: "var(--surface-3)", padding: "2px 8px", borderRadius: 20 }}>
+                          {pack.securityRules} Security {pack.securityRules === 1 ? "rule" : "rules"}
+                        </span>
+                        {pack.tags.map(t => (
+                          <span key={t} style={{ fontSize: 11, color: "var(--text-muted)", background: "var(--surface-3)", padding: "2px 8px", borderRadius: 20 }}>{t}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
+                      {installed ? (
+                        <button
+                          onClick={() => uninstallPack(pack.id)}
+                          disabled={!!busy}
+                          style={{
+                            padding: "6px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 600,
+                            cursor: busy ? "not-allowed" : "pointer",
+                            border: "1px solid var(--border)", background: "transparent", color: "var(--text-2)",
+                            fontFamily: "inherit",
+                          }}
+                        >
+                          {busy ? "…" : "Uninstall"}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => installPack(pack.id)}
+                          disabled={!!packInstalling}
+                          style={{
+                            padding: "6px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 600,
+                            cursor: packInstalling ? "not-allowed" : "pointer",
+                            border: "none", background: "var(--accent)", color: "#fff",
+                            opacity: packInstalling && !busy ? 0.5 : 1,
+                            fontFamily: "inherit",
+                          }}
+                        >
+                          {busy ? "Installing…" : "Install"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Agent Templates tab */}
         {marketTab === "templates" && <>
@@ -641,6 +836,9 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
           </>
         )}
         </>}
+
+          </div>  {/* end right content */}
+        </div>  {/* end sidebar+content flex */}
       </div>
 
       {/* YAML preview modal */}
