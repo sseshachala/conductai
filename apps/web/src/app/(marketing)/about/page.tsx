@@ -21,11 +21,11 @@ export default function AboutPage() {
       <main className="flex-1 max-w-xl mx-auto px-6 py-20 w-full">
 
         <div className="mb-16">
-          <div className="w-14 h-14 rounded-full bg-stone-900 flex items-center justify-center text-white text-lg font-bold mb-8">S</div>
+          <div className="w-14 h-14 rounded-full bg-stone-900 flex items-center justify-center text-white text-lg font-bold mb-8">C</div>
           <h1 className="text-4xl font-black text-stone-900 tracking-tight leading-tight mb-3">
-            Sudhi Seshachala
+            A team of builders.
           </h1>
-          <p className="text-stone-400 text-sm">Houston, TX &nbsp;·&nbsp; Builder &nbsp;·&nbsp; Repeat founder</p>
+          <p className="text-stone-400 text-sm">Houston, TX &nbsp;·&nbsp; One of us founded Xervmon &nbsp;·&nbsp; All of us have been burned by the gap we&apos;re closing</p>
         </div>
 
         <div className="space-y-10 text-stone-700 leading-[1.9] text-[1.0625rem]">
