@@ -98,6 +98,7 @@ class GuardSession(Base):
     violations_count = Column(Integer, nullable=False, default=0)
     client_ip = Column(String(64), nullable=True)
     os_info = Column(String(128), nullable=True)
+    hostname = Column(String(255), nullable=True)
 
 
 class GuardAuditEvent(Base):

@@ -233,6 +233,7 @@ def _post_event(tool_name, tool_input, decision, rule_id=None, message=None, ses
         "rule_message":  message,
         "hook_session_id": session_id,
         "os_info":       _os,
+        "hostname":      _platform.node(),
     })
     api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
     script = (
