@@ -543,7 +543,7 @@ function PoliciesContent() {
         {/* Sub-header row */}
         <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
           <span style={{ fontSize: 13.5, color: "var(--text-3)" }}>
-            Detection rules applied to every Claude Code session.
+            Security scan rules — applied to code findings, not tool calls.
             {" "}{policies.filter(p => p.enabled).length} active.
           </span>
           <button
