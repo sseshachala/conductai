@@ -199,12 +199,19 @@ _MCP_TARGETS = [
 
 
 def _register_mcp(workspace_id: str, member_token: str, api_url: str) -> None:
-    """Write conductguard MCP entry into every AI tool config found on this machine.
+    """Write conductguard + agent-booster MCP entries into every AI tool config found.
 
     Credentials are NOT stored in the MCP config — the server reads them from
     ~/.conductguard/config.json at startup, which is written by guard sync.
     """
-    entry = {"command": "conductguard-mcp"}
+    import shutil
+    servers: dict[str, dict] = {
+        "conductguard": {"command": "conductguard-mcp"},
+    }
+    # Register agent-booster only if the binary is available
+    if shutil.which("booster"):
+        servers["agent-booster"] = {"command": "booster", "args": ["serve"]}
+
     found_any = False
     for cfg_path, label in _MCP_TARGETS:
         if not cfg_path.exists():
@@ -215,12 +222,16 @@ def _register_mcp(workspace_id: str, member_token: str, api_url: str) -> None:
         except (json.JSONDecodeError, OSError):
             existing = {}
         mcp = existing.setdefault("mcpServers", {})
-        if mcp.get("conductguard") == entry:
-            print(f"  {GRAY}Guard MCP already registered in {label}{RESET}")
-            continue
-        mcp["conductguard"] = entry
-        cfg_path.write_text(json.dumps(existing, indent=2))
-        print(f"  {GREEN}Guard MCP registered in {label}{RESET}")
+        changed = False
+        for name, entry in servers.items():
+            if mcp.get(name) == entry:
+                print(f"  {GRAY}{name} MCP already registered in {label}{RESET}")
+            else:
+                mcp[name] = entry
+                changed = True
+                print(f"  {GREEN}{name} MCP registered in {label}{RESET}")
+        if changed:
+            cfg_path.write_text(json.dumps(existing, indent=2))
     if not found_any:
         print(f"  {GRAY}No AI tool configs found for MCP registration{RESET}")
 
