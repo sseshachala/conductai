@@ -96,6 +96,8 @@ class GuardSession(Base):
     total_saved_usd = Column(Float, nullable=False, default=0.0)
     event_count = Column(Integer, nullable=False, default=0)
     violations_count = Column(Integer, nullable=False, default=0)
+    client_ip = Column(String(64), nullable=True)
+    os_info = Column(String(128), nullable=True)
 
 
 class GuardAuditEvent(Base):
