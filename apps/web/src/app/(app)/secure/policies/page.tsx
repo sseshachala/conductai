@@ -11,6 +11,7 @@ import { useWorkspace } from "@/lib/WorkspaceContext"
 interface Policy {
   id: string
   rule_id: string
+  category: string | null
   description: string | null
   pattern: string | null
   finding_type: string
@@ -199,6 +200,7 @@ const labelStyle: React.CSSProperties = {
 
 interface AddRuleFormData {
   rule_id: string
+  category: string
   description: string
   pattern: string
   finding_type: string
@@ -207,6 +209,7 @@ interface AddRuleFormData {
 
 const EMPTY_FORM: AddRuleFormData = {
   rule_id: "",
+  category: "",
   description: "",
   pattern: "",
   finding_type: "other",
@@ -329,6 +332,18 @@ function AddRuleModal({
             <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "var(--text-muted)" }}>
               Slug format: lowercase letters, numbers, hyphens only.
             </p>
+          </div>
+
+          {/* Category */}
+          <div>
+            <label style={labelStyle}>Category</label>
+            <input
+              type="text"
+              value={form.category}
+              onChange={e => set("category", e.target.value)}
+              placeholder="e.g. Secrets, Injection, Custom Rules"
+              style={fieldStyle}
+            />
           </div>
 
           {/* Description */}
@@ -525,9 +540,9 @@ function PoliciesContent() {
     }
   }
 
-  // Group by category
+  // Group by category — prefer DB value, fall back to rule_id prefix lookup
   const grouped = policies.reduce<Record<string, Policy[]>>((acc, p) => {
-    const cat = categoryFor(p.rule_id)
+    const cat = p.category ?? categoryFor(p.rule_id)
     if (!acc[cat]) acc[cat] = []
     acc[cat].push(p)
     return acc
