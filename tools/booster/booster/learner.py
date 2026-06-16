@@ -10,11 +10,12 @@ doesn't collide with the main booster init block.
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 import urllib.error
 import urllib.request
 from pathlib import Path
+
+_GUARD_CFG = Path.home() / ".conductguard" / "config.json"
 
 _BLOCK_START = "<!-- booster:learned:start -->"
 _BLOCK_END = "<!-- booster:learned:end -->"
@@ -101,17 +102,35 @@ def _mine_local(root: Path) -> list[str]:
 
 # --- Guard API mining ---
 
-def _mine_guard() -> list[str]:
-    token = os.environ.get("CONDUCT_API_TOKEN") or os.environ.get("CONDUCT_TOKEN")
-    base = os.environ.get("CONDUCT_API_URL", "https://api.conductai.ai")
-    workspace = os.environ.get("CONDUCT_WORKSPACE_ID")
+def _load_guard_cfg() -> dict:
+    """Read ~/.conductguard/config.json — written by conduct guard sync."""
+    if not _GUARD_CFG.exists():
+        return {}
+    try:
+        return json.loads(_GUARD_CFG.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
 
-    if not token or not workspace:
+
+def _mine_guard() -> list[str]:
+    cfg = _load_guard_cfg()
+    workspace = cfg.get("workspace_id")
+    api_key = cfg.get("api_key", "")
+    member_token = cfg.get("member_token", "")
+    base = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+
+    if not workspace or (not api_key and not member_token):
         return []
+
+    headers: dict[str, str] = {}
+    if api_key:
+        headers["X-Api-Key"] = api_key
+    elif member_token:
+        headers["Authorization"] = f"Bearer {member_token}"
 
     try:
         url = f"{base}/api/workspaces/{workspace}/runs?status=failed&limit=20"
-        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+        req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read())
     except (urllib.error.URLError, json.JSONDecodeError, KeyError):
