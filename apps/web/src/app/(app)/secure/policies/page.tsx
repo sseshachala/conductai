@@ -428,6 +428,7 @@ function PoliciesContent() {
   const [submitting, setSubmitting] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [confirmDeleteValue, setConfirmDeleteValue] = useState("")
+  const [activeCategory, setActiveCategory] = useState<string | null>(null)
 
   const base = process.env.NEXT_PUBLIC_API_URL ?? ""
   const wsId = activeWorkspace?.id
@@ -537,6 +538,8 @@ function PoliciesContent() {
     ...Object.keys(grouped).filter(c => !CATEGORY_ORDER.includes(c)),
   ]
 
+  const currentCategory = activeCategory && grouped[activeCategory] ? activeCategory : orderedCategories[0] ?? null
+
   return (
     <>
       <SecureShell>
@@ -560,43 +563,51 @@ function PoliciesContent() {
 
         {/* Error */}
         {error && (
-          <div
-            style={{
-              borderRadius: 10,
-              border: "1px solid var(--err-bd)",
-              background: "var(--err-bg)",
-              padding: "10px 16px",
-              fontSize: 13,
-              color: "var(--err)",
-              marginBottom: 16,
-            }}
-          >
+          <div style={{ borderRadius: 10, border: "1px solid var(--err-bd)", background: "var(--err-bg)", padding: "10px 16px", fontSize: 13, color: "var(--err)", marginBottom: 16 }}>
             {error}
           </div>
         )}
 
-        {/* Loading */}
-        {loading && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-            {[1, 2, 3].map(i => (
-              <div key={i} className="card" style={{ padding: 18, height: 72 }} />
+        {/* Vertical tabs layout */}
+        <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+          {/* Left sidebar — category tabs */}
+          <div style={{ width: 188, flexShrink: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+            {loading ? (
+              [1,2,3,4].map(i => <div key={i} style={{ height: 36, borderRadius: 8, background: "var(--surface-2)" }} />)
+            ) : orderedCategories.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setActiveCategory(cat)}
+                style={{
+                  textAlign: "left", padding: "8px 12px", borderRadius: 8, border: "none", cursor: "pointer",
+                  fontSize: 13, fontWeight: currentCategory === cat ? 600 : 400,
+                  background: currentCategory === cat ? "var(--accent-weak)" : "transparent",
+                  color: currentCategory === cat ? "var(--accent-text)" : "var(--text-2)",
+                }}
+              >
+                <span>{cat}</span>
+                <span style={{ float: "right", fontSize: 11, color: "var(--text-muted)", fontWeight: 400 }}>
+                  {grouped[cat].length}
+                </span>
+              </button>
             ))}
           </div>
-        )}
 
-        {/* Empty */}
-        {!loading && !error && orderedCategories.length === 0 && (
-          <div className="card" style={{ padding: "48px 24px", textAlign: "center" }}>
-            <p style={{ fontSize: 13, color: "var(--text-muted)" }}>No policies yet. Add a rule to get started.</p>
-          </div>
-        )}
-
-        {/* Policy cards — grouped by category */}
-        {!loading && !error && orderedCategories.map(cat => (
-          <div key={cat} style={{ marginBottom: 24 }}>
-            <div className="eyebrow" style={{ marginBottom: 10, paddingLeft: 2 }}>{cat}</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {grouped[cat].map(p => (
+          {/* Right content — policies for active category */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {loading && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+                {[1, 2, 3].map(i => <div key={i} className="card" style={{ padding: 18, height: 72 }} />)}
+              </div>
+            )}
+            {!loading && !error && orderedCategories.length === 0 && (
+              <div className="card" style={{ padding: "48px 24px", textAlign: "center" }}>
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>No policies yet. Add a rule to get started.</p>
+              </div>
+            )}
+            {!loading && !error && currentCategory && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {(grouped[currentCategory] ?? []).map(p => (
                 <div
                   key={p.id}
                   className="card"
@@ -727,14 +738,15 @@ function PoliciesContent() {
                   )}
                 </div>
               ))}
-            </div>
+              </div>
+            )}
           </div>
-        ))}
+        </div>
 
         {/* Footer note */}
         {!loading && !error && policies.length > 0 && (
-          <p style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", paddingBottom: 8 }}>
-            Built-in rules match fast-path classifier patterns and cannot be deleted — only disabled.
+          <p style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", paddingBottom: 8, marginTop: 16 }}>
+            Built-in rules cannot be deleted — only disabled.
           </p>
         )}
       </SecureShell>

@@ -27,9 +27,6 @@ function SecureOverview() {
   const [summary, setSummary] = useState<SecuritySummary | null>(null)
   const [findings, setFindings] = useState<SecurityFinding[]>([])
   const [loading, setLoading] = useState(true)
-  const [filterSeverity, setFilterSeverity] = useState("all")
-  const [filterStatus, setFilterStatus] = useState("all")
-  const [filterDays, setFilterDays] = useState(30)
   const [updating, setUpdating] = useState<Record<string, boolean>>({})
 
   const base = process.env.NEXT_PUBLIC_API_URL ?? ""
@@ -41,13 +38,13 @@ function SecureOverview() {
     return h
   }, [getToken])
 
-  const load = useCallback(async (days: number) => {
+  const load = useCallback(async () => {
     setLoading(true)
     try {
       const headers = await buildHeaders()
       const [fr, sr] = await Promise.all([
-        fetch(`${base}/security-findings?workspace_id=${wsId}&days=${days}&limit=100`, { headers }),
-        fetch(`${base}/security-findings/summary?workspace_id=${wsId}&days=${days}`, { headers }),
+        fetch(`${base}/security-findings?workspace_id=${wsId}&days=30&limit=100`, { headers }),
+        fetch(`${base}/security-findings/summary?workspace_id=${wsId}&days=30`, { headers }),
       ])
       if (fr.ok) setFindings(await fr.json())
       if (sr.ok) setSummary(await sr.json())
@@ -56,10 +53,10 @@ function SecureOverview() {
   }, [base, wsId, buildHeaders])
 
   useEffect(() => {
-    load(filterDays)
-    const t = setInterval(() => load(filterDays), 30_000)
+    load()
+    const t = setInterval(load, 30_000)
     return () => clearInterval(t)
-  }, [load, filterDays])
+  }, [load])
 
   const updateStatus = useCallback(async (id: string, next: FindingStatus) => {
     setUpdating(u => ({ ...u, [id]: true }))
@@ -76,18 +73,6 @@ function SecureOverview() {
     finally { setUpdating(u => ({ ...u, [id]: false })) }
   }, [base, wsId, buildHeaders])
 
-  const selectStyle: React.CSSProperties = {
-    fontSize: 13, border: "1px solid var(--border)", borderRadius: 8,
-    padding: "6px 12px", background: "var(--surface)", color: "var(--text-2)", cursor: "pointer",
-  }
-
-  const filteredFindings = findings
-    .filter(f => (filterSeverity === "all" || f.severity === filterSeverity) && (filterStatus === "all" || f.status === filterStatus))
-    .sort((a, b) => {
-      const si = SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity)
-      return si !== 0 ? si : new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    })
-
   const open = summary?.by_status?.open ?? 0
   const critHigh = (summary?.by_severity?.critical ?? 0) + (summary?.by_severity?.high ?? 0)
   const fixed = summary?.by_status?.fixed ?? 0
@@ -98,6 +83,10 @@ function SecureOverview() {
     { v: loading ? "—" : String(fixed),    k: "Fixed this month", tone: "var(--ok)" },
     { v: loading ? "—" : summary?.mttr_hours != null ? `${summary.mttr_hours.toFixed(1)}h` : "—", k: "MTTR", tone: "var(--text)" },
   ]
+
+  const recent = findings
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 5)
 
   return (
     <SecureShell>
@@ -111,27 +100,21 @@ function SecureOverview() {
         ))}
       </div>
 
-      {/* Filters */}
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 12 }}>
-        <select value={filterSeverity} onChange={e => setFilterSeverity(e.target.value)} style={selectStyle}>
-          <option value="all">All severities</option>
-          {["critical","high","medium","low","info"].map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>)}
-        </select>
-        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={selectStyle}>
-          <option value="all">All statuses</option>
-          {["open","triaging","fixed","dismissed"].map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>)}
-        </select>
-        <select value={filterDays} onChange={e => setFilterDays(Number(e.target.value))} style={selectStyle}>
-          <option value={7}>Last 7 days</option>
-          <option value={30}>Last 30 days</option>
-          <option value={90}>Last 90 days</option>
-        </select>
-        <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" }}>
-          {filteredFindings.length} finding{filteredFindings.length !== 1 ? "s" : ""}
-        </span>
+      {/* Recent findings */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text-2)" }}>Recent findings</span>
+        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Last 30 days · {findings.length} total</span>
       </div>
 
-      <FindingsTable findings={filteredFindings} loading={loading} onStatusChange={updateStatus} updating={updating} />
+      <FindingsTable findings={recent} loading={loading} onStatusChange={updateStatus} updating={updating} />
+
+      {findings.length > 5 && (
+        <div style={{ display: "flex", justifyContent: "center", paddingTop: 14 }}>
+          <a href="/secure/activity" style={{ fontSize: 13, fontWeight: 500, color: "var(--accent-text)", textDecoration: "none" }}>
+            View all {findings.length} findings →
+          </a>
+        </div>
+      )}
     </SecureShell>
   )
 }
