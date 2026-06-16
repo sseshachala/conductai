@@ -45,6 +45,7 @@ class SecurityPolicy(Base):
     severity = Column(String(20), nullable=False, default="medium")
     enabled = Column(Boolean, nullable=False, default=True)
     builtin = Column(Boolean, nullable=False, default=False)
+    pack_id = Column(String(100), nullable=True)
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,

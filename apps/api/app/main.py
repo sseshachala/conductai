@@ -30,6 +30,7 @@ from app.routers.mcp import router as mcp_router
 from app.routers.generate import router as generate_router
 from app.routers.security import router as security_router
 from app.routers.secure import router as secure_router
+from app.routers.compliance import router as compliance_router
 from app.routers.sdd import router as sdd_router
 from app.routers.session_reports import router as session_reports_router
 from app.routers.team_memory import router as team_memory_router
@@ -120,6 +121,7 @@ app.include_router(mcp_router)
 app.include_router(generate_router)
 app.include_router(security_router)
 app.include_router(secure_router)
+app.include_router(compliance_router)
 app.include_router(sdd_router)
 app.include_router(session_reports_router)
 app.include_router(team_memory_router)
