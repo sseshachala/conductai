@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, get_guard_hook_auth
 from app.core.database import get_db
-from app.modules.guard.models import GuardConfig as _GuardConfig, GuardPolicy
+from app.modules.guard.models import GuardAuditEvent, GuardConfig as _GuardConfig, GuardPolicy
 
 router = APIRouter(prefix="/guard/policies", tags=["guard-policies"])
 
@@ -40,6 +40,69 @@ def _load_builtin_rules() -> list[dict]:
 
 
 _BUILTIN_RULES: list[dict] = _load_builtin_rules()
+
+
+def auto_seed_if_changed(db: Session) -> None:
+    """On startup: if builtin_policies.yaml has changed since last run, upsert
+    policies for every workspace that has Guard enabled (has a GuardConfig row).
+
+    Checksum is persisted to builtin_policies.yaml.sha256 next to the YAML file.
+    Non-fatal: any exception is swallowed so startup is never blocked.
+    """
+    import hashlib
+    _CHECKSUM_FILE = _POLICIES_FILE.with_suffix(".yaml.sha256")
+
+    try:
+        content = _POLICIES_FILE.read_bytes()
+        current_sha = hashlib.sha256(content).hexdigest()
+
+        stored_sha = _CHECKSUM_FILE.read_text().strip() if _CHECKSUM_FILE.exists() else ""
+        if current_sha == stored_sha:
+            return  # YAML unchanged — nothing to do
+
+        # YAML changed (or first run): upsert for all Guard-enabled workspaces
+        from app.modules.guard.models import GuardConfig as _GC
+        workspace_ids = [row.workspace_id for row in db.query(_GC.workspace_id).all()]
+
+        rules = _load_builtin_rules()
+        for ws_id in workspace_ids:
+            ws_uuid = uuid.UUID(str(ws_id))
+            added = updated = 0
+            for rule in rules:
+                rule_data = {**rule, "description": (rule.get("description") or "")[:255]}
+                existing = (
+                    db.query(GuardPolicy)
+                    .filter(GuardPolicy.workspace_id == ws_uuid, GuardPolicy.rule_id == rule_data["rule_id"])
+                    .first()
+                )
+                if existing is None:
+                    db.add(GuardPolicy(workspace_id=ws_uuid, builtin=True, enabled=True, **rule_data))
+                    added += 1
+                else:
+                    existing.description = rule_data.get("description", existing.description)
+                    existing.match_pattern = rule_data.get("match_pattern")
+                    existing.match_path_pattern = rule_data.get("match_path_pattern")
+                    existing.action = rule_data.get("action", existing.action)
+                    existing.message = rule_data.get("message", existing.message)
+                    if "match_tokens_before_gt" in rule_data:
+                        existing.match_tokens_before_gt = rule_data["match_tokens_before_gt"]
+                    existing.updated_at = datetime.now(timezone.utc)
+                    updated += 1
+            db.commit()
+            import structlog as _sl
+            _sl.get_logger(__name__).info(
+                "guard.builtin_policies_seeded",
+                workspace_id=str(ws_id),
+                added=added,
+                updated=updated,
+            )
+
+        # Persist new checksum so next startup is a no-op
+        _CHECKSUM_FILE.write_text(current_sha)
+
+    except Exception as exc:
+        import structlog as _sl
+        _sl.get_logger(__name__).warning("guard.auto_seed_failed", error=str(exc))
 
 
 def seed_builtin_policies(db: Session, workspace_id) -> None:
@@ -122,6 +185,26 @@ class PolicySyncOut(BaseModel):
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+def _write_policy_audit(db: Session, workspace_id: uuid.UUID, tool_call: str, p: GuardPolicy) -> None:
+    """Write a GuardAuditEvent row for admin policy mutations. Non-fatal."""
+    try:
+        summary = f"rule_id={p.rule_id} action={p.action} enabled={p.enabled}"[:500]
+        db.add(GuardAuditEvent(
+            workspace_id=workspace_id,
+            clerk_user_id=None,  # TODO: wire user_id from JWT claims
+            ai_tool="conduct-guard",
+            tool_call=tool_call,
+            decision="allowed",
+            rule_id=p.rule_id,
+            input_summary=summary,
+            ts=datetime.now(timezone.utc),
+        ))
+        db.commit()
+    except Exception as exc:
+        import structlog as _sl
+        _sl.get_logger(__name__).warning("guard.policy_audit_write_failed", exc=str(exc))
 
 
 def _get_policy_or_404(db: Session, policy_id: str) -> GuardPolicy:
@@ -367,6 +450,7 @@ def create_policy(
     db.add(policy)
     db.commit()
     db.refresh(policy)
+    _write_policy_audit(db, ws_uuid, "policy_created", policy)
     return _policy_to_out(policy)
 
 
@@ -401,6 +485,7 @@ def patch_policy(
     policy.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(policy)
+    _write_policy_audit(db, policy.workspace_id, "policy_updated", policy)
     return _policy_to_out(policy)
 
 
@@ -422,6 +507,7 @@ def delete_policy(
     from datetime import datetime, timezone as _tz
     policy.archived_at = datetime.now(_tz.utc)
     db.commit()
+    _write_policy_audit(db, policy.workspace_id, "policy_archived", policy)
 
 
 @router.post("/refresh-builtins")
