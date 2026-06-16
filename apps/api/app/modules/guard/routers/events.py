@@ -54,6 +54,7 @@ class HookEvent(BaseModel):
     tool_use_id: str | None = None
     hook_session_id: str | None = None
     blast_radius: dict | None = None
+    os_info: str | None = None
 
 
 class UsageUpdate(BaseModel):
@@ -224,6 +225,7 @@ def _check_spend_budget(db: Session, workspace_id: str, config: GuardConfig | No
 @router.post("", response_model=EventOut, status_code=201)
 def ingest_event(
     body: HookEvent,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """Ingest a hook event from the guardctl binary. No workspace auth —
@@ -287,6 +289,12 @@ def ingest_event(
             session.event_count += 1
             if body.decision in ("blocked", "warned"):
                 session.violations_count += 1
+            # Capture IP and OS on first event for this session
+            if not session.client_ip:
+                forwarded = request.headers.get("x-forwarded-for")
+                session.client_ip = (forwarded.split(",")[0].strip() if forwarded else None) or (request.client.host if request.client else None)
+            if not session.os_info and body.os_info:
+                session.os_info = body.os_info[:128]
 
     db.flush()
     db.refresh(event)
