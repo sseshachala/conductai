@@ -367,11 +367,39 @@ def ingest_event(
     db.add(event)
     db.flush()  # get event.id before commit
 
-    # 2. Update GuardSession totals if session_id provided
-    if body.session_id:
+    # 2. Auto-resolve or create a GuardSession from hook_session_id
+    resolved_session_id = body.session_id
+    if body.hook_session_id and not resolved_session_id:
+        prior = (
+            db.query(GuardAuditEvent.session_id)
+            .filter(
+                GuardAuditEvent.workspace_id == ws_uuid,
+                GuardAuditEvent.hook_session_id == body.hook_session_id,
+                GuardAuditEvent.session_id.isnot(None),
+                GuardAuditEvent.id != event.id,
+            )
+            .first()
+        )
+        if prior and prior.session_id:
+            resolved_session_id = str(prior.session_id)
+        else:
+            new_sess = GuardSession(
+                workspace_id=ws_uuid,
+                user_email=body.user_email,
+                clerk_user_id=body.clerk_user_id,
+                ai_tool=body.ai_tool,
+                started_at=now,
+            )
+            db.add(new_sess)
+            db.flush()
+            resolved_session_id = str(new_sess.id)
+        event.session_id = uuid.UUID(resolved_session_id)
+        db.flush()
+
+    if resolved_session_id:
         session = (
             db.query(GuardSession)
-            .filter(GuardSession.id == body.session_id)
+            .filter(GuardSession.id == resolved_session_id)
             .first()
         )
         if session:
