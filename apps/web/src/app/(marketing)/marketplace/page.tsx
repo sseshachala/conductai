@@ -579,23 +579,38 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
 
           {/* Left sidebar */}
           <div style={{ width: 188, flexShrink: 0, borderRight: "1px solid var(--border)", paddingRight: 0, marginRight: 28 }}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".08em", padding: "0 10px 6px" }}>Templates</div>
-            {(["templates", "modules"] as const).map(t => {
-              const active = marketTab === t
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".08em", padding: "0 10px 6px" }}>Agent Templates</div>
+            {availableCategories.map(cat => {
+              const active = marketTab === "templates" && activeCategory === cat
               return (
-                <button key={t} onClick={() => { setMarketTab(t); router.replace(t === "modules" ? "/marketplace?tab=modules" : "/marketplace") }}
+                <button key={cat}
+                  onClick={() => { setMarketTab("templates"); setActiveCategory(cat); router.replace("/marketplace") }}
                   style={{
                     display: "block", width: "100%", textAlign: "left", padding: "7px 10px", borderRadius: 7,
                     background: active ? "var(--surface-2)" : "transparent",
                     color: active ? "var(--text)" : "var(--text-2)",
-                    fontWeight: active ? 600 : 500, fontSize: 13.5, border: "none", cursor: "pointer",
+                    fontWeight: active ? 600 : 500, fontSize: 13, border: "none", cursor: "pointer",
                     marginBottom: 1, fontFamily: "inherit",
                   }}
                 >
-                  {t === "templates" ? "Agent Templates" : "Modules"}
+                  {CATEGORY_LABELS[cat] ?? cat}
                 </button>
               )
             })}
+
+            <div style={{ height: 1, background: "var(--border)", margin: "12px 10px" }} />
+
+            <button onClick={() => { setMarketTab("modules"); router.replace("/marketplace?tab=modules") }}
+              style={{
+                display: "block", width: "100%", textAlign: "left", padding: "7px 10px", borderRadius: 7,
+                background: marketTab === "modules" ? "var(--surface-2)" : "transparent",
+                color: marketTab === "modules" ? "var(--text)" : "var(--text-2)",
+                fontWeight: marketTab === "modules" ? 600 : 500, fontSize: 13, border: "none", cursor: "pointer",
+                marginBottom: 1, fontFamily: "inherit",
+              }}
+            >
+              Modules
+            </button>
 
             <div style={{ height: 1, background: "var(--border)", margin: "12px 10px" }} />
 
@@ -605,7 +620,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                 display: "block", width: "100%", textAlign: "left", padding: "7px 10px", borderRadius: 7,
                 background: marketTab === "compliance" ? "var(--surface-2)" : "transparent",
                 color: marketTab === "compliance" ? "var(--text)" : "var(--text-2)",
-                fontWeight: marketTab === "compliance" ? 600 : 500, fontSize: 13.5, border: "none", cursor: "pointer",
+                fontWeight: marketTab === "compliance" ? 600 : 500, fontSize: 13, border: "none", cursor: "pointer",
                 marginBottom: 1, fontFamily: "inherit",
               }}
             >
@@ -785,33 +800,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
               </div>
             )}
 
-            {/* Category chips */}
-            <div style={{ display: "flex", gap: 7, marginBottom: 18, flexWrap: "wrap" }}>
-              {availableCategories.map(cat => {
-                const isActive = activeCategory === cat
-                return (
-                  <button
-                    key={cat}
-                    onClick={() => setActiveCategory(cat)}
-                    style={{
-                      height: 30,
-                      padding: "0 13px",
-                      borderRadius: 20,
-                      border: `1px solid ${isActive ? "var(--accent-ring)" : "var(--border)"}`,
-                      background: isActive ? "var(--accent-weak)" : "var(--surface)",
-                      color: isActive ? "var(--accent-text)" : "var(--text-2)",
-                      fontSize: 13,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      transition: "all .12s",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {CATEGORY_LABELS[cat] ?? cat}
-                  </button>
-                )
-              })}
-            </div>
+
 
             {/* Playbooks grid */}
             {filtered.length === 0 ? (
