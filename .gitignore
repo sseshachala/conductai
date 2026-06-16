@@ -70,3 +70,6 @@ apps/api/CLAUDE.md
 apps/web/.claude/
 apps/web/.mcp.json
 apps/web/CLAUDE.md
+
+# Internal-only docs — never publish
+docs/internal/
