@@ -1275,11 +1275,11 @@ function GuardDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {filteredEvents.map((ev, idx) => (
+                {filteredEvents.slice(0, 5).map((ev, idx) => (
                   <tr
                     key={ev.id}
                     style={{
-                      borderBottom: idx < filteredEvents.length - 1 ? "1px solid var(--border)" : undefined,
+                      borderBottom: idx < Math.min(filteredEvents.length, 5) - 1 ? "1px solid var(--border)" : undefined,
                       background: ev.decision === "blocked" ? "var(--err-bg)" : undefined,
                     }}
                   >
@@ -1338,23 +1338,14 @@ function GuardDashboard() {
               </tbody>
             </table>
           </div>
-          {hasMore && (
-            <div style={{ display: "flex", justifyContent: "center", paddingTop: 16, paddingBottom: 8 }}>
-              <button
-                onClick={loadMore}
-                disabled={loadingMore}
-                style={{
-                  fontSize: 13,
-                  fontWeight: 500,
-                  color: loadingMore ? "var(--text-muted)" : "var(--accent-text)",
-                  background: "none",
-                  border: "none",
-                  cursor: loadingMore ? "default" : "pointer",
-                  padding: 0,
-                }}
+          {filteredEvents.length > 5 && (
+            <div style={{ display: "flex", justifyContent: "center", paddingTop: 14, paddingBottom: 6 }}>
+              <a
+                href="/guard/activity"
+                style={{ fontSize: 13, fontWeight: 500, color: "var(--accent-text)", textDecoration: "none" }}
               >
-                {loadingMore ? "Loading…" : "Load more"}
-              </button>
+                View all {filteredEvents.length} events →
+              </a>
             </div>
           )}
         </>
