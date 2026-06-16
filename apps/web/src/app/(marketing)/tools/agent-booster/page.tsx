@@ -264,7 +264,7 @@ function DiagnosticHero() {
       {/* Badge */}
       <div className="flex items-center gap-2 mb-8">
         <span className="text-indigo-400 font-black text-lg">◈</span>
-        <span className="text-xs font-semibold text-stone-400 uppercase tracking-widest">Agent Booster v0.2.25</span>
+        <span className="text-xs font-semibold text-stone-400 uppercase tracking-widest">Agent Booster v0.2.30</span>
         <span className="text-[10px] font-bold bg-emerald-900 text-emerald-300 border border-emerald-700 px-2 py-0.5 rounded-full uppercase tracking-widest">Free · MIT</span>
       </div>
 
@@ -327,6 +327,38 @@ function DiagnosticHero() {
 /* ─── What's New ───────────────────────────────────────────────────────── */
 
 const WHATS_NEW_ITEMS = [
+  {
+    icon: "🤝",
+    title: "Shared team index",
+    tag: "v0.2.30",
+    desc: "booster index-push uploads your symbol index to the team workspace via the Guard sync channel. Teammates run booster index-pull (or just conduct guard sync) to merge it locally — no re-indexing the same repo twice. Uses the same auth as guard sync, zero new config.",
+    color: "text-indigo-600",
+    bg: "bg-indigo-50 border-indigo-200",
+  },
+  {
+    icon: "🎓",
+    title: "booster learn",
+    tag: "v0.2.28",
+    desc: "Mines your local read history and Guard failed run traces to extract patterns — hot files, files that resist smart_read, turn limit failures. Writes corrections directly to CLAUDE.md under a dedicted block. Run booster learn --dry-run to preview first.",
+    color: "text-emerald-600",
+    bg: "bg-emerald-50 border-emerald-200",
+  },
+  {
+    icon: "🗜️",
+    title: "SmartCrusher",
+    tag: "v0.2.27",
+    desc: "Compression pass on every smart_read and search_context result before it reaches the model. JSON arrays: keeps first 5 + last 3 entries, drops middle duplicates. Repeated lines: collapsed into '… N identical lines omitted'. Kicks in above 2KB — small results pass through untouched.",
+    color: "text-rose-600",
+    bg: "bg-rose-50 border-rose-200",
+  },
+  {
+    icon: "⚡",
+    title: "Cache alignment",
+    tag: "v0.2.26",
+    desc: "Tools are now returned alphabetically with deterministically sorted schema keys on every request. Anthropic users get free KV cache hits on the tools prefix — same tool list every session means the prefix is already cached. Auto-detected from ANTHROPIC_API_KEY, no config needed. booster gain shows cache alignment status.",
+    color: "text-amber-600",
+    bg: "bg-amber-50 border-amber-200",
+  },
   {
     icon: "🛑",
     title: "Output token tracking",
@@ -400,14 +432,14 @@ function WhatsNewSection() {
         <div className="flex items-center justify-center gap-3 mb-3">
           <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest">What&apos;s new</p>
           <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full uppercase tracking-widest">
-            v0.2.16 – v0.2.25
+            v0.2.16 – v0.2.30
           </span>
         </div>
         <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
-          Daemon, verbosity modes, and output token tracking.
+          SmartCrusher, cache alignment, booster learn, and shared team index.
         </h2>
         <p className="text-center text-stone-500 text-sm max-w-2xl mx-auto mb-12">
-          Three releases shipped together. The result: booster start is the only command you need,
+          Four new releases. The result: booster cuts costs at every layer — elimination, compression, caching, and learning from every session,
           search is instant after the first run, and re-indexing costs nothing on unchanged files.
         </p>
 
