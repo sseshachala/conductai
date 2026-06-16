@@ -576,6 +576,8 @@ function PoliciesContent() {
   const [refreshing, setRefreshing] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [confirmDeleteValue, setConfirmDeleteValue] = useState("")
+  const [activeTab, setActiveTab] = useState<string | null>(null)
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ""
   const canWrite = permissions.canEditPolicies
@@ -711,11 +713,22 @@ function PoliciesContent() {
     ...Object.keys(grouped).filter(c => !CATEGORY_ORDER.includes(c)),
   ]
 
+  const currentTab = activeTab && grouped[activeTab] ? activeTab : orderedCategories[0] ?? null
+  const visiblePolicies = currentTab ? (grouped[currentTab] ?? []) : []
+
   const latestUpdated = policies
     .map(p => p.updated_at)
     .filter(Boolean)
     .sort()
     .at(-1)
+
+  function toggleExpand(id: string) {
+    setExpandedIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
 
   return (
     <>
@@ -756,26 +769,16 @@ function PoliciesContent() {
 
         {/* Error */}
         {error && (
-          <div
-            style={{
-              borderRadius: 10,
-              border: "1px solid var(--err-bd)",
-              background: "var(--err-bg)",
-              padding: "10px 16px",
-              fontSize: 13,
-              color: "var(--err)",
-              marginBottom: 16,
-            }}
-          >
+          <div style={{ borderRadius: 10, border: "1px solid var(--err-bd)", background: "var(--err-bg)", padding: "10px 16px", fontSize: 13, color: "var(--err)", marginBottom: 16 }}>
             {error}
           </div>
         )}
 
         {/* Loading */}
         {loading && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-            {[1, 2, 3].map(i => (
-              <div key={i} className="card" style={{ padding: 18, height: 72 }} />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="card" style={{ padding: 18, height: 96 }} />
             ))}
           </div>
         )}
@@ -787,150 +790,195 @@ function PoliciesContent() {
           </div>
         )}
 
-        {/* Policy cards — grouped by category */}
-        {!loading && !error && orderedCategories.map(cat => (
-          <div key={cat} style={{ marginBottom: 24 }}>
-            <div className="eyebrow" style={{ marginBottom: 10, paddingLeft: 2 }}>{cat}</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {grouped[cat].map(p => (
-                <div
-                  key={p.id}
-                  className="card"
-                  style={{
-                    padding: "15px 18px",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 10,
-                    opacity: p.enabled ? 1 : 0.62,
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                    <ActionAvatar action={p.action} />
-
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 3 }}>
-                        <span className="mono" style={{ fontWeight: 650, fontSize: 13.5 }}>{p.rule_id}</span>
-                        <ActionBadge action={p.action} />
-                      </div>
-                      <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>
-                        {p.description || p.message || "—"}
-                      </div>
-                    </div>
-
-                    {/* Match info */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 150 }}>
-                      <div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
-                        match <strong style={{ color: "var(--text-2)" }}>{p.match_tool}</strong>
-                      </div>
-                      <div
-                        className="mono"
-                        style={{ fontSize: 11.5, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
-                      >
-                        pattern <span style={{ color: "var(--err)" }}>{p.match_pattern}</span>
-                      </div>
-                    </div>
-
-                    {/* Hits + last triggered */}
-                    <div style={{ textAlign: "center", minWidth: 72 }}>
-                      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                        {formatLastTriggered(p.last_triggered)}
-                      </div>
-                      <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 1 }}>last triggered</div>
-                    </div>
-
-                    {/* Delete trigger (custom rules only) */}
-                    {!p.builtin && canWrite && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (confirmDeleteId === p.id) {
-                            setConfirmDeleteId(null)
-                            setConfirmDeleteValue("")
-                          } else {
-                            setConfirmDeleteId(p.id)
-                            setConfirmDeleteValue("")
-                          }
-                        }}
-                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4, flexShrink: 0 }}
-                        title="Delete rule"
-                        aria-label={`Delete rule ${p.rule_id}`}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                          <path fillRule="evenodd" d="M5 3.25V4H2.75a.75.75 0 0 0 0 1.5h.3l.815 8.15A1.5 1.5 0 0 0 5.357 15h5.285a1.5 1.5 0 0 0 1.493-1.35L12.95 5.5h.3a.75.75 0 0 0 0-1.5H11v-.75A2.25 2.25 0 0 0 8.75 1h-1.5A2.25 2.25 0 0 0 5 3.25Zm2.25-.75a.75.75 0 0 0-.75.75V4h3v-.75a.75.75 0 0 0-.75-.75h-1.5ZM6.05 6a.75.75 0 0 1 .787.713l.275 5.5a.75.75 0 0 1-1.498.075l-.275-5.5A.75.75 0 0 1 6.05 6Zm3.9 0a.75.75 0 0 1 .712.787l-.275 5.5a.75.75 0 0 1-1.498-.075l.275-5.5A.75.75 0 0 1 9.95 6Z" clipRule="evenodd" />
-                        </svg>
-                      </button>
-                    )}
-                    {p.builtin && (
-                      <span style={{ color: "var(--border-2)", flexShrink: 0 }} title="Built-in rule — cannot be deleted">
-                        <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
-                          <path fillRule="evenodd" d="M8 1a3 3 0 0 0-3 3v1H4a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-1V4a3 3 0 0 0-3-3Zm0 1.5A1.5 1.5 0 0 1 9.5 4v1h-3V4A1.5 1.5 0 0 1 8 2.5Z" clipRule="evenodd" />
-                        </svg>
-                      </span>
-                    )}
-
-                    {/* Toggle */}
-                    {canWrite
-                      ? <Toggle enabled={p.enabled} onChange={() => handleToggle(p.id)} />
-                      : (
-                        <span
-                          style={{
-                            width: 40, height: 23, borderRadius: 20,
-                            background: p.enabled ? "var(--accent)" : "var(--border-2)",
-                            display: "inline-block", opacity: 0.5, flexShrink: 0,
-                          }}
-                        />
-                      )
-                    }
-                  </div>
-
-                  {!p.builtin && canWrite && confirmDeleteId === p.id && (
-                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-                      <p style={{ margin: 0, fontSize: 11, color: "var(--err)" }}>
-                        Type <strong>{p.rule_id}</strong> to confirm deletion.
-                      </p>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <input
-                          value={confirmDeleteValue}
-                          onChange={e => setConfirmDeleteValue(e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === "Enter") handleDelete(p.id)
-                            if (e.key === "Escape") { setConfirmDeleteId(null); setConfirmDeleteValue("") }
-                          }}
-                          placeholder={p.rule_id}
-                          style={{ flex: 1, minWidth: 0, fontSize: 11.5, border: "1px solid var(--err-bd, #fecaca)", borderRadius: 8, padding: "6px 10px", outline: "none", background: "var(--surface)", color: "var(--text)" }}
-                        />
-                        <button
-                          onClick={() => handleDelete(p.id)}
-                          disabled={confirmDeleteValue !== p.rule_id}
-                          className="btn btn-sm"
-                          style={{ background: "var(--err)", color: "#fff", border: "none", opacity: confirmDeleteValue !== p.rule_id ? 0.4 : 1 }}
-                        >
-                          Confirm
-                        </button>
-                        <button
-                          onClick={() => { setConfirmDeleteId(null); setConfirmDeleteValue("") }}
-                          className="btn btn-ghost btn-sm"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
+        {/* Category tabs + 2-col grid */}
+        {!loading && !error && orderedCategories.length > 0 && (
+          <>
+            {/* Tab bar */}
+            <div style={{ display: "flex", gap: 2, marginBottom: 16, borderBottom: "1px solid var(--border)", paddingBottom: 0, overflowX: "auto" }}>
+              {orderedCategories.map(cat => {
+                const count = grouped[cat].length
+                const active = cat === currentTab
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => setActiveTab(cat)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      borderBottom: active ? "2px solid var(--accent)" : "2px solid transparent",
+                      padding: "8px 14px",
+                      fontSize: 12.5,
+                      fontWeight: active ? 600 : 400,
+                      color: active ? "var(--text)" : "var(--text-3)",
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                      marginBottom: -1,
+                      transition: "color .12s",
+                    }}
+                  >
+                    {cat}
+                    <span style={{
+                      marginLeft: 6,
+                      fontSize: 10.5,
+                      background: active ? "var(--accent-bg, #eff6ff)" : "var(--surface-2, #f4f4f5)",
+                      color: active ? "var(--accent)" : "var(--text-muted)",
+                      borderRadius: 99,
+                      padding: "1px 6px",
+                      fontWeight: 500,
+                    }}>
+                      {count}
+                    </span>
+                  </button>
+                )
+              })}
             </div>
-          </div>
-        ))}
 
-        {/* Sync status footer */}
-        {!loading && !error && policies.length > 0 && (
-          <p style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", paddingBottom: 8 }}>
-            Policy last updated: {formatUpdatedAt(latestUpdated)} · Synced to developers
-          </p>
+            {/* 2-column card grid */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, alignItems: "start" }}>
+              {visiblePolicies.map(p => {
+                const expanded = expandedIds.has(p.id)
+                const hasDetails = !!(p.match_pattern || p.match_path_pattern || p.message)
+                return (
+                  <div
+                    key={p.id}
+                    className="card"
+                    style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 0, opacity: p.enabled ? 1 : 0.62 }}
+                  >
+                    {/* Card header */}
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                      <ActionAvatar action={p.action} />
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 4 }}>
+                          <span className="mono" style={{ fontWeight: 650, fontSize: 12.5 }}>{p.rule_id}</span>
+                          <ActionBadge action={p.action} />
+                          {p.builtin && (
+                            <span style={{ color: "var(--text-muted)", display: "flex" }} title="Built-in">
+                              <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
+                                <path fillRule="evenodd" d="M8 1a3 3 0 0 0-3 3v1H4a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-1V4a3 3 0 0 0-3-3Zm0 1.5A1.5 1.5 0 0 1 9.5 4v1h-3V4A1.5 1.5 0 0 1 8 2.5Z" clipRule="evenodd" />
+                              </svg>
+                            </span>
+                          )}
+                        </div>
+                        <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)", lineHeight: 1.45 }}>
+                          {p.description || p.message || "—"}
+                        </p>
+                      </div>
+
+                      {/* Right controls */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                        {!p.builtin && canWrite && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirmDeleteId === p.id) {
+                                setConfirmDeleteId(null); setConfirmDeleteValue("")
+                              } else {
+                                setConfirmDeleteId(p.id); setConfirmDeleteValue("")
+                              }
+                            }}
+                            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 3 }}
+                            title="Delete rule"
+                          >
+                            <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+                              <path fillRule="evenodd" d="M5 3.25V4H2.75a.75.75 0 0 0 0 1.5h.3l.815 8.15A1.5 1.5 0 0 0 5.357 15h5.285a1.5 1.5 0 0 0 1.493-1.35L12.95 5.5h.3a.75.75 0 0 0 0-1.5H11v-.75A2.25 2.25 0 0 0 8.75 1h-1.5A2.25 2.25 0 0 0 5 3.25Zm2.25-.75a.75.75 0 0 0-.75.75V4h3v-.75a.75.75 0 0 0-.75-.75h-1.5ZM6.05 6a.75.75 0 0 1 .787.713l.275 5.5a.75.75 0 0 1-1.498.075l-.275-5.5A.75.75 0 0 1 6.05 6Zm3.9 0a.75.75 0 0 1 .712.787l-.275 5.5a.75.75 0 0 1-1.498-.075l.275-5.5A.75.75 0 0 1 9.95 6Z" clipRule="evenodd" />
+                            </svg>
+                          </button>
+                        )}
+                        {canWrite
+                          ? <Toggle enabled={p.enabled} onChange={() => handleToggle(p.id)} />
+                          : <span style={{ width: 40, height: 23, borderRadius: 20, background: p.enabled ? "var(--accent)" : "var(--border-2)", display: "inline-block", opacity: 0.5 }} />
+                        }
+                      </div>
+                    </div>
+
+                    {/* Footer: last triggered + expand toggle */}
+                    <div style={{ display: "flex", alignItems: "center", marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
+                      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                        Last hit: <strong style={{ color: "var(--text-2)" }}>{formatLastTriggered(p.last_triggered)}</strong>
+                      </span>
+                      {hasDetails && (
+                        <button
+                          onClick={() => toggleExpand(p.id)}
+                          style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontSize: 11.5, color: "var(--accent)", display: "flex", alignItems: "center", gap: 3, padding: 0 }}
+                        >
+                          {expanded ? "Hide details" : "Show details"}
+                          <svg
+                            width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+                            style={{ transform: expanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform .15s" }}
+                          >
+                            <polyline points="6 9 12 15 18 9" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Expanded detail panel */}
+                    {expanded && hasDetails && (
+                      <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 7 }}>
+                        {p.match_tool && (
+                          <div>
+                            <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Applies to</span>
+                            <div className="mono" style={{ fontSize: 12, color: "var(--text-2)", marginTop: 2 }}>{p.match_tool}</div>
+                          </div>
+                        )}
+                        {p.match_pattern && (
+                          <div>
+                            <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Pattern</span>
+                            <div className="mono" style={{ fontSize: 11.5, color: "var(--err)", marginTop: 2, wordBreak: "break-all", background: "var(--err-bg)", borderRadius: 6, padding: "4px 8px" }}>{p.match_pattern}</div>
+                          </div>
+                        )}
+                        {p.match_path_pattern && (
+                          <div>
+                            <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Path pattern</span>
+                            <div className="mono" style={{ fontSize: 11.5, color: "var(--warn)", marginTop: 2, wordBreak: "break-all", background: "var(--warn-bg)", borderRadius: 6, padding: "4px 8px" }}>{p.match_path_pattern}</div>
+                          </div>
+                        )}
+                        {p.message && (
+                          <div>
+                            <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Developer message</span>
+                            <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 2, fontStyle: "italic" }}>&ldquo;{p.message}&rdquo;</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Delete confirm */}
+                    {!p.builtin && canWrite && confirmDeleteId === p.id && (
+                      <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10, marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                        <p style={{ margin: 0, fontSize: 11, color: "var(--err)" }}>
+                          Type <strong>{p.rule_id}</strong> to confirm deletion.
+                        </p>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input
+                            value={confirmDeleteValue}
+                            onChange={e => setConfirmDeleteValue(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === "Enter") handleDelete(p.id)
+                              if (e.key === "Escape") { setConfirmDeleteId(null); setConfirmDeleteValue("") }
+                            }}
+                            placeholder={p.rule_id}
+                            style={{ flex: 1, minWidth: 0, fontSize: 11.5, border: "1px solid var(--err-bd, #fecaca)", borderRadius: 8, padding: "6px 10px", outline: "none", background: "var(--surface)", color: "var(--text)" }}
+                          />
+                          <button onClick={() => handleDelete(p.id)} disabled={confirmDeleteValue !== p.rule_id} className="btn btn-sm" style={{ background: "var(--err)", color: "#fff", border: "none", opacity: confirmDeleteValue !== p.rule_id ? 0.4 : 1 }}>Confirm</button>
+                          <button onClick={() => { setConfirmDeleteId(null); setConfirmDeleteValue("") }} className="btn btn-ghost btn-sm">Cancel</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Footer */}
+            {policies.length > 0 && (
+              <p style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", paddingTop: 16, paddingBottom: 8 }}>
+                Policy last updated: {formatUpdatedAt(latestUpdated)} · Synced to developers
+              </p>
+            )}
+          </>
         )}
       </GuardShell>
 
-      {/* Add rule modal */}
       {showModal && (
         <AddRuleModal
           onClose={() => setShowModal(false)}
