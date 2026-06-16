@@ -878,6 +878,8 @@ def _report_savings(cfg: dict, base_url: str, api_key: str) -> None:
                 "saved_tokens": raw.get("saved_tokens", 0),
                 "savings_pct": raw.get("savings_pct", 0.0),
                 "total_reads": raw.get("total_reads", 0),
+                "crusher": raw.get("crusher", {}),
+                "cache_align": raw.get("cache_align", {}),
             }
     except Exception:
         pass
@@ -928,6 +930,14 @@ def _report_savings(cfg: dict, base_url: str, api_key: str) -> None:
         print(f"  {GREEN}Savings reported{RESET}")
     except Exception:
         pass  # Never fail sync because savings POST failed
+
+    # Push booster symbol index to team workspace (best-effort)
+    try:
+        r = subprocess.run(["booster", "index-push"], capture_output=True, text=True, timeout=30)
+        if r.returncode == 0 and r.stdout.strip():
+            print(f"  {GREEN}Booster index:{RESET} {r.stdout.strip()}")
+    except Exception:
+        pass
 
 
 def cmd_guard_status(args):

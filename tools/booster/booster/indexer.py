@@ -454,3 +454,43 @@ class SymbolIndexer:
             params,
         ).fetchall()
         return [dict(r) for r in rows]
+
+    def export_symbols(self) -> list[dict]:
+        """Export all symbols as plain dicts (for shared index push)."""
+        rows = self._conn.execute(
+            "SELECT file, name, kind, start_line, end_line, signature, file_hash, file_mtime FROM symbols ORDER BY file, start_line"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def import_symbols(self, symbols: list[dict]) -> int:
+        """Merge incoming symbols from team index. Skips files already indexed locally with same hash."""
+        imported = 0
+        for s in symbols:
+            existing = self._conn.execute(
+                "SELECT file_hash FROM symbols WHERE file = ? LIMIT 1", (s["file"],)
+            ).fetchone()
+            if existing and existing["file_hash"] == s.get("file_hash"):
+                continue
+            self._conn.execute(
+                "INSERT OR REPLACE INTO symbols (file, name, kind, start_line, end_line, signature, file_hash, file_mtime) "
+                "VALUES (:file, :name, :kind, :start_line, :end_line, :signature, :file_hash, :file_mtime)",
+                s,
+            )
+            imported += 1
+        self._conn.commit()
+        return imported
+
+    @staticmethod
+    def repo_key(root: Path) -> str:
+        """Stable key for this repo — git remote origin URL or root path hash."""
+        import hashlib, subprocess
+        try:
+            result = subprocess.run(
+                ["git", "remote", "get-url", "origin"],
+                cwd=root, capture_output=True, text=True, timeout=3
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return hashlib.sha256(result.stdout.strip().encode()).hexdigest()[:16]
+        except Exception:
+            pass
+        return hashlib.sha256(str(root.resolve()).encode()).hexdigest()[:16]
