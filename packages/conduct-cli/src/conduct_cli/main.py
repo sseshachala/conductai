@@ -2823,6 +2823,30 @@ def cmd_memory(args):
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
+_GUARD_CONFIG = Path.home() / ".conductguard" / "config.json"
+_GUARD_SKIP   = Path.home() / ".conductguard" / ".setup_skip"
+
+GREEN  = "\033[32m"
+YELLOW = "\033[33m"
+BOLD   = "\033[1m"
+RESET  = "\033[0m"
+
+
+def _check_guard_setup(command: str) -> None:
+    """On first run after install, prompt user to run conduct guard sync."""
+    # Skip if: already set up, user said skip, or running guard sync/login itself
+    if command in ("guard", "login", "whoami", "version"):
+        return
+    if _GUARD_CONFIG.exists() or _GUARD_SKIP.exists():
+        return
+    print(
+        f"\n{YELLOW}{BOLD}⚡ Conduct Guard is not set up on this machine.{RESET}\n"
+        f"   Run {BOLD}conduct guard sync{RESET} to register policy hooks and MCP servers.\n"
+        f"   (This takes ~5 seconds and only needs to happen once per machine.)\n"
+        f"   To skip this reminder: {BOLD}conduct guard skip-setup{RESET}\n"
+    )
+
+
 def main():
     _auto_update()
 
@@ -2982,6 +3006,14 @@ def main():
     mem_search_p.add_argument("--limit", type=int, default=5, help="Max results")
 
     args = parser.parse_args()
+
+    _check_guard_setup(args.command or "")
+
+    if args.command == "guard" and getattr(args, "guard_command", None) == "skip-setup":
+        _GUARD_SKIP.parent.mkdir(parents=True, exist_ok=True)
+        _GUARD_SKIP.touch()
+        print(f"{GREEN}✓ Setup reminder suppressed.{RESET} Run `conduct guard sync` anytime to enable Guard.")
+        return
 
     if args.command == "login":
         cmd_login(args)
