@@ -45,6 +45,9 @@ const RULE_CATEGORIES: Record<string, string> = {
   "no-aws-keys": "Secrets & Credentials",
   "no-private-key-files": "Secrets & Credentials",
   "no-secret-in-commit-msg": "Secrets & Credentials",
+  "secret-stripe": "Secrets & Credentials",
+  "secret-slack": "Secrets & Credentials",
+  "secret-private-key": "Secrets & Credentials",
   "no-sudo": "Permission Escalation",
   "no-chmod-permissive": "Permission Escalation",
   "no-chown-root": "Permission Escalation",
@@ -56,8 +59,14 @@ const RULE_CATEGORIES: Record<string, string> = {
   "audit-migrations": "Audit",
   "audit-ci-config": "Audit",
   "audit-dockerfile": "Audit",
+  "cmd-injection": "Code Security",
+  "sql-injection": "Code Security",
+  "weak-hash-md5": "Code Security",
+  "weak-hash-sha1": "Code Security",
   "warn-deterministic-compute": "Token Efficiency",
   "warn-large-context-dump": "Token Efficiency",
+  "pii-redact": "Privacy",
+  "secret-redact": "Privacy",
 }
 
 const CATEGORY_ORDER = [
@@ -65,13 +74,15 @@ const CATEGORY_ORDER = [
   "Secrets & Credentials",
   "Permission Escalation",
   "Production Gates",
+  "Code Security",
   "Audit",
   "Token Efficiency",
+  "Privacy",
   "Custom Rules",
 ]
 
-function categoryFor(rule_id: string): string {
-  return RULE_CATEGORIES[rule_id] ?? "Custom Rules"
+function categoryFor(p: { rule_id: string; category?: string }): string {
+  return p.category || RULE_CATEGORIES[p.rule_id] || "Custom Rules"
 }
 
 // ─── Guard Shell ──────────────────────────────────────────────────────────────
@@ -702,7 +713,7 @@ function PoliciesContent() {
 
   // Group by category
   const grouped = policies.reduce<Record<string, Policy[]>>((acc, p) => {
-    const cat = categoryFor(p.rule_id)
+    const cat = categoryFor(p)
     if (!acc[cat]) acc[cat] = []
     acc[cat].push(p)
     return acc
@@ -793,47 +804,49 @@ function PoliciesContent() {
         {/* Category tabs + 2-col grid */}
         {!loading && !error && orderedCategories.length > 0 && (
           <>
-            {/* Tab bar */}
-            <div style={{ display: "flex", gap: 2, marginBottom: 16, borderBottom: "1px solid var(--border)", paddingBottom: 0, overflowX: "auto" }}>
+            <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+            {/* Left sidebar */}
+            <div style={{ width: 190, flexShrink: 0 }}>
               {orderedCategories.map(cat => {
-                const count = grouped[cat].length
                 const active = cat === currentTab
+                const enabledCount = grouped[cat].filter(p => p.enabled).length
+                const total = grouped[cat].length
                 return (
                   <button
                     key={cat}
                     onClick={() => setActiveTab(cat)}
                     style={{
-                      background: "none",
-                      border: "none",
-                      borderBottom: active ? "2px solid var(--accent)" : "2px solid transparent",
-                      padding: "8px 14px",
-                      fontSize: 12.5,
-                      fontWeight: active ? 600 : 400,
-                      color: active ? "var(--text)" : "var(--text-3)",
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                      marginBottom: -1,
-                      transition: "color .12s",
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      width: "100%", background: active ? "var(--accent-bg, #eff6ff)" : "none",
+                      border: "none", borderRadius: 8, padding: "7px 10px",
+                      fontSize: 12.5, fontWeight: active ? 600 : 400,
+                      color: active ? "var(--accent)" : "var(--text-3)",
+                      cursor: "pointer", textAlign: "left", marginBottom: 2,
+                      transition: "background .1s, color .1s",
                     }}
                   >
-                    {cat}
+                    <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cat}</span>
                     <span style={{
-                      marginLeft: 6,
-                      fontSize: 10.5,
-                      background: active ? "var(--accent-bg, #eff6ff)" : "var(--surface-2, #f4f4f5)",
-                      color: active ? "var(--accent)" : "var(--text-muted)",
-                      borderRadius: 99,
-                      padding: "1px 6px",
-                      fontWeight: 500,
-                    }}>
-                      {count}
-                    </span>
+                      marginLeft: 8, fontSize: 10.5, flexShrink: 0,
+                      background: active ? "var(--accent)" : "var(--surface-2, #f4f4f5)",
+                      color: active ? "#fff" : "var(--text-muted)",
+                      borderRadius: 99, padding: "1px 7px", fontWeight: 600,
+                    }}>{enabledCount}/{total}</span>
                   </button>
                 )
               })}
             </div>
 
-            {/* 2-column card grid */}
+            {/* Right: header + 2-column card grid */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {currentTab && (
+                <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{currentTab}</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    — {grouped[currentTab].filter(p => p.enabled).length} of {grouped[currentTab].length} active
+                  </span>
+                </div>
+              )}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, alignItems: "start" }}>
               {visiblePolicies.map(p => {
                 const expanded = expandedIds.has(p.id)
@@ -975,6 +988,8 @@ function PoliciesContent() {
                 Policy last updated: {formatUpdatedAt(latestUpdated)} · Synced to developers
               </p>
             )}
+            </div>{/* end right col */}
+            </div>{/* end sidebar+grid flex */}
           </>
         )}
       </GuardShell>
