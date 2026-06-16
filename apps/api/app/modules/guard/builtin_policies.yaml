@@ -252,13 +252,15 @@
 
 - rule_id: secret-redact
   description: >
-    Block tool calls that contain credentials and redact them from the audit log.
-    Detects: GitHub PATs (ghp_, gho_, ghs_, github_pat_), AWS access keys (AKIA),
-    Slack tokens (xoxb-, xoxp-, xoxs-), OpenAI/Anthropic/generic secret keys (sk-, ak-),
-    PyPI tokens (pypi-), npm tokens (npm_, np_), Stripe keys (sk_live_, pk_live_, rk_, whsec_),
-    HuggingFace tokens (hf_), Twilio keys (SK/AC + hex), SendGrid keys (SG.),
-    Vercel tokens, Render keys (rk_), PEM private keys, URL-embedded passwords,
-    and generic credential assignments (api_key=, token=, password=, secret=).
+    Block tool calls containing credentials using a 3-layer detection engine.
+    Layer 1 (structural): unmistakable formats — AWS access keys (AKIA*), GitHub tokens
+    (ghp_, gho_, ghs_, github_pat_), PEM private keys.
+    Layer 2 (bare-in-text): tokens that appear without keyword context — Slack (xox*),
+    generic secret keys (sk-, pk-), Anthropic keys (ak-), Stripe keys (sk/pk/rk/whsec_live/test_),
+    Bearer tokens, URL-embedded passwords (scheme://user:pass@host).
+    Layer 3 (context-aware): any value ≥8 chars following a credential keyword
+    (api_key, token, secret, password, auth, credential, access_key, client_secret, etc.).
+    This layer automatically catches any new service without needing a new pattern.
   match_tool: "*"
   action: block
   message: "Credential detected in tool input. Remove it and use an environment variable or Conduct's credential vault instead. The value has been redacted from the audit log."

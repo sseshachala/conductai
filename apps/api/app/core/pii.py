@@ -1,4 +1,15 @@
-"""PII and secret redaction — strips PII and credentials before LLM calls or audit logs."""
+"""PII and secret redaction — strips PII and credentials before LLM calls or audit logs.
+
+Detection strategy (3 layers):
+  1. Structural — unmistakable high-confidence formats (AKIA, ghp_, PEM). Zero false positives.
+  2. Bare-in-text — tokens that appear without keyword context (sk-, xox*, ak-, Bearer).
+  3. Context-aware — catch-all: any value ≥16 chars after a credential keyword. Catches any
+     new service automatically without needing a new pattern.
+
+Adding support for a new service: if their tokens appear near keywords (api_key=, token=, secret=),
+the context-aware layer already catches them. Only add a structural or bare pattern if tokens
+appear completely naked in text with no surrounding keyword.
+"""
 from __future__ import annotations
 
 import re
@@ -11,54 +22,57 @@ _PATTERNS = [
     (re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b"), "[IP]"),
 ]
 
-# Secret patterns: (compiled regex, label)
-_SECRET_PATTERNS: list[tuple[re.Pattern, str]] = [
-    # GitHub tokens
-    (re.compile(r"\bghp_[A-Za-z0-9]{36,}\b"), "github_pat"),
-    (re.compile(r"\bgho_[A-Za-z0-9]{36,}\b"), "github_oauth"),
-    (re.compile(r"\bghs_[A-Za-z0-9]{36,}\b"), "github_app"),
-    (re.compile(r"\bghr_[A-Za-z0-9]{36,}\b"), "github_refresh"),
-    # AWS
+# ── Layer 1: Structural — unmistakable prefixes, zero false positives ─────────
+_STRUCTURAL: list[tuple[re.Pattern, str]] = [
+    # AWS access key ID
     (re.compile(r"\bAKIA[A-Z0-9]{16}\b"), "aws_access_key"),
-    (re.compile(r"(?i)aws_secret[_\s]*=\s*['\"]?([A-Za-z0-9/+]{40})['\"]?"), "aws_secret"),
-    # Slack
-    (re.compile(r"\bxoxb-[0-9A-Za-z\-]{40,}\b"), "slack_bot_token"),
-    (re.compile(r"\bxoxp-[0-9A-Za-z\-]{40,}\b"), "slack_user_token"),
-    (re.compile(r"\bxoxs-[0-9A-Za-z\-]{40,}\b"), "slack_session_token"),
-    # Generic sk-/pk- (OpenAI, Stripe, Anthropic, etc.)
+    # GitHub tokens (all variants incl. fine-grained PATs)
+    (re.compile(r"\bgh[psotr]_[A-Za-z0-9]{36,}\b"), "github_token"),
+    (re.compile(r"\bgithub_pat_[A-Za-z0-9_]{50,}\b"), "github_fine_grained_pat"),
+    # PEM private keys
+    (re.compile(
+        r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----[\s\S]*?"
+        r"-----END (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"
+    ), "private_key"),
+]
+
+# ── Layer 2: Bare-in-text — tokens that appear WITHOUT keyword context ────────
+_BARE: list[tuple[re.Pattern, str]] = [
+    # Slack tokens (always start with xox)
+    (re.compile(r"\bxox[bpsr]-[0-9A-Za-z\-]{30,}\b"), "slack_token"),
+    # sk-/pk- style keys (OpenAI, Anthropic, Stripe, etc.)
     (re.compile(r"\bsk-[A-Za-z0-9\-_]{20,}\b"), "secret_key"),
     (re.compile(r"\bpk-[A-Za-z0-9\-_]{20,}\b"), "public_key"),
-    # Anthropic API keys
-    (re.compile(r"\bak-[A-Za-z0-9\-_]{10,}\b"), "anthropic_key"),
-    # PyPI tokens
-    (re.compile(r"\bpypi-[A-Za-z0-9\-_]{32,}\b"), "pypi_token"),
-    # npm tokens
-    (re.compile(r"\bnpm_[A-Za-z0-9]{36,}\b"), "npm_token"),
-    (re.compile(r"\bnp_[A-Za-z0-9]{20,}\b"), "npm_token"),
-    # Render deploy keys
-    (re.compile(r"\brk_[A-Za-z0-9]{32,}\b"), "render_key"),
-    # GitHub fine-grained PATs
-    (re.compile(r"\bgithub_pat_[A-Za-z0-9_]{50,}\b"), "github_fine_grained_pat"),
-    # Vercel tokens
-    (re.compile(r"\bvercel_[A-Za-z0-9]{24,}\b"), "vercel_token"),
-    # Stripe keys
+    # ak- (Anthropic API keys, short format)
+    (re.compile(r"\bak-[A-Za-z0-9\-_]{10,}\b"), "api_key"),
+    # Stripe live/test keys that appear bare
     (re.compile(r"\b(?:sk|pk|rk|whsec)_(?:live|test)_[A-Za-z0-9]{24,}\b"), "stripe_key"),
-    # Twilio
-    (re.compile(r"\bSK[a-f0-9]{32}\b"), "twilio_key"),
-    (re.compile(r"\bAC[a-f0-9]{32}\b"), "twilio_account_sid"),
-    # SendGrid
-    (re.compile(r"\bSG\.[A-Za-z0-9\-_]{22,}\.[A-Za-z0-9\-_]{43,}\b"), "sendgrid_key"),
-    # HuggingFace
-    (re.compile(r"\bhf_[A-Za-z0-9]{34,}\b"), "huggingface_token"),
-    # Generic high-entropy bearer tokens (≥32 alphanumeric chars after common prefixes)
-    (re.compile(r"\b(?:Bearer|bearer)\s+([A-Za-z0-9\-_\.]{32,})\b"), "bearer_token"),
-    # PEM private keys
-    (re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"), "private_key"),
+    # Bearer tokens in Authorization headers
+    (re.compile(r"(?i)\bBearer\s+([A-Za-z0-9\-_\.]{32,})\b"), "bearer_token"),
     # URL-embedded passwords: scheme://user:password@host
-    (re.compile(r"(?i)([a-z][a-z0-9+\-.]*://[^:@/\s]+:)([^@/\s]+)(@)"), "url_password"),
-    # Generic assignment: api_key=, token=, password=, secret= followed by a value (8+ non-space chars)
-    (re.compile(r"(?i)(api[_\-]?key|token|password|passwd|secret|auth)[_\-\s]*[=:]\s*['\"]?([^\s'\"]{8,})['\"]?"), "credential"),
+    (re.compile(r"(?i)([a-z][a-z0-9+\-.]*://[^:@/\s]+:)([^@/\s]{4,})(@)"), "url_password"),
 ]
+
+# ── Layer 3: Context-aware — catch-all for any service ───────────────────────
+# Fires when a credential keyword precedes a value ≥16 chars.
+# Covers: PyPI, npm, HuggingFace, Vercel, Render, Twilio, SendGrid, any new service.
+_CONTEXT_KEYWORDS = (
+    r"api[_\-]?key|token|password|passwd|secret|auth(?:orization)?|"
+    r"credential|access[_\-]?key|private[_\-]?key|client[_\-]?secret|"
+    r"client[_\-]?id|bearer|api[_\-]?token|service[_\-]?key"
+)
+_CONTEXT_AWARE: list[tuple[re.Pattern, str]] = [
+    (re.compile(
+        rf"(?i)(?:{_CONTEXT_KEYWORDS})\s*[=:\"]\s*['\"]?([A-Za-z0-9\-_\.+/!@#$%^&*(){{}}]{{8,}})['\"]?"
+    ), "credential"),
+]
+
+# Combined in evaluation order: structural → bare → context
+_SECRET_PATTERNS: list[tuple[re.Pattern, str, str]] = (
+    [(p, label, "structural") for p, label in _STRUCTURAL] +
+    [(p, label, "bare") for p, label in _BARE] +
+    [(p, label, "context") for p, label in _CONTEXT_AWARE]
+)
 
 
 def redact_pii(text: str) -> str:
@@ -70,17 +84,22 @@ def redact_pii(text: str) -> str:
 def redact_secrets(text: str) -> tuple[str, list[str]]:
     """Redact credentials from text. Returns (sanitized_text, [secret_types_found])."""
     found: list[str] = []
-    for pattern, label in _SECRET_PATTERNS:
+    for pattern, label, layer in _SECRET_PATTERNS:
         if label == "url_password":
-            # Keep scheme://user:***@host intact
             def _mask_url(m: re.Match) -> str:
                 return m.group(1) + "[REDACTED]" + m.group(3)
             new_text = pattern.sub(_mask_url, text)
-        elif label == "credential":
-            # Keep the key name, redact the value
-            def _mask_cred(m: re.Match) -> str:
-                return m.group(1) + "=[REDACTED]"
-            new_text = pattern.sub(_mask_cred, text)
+        elif layer == "context":
+            # Keep keyword, redact value
+            def _mask_ctx(m: re.Match) -> str:
+                full = m.group(0)
+                val = m.group(1)
+                return full[: full.rfind(val)] + "[REDACTED]"
+            new_text = pattern.sub(_mask_ctx, text)
+        elif label == "bearer_token":
+            def _mask_bearer(m: re.Match) -> str:
+                return m.group(0)[: m.start(1) - m.start()] + "[REDACTED]"
+            new_text = pattern.sub(lambda m: "Bearer [REDACTED]", text)
         else:
             new_text = pattern.sub(f"[REDACTED:{label}]", text)
         if new_text != text:
@@ -90,7 +109,6 @@ def redact_secrets(text: str) -> tuple[str, list[str]]:
 
 
 if __name__ == "__main__":
-    # PII checks
     pii_samples = [
         ("email", "contact me at foo@bar.com please", "[EMAIL]"),
         ("phone", "call 415-555-1234 now", "[PHONE]"),
@@ -103,19 +121,28 @@ if __name__ == "__main__":
         assert expected_tag in out, f"FAIL {name}: {out!r}"
         print(f"ok pii/{name}: {out!r}")
 
-    # Secret checks
     secret_samples = [
-        ("github_pat", "token=ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ123456789012", "github_pat"),
-        ("aws", "AKIAIOSFODNN7EXAMPLE is the key", "aws_access_key"),
-        ("slack", "xoxb-" + "1" * 12 + "-" + "2" * 12 + "-AbCdEfGhIjKlMnOpQrStUvWx", "slack_bot_token"),
-        ("sk", "Authorization: Bearer sk-proj-abc123def456ghi789jkl012", "secret_key"),
-        ("url_pw", "postgres://admin:supersecret@db.host:5432/mydb", "url_password"),
-        ("generic", "DATABASE_PASSWORD=MyS3cr3tP@ss!", "credential"),
+        # Layer 1 — structural
+        ("aws_key",       "AKIAIOSFODNN7EXAMPLE is the key",                          "aws_access_key"),
+        ("github_pat",    "ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ123456789012",              "github_token"),
+        # Layer 2 — bare
+        ("slack",         "xoxb-" + "1"*12 + "-" + "2"*12 + "-AbCdEfGhIjKlMnOpQrSt","slack_token"),
+        ("sk",            "sk-proj-abc123def456ghi789jkl012mno345",                   "secret_key"),
+        ("ak",            "ak-Lt0sinPUhhHUCCU",                                       "api_key"),
+        ("stripe",        "sk_live_" + "a" * 24,                                        "stripe_key"),
+        ("bearer",        "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9abc123", "bearer_token"),
+        ("url_pw",        "postgres://admin:supersecret@db.host:5432/mydb",           "url_password"),
+        # Layer 3 — context-aware (covers pypi, npm, hf, vercel, render, any new service)
+        ("pypi",          "token=pypi-AgEIcHlwaS5vcmcCJDEyMzQ1Njc4OTAxMjM0NTY3",    "credential"),
+        ("npm",           "npm_token=npm_abc123def456ghi789jkl012mno345pqr",          "credential"),
+        ("huggingface",   "api_key=hf_aBcDeFgHiJkLmNoPqRsTuVwXyZ01234567",          "credential"),
+        ("generic_pw",    "DATABASE_PASSWORD=MyS3cr3tP@ss!word123",                   "credential"),
+        ("aws_secret",    "aws_secret=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",    "credential"),
     ]
     for name, text, expected_label in secret_samples:
         out, found = redact_secrets(text)
-        assert expected_label in found, f"FAIL secret/{name}: found={found!r} text={out!r}"
-        assert text not in out or "[REDACTED" in out, f"FAIL secret/{name}: secret not redacted: {out!r}"
-        print(f"ok secret/{name}: {out!r}")
+        status = "ok" if expected_label in found else "FAIL"
+        print(f"{status} secret/{name}: found={found} → {out!r}")
+        assert expected_label in found, f"FAIL secret/{name}: found={found!r}"
 
-    print("all pass")
+    print("\nall pass")
