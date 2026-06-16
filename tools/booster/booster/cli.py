@@ -613,6 +613,97 @@ def cmd_index(embed: bool, force: bool) -> None:
         click.echo(f"Indexed {files} changed files, {symbols} symbols. (use --force to re-index all)")
 
 
+@main.command("index-push")
+def cmd_index_push() -> None:
+    """Push local symbol index to team workspace via Guard channel."""
+    import gzip, json as _json, urllib.request, urllib.error
+    root = Path.cwd()
+    cfg_path = Path.home() / ".conductguard" / "config.json"
+    if not cfg_path.exists():
+        click.echo("Not connected — run: conduct guard sync", err=True)
+        raise SystemExit(1)
+    cfg = _json.loads(cfg_path.read_text())
+    workspace_id = cfg.get("workspace_id", "")
+    api_key = cfg.get("api_key", "")
+    member_token = cfg.get("member_token", "")
+    base_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+    if not workspace_id or (not api_key and not member_token):
+        click.echo("Guard config missing credentials — run: conduct guard sync", err=True)
+        raise SystemExit(1)
+
+    indexer = SymbolIndexer(root)
+    symbols = indexer.export_symbols()
+    if not symbols:
+        click.echo("No symbols indexed yet — run: booster index")
+        return
+
+    repo_key = SymbolIndexer.repo_key(root)
+    payload = gzip.compress(_json.dumps({"repo_key": repo_key, "symbols": symbols}).encode())
+    headers: dict[str, str] = {"Content-Type": "application/octet-stream", "Content-Encoding": "gzip"}
+    if api_key:
+        headers["X-Api-Key"] = api_key
+    elif member_token:
+        headers["Authorization"] = f"Bearer {member_token}"
+
+    try:
+        req = urllib.request.Request(
+            f"{base_url}/guard/booster-index?workspace_id={workspace_id}&repo_key={repo_key}",
+            data=payload, headers=headers, method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=30):
+            pass
+        click.echo(f"Pushed {len(symbols):,} symbols (repo: {repo_key})")
+    except urllib.error.URLError as e:
+        click.echo(f"Push failed: {e}", err=True)
+        raise SystemExit(1)
+
+
+@main.command("index-pull")
+def cmd_index_pull() -> None:
+    """Pull team symbol index from workspace and merge into local index."""
+    import gzip, json as _json, urllib.request, urllib.error
+    root = Path.cwd()
+    cfg_path = Path.home() / ".conductguard" / "config.json"
+    if not cfg_path.exists():
+        click.echo("Not connected — run: conduct guard sync", err=True)
+        raise SystemExit(1)
+    cfg = _json.loads(cfg_path.read_text())
+    workspace_id = cfg.get("workspace_id", "")
+    api_key = cfg.get("api_key", "")
+    member_token = cfg.get("member_token", "")
+    base_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+
+    repo_key = SymbolIndexer.repo_key(root)
+    headers: dict[str, str] = {}
+    if api_key:
+        headers["X-Api-Key"] = api_key
+    elif member_token:
+        headers["Authorization"] = f"Bearer {member_token}"
+
+    try:
+        req = urllib.request.Request(
+            f"{base_url}/guard/booster-index?workspace_id={workspace_id}&repo_key={repo_key}",
+            headers=headers,
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = resp.read()
+        data = _json.loads(gzip.decompress(raw))
+        symbols = data.get("symbols", [])
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            click.echo("No team index found for this repo yet — push one first: booster index-push")
+        else:
+            click.echo(f"Pull failed: {e}", err=True)
+        return
+    except urllib.error.URLError as e:
+        click.echo(f"Pull failed: {e}", err=True)
+        raise SystemExit(1)
+
+    indexer = SymbolIndexer(root)
+    imported = indexer.import_symbols(symbols)
+    click.echo(f"Merged {imported:,} new symbols from team index (repo: {repo_key})")
+
+
 @main.command("embed")
 def cmd_embed() -> None:
     root = Path.cwd()
@@ -1003,7 +1094,17 @@ def cmd_gain(fmt: str, team: bool) -> None:
     s = tracker.summary()
 
     if fmt == "json":
-        click.echo(json.dumps(s))
+        cs = tracker.crusher_summary()
+        provider_file = root / ".booster" / "provider"
+        provider = provider_file.read_text().strip() if provider_file.exists() else "unknown"
+        click.echo(json.dumps({
+            **s,
+            "crusher": cs,
+            "cache_align": {
+                "active": provider == "anthropic",
+                "provider": provider,
+            },
+        }))
         return
 
     if s["total_reads"] == 0:
