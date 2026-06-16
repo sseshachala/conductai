@@ -11,7 +11,7 @@ import structlog
 
 log = structlog.get_logger(__name__)
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -223,10 +223,104 @@ def _check_spend_budget(db: Session, workspace_id: str, config: GuardConfig | No
 
 # ── POST /guard/events — ingest ───────────────────────────────────────────────
 
+def _bg_slack_notify(
+    workspace_id_str: str,
+    decision: str,
+    notify_on_block: bool,
+    alert_channel: str | None,
+    user_email: str | None,
+    clerk_user_id: str | None,
+    ai_tool: str | None,
+    rule_id: str | None,
+    rule_message: str | None,
+) -> None:
+    """Background task: send Slack block/warn notification."""
+    if decision not in ("blocked", "warned") or not notify_on_block:
+        return
+    db = SessionLocal()
+    try:
+        import uuid as _uuid
+        ws_uuid = _uuid.UUID(workspace_id_str)
+        config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
+        if not config:
+            return
+        who = user_email or clerk_user_id or "unknown"
+        tool = ai_tool or "Claude Code"
+        rule_label = f"`{rule_id}`" if rule_id else "a policy"
+        if rule_id == "budget-hard-cap":
+            header_emoji = "\U0001f6a8"
+            decision_label = "BUDGET CAP HIT"
+        elif decision == "blocked":
+            header_emoji = "\U0001f6a8"
+            decision_label = "BLOCKED"
+        else:
+            header_emoji = "\u26a0\ufe0f"
+            decision_label = "WARNED"
+        msg = (
+            f"{header_emoji} *{decision_label}* by {rule_label} in {tool}\n"
+            f"\U0001f464 *Developer:* {who}"
+        )
+        if rule_message:
+            msg += f"\n\U0001f4ac {rule_message}"
+        _send_guard_slack(db, config, msg)
+    except Exception as exc:
+        log.warning("guard.slack_notification_failed", exc=str(exc))
+    finally:
+        db.close()
+
+
+def _bg_spend_and_scan(
+    workspace_id_str: str,
+    decision: str,
+    automation_security_scan: bool,
+    ai_tool: str | None,
+    rule_id: str | None,
+    rule_message: str | None,
+    user_email: str | None,
+    blast_radius: dict | None,
+    event_id: str,
+) -> None:
+    """Background task: spend budget check + optional security loop scan."""
+    db = SessionLocal()
+    try:
+        import uuid as _uuid
+        ws_uuid = _uuid.UUID(workspace_id_str)
+        config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
+        # Spend budget check
+        try:
+            _check_spend_budget(db, workspace_id_str, config=config)
+        except Exception as exc:
+            log.warning("guard.spend_budget_check_failed", exc=str(exc))
+        # Security loop scan on block
+        if decision == "blocked" and automation_security_scan:
+            try:
+                from app.routers.security import FindingIn, _ingest_finding_core, _trigger_security_loop
+                severity_map = {"CRITICAL": "critical", "HIGH": "high", "MEDIUM": "medium", "LOW": "low"}
+                br = blast_radius or {}
+                severity = severity_map.get(br.get("tier", ""), "medium")
+                scan_body = FindingIn(
+                    tool=ai_tool or "claude_code",
+                    severity=severity,
+                    type="guard_violation",
+                    description=f"Guard blocked: {rule_message or rule_id or 'policy violation'}",
+                    reporter_email=user_email,
+                )
+                sec_finding = _ingest_finding_core(scan_body, workspace_id_str, db)
+                _trigger_security_loop(sec_finding, workspace_id_str, db)
+                from app.routers.security import _maybe_trigger_automation_workflow
+                _maybe_trigger_automation_workflow(sec_finding, workspace_id_str, db)
+                log.info("guard.violation_security_scan_triggered", event_id=event_id, finding_id=str(sec_finding.id))
+            except Exception as exc:
+                log.warning("guard.violation_security_scan_failed", error=str(exc))
+    finally:
+        db.close()
+
+
 @router.post("", response_model=EventOut, status_code=201)
 def ingest_event(
     body: HookEvent,
     request: Request,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     """Ingest a hook event from the guardctl binary. No workspace auth —
@@ -302,61 +396,37 @@ def ingest_event(
     db.flush()
     db.refresh(event)
 
-    # 3. Send Slack block/warn notification (non-fatal)
-    try:
-        if body.decision in ("blocked", "warned") and config.notify_on_block:
-            who = body.user_email or body.clerk_user_id or "unknown"
-            tool = body.ai_tool or "Claude Code"
-            rule_label = f"`{body.rule_id}`" if body.rule_id else "a policy"
-            if body.rule_id == "budget-hard-cap":
-                header_emoji = "\U0001f6a8"
-                decision_label = "BUDGET CAP HIT"
-            elif body.decision == "blocked":
-                header_emoji = "\U0001f6a8"   # 🚨
-                decision_label = "BLOCKED"
-            else:
-                header_emoji = "\u26a0\ufe0f"  # ⚠️
-                decision_label = "WARNED"
-            msg = (
-                f"{header_emoji} *{decision_label}* by {rule_label} in {tool}\n"
-                f"\U0001f464 *Developer:* {who}"
-            )
-            if body.rule_message:
-                msg += f"\n\U0001f4ac {body.rule_message}"
-            _send_guard_slack(db, config, msg)
-    except Exception as exc:
-        log.warning("guard.slack_notification_failed", exc=str(exc))
-
-    # 4. Check spend budget (non-fatal — log + Slack)
-    try:
-        _check_spend_budget(db, body.workspace_id, config=config)
-    except Exception as exc:
-        log.warning("guard.spend_budget_check_failed", exc=str(exc))
-
-    # 5. Trigger Security Loop scan on block (automation_security_scan toggle)
-    if body.decision == "blocked" and config.automation_security_scan:
-        try:
-            from app.routers.security import FindingIn, _ingest_finding_core, _trigger_security_loop
-            severity_map = {"CRITICAL": "critical", "HIGH": "high", "MEDIUM": "medium", "LOW": "low"}
-            br = body.blast_radius or {}
-            severity = severity_map.get(br.get("tier", ""), "medium")
-            scan_body = FindingIn(
-                tool=body.ai_tool or "claude_code",
-                severity=severity,
-                type="guard_violation",
-                description=f"Guard blocked: {body.rule_message or body.rule_id or 'policy violation'}",
-                reporter_email=body.user_email,
-            )
-            sec_finding = _ingest_finding_core(scan_body, body.workspace_id, db)
-            _trigger_security_loop(sec_finding, body.workspace_id, db)
-            # Also check automation workflow threshold (Connection 2)
-            from app.routers.security import _maybe_trigger_automation_workflow
-            _maybe_trigger_automation_workflow(sec_finding, body.workspace_id, db)
-            log.info("guard.violation_security_scan_triggered", event_id=str(event.id), finding_id=str(sec_finding.id))
-        except Exception as exc:
-            log.warning("guard.violation_security_scan_failed", error=str(exc))
-
+    # 3 & 4 & 5: commit DB writes first, then dispatch non-fatal work to background
     db.commit()
+
+    # Slack notification (background — non-fatal, must not delay response)
+    background.add_task(
+        _bg_slack_notify,
+        workspace_id_str=body.workspace_id,
+        decision=body.decision,
+        notify_on_block=bool(config.notify_on_block),
+        alert_channel=config.alert_channel,
+        user_email=body.user_email,
+        clerk_user_id=body.clerk_user_id,
+        ai_tool=body.ai_tool,
+        rule_id=body.rule_id,
+        rule_message=body.rule_message,
+    )
+
+    # Spend budget check + security loop scan (background — non-fatal)
+    background.add_task(
+        _bg_spend_and_scan,
+        workspace_id_str=body.workspace_id,
+        decision=body.decision,
+        automation_security_scan=bool(config.automation_security_scan),
+        ai_tool=body.ai_tool,
+        rule_id=body.rule_id,
+        rule_message=body.rule_message,
+        user_email=body.user_email,
+        blast_radius=body.blast_radius,
+        event_id=str(event.id),
+    )
+
     return EventOut(**_event_to_dict(event))
 
 
