@@ -6,6 +6,13 @@ from pathlib import Path
 
 
 _DDL = """
+CREATE TABLE IF NOT EXISTS crusher (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    tool TEXT NOT NULL,
+    original_bytes INTEGER NOT NULL,
+    crushed_bytes INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS reads (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts TEXT NOT NULL,
@@ -92,6 +99,26 @@ class StatsTracker:
             "savings_pct": savings_pct,
             "top_files": top_files,
         }
+
+    def record_crush(self, tool: str, original_bytes: int, crushed_bytes: int) -> None:
+        if crushed_bytes >= original_bytes:
+            return
+        self._conn.execute(
+            "INSERT INTO crusher (ts, tool, original_bytes, crushed_bytes) VALUES (?, ?, ?, ?)",
+            (datetime.now(timezone.utc).date().isoformat(), tool, original_bytes, crushed_bytes),
+        )
+        self._conn.commit()
+
+    def crusher_summary(self) -> dict:
+        cur = self._conn.cursor()
+        cur.execute("SELECT COUNT(*), SUM(original_bytes), SUM(crushed_bytes) FROM crusher")
+        row = cur.fetchone()
+        count = row[0] or 0
+        original = row[1] or 0
+        crushed = row[2] or 0
+        saved = original - crushed
+        pct = round(saved / original * 100, 1) if original else 0.0
+        return {"count": count, "saved_bytes": saved, "savings_pct": pct}
 
     def record_output_session(
         self,

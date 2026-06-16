@@ -7,6 +7,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
+from booster.crusher import crush as _crush
 from booster.indexer import SymbolIndexer
 from booster.retriever import smart_read as _smart_read
 from booster.stats import StatsTracker
@@ -131,6 +132,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             for s in results
         ]
         text = "\n".join(lines) if lines else "No matches found."
+        text, orig, crushed = _crush(text)
+        _get_tracker().record_crush("search_context", orig, crushed)
         return [TextContent(type="text", text=text)]
 
     if name == "smart_read":
@@ -141,6 +144,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return [TextContent(type="text", text=f"Error: path '{arguments['file']}' is outside the project root")]
         full_text = resolved.read_text(encoding="utf-8", errors="replace")
         text = _smart_read(resolved, arguments["task"], indexer)
+        text, orig, crushed = _crush(text)
+        _get_tracker().record_crush("smart_read", orig, crushed)
         _get_tracker().record(arguments["file"], full_text, text, arguments.get("task", ""))
         return [TextContent(type="text", text=text)]
 
