@@ -54,7 +54,7 @@ export const STATUS_STYLES: Record<FindingStatus, { bg: string; color: string; l
 
 const SECURE_TABS = [
   { href: "/secure",           label: "Overview"  },
-  { href: "/secure/policies",  label: "Policies"  },
+  { href: "/secure/policies",  label: "Security Policies"  },
   { href: "/secure/activity",  label: "Activity"  },
   { href: "/secure/settings",  label: "Settings"  },
 ]
