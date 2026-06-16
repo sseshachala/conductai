@@ -1070,6 +1070,13 @@ def cmd_gain(fmt: str, team: bool) -> None:
         click.echo()
         click.echo(f"Combined savings:     ~{combined:,} tokens")
 
+    # Cache-alignment: only meaningful for Anthropic (KV cache prefix stabilization)
+    provider_file = root / ".booster" / "provider"
+    if provider_file.exists() and provider_file.read_text().strip() == "anthropic":
+        click.echo()
+        click.echo("Cache alignment:      active (Anthropic KV cache)")
+        click.echo("  Tool list sorted alphabetically — stable prefix on every request.")
+
 
 @main.command("verbosity")
 @click.argument("mode", type=click.Choice(["lite", "full", "ultra", "off"]))

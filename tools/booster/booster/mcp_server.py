@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os as _os
 from pathlib import Path
 
 from mcp.server import Server
@@ -11,8 +12,26 @@ from booster.retriever import smart_read as _smart_read
 from booster.stats import StatsTracker
 
 _ROOT = Path.cwd()
-import os as _os
 _SECRET = _os.environ.get("BOOSTER_SECRET", "")
+
+
+def _provider() -> str:
+    explicit = _os.environ.get("BOOSTER_PROVIDER", "").lower()
+    if explicit:
+        return explicit
+    if _os.environ.get("ANTHROPIC_API_KEY"):
+        return "anthropic"
+    if _os.environ.get("OPENAI_API_KEY"):
+        return "openai"
+    return "unknown"
+
+
+def _sort_schema(obj: object) -> object:
+    if isinstance(obj, dict):
+        return dict(sorted((k, _sort_schema(val)) for k, val in obj.items()))
+    if isinstance(obj, list):
+        return [_sort_schema(i) for i in obj]
+    return obj
 _indexer: SymbolIndexer | None = None
 _tracker: StatsTracker | None = None
 
@@ -37,7 +56,7 @@ app.version = "0.1.0"
 
 @app.list_tools()
 async def list_tools() -> list[Tool]:
-    return [
+    tools = [
         Tool(
             name="get_symbols",
             description="Return all indexed symbols for a given file path.",
@@ -85,6 +104,11 @@ async def list_tools() -> list[Tool]:
             },
         ),
     ]
+    # ponytail: sort alphabetically so Anthropic KV cache sees a stable prefix every request
+    tools.sort(key=lambda t: t.name)
+    for t in tools:
+        t.inputSchema = _sort_schema(t.inputSchema)  # type: ignore[assignment]
+    return tools
 
 
 @app.call_tool()
@@ -164,6 +188,10 @@ def _route_model(indexer: SymbolIndexer, task: str, files: list[str]) -> dict:
 
 
 async def serve() -> None:
+    booster_dir = _ROOT / ".booster"
+    booster_dir.mkdir(exist_ok=True)
+    (booster_dir / "provider").write_text(_provider())
+
     secret_file = _ROOT / ".booster" / ".secret"
     if secret_file.exists():
         expected = secret_file.read_text().strip()
