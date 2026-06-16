@@ -138,3 +138,58 @@ def test_route_opus_all_keywords(tmp_root, keyword):
     ix = SymbolIndexer(tmp_root)
     result = _route_model(ix, f"{keyword} the system", [])
     assert result["model"] == "opus"
+
+
+# --- cache-alignment tests ---
+
+from booster.mcp_server import _sort_schema, _provider
+import os
+
+def test_sort_schema_top_level():
+    schema = {"type": "object", "required": ["x"], "properties": {"x": {"type": "string"}}}
+    result = _sort_schema(schema)
+    assert list(result.keys()) == sorted(result.keys())
+
+def test_sort_schema_nested():
+    schema = {"z": 1, "a": {"q": 2, "b": 3}, "m": [{"z": 1, "a": 2}]}
+    result = _sort_schema(schema)
+    assert list(result.keys()) == ["a", "m", "z"]
+    assert list(result["a"].keys()) == ["b", "q"]
+    assert list(result["m"][0].keys()) == ["a", "z"]
+
+def test_provider_explicit_env(monkeypatch):
+    monkeypatch.setenv("BOOSTER_PROVIDER", "openai")
+    assert _provider() == "openai"
+
+def test_provider_anthropic_key(monkeypatch):
+    monkeypatch.delenv("BOOSTER_PROVIDER", raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    assert _provider() == "anthropic"
+
+def test_provider_openai_key(monkeypatch):
+    monkeypatch.delenv("BOOSTER_PROVIDER", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    assert _provider() == "openai"
+
+def test_provider_unknown(monkeypatch):
+    monkeypatch.delenv("BOOSTER_PROVIDER", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    assert _provider() == "unknown"
+
+def test_list_tools_sorted():
+    import asyncio
+    from booster.mcp_server import list_tools
+    tools = asyncio.run(list_tools())
+    names = [t.name for t in tools]
+    assert names == sorted(names), f"tools not sorted: {names}"
+
+def test_list_tools_schema_keys_sorted():
+    import asyncio
+    from booster.mcp_server import list_tools
+    tools = asyncio.run(list_tools())
+    for t in tools:
+        schema = t.inputSchema
+        assert list(schema.keys()) == sorted(schema.keys()), f"{t.name} schema keys not sorted"
