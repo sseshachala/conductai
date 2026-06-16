@@ -1087,6 +1087,27 @@ def cmd_gain(fmt: str, team: bool) -> None:
         click.echo("  Tool list sorted alphabetically — stable prefix on every request.")
 
 
+@main.command("learn")
+@click.option("--dry-run", is_flag=True, default=False, help="Print rules without writing to CLAUDE.md")
+def cmd_learn(dry_run: bool) -> None:
+    """Mine failed runs and local stats → write corrections to CLAUDE.md."""
+    from booster.learner import mine, write_to_claude_md
+    root = Path.cwd()
+    rules = mine(root)
+    if not rules:
+        click.echo("Nothing learned yet — run more sessions first.")
+        return
+    if dry_run:
+        click.echo(f"Would write {len(rules)} rule(s) to CLAUDE.md:\n")
+        for rule in rules:
+            click.echo(f"  - {rule}")
+        return
+    msg = write_to_claude_md(root, rules)
+    click.echo(msg)
+    for rule in rules:
+        click.echo(f"  - {rule}")
+
+
 @main.command("verbosity")
 @click.argument("mode", type=click.Choice(["lite", "full", "ultra", "off"]))
 def cmd_verbosity(mode: str) -> None:
