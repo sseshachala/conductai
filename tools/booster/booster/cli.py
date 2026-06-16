@@ -1430,3 +1430,85 @@ def _cmd_gain_team(fmt: str) -> None:
                 f"{_fmt(m.get('booster_saved_tokens', 0)):>9} "
                 f"${mu:>7.2f}"
             )
+
+
+# ── booster debt ──────────────────────────────────────────────────────────────
+
+@main.command("debt")
+@click.option("--fix", is_flag=True, default=False, help="Suggest fixes for duplicates and no-trigger markers")
+def cmd_debt(fix: bool) -> None:
+    """Harvest ponytail: shortcuts and detect duplicate files across the codebase."""
+    import hashlib
+    import re
+
+    root = Path.cwd()
+    _EXT = {".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs", ".rb", ".java"}
+    _SKIP = {"node_modules", ".git", "__pycache__", ".venv", "venv", "dist", "build", ".next"}
+
+    # ── 1. Collect all source files ──────────────────────────────────────────
+    files: list[Path] = []
+    for p in root.rglob("*"):
+        if p.suffix not in _EXT:
+            continue
+        if any(s in p.parts for s in _SKIP):
+            continue
+        files.append(p)
+
+    # ── 2. Scan for ponytail: comments ───────────────────────────────────────
+    _PT = re.compile(r"#\s*ponytail:\s*(.+)", re.IGNORECASE)
+    markers: list[tuple[str, int, str]] = []  # (rel_path, line, text)
+    for f in files:
+        try:
+            for i, line in enumerate(f.read_text(errors="replace").splitlines(), 1):
+                m = _PT.search(line)
+                if m:
+                    markers.append((str(f.relative_to(root)), i, m.group(1).strip()))
+        except OSError:
+            pass
+
+    # ── 3. Detect duplicate files ─────────────────────────────────────────────
+    hashes: dict[str, list[str]] = {}
+    for f in files:
+        try:
+            h = hashlib.sha256(f.read_bytes()).hexdigest()
+            hashes.setdefault(h, []).append(str(f.relative_to(root)))
+        except OSError:
+            pass
+    dupes = {h: paths for h, paths in hashes.items() if len(paths) > 1}
+
+    # ── 4. Output ─────────────────────────────────────────────────────────────
+    click.echo()
+    click.echo("Agent Booster — Debt Ledger")
+    click.echo("─" * 60)
+
+    if markers:
+        click.echo(f"\n{'LOCATION':<40} {'NOTE'}")
+        click.echo("─" * 60)
+        for rel, lineno, text in markers:
+            loc = f"{rel}:{lineno}"
+            # flag entries with no upgrade trigger (no "if", "when", "until", "add when")
+            has_trigger = bool(re.search(r"\bif\b|\bwhen\b|\buntil\b|\badd\b", text, re.I))
+            flag = "" if has_trigger else "  ⚠ no-trigger"
+            click.echo(f"  {loc:<38} {text}{flag}")
+    else:
+        click.echo("\n  No ponytail: markers found.")
+
+    if dupes:
+        click.echo(f"\n{'DUPLICATE FILES':}")
+        click.echo("─" * 60)
+        for paths in dupes.values():
+            click.echo(f"\n  Identical ({len(paths)} copies):")
+            for p in paths:
+                click.echo(f"    {p}")
+            if fix:
+                keeper = min(paths, key=len)
+                others = [p for p in paths if p != keeper]
+                click.echo(f"    → keep: {keeper}")
+                for o in others:
+                    click.echo(f"    → replace with symlink: ln -sf {Path(keeper).resolve()} {o}")
+    else:
+        click.echo("\n  No duplicate files detected.")
+
+    no_trigger = sum(1 for _, _, t in markers if not re.search(r"\bif\b|\bwhen\b|\buntil\b|\badd\b", t, re.I))
+    click.echo(f"\nSummary: {len(markers)} marker(s) · {no_trigger} no-trigger ⚠ · {len(dupes)} duplicate set(s)")
+    click.echo()
