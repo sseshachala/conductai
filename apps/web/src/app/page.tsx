@@ -5,6 +5,7 @@ export default function HomePage() {
     <div className="min-h-screen bg-white flex flex-col">
       <Nav />
       <main className="flex-1">
+        <AcquisitionBanner />
         <HeroSection />
         <ToolsStripSection />
         <ProblemSection />
@@ -135,12 +136,28 @@ function ToolsDropdown() {
 
 /* ─── Hero ─────────────────────────────────────────────────────────────── */
 
+/* ─── Acquisition Banner ───────────────────────────────────────────────── */
+
+function AcquisitionBanner() {
+  return (
+    <div className="bg-stone-900 text-white text-center px-4 py-2.5 text-sm flex items-center justify-center gap-3 flex-wrap">
+      <span className="font-semibold">Cursor was just acquired for $60B.</span>
+      <span className="text-stone-300">Your codebase governance should stay independent.</span>
+      <a href="/compare" className="underline underline-offset-2 text-indigo-300 hover:text-indigo-200 font-medium whitespace-nowrap">
+        See how Conduct stays neutral →
+      </a>
+    </div>
+  )
+}
+
+/* ─── Hero ─────────────────────────────────────────────────────────────── */
+
 function HeroSection() {
   return (
     <section className="max-w-5xl mx-auto px-6 pt-20 pb-16 text-center">
       <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-widest mb-8">
         <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block" />
-        AI Governance for Engineering Teams
+        Provider-agnostic AI Governance
       </div>
       <h1 className="text-5xl sm:text-6xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
         Your team already<br />
@@ -148,8 +165,8 @@ function HeroSection() {
         <span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">Now govern it.</span>
       </h1>
       <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed mb-10">
-        Conduct AI is the governance layer between your engineering team and their AI tools —
-        protecting sessions, enforcing security, and running the workflows that used to take human hours.
+        Conduct AI is the independent governance layer between your engineering team and their AI tools —
+        not owned by Anthropic, Microsoft, or any AI lab. Protect sessions, enforce security, and run the workflows that used to take human hours.
       </p>
       <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
         <a href="/sign-up" className="rounded-xl bg-stone-900 text-white px-7 py-3.5 text-base font-semibold hover:bg-stone-700 transition-colors w-full sm:w-auto text-center">
@@ -167,16 +184,28 @@ function HeroSection() {
 /* ─── Tools Strip ──────────────────────────────────────────────────────── */
 
 function ToolsStripSection() {
-  const tools = ["Claude Code", "Cursor", "GitHub Copilot", "Claude.ai", "Codex", "Any MCP Client"]
+  const tools = [
+    { label: "Claude Code", note: null },
+    { label: "Cursor", note: "works post-acquisition" },
+    { label: "GitHub Copilot", note: null },
+    { label: "Claude.ai", note: null },
+    { label: "Codex", note: null },
+    { label: "Any MCP Client", note: null },
+  ]
   return (
     <div className="border-y border-stone-100 bg-stone-50 py-5 px-6">
       <div className="max-w-5xl mx-auto text-center">
         <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-4">
-          Governs the AI tools your team already uses
+          Independent governance — works with the tools your team already uses
         </p>
-        <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-2">
+        <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3">
           {tools.map(t => (
-            <span key={t} className="text-sm font-semibold text-stone-400">{t}</span>
+            <div key={t.label} className="flex flex-col items-center gap-0.5">
+              <span className="text-sm font-semibold text-stone-400">{t.label}</span>
+              {t.note && (
+                <span className="text-[10px] font-medium text-indigo-400 uppercase tracking-wider">{t.note}</span>
+              )}
+            </div>
           ))}
         </div>
       </div>
