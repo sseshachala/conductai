@@ -1,0 +1,17 @@
+# Security-critical paths — Sudhi must review every change
+* @sseshachala
+
+# Policy engine + PII detection
+apps/api/app/modules/guard/          @sseshachala
+apps/api/app/core/pii.py             @sseshachala
+apps/api/app/core/auth.py            @sseshachala
+
+# Hook installer — runs on every developer's machine
+packages/conduct-cli/src/conduct_cli/hook_template.py  @sseshachala
+packages/conduct-cli/src/conduct_cli/installer.py      @sseshachala
+
+# Database migrations — irreversible in prod
+apps/api/alembic/                    @sseshachala
+
+# Builtin policies YAML — seeds to all workspaces
+apps/api/app/modules/guard/builtin_policies.yaml  @sseshachala
