@@ -1179,6 +1179,9 @@ def register_guard_parser(sub):
     # conduct guard booster-status
     guard_sub.add_parser("booster-status", help="Verify Agent Booster intercept is active for this project")
 
+    # conduct guard skip-setup
+    guard_sub.add_parser("skip-setup", help="Suppress the Guard setup reminder (does not disable Guard)")
+
     return guard_p, guard_sub
 
 
