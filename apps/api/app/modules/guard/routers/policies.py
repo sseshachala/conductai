@@ -439,6 +439,8 @@ def refresh_builtins(
     ws_uuid = uuid.UUID(str(workspace_id))
     added = updated = 0
     for rule in _BUILTIN_RULES:
+        # description column is String(255) — truncate long YAML descriptions
+        rule = {**rule, "description": (rule.get("description") or "")[:255]}
         existing = (
             db.query(GuardPolicy)
             .filter(GuardPolicy.workspace_id == ws_uuid, GuardPolicy.rule_id == rule["rule_id"])
