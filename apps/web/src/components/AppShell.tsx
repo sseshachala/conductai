@@ -111,7 +111,6 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
   if (pathname === '/workflows') return ['Agents']
   if (pathname.startsWith('/workflows/new')) return ['Canvas', 'New agent']
   if (pathname.startsWith('/workflows/')) return ['Canvas']
-  if (pathname.startsWith('/tasks')) return ['Tasks']
   const projectMatch = pathname.match(/\/projects\/([^/]+)/)
   if (projectMatch) {
     const project = projects.find(p => p.id === projectMatch[1])
@@ -127,7 +126,6 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
 
 const PALETTE_COMMANDS = [
   { group: "BUILD", label: "Projects", href: "/projects", icon: "Grid" as const },
-  { group: "BUILD", label: "Tasks", href: "/tasks", icon: "Board" as const },
   { group: "BUILD", label: "Canvas", href: "/workflows/new", icon: "Flow" as const },
   { group: "BUILD", label: "Marketplace", href: "/marketplace", icon: "Store" as const },
   { group: "OBSERVE", label: "Dashboard", href: "/dashboard", icon: "Spark" as const },
@@ -951,13 +949,6 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
               label="Agents"
               icon={<Icons.Flow />}
               active={pathname === "/workflows"}
-              collapsed={collapsed}
-            />
-            <SideNavItem
-              href="/tasks"
-              label="Tasks"
-              icon={<Icons.Board />}
-              active={pathname.startsWith("/tasks")}
               collapsed={collapsed}
             />
             <SideNavItem
