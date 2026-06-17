@@ -328,6 +328,8 @@ def install_pack(
             existing.action = rule.get("action", existing.action)
             existing.message = rule.get("message", existing.message)
             existing.pack_id = pack_id
+            existing.enabled = True
+            existing.archived_at = None  # unarchive if previously deleted
             existing.updated_at = now
         guard_count += 1
 
