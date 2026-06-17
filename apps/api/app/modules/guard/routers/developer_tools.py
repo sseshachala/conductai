@@ -147,17 +147,14 @@ def get_developer_tools(
 def get_my_sync_status(
     workspace_id: str = Depends(get_workspace_id),
     db: Session = Depends(get_db),
-    authorization: str | None = None,
+    authorization: Annotated[str | None, Header()] = None,
 ):
     """Return whether the currently authenticated user has synced the CLI."""
-    from fastapi import Header
-    from app.core.auth import get_user_id as _get_user_id, get_clerk_user_email as _get_email
 
     # Resolve email from auth token — same pattern as the CLI report endpoint
     email: str | None = None
     if authorization and authorization.startswith("Bearer "):
         try:
-            from app.core.auth import _verify_clerk_token
             claims = _verify_clerk_token(authorization.split(" ", 1)[1])
             user_id = claims.get("sub", "")
             email = _get_email(user_id) if user_id else None
