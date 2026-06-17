@@ -649,6 +649,7 @@ export default function SetupPage() {
     if (step < 4) {
       setStep(step + 1)
     } else {
+      localStorage.setItem("conduct_setup_seen", "1")
       router.push("/projects")
     }
   }
@@ -852,7 +853,7 @@ export default function SetupPage() {
           </button>
 
           <button
-            onClick={() => router.push("/projects")}
+            onClick={() => { localStorage.setItem("conduct_setup_seen", "1"); router.push("/projects") }}
             style={{
               display: "inline-flex",
               alignItems: "center",
