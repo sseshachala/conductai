@@ -195,7 +195,7 @@ def _write_policy_audit(db: Session, workspace_id: uuid.UUID, tool_call: str, p:
         db.add(GuardAuditEvent(
             workspace_id=workspace_id,
             clerk_user_id=None,  # TODO: wire user_id from JWT claims
-            ai_tool="conduct-guard",
+            ai_tool=None,
             tool_call=tool_call,
             decision="allowed",
             rule_id=p.rule_id,

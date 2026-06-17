@@ -259,7 +259,7 @@ function ActivityContent() {
   const currentUserEmail = user?.primaryEmailAddress?.emailAddress ?? null
 
   const developers = Array.from(new Set(events.map(e => e.user_email).filter(Boolean) as string[])).sort()
-  const tools = Array.from(new Set(events.map(e => e.ai_tool))).sort()
+  const tools = Array.from(new Set(events.map(e => e.ai_tool).filter(Boolean) as string[])).sort()
 
   const effectiveDeveloperFilter = !permissions.canViewAllActivity && currentUserEmail
     ? currentUserEmail
