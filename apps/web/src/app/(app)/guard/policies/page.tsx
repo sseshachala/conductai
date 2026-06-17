@@ -500,6 +500,35 @@ function AddRuleModal({
           {/* AI generate */}
           <div style={{ background: "var(--surface-2)", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
             <label style={labelStyle}>Generate with AI</label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 2 }}>
+              {[
+                { label: "Approve merge to main",    prompt: "Require approval before merging to the main or master branch" },
+                { label: "No PII in files",          prompt: "Block writing files that contain email addresses or phone numbers" },
+                { label: "No hardcoded IPs",         prompt: "Block hardcoded IP addresses in source code files" },
+                { label: "Audit dependency changes", prompt: "Audit any changes to package.json, requirements.txt, or pyproject.toml" },
+                { label: "No SELECT *",              prompt: "Warn when SQL queries use SELECT * instead of explicit column names" },
+                { label: "Approve K8s manifests",    prompt: "Require approval before modifying Kubernetes manifest files" },
+              ].map(t => (
+                <button
+                  key={t.label}
+                  type="button"
+                  disabled={aiGenerating}
+                  onClick={() => setAiPrompt(t.prompt)}
+                  style={{
+                    fontSize: 11.5,
+                    padding: "4px 10px",
+                    borderRadius: 9999,
+                    border: "1px solid var(--border)",
+                    background: aiPrompt === t.prompt ? "var(--accent-weak)" : "var(--surface)",
+                    color: "var(--text-3)",
+                    cursor: aiGenerating ? "not-allowed" : "pointer",
+                    opacity: aiGenerating ? 0.4 : 1,
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
             <div style={{ display: "flex", gap: 8 }}>
               <input
                 type="text"
@@ -521,6 +550,13 @@ function AddRuleModal({
               </button>
             </div>
             {aiError && <p style={{ margin: 0, fontSize: 11.5, color: "var(--err)" }}>{aiError}</p>}
+          </div>
+
+          {/* Divider */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+            <span style={{ fontSize: 11.5, color: "var(--text-muted)", whiteSpace: "nowrap" }}>or fill manually</span>
+            <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
           </div>
 
           {/* Rule ID */}
