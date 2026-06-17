@@ -280,6 +280,17 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
     return () => { cancelled = true }
   }, [activeWorkspace?.id])
 
+  // Redirect brand-new users to /setup (only once, only on fresh workspace with no agents)
+  useEffect(() => {
+    if (!activeWorkspace) return
+    if (pathname === "/setup") return
+    if (typeof localStorage === "undefined") return
+    if (localStorage.getItem("conduct_setup_seen")) return
+    if (activeWorkspace.workflow_count === 0) {
+      router.push("/setup")
+    }
+  }, [activeWorkspace?.id])
+
   // Fetch user role from members API
   useEffect(() => {
     let cancelled = false
