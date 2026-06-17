@@ -24,6 +24,49 @@ export default function ConductCliPage() {
 
 /* ─── Nav ──────────────────────────────────────────────────────────────── */
 
+function ProductsDropdown() {
+  return (
+    <div className="relative group">
+      <a href="/sign-up" className="flex items-center gap-1 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
+        Products
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="opacity-40 mt-0.5"><path d="M2 4l4 4 4-4"/></svg>
+      </a>
+      <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[220px]">
+        <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-2">
+          <a href="/guard-landing" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <span>🛡️</span>
+            <div>
+              <p className="font-semibold">Conduct Guard</p>
+              <p className="text-xs text-stone-400">AI session governance</p>
+            </div>
+          </a>
+          <a href="/tools/security-loop" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <span>🔒</span>
+            <div>
+              <p className="font-semibold">Security Loop</p>
+              <p className="text-xs text-stone-400">Automated PR scanning</p>
+            </div>
+          </a>
+          <a href="/playbooks" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <span>⚡</span>
+            <div>
+              <p className="font-semibold">Playbooks</p>
+              <p className="text-xs text-stone-400">Pre-built AI automations</p>
+            </div>
+          </a>
+          <a href="/tools/conduct-cli" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <span className="text-indigo-600 font-bold text-base">◈</span>
+            <div>
+              <p className="font-semibold">Conduct CLI</p>
+              <p className="text-xs text-stone-400">Terminal governance + token savings</p>
+            </div>
+          </a>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function Nav() {
   return (
     <header className="px-6 py-5 flex items-center justify-between max-w-6xl mx-auto w-full">
@@ -33,46 +76,10 @@ function Nav() {
         </a>
       </div>
       <div className="flex items-center gap-4">
-        <a
-          href="/blog"
-          className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
-        >
-          Blog
-        </a>
-        <a
-          href="/marketplace"
-          className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
-        >
-          Agent Templates
-        </a>
-        <div className="relative group">
-          <a href="/tools" className="flex items-center gap-1 text-sm font-medium text-indigo-600 hover:text-indigo-900 transition-colors">
-            Tools
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="opacity-50 mt-0.5"><path d="M2 4l4 4 4-4"/></svg>
-          </a>
-          <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50">
-            <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-1.5 min-w-[160px]">
-              <a href="/tools/agent-booster" className="flex items-center gap-2 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-                <span className="text-indigo-600 font-bold">◈</span> Agent Booster
-              </a>
-              <a href="/tools/conduct-cli" className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-violet-600 bg-violet-50 transition-colors">
-                <span className="font-bold">⬡</span> Conduct CLI
-              </a>
-            </div>
-          </div>
-        </div>
-        <a
-          href="/benchmark"
-          className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
-        >
-          Benchmark
-        </a>
-        <a
-          href="/docs"
-          className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
-        >
-          Docs
-        </a>
+        <ProductsDropdown />
+        <a href="/playbooks" className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Playbooks</a>
+        <a href="/blog" className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
+        <a href="/docs" className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
         <a
           href="https://github.com/sseshachala/conductai"
           target="_blank"

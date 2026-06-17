@@ -5,12 +5,11 @@ export default function AboutPage() {
       <header className="px-6 py-4 flex items-center justify-between max-w-6xl mx-auto w-full sticky top-0 bg-white/95 backdrop-blur-sm z-50 border-b border-stone-100">
         <a href="/"><img src="/logo.png" alt="Conduct AI" className="h-10 w-auto" /></a>
         <nav className="hidden md:flex items-center gap-6">
-          <SolutionsDropdown />
-          <ToolsDropdown />
-          <a href="/marketplace" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Marketplace</a>
-          <a href="/partners" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Partners</a>
-          <a href="/docs" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
+          <ProductsDropdown />
+          <a href="/playbooks" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Playbooks</a>
           <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
+          <a href="/docs" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
+          <a href="https://github.com/sseshachala/conductai" target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">GitHub</a>
         </nav>
         <div className="flex items-center gap-3">
           <a href="mailto:hello@conductai.ai" className="text-sm font-medium text-stone-600 hover:text-stone-900 transition-colors hidden sm:block">Talk to Us</a>
@@ -246,56 +245,42 @@ export default function AboutPage() {
   )
 }
 
-function SolutionsDropdown() {
+function ProductsDropdown() {
   return (
     <div className="relative group">
-      <a href="/solutions" className="flex items-center gap-1 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
-        Solutions
+      <a href="/sign-up" className="flex items-center gap-1 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
+        Products
         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="opacity-40 mt-0.5"><path d="M2 4l4 4 4-4"/></svg>
       </a>
       <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[220px]">
         <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-2">
-          <a href="/solutions#guard" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span>🛡️</span><div><p className="font-semibold">Conduct Guard</p><p className="text-xs text-stone-400">AI session governance</p></div>
-          </a>
-          <a href="/solutions#secure" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span>🔒</span><div><p className="font-semibold">Secure</p><p className="text-xs text-stone-400">Automated security enforcement</p></div>
-          </a>
-          <a href="/solutions#workflows" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span>⚡</span><div><p className="font-semibold">Agentic Workflows</p><p className="text-xs text-stone-400">Governed AI automations</p></div>
-          </a>
-          <a href="/solutions#sdd" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span>📐</span><div><p className="font-semibold">Spec-Driven Dev</p><p className="text-xs text-stone-400">Intent-first AI coding</p></div>
-          </a>
-          <a href="/marketplace" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span>📦</span><div><p className="font-semibold">Playbooks</p><p className="text-xs text-stone-400">Pre-built AI automations</p></div>
-          </a>
-          <div className="border-t border-stone-100 mt-1 pt-1">
-            <a href="/solutions" className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">View all solutions →</a>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function ToolsDropdown() {
-  return (
-    <div className="relative group">
-      <a href="/tools" className="flex items-center gap-1 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
-        Tools
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="opacity-40 mt-0.5"><path d="M2 4l4 4 4-4"/></svg>
-      </a>
-      <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[200px]">
-        <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-2">
-          <a href="/tools/agent-booster" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span className="text-indigo-600 font-bold text-base">◈</span><div><p className="font-semibold">Agent Booster</p><p className="text-xs text-stone-400">Cut AI costs 3–15×</p></div>
-          </a>
-          <a href="/tools/conduct-cli" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span className="text-violet-600 font-bold text-base">⬡</span><div><p className="font-semibold">Conduct CLI</p><p className="text-xs text-stone-400">Govern from the terminal</p></div>
+          <a href="/guard-landing" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <span>🛡️</span>
+            <div>
+              <p className="font-semibold">Conduct Guard</p>
+              <p className="text-xs text-stone-400">AI session governance</p>
+            </div>
           </a>
           <a href="/tools/security-loop" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span className="text-rose-600 font-bold text-base">🔐</span><div><p className="font-semibold">Security Loop</p><p className="text-xs text-stone-400">Automated PR scanning</p></div>
+            <span>🔒</span>
+            <div>
+              <p className="font-semibold">Security Loop</p>
+              <p className="text-xs text-stone-400">Automated PR scanning</p>
+            </div>
+          </a>
+          <a href="/playbooks" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <span>⚡</span>
+            <div>
+              <p className="font-semibold">Playbooks</p>
+              <p className="text-xs text-stone-400">Pre-built AI automations</p>
+            </div>
+          </a>
+          <a href="/tools/conduct-cli" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <span className="text-indigo-600 font-bold text-base">◈</span>
+            <div>
+              <p className="font-semibold">Conduct CLI</p>
+              <p className="text-xs text-stone-400">Terminal governance + token savings</p>
+            </div>
           </a>
         </div>
       </div>
