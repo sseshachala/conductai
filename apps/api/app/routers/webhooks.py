@@ -4,7 +4,7 @@ Webhook endpoints for external services.
 POST /webhooks/slack/interactions  — Slack approval button clicks
 POST /webhooks/vercel              — Vercel deployment events (deployment.succeeded etc.)
 POST /webhooks/github              — GitHub issue/PR events (issues.labeled, etc.)
-POST /webhooks/inbound/{id}        — Generic inbound webhook trigger
+POST /webhooks/inbound/{id}  — Generic inbound webhook trigger\nPOST /webhooks/clerk          — Clerk user.created → create workspace + Guard
 """
 import hashlib
 import hmac
@@ -1028,3 +1028,100 @@ async def github_webhook(
 
 
 
+
+
+# ── Clerk webhook — user.created ──────────────────────────────────────────────
+
+import base64 as _base64
+import secrets as _secrets
+import uuid as _uuid
+from datetime import datetime as _dt, timezone as _tz
+from sqlalchemy import text as _text
+
+
+def _verify_clerk_signature(request_body: bytes, headers: dict) -> bool:
+    """Verify Clerk webhook signature (svix format) using stdlib hmac."""
+    secret = settings.clerk_webhook_secret
+    if not secret:
+        return True  # skip verification in dev (no secret configured)
+    # svix signing secret starts with "whsec_" followed by base64
+    raw_secret = _base64.b64decode(secret.removeprefix("whsec_"))
+    svix_id        = headers.get("svix-id", "")
+    svix_timestamp = headers.get("svix-timestamp", "")
+    svix_signature = headers.get("svix-signature", "")
+    signed = f"{svix_id}.{svix_timestamp}.{request_body.decode()}"
+    expected = _base64.b64encode(
+        hmac.new(raw_secret, signed.encode(), hashlib.sha256).digest()
+    ).decode()
+    # svix-signature may be "v1,<sig>" — compare just the hash part
+    for part in svix_signature.split(" "):
+        if part.startswith("v1,") and hmac.compare_digest(part[3:], expected):
+            return True
+    return False
+
+
+@router.post("/clerk")
+async def clerk_webhook(request: Request, db: Session = Depends(get_db)):
+    """
+    Handles Clerk user.created events.
+    Creates workspace + admin role + Guard config immediately on signup.
+    Idempotent — safe to replay.
+    """
+    body = await request.body()
+
+    if not _verify_clerk_signature(body, dict(request.headers)):
+        raise HTTPException(status_code=400, detail="Invalid webhook signature")
+
+    payload = json.loads(body)
+    event_type = payload.get("type")
+
+    if event_type != "user.created":
+        return {"ok": True, "skipped": event_type}
+
+    user_id: str = payload["data"]["id"]  # Clerk user ID e.g. user_2abc...
+
+    # Idempotency — skip if workspace already exists for this user
+    existing = db.execute(
+        _text("SELECT 1 FROM workspaces WHERE owner_id = :uid LIMIT 1"),
+        {"uid": user_id},
+    ).fetchone()
+    if existing:
+        log.info("clerk_webhook.workspace_exists", user_id=user_id)
+        return {"ok": True, "skipped": "workspace already exists"}
+
+    now          = _dt.now(_tz.utc)
+    workspace_id = _uuid.uuid4()
+    invite_code  = _uuid.uuid4().hex[:16]
+    token        = _secrets.token_urlsafe(24)
+
+    db.execute(_text("""
+        INSERT INTO workspaces (id, name, owner_id, plan, is_approved, created_at, updated_at)
+        VALUES (:id, 'Engineering', :owner_id, 'free', true, :now, :now)
+        ON CONFLICT DO NOTHING
+    """), {"id": str(workspace_id), "owner_id": user_id, "now": now})
+
+    db.execute(_text("""
+        INSERT INTO workspace_users (workspace_id, clerk_user_id, role, joined_at)
+        VALUES (:ws, :uid, 'admin', :now)
+        ON CONFLICT DO NOTHING
+    """), {"ws": str(workspace_id), "uid": user_id, "now": now})
+
+    db.execute(_text("""
+        INSERT INTO guard_config (workspace_id, invite_code, created_at)
+        VALUES (:ws, :code, :now)
+        ON CONFLICT (workspace_id) DO NOTHING
+    """), {"ws": str(workspace_id), "code": invite_code, "now": now})
+
+    db.execute(_text("""
+        INSERT INTO guard_member_config (workspace_id, clerk_user_id, member_token, active, joined_at)
+        VALUES (:ws, :uid, :token, true, :now)
+        ON CONFLICT (workspace_id, clerk_user_id) DO NOTHING
+    """), {"ws": str(workspace_id), "uid": user_id, "token": token, "now": now})
+
+    # Seed starter Guard policies (reuse projects.py helper via direct SQL equivalent)
+    from app.routers.projects import _seed_starter_policies
+    _seed_starter_policies(db, workspace_id, now)
+
+    db.commit()
+    log.info("clerk_webhook.workspace_created", user_id=user_id, workspace_id=str(workspace_id))
+    return {"ok": True, "workspace_id": str(workspace_id)}

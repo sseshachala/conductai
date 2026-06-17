@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     resend_api_key: str = ""
     email_from: str = "Conduct AI <notifications@conductai.ai>"
     # Webhook secrets
+    clerk_webhook_secret: str = ""   # Clerk signing secret (whsec_…) for user.created events
     vercel_webhook_secret: str = ""
     github_webhook_secret: str = ""
     # CORS — comma-separated allowed origins.
