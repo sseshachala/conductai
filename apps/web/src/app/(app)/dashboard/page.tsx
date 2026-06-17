@@ -778,6 +778,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
   const [loading, setLoading] = useState(true)
   const [secSummary, setSecSummary] = useState<SecurityFindingSummary | null>(null)
   const [secInstalled, setSecInstalled] = useState(false)
+  const [guardSynced, setGuardSynced] = useState<boolean | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -795,13 +796,14 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
         setLoading(false)
       }
 
-      // Load security data in parallel (non-blocking)
+      // Load security + guard coverage in parallel (non-blocking)
       if (workspaceId) {
         try {
           const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-          const [cfgRes, summaryRes] = await Promise.all([
+          const [cfgRes, summaryRes, toolsRes] = await Promise.all([
             fetch(`${base}/secure/installed?workspace_id=${workspaceId}`, { headers }),
             fetch(`${base}/security-findings/summary?workspace_id=${workspaceId}&days=30`, { headers }),
+            fetch(`${base}/guard/developer-tools`, { headers: { ...headers, "X-Workspace-Id": workspaceId } }),
           ])
           if (cfgRes.ok) {
             const cfg = await cfgRes.json()
@@ -809,6 +811,10 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
           }
           if (summaryRes.ok) {
             setSecSummary(await summaryRes.json())
+          }
+          if (toolsRes.ok) {
+            const tools = await toolsRes.json()
+            setGuardSynced(Array.isArray(tools) && tools.length > 0)
           }
         } catch {}
       }
@@ -854,6 +860,24 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
             </Link>
           </div>
         </div>
+
+        {/* Guard sync nudge — shown once until at least one developer syncs the CLI */}
+        {guardSynced === false && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 12,
+            background: "var(--warn-bg)", border: "1px solid var(--warn-bd)",
+            borderRadius: 10, padding: "10px 16px", marginBottom: 16,
+          }}>
+            <span style={{ fontSize: 18 }}>🛡️</span>
+            <div style={{ flex: 1, fontSize: 13, color: "var(--text)" }}>
+              <strong>Guard is active</strong> — but no team members have synced the CLI yet.
+              Run <code style={{ background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4, fontSize: 12 }}>conduct guard sync</code> on each developer machine to start capturing activity.
+            </div>
+            <a href="/guard" style={{ fontSize: 12, fontWeight: 600, color: "var(--accent-text)", textDecoration: "none", flexShrink: 0 }}>
+              Go to Guard →
+            </a>
+          </div>
+        )}
 
         {loading ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
