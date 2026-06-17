@@ -1,20 +1,20 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 
 export default function ConductCliPage() {
   return (
     <div className="min-h-screen bg-white flex flex-col">
       <Nav />
       <main>
-        <HeroSection />
+        <DiagnosticHero />
         <WhatItCoversSection />
+        <QuickstartSection />
+        <WorksWithSection />
         <UseCasesSection />
-        <ClaudePluginSection />
-        <SessionsSection />
-        <CliReferenceSection />
         <GuardInsightsCallout />
-        <AlsoBySection />
+        <WhatsNewSection />
+        <FaqSection />
         <FooterCTASection />
       </main>
       <PageFooter />
@@ -133,58 +133,220 @@ function InlineCodeBlock({ children, comment }: { children: string; comment?: st
   )
 }
 
-/* ─── Hero ─────────────────────────────────────────────────────────────── */
+/* ─── Diagnostic Hero ──────────────────────────────────────────────────── */
 
-function HeroSection() {
-  return (
-    <section className="flex flex-col items-center justify-center px-6 pt-16 pb-24 text-center">
-      <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 border border-indigo-100 text-xs font-semibold px-3 py-1.5 rounded-full mb-8 uppercase tracking-widest">
-        Open Source &middot; v0.4.93
-      </div>
+type Segment = {
+  text: string
+  speed?: number   // ms per char
+  pause?: number   // ms pause after this segment completes
+  style?: "question" | "answer" | "code" | "stat" | "label"
+}
 
-      <h1 className="text-5xl sm:text-6xl font-bold text-stone-900 leading-[1.1] tracking-tight max-w-3xl">
-        Your AI team&apos;s{" "}
-        <span className="text-indigo-600">command centre.</span>
-      </h1>
+const SCRIPT: Segment[] = [
+  { text: "What AI tool are you on?\n", style: "question", speed: 28, pause: 520 },
+  { text: "Probably Claude Code — that's where we see the most context waste.\n\n", style: "answer", speed: 22, pause: 680 },
+  { text: "How big is your codebase?\n", style: "question", speed: 28, pause: 500 },
+  { text: "Let's say medium — 50 to 500 files. That's the sweet spot where bloat really bites.\n\n", style: "answer", speed: 20, pause: 700 },
+  { text: "What's leaking tokens?\n", style: "question", speed: 28, pause: 440 },
+  { text: "Three things.\n\n", style: "answer", speed: 35, pause: 260 },
+  { text: "File reads sending 800-line files when the model needed 40 lines.\n", style: "answer", speed: 18, pause: 180 },
+  { text: "CLI output — pytest runs, git diffs, docker logs — flooding the context before you've done anything useful.\n", style: "answer", speed: 18, pause: 180 },
+  { text: "And responses that are longer than they have to be.\n\n", style: "answer", speed: 20, pause: 700 },
+  { text: "Here's what fixes all three:\n\n", style: "label", speed: 26, pause: 300 },
+  { text: "$ pip install agent-booster[full]\n", style: "code", speed: 14, pause: 120 },
+  { text: "$ booster start\n", style: "code", speed: 14, pause: 120 },
+  { text: "$ booster verbosity full\n\n", style: "code", speed: 14, pause: 700 },
+  { text: "INPUT tokens: RTK cuts CLI output 85–99%. Booster cuts file reads 50–77%.\n", style: "stat", speed: 18, pause: 220 },
+  { text: "OUTPUT tokens: verbosity mode cuts responses ~75%.\n\n", style: "stat", speed: 18, pause: 700 },
+  { text: "On a medium repo that's roughly 300–600k tokens saved per session.\n", style: "answer", speed: 20, pause: 260 },
+  { text: "Run booster gain after your first session to see the real number.", style: "answer", speed: 20, pause: 0 },
+]
 
-      <p className="mt-6 text-xl text-stone-500 max-w-2xl leading-relaxed">
-        conduct-cli connects your terminal to the Conduct platform &mdash; run agents, manage
-        projects, enforce AI usage policies with ConductGuard, and switch workspaces in one
-        command.
-      </p>
+function DiagnosticHero() {
+  const [revealed, setRevealed] = useState("")
+  const [done, setDone] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const bottomRef = useRef<HTMLDivElement | null>(null)
 
-      <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
-        <div className="flex items-center rounded-xl bg-stone-950 px-5 py-3">
-          <code className="font-mono text-sm text-emerald-400">pip install conduct-cli</code>
-          <CopyButton text="pip install conduct-cli" />
+  function clearTimer() {
+    if (timerRef.current) clearTimeout(timerRef.current)
+  }
+
+  function runScript(startRevealed = "") {
+    clearTimer()
+    setRevealed(startRevealed)
+    setDone(false)
+
+    // Build a flat sequence of {char, delay} pairs
+    const frames: Array<{ char: string; delay: number }> = []
+
+    // pause before first segment
+    frames.push({ char: "", delay: 600 })
+
+    for (const seg of SCRIPT) {
+      const speed = seg.speed ?? 22
+      const text = seg.text
+
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i]
+        // natural pauses at punctuation
+        let d = speed
+        if (ch === "." || ch === "?" || ch === "!") d = speed + 120
+        else if (ch === ",") d = speed + 60
+        else if (ch === "\n") d = speed + 40
+        frames.push({ char: ch, delay: d })
+      }
+
+      if (seg.pause && seg.pause > 0) {
+        frames.push({ char: "", delay: seg.pause })
+      }
+    }
+
+    let idx = 0
+    let acc = startRevealed
+
+    function tick() {
+      if (idx >= frames.length) {
+        setDone(true)
+          return
+      }
+      const { char, delay } = frames[idx]
+      if (char) {
+        acc += char
+        setRevealed(acc)
+      }
+      idx++
+      timerRef.current = setTimeout(tick, delay)
+    }
+
+    timerRef.current = setTimeout(tick, 0)
+  }
+
+  useEffect(() => {
+    runScript()
+    return clearTimer
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // auto-scroll to bottom as text grows
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+  }, [revealed])
+
+  function replay() {
+    runScript()
+  }
+
+  function skip() {
+    clearTimer()
+    const full = SCRIPT.map(s => s.text).join("")
+    setRevealed(full)
+    setDone(true)
+  }
+
+  // Render revealed text with per-line styling
+  const lines = revealed.split("\n")
+
+  function renderLine(line: string, idx: number) {
+    if (!line) return <div key={idx} className="h-4" />
+    if (line.startsWith("$ ")) {
+      return (
+        <div key={idx} className="flex items-center gap-2 font-mono text-sm">
+          <span className="text-stone-600 select-none">$</span>
+          <span className="text-emerald-400">{line.slice(2)}</span>
         </div>
-        <a
-          href="https://github.com/sseshachala/conductai"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-6 py-3 text-sm font-semibold text-stone-700 hover:border-stone-300 hover:shadow-sm transition-all"
-        >
-          <GitHubIcon />
-          View on GitHub
-        </a>
-      </div>
-      <p className="mt-4 text-xs text-stone-400">
-        Python 3.10+ &middot; MIT licensed &middot; v0.4.93
-      </p>
-
-      <div className="mt-14 w-full max-w-3xl">
-        <div className="rounded-2xl border border-stone-200 bg-stone-50 p-2 shadow-sm">
-          <img
-            src="/tools/conduct-cli-demo.gif"
-            alt="Conduct CLI demo: conduct whoami, switch workspaces with Guard policy sync, and run an agent from the terminal"
-            className="w-full rounded-xl"
-            loading="lazy"
-          />
-        </div>
-        <p className="mt-3 text-xs text-stone-400">
-          One CLI: run agents, enforce Guard policies, and switch workspaces — your rules travel with you.
+      )
+    }
+    if (line.endsWith("?")) {
+      return (
+        <p key={idx} className="text-stone-400 text-sm font-medium mt-3 first:mt-0">
+          {line}
         </p>
+      )
+    }
+    if (line.startsWith("INPUT tokens:") || line.startsWith("OUTPUT tokens:")) {
+      const [label, ...rest] = line.split(":")
+      return (
+        <p key={idx} className="text-sm font-mono">
+          <span className={label.startsWith("INPUT") ? "text-indigo-400 font-semibold" : "text-violet-400 font-semibold"}>
+            {label}:
+          </span>
+          <span className="text-stone-400">{rest.join(":")}</span>
+        </p>
+      )
+    }
+    if (line.startsWith("Here's what fixes") || line.startsWith("Here's what") || line === "Here's what fixes all three:") {
+      return <p key={idx} className="text-stone-500 text-xs uppercase tracking-widest font-semibold mt-4 mb-1">{line}</p>
+    }
+    return (
+      <p key={idx} className="text-stone-200 text-sm leading-relaxed">
+        {line}
+      </p>
+    )
+  }
+
+  return (
+    <section className="flex flex-col items-center px-6 pt-16 pb-24">
+      {/* Badge */}
+      <div className="flex items-center gap-2 mb-8">
+        <span className="text-indigo-400 font-black text-lg">◈</span>
+        <span className="text-xs font-semibold text-stone-400 uppercase tracking-widest">Agent Booster v0.2.30</span>
+        <span className="text-[10px] font-bold bg-emerald-900 text-emerald-300 border border-emerald-700 px-2 py-0.5 rounded-full uppercase tracking-widest">Free · MIT</span>
       </div>
+
+      {/* Chat window */}
+      <div className="w-full max-w-2xl rounded-2xl bg-stone-950 border border-stone-800 overflow-hidden shadow-xl">
+        {/* Title bar */}
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-stone-800 bg-stone-900">
+          <span className="w-3 h-3 rounded-full bg-red-500/60" />
+          <span className="w-3 h-3 rounded-full bg-yellow-500/60" />
+          <span className="w-3 h-3 rounded-full bg-green-500/60" />
+          <span className="ml-3 text-xs text-stone-500 font-mono">agent-booster — diagnostic</span>
+          {!done && (
+            <button
+              onClick={skip}
+              className="ml-auto text-[10px] text-stone-600 hover:text-stone-400 transition-colors font-mono cursor-pointer"
+            >
+              skip →
+            </button>
+          )}
+        </div>
+
+        {/* Content */}
+        <div className="px-6 py-6 min-h-[320px] flex flex-col gap-0.5">
+          {lines.map((line, i) => renderLine(line, i))}
+          {/* blinking cursor */}
+          {!done && (
+            <span className="inline-block w-2 h-4 bg-indigo-400 align-middle animate-pulse" />
+          )}
+          <div ref={bottomRef} />
+        </div>
+      </div>
+
+      {/* CTA row */}
+      {done && (
+        <div className="mt-8 flex flex-col sm:flex-row items-center gap-4">
+          <div className="flex items-center rounded-xl bg-stone-950 border border-stone-800 px-5 py-3">
+            <code className="font-mono text-sm text-emerald-400">pip install agent-booster[full]</code>
+            <CopyButton text="pip install 'agent-booster[full]'" />
+          </div>
+          <a
+            href="https://github.com/sseshachala/conductai"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-6 py-3 text-sm font-semibold text-stone-700 hover:border-stone-300 hover:shadow-sm transition-all"
+          >
+            <GitHubIcon />
+            View on GitHub
+          </a>
+          <button
+            onClick={replay}
+            className="text-xs text-stone-400 underline hover:text-stone-600 transition-colors cursor-pointer"
+          >
+            replay
+          </button>
+        </div>
+      )}
     </section>
   )
 }
@@ -250,6 +412,100 @@ function WhatItCoversSection() {
             </div>
           ))}
         </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── Quickstart ───────────────────────────────────────────────────────── */
+
+function QuickstartSection() {
+  return (
+    <section className="bg-stone-50 px-6 py-20">
+      <div className="max-w-2xl mx-auto">
+        <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">Quickstart</p>
+        <h2 className="text-3xl font-bold text-stone-900 text-center mb-12">
+          Up and running in two commands.
+        </h2>
+
+        <div className="flex flex-col gap-5">
+          <div>
+            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 1 — Install</p>
+            <InlineCodeBlock comment="includes embeddings + file watcher">pip install agent-booster[full]</InlineCodeBlock>
+          </div>
+          <div>
+            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 2 — Start</p>
+            <InlineCodeBlock comment="detects Claude/Cursor/Codex, wires hooks, indexes, starts daemon">booster start</InlineCodeBlock>
+            <p className="mt-2 text-xs text-stone-400">Detects which AI tools are present (Claude Code, Cursor, Windsurf, Codex), wires each one automatically, indexes the project, and starts a background daemon that keeps the model warm and auto-re-indexes on every file save. Fully reversible with <code className="font-mono bg-stone-100 px-1 rounded text-stone-600">booster remove claude</code>.</p>
+          </div>
+          <div>
+            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">That&apos;s it — then track savings</p>
+            <InlineCodeBlock>booster gain</InlineCodeBlock>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── Works with ───────────────────────────────────────────────────────── */
+
+const WORKS_WITH = [
+  {
+    name: "Claude Code",
+    icon: "◈",
+    color: "text-orange-600",
+    bg: "bg-orange-50 border-orange-200",
+    desc: "booster init claude",
+  },
+  {
+    name: "Cursor",
+    icon: "⊙",
+    color: "text-blue-600",
+    bg: "bg-blue-50 border-blue-200",
+    desc: "booster init cursor",
+  },
+  {
+    name: "Windsurf",
+    icon: "◭",
+    color: "text-violet-600",
+    bg: "bg-violet-50 border-violet-200",
+    desc: "booster init windsurf",
+  },
+  {
+    name: "OpenAI Codex",
+    icon: "◎",
+    color: "text-emerald-600",
+    bg: "bg-emerald-50 border-emerald-200",
+    desc: "booster init codex",
+  },
+]
+
+function WorksWithSection() {
+  return (
+    <section className="bg-stone-50 px-6 py-20">
+      <div className="max-w-4xl mx-auto">
+        <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">Compatibility</p>
+        <h2 className="text-3xl font-bold text-stone-900 text-center mb-12">
+          Works with every major AI coding tool.
+        </h2>
+
+        <div className="grid sm:grid-cols-4 gap-5">
+          {WORKS_WITH.map(tool => (
+            <div key={tool.name} className={`rounded-2xl border ${tool.bg} px-6 py-6 flex flex-col items-center text-center gap-3`}>
+              <span className={`text-3xl font-black ${tool.color}`}>{tool.icon}</span>
+              <div>
+                <p className="font-semibold text-stone-900 mb-1">{tool.name}</p>
+                <code className="text-xs text-stone-500 font-mono">{tool.desc}</code>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-center text-xs text-stone-400 mt-6">
+          Each command shows exactly what files will change and asks for confirmation before writing anything.
+          Run <code className="font-mono bg-stone-200 px-1 rounded">booster remove &lt;platform&gt;</code> to cleanly undo.
+        </p>
       </div>
     </section>
   )
@@ -457,298 +713,6 @@ function UseCasesSection() {
   )
 }
 
-/* ─── Claude Plugin ────────────────────────────────────────────────────── */
-
-function ClaudePluginSection() {
-  return (
-    <section className="bg-stone-50 px-6 py-20">
-      <div className="max-w-3xl mx-auto">
-        <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">
-          Claude Code Plugin
-        </p>
-        <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
-          Install as a Claude Code Plugin.
-        </h2>
-        <p className="text-center text-stone-500 text-sm max-w-xl mx-auto mb-12">
-          conduct-cli is available as an official Claude Code plugin. One slash command installs
-          the CLI, wires the ConductGuard MCP server, and you&apos;re live.
-        </p>
-
-        <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-8 py-8 flex flex-col gap-6">
-          {/* Install command */}
-          <div>
-            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">
-              Install via Claude Code
-            </p>
-            <InlineCodeBlock>/plugin marketplace add sseshachala/conductai</InlineCodeBlock>
-          </div>
-
-          {/* What it does */}
-          <div className="grid sm:grid-cols-3 gap-4">
-            {[
-              {
-                icon: "◈",
-                title: "conduct CLI",
-                desc: "Wires the conduct binary so you can run agents, switch workspaces, and check run history directly from Claude Code.",
-                color: "text-indigo-600",
-                bg: "bg-white border-indigo-200",
-              },
-              {
-                icon: "⊙",
-                title: "ConductGuard MCP",
-                desc: "Registers conductguard-mcp as an MCP server &mdash; policy enforcement fires on every tool call Claude makes.",
-                color: "text-violet-600",
-                bg: "bg-white border-violet-200",
-              },
-              {
-                icon: "≋",
-                title: "Policy sync",
-                desc: "Guard policies sync automatically when you switch workspaces. No manual config edits required.",
-                color: "text-emerald-600",
-                bg: "bg-white border-emerald-200",
-              },
-            ].map((item) => (
-              <div
-                key={item.title}
-                className={`rounded-xl border ${item.bg} px-5 py-4 flex flex-col gap-2`}
-              >
-                <span className={`text-xl font-black ${item.color}`}>{item.icon}</span>
-                <p className="text-sm font-semibold text-stone-900">{item.title}</p>
-                <p
-                  className="text-xs text-stone-500 leading-relaxed"
-                  dangerouslySetInnerHTML={{ __html: item.desc }}
-                />
-              </div>
-            ))}
-          </div>
-
-          {/* Post-install step */}
-          <div className="border-t border-indigo-200 pt-5">
-            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">
-              Then verify the install
-            </p>
-            <InlineCodeBlock>conduct whoami</InlineCodeBlock>
-            <p className="mt-2 text-xs text-stone-400">
-              Shows your active workspace, Guard status, and Booster status in one command.
-            </p>
-          </div>
-        </div>
-
-        {/* Submission note */}
-        <p className="text-center text-xs text-stone-400 mt-6">
-          Plugin is pending review at the{" "}
-          <a
-            href="https://clau.de/plugin-directory-submission"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-indigo-500 hover:text-indigo-700"
-          >
-            Anthropic plugin directory
-          </a>
-          . Until then, install directly from{" "}
-          <a
-            href="https://github.com/sseshachala/conductai"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-indigo-500 hover:text-indigo-700"
-          >
-            GitHub
-          </a>
-          .
-        </p>
-      </div>
-    </section>
-  )
-}
-
-/* ─── CLI Reference ────────────────────────────────────────────────────── */
-
-const CLI_COMMANDS = [
-  {
-    cmd: "conduct run <agent>",
-    when: "Daily",
-    what: "Run a named agent. Streams output to terminal.",
-  },
-  {
-    cmd: "conduct list agents",
-    when: "Exploring",
-    what: "List all agents available in the active workspace.",
-  },
-  {
-    cmd: "conduct list runs",
-    when: "Debugging",
-    what: "Show recent runs with status and duration.",
-  },
-  {
-    cmd: "conduct switch",
-    when: "Context switch",
-    what: "List workspaces (current marked with *).",
-  },
-  {
-    cmd: "conduct switch <name>",
-    when: "Context switch",
-    what: "Switch workspace + re-sync Guard policies atomically.",
-  },
-  {
-    cmd: "conduct whoami",
-    when: "Before any run",
-    what: "Show workspace, server, Guard status, Booster status.",
-  },
-  {
-    cmd: "conduct guard status",
-    when: "Debugging",
-    what: "Show Guard hook wiring, policy count, last sync time.",
-  },
-  {
-    cmd: "conductguard-mcp",
-    when: "Auto",
-    what: "MCP server started by Claude Code. Enforces policies on every tool call.",
-  },
-  {
-    cmd: "conduct-mcp",
-    when: "Auto",
-    what: "Conduct platform MCP server \u2014 exposes run/list/status as MCP tools.",
-  },
-] as const
-
-/* ─── Sessions ──────────────────────────────────────────────────────── */
-
-const SESSIONS_TABS = [
-  {
-    id: "table",
-    label: "conduct sessions",
-    command: "conduct sessions",
-    description: "Instant snapshot of every active Claude Code and Codex session — project, model, context window usage, tokens, turn count, and Guard status. No API key needed, reads local session files.",
-    img: "/conduct-sessions/table.png",
-    alt: "conduct sessions table view showing CC sessions with context bars",
-  },
-  {
-    id: "tui",
-    label: "--tui (live)",
-    command: "conduct sessions --tui",
-    description: "Full-screen live TUI. Context pressure panel alerts you when any session exceeds 60% — prompts you to /compact before the session degrades. Refreshes every 5s. Ctrl+C to quit.",
-    img: "/conduct-sessions/tui.png",
-    alt: "conduct sessions --tui showing sessions table with context pressure warning",
-  },
-  {
-    id: "tui-full",
-    label: "--tui (full)",
-    command: "conduct sessions --tui",
-    description: "Three panels in one screen: your local coding sessions, all platform agent runs with status and duration, and team Guard activity grouped by developer. Everything you need to know about your AI fleet at a glance.",
-    img: "/conduct-sessions/tui-full.png",
-    alt: "conduct sessions --tui full view with My Sessions, Agent Runs, and Team Activity panels",
-  },
-] as const
-
-function SessionsSection() {
-  const [active, setActive] = useState<number>(0)
-  const tab = SESSIONS_TABS[active]
-
-  return (
-    <section className="bg-stone-50 px-6 py-20">
-      <div className="max-w-5xl mx-auto">
-        <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">conduct sessions</p>
-        <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
-          Your entire AI fleet in one command.
-        </h2>
-        <p className="text-center text-stone-500 text-sm max-w-xl mx-auto mb-10">
-          Stop flying blind across terminal windows. <code className="font-mono bg-stone-200 px-1 rounded text-stone-700">conduct sessions</code> shows
-          every active Claude Code and Codex session — context usage, tokens, Guard status, agent runs, and team activity — all in one place.
-        </p>
-
-        {/* Tab selector */}
-        <div className="flex flex-wrap gap-2 justify-center mb-8">
-          {SESSIONS_TABS.map((t, i) => (
-            <button
-              key={t.id}
-              onClick={() => setActive(i)}
-              className={`rounded-full px-4 py-2 text-xs font-semibold transition-all border font-mono ${
-                active === i
-                  ? "bg-stone-900 text-emerald-400 border-stone-900"
-                  : "bg-white text-stone-600 border-stone-200 hover:border-stone-400"
-              }`}
-            >
-              {t.command}
-            </button>
-          ))}
-        </div>
-
-        {/* Screenshot */}
-        <div className="rounded-2xl overflow-hidden border border-stone-800 shadow-2xl bg-stone-950">
-          <div className="flex items-center gap-1.5 px-4 py-3 bg-stone-900 border-b border-stone-800">
-            <span className="w-3 h-3 rounded-full bg-red-500/70" />
-            <span className="w-3 h-3 rounded-full bg-yellow-500/70" />
-            <span className="w-3 h-3 rounded-full bg-green-500/70" />
-            <code className="ml-3 text-xs text-stone-400 font-mono">{tab.command}</code>
-          </div>
-          <img
-            src={tab.img}
-            alt={tab.alt}
-            className="w-full block"
-          />
-        </div>
-
-        {/* Description */}
-        <p className="mt-5 text-sm text-stone-500 text-center max-w-2xl mx-auto leading-relaxed">
-          {tab.description}
-        </p>
-
-        {/* Feature pills */}
-        <div className="mt-8 flex flex-wrap gap-3 justify-center">
-          {[
-            "Claude Code + Codex",
-            "Context window bars",
-            "Agent runs + status",
-            "Team Guard activity",
-            "Context pressure alerts",
-            "Refreshes every 5s",
-          ].map(f => (
-            <span key={f} className="inline-flex items-center gap-1.5 text-xs font-medium bg-white border border-stone-200 text-stone-600 px-3 py-1.5 rounded-full">
-              <span className="text-emerald-500">✓</span> {f}
-            </span>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
-
-function CliReferenceSection() {
-  return (
-    <section className="px-6 py-20">
-      <div className="max-w-5xl mx-auto">
-        <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">
-          CLI Reference
-        </p>
-        <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
-          Every command, and when to use it.
-        </h2>
-        <p className="text-center text-stone-500 text-sm max-w-xl mx-auto mb-12">
-          Most of the time you only need three:{" "}
-          <code className="font-mono bg-stone-200 px-1 rounded">conduct run</code>,{" "}
-          <code className="font-mono bg-stone-200 px-1 rounded">conduct switch</code>, and{" "}
-          <code className="font-mono bg-stone-200 px-1 rounded">conduct whoami</code>.
-        </p>
-
-        <div className="flex flex-col divide-y divide-stone-200 rounded-2xl border border-stone-200 bg-white overflow-hidden">
-          {CLI_COMMANDS.map((c) => (
-            <div
-              key={c.cmd}
-              className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_3fr] gap-2 sm:gap-6 px-6 py-5 items-start"
-            >
-              <code className="font-mono text-sm font-semibold text-indigo-700 bg-indigo-50 px-2 py-1 rounded self-start">
-                {c.cmd}
-              </code>
-              <p className="text-xs text-stone-400 italic pt-1">{c.when}</p>
-              <p className="text-sm text-stone-700">{c.what}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
-
 /* ─── Guard Insights Callout ───────────────────────────────────────────── */
 
 function GuardInsightsCallout() {
@@ -793,99 +757,241 @@ function GuardInsightsCallout() {
   )
 }
 
-/* ─── Also By ──────────────────────────────────────────────────────────── */
+/* ─── What's New ───────────────────────────────────────────────────────── */
 
-function AlsoBySection() {
+const WHATS_NEW_ITEMS = [
+  {
+    icon: "🤝",
+    title: "Shared team index",
+    tag: "v0.2.30",
+    desc: "booster index-push uploads your symbol index to the team workspace via the Guard sync channel. Teammates run booster index-pull (or just conduct guard sync) to merge it locally — no re-indexing the same repo twice. Uses the same auth as guard sync, zero new config.",
+    color: "text-indigo-600",
+    bg: "bg-indigo-50 border-indigo-200",
+  },
+  {
+    icon: "🎓",
+    title: "booster learn",
+    tag: "v0.2.28",
+    desc: "Mines your local read history and Guard failed run traces to extract patterns — hot files, files that resist smart_read, turn limit failures. Writes corrections directly to CLAUDE.md under a dedicted block. Run booster learn --dry-run to preview first.",
+    color: "text-emerald-600",
+    bg: "bg-emerald-50 border-emerald-200",
+  },
+  {
+    icon: "🗜️",
+    title: "SmartCrusher",
+    tag: "v0.2.27",
+    desc: "Compression pass on every smart_read and search_context result before it reaches the model. JSON arrays: keeps first 5 + last 3 entries, drops middle duplicates. Repeated lines: collapsed into '… N identical lines omitted'. Kicks in above 2KB — small results pass through untouched.",
+    color: "text-rose-600",
+    bg: "bg-rose-50 border-rose-200",
+  },
+  {
+    icon: "⚡",
+    title: "Cache alignment",
+    tag: "v0.2.26",
+    desc: "Tools are now returned alphabetically with deterministically sorted schema keys on every request. Anthropic users get free KV cache hits on the tools prefix — same tool list every session means the prefix is already cached. Auto-detected from ANTHROPIC_API_KEY, no config needed. booster gain shows cache alignment status.",
+    color: "text-amber-600",
+    bg: "bg-amber-50 border-amber-200",
+  },
+  {
+    icon: "🛑",
+    title: "Output token tracking",
+    tag: "v0.2.25",
+    desc: "booster-stop.py fires on every Claude Code session end and captures actual output tokens from the stop event. Stores baseline vs. actual in .booster/stats.db. booster gain now shows real savings — not estimates.",
+    color: "text-rose-600",
+    bg: "bg-rose-50 border-rose-200",
+  },
+  {
+    icon: "🔇",
+    title: "Verbosity modes",
+    tag: "v0.2.24",
+    desc: "booster verbosity lite|full|ultra injects a conciseness block into CLAUDE.md, AGENTS.md, .cursorrules, and .windsurfrules. booster verbosity off removes it. Cuts output token count by 30–75% across all AI coding tools.",
+    color: "text-purple-600",
+    bg: "bg-purple-50 border-purple-200",
+  },
+  {
+    icon: "🗜️",
+    title: "Memory compression",
+    tag: "v0.2.24",
+    desc: "booster compress rewrites every file in memory/ through claude-haiku to strip filler and cut token count by ~60%. booster compress --dry-run previews savings without writing. Keeps project memory lean as it grows.",
+    color: "text-teal-600",
+    bg: "bg-teal-50 border-teal-200",
+  },
+  {
+    icon: "⚡",
+    title: "Background daemon",
+    tag: "v0.2.18",
+    desc: "booster start launches a persistent Unix socket process that keeps the embedding model loaded. search_context drops from 2–3 s cold-start to ~50 ms. Daemon survives editor restarts — it's not tied to any terminal.",
+    color: "text-amber-600",
+    bg: "bg-amber-50 border-amber-200",
+  },
+  {
+    icon: "◎",
+    title: "File watcher",
+    tag: "v0.2.17",
+    desc: "watchdog monitors the project for writes. Changed files are re-indexed within 2 seconds of a save — no manual booster index during a coding session. Daemon handles this automatically.",
+    color: "text-blue-600",
+    bg: "bg-blue-50 border-blue-200",
+  },
+  {
+    icon: "≋",
+    title: "Delta indexing",
+    tag: "v0.2.16",
+    desc: "SHA-256 hash and mtime stored per file in the SQLite index. Full re-index skips unchanged files entirely. Large repos that took seconds now finish in milliseconds. Use --force to override.",
+    color: "text-violet-600",
+    bg: "bg-violet-50 border-violet-200",
+  },
+  {
+    icon: "◈",
+    title: "Asymmetric embeddings",
+    tag: "v0.2.16",
+    desc: "Index-time vectors use a passage: prefix; query-time vectors use query:. Follows the E5 paper's asymmetric retrieval approach. Retrieval accuracy improves meaningfully over symmetric embeddings, especially for short function names.",
+    color: "text-indigo-600",
+    bg: "bg-indigo-50 border-indigo-200",
+  },
+  {
+    icon: "✦",
+    title: "booster start does everything",
+    tag: "v0.2.18",
+    desc: "One command bootstraps the full stack: detects installed AI tools (Claude Code, Cursor, Windsurf, Codex), wires each one that isn't already wired, indexes the project, builds embeddings, and starts the daemon. On subsequent runs it just wakes the daemon.",
+    color: "text-emerald-600",
+    bg: "bg-emerald-50 border-emerald-200",
+  },
+]
+
+function WhatsNewSection() {
   return (
-    <section className="px-6 py-16 bg-stone-50 border-t border-stone-100">
-      <div className="max-w-4xl mx-auto">
-        <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-2 text-center">
-          Also by Conduct
-        </p>
-        <h2 className="text-2xl font-bold text-stone-900 text-center mb-10">
-          More free tools for AI coding
+    <section className="px-6 py-20 bg-stone-50">
+      <div className="max-w-5xl mx-auto">
+        <div className="flex items-center justify-center gap-3 mb-3">
+          <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest">What&apos;s new</p>
+          <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full uppercase tracking-widest">
+            v0.2.16 – v0.2.30
+          </span>
+        </div>
+        <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
+          SmartCrusher, cache alignment, booster learn, and shared team index.
         </h2>
+        <p className="text-center text-stone-500 text-sm max-w-2xl mx-auto mb-12">
+          Four new releases. The result: booster cuts costs at every layer — elimination, compression, caching, and learning from every session,
+          search is instant after the first run, and re-indexing costs nothing on unchanged files.
+        </p>
 
-        <div className="grid sm:grid-cols-2 gap-6">
-          {/* Agent Booster */}
-          <div className="rounded-2xl border border-stone-200 bg-white px-7 py-6 flex flex-col gap-4 hover:border-indigo-200 hover:shadow-sm transition-all">
-            <div className="flex items-start justify-between">
-              <div>
-                <span className="inline-flex items-center text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-1 rounded-full mb-3">
-                  Free &middot; MIT
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {WHATS_NEW_ITEMS.map((item) => (
+            <div key={item.title} className={`rounded-2xl border ${item.bg} px-6 py-6 flex flex-col gap-3`}>
+              <div className="flex items-start justify-between gap-2">
+                <span className={`text-2xl font-black ${item.color}`}>{item.icon}</span>
+                <span className="text-[10px] font-semibold text-stone-400 bg-white border border-stone-200 px-2 py-0.5 rounded-full font-mono mt-1">
+                  {item.tag}
                 </span>
-                <h3 className="text-lg font-bold text-stone-900">Agent Booster</h3>
-                <p className="text-sm text-stone-500 mt-1">
-                  60&ndash;90% token savings on AI coding
-                </p>
               </div>
-              <span className="text-2xl font-black text-indigo-600">◈</span>
+              <p className="text-sm font-bold text-stone-900">{item.title}</p>
+              <p className="text-xs text-stone-600 leading-relaxed">{item.desc}</p>
             </div>
-            <p className="text-sm text-stone-600 leading-relaxed">
-              AST-level symbol routing, semantic vector search, and MCP integration. Routes only
-              the relevant symbols and functions to the model instead of full files.
-            </p>
-            <div className="mt-auto pt-4 border-t border-stone-100 flex items-center gap-3">
-              <a
-                href="/tools/agent-booster"
-                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors"
-              >
-                Learn more &rarr;
-              </a>
-              <code className="font-mono text-xs text-stone-400 bg-stone-50 px-2 py-1 rounded border border-stone-100">
-                pip install agent-booster
-              </code>
-            </div>
-          </div>
+          ))}
 
-          {/* Security Loop */}
-          <div className="rounded-2xl border border-stone-200 bg-white px-7 py-6 flex flex-col gap-4 hover:border-red-100 hover:shadow-sm transition-all">
-            <div className="flex items-start justify-between">
-              <div>
-                <span className="inline-flex items-center text-xs font-semibold bg-red-50 text-red-700 border border-red-100 px-2.5 py-1 rounded-full mb-3">
-                  Free &middot; MIT
-                </span>
-                <h3 className="text-lg font-bold text-stone-900">Security Loop</h3>
-                <p className="text-sm text-stone-500 mt-1">
-                  Automated AI security scanning for every push
-                </p>
-              </div>
-              <span className="text-2xl font-black text-red-500">⬡</span>
+          {/* Changelog link card */}
+          <div className="rounded-2xl border border-stone-200 bg-white px-6 py-6 flex flex-col gap-3 justify-between">
+            <div>
+              <p className="text-sm font-bold text-stone-900 mb-2">Full changelog</p>
+              <p className="text-xs text-stone-500 leading-relaxed">
+                Every commit, diff, and release note lives in the GitHub repo. PRs welcome.
+              </p>
             </div>
-            <p className="text-sm text-stone-600 leading-relaxed">
-              CLI emitter &rarr; Guard &rarr; API &rarr; Security dashboard &rarr; draft agents
-              &rarr; Slack. Continuous policy enforcement wired into your CI loop.
-            </p>
-            <div className="mt-auto pt-4 border-t border-stone-100 flex items-center gap-3">
-              <a
-                href="https://github.com/sseshachala/conductai"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 px-4 py-2 text-sm font-medium text-stone-700 hover:border-stone-300 transition-colors"
-              >
-                <GitHubIcon />
-                View on GitHub
-              </a>
-            </div>
+            <a
+              href="https://github.com/sseshachala/conductai/commits/main/tools/booster"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors mt-2"
+            >
+              <GitHubIcon />
+              View commits →
+            </a>
           </div>
         </div>
+      </div>
+    </section>
+  )
+}
 
-        <p className="text-center mt-8 text-sm text-stone-400">
-          All tools are free, MIT licensed, and live on{" "}
-          <a
-            href="https://github.com/sseshachala/conductai"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-indigo-600 hover:text-indigo-800"
-          >
-            GitHub
-          </a>
-          .{" "}See the full list at{" "}
-          <a href="/tools" className="text-indigo-600 hover:text-indigo-800">
-            /tools
-          </a>
-          .
-        </p>
+/* ─── FAQ ──────────────────────────────────────────────────────────────── */
+
+const FAQS = [
+  {
+    q: "What is an AST and why does it matter?",
+    a: "AST stands for Abstract Syntax Tree — a structured representation of source code. Instead of treating code as raw text, we parse it into a tree of nodes: functions, classes, parameters, and their relationships. This lets us extract just the symbols relevant to a task (say, 3 functions out of 1,800 lines) rather than sending the entire file. We use tree-sitter to parse Python and TypeScript files.",
+  },
+  {
+    q: "How does the symbol index work?",
+    a: "When you run booster index (or booster start on first run), we walk every .py / .ts / .tsx / .js / .jsx file with tree-sitter, extract all function and class nodes, and store name, kind, file path, start/end line, and signature into .booster/symbols.db. Delta indexing skips unchanged files — each file's SHA-256 hash and mtime are stored, so only modified files are re-parsed. Use booster index --force to bypass the delta cache and re-index everything.",
+  },
+  {
+    q: "How does semantic search work?",
+    a: "When you run booster index --embed (or booster embed), we load each symbol's name + signature into the all-MiniLM-L6-v2 model from sentence-transformers, encode them into 384-dimensional vectors, L2-normalize them, and save the matrix to .booster/vectors.npy. At query time we encode the task description the same way and compute cosine similarity (a dot product since both sides are unit-normalized) to find the top-K matching symbols. If the vector files don't exist, search automatically falls back to keyword matching.",
+  },
+  {
+    q: "What happens when Claude reads a file through Booster?",
+    a: "The MCP smart_read tool receives the file path and a task description. It uses RRF (Reciprocal Rank Fusion) to merge two ranked lists — a vector similarity search and a keyword LIKE search — using the formula score = Σ 1/(60 + rank). This surfaces symbols that score well on either or both strategies, instead of relying on embeddings alone. The result is AST symbol slices (source lines for matching functions/classes) with a header showing name and line range. A 5 KB gate caps output — if matched symbols exceed 5 KB, only the top-3 RRF-ranked symbols are returned with a truncation notice. Every call is logged to .booster/stats.db so booster gain can report real token savings.",
+  },
+  {
+    q: "How does token savings tracking work?",
+    a: "Each smart_read call records three things in .booster/stats.db: the full file text size, the slice size returned, and the task description. Token count is estimated as len(text) // 4 (a standard rough approximation). booster gain reads this database and reports total tokens served vs. tokens that would have been sent without Booster, broken down by file.",
+  },
+  {
+    q: "What does booster init actually change on my machine?",
+    a: "For Claude Code, booster init claude writes six things: .mcp.json (registers the MCP server), CLAUDE.md (appends a rules block), .claude/settings.json (wires three hooks), and three hook scripts — booster-gate.py (blocks Read on indexed files and forces smart_read), booster-grep-nudge.py (detects semantic Grep patterns and suggests search_context instead), and booster-route.py (fires on every user message and recommends haiku/sonnet/opus before Claude starts work). Before writing anything, it prints a full list of changes and asks for confirmation. Run booster remove claude to undo everything cleanly. No residue.",
+  },
+  {
+    q: "Does Booster send my code anywhere?",
+    a: "No code, no prompts, no file content ever leaves your machine. The symbol index, vector store, and stats database are all local — stored in .booster/ inside your project. The MCP server runs as a local stdio process. No network calls, no telemetry, no structured events phoned home. The only external call is the one-time model download from HuggingFace when you first run booster embed.",
+  },
+  {
+    q: "Does it work with TypeScript and other languages?",
+    a: "Yes. Booster indexes Python (.py) and TypeScript/TSX/JS/JSX files. We use tree-sitter-python for Python and tree-sitter-typescript for TypeScript — extracting functions, classes, methods, interfaces, and named arrow functions. Build artifacts (.next/, dist/, build/) are automatically excluded from indexing so minified bundles never pollute the symbol index.",
+  },
+  {
+    q: "How is this different from just using prompt caching?",
+    a: "Prompt caching (Layer 1) reuses stable prefixes that have already been sent — it reduces cost on repeated context. Booster (Layer 3) prevents that context from being sent in the first place. A 1,800-line file cached still costs full price on the first read of a session. Booster routes only the relevant 80 lines every time, whether or not caching is active. The two stack: Booster reduces what you send, caching reduces the cost of what you sent previously.",
+  },
+  {
+    q: "Does it work across multiple terminal sessions on the same machine?",
+    a: "Yes. The hooks and MCP server are wired via .claude/settings.json and .mcp.json at the project root — not tied to any specific terminal window or session. Every Claude Code session you open inside the project directory (any terminal, same machine) automatically gets the Read gate, Grep nudge, and route_model hook. The MCP server starts fresh per session but the index is shared (it's just .booster/symbols.db on disk). The only requirement: run booster init claude once per project, not once per session.",
+  },
+  {
+    q: "Does each developer on my team need to run booster init?",
+    a: "Yes — once per developer, once per project. Each developer runs pip install 'agent-booster[full]' then booster start inside the project. booster start wires the AI tools it detects, indexes the codebase, builds embeddings, and starts the daemon — nothing manual. The symbol index is gitignored so each developer builds their own locally. For teams, the Sentinel integration (coming) will push the setup automatically to every developer's workspace.",
+  },
+]
+
+function FaqSection() {
+  const [open, setOpen] = useState<number | null>(null)
+
+  return (
+    <section className="px-6 py-20">
+      <div className="max-w-3xl mx-auto">
+        <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">Under the hood</p>
+        <h2 className="text-3xl font-bold text-stone-900 text-center mb-12">
+          How it&apos;s actually built.
+        </h2>
+
+        <div className="flex flex-col divide-y divide-stone-100">
+          {FAQS.map((faq, idx) => (
+            <div key={idx} className="py-5">
+              <button
+                onClick={() => setOpen(open === idx ? null : idx)}
+                className="w-full flex items-start justify-between gap-4 text-left"
+              >
+                <span className="text-sm font-semibold text-stone-900">{faq.q}</span>
+                <span className="shrink-0 mt-0.5 text-stone-400 text-lg leading-none">
+                  {open === idx ? "−" : "+"}
+                </span>
+              </button>
+              {open === idx && (
+                <p className="mt-3 text-sm text-stone-500 leading-relaxed">{faq.a}</p>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   )
