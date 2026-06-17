@@ -289,7 +289,7 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
     if (activeWorkspace.workflow_count === 0) {
       router.push("/setup")
     }
-  }, [activeWorkspace?.id])
+  }, [activeWorkspace?.id, pathname])
 
   // Fetch user role from members API
   useEffect(() => {
