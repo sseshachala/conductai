@@ -103,6 +103,7 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
   if (pathname.startsWith('/guard')) return ['Guard', 'Overview']
   if (pathname.startsWith('/settings')) return ['Settings']
   if (pathname.startsWith('/marketplace')) return ['Marketplace']
+  if (pathname.startsWith('/playbooks')) return ['Automations']
   if (pathname.startsWith('/runs')) return ['Runs']
   if (pathname.startsWith('/secure')) return ['Secure']
   if (pathname.startsWith('/observability')) return ['Observability']
@@ -127,7 +128,7 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
 const PALETTE_COMMANDS = [
   { group: "BUILD", label: "Projects", href: "/projects", icon: "Grid" as const },
   { group: "BUILD", label: "Canvas", href: "/workflows/new", icon: "Flow" as const },
-  { group: "BUILD", label: "Marketplace", href: "/marketplace", icon: "Store" as const },
+  { group: "BUILD", label: "Automations", href: "/playbooks", icon: "Store" as const },
   { group: "OBSERVE", label: "Dashboard", href: "/dashboard", icon: "Spark" as const },
   { group: "OBSERVE", label: "Runs", href: "/runs", icon: "Pulse" as const },
   { group: "SECURE", label: "Security Loop", href: "/secure", icon: "Lock" as const },
@@ -959,10 +960,10 @@ function AppShellInner({ children, noPadding }: { children: React.ReactNode; noP
               collapsed={collapsed}
             />
             <SideNavItem
-              href="/marketplace"
-              label="Marketplace"
+              href="/playbooks"
+              label="Automations"
               icon={<Icons.Store />}
-              active={pathname.startsWith("/marketplace")}
+              active={pathname.startsWith("/playbooks")}
               collapsed={collapsed}
               badge={playbookCount}
             />
