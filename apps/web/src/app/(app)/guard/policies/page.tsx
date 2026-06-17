@@ -373,8 +373,46 @@ function AddRuleModal({
   onSubmit: (data: AddRuleFormData) => Promise<void>
   submitting: boolean
 }) {
+  const { getToken } = useAuth()
   const [form, setForm] = useState<AddRuleFormData>(EMPTY_FORM)
   const [errors, setErrors] = useState<Partial<Record<keyof AddRuleFormData, string>>>({})
+  const [aiPrompt, setAiPrompt] = useState("")
+  const [aiGenerating, setAiGenerating] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
+
+  async function handleGenerate() {
+    const text = aiPrompt.trim()
+    if (!text) return
+    setAiGenerating(true)
+    setAiError(null)
+    try {
+      const token = getToken ? await getToken() : null
+      const headers: Record<string, string> = { "Content-Type": "application/json" }
+      if (token) headers["Authorization"] = `Bearer ${token}`
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ""
+      const res = await fetch(`${apiUrl}/guard/policies/generate`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ prompt: text }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      setForm({
+        rule_id: data.rule_id ?? "",
+        description: data.description ?? "",
+        match_tool: (data.match_tool as MatchTool) ?? "*",
+        match_pattern: data.match_pattern ?? "",
+        match_path_pattern: data.match_path_pattern ?? "",
+        action: (data.action as PolicyAction) ?? "block",
+        message: data.message ?? "",
+      })
+      setErrors({})
+    } catch {
+      setAiError("Couldn't generate a rule — try being more specific.")
+    } finally {
+      setAiGenerating(false)
+    }
+  }
 
   function set<K extends keyof AddRuleFormData>(key: K, value: AddRuleFormData[K]) {
     setForm(prev => ({ ...prev, [key]: value }))
@@ -458,6 +496,32 @@ function AddRuleModal({
 
         {/* Modal form */}
         <form onSubmit={handleSubmit} style={{ padding: "16px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+
+          {/* AI generate */}
+          <div style={{ background: "var(--surface-2)", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={labelStyle}>Generate with AI</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                type="text"
+                value={aiPrompt}
+                onChange={e => setAiPrompt(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleGenerate() } }}
+                placeholder="Block any prompt asking for AWS credentials…"
+                style={{ ...fieldStyle, flex: 1 }}
+                disabled={aiGenerating}
+              />
+              <button
+                type="button"
+                onClick={handleGenerate}
+                disabled={aiGenerating || !aiPrompt.trim()}
+                className="btn btn-ghost btn-sm"
+                style={{ whiteSpace: "nowrap", opacity: aiGenerating || !aiPrompt.trim() ? 0.5 : 1 }}
+              >
+                {aiGenerating ? "Generating…" : "Generate"}
+              </button>
+            </div>
+            {aiError && <p style={{ margin: 0, fontSize: 11.5, color: "var(--err)" }}>{aiError}</p>}
+          </div>
 
           {/* Rule ID */}
           <div>
