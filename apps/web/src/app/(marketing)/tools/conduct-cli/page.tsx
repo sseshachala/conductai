@@ -69,25 +69,21 @@ function ProductsDropdown() {
 
 function Nav() {
   return (
-    <header className="px-6 py-5 flex items-center justify-between max-w-6xl mx-auto w-full">
-      <div className="flex items-center">
-        <a href="/">
-          <img src="/logo.png" alt="Conduct AI" className="h-10 w-auto" />
-        </a>
-      </div>
-      <div className="flex items-center gap-4">
+    <header className="px-6 py-4 flex items-center justify-between max-w-6xl mx-auto w-full sticky top-0 bg-white/95 backdrop-blur-sm z-50 border-b border-stone-100">
+      <a href="/">
+        <img src="/logo.png" alt="Conduct AI" className="h-10 w-auto" />
+      </a>
+      <nav className="hidden md:flex items-center gap-6">
         <ProductsDropdown />
-        <a href="/playbooks" className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Playbooks</a>
-        <a href="/blog" className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
-        <a href="/docs" className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
-        <a
-          href="https://github.com/sseshachala/conductai"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
-        >
-          <GitHubIcon />
-          GitHub
+        <a href="/playbooks" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Playbooks</a>
+        <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
+        <a href="/docs" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
+        <a href="https://github.com/sseshachala/conductai" target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">GitHub</a>
+      </nav>
+      <div className="flex items-center gap-3">
+        <a href="mailto:hello@conductai.ai" className="text-sm font-medium text-stone-600 hover:text-stone-900 transition-colors hidden sm:block">Talk to Us</a>
+        <a href="/sign-up" className="rounded-lg bg-stone-900 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-700 transition-colors">
+          Start Free
         </a>
       </div>
     </header>
