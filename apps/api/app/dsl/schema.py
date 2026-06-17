@@ -186,7 +186,7 @@ class Block(BaseModel):
     is_readonly: bool = False  # True for blocks resolved from $use — canvas shows read-only banner
 
     # — retry (#643) —
-    retry: "RetryPolicy | None" = None
+    retry: RetryPolicy | None = None
     fallback_block: str | None = None    # block id to route to when retries exhausted
 
     # — routing — either a single string or a per-branch dict
