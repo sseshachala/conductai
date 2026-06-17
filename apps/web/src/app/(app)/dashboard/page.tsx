@@ -779,6 +779,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
   const [secSummary, setSecSummary] = useState<SecurityFindingSummary | null>(null)
   const [secInstalled, setSecInstalled] = useState(false)
   const [guardSynced, setGuardSynced] = useState<boolean | null>(null)
+  const [mySynced, setMySynced] = useState<boolean | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -800,10 +801,12 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
       if (workspaceId) {
         try {
           const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-          const [cfgRes, summaryRes, toolsRes] = await Promise.all([
+          const wsHeaders = { ...headers, "X-Workspace-Id": workspaceId }
+          const [cfgRes, summaryRes, toolsRes, meRes] = await Promise.all([
             fetch(`${base}/secure/installed?workspace_id=${workspaceId}`, { headers }),
             fetch(`${base}/security-findings/summary?workspace_id=${workspaceId}&days=30`, { headers }),
-            fetch(`${base}/guard/developer-tools`, { headers: { ...headers, "X-Workspace-Id": workspaceId } }),
+            fetch(`${base}/guard/developer-tools`, { headers: wsHeaders }),
+            fetch(`${base}/guard/developer-tools/me`, { headers: wsHeaders }),
           ])
           if (cfgRes.ok) {
             const cfg = await cfgRes.json()
@@ -815,6 +818,10 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
           if (toolsRes.ok) {
             const tools = await toolsRes.json()
             setGuardSynced(Array.isArray(tools) && tools.length > 0)
+          }
+          if (meRes.ok) {
+            const me = await meRes.json()
+            setMySynced(me.synced === true)
           }
         } catch {}
       }
@@ -860,6 +867,25 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
             </Link>
           </div>
         </div>
+
+        {/* Personal sync nudge — shown to invited users until they run conduct guard sync */}
+        {mySynced === false && guardSynced === true && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 12,
+            background: "var(--surface-2)", border: "1px solid var(--border)",
+            borderRadius: 10, padding: "10px 16px", marginBottom: 16,
+          }}>
+            <span style={{ fontSize: 18 }}>💻</span>
+            <div style={{ flex: 1, fontSize: 13, color: "var(--text)" }}>
+              Your teammates are on Guard. Connect your machine by running{" "}
+              <code style={{ background: "var(--surface-3)", padding: "1px 5px", borderRadius: 4, fontSize: 12 }}>conduct guard sync</code>{" "}
+              in your terminal.
+            </div>
+            <a href="https://docs.conductai.ai/guard/sync" target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 600, color: "var(--accent-text)", textDecoration: "none", flexShrink: 0 }}>
+              How to sync →
+            </a>
+          </div>
+        )}
 
         {/* Guard sync nudge — shown once until at least one developer syncs the CLI */}
         {guardSynced === false && (
