@@ -68,6 +68,17 @@ const RULE_CATEGORIES: Record<string, string> = {
   "warn-large-context-dump": "Token Efficiency",
   "pii-redact": "Privacy",
   "secret-redact": "Privacy",
+  // Compliance pack rules
+  "owasp_injection_guard": "Code Security",
+  "owasp_crypto_guard": "Code Security",
+  "owasp_eval_guard": "Code Security",
+  "soc2_hardcoded_secret_guard": "Secrets & Credentials",
+  "soc2_log_pii_guard": "Privacy",
+  "hipaa_phi_guard": "Privacy",
+  "hipaa_unencrypted_phi_guard": "Privacy",
+  "pci_pan_guard": "Secrets & Credentials",
+  "pci_cvv_guard": "Secrets & Credentials",
+  "baseline_no_api_keys_guard": "Secrets & Credentials",
 }
 
 const CATEGORY_ORDER = [
@@ -640,11 +651,13 @@ function PoliciesContent() {
 
   useEffect(() => {
     if (!teamId) return
-    fetch(`${apiUrl}/compliance/packs/installed?workspace_id=${encodeURIComponent(teamId)}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.installed) setInstalledPacks(new Set(d.installed)) })
-      .catch(() => {})
-  }, [apiUrl, teamId])
+    authHeaders().then(headers =>
+      fetch(`${apiUrl}/compliance/packs/installed?workspace_id=${encodeURIComponent(teamId)}`, { headers })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.installed) setInstalledPacks(new Set(d.installed)) })
+        .catch(() => {})
+    )
+  }, [apiUrl, teamId, authHeaders])
 
   async function handleRefreshBuiltins() {
     if (!teamId) return
