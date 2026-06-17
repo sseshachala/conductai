@@ -42,6 +42,62 @@ const CATEGORY_COLORS: Record<string, string> = {
   "Platform & Infra":   "bg-sky-100",
 }
 
+const MODULES = [
+  {
+    id: "conductguard",
+    icon: "🛡️",
+    name: "ConductGuard",
+    description: "Real-time AI activity monitoring. Tracks tool usage, enforces policies, and surfaces spend across your team's AI coding tools.",
+    href: "/marketplace?tab=modules",
+    badge: "Governance",
+    badgeColor: "bg-teal-100 text-teal-700",
+  },
+  {
+    id: "security-loop",
+    icon: "🔒",
+    name: "Security Loop",
+    description: "Automated security scanning on every PR. Runs BugHunter, posts findings to Slack, and creates fix issues for critical vulnerabilities.",
+    href: "/marketplace?tab=modules",
+    badge: "Security",
+    badgeColor: "bg-red-100 text-red-700",
+  },
+]
+
+const COMPLIANCE_PACKS = [
+  {
+    id: "owasp_top10",
+    icon: "🔐",
+    name: "OWASP Top 10",
+    description: "6 guard rules + 10 security rules covering injection, broken access control, weak session management, SSRF, and more.",
+    rules: "16 rules",
+    badgeColor: "bg-orange-100 text-orange-700",
+  },
+  {
+    id: "soc2",
+    icon: "📋",
+    name: "SOC 2",
+    description: "Blocks hardcoded secrets and PII logging. Keeps your audit trail clean for SOC 2 Type II compliance.",
+    rules: "5 rules",
+    badgeColor: "bg-blue-100 text-blue-700",
+  },
+  {
+    id: "hipaa",
+    icon: "🏥",
+    name: "HIPAA",
+    description: "Detects PHI patterns (SSN, DOB, medical record numbers) and blocks unencrypted health data in AI-generated code.",
+    rules: "5 rules",
+    badgeColor: "bg-emerald-100 text-emerald-700",
+  },
+  {
+    id: "pci_dss",
+    icon: "💳",
+    name: "PCI DSS",
+    description: "Guards against PAN, CVV, and card number exposure in AI-generated code. Blocks logging of cardholder data.",
+    rules: "4 rules",
+    badgeColor: "bg-violet-100 text-violet-700",
+  },
+]
+
 function PlaybookCard({ p }: { p: Playbook }) {
   const tileBg = CATEGORY_COLORS[p.category] ?? "bg-stone-100"
   return (
@@ -60,6 +116,15 @@ function PlaybookCard({ p }: { p: Playbook }) {
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
       </svg>
     </Link>
+  )
+}
+
+function SectionHeader({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="mb-5">
+      <h2 className="text-base font-semibold text-stone-900">{title}</h2>
+      <p className="text-xs text-stone-500 mt-0.5">{description}</p>
+    </div>
   )
 }
 
@@ -102,43 +167,102 @@ export default function AutomationsPage() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-6 py-12">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-semibold text-stone-900">All Automations</h1>
-          <p className="text-sm text-stone-500 mt-1">
-            Pre-built YAML playbooks for AI-assisted engineering teams.{" "}
-            <Link href="/sign-up" className="text-stone-700 font-medium hover:underline">Install in your workspace →</Link>
-          </p>
-        </div>
+      <main className="max-w-5xl mx-auto px-6 py-12 space-y-16">
 
-        {/* Category tabs */}
-        <div className="flex gap-1.5 flex-wrap mb-8">
-          {categories.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setActiveCategory(cat)}
-              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
-                activeCategory === cat
-                  ? "bg-stone-900 text-white"
-                  : "bg-stone-100 text-stone-600 hover:bg-stone-200"
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-
-        {/* Grid */}
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="w-5 h-5 border-2 border-stone-300 border-t-stone-600 rounded-full animate-spin" />
+        {/* Automations */}
+        <section>
+          <div className="mb-8">
+            <h1 className="text-2xl font-semibold text-stone-900">All Automations</h1>
+            <p className="text-sm text-stone-500 mt-1">
+              Pre-built YAML playbooks for AI-assisted engineering teams.{" "}
+              <Link href="/sign-up" className="text-stone-700 font-medium hover:underline">Install in your workspace →</Link>
+            </p>
           </div>
-        ) : (
+
+          {/* Category tabs */}
+          <div className="flex gap-1.5 flex-wrap mb-6">
+            {categories.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setActiveCategory(cat)}
+                className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                  activeCategory === cat
+                    ? "bg-stone-900 text-white"
+                    : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="w-5 h-5 border-2 border-stone-300 border-t-stone-600 rounded-full animate-spin" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {visible.map(p => <PlaybookCard key={p.slug} p={p} />)}
+            </div>
+          )}
+        </section>
+
+        {/* Modules */}
+        <section>
+          <SectionHeader
+            title="Modules"
+            description="Full-stack features that add new capabilities to your workspace."
+          />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {visible.map(p => <PlaybookCard key={p.slug} p={p} />)}
+            {MODULES.map(m => (
+              <Link
+                key={m.id}
+                href={m.href}
+                className="flex items-start gap-4 bg-white border border-stone-200 rounded-xl px-5 py-4 hover:border-stone-300 hover:shadow-sm transition-all group"
+              >
+                <div className="w-11 h-11 rounded-xl bg-stone-100 flex items-center justify-center text-xl shrink-0">
+                  {m.icon}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <p className="text-sm font-medium text-stone-900">{m.name}</p>
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${m.badgeColor}`}>{m.badge}</span>
+                  </div>
+                  <p className="text-xs text-stone-500 leading-relaxed">{m.description}</p>
+                </div>
+              </Link>
+            ))}
           </div>
-        )}
+        </section>
+
+        {/* Compliance Packs */}
+        <section>
+          <SectionHeader
+            title="Compliance Packs"
+            description="Pre-built guard + security rule sets mapped to industry standards. Install in one click."
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {COMPLIANCE_PACKS.map(pack => (
+              <Link
+                key={pack.id}
+                href="/marketplace?tab=compliance"
+                className="flex items-start gap-4 bg-white border border-stone-200 rounded-xl px-5 py-4 hover:border-stone-300 hover:shadow-sm transition-all group"
+              >
+                <div className="w-11 h-11 rounded-xl bg-stone-100 flex items-center justify-center text-xl shrink-0">
+                  {pack.icon}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <p className="text-sm font-medium text-stone-900">{pack.name}</p>
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${pack.badgeColor}`}>{pack.rules}</span>
+                  </div>
+                  <p className="text-xs text-stone-500 leading-relaxed">{pack.description}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+
       </main>
     </div>
   )
