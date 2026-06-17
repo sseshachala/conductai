@@ -16,7 +16,7 @@ if not message or len(message.strip()) < 10:
 safe_message = re.sub(r'[\x00-\x1f\x7f]', ' ', message).strip()[:300]
 
 # Derive project root from this hook's known location — never trust external cwd
-safe_cwd = Path(__file__).resolve().parent.parent
+safe_cwd = Path(__file__).resolve().parent.parent.parent
 
 try:
     result = subprocess.run(
