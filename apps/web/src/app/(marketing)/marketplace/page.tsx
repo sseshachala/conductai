@@ -154,8 +154,8 @@ const PACK_CATALOG = [
     badgeColor: "#e44d26",
     description: "Guards and scan rules for the 10 most critical web application security risks — injection, XSS, path traversal, broken crypto, and more.",
     tags: ["Security", "Web"],
-    guardRules: 3,
-    securityRules: 4,
+    guardRules: 6,
+    securityRules: 10,
   },
   {
     id: "soc2",
