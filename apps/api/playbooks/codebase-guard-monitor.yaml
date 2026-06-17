@@ -1,0 +1,250 @@
+name: Codebase Guard Monitor
+version: 1
+description: >
+  Every PR to this repo is scanned for security violations before merge.
+  Blocks high-risk PRs with a review comment. Creates a fix issue for critical findings
+  and triggers Autopilot to remediate automatically.
+
+  This playbook runs on the ConductAI codebase itself — dogfooding Guard on every
+  AI-generated contribution. Proof that the platform enforces what it preaches.
+
+  Setup: GitHub repo → Settings → Webhooks → Add webhook.
+  Payload URL: https://api.conductai.ai/webhooks/inbound/<this-workflow-id>
+  Content type: application/json
+  Secret: (set in Conduct credentials vault as GITHUB_WEBHOOK_SECRET)
+  Event: Pull requests (pull_request.opened, pull_request.synchronize)
+
+inputs:
+  model:
+    label: AI Model
+    default: claude-sonnet-4-6
+    type: select
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+  risk_threshold:
+    label: Risk Score Threshold (block above this)
+    default: "60"
+    type: string
+
+on:
+  webhook:
+    next: recall_context
+
+blocks:
+  recall_context:
+    type: memory
+    label: Recall prior violations
+    action: read
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    limit: 10
+    next: scan_pr
+
+  scan_pr:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    max_turns: 10
+    label: Scan PR for security violations
+    description: |
+      You are a security-focused code reviewer enforcing ConductGuard policies.
+      A pull request has been opened or updated.
+
+      PR details:
+      - PR number: {{_trigger.number}}
+      - Title: {{_trigger.pull_request.title}}
+      - Author: {{_trigger.pull_request.user.login}}
+      - Repo: {{_trigger.repository.full_name}}
+      - Diff URL: {{_trigger.pull_request.diff_url}}
+      - PR URL: {{_trigger.pull_request.html_url}}
+
+      {% if recall_context.entries %}
+      Prior violations in this repo (watch for repeat patterns):
+      {% for entry in recall_context.entries %}
+      - {{entry.summary}}
+      {% endfor %}
+      {% endif %}
+
+      Steps:
+      1. Fetch the PR diff:
+         GET {{_trigger.pull_request.diff_url}}
+         Headers: Authorization: token $GIT_TOKEN
+      2. Scan the diff against these ConductGuard security policies:
+         🔴 CRITICAL (score -30 each):
+           - Hardcoded secrets, API keys, tokens, passwords
+           - SQL injection vectors (string concatenation in queries)
+           - Missing auth dependency on new FastAPI endpoints
+           - Path traversal in file-reading code
+         🟠 HIGH (score -20 each):
+           - XSS vectors in frontend code
+           - Unvalidated user input passed to shell commands
+           - New external HTTP calls without allowlist check
+         🟡 MEDIUM (score -10 each):
+           - Missing error handling on DB or external calls
+           - Sensitive data logged without sanitization
+           - New env vars added without .env.example update
+      3. Calculate risk_score: start at 100, subtract per finding above.
+      4. Post a review comment via GitHub API:
+         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/pulls/{{_trigger.number}}/reviews
+         Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
+         Body:
+         {
+           "body": "<review summary with findings grouped by severity>",
+           "event": "REQUEST_CHANGES" if risk_score < {{inputs.risk_threshold}} else "COMMENT"
+         }
+         If clean: event = "APPROVE", body = "✅ ConductGuard: No security violations found."
+
+      Output ONLY the following JSON on the last line:
+        {"risk_score": <0-100>, "critical": <count>, "high": <count>, "medium": <count>, "review_url": "<PR URL>", "violations": ["<short description>", ...]}
+    next: check_risk
+
+  check_risk:
+    type: logic
+    label: Risk above threshold?
+    condition: "{{scan_pr.risk_score}} < {{inputs.risk_threshold}}"
+    next:
+      pass: check_existing_issue
+      fail: record_outcome
+
+  check_existing_issue:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    max_turns: 5
+    label: Check for existing fix issue
+    description: |
+      Check if a fix issue already exists for this PR.
+
+      Repo: {{_trigger.repository.full_name}}
+      PR number: {{_trigger.number}}
+
+      Steps:
+      1. Search GitHub for existing open issues:
+         GET https://api.github.com/search/issues?q=repo:{{_trigger.repository.full_name}}+is:issue+is:open+"PR+%23{{_trigger.number}}"+in:title
+         Headers: Authorization: token $GIT_TOKEN
+      2. If found, return its number and URL.
+
+      Output ONLY the following JSON on the last line:
+        {"exists": true, "issue_url": "<url>", "issue_number": <number>} if found
+        {"exists": false} if not found
+    next: issue_exists_gate
+
+  issue_exists_gate:
+    type: logic
+    label: Issue already exists?
+    condition: "{{check_existing_issue.exists}} == true"
+    next:
+      pass: append_fix_issue
+      fail: create_fix_issue
+
+  append_fix_issue:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    max_turns: 5
+    label: Append findings to existing issue
+    description: |
+      Append new findings to the existing fix issue and re-trigger Autopilot.
+
+      Existing issue: {{check_existing_issue.issue_url}}
+      Issue number: {{check_existing_issue.issue_number}}
+      Repo: {{_trigger.repository.full_name}}
+      Risk score: {{scan_pr.risk_score}}
+      Critical: {{scan_pr.critical}}, High: {{scan_pr.high}}, Medium: {{scan_pr.medium}}
+
+      Steps:
+      1. Append a comment to the existing issue:
+         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/{{check_existing_issue.issue_number}}/comments
+         Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
+         Body: {"body": "## Updated scan findings\n\nPR #{{_trigger.number}} re-scanned. Risk score: {{scan_pr.risk_score}}/100\nViolations: {{scan_pr.violations}}\n\nReview: {{scan_pr.review_url}}"}
+      2. Remove label then re-add to re-trigger Autopilot:
+         DELETE https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/{{check_existing_issue.issue_number}}/labels/autopilot%20ready
+         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/{{check_existing_issue.issue_number}}/labels
+         Body: {"labels": ["autopilot ready"]}
+
+      Output ONLY the following JSON on the last line:
+        {"issue_url": "{{check_existing_issue.issue_url}}", "issue_number": {{check_existing_issue.issue_number}}}
+    next: record_outcome
+
+  create_fix_issue:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    max_turns: 5
+    label: Create fix issue
+    description: |
+      Create a GitHub issue for the security violations found and trigger Autopilot.
+
+      PR: {{scan_pr.review_url}}
+      Repo: {{_trigger.repository.full_name}}
+      Risk score: {{scan_pr.risk_score}}/100
+      Critical: {{scan_pr.critical}}, High: {{scan_pr.high}}, Medium: {{scan_pr.medium}}
+      Violations: {{scan_pr.violations}}
+
+      IMPORTANT: Create the issue WITHOUT labels first, then add label separately
+      so GitHub fires the issues.labeled webhook to trigger Autopilot.
+
+      Steps:
+      1. Create the issue (no labels):
+         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues
+         Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
+         Body:
+         {
+           "title": "fix(guard): security violations on PR #{{_trigger.number}} — risk score {{scan_pr.risk_score}}/100",
+           "body": "## ConductGuard Security Scan\n\nPR #{{_trigger.number}} blocked with risk score **{{scan_pr.risk_score}}/100**.\n\n### Violations\n{{scan_pr.violations}}\n\n### Counts\n- 🔴 Critical: {{scan_pr.critical}}\n- 🟠 High: {{scan_pr.high}}\n- 🟡 Medium: {{scan_pr.medium}}\n\n### Review\n{{scan_pr.review_url}}\n\n---\n*Detected by ConductGuard. Fix the violations above and re-push to re-scan.*"
+         }
+         Save the returned issue number.
+      2. Add label separately:
+         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/<issue_number>/labels
+         Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
+         Body: {"labels": ["autopilot ready"]}
+
+      Output ONLY the following JSON on the last line:
+        {"issue_url": "<created issue URL>", "issue_number": <number>}
+    next: record_outcome
+
+  record_outcome:
+    type: memory
+    label: Record scan outcome
+    action: write
+    scope: repo
+    key: "{{_trigger.repository.full_name}}"
+    summary: |
+      PR #{{_trigger.number}} by {{_trigger.pull_request.user.login}}
+      Risk score: {{scan_pr.risk_score}}/100 — Critical: {{scan_pr.critical}}, High: {{scan_pr.high}}
+      Violations: {{scan_pr.violations}}
+      Review: {{scan_pr.review_url}}
+    next: notify
+
+  notify:
+    type: output
+    label: Notify team
+    description: "🛡️ ConductGuard scanned PR #{{_trigger.number}} — Risk: {{scan_pr.risk_score}}/100 ({{scan_pr.critical}} critical, {{scan_pr.high}} high). {{scan_pr.review_url}}"
+    output:
+      via: slack
+      slack:
+        channel: "#security"
+
+test_trigger:
+  payload:
+    action: opened
+    number: 99
+    pull_request:
+      number: 99
+      title: "[TEST] ConductGuard monitor test"
+      html_url: "https://github.com/sseshachala/conductai/pull/99"
+      diff_url: "https://github.com/sseshachala/conductai/pull/99.diff"
+      user:
+        login: test-bot
+      base:
+        ref: main
+      head:
+        ref: test/guard-monitor-test
+        sha: "abc1234"
+    repository:
+      full_name: sseshachala/conductai
+      name: conductai
+      owner:
+        login: sseshachala
