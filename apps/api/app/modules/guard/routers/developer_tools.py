@@ -4,15 +4,15 @@ GET  /guard/developer-tools  — dashboard reads per-developer coverage
 """
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel
 from sqlalchemy import text as _sql
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.core.auth import get_workspace_id
+from app.core.auth import get_workspace_id, _verify_clerk_token, get_clerk_user_email as _get_email
 from app.core.database import get_db
 from app.modules.guard.models import GuardAuditEvent, GuardDeveloperTools
 
