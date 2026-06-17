@@ -414,6 +414,12 @@ def cmd_mcp_install(args):
         if uncovered:
             print(f"{YELLOW}  Not covered: {', '.join(uncovered)} — run: conduct mcp install{RESET}")
 
+    # Push updated coverage to Guard so the dashboard reflects the new state immediately
+    try:
+        _report_tool_coverage()
+    except Exception:
+        pass
+
 
 def cmd_login(args):
     server    = args.server

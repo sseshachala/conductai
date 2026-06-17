@@ -655,15 +655,19 @@ def _report_tools_to_server() -> None:
             "hook_registered": False,
         })
 
-    vscode_candidates = [
-        home / "Library" / "Application Support" / "Code" / "User" / "settings.json",
-        home / ".config" / "Code" / "User" / "settings.json",
-        home / ".vscode" / "settings.json",
-    ]
-    vscode_settings = next((p for p in vscode_candidates if p.exists()), None)
-    if vscode_settings:
+    vscode_ext_dir = home / ".vscode" / "extensions"
+    copilot_installed = vscode_ext_dir.exists() and any(
+        p.name.startswith("github.copilot") for p in vscode_ext_dir.iterdir() if p.is_dir()
+    )
+    if copilot_installed:
+        vscode_candidates = [
+            home / "Library" / "Application Support" / "Code" / "User" / "settings.json",
+            home / ".config" / "Code" / "User" / "settings.json",
+            home / ".vscode" / "settings.json",
+        ]
+        vscode_settings = next((p for p in vscode_candidates if p.exists()), None)
         try:
-            d = json.loads(vscode_settings.read_text())
+            d = json.loads(vscode_settings.read_text()) if vscode_settings else {}
             mcp_reg = "conduct" in d.get("mcp", {}).get("servers", {})
         except Exception:
             mcp_reg = False
