@@ -679,18 +679,33 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
                       {installed ? (
-                        <button
-                          onClick={() => uninstallPack(pack.id)}
-                          disabled={!!busy}
-                          style={{
-                            padding: "6px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 600,
-                            cursor: busy ? "not-allowed" : "pointer",
-                            border: "1px solid var(--border)", background: "transparent", color: "var(--text-2)",
-                            fontFamily: "inherit",
-                          }}
-                        >
-                          {busy ? "…" : "Uninstall"}
-                        </button>
+                        <>
+                          <button
+                            onClick={() => installPack(pack.id)}
+                            disabled={!!packInstalling}
+                            style={{
+                              padding: "6px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 600,
+                              cursor: packInstalling ? "not-allowed" : "pointer",
+                              border: "none", background: "var(--accent)", color: "#fff",
+                              opacity: packInstalling && !busy ? 0.5 : 1,
+                              fontFamily: "inherit",
+                            }}
+                          >
+                            {busy ? "…" : "Reinstall"}
+                          </button>
+                          <button
+                            onClick={() => uninstallPack(pack.id)}
+                            disabled={!!busy}
+                            style={{
+                              padding: "6px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 600,
+                              cursor: busy ? "not-allowed" : "pointer",
+                              border: "1px solid var(--border)", background: "transparent", color: "var(--text-2)",
+                              fontFamily: "inherit",
+                            }}
+                          >
+                            {busy ? "…" : "Uninstall"}
+                          </button>
+                        </>
                       ) : (
                         <button
                           onClick={() => installPack(pack.id)}
