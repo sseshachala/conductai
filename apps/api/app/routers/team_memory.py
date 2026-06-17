@@ -1,16 +1,16 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from math import log as math_log
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id
-from app.core.database import get_db
+from app.core.database import SessionLocal, get_db
 from app.models.team_session_memory import TeamSessionMemory
 
 log = structlog.get_logger(__name__)
@@ -90,6 +90,113 @@ def _embed(text_content: str) -> list[float] | None:
         return None
 
 
+# Tools already handled by the CLI Stop hook — skip to avoid double-storing
+_HOOK_TOOLS = {"claude_code", "claude-code"}
+# Inactivity window: events >30 min apart = separate session
+_SESSION_GAP = timedelta(minutes=30)
+
+
+def _synthesize_mcp_sessions(workspace_id: str) -> None:
+    """
+    Background task: group recent MCP audit events into synthetic team memory sessions.
+    Runs at most once per workspace per hour (guarded by a last-seen check).
+    """
+    db: Session = SessionLocal()
+    try:
+        ws_uuid = uuid.UUID(workspace_id)
+        since = datetime.now(timezone.utc) - timedelta(hours=48)
+
+        rows = db.execute(
+            text("""
+                SELECT hook_session_id, user_email, ai_tool, input_summary, ts
+                FROM guard_audit_events
+                WHERE workspace_id = :ws
+                  AND ts >= :since
+                  AND ai_tool IS NOT NULL
+                  AND ai_tool != ALL(:skip_tools)
+                  AND input_summary IS NOT NULL
+                ORDER BY user_email, ai_tool, ts ASC
+            """),
+            {"ws": ws_uuid, "since": since, "skip_tools": list(_HOOK_TOOLS)},
+        ).fetchall()
+
+        if not rows:
+            return
+
+        # Group into sessions: by hook_session_id if present, else 30-min gap buckets
+        sessions: dict[str, dict] = {}
+        open_key: dict[tuple, str] = {}  # (email, tool) → current session key
+        open_last_ts: dict[tuple, datetime] = {}
+
+        for r in rows:
+            bucket_key = (r.user_email or "", r.ai_tool)
+            ts = r.ts if r.ts.tzinfo else r.ts.replace(tzinfo=timezone.utc)
+
+            if r.hook_session_id:
+                skey = f"mcp_{r.ai_tool}_{r.hook_session_id}"
+            else:
+                last_ts = open_last_ts.get(bucket_key)
+                if last_ts is None or (ts - last_ts) > _SESSION_GAP:
+                    skey = f"mcp_{r.ai_tool}_{r.user_email}_{ts.strftime('%Y%m%d%H%M')}"
+                    open_key[bucket_key] = skey
+                else:
+                    skey = open_key[bucket_key]
+
+            open_key[bucket_key] = skey
+            open_last_ts[bucket_key] = ts
+
+            if skey not in sessions:
+                sessions[skey] = {
+                    "session_id": skey,
+                    "tool": r.ai_tool,
+                    "user_email": r.user_email or "",
+                    "summaries": [],
+                }
+            sessions[skey]["summaries"].append(r.input_summary)
+
+        # Check which session_ids are already stored
+        existing = {
+            r[0] for r in db.execute(
+                text("SELECT session_id FROM team_session_memory WHERE workspace_id = :ws"),
+                {"ws": str(workspace_id)},
+            ).fetchall()
+        }
+
+        for skey, meta in sessions.items():
+            if skey in existing or len(meta["summaries"]) < 2:
+                continue  # skip singletons and already-stored
+
+            raw_transcript = "\n".join(f"- {s}" for s in meta["summaries"])
+            summary = _summarise(raw_transcript)
+            if not summary:
+                continue
+
+            tags = _extract_topic_tags(summary)
+            embedding = _embed(summary)
+
+            db.add(TeamSessionMemory(
+                id=uuid.uuid4(),
+                workspace_id=ws_uuid,
+                developer_id=None,
+                developer_email=meta["user_email"] or None,
+                session_id=skey,
+                tool=meta["tool"],
+                repo_full_name=None,
+                topic_tags=tags or None,
+                light_summary=summary,
+                files_touched=None,
+                embedding=embedding,
+                visibility="team",
+            ))
+
+        db.commit()
+        log.info("team_memory.mcp_synthesized", workspace_id=workspace_id, candidates=len(sessions))
+    except Exception as exc:
+        log.warning("team_memory.mcp_synthesize_failed", error=str(exc))
+    finally:
+        db.close()
+
+
 @router.post("/sessions", status_code=201)
 def store_session_memory(
     body: SessionMemoryIn,
@@ -144,7 +251,9 @@ def search_session_memory(
     limit: int = Query(default=5, ge=1, le=50),
     workspace_id: str = Depends(get_workspace_id),
     db: Session = Depends(get_db),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
 ) -> list[dict[str, Any]]:
+    background_tasks.add_task(_synthesize_mcp_sessions, workspace_id)
     embedding = _embed(q)
 
     if embedding is not None:
