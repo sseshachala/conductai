@@ -235,19 +235,25 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   useEffect(() => {
     const wsId = getWorkspaceId()
     if (!wsId) return
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/secure/installed?workspace_id=${wsId}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.installed) setSecureInstalled(true) })
-      .catch(() => {})
+    authHeaders().then(h =>
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/secure/installed?workspace_id=${wsId}`, { headers: h })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.installed) setSecureInstalled(true) })
+        .catch(() => {})
+    )
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
     const wsId = getWorkspaceId()
     if (!wsId) return
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/compliance/packs/installed?workspace_id=${wsId}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.installed) setInstalledPacks(new Set(d.installed)) })
-      .catch(() => {})
+    authHeaders().then(h =>
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/compliance/packs/installed?workspace_id=${wsId}`, { headers: h })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.installed) setInstalledPacks(new Set(d.installed)) })
+        .catch(() => {})
+    )
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function installSecureModule() {
@@ -370,9 +376,10 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
 
       // Fetch quality scores — graceful if endpoint not yet available
       if (loadedPlaybooks.length > 0) {
+        const scoreHeaders = await authHeaders()
         const scoreResults = await Promise.allSettled(
           loadedPlaybooks.map(p =>
-            fetch(`${process.env.NEXT_PUBLIC_API_URL}/playbooks/${p.slug}/score`)
+            fetch(`${process.env.NEXT_PUBLIC_API_URL}/playbooks/${p.slug}/score`, { headers: scoreHeaders })
               .then(r => (r.ok ? r.json() as Promise<PlaybookScore> : null))
               .catch(() => null)
           )
