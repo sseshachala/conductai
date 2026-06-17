@@ -38,6 +38,15 @@ playbooks:
     featured: true
     description: "Issue on any third-party repo → AI forks it, clones the fork, reads the issue, applies the fix, and opens a PR back to upstream. Works on any public repo."
 
+  codebase_guard_monitor:
+    file: codebase-guard-monitor.yaml
+    icon: "🛡️"
+    category: Code Review
+    tags: [github, security, governance, code-review]
+    featured: true
+    description: "Every PR scanned for security violations by ConductGuard. Blocks high-risk PRs, creates fix issues, triggers Autopilot to remediate. Dogfoods Guard on the codebase itself."
+    github_events: [pull_request]
+
   pr_reviewer:
     file: pr-reviewer.yaml
     icon: "🔍"
