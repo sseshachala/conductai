@@ -27,6 +27,7 @@ interface Policy {
   enabled: boolean
   builtin: boolean
   category?: string
+  pack_id?: string | null
   last_triggered?: string | null
   updated_at?: string
 }
@@ -95,6 +96,14 @@ const GUARD_TABS = [
   { href: "/guard/session-reports", label: "Session Reports" },
   { href: "/guard/team-memory",     label: "Team Memory"     },
   { href: "/guard/settings",        label: "Settings"        },
+]
+
+const PACK_LABELS = [
+  { id: "owasp_top10", name: "OWASP Top 10" },
+  { id: "soc2", name: "SOC 2" },
+  { id: "hipaa", name: "HIPAA" },
+  { id: "pci_dss", name: "PCI DSS" },
+  { id: "startup_baseline", name: "Startup Baseline" },
 ]
 
 function GuardShell({ children }: { children: React.ReactNode }) {
@@ -589,6 +598,8 @@ function PoliciesContent() {
   const [confirmDeleteValue, setConfirmDeleteValue] = useState("")
   const [activeTab, setActiveTab] = useState<string | null>(null)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  const [installedPacks, setInstalledPacks] = useState<Set<string>>(new Set())
+  const [activePackFilter, setActivePackFilter] = useState<string | null>(null)
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ""
   const canWrite = permissions.canEditPolicies
@@ -626,6 +637,14 @@ function PoliciesContent() {
     }
     load()
   }, [apiUrl, authHeaders, teamId])
+
+  useEffect(() => {
+    if (!teamId) return
+    fetch(`${apiUrl}/compliance/packs/installed?workspace_id=${encodeURIComponent(teamId)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.installed) setInstalledPacks(new Set(d.installed)) })
+      .catch(() => {})
+  }, [apiUrl, teamId])
 
   async function handleRefreshBuiltins() {
     if (!teamId) return
@@ -724,8 +743,12 @@ function PoliciesContent() {
     ...Object.keys(grouped).filter(c => !CATEGORY_ORDER.includes(c)),
   ]
 
-  const currentTab = activeTab && grouped[activeTab] ? activeTab : orderedCategories[0] ?? null
-  const visiblePolicies = currentTab ? (grouped[currentTab] ?? []) : []
+  const currentTab = activePackFilter ? null : (activeTab && grouped[activeTab] ? activeTab : orderedCategories[0] ?? null)
+  const visiblePolicies = activePackFilter
+    ? policies.filter(p => p.pack_id === activePackFilter)
+    : activeTab === "__all__"
+      ? policies
+      : currentTab ? (grouped[currentTab] ?? []) : []
 
   const latestUpdated = policies
     .map(p => p.updated_at)
@@ -807,14 +830,42 @@ function PoliciesContent() {
             <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
             {/* Left sidebar */}
             <div style={{ width: 190, flexShrink: 0 }}>
+              {/* All tab */}
+              {(() => {
+                const active = !activePackFilter && (activeTab === "__all__")
+                return (
+                  <button
+                    onClick={() => { setActivePackFilter(null); setActiveTab("__all__") }}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      width: "100%", background: active ? "var(--accent-bg, #eff6ff)" : "none",
+                      border: "none", borderRadius: 8, padding: "7px 10px",
+                      fontSize: 12.5, fontWeight: active ? 600 : 400,
+                      color: active ? "var(--accent)" : "var(--text-3)",
+                      cursor: "pointer", textAlign: "left", marginBottom: 2,
+                    }}
+                  >
+                    <span>All</span>
+                    <span style={{
+                      marginLeft: 8, fontSize: 10.5,
+                      background: active ? "var(--accent)" : "var(--surface-2, #f4f4f5)",
+                      color: active ? "#fff" : "var(--text-muted)",
+                      borderRadius: 99, padding: "1px 7px", fontWeight: 600,
+                    }}>{policies.filter(p => p.enabled).length}/{policies.length}</span>
+                  </button>
+                )
+              })()}
+
+              <div style={{ height: 1, background: "var(--border)", margin: "8px 4px" }} />
+
               {orderedCategories.map(cat => {
-                const active = cat === currentTab
+                const active = !activePackFilter && cat === currentTab && activeTab !== "__all__"
                 const enabledCount = grouped[cat].filter(p => p.enabled).length
                 const total = grouped[cat].length
                 return (
                   <button
                     key={cat}
-                    onClick={() => setActiveTab(cat)}
+                    onClick={() => { setActivePackFilter(null); setActiveTab(cat) }}
                     style={{
                       display: "flex", alignItems: "center", justifyContent: "space-between",
                       width: "100%", background: active ? "var(--accent-bg, #eff6ff)" : "none",
@@ -835,16 +886,55 @@ function PoliciesContent() {
                   </button>
                 )
               })}
+
+              {installedPacks.size > 0 && (
+                <>
+                  <div style={{ height: 1, background: "var(--border)", margin: "8px 4px" }} />
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".08em", padding: "2px 10px 6px" }}>Compliance Packs</div>
+                  {PACK_LABELS.filter(p => installedPacks.has(p.id)).map(pack => {
+                    const active = activePackFilter === pack.id
+                    const count = policies.filter(p => p.pack_id === pack.id).length
+                    return (
+                      <button
+                        key={pack.id}
+                        onClick={() => { setActivePackFilter(active ? null : pack.id); setActiveTab(null) }}
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "space-between",
+                          width: "100%", background: active ? "var(--accent-bg, #eff6ff)" : "none",
+                          border: "none", borderRadius: 8, padding: "7px 10px",
+                          fontSize: 12.5, fontWeight: active ? 600 : 400,
+                          color: active ? "var(--accent)" : "var(--text-3)",
+                          cursor: "pointer", textAlign: "left", marginBottom: 2,
+                        }}
+                      >
+                        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pack.name}</span>
+                        <span style={{
+                          marginLeft: 6, fontSize: 9.5, fontWeight: 700, flexShrink: 0,
+                          background: "var(--accent-weak)", color: "var(--accent-text)",
+                          borderRadius: 99, padding: "1px 6px",
+                        }}>Installed · {count}</span>
+                      </button>
+                    )
+                  })}
+                </>
+              )}
             </div>
 
             {/* Right: header + 2-column card grid */}
             <div style={{ flex: 1, minWidth: 0 }}>
-              {currentTab && (
+              {(activePackFilter || currentTab) && (
                 <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{currentTab}</span>
-                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                    — {grouped[currentTab].filter(p => p.enabled).length} of {grouped[currentTab].length} active
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
+                    {activePackFilter ? (PACK_LABELS.find(p => p.id === activePackFilter)?.name ?? activePackFilter) : activeTab === "__all__" ? "All Policies" : currentTab}
                   </span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    — {visiblePolicies.filter(p => p.enabled).length} of {visiblePolicies.length} active
+                  </span>
+                  {activePackFilter && (
+                    <span style={{ fontSize: 10.5, fontWeight: 700, background: "var(--accent-weak)", color: "var(--accent-text)", borderRadius: 99, padding: "1px 8px" }}>
+                      Installed
+                    </span>
+                  )}
                 </div>
               )}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, alignItems: "start" }}>
