@@ -50,7 +50,7 @@ function PlaybookCard({ p }: { p: Playbook }) {
   const tileBg = CATEGORY_COLORS[p.category] ?? "bg-stone-100"
   return (
     <Link
-      href={`/playbooks/${p.slug}`}
+      href={`/marketplace?install=${p.slug}`}
       className="flex items-center gap-4 bg-white border border-stone-200 rounded-xl px-5 py-4 hover:border-stone-300 hover:shadow-sm transition-all group"
     >
       <div className={`w-11 h-11 rounded-xl ${tileBg} flex items-center justify-center text-xl shrink-0`}>
