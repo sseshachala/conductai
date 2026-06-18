@@ -519,7 +519,10 @@ function GuardSnapshotPanel({
 
       {/* Top policy hits — #5: real data or empty state */}
       <div style={{ padding: "13px 16px", borderBottom: "1px solid var(--border)" }}>
-        <div className="eyebrow" style={{ fontSize: 9.5, marginBottom: 9 }}>Top policy hits (30d)</div>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 9 }}>
+          <span className="eyebrow" style={{ fontSize: 9.5 }}>Top policy hits · 30d</span>
+          <Link href="/guard/activity" style={{ marginLeft: "auto", fontSize: 11, color: "var(--accent-text)", fontWeight: 600, textDecoration: "none" }}>View all →</Link>
+        </div>
         {topPolicyHits.length === 0 ? (
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>No policy blocks today</span>
         ) : (
@@ -545,7 +548,10 @@ function GuardSnapshotPanel({
 
       {/* Developer near limit — #5: real data or empty state */}
       <div style={{ padding: "13px 16px" }}>
-        <div className="eyebrow" style={{ fontSize: 9.5, marginBottom: 9 }}>Developer near limit</div>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 9 }}>
+          <span className="eyebrow" style={{ fontSize: 9.5 }}>Developer near limit</span>
+          <Link href="/guard/spend" style={{ marginLeft: "auto", fontSize: 11, color: "var(--accent-text)", fontWeight: 600, textDecoration: "none" }}>View all →</Link>
+        </div>
         {developerNearLimit.length === 0 ? (
           <span style={{ fontSize: 12, color: "var(--ok)" }}>All developers within limits</span>
         ) : (
@@ -1011,7 +1017,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
             {/* #3: Agent Health section — rendered when data.agent_health.length > 0 */}
             {data.agent_health.length > 0 && (
               <div style={{ marginBottom: 26 }}>
-                <SectionLabel>Agent Health</SectionLabel>
+                <SectionLabel action="View all →" href="/workflows">Agent Health</SectionLabel>
                 <div className="card" style={{ overflow: "hidden", padding: 0 }}>
                   {/* Table header */}
                   <div
@@ -1049,7 +1055,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
 
                 {/* Priority feed — #7: ref instead of document.querySelector */}
                 <div ref={priorityFeedRef}>
-                  <SectionLabel action="View all runs" href="/runs">
+                  <SectionLabel action="View all →" href="/runs?filter=waiting">
                     Needs attention · {data.needs_attention.length}
                   </SectionLabel>
                   {data.needs_attention.length === 0 ? (
@@ -1074,7 +1080,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                 {/* Outcomes */}
                 <div>
                   {/* #18: "View all" link in Outcomes header */}
-                  <SectionLabel action="View all" href="/runs">
+                  <SectionLabel action="View all →" href="/runs">
                     Outcomes · last 7 days
                   </SectionLabel>
                   <div
@@ -1131,7 +1137,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
 
                 {/* Recent activity */}
                 <div>
-                  <SectionLabel action="All runs" href="/runs">Recent activity</SectionLabel>
+                  <SectionLabel action="View all →" href="/runs">Recent activity</SectionLabel>
                   {data.recent_activity.length === 0 ? (
                     <div
                       className="card"
