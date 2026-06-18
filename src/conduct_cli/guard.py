@@ -394,7 +394,7 @@ def _req(method: str, url: str, body=None, token: str = None, api_key: str = Non
             detail = json.loads(raw).get("detail", raw)
         except Exception:
             detail = raw
-        print(f"{RED}HTTP {e.code}: {detail}{RESET}")
+        print(f"{RED}HTTP {e.code}: {detail} [{url}]{RESET}")
         sys.exit(1)
     except Exception:
         print(f"{RED}Could not reach ConductAI API. Check your connection.{RESET}")
@@ -405,6 +405,13 @@ def _req(method: str, url: str, body=None, token: str = None, api_key: str = Non
 def _save_policy(policy: dict):
     GUARD_DIR.mkdir(parents=True, exist_ok=True)
     POLICY_PATH.write_text(json.dumps(policy, indent=2))
+
+
+def _load_policy() -> dict:
+    try:
+        return json.loads(POLICY_PATH.read_text())
+    except Exception:
+        return {"rules": []}
 
 
 # ── since-string parser ───────────────────────────────────────────────────────
@@ -542,15 +549,6 @@ def cmd_guard_install(args):
     user_email     = result.get("user_email") or ""
     clerk_user_id  = result.get("clerk_user_id") or ""
 
-    # Check if Security Loop module is installed for this workspace
-    security_emit = False
-    try:
-        sec = _req("GET", f"{server}/secure/installed?workspace_id={workspace_id}", api_key=api_key)
-        if sec.get("installed"):
-            security_emit = True
-    except Exception:
-        pass
-
     # Persona selection — prompt once, skip if already chosen
     _ensure_persona(workspace_id, api_key, server)
 
@@ -563,11 +561,8 @@ def cmd_guard_install(args):
         "clerk_user_id":         clerk_user_id,
         "api_key":               api_key,
         "api_url":               server,
-        "security_emit_enabled": security_emit,
         "last_synced_at":        _time.time(),
     })
-    if security_emit:
-        print(f"  {GREEN}Security Loop:{RESET} installed — classifier active")
 
     # Download policies
     try:
@@ -795,7 +790,8 @@ def cmd_guard_sync(args):
     # Persona selection — prompt once, skip if already chosen
     _ensure_persona(workspace_id, api_key, base_url)
 
-    print(f"Syncing policy…")
+    dry_run = getattr(args, "dry_run", False)
+    print(f"{'[dry-run] ' if dry_run else ''}Syncing policy…")
 
     try:
         policy = _req(
@@ -806,28 +802,49 @@ def cmd_guard_sync(args):
     except Exception as e:
         print(f"Guard sync skipped: {e}", file=sys.stderr)
         sys.exit(0)
+
+    rules = policy.get("rules", [])
+    rule_count = len(rules)
+
+    if dry_run:
+        current_policy = _load_policy()
+        current_rules = {r["rule_id"]: r for r in current_policy.get("rules", [])}
+        new_rules = {r["rule_id"]: r for r in rules}
+
+        added   = [r for r in new_rules   if r not in current_rules]
+        removed = [r for r in current_rules if r not in new_rules]
+        changed = [
+            r for r in new_rules
+            if r in current_rules and new_rules[r].get("action") != current_rules[r].get("action")
+        ]
+
+        print(f"\n  {BOLD}Dry run — no files written{RESET}")
+        print(f"  Rules in policy: {rule_count}")
+        if added:
+            print(f"\n  {GREEN}+ Added ({len(added)}){RESET}")
+            for rid in added:
+                r = new_rules[rid]
+                print(f"      {rid}  [{r.get('action','?').upper()}]")
+        if removed:
+            print(f"\n  {RED}- Removed ({len(removed)}){RESET}")
+            for rid in removed:
+                print(f"      {rid}")
+        if changed:
+            print(f"\n  ~ Changed action ({len(changed)})")
+            for rid in changed:
+                old_a = current_rules[rid].get("action", "?")
+                new_a = new_rules[rid].get("action", "?")
+                print(f"      {rid}  {old_a} → {new_a}")
+        if not added and not removed and not changed:
+            print(f"  {GREEN}No changes{RESET}")
+        return
+
     _save_policy(policy)
-    rule_count = len(policy.get("rules", []))
     print(f"  {GREEN}Policy refreshed:{RESET} {rule_count} rule(s)")
 
     if getattr(args, "cursor", False):
         _write_cursorrules(policy)
 
-    # Re-check Security Loop install status
-    try:
-        sec = _req("GET", f"{base_url}/secure/installed?workspace_id={workspace_id}", api_key=api_key)
-        cfg["security_emit_enabled"] = bool(sec.get("installed"))
-        _save_guard_config(cfg)
-        if sec.get("installed"):
-            print(f"  {GREEN}Security Loop:{RESET} installed — classifier active")
-            try:
-                policies = _req("GET", f"{base_url}/secure/policies?workspace_id={workspace_id}", api_key=api_key)
-                policy_count = len(policies) if isinstance(policies, list) else 0
-                print(f"  {GREEN}Security Loop policies:{RESET} {policy_count} rule(s) synced")
-            except Exception:
-                pass
-    except Exception:
-        pass
 
     # Refresh hook script + re-register in all tools
     hook_path = GUARD_DIR / "hook.py"
@@ -1275,6 +1292,7 @@ def register_guard_parser(sub):
     # conduct guard sync
     sync_p = guard_sub.add_parser("sync", help="Refresh policy and re-scan for AI tools")
     sync_p.add_argument("--cursor", action="store_true", help="Write active Guard policies to .cursorrules")
+    sync_p.add_argument("--dry-run", action="store_true", help="Preview policy changes without writing anything")
 
     # conduct guard status
     guard_sub.add_parser("status", help="Show today's spend and violations")
