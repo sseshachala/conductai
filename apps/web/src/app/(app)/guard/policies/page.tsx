@@ -30,6 +30,7 @@ interface Policy {
   pack_id?: string | null
   last_triggered?: string | null
   updated_at?: string
+  persona_affinity?: string[]
 }
 
 // ─── Category mapping ─────────────────────────────────────────────────────────
@@ -714,6 +715,7 @@ function PoliciesContent() {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [installedPacks, setInstalledPacks] = useState<Set<string>>(new Set())
   const [activePackFilter, setActivePackFilter] = useState<string | null>(null)
+  const [activePersonaFilter, setActivePersonaFilter] = useState<string | null>(null)
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ""
   const canWrite = permissions.canEditPolicies
@@ -860,11 +862,14 @@ function PoliciesContent() {
   ]
 
   const currentTab = activePackFilter ? null : (activeTab && grouped[activeTab] ? activeTab : orderedCategories[0] ?? null)
-  const visiblePolicies = activePackFilter
+  const baseVisible = activePackFilter
     ? policies.filter(p => p.pack_id === activePackFilter)
     : activeTab === "__all__"
       ? policies
       : currentTab ? (grouped[currentTab] ?? []) : []
+  const visiblePolicies = activePersonaFilter
+    ? baseVisible.filter(p => (p.persona_affinity ?? []).includes(activePersonaFilter))
+    : baseVisible
 
   const latestUpdated = policies
     .map(p => p.updated_at)
@@ -1034,6 +1039,38 @@ function PoliciesContent() {
                   })}
                 </>
               )}
+              <div style={{ height: 1, background: "var(--border)", margin: "8px 4px" }} />
+              <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".08em", padding: "2px 10px 6px" }}>Persona</div>
+              {([
+                { id: "conservative", label: "Conservative", emoji: "🔴" },
+                { id: "standard",     label: "Standard",     emoji: "🟡" },
+                { id: "developer",    label: "Developer",    emoji: "🟢" },
+              ] as const).map(({ id, label, emoji }) => {
+                const active = activePersonaFilter === id
+                const count = policies.filter(p => (p.persona_affinity ?? []).includes(id)).length
+                return (
+                  <button
+                    key={id}
+                    onClick={() => setActivePersonaFilter(active ? null : id)}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      width: "100%", background: active ? "var(--accent-bg, #eff6ff)" : "none",
+                      border: "none", borderRadius: 8, padding: "7px 10px",
+                      fontSize: 12.5, fontWeight: active ? 600 : 400,
+                      color: active ? "var(--accent)" : "var(--text-3)",
+                      cursor: "pointer", textAlign: "left", marginBottom: 2,
+                    }}
+                  >
+                    <span>{emoji} {label}</span>
+                    <span style={{
+                      marginLeft: 6, fontSize: 10.5, flexShrink: 0,
+                      background: active ? "var(--accent)" : "var(--surface-2, #f4f4f5)",
+                      color: active ? "#fff" : "var(--text-muted)",
+                      borderRadius: 99, padding: "1px 7px", fontWeight: 600,
+                    }}>{count}</span>
+                  </button>
+                )
+              })}
             </div>
 
             {/* Right: header + 2-column card grid */}
@@ -1110,11 +1147,20 @@ function PoliciesContent() {
                       </div>
                     </div>
 
-                    {/* Footer: last triggered + expand toggle */}
+                    {/* Footer: last triggered + persona chips + expand toggle */}
                     <div style={{ display: "flex", alignItems: "center", marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
                       <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                         Last hit: <strong style={{ color: "var(--text-2)" }}>{formatLastTriggered(p.last_triggered)}</strong>
                       </span>
+                      {(p.persona_affinity ?? []).length > 0 && (
+                        <span style={{ display: "flex", gap: 3, marginLeft: 8 }}>
+                          {(p.persona_affinity ?? []).map(pa => (
+                            <span key={pa} title={pa} style={{ fontSize: 10 }}>
+                              {pa === "conservative" ? "🔴" : pa === "standard" ? "🟡" : "🟢"}
+                            </span>
+                          ))}
+                        </span>
+                      )}
                       {hasDetails && (
                         <button
                           onClick={() => toggleExpand(p.id)}

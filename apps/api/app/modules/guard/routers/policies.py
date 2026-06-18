@@ -163,6 +163,7 @@ class PolicyOut(BaseModel):
     enabled: bool
     builtin: bool
     pack_id: Optional[str] = None
+    persona_affinity: list[str] = []
     created_at: datetime
     updated_at: datetime
 
@@ -234,6 +235,7 @@ def _policy_to_out(p: GuardPolicy) -> PolicyOut:
         enabled=p.enabled,
         builtin=p.builtin,
         pack_id=p.pack_id,
+        persona_affinity=p.persona_affinity or [],
         created_at=p.created_at,
         updated_at=p.updated_at,
     )
