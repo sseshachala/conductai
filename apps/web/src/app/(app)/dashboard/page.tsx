@@ -279,7 +279,7 @@ function PriorityItem({
     try {
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/runs/${run.run_id}/approve`,
-        { method: "PATCH", headers, body: JSON.stringify({ approved }) }
+        { method: "POST", headers, body: JSON.stringify({ decision: approved ? "approved" : "rejected" }) }
       )
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
