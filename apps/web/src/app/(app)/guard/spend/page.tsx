@@ -218,6 +218,10 @@ function SpendControlsPanel({
             value={local.alert_threshold_pct}
             onChange={e => setLocal(p => ({ ...p, alert_threshold_pct: parseInt(e.target.value) }))}
             style={{ width: 100, accentColor: "var(--accent)" }}
+            aria-label="Alert threshold percentage"
+            aria-valuenow={local.alert_threshold_pct}
+            aria-valuemin={0}
+            aria-valuemax={100}
           />
           <span style={{ fontSize: 14, fontWeight: 600, color: "var(--warn)" }}>{local.alert_threshold_pct}%</span>
         </div>
@@ -525,7 +529,6 @@ function SpendContent() {
   const [budgets, setBudgets] = useState<Record<string, number | null>>({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [expandedDev, setExpandedDev] = useState<string | null>(null)
   const [currency, setCurrency] = useState<Currency>("USD")
   const [teamSettings, setTeamSettings] = useState<TeamBudgetSettings>({
     team_monthly_limit_usd: null,
@@ -554,7 +557,12 @@ function SpendContent() {
         fetch(`${base}/guard/spend?workspace_id=${teamId}&month=${month}`, { headers }),
         fetch(`${base}/guard/spend/budgets?workspace_id=${teamId}`, { headers }),
       ])
-      if (!spendRes.ok) throw new Error("Failed to load spend data")
+      if (!spendRes.ok) {
+        if (spendRes.status === 401) throw new Error("Session expired — please refresh")
+        if (spendRes.status === 403) throw new Error("You don't have permission to view spend data")
+        if (spendRes.status >= 500) throw new Error("Server error — try again later")
+        throw new Error(`Failed to load (${spendRes.status})`)
+      }
       const spendJson: SpendData = await spendRes.json()
       setData(spendJson)
 
@@ -700,13 +708,17 @@ function SpendContent() {
       )}
 
       {/* Spend controls card */}
-      <SpendControlsPanel
-        settings={teamSettings}
-        onSave={saveTeamSettings}
-        currency={currency}
-        readOnly={!isAdmin}
-        totalCostUsd={data?.total_cost_usd ?? 0}
-      />
+      {data === null && loading ? (
+        <div className="card" style={{ height: 200, opacity: 0.5, marginBottom: 22 }} />
+      ) : (
+        <SpendControlsPanel
+          settings={teamSettings}
+          onSave={saveTeamSettings}
+          currency={currency}
+          readOnly={!isAdmin}
+          totalCostUsd={data?.total_cost_usd ?? 0}
+        />
+      )}
 
       {/* 4 stat cards */}
       {loading ? (
@@ -760,7 +772,7 @@ function SpendContent() {
                   </div>
                   <div style={{ marginLeft: "auto", textAlign: "right" }}>
                     <div style={{ fontSize: 26, fontWeight: 700, color: "var(--ok)", letterSpacing: "-.02em", lineHeight: 1 }}>
-                      ${totalUsd.toFixed(2)}
+                      {CURRENCY_SYMBOLS[currency]}{fromUsd(totalUsd, currency).toFixed(2)}
                     </div>
                     <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 3 }}>{formatTokens(totalTok)} tokens saved</div>
                   </div>
@@ -770,9 +782,9 @@ function SpendContent() {
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", borderBottom: "1px solid var(--border)" }}>
                   {[
                     { v: formatTokens(savings.team_total.rtk_saved_tokens), k: "RTK tokens saved" },
-                    { v: `$${savings.team_total.rtk_saved_usd.toFixed(2)}`, k: "RTK cost saved" },
+                    { v: `${CURRENCY_SYMBOLS[currency]}${fromUsd(savings.team_total.rtk_saved_usd, currency).toFixed(2)}`, k: "RTK cost saved" },
                     { v: formatTokens(savings.team_total.booster_saved_tokens), k: "Booster tokens saved" },
-                    { v: `$${savings.team_total.booster_saved_usd.toFixed(2)}`, k: "Booster cost saved" },
+                    { v: `${CURRENCY_SYMBOLS[currency]}${fromUsd(savings.team_total.booster_saved_usd, currency).toFixed(2)}`, k: "Booster cost saved" },
                   ].map(({ v, k }, i) => (
                     <div key={i} style={{ padding: "14px 20px", borderRight: i < 3 ? "1px solid var(--border)" : undefined }}>
                       <div style={{ fontSize: 20, fontWeight: 700, color: "var(--ok)" }}>{v}</div>
@@ -798,7 +810,7 @@ function SpendContent() {
                           <div className="mono" style={{ fontSize: 12.5, color: "var(--text-3)" }}>{formatTokens(m.rtk_saved_tokens)}</div>
                           <div className="mono" style={{ fontSize: 12.5, color: "var(--text-3)" }}>{formatTokens(m.booster_saved_tokens)}</div>
                           <div className="mono" style={{ fontSize: 12.5, color: "var(--text-2)", fontWeight: 600 }}>{formatTokens(mTok)}</div>
-                          <div className="mono" style={{ fontSize: 12.5, color: "var(--ok)", fontWeight: 600 }}>${mUsd.toFixed(2)}</div>
+                          <div className="mono" style={{ fontSize: 12.5, color: "var(--ok)", fontWeight: 600 }}>{CURRENCY_SYMBOLS[currency]}{fromUsd(mUsd, currency).toFixed(2)}</div>
                         </div>
                       )
                     })}
@@ -834,65 +846,57 @@ function SpendContent() {
           </div>
         ) : (
           data.by_developer.map(dev => {
-            const budgetLimit  = budgets[dev.email] ?? null
-            const isExpanded   = expandedDev === dev.email
+            const budgetLimit = budgets[dev.email] ?? null
             return (
-              <div key={dev.email}>
-                <div
-                  style={{ display: "grid", gridTemplateColumns: "1.8fr 0.8fr 0.9fr 0.9fr 0.9fr 1.4fr 1.3fr", gap: 14, padding: "12px 20px", borderBottom: "1px solid var(--border)", alignItems: "center", cursor: "pointer" }}
-                  onClick={() => setExpandedDev(isExpanded ? null : dev.email)}
-                >
-                  <div className="mono" style={{ fontSize: 12.5, fontWeight: 550 }}>{dev.email}</div>
-                  <div className="mono" style={{ fontSize: 12.5, color: "var(--text-3)" }}>{dev.sessions}</div>
-                  <div className="mono" style={{ fontSize: 12.5, color: "var(--text-3)" }}>{formatTokens(dev.tokens_after)}</div>
-                  <div className="mono" style={{ fontSize: 12.5, color: "var(--text-2)" }}>
-                    {CURRENCY_SYMBOLS[currency]}{fromUsd(dev.cost_usd, currency).toFixed(2)}
-                  </div>
-                  <div className="mono" style={{ fontSize: 12.5, color: "var(--ok)" }}>
-                    {CURRENCY_SYMBOLS[currency]}{fromUsd(dev.saved_usd, currency).toFixed(2)}
-                  </div>
-                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                    {(dev.detected_tools ?? []).map(tool => {
-                      const covered = (dev.mcp_registered ?? []).includes(tool)
-                      return (
-                        <span key={tool} style={{
+              <div key={dev.email} style={{ display: "grid", gridTemplateColumns: "1.8fr 0.8fr 0.9fr 0.9fr 0.9fr 1.4fr 1.3fr", gap: 14, padding: "12px 20px", borderBottom: "1px solid var(--border)", alignItems: "center" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                  <span className="mono" style={{ fontSize: 12.5, fontWeight: 550, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{dev.email}</span>
+                  <a
+                    href={`/guard/activity?dev=${encodeURIComponent(dev.email)}`}
+                    style={{ fontSize: 11, color: "var(--accent-text)", textDecoration: "none", flexShrink: 0 }}
+                    aria-label={`View activity for ${dev.email}`}
+                  >
+                    →
+                  </a>
+                </div>
+                <div className="mono" style={{ fontSize: 12.5, color: "var(--text-3)" }}>{dev.sessions}</div>
+                <div className="mono" style={{ fontSize: 12.5, color: "var(--text-3)" }}>{formatTokens(dev.tokens_after)}</div>
+                <div className="mono" style={{ fontSize: 12.5, color: "var(--text-2)" }}>
+                  {CURRENCY_SYMBOLS[currency]}{fromUsd(dev.cost_usd, currency).toFixed(2)}
+                </div>
+                <div className="mono" style={{ fontSize: 12.5, color: "var(--ok)" }}>
+                  {CURRENCY_SYMBOLS[currency]}{fromUsd(dev.saved_usd, currency).toFixed(2)}
+                </div>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  {(dev.detected_tools ?? []).map(tool => {
+                    const covered = (dev.mcp_registered ?? []).includes(tool) || (dev.hook_registered ?? []).includes(tool)
+                    return (
+                      <span
+                        key={tool}
+                        aria-label={`${TOOL_LABELS[tool] ?? tool}: ${covered ? "covered" : "not covered"}`}
+                        style={{
                           display: "inline-flex", alignItems: "center", gap: 3,
                           fontSize: 10.5, fontWeight: 600, padding: "2px 7px",
                           borderRadius: 20,
                           background: covered ? "var(--ok-bg)" : "var(--warn-bg)",
                           color: covered ? "var(--ok)" : "var(--warn)",
                           border: `1px solid ${covered ? "var(--ok-bd)" : "var(--warn-bd)"}`,
-                        }}>
-                          {covered ? "✓" : "!"} {TOOL_LABELS[tool] ?? tool}
-                        </span>
-                      )
-                    })}
-                    {(dev.detected_tools ?? []).length === 0 && (
-                      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>—</span>
-                    )}
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <BudgetBar used={dev.cost_usd} limit={budgetLimit} warnAt={teamSettings.alert_threshold_pct ?? 80} />
-                    {isAdmin && (
-                      <span onClick={e => e.stopPropagation()}>
-                        <BudgetInput email={dev.email} current={budgetLimit} onSave={saveBudget} />
+                        }}
+                      >
+                        <span aria-hidden="true">{covered ? "✓" : "!"}</span> {TOOL_LABELS[tool] ?? tool}
                       </span>
-                    )}
-                  </div>
+                    )
+                  })}
+                  {(dev.detected_tools ?? []).length === 0 && (
+                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>—</span>
+                  )}
                 </div>
-                {isExpanded && (
-                  <div style={{ padding: "14px 20px", background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
-                    <p style={{ fontSize: 12, color: "var(--text-3)" }}>
-                      Session breakdown for <strong style={{ color: "var(--text-2)" }}>{dev.email}</strong> is available in the Activity log.
-                    </p>
-                    <a
-                      href={`/guard/activity?developer=${encodeURIComponent(dev.email)}`}
-                      style={{ fontSize: 12, color: "var(--accent-text)", textDecoration: "underline", marginTop: 4, display: "inline-block" }}
-                    >
-                      View activity log for this developer &rarr;
-                    </a>
-                  </div>
-                )}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <BudgetBar used={dev.cost_usd} limit={budgetLimit} warnAt={teamSettings.alert_threshold_pct ?? 80} />
+                  {isAdmin && (
+                    <BudgetInput email={dev.email} current={budgetLimit} onSave={saveBudget} />
+                  )}
+                </div>
               </div>
             )
           })

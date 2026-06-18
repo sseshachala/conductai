@@ -8,6 +8,7 @@ import { GuardShell } from "@/components/guard/GuardShell"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { formatDate, autonomyColor } from "@/lib/guardUtils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -26,26 +27,6 @@ interface SessionReport {
   planning_ratio: number | null
 }
 
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatDate(ts: string): string {
-  try {
-    return new Date(ts).toLocaleDateString("en-GB", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    })
-  } catch {
-    return ts
-  }
-}
-
-function autonomyColor(score: number): string {
-  if (score >= 70) return "var(--ok)"
-  if (score >= 50) return "var(--warn)"
-  return "var(--err)"
-}
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
@@ -246,6 +227,7 @@ function SessionReportsContent() {
                     <Link
                       href={`/guard/session-reports/${report.id}`}
                       style={{ fontSize: 12, color: "var(--accent-text)", textDecoration: "none", fontWeight: 500 }}
+                      aria-label={`View session report for ${report.developer_email}`}
                     >
                       View →
                     </Link>

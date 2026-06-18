@@ -398,7 +398,7 @@ function ByToolTable({ events }: { events: GuardEvent[] }) {
   const byTool = useMemo(() => {
     const map = new Map<string, { tokens: number; cost: number }>()
     for (const ev of events) {
-      const key = ev.ai_tool || "unknown"
+      const key = canonicalTool(ev.ai_tool || "unknown")
       const prev = map.get(key) ?? { tokens: 0, cost: 0 }
       map.set(key, {
         tokens: prev.tokens + ((ev.tokens_after ?? ev.tokens_input ?? 0)),
@@ -889,11 +889,8 @@ function GuardDashboard() {
 
       {/* 6 stat cards */}
       {(() => {
-        const coveredCount = toolCoverage.filter(dev =>
-          dev.detected_tools.every(t =>
-            dev.mcp_registered.includes(t) || dev.hook_registered.includes(t)
-          )
-        ).length
+        const isCovered = (dev: ToolCoverageRow) => dev.mcp_registered.length > 0 || dev.hook_registered.length > 0
+        const coveredCount = toolCoverage.filter(isCovered).length
         const totalDevs = toolCoverage.length
         return (
           <>
@@ -1483,7 +1480,7 @@ function GuardDashboard() {
           <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Developer coverage</span>
             {toolCoverage.length > 0 && (() => {
-              const covered = toolCoverage.filter(d => d.hook_registered?.length > 0).length
+              const covered = toolCoverage.filter(d => (d.mcp_registered?.length > 0) || (d.hook_registered?.length > 0)).length
               return (
                 <span style={{ fontSize: 11, color: covered === toolCoverage.length ? "var(--ok)" : "var(--warn)" }}>
                   {covered}/{toolCoverage.length} covered

@@ -628,7 +628,11 @@ function SettingsContent() {
                           setPersona(p.key)
                           setPersonaSaved(true)
                           setTimeout(() => setPersonaSaved(false), 2500)
+                        } else {
+                          throw new Error(`Failed to save persona (${res.status})`)
                         }
+                      } catch (e) {
+                        setPersonaError(e instanceof Error ? e.message : "Failed to save persona")
                       } finally {
                         setPersonaSaving(false)
                       }

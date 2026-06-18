@@ -10,6 +10,7 @@ import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import ShareButton from "@/components/ShareButton"
+import { formatDate } from "@/lib/guardUtils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,23 +46,6 @@ function simpleMarkdown(md: string): string {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatDate(ts: string): string {
-  try {
-    return new Date(ts).toLocaleDateString("en-GB", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    })
-  } catch {
-    return ts
-  }
-}
-
-function autonomyColor(score: number): string {
-  if (score >= 70) return "var(--ok)"
-  if (score >= 50) return "var(--warn)"
-  return "var(--err)"
-}
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
@@ -135,14 +119,23 @@ function SessionReportDetailContent() {
         </Link>
       </div>
 
-      {/* Admin gate */}
-      {!roleLoading && role !== "admin" ? (
+      {/* Not found — checked before role gate so 404 beats access-denied */}
+      {notFound && (
+        <div style={{ padding: "48px 24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
+          Report not found.
+        </div>
+      )}
+
+      {/* Admin gate (only when report is found) */}
+      {!notFound && !roleLoading && role !== "admin" && (
         <div style={{ padding: "48px 24px", textAlign: "center" }}>
           <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>
             Session Reports are visible to workspace admins only.
           </p>
         </div>
-      ) : (
+      )}
+
+      {!notFound && (roleLoading || role === "admin") && (
         <>
           {/* Error */}
           {error && (
@@ -165,13 +158,6 @@ function SessionReportDetailContent() {
               >
                 Retry
               </button>
-            </div>
-          )}
-
-          {/* Not found */}
-          {notFound && (
-            <div style={{ padding: "48px 24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
-              Report not found.
             </div>
           )}
 
