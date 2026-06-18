@@ -113,13 +113,20 @@ const GUARD_TABS = [
   { href: "/guard/settings",        label: "Settings"        },
 ]
 
-const PACK_LABELS = [
-  { id: "owasp_top10", name: "OWASP Top 10" },
-  { id: "soc2", name: "SOC 2" },
-  { id: "hipaa", name: "HIPAA" },
-  { id: "pci_dss", name: "PCI DSS" },
-  { id: "startup_baseline", name: "Startup Baseline" },
+// slug → display name for installed skill packs
+// legacyId: old pack_id value still stored in guard_policies.pack_id rows (pre-migration)
+const PACK_LABELS: { id: string; legacyId: string; name: string }[] = [
+  { id: "conduct-owasp",   legacyId: "owasp_top10",      name: "OWASP Top 10" },
+  { id: "conduct-soc2",    legacyId: "soc2",             name: "SOC 2" },
+  { id: "conduct-hipaa",   legacyId: "hipaa",            name: "HIPAA" },
+  { id: "conduct-pci-dss", legacyId: "pci_dss",          name: "PCI-DSS" },
+  { id: "conduct-base",    legacyId: "startup_baseline", name: "Base" },
 ]
+
+function matchesPack(policyPackId: string | null | undefined, packSlug: string, legacyId: string): boolean {
+  if (!policyPackId) return false
+  return policyPackId === packSlug || policyPackId === legacyId
+}
 
 function GuardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -759,7 +766,18 @@ function PoliciesContent() {
     authHeaders().then(headers =>
       fetch(`${apiUrl}/compliance/packs/installed?workspace_id=${encodeURIComponent(teamId)}`, { headers })
         .then(r => r.ok ? r.json() : null)
-        .then(d => { if (d?.installed) setInstalledPacks(new Set(d.installed)) })
+        .then(d => {
+          if (d?.installed) {
+            // normalise: API may return legacy IDs (owasp_top10) or new slugs (conduct-owasp)
+            const ids = new Set<string>()
+            for (const raw of d.installed) {
+              const match = PACK_LABELS.find(pl => pl.id === raw || pl.legacyId === raw)
+              if (match) { ids.add(match.id); ids.add(match.legacyId) }
+              else ids.add(raw)
+            }
+            setInstalledPacks(ids)
+          }
+        })
         .catch(() => {})
     )
   }, [apiUrl, teamId, authHeaders])
@@ -770,7 +788,7 @@ function PoliciesContent() {
     try {
       const headers = await authHeaders()
       const res = await fetch(
-        `${apiUrl}/guard/policies/refresh-builtins?workspace_id=${encodeURIComponent(teamId)}`,
+        `${apiUrl}/guard/policies/reinstall-base?workspace_id=${encodeURIComponent(teamId)}`,
         { method: "POST", headers }
       )
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -1011,10 +1029,10 @@ function PoliciesContent() {
               {installedPacks.size > 0 && (
                 <>
                   <div style={{ height: 1, background: "var(--border)", margin: "8px 4px" }} />
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".08em", padding: "2px 10px 6px" }}>Compliance Packs</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".08em", padding: "2px 10px 6px" }}>Skill Packs</div>
                   {PACK_LABELS.filter(p => installedPacks.has(p.id)).map(pack => {
                     const active = activePackFilter === pack.id
-                    const count = policies.filter(p => p.pack_id === pack.id).length
+                    const count = policies.filter(p => matchesPack(p.pack_id, pack.id, pack.legacyId)).length
                     return (
                       <button
                         key={pack.id}
@@ -1107,11 +1125,9 @@ function PoliciesContent() {
                         <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 4 }}>
                           <span className="mono" style={{ fontWeight: 650, fontSize: 12.5 }}>{p.rule_id}</span>
                           <ActionBadge action={p.action} />
-                          {p.builtin && (
-                            <span style={{ color: "var(--text-muted)", display: "flex" }} title="Built-in">
-                              <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
-                                <path fillRule="evenodd" d="M8 1a3 3 0 0 0-3 3v1H4a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-1V4a3 3 0 0 0-3-3Zm0 1.5A1.5 1.5 0 0 1 9.5 4v1h-3V4A1.5 1.5 0 0 1 8 2.5Z" clipRule="evenodd" />
-                              </svg>
+                          {(p.builtin || p.pack_id) && (
+                            <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 4, padding: "1px 5px" }}>
+                              {p.pack_id ? (PACK_LABELS.find(pl => pl.id === p.pack_id || pl.legacyId === p.pack_id)?.name ?? p.pack_id) : "base"}
                             </span>
                           )}
                         </div>

@@ -2858,6 +2858,77 @@ def _check_guard_setup(command: str) -> None:
     )
 
 
+
+def cmd_skill(args):
+    """conduct skill list | install <slug> | uninstall <slug>"""
+    skill_command = getattr(args, "skill_command", None)
+    server, workspace, api_key, token = _require_auth(args)
+
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["X-Api-Key"] = api_key
+    elif token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    def _req(method, path, expect=None):
+        url = f"{server}{path}"
+        req = urllib.request.Request(url, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                data = json.loads(r.read())
+            return data
+        except urllib.error.HTTPError as e:
+            body = e.read().decode()
+            try:
+                msg = json.loads(body).get("detail", body)
+            except Exception:
+                msg = body
+            print(f"{RED}Error {e.code}: {msg}{RESET}")
+            sys.exit(1)
+
+    if skill_command == "list":
+        data = _req("GET", f"/compliance/packs/available?workspace_id={workspace}")
+        installed_data = _req("GET", f"/compliance/packs/installed?workspace_id={workspace}")
+        installed = set(installed_data.get("installed", []))
+
+        packs = data.get("packs", [])
+        if not packs:
+            print("No skill packs available.")
+            return
+
+        print(f"\n{'Slug':<20} {'Name':<22} {'Tier':<8} {'Rules':<7} Status")
+        print("─" * 70)
+        for p in packs:
+            slug   = p.get("slug", "")
+            name   = p.get("name", "")
+            tier   = p.get("tier", "")
+            rules  = len(p.get("rules", []))
+            status = f"{GREEN}installed{RESET}" if slug in installed else f"{GRAY}available{RESET}"
+            print(f"{slug:<20} {name:<22} {tier:<8} {rules:<7} {status}")
+        print()
+
+    elif skill_command == "install":
+        slug = getattr(args, "slug", None)
+        if not slug:
+            print(f"{RED}Usage: conduct skill install <slug>{RESET}")
+            sys.exit(1)
+        _req("POST", f"/compliance/packs/{slug}/install?workspace_id={workspace}")
+        print(f"{GREEN}✓{RESET} Installed {BOLD}{slug}{RESET}")
+        print(f"  Run {BOLD}conduct guard sync{RESET} to push the updated policy to your hook.")
+
+    elif skill_command == "uninstall":
+        slug = getattr(args, "slug", None)
+        if not slug:
+            print(f"{RED}Usage: conduct skill uninstall <slug>{RESET}")
+            sys.exit(1)
+        _req("DELETE", f"/compliance/packs/{slug}/uninstall?workspace_id={workspace}")
+        print(f"{GREEN}✓{RESET} Uninstalled {BOLD}{slug}{RESET}")
+        print(f"  Run {BOLD}conduct guard sync{RESET} to push the updated policy to your hook.")
+
+    else:
+        print("Usage: conduct skill <list|install|uninstall> [slug]")
+
+
 def main():
     _auto_update()
 
@@ -2998,6 +3069,15 @@ def main():
     mcp_sub = mcp_p.add_subparsers(dest="mcp_command")
     mcp_sub.add_parser("install", help="Register conduct-mcp in Claude Code and Codex")
 
+    # conduct skill
+    skill_p = sub.add_parser("skill", help="Manage Guard skill packs")
+    skill_sub = skill_p.add_subparsers(dest="skill_command")
+    skill_sub.add_parser("list", help="List available and installed skill packs")
+    skill_install_p = skill_sub.add_parser("install", help="Install a skill pack")
+    skill_install_p.add_argument("slug", help="Pack slug, e.g. conduct-owasp")
+    skill_uninstall_p = skill_sub.add_parser("uninstall", help="Uninstall a skill pack")
+    skill_uninstall_p.add_argument("slug", help="Pack slug, e.g. conduct-owasp")
+
     # conduct sync
     sub.add_parser("sync", help="Sync Guard policies (and Security Loop policies if installed)")
 
@@ -3091,6 +3171,8 @@ def main():
             cmd_mcp_install(args)
         else:
             mcp_p.print_help()
+    elif args.command == "skill":
+        cmd_skill(args)
     elif args.command == "sync":
         cmd_sync(args)
     elif args.command == "test-guard":

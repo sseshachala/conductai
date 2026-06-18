@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "conduct-daemon"
+version = "0.1.0"
+description = "ConductGuard local policy enforcement daemon"
+requires-python = ">=3.11"
+dependencies = [
+    "aiohttp>=3.9",
+    "websockets>=12.0",
+]
+
+[project.scripts]
+conduct-daemon = "conduct_daemon.daemon:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

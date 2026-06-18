@@ -745,3 +745,22 @@ async def stream_events(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+class BatchEventIn(BaseModel):
+    events: list[HookEvent]
+
+
+@router.post("/batch", status_code=204)
+def ingest_batch(
+    body: BatchEventIn,
+    request: Request,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Batch ingest from conduct-daemon audit flush. Delegates to ingest_event per item."""
+    for event in body.events:
+        try:
+            ingest_event(event, request, background, db)
+        except HTTPException:
+            pass  # skip individual bad events; don't fail the whole batch

@@ -139,12 +139,31 @@ def _load_config() -> dict:
     return {}
 
 
-_sync_lock = threading.Lock()
+_DAEMON_URL   = "http://127.0.0.1:7878"
+_sync_lock    = threading.Lock()
 _SYNC_INTERVAL = 300  # 5 minutes
 
 
+def _daemon_alive() -> bool:
+    try:
+        urllib.request.urlopen(f"{_DAEMON_URL}/health", timeout=0.3)
+        return True
+    except Exception:
+        return False
+
+
 def _maybe_sync() -> None:
-    """If config is stale (>5 min since last sync), run `conduct guard sync` in background."""
+    """Sync policy: daemon (instant) → conduct guard sync (every 5 min). Never raises."""
+    try:
+        if _daemon_alive():
+            cfg = _load_config()
+            ws_id = cfg.get("workspace_id", "")
+            if ws_id:
+                with urllib.request.urlopen(f"{_DAEMON_URL}/policy?workspace_id={ws_id}", timeout=1) as r:
+                    POLICY_PATH.write_text(r.read().decode())
+            return
+    except Exception:
+        pass  # fall through to CLI sync
     cfg = _load_config()
     last_sync = cfg.get("last_synced_at", 0)
     if time.time() - last_sync < _SYNC_INTERVAL:
@@ -153,11 +172,7 @@ def _maybe_sync() -> None:
         return  # another thread is already syncing
     def _run():
         try:
-            subprocess.run(
-                ["conduct", "guard", "sync"],
-                timeout=15,
-                capture_output=True,
-            )
+            subprocess.run(["conduct", "guard", "sync"], timeout=15, capture_output=True)
         except Exception:
             pass
         finally:
@@ -192,12 +207,11 @@ def _post_audit_event(
     token: str,
     ai_tool: str,
 ) -> None:
-    """Fire-and-forget: post a guard audit event to the Conduct API."""
+    """Fire-and-forget: queue event via daemon (batch) or direct API fallback."""
     if not workspace_id:
         return
-    cfg     = _load_config()
-    api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
-    payload = json.dumps({
+    cfg = _load_config()
+    event = {
         "workspace_id":    workspace_id,
         "clerk_user_id":   cfg.get("user_email", ""),
         "user_email":      cfg.get("user_email", ""),
@@ -207,15 +221,26 @@ def _post_audit_event(
         "decision":        decision,
         "rule_id":         rule_id,
         "hook_session_id": _SESSION_ID,
-    }).encode()
+    }
     try:
-        req = urllib.request.Request(
-            f"{api_url}/guard/events",
-            data=payload,
-            headers={
-                "Content-Type":  "application/json",
-                "Authorization": f"Bearer {token}",
-            },
+        # Fast path: daemon batches events, reducing API calls 30:1
+        if _daemon_alive():
+            body = json.dumps(event).encode()
+            req  = urllib.request.Request(
+                f"{_DAEMON_URL}/event", data=body,
+                headers={"Content-Type": "application/json"}, method="POST",
+            )
+            urllib.request.urlopen(req, timeout=1)
+            return
+    except Exception:
+        pass
+    # Fallback: direct API post
+    try:
+        api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+        body    = json.dumps(event).encode()
+        req     = urllib.request.Request(
+            f"{api_url}/guard/events", data=body,
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
             method="POST",
         )
         urllib.request.urlopen(req, timeout=5)

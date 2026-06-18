@@ -1,0 +1,423 @@
+{
+  "slug": "conduct-base",
+  "name": "Conduct Base",
+  "version": "1.0.0",
+  "tier": "free",
+  "description": "Core safety rules \u2014 destructive ops, secrets, production gates, audit",
+  "rules": [
+    {
+      "id": "no-rm-rf",
+      "description": "Block recursive deletes",
+      "match_tool": "bash",
+      "match_pattern": "rm\\s+-rf",
+      "action": "block",
+      "message": "Recursive delete blocked. Delete files individually.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ]
+    },
+    {
+      "id": "no-git-reset-hard",
+      "description": "Block hard resets",
+      "match_tool": "bash",
+      "match_pattern": "git\\s+reset\\s+--hard",
+      "action": "block",
+      "message": "Hard reset blocked. Use --soft or --mixed to preserve changes.",
+      "persona_affinity": [
+        "conservative",
+        "standard"
+      ]
+    },
+    {
+      "id": "no-force-push",
+      "description": "Block force pushes",
+      "match_tool": "bash",
+      "match_pattern": "git\\s+push\\s+(--force|-f)\\b",
+      "action": "block",
+      "message": "Force push blocked. Coordinate with your team before rewriting history.",
+      "persona_affinity": [
+        "conservative",
+        "standard"
+      ]
+    },
+    {
+      "id": "no-drop-table",
+      "description": "Block DROP TABLE statements",
+      "match_tool": "bash,edit,write",
+      "match_pattern": "DROP\\s+TABLE",
+      "action": "block",
+      "message": "DROP TABLE blocked. Use a migration with rollback.",
+      "persona_affinity": [
+        "conservative",
+        "standard"
+      ]
+    },
+    {
+      "id": "no-truncate-table",
+      "description": "Block TRUNCATE TABLE statements",
+      "match_tool": "bash,edit,write",
+      "match_pattern": "TRUNCATE\\s+TABLE",
+      "action": "block",
+      "message": "TRUNCATE TABLE blocked. Use a migration with rollback.",
+      "persona_affinity": [
+        "conservative",
+        "standard"
+      ]
+    },
+    {
+      "id": "no-delete-without-where",
+      "description": "Block DELETE statements without a WHERE clause",
+      "match_tool": "bash,edit,write",
+      "match_pattern": "DELETE\\s+FROM\\s+\\w+\\s*;",
+      "action": "block",
+      "message": "DELETE without WHERE blocked. Add a WHERE clause.",
+      "persona_affinity": [
+        "conservative",
+        "standard"
+      ]
+    },
+    {
+      "id": "no-sudo",
+      "description": "Block sudo commands",
+      "match_tool": "bash",
+      "match_pattern": "\\bsudo\\b",
+      "action": "block",
+      "message": "sudo blocked. Escalating permissions via an AI agent is not permitted.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ]
+    },
+    {
+      "id": "no-chmod-permissive",
+      "description": "Warn on world-writable or fully permissive chmod",
+      "match_tool": "bash",
+      "match_pattern": "chmod\\s+(777|a\\+w|o\\+w|0?777)",
+      "action": "warn",
+      "message": "World-writable permissions detected. Confirm this is intentional.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ]
+    },
+    {
+      "id": "no-chown-root",
+      "description": "Block chown to root",
+      "match_tool": "bash",
+      "match_pattern": "chown\\s+(root|0)[\\s:]",
+      "action": "block",
+      "message": "Changing ownership to root is not permitted.",
+      "persona_affinity": [
+        "conservative",
+        "standard"
+      ]
+    },
+    {
+      "id": "no-env-commits",
+      "description": "Block committing .env files",
+      "match_tool": "bash",
+      "match_pattern": "git (add|commit).+\\.env",
+      "action": "block",
+      "message": ".env files must not be committed.",
+      "persona_affinity": [
+        "conservative",
+        "standard"
+      ]
+    },
+    {
+      "id": "no-hardcoded-secrets",
+      "description": "Warn on possible hardcoded secrets",
+      "match_tool": "edit,write",
+      "match_pattern": "(API_KEY|SECRET|PASSWORD|TOKEN)\\s*=\\s*['\"\"][A-Za-z0-9+/]{16,}",
+      "action": "warn",
+      "message": "Possible hardcoded secret. Use environment variables.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ]
+    },
+    {
+      "id": "no-aws-keys",
+      "description": "Warn on hardcoded AWS access keys",
+      "match_tool": "edit,write",
+      "match_pattern": "AKIA[0-9A-Z]{16}",
+      "action": "warn",
+      "message": "Possible AWS access key detected. Use IAM roles or environment variables.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ]
+    },
+    {
+      "id": "no-private-key-files",
+      "description": "Block writing private key files",
+      "match_tool": "write",
+      "match_path_pattern": "\\.(pem|key|p12|pfx)$",
+      "action": "block",
+      "message": "Writing private key files is not permitted.",
+      "persona_affinity": [
+        "conservative",
+        "standard"
+      ]
+    },
+    {
+      "id": "no-secret-in-commit-msg",
+      "description": "Warn on secret-like patterns in git commit messages",
+      "match_tool": "bash",
+      "match_pattern": "git\\s+commit\\s+.*-m.*([A-Za-z0-9+/]{32,}|sk-[a-zA-Z0-9]{32,}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16})",
+      "action": "warn",
+      "message": "Possible secret detected in commit message. Remove before pushing.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ]
+    },
+    {
+      "id": "approve-prod-deploy",
+      "description": "Require approval for production deploys",
+      "match_tool": "bash",
+      "match_pattern": "deploy.*(prod|production)|vercel.*--prod|railway.*prod",
+      "action": "approval",
+      "message": "Production deploy requested. Approve?",
+      "persona_affinity": [
+        "conservative",
+        "standard"
+      ]
+    },
+    {
+      "id": "approve-db-migration-prod",
+      "description": "Require approval for production DB migrations",
+      "match_tool": "bash",
+      "match_pattern": "alembic upgrade|prisma migrate deploy",
+      "action": "approval",
+      "message": "DB migration in production. Approve?",
+      "persona_affinity": [
+        "conservative",
+        "standard"
+      ]
+    },
+    {
+      "id": "approve-terraform-destroy",
+      "description": "Require approval for terraform destroy",
+      "match_tool": "bash",
+      "match_pattern": "terraform\\s+destroy",
+      "action": "approval",
+      "message": "terraform destroy requested. Approve?",
+      "persona_affinity": [
+        "conservative",
+        "standard"
+      ]
+    },
+    {
+      "id": "approve-kubectl-delete",
+      "description": "Require approval for kubectl delete",
+      "match_tool": "bash",
+      "match_pattern": "kubectl\\s+delete",
+      "action": "approval",
+      "message": "kubectl delete requested. Approve?",
+      "persona_affinity": [
+        "conservative",
+        "standard"
+      ]
+    },
+    {
+      "id": "approve-prod-env-edit",
+      "description": "Require approval when editing production env files",
+      "match_tool": "edit,write",
+      "match_path_pattern": "\\.env\\.(prod|production|staging)$",
+      "action": "approval",
+      "message": "Production environment file modified. Approve?",
+      "persona_affinity": [
+        "conservative",
+        "standard"
+      ]
+    },
+    {
+      "id": "audit-migrations",
+      "description": "Audit migration file modifications",
+      "match_tool": "edit,write",
+      "match_path_pattern": "alembic/versions/.*\\.py$",
+      "action": "audit",
+      "message": "Migration file modified",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ]
+    },
+    {
+      "id": "audit-ci-config",
+      "description": "Audit CI config modifications",
+      "match_tool": "edit,write",
+      "match_path_pattern": "\\.github/workflows/.*",
+      "action": "audit",
+      "message": "CI config modified",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ]
+    },
+    {
+      "id": "audit-dockerfile",
+      "description": "Audit Dockerfile modifications",
+      "match_tool": "edit,write",
+      "match_path_pattern": "Dockerfile[^/]*$",
+      "action": "audit",
+      "message": "Dockerfile modified",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ]
+    },
+    {
+      "id": "secret-stripe",
+      "description": "Warn on hardcoded Stripe live secret keys",
+      "match_tool": "edit,write",
+      "match_pattern": "sk_live_[0-9a-zA-Z]{24,}",
+      "action": "warn",
+      "message": "Stripe live secret key detected. Use environment variables \u2014 never hardcode payment credentials.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ]
+    },
+    {
+      "id": "secret-slack",
+      "description": "Warn on hardcoded Slack bot or user tokens",
+      "match_tool": "edit,write",
+      "match_pattern": "xox[bpoa]-[0-9A-Za-z\\-]{10,}",
+      "action": "warn",
+      "message": "Slack token detected. Store in environment variables, not source code.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ]
+    },
+    {
+      "id": "secret-private-key",
+      "description": "Warn on PEM private key content in edited files",
+      "match_tool": "edit,write",
+      "match_pattern": "-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----",
+      "action": "warn",
+      "message": "Private key content detected. Use a secrets manager \u2014 never embed keys in source.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ]
+    },
+    {
+      "id": "cmd-injection",
+      "description": "Warn on shell execution with potentially user-controlled input",
+      "match_tool": "edit,write",
+      "match_pattern": "(subprocess\\.(call|run|Popen|check_output)|os\\.(system|popen)|exec\\(|eval\\()",
+      "action": "warn",
+      "message": "Shell execution or eval detected. Verify input is sanitised to prevent command injection.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ]
+    },
+    {
+      "id": "sql-injection",
+      "description": "Warn on string-formatted SQL queries (f-string or % interpolation)",
+      "match_tool": "edit,write",
+      "match_pattern": "(f['\"].*SELECT|f['\"].*INSERT|f['\"].*UPDATE|f['\"].*DELETE|%\\s*\\(.*\\)\\s*['\"].*SELECT)",
+      "action": "warn",
+      "message": "String-formatted SQL detected. Use parameterised queries to prevent SQL injection.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ]
+    },
+    {
+      "id": "weak-hash-md5",
+      "description": "Warn on MD5 usage for security-sensitive hashing",
+      "match_tool": "edit,write",
+      "match_pattern": "(hashlib\\.md5|MD5\\(|DigestUtils\\.md5)",
+      "action": "warn",
+      "message": "MD5 is cryptographically broken. Use SHA-256 or bcrypt for security-sensitive hashing.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ]
+    },
+    {
+      "id": "weak-hash-sha1",
+      "description": "Warn on SHA-1 usage for security-sensitive hashing",
+      "match_tool": "edit,write",
+      "match_pattern": "(hashlib\\.sha1|SHA1\\(|DigestUtils\\.sha1)",
+      "action": "warn",
+      "message": "SHA-1 is deprecated for security use. Use SHA-256 or bcrypt for password/token hashing.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ]
+    },
+    {
+      "id": "warn-deterministic-compute",
+      "description": "Warn when bash is used for work that is purely deterministic \u2014 sort/dedup/count/sum pipelines that don't need LLM reasoning",
+      "match_tool": "bash",
+      "match_pattern": "(sort\\s+.*\\|\\s*uniq|grep\\s+-c|wc\\s+-l|awk\\s+['\"].*sum|python\\s+-c\\s+['\"].*(\\+|\\*|sum|len|sort|filter)|jq\\s+['\"]\\.|\\|\\s*(sort|uniq|wc)\\b)",
+      "action": "warn",
+      "message": "Deterministic work detected \u2014 sort/dedup/count/sum doesn't need an LLM. Run this directly as a script to save tokens.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ]
+    },
+    {
+      "id": "warn-large-context-dump",
+      "description": "Warn when a single call consumes more than 50K tokens",
+      "match_tool": "*",
+      "match_tokens_before_gt": 50000,
+      "action": "warn",
+      "message": "Large context detected (>50K tokens). Use Agent Booster smart_read to retrieve only relevant symbols instead of dumping the full file or repo.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ]
+    },
+    {
+      "id": "pii-redact",
+      "description": "Strip PII from Brain block context before LLM calls",
+      "match_tool": "*",
+      "action": "audit",
+      "message": "PII detected in workflow context \u2014 redacted before LLM call (email, phone, SSN, card, IP).",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ]
+    },
+    {
+      "id": "secret-redact",
+      "description": "Block tool calls containing credentials using a 3-layer detection engine. Layer 1 (structural): unmistakable formats \u2014 AWS access keys (AKIA*), GitHub tokens (ghp_, gho_, ghs_, github_pat_), PEM private keys. Layer 2 (bare-in-text): tokens that appear without keyword context \u2014 Slack (xox*), generic secret keys (sk-, pk-), Anthropic keys (ak-), Stripe keys (sk/pk/rk/whsec_live/test_), Bearer tokens, URL-embedded passwords (scheme://user:pass@host). Layer 3 (context-aware): any value \u22658 chars following a credential keyword (api_key, token, secret, password, auth, credential, access_key, client_secret, etc.). This layer automatically catches any new service without needing a new pattern.\n",
+      "match_tool": "*",
+      "action": "block",
+      "message": "Credential detected in tool input. Remove it and use an environment variable or Conduct's credential vault instead. The value has been redacted from the audit log.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ]
+    }
+  ]
+}

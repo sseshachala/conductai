@@ -1,0 +1,36 @@
+{
+  "slug": "conduct-pci-dss",
+  "name": "Conduct PCI-DSS",
+  "version": "1.0.0",
+  "tier": "paid",
+  "description": "PCI-DSS cardholder data rules",
+  "rules": [
+    {
+      "id": "pci_pan_guard",
+      "description": "Block card number patterns (PCI DSS Req 3)",
+      "match_tool": "edit,write,bash",
+      "match_pattern": "\\b4[0-9]{12}(?:[0-9]{3})?\\b|\\b5[1-5][0-9]{14}\\b",
+      "action": "block",
+      "message": "Card number detected — never log or store PANs in plaintext.",
+      "persona_affinity": ["conservative", "standard", "developer"]
+    },
+    {
+      "id": "pci_cvv_guard",
+      "description": "Block CVV storage (PCI DSS Req 3.2)",
+      "match_tool": "edit,write",
+      "match_pattern": "(cvv|cvc|cvv2)\\s*=",
+      "action": "block",
+      "message": "CVV must never be stored post-authorization (PCI DSS 3.2.1).",
+      "persona_affinity": ["conservative", "standard", "developer"]
+    },
+    {
+      "id": "pci_weak_tls",
+      "description": "Block TLS 1.0 usage (PCI DSS Req 4)",
+      "match_tool": "edit,write",
+      "match_pattern": "TLSv1\\b|ssl\\.PROTOCOL_TLSv1\\b",
+      "action": "block",
+      "message": "TLS 1.0 is prohibited under PCI DSS — use TLS 1.2+.",
+      "persona_affinity": ["conservative", "standard"]
+    }
+  ]
+}

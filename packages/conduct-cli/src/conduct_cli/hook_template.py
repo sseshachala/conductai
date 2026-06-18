@@ -39,8 +39,19 @@ VERSION_CACHE_TTL   = 60   # 1 minute — matches server poll window
 WARNED_RULES_PATH   = GUARD_DIR / "warned_rules.json"
 
 
+_DAEMON_URL = "http://127.0.0.1:7878"
+
+
+def _daemon_alive() -> bool:
+    try:
+        with urllib.request.urlopen(f"{_DAEMON_URL}/health", timeout=0.3):
+            return True
+    except Exception:
+        return False
+
+
 def _maybe_sync_policy():
-    """Check server policy version once per minute; re-download if stale. Never raises."""
+    """Sync policy from daemon (instant) or remote API (once per minute). Never raises."""
     try:
         cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
         workspace_id = cfg.get("workspace_id")
@@ -48,18 +59,25 @@ def _maybe_sync_policy():
         api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
         if not workspace_id:
             return
-        # Check cache TTL
+
+        # Fast path: daemon is running — it keeps policy fresh via WebSocket push
+        if _daemon_alive():
+            url = f"{_DAEMON_URL}/policy?workspace_id={workspace_id}"
+            with urllib.request.urlopen(url, timeout=1) as resp:
+                remote = json.loads(resp.read())
+            POLICY_PATH.write_text(json.dumps(remote, indent=2))
+            return
+
+        # Slow path: no daemon — poll remote API once per minute
         if VERSION_CACHE_PATH.exists():
             cache = json.loads(VERSION_CACHE_PATH.read_text())
             if time.time() - cache.get("ts", 0) < VERSION_CACHE_TTL:
                 return
-        # Fetch current version from server
         url = f"{api_url}/guard/policies/sync?workspace_id={workspace_id}"
         req = urllib.request.Request(url, headers={"Authorization": f"Bearer {api_key}"} if api_key else {})
         with urllib.request.urlopen(req, timeout=2) as resp:
             remote = json.loads(resp.read())
         remote_version = remote.get("version", "")
-        # Compare to local
         local_version = ""
         if POLICY_PATH.exists():
             local_version = json.loads(POLICY_PATH.read_text()).get("version", "")

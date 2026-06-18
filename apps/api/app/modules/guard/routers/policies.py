@@ -19,7 +19,8 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, get_guard_hook_auth
 from app.core.database import get_db
-from app.modules.guard.models import GuardAuditEvent, GuardConfig as _GuardConfig, GuardPolicy
+from app.modules.guard.models import GuardAuditEvent, GuardConfig as _GuardConfig, GuardPolicy, GuardRuleOverride
+from app.modules.guard.policy_engine import compute_policy, invalidate_policy_cache
 
 router = APIRouter(prefix="/guard/policies", tags=["guard-policies"])
 
@@ -360,50 +361,46 @@ def sync_policies(
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid workspace_id")
 
-    # Resolve active persona: workspace default → 'standard'
     gc = db.query(_GuardConfig).filter(_GuardConfig.workspace_id == ws_uuid).first()
-    active_persona = (gc.persona if gc and gc.persona else "standard")
+    active_persona = gc.persona if gc and gc.persona else "standard"
 
-    active_policies = (
-        db.query(GuardPolicy)
-        .filter(
-            GuardPolicy.workspace_id == ws_uuid,
-            GuardPolicy.enabled.is_(True),
-            GuardPolicy.archived_at.is_(None),
-            GuardPolicy.persona_affinity.contains([active_persona]),
-        )
-        .order_by(GuardPolicy.updated_at.desc())
-        .all()
-    )
-
-    if active_policies:
-        latest_ts = max(p.updated_at for p in active_policies)
-    else:
-        latest_ts = None
-
-    if gc and gc.resync_requested_at:
-        resync_ts = gc.resync_requested_at if gc.resync_requested_at.tzinfo is not None \
-            else gc.resync_requested_at.replace(tzinfo=timezone.utc)
-        if latest_ts is not None:
-            latest_ts = max(latest_ts, resync_ts)
+    try:
+        active_rules = compute_policy(db, ws_uuid, active_persona)
+    except Exception as exc:
+        # Migration 0017 not yet applied — fall back to legacy guard_policies table
+        if "workspace_skill_packs" in str(exc) or "skill_packs" in str(exc):
+            import logging as _log
+            _log.getLogger("guard.sync").warning(
+                "skill_packs tables missing — falling back to guard_policies (run migration 0017)"
+            )
+            from app.modules.guard.models import GuardPolicy as _GP
+            legacy = db.query(_GP).filter(
+                _GP.workspace_id == ws_uuid, _GP.enabled == True
+            ).all()
+            active_rules = [
+                {"id": p.rule_id, "match_tool": p.match_tool, "match_pattern": p.match_pattern,
+                 "match_path_pattern": p.match_path_pattern, "action": p.action, "message": p.message}
+                for p in legacy
+            ]
         else:
-            latest_ts = resync_ts
+            raise
 
-    if latest_ts is not None:
-        version = latest_ts.strftime("%Y-%m-%dT%H:%M:%SZ")
-    else:
-        version = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # version = hash of active rule set so hook knows when to re-download
+    version_hash = __import__("hashlib").sha256(
+        __import__("json").dumps(active_rules, sort_keys=True).encode()
+    ).hexdigest()[:16]
+    version = f"{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}-{version_hash}"
 
     rules = [
         PolicySyncRule(
-            rule_id=p.rule_id,
-            match_tool=p.match_tool,
-            match_pattern=p.match_pattern,
-            match_path_pattern=p.match_path_pattern,
-            action=p.action,
-            message=p.message,
+            rule_id=r["id"],
+            match_tool=r.get("match_tool"),
+            match_pattern=r.get("match_pattern"),
+            match_path_pattern=r.get("match_path_pattern"),
+            action=r["action"],
+            message=r.get("message"),
         )
-        for p in active_policies
+        for r in active_rules
     ]
 
     return PolicySyncOut(workspace_id=workspace_id, version=version, persona=active_persona, rules=rules)
@@ -484,6 +481,11 @@ def patch_policy(
 
     if body.enabled is not None:
         policy.enabled = body.enabled
+        # dual-write: also write GuardRuleOverride so compute_policy() sees the change
+        _upsert_override(db, policy.workspace_id, policy.rule_id,
+                         disabled=not body.enabled, action=None, message=None)
+        invalidate_policy_cache(db, policy.workspace_id)
+
     if body.description is not None:
         policy.description = body.description
     if body.match_pattern is not None:
@@ -492,6 +494,9 @@ def patch_policy(
         policy.match_path_pattern = body.match_path_pattern
     if body.action is not None:
         policy.action = body.action
+        _upsert_override(db, policy.workspace_id, policy.rule_id,
+                         disabled=False, action=body.action, message=body.message)
+        invalidate_policy_cache(db, policy.workspace_id)
     if body.message is not None:
         policy.message = body.message
 
@@ -521,6 +526,60 @@ def delete_policy(
     policy.archived_at = datetime.now(_tz.utc)
     db.commit()
     _write_policy_audit(db, policy.workspace_id, "policy_archived", policy)
+
+
+def _upsert_override(
+    db: Session,
+    workspace_id: uuid.UUID,
+    rule_id: str,
+    *,
+    disabled: bool,
+    action: str | None,
+    message: str | None,
+    clerk_user_id: str | None = None,
+) -> None:
+    existing = db.get(GuardRuleOverride, (workspace_id, rule_id))
+    now = datetime.now(timezone.utc)
+    if existing:
+        existing.disabled = disabled
+        if action is not None:
+            existing.action = action
+        if message is not None:
+            existing.custom_message = message
+        existing.overridden_at = now
+    else:
+        db.add(GuardRuleOverride(
+            workspace_id=workspace_id,
+            rule_id=rule_id,
+            disabled=disabled,
+            action=action,
+            custom_message=message,
+            overridden_by=clerk_user_id,
+            overridden_at=now,
+        ))
+
+
+@router.post("/reinstall-base")
+def reinstall_base(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    """Re-seed conduct-base skill pack rules for this workspace.
+    Replaces refresh-builtins — install conduct-base pack if missing, then invalidate cache.
+    """
+    from app.modules.guard.models import WorkspaceSkillPack
+    ws_uuid = uuid.UUID(str(workspace_id))
+    existing = db.get(WorkspaceSkillPack, (ws_uuid, "conduct-base"))
+    if not existing:
+        db.add(WorkspaceSkillPack(
+            workspace_id=ws_uuid,
+            pack_slug="conduct-base",
+            installed_by="system:reinstall",
+            installed_at=datetime.now(timezone.utc),
+        ))
+        db.commit()
+    invalidate_policy_cache(db, ws_uuid)
+    return {"status": "ok", "pack": "conduct-base"}
 
 
 @router.post("/refresh-builtins")
