@@ -11,6 +11,8 @@ export interface BlockNodeData {
   label: string
   description?: string
   isAgentic?: boolean
+  guardEnabled?: boolean
+  trigger_type?: string
   integration?: string
   config?: { action?: string; channel?: string; event_type?: string; label?: string; repo_allowlist?: string }
   [key: string]: unknown
@@ -102,7 +104,7 @@ function BlockNode({ data, selected }: NodeProps) {
   const reviewerDim = nodeData.reviewerDim === true
   const runStatus = nodeData.runStatus as "running" | "completed" | "failed" | "skipped" | undefined
   const liveTurn = typeof nodeData.liveTurn === "number" ? nodeData.liveTurn : undefined
-  const maxTurns = typeof nodeData.max_turns === "number" ? nodeData.max_turns : 20
+  const maxTurns = typeof nodeData.max_turns === "number" ? nodeData.max_turns : 25
   const memoryAction = isMemory ? ((nodeData.config as Record<string, string>)?.action || "read") : null
 
   const missingCondition = isLogic && !(nodeData.config as Record<string, unknown>)?.condition
@@ -185,7 +187,7 @@ function BlockNode({ data, selected }: NodeProps) {
         {nodeData.isAgentic && (
           <span className="text-[8px] font-bold bg-violet-600 text-white px-1.5 py-0.5 rounded">AI</span>
         )}
-        {nodeData.isAgentic && (
+        {nodeData.isAgentic && nodeData.guardEnabled === true && (
           <span className="text-[8px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded flex items-center gap-0.5">
             <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             Guard
@@ -222,15 +224,52 @@ function BlockNode({ data, selected }: NodeProps) {
         </div>
       )}
 
-      {/* Trigger provider badge */}
-      {isTrigger && (
-        <div className="flex items-center gap-1 mt-1.5">
-          <span className={cn("flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded", INTEGRATION_COLORS.github)}>
-            <GitHubMark className="w-2.5 h-2.5" />
-            GitHub
-          </span>
-        </div>
-      )}
+      {/* Trigger provider badge — derived from trigger_type or event_type */}
+      {isTrigger && (() => {
+        const triggerType = (nodeData.trigger_type as string | undefined) || (nodeData.config?.event_type as string | undefined) || ""
+        const isGitHub = triggerType.startsWith("github_") || triggerType === "github"
+        const isCron = triggerType === "cron" || triggerType === "schedule"
+        const isWebhook = triggerType === "webhook"
+        const isManual = triggerType === "manual"
+        if (isGitHub) {
+          return (
+            <div className="flex items-center gap-1 mt-1.5">
+              <span className={cn("flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded", INTEGRATION_COLORS.github)}>
+                <GitHubMark className="w-2.5 h-2.5" />
+                GitHub
+              </span>
+            </div>
+          )
+        }
+        if (isCron) {
+          return (
+            <div className="flex items-center gap-1 mt-1.5">
+              <span className="flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded bg-stone-700 text-white">
+                Cron
+              </span>
+            </div>
+          )
+        }
+        if (isWebhook) {
+          return (
+            <div className="flex items-center gap-1 mt-1.5">
+              <span className="flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded bg-indigo-600 text-white">
+                Webhook
+              </span>
+            </div>
+          )
+        }
+        if (isManual) {
+          return (
+            <div className="flex items-center gap-1 mt-1.5">
+              <span className="flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded bg-stone-500 text-white">
+                Manual
+              </span>
+            </div>
+          )
+        }
+        return null
+      })()}
 
       {/* Secondary / context line */}
       {secondary && (

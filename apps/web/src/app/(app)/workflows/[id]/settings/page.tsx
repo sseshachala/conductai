@@ -66,9 +66,14 @@ export default function AgentSettingsPage() {
   async function saveEnvironment(envId: string) {
     const h = await headers()
     h["Content-Type"] = "application/json"
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/set-environment`, {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/set-environment`, {
       method: "POST", headers: h, body: JSON.stringify({ environment_id: envId })
     })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      setDeleteError(body.detail ?? `Failed to save environment (${res.status})`)
+      return
+    }
     setWorkflow(prev => prev ? { ...prev, environment_id: envId } : prev)
   }
 
@@ -79,9 +84,14 @@ export default function AgentSettingsPage() {
     try {
       const h = await headers()
       h["Content-Type"] = "application/json"
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/turn-settings`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/turn-settings`, {
         method: "PATCH", headers: h, body: JSON.stringify({ default_max_turns: val })
       })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setDeleteError(body.detail ?? `Failed to save turn budget (${res.status})`)
+        return
+      }
       setWorkflow(prev => prev ? { ...prev, default_max_turns: val } : prev)
       setTurnsSaved(true)
       setTimeout(() => setTurnsSaved(false), 2000)
@@ -118,7 +128,7 @@ export default function AgentSettingsPage() {
     <AppShell noPadding>
       <div style={{ flex: 1, overflow: "auto" }}>
         <div style={{ maxWidth: 672, margin: "0 auto", padding: "40px 24px" }}>
-          <h2 style={{ fontSize: 20, fontWeight: 600, color: "var(--text)", marginBottom: 24 }}>Agent Settings</h2>
+          <h2 style={{ fontSize: 20, fontWeight: 600, color: "var(--text)", marginBottom: 24 }}>Workflow Settings</h2>
 
           {loading ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -139,10 +149,10 @@ export default function AgentSettingsPage() {
 
               {/* Name */}
               <div className="card" style={{ padding: "16px 20px" }}>
-                <p className="eyebrow" style={{ marginBottom: 4 }}>Agent name</p>
+                <p className="eyebrow" style={{ marginBottom: 4 }}>Workflow name</p>
                 <p style={{ color: "var(--text)", fontWeight: 500 }}>{workflow?.name}</p>
                 <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-                  Rename from the agents list or canvas header.
+                  Rename from the workflows list or canvas header.
                 </p>
               </div>
 
@@ -248,7 +258,7 @@ export default function AgentSettingsPage() {
                   Danger zone
                 </p>
                 <p style={{ fontSize: 13, color: "var(--err)", marginBottom: 12 }}>
-                  Deleting this agent removes all its runs and history permanently.
+                  Deleting this workflow removes all its runs and history permanently.
                 </p>
                 {deleteConfirmOpen ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -315,19 +325,10 @@ export default function AgentSettingsPage() {
                 ) : (
                   <button
                     onClick={() => { setDeleteConfirmOpen(true); setDeleteConfirmValue(""); setDeleteError(null) }}
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 500,
-                      color: "#fff",
-                      background: "var(--err)",
-                      border: "none",
-                      borderRadius: 8,
-                      padding: "8px 16px",
-                      cursor: "pointer",
-                      transition: "opacity 0.15s",
-                    }}
+                    className="btn btn-ghost"
+                    style={{ color: "var(--err)" }}
                   >
-                    Delete agent
+                    Delete workflow
                   </button>
                 )}
               </div>

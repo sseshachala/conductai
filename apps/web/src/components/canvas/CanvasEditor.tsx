@@ -22,6 +22,7 @@ import {
 import "@xyflow/react/dist/style.css"
 
 import BlockNode, { type BlockNodeData } from "./BlockNode"
+import StatusBadge from "@/components/runs/StatusBadge"
 import BlockEditor from "./BlockEditor"
 import BlockPalette from "./BlockPalette"
 import RunDrawer from "./RunDrawer"
@@ -282,7 +283,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     if (!workflowId) return
     setRunsLoading(true)
     authHeaders(getToken).then(headers =>
-      fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs`, { headers })
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs?limit=50`, { headers })
         .then(r => r.ok ? r.json() : [])
         .then(data => { setRuns(data); setRunsLoading(false) })
         .catch(() => setRunsLoading(false))
@@ -926,15 +927,23 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
       {/* Top bar */}
       <header className="flex items-center justify-between px-5 py-3 bg-white border-b border-stone-200 shrink-0">
         <div className="flex flex-col gap-0.5">
-          {projectName && (
-            <nav className="flex items-center gap-1 text-[10px] text-stone-400">
-              <button onClick={() => router.push("/projects")} className="hover:text-stone-600 transition-colors">Projects</button>
-              <span>/</span>
-              <button onClick={() => router.back()} className="hover:text-stone-600 transition-colors max-w-[120px] truncate">{projectName}</button>
-              <span>/</span>
-              <span className="text-stone-500 font-medium max-w-[140px] truncate">{workflowName}</span>
-            </nav>
-          )}
+          <nav className="flex items-center gap-1 text-[10px] text-stone-400">
+            {projectName ? (
+              <>
+                <button onClick={() => router.push("/projects")} className="hover:text-stone-600 transition-colors">Projects</button>
+                <span>/</span>
+                <button onClick={() => router.back()} className="hover:text-stone-600 transition-colors max-w-[120px] truncate">{projectName}</button>
+                <span>/</span>
+                <span className="text-stone-500 font-medium max-w-[140px] truncate">{workflowName}</span>
+              </>
+            ) : (
+              <>
+                <button onClick={() => router.push("/workflows")} className="hover:text-stone-600 transition-colors">← Workflows</button>
+                <span>/</span>
+                <span className="text-stone-500 font-medium max-w-[200px] truncate">{workflowName}</span>
+              </>
+            )}
+          </nav>
         <div className="flex items-center gap-3">
           <input
             value={workflowName}
@@ -1034,12 +1043,20 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                   {running === "dry" ? "Simulating…" : "Dry run"}
                 </button>
               )}
+              {activeRunId && !drawerVisible && (
+                <button
+                  onClick={() => setDrawerVisible(true)}
+                  className="rounded-lg border border-violet-300 px-3 py-1.5 text-xs font-medium text-violet-700 hover:bg-violet-50 transition-colors"
+                >
+                  View output ↑
+                </button>
+              )}
               <button
-                onClick={() => activeRunId ? setDrawerVisible(true) : startRun(false)}
+                onClick={() => startRun(false)}
                 disabled={running === "live" || running === "dry"}
                 className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-violet-700 transition-colors disabled:opacity-50"
               >
-                {running === "live" ? "Starting…" : activeRunId ? "▶ Running…" : "▶ Run"}
+                {running === "live" ? "Starting…" : running === "dry" ? "Simulating…" : "▶ Run"}
               </button>
             </>
           )}
@@ -1114,16 +1131,16 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
               )}
               {canvasLoading && (
                 <div className="absolute inset-0 z-10 bg-stone-50 flex items-center justify-center">
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="flex gap-3">
-                      {[80, 120, 80].map((w, i) => (
-                        <div key={i} className="rounded-xl bg-stone-200 animate-pulse h-16" style={{ width: w }} />
-                      ))}
-                    </div>
-                    <div className="flex gap-2 mt-1">
-                      {[1, 2].map(i => <div key={i} className="w-8 h-1 rounded-full bg-stone-200 animate-pulse" />)}
-                    </div>
-                    <p className="text-xs text-stone-400 mt-2">Loading canvas…</p>
+                  <div className="flex flex-col items-center gap-2">
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className="flex flex-col gap-1">
+                        <div className="rounded-xl bg-stone-200 animate-pulse h-14" style={{ width: 212 }} />
+                        {i < 3 && (
+                          <div className="w-0.5 h-4 bg-stone-200 animate-pulse mx-auto" />
+                        )}
+                      </div>
+                    ))}
+                    <p className="text-xs text-stone-400 mt-3">Loading canvas…</p>
                   </div>
                 </div>
               )}
@@ -1153,6 +1170,17 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                   </div>
                 )
               })()}
+              {!canvasLoading && nodes.length === 0 && (
+                <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
+                  <div className="flex flex-col items-center gap-3 text-center">
+                    <div className="w-12 h-12 rounded-xl border-2 border-dashed border-stone-300 flex items-center justify-center">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-5 h-5 text-stone-400"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                    </div>
+                    <p className="text-sm font-medium text-stone-500">Drag a Trigger block to get started</p>
+                    <p className="text-xs text-stone-400 max-w-[200px]">Blocks are in the left panel — drag them onto the canvas to build your workflow.</p>
+                  </div>
+                </div>
+              )}
               <ReactFlow
                 nodes={nodes}
                 edges={edges}
@@ -1289,6 +1317,11 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                     projectSlug={projectSlug}
                     onWebhookChange={(id, repo) => { setGithubHookId(id); setGithubHookRepo(repo) }}
                     onClose={() => setSelectedNode(null)}
+                    onDelete={(blockId) => {
+                      setNodes(nds => nds.filter(n => n.id !== blockId))
+                      setEdges(eds => eds.filter(e => e.source !== blockId && e.target !== blockId))
+                      setSelectedNode(null)
+                    }}
                     sandboxBlocks={nodes.filter(n => (n.data as Record<string, unknown>).type === "sandbox").map(n => ({ id: n.id, label: (n.data as Record<string, unknown>).label as string || "Sandbox" }))}
                   />
                 </div>
@@ -1325,14 +1358,6 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
             ) : (
               <div className="mx-auto max-w-3xl grid gap-2">
                 {runs.map(run => {
-                  const STATUS_STYLES: Record<string, string> = {
-                    pending:   "bg-stone-100 text-stone-500",
-                    running:   "bg-blue-100 text-blue-700",
-                    succeeded: "bg-green-100 text-green-700",
-                    failed:    "bg-red-100 text-red-700",
-                    cancelled: "bg-stone-100 text-stone-400",
-                  }
-                  const isActive = run.status === "pending" || run.status === "running"
                   return (
                     <button
                       key={run.id}
@@ -1340,10 +1365,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                       className="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-5 py-4 hover:border-stone-300 hover:shadow-sm transition-all text-left w-full"
                     >
                       <div className="flex items-center gap-3">
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_STYLES[run.status] ?? STATUS_STYLES.pending}`}>
-                          {isActive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse mr-1 align-middle" />}
-                          {run.status}
-                        </span>
+                        <StatusBadge status={run.status} />
                         <span className="text-sm text-stone-700 font-mono">{run.id.slice(0, 8)}…</span>
                         {run.triggered_by && (
                           <span className="text-xs text-stone-400">{run.triggered_by}</span>
@@ -1361,8 +1383,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
         )}
       </div>
 
-      {/* No-environment warning banner */}
-      {!selectedEnvId && (
+      {/* No-environment warning banner — only shown when no higher-priority banner is active */}
+      {!selectedEnvId && validationErrors.length === 0 && !preflight && (
         <div className="shrink-0 border-t border-amber-200 bg-amber-50 px-5 py-2.5 flex items-center gap-2">
           <span className="text-amber-600 text-sm">⚠</span>
           <p className="text-xs text-amber-800 flex-1">
@@ -1373,13 +1395,13 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
         </div>
       )}
 
-      {/* Preflight turn-budget banner */}
-      {preflight && (
+      {/* Preflight turn-budget banner — only shown when no validation errors override it */}
+      {preflight && validationErrors.length === 0 && (
         <div className="shrink-0 border-t border-amber-200 bg-amber-50 px-5 py-3">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-amber-800 mb-1">
-                ⚠ Estimated {preflight.suggestedTurns} turns needed — default is 20
+                ⚠ Estimated {preflight.suggestedTurns} turns needed — default is 25
               </p>
               {preflight.files.length > 0 && (
                 <p className="text-xs text-amber-700 mb-2 font-mono truncate">
@@ -1421,7 +1443,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                   }}
                   className="text-xs text-amber-700 hover:text-amber-900 px-2 py-1.5"
                 >
-                  Run anyway (20 turns)
+                  Run anyway (25 turns)
                 </button>
                 <button onClick={() => { setPreflight(null); setRunning("idle") }} className="text-xs text-amber-400 hover:text-amber-600 ml-auto">Cancel</button>
               </div>
@@ -1607,7 +1629,10 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                   <button
                     key={e.blockId}
                     onClick={() => {
-                      if (e.blockId === "__env__") return
+                      if (e.blockId === "__env__") {
+                        router.push(`/workflows/${workflowId}/settings`)
+                        return
+                      }
                       const node = nodes.find(n => n.id === e.blockId)
                       if (node) {
                         setSelectedNode(node)
@@ -1625,7 +1650,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                 ))}
               </div>
             </div>
-            <button onClick={() => setValidationErrors([])} className="text-red-300 hover:text-red-500 text-lg leading-none shrink-0 mt-0.5">×</button>
+            <button onClick={() => setValidationErrors([])} aria-label="Close" className="text-red-300 hover:text-red-500 text-lg leading-none shrink-0 mt-0.5">×</button>
           </div>
         </div>
       )}
