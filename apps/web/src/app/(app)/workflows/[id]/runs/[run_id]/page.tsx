@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { Component, useEffect, useRef, useState } from "react"
 import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
@@ -8,6 +8,26 @@ import RunTrace from "@/components/runs/RunTrace"
 import ConversationTrace from "@/components/runs/ConversationTrace"
 import AppShell from "@/components/AppShell"
 import { statusStyle, formatTrigger, duration, isTerminal, isActive, isAwaiting } from "@/lib/runUtils"
+
+// ── Tab error boundary ────────────────────────────────────────────────────────
+class TabErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+  static getDerivedStateFromError() { return { hasError: true } }
+  componentDidCatch(error: Error) { console.error("[TabErrorBoundary]", error) }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <p style={{ fontSize: 13, color: "var(--err)", padding: "32px 0", textAlign: "center" }}>
+          Something went wrong rendering this tab — refresh.
+        </p>
+      )
+    }
+    return this.props.children
+  }
+}
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
@@ -59,6 +79,7 @@ export default function RunDetailPage() {
   const [activeTab, setActiveTab] = useState<Tab>("summary")
   const [approvalDecision, setApprovalDecision] = useState<"approved" | "rejected" | null>(null)
   const [approvingRun, setApprovingRun] = useState(false)
+  const [sseActive, setSseActive] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   async function buildHeaders() {
@@ -149,7 +170,15 @@ export default function RunDetailPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId, runId, isLoaded])
 
-  if (loading) return <AppShell><div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 256 }}><p style={{ fontSize: 14, color: "var(--text-muted)" }}>Loading…</p></div></AppShell>
+  if (loading) return (
+    <AppShell>
+      <div style={{ maxWidth: 1120, margin: "0 auto", padding: "28px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+        {[240, 180, 120].map(w => (
+          <div key={w} style={{ height: 24, borderRadius: 8, background: "var(--surface-2)", width: `${w}px` }} />
+        ))}
+      </div>
+    </AppShell>
+  )
   if (!run) return <AppShell><div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 256 }}><p style={{ fontSize: 14, color: "var(--text-3)" }}>{fetchError ?? "Run not found."}</p></div></AppShell>
 
   const s = statusStyle(run.status)
@@ -231,17 +260,21 @@ export default function RunDetailPage() {
 
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
             {isActive(run.status) && !isAwaiting(run.status) && (
-              <button onClick={stopRun} disabled={stopping} className="btn btn-ghost btn-sm" style={{ color: "var(--err)", borderColor: "var(--err-bd)" }}>
+              <button onClick={stopRun} disabled={stopping} className="btn btn-ghost btn-sm" aria-label="Stop run" style={{ color: "var(--err)", borderColor: "var(--err-bd)" }}>
                 {stopping ? "Stopping…" : "⏹ Stop"}
               </button>
             )}
-            <button onClick={refresh} disabled={refreshing} className="btn btn-ghost btn-sm" title="Refresh">
-              <svg style={{ width: 13, height: 13, display: "inline", marginRight: 4, animation: (refreshing || isActive(run.status)) ? "spin 1s linear infinite" : "none" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              {isActive(run.status) ? "Live" : "Refresh"}
-            </button>
+            {/* Only show refresh button when SSE is not streaming — one live indicator is enough */}
+            {!sseActive && (
+              <button onClick={refresh} disabled={refreshing} className="btn btn-ghost btn-sm" aria-label="Refresh run" title="Refresh">
+                <svg style={{ width: 13, height: 13, display: "inline", marginRight: 4, animation: refreshing ? "spin 1s linear infinite" : "none" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Refresh
+              </button>
+            )}
             <button
+              aria-label="Export run data"
               onClick={() => { const b = new Blob([JSON.stringify(run,null,2)],{type:"application/json"}); const u=URL.createObjectURL(b); const a=document.createElement("a"); a.href=u; a.download=`run-${run.id.slice(0,8)}.json`; a.click(); URL.revokeObjectURL(u) }}
               className="btn btn-ghost btn-sm">
               ↓ Export
@@ -270,9 +303,23 @@ export default function RunDetailPage() {
         </div>
 
         {/* Tabs */}
-        <div style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border)", marginBottom: 24, overflowX: "auto" }}>
+        <div
+          role="tablist"
+          aria-label="Run detail tabs"
+          style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border)", marginBottom: 24, overflowX: "auto" }}
+          onKeyDown={(e) => {
+            const idx = tabs.findIndex(t => t.id === activeTab)
+            if (e.key === "ArrowRight") { e.preventDefault(); setActiveTab(tabs[(idx + 1) % tabs.length].id) }
+            if (e.key === "ArrowLeft")  { e.preventDefault(); setActiveTab(tabs[(idx - 1 + tabs.length) % tabs.length].id) }
+          }}
+        >
           {tabs.map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+            <button
+              key={tab.id}
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              tabIndex={activeTab === tab.id ? 0 : -1}
+              onClick={() => setActiveTab(tab.id)}
               style={{
                 background: "none",
                 border: "none",
@@ -293,7 +340,7 @@ export default function RunDetailPage() {
         <div>
           {/* Summary */}
           {activeTab === "summary" && (
-            <div>
+            <TabErrorBoundary><div>
               {/* 2-col meta grid */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 40px", maxWidth: 720 }}>
                 {([
@@ -334,10 +381,12 @@ export default function RunDetailPage() {
                 </div>
               )}
             </div>
+            </TabErrorBoundary>
           )}
 
           {/* Trace (timeline) */}
           {activeTab === "trace" && (
+            <TabErrorBoundary>
             <RunTrace
               workflowId={workflowId}
               runId={runId}
@@ -352,23 +401,27 @@ export default function RunDetailPage() {
               }}
               maxTurns={run.max_turns ?? null}
               getToken={getToken}
-              onSseConnected={() => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null } }}
+              onSseConnected={() => { setSseActive(true); if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null } }}
               onSseEnded={() => {
+                setSseActive(false)
                 if (!run || isTerminal(run.status)) return
                 if (!pollRef.current) {
                   pollRef.current = setInterval(async () => { await fetchRun(await buildHeaders()) }, 4000)
                 }
               }}
             />
+            </TabErrorBoundary>
           )}
 
           {/* AI Trace */}
           {activeTab === "ai-trace" && (
+            <TabErrorBoundary>
             <ConversationTrace workflowId={workflowId} runId={runId} getToken={getToken} />
+            </TabErrorBoundary>
           )}
 
           {/* Files */}
-          {activeTab === "files" && (() => {
+          {activeTab === "files" && <TabErrorBoundary>{(() => {
             const state = (run.state ?? {}) as Record<string, unknown>
             const blocks = Object.entries(state).filter(([k]) => !k.startsWith("__") && !k.startsWith("_"))
             const allPrUrls: {url: string; num?: number; block: string}[] = []
@@ -433,11 +486,11 @@ export default function RunDetailPage() {
                 )}
               </div>
             )
-          })()}
+          })()}</TabErrorBoundary>}
 
           {/* Approvals */}
           {activeTab === "approvals" && (
-            <div>
+            <TabErrorBoundary><div>
               {isAwaiting(run.status) ? (
                 <div className="card" style={{ padding: 0, overflow: "hidden" }}>
                   <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
@@ -492,12 +545,17 @@ export default function RunDetailPage() {
                 const state = run.state as Record<string, unknown> | null
                 const approvals = Object.entries(state ?? {})
                   .filter(([k]) => k.startsWith("__approval_"))
-                  .map(([k, v]) => ({ blockId: k.replace("__approval_", ""), decision: v as string }))
+                  .map(([k, v]) => {
+                    const blockId = k.replace("__approval_", "")
+                    const blockState = (state ?? {})[blockId] as Record<string, unknown> | undefined
+                    const displayLabel = (blockState?.label ?? blockState?.name ?? blockId) as string
+                    return { blockId, displayLabel, decision: v as string }
+                  })
                 return approvals.length > 0 ? (
                   <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-                    {approvals.map(({ blockId, decision }, i) => (
+                    {approvals.map(({ blockId, displayLabel, decision }, i) => (
                       <div key={blockId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderTop: i ? "1px solid var(--border)" : "none" }}>
-                        <span className="mono" style={{ fontSize: 12.5, color: "var(--text-2)" }}>{blockId}</span>
+                        <span style={{ fontSize: 12.5, color: "var(--text-2)" }}>{displayLabel}</span>
                         <span className={`sbadge ${decision === "approved" ? "ok" : "err"}`}>{decision}</span>
                       </div>
                     ))}
@@ -509,22 +567,24 @@ export default function RunDetailPage() {
                 )
               })()}
             </div>
+            </TabErrorBoundary>
           )}
 
           {/* Cost */}
-          {activeTab === "cost" && (() => {
+          {activeTab === "cost" && <TabErrorBoundary>{(() => {
             const state = (run.state ?? {}) as Record<string, unknown>
             const blocks = Object.entries(state).filter(([k]) => !k.startsWith("__") && !k.startsWith("_"))
             let totalInput = 0, totalOutput = 0, totalCost = 0
-            const rows: {block: string; input: number; output: number; cost: number; turns: number}[] = []
+            const rows: {block: string; label: string; input: number; output: number; cost: number; turns: number}[] = []
             for (const [blockId, val] of blocks) {
               const v = val as Record<string, unknown>
               const input  = (v?.input_tokens  as number) || 0
               const output = (v?.output_tokens as number) || 0
               const cost   = (v?.cost_usd      as number) || 0
               const turns  = (v?.turns         as number) || 0
+              const label  = (v?.label ?? v?.name ?? blockId) as string
               if (input || output || cost) {
-                rows.push({ block: blockId, input, output, cost, turns })
+                rows.push({ block: blockId, label, input, output, cost, turns })
                 totalInput  += input
                 totalOutput += output
                 totalCost   += cost
@@ -563,7 +623,7 @@ export default function RunDetailPage() {
                     </div>
                     {rows.map((r, i) => (
                       <div key={r.block} style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 1fr 0.7fr 1fr", padding: "10px 16px", borderTop: i ? "1px solid var(--border)" : "none" }}>
-                        <span className="mono" style={{ fontSize: 12, color: "var(--text-2)" }}>{r.block}</span>
+                        <span style={{ fontSize: 12, color: "var(--text-2)" }}>{r.label}</span>
                         <span className="mono" style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "right" }}>{r.input.toLocaleString()}</span>
                         <span className="mono" style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "right" }}>{r.output.toLocaleString()}</span>
                         <span className="mono" style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "right" }}>{r.turns}</span>
@@ -575,7 +635,7 @@ export default function RunDetailPage() {
                 </div>
               </div>
             )
-          })()}
+          })()}</TabErrorBoundary>}
         </div>
       </div>
     </AppShell>

@@ -78,9 +78,9 @@ function TraceRow({ row }: { row: TraceRow }) {
             {row.content}
           </div>
           {hasLongContent && (
-            <div onClick={() => setExpanded(e => !e)} style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 7, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+            <button type="button" onClick={() => setExpanded(e => !e)} style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 7, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: 0 }}>
               {expanded ? "▾ collapse" : "▸ expand"}
-            </div>
+            </button>
           )}
         </>
       )}

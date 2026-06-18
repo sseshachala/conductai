@@ -838,15 +838,6 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
   const totalDurRaw = formatDuration(meta.started_at ?? null, meta.completed_at ?? null)
   const totalDur = totalDurRaw === "—" ? null : totalDurRaw
 
-  // Aggregate tokens + cost from block_completed events
-  const totalTokens = blockRows.reduce((acc, r) => acc + (r.inputTokens ?? 0) + (r.outputTokens ?? 0), 0)
-  const totalCost   = blockRows.reduce((acc, r) => acc + (r.costUsd ?? 0), 0)
-
-  // Actual turns = highest turn number seen across all brain_tool_call events
-  const actualTurns = events
-    .filter(e => e.kind === "brain_tool_call" && typeof e.payload?.turn === "number")
-    .reduce((max, e) => Math.max(max, e.payload.turn as number), 0)
-
   const handleApproval = async (decision: "approved" | "rejected") => {
     setApprovalSubmitting(true)
     try {
@@ -878,45 +869,6 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
           Dry run — no real API calls were made. Use <strong style={{ marginLeft: 4 }}>Run</strong> to execute for real.
         </div>
       )}
-
-      {/* Summary stats grid */}
-      <div className="card" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, padding: "12px 16px" }}>
-        {(totalDur || !done) && (
-          <div>
-            <p style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted, #a8a29e)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 2, margin: "0 0 2px" }}>Duration</p>
-            <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text, #1c1917)", margin: 0 }}>{totalDur ?? "…"}</p>
-          </div>
-        )}
-        <div>
-          <p style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted, #a8a29e)", textTransform: "uppercase", letterSpacing: ".07em", margin: "0 0 2px" }}>Turns</p>
-          <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text, #1c1917)", margin: 0 }}>
-            {actualTurns > 0 ? (
-              maxTurns ? (
-                <span>
-                  {actualTurns}
-                  <span style={{ color: "var(--text-muted, #a8a29e)", fontWeight: 400 }}> / {maxTurns} est.</span>
-                </span>
-              ) : actualTurns
-            ) : "—"}
-          </p>
-        </div>
-        <div>
-          <p style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted, #a8a29e)", textTransform: "uppercase", letterSpacing: ".07em", margin: "0 0 2px" }}>Tokens</p>
-          <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text, #1c1917)", margin: 0 }}>{totalTokens > 0 ? totalTokens.toLocaleString() : "—"}</p>
-        </div>
-        <div>
-          <p style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted, #a8a29e)", textTransform: "uppercase", letterSpacing: ".07em", margin: "0 0 2px" }}>Est. cost</p>
-          <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text, #1c1917)", margin: 0 }}>{totalCost > 0 ? `$${totalCost.toFixed(4)}` : "—"}</p>
-        </div>
-        <div>
-          <p style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted, #a8a29e)", textTransform: "uppercase", letterSpacing: ".07em", margin: "0 0 2px" }}>Triggered by</p>
-          <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text, #1c1917)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{meta.triggered_by ?? "—"}</p>
-        </div>
-        <div>
-          <p style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted, #a8a29e)", textTransform: "uppercase", letterSpacing: ".07em", margin: "0 0 2px" }}>Provider</p>
-          <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text, #1c1917)", margin: 0 }}>{meta.explainability?.trigger_provider ?? meta.governance?.provider ?? "—"}</p>
-        </div>
-      </div>
 
       {/* Status bar */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
