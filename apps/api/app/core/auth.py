@@ -79,6 +79,9 @@ def _verify_clerk_token(token: str) -> dict | None:
         clerk_domain = settings.clerk_frontend_api or ""
         expected_issuer = f"https://{clerk_domain}" if clerk_domain else None
         audience = settings.clerk_audience or None
+        # Security: if CLERK_AUDIENCE or CLERK_FRONTEND_API are unset, audience/issuer
+        # verification is skipped — any valid Clerk JWT from any app will authenticate.
+        # Set both env vars in production. Startup warnings are emitted by config.py.
         decode_options: dict = {}
         if not audience:
             decode_options["verify_aud"] = False

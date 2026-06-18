@@ -34,8 +34,9 @@ class Settings(BaseSettings):
     vercel_webhook_secret: str = ""
     github_webhook_secret: str = ""
     # CORS — comma-separated allowed origins.
-    # Defaults to "*" in development only. Must be explicitly set in production.
-    allowed_origins: str = "*"
+    # Empty string = no CORS (blocks all cross-origin). Must be explicitly set.
+    # Example: ALLOWED_ORIGINS=https://conductai.ai,https://app.conductai.ai
+    allowed_origins: str = ""
 
     # Environment — used to gate dev-only defaults (e.g. encryption key check)
     environment: str = "development"
@@ -106,3 +107,9 @@ if settings.environment == "production":
             "Set ALLOWED_ORIGINS to a comma-separated list of allowed origins "
             "(e.g. 'https://conductai.ai,https://app.conductai.ai')."
         )
+    import logging as _logging
+    _prod_log = _logging.getLogger(__name__)
+    if not settings.clerk_frontend_api:
+        _prod_log.warning("SECURITY: CLERK_FRONTEND_API not set — JWT issuer not verified")
+    if not settings.clerk_audience:
+        _prod_log.warning("SECURITY: CLERK_AUDIENCE not set — JWT audience not verified")
