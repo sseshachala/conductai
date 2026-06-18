@@ -245,6 +245,17 @@ def _api_url(cfg: dict) -> str:
 # ── MCP registration ──────────────────────────────────────────────────────────
 
 # Tools that support mcpServers JSON — only write if the config file already exists
+def _vscode_mcp_paths() -> list[tuple[Path, str]]:
+    """VS Code Copilot MCP config locations (macOS + Linux). Only if Copilot is installed."""
+    ext_dir = Path.home() / ".vscode" / "extensions"
+    if not ext_dir.exists() or not any(p.name.startswith("github.copilot") for p in ext_dir.iterdir() if p.is_dir()):
+        return []
+    candidates = [
+        Path.home() / "Library" / "Application Support" / "Code" / "User" / "mcp.json",
+        Path.home() / ".config" / "Code" / "User" / "mcp.json",
+    ]
+    return [(p, "VS Code Copilot") for p in candidates if p.parent.exists()]
+
 _MCP_TARGETS = [
     (Path.home() / ".claude"   / "settings.json", "Claude Code"),
     (Path.home() / ".cursor"   / "mcp.json",       "Cursor"),
@@ -267,8 +278,9 @@ def _register_mcp(workspace_id: str, member_token: str, api_url: str) -> None:
     if shutil.which("booster"):
         servers["agent-booster"] = {"command": "booster", "args": ["serve"]}
 
+    targets = list(_MCP_TARGETS) + _vscode_mcp_paths()
     found_any = False
-    for cfg_path, label in _MCP_TARGETS:
+    for cfg_path, label in targets:
         if not cfg_path.exists():
             continue
         found_any = True
