@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, get_user_id, require_workspace_role
+from app.core.auth import get_workspace_id, get_user_id, require_workspace_role, require_permission
 from app.core.database import get_db
 from app.modules.guard.models import GuardConfig, GuardMemberConfig
 from app.modules.guard.routers.policies import seed_builtin_policies
@@ -275,6 +275,110 @@ def delete_config(
 class ResyncOut(BaseModel):
     ok: bool
     resync_requested_at: str
+
+
+_VALID_PERSONAS = {"conservative", "standard", "developer"}
+
+
+class PersonaOut(BaseModel):
+    persona: str          # active persona for the calling user
+    assigned_by: str      # 'user' or 'admin'
+    workspace_default: str
+
+
+class PersonaPatch(BaseModel):
+    persona: str
+    developer_id: str | None = None   # if set, override for that member only; else workspace default
+
+
+@router.get("/persona", response_model=PersonaOut)
+def get_persona(
+    workspace_id: str = Depends(get_workspace_id),
+    user_id: str = Depends(get_user_id),
+    db: Session = Depends(get_db),
+):
+    """Return the active persona for the calling user.
+    Resolves: member override → workspace default → 'standard'.
+    """
+    try:
+        ws_uuid = uuid.UUID(workspace_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid workspace_id")
+
+    cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
+    workspace_default = (cfg.persona if cfg and cfg.persona else "standard")
+
+    member = (
+        db.query(GuardMemberConfig)
+        .filter(
+            GuardMemberConfig.workspace_id == ws_uuid,
+            GuardMemberConfig.clerk_user_id == user_id,
+        )
+        .first()
+    )
+
+    if member and member.persona:
+        return PersonaOut(
+            persona=member.persona,
+            assigned_by=member.assigned_by or "user",
+            workspace_default=workspace_default,
+        )
+
+    return PersonaOut(
+        persona=workspace_default,
+        assigned_by="user",
+        workspace_default=workspace_default,
+    )
+
+
+@router.patch("/persona", response_model=PersonaOut)
+def set_persona(
+    body: PersonaPatch,
+    workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.settings.edit")),
+    db: Session = Depends(get_db),
+):
+    """Admin sets the persona for the workspace or a specific developer.
+
+    - No developer_id → sets workspace default for all members
+    - developer_id → sets per-member override (assigned_by: admin, locked)
+    """
+    if body.persona not in _VALID_PERSONAS:
+        raise HTTPException(status_code=422, detail=f"persona must be one of {sorted(_VALID_PERSONAS)}")
+
+    try:
+        ws_uuid = uuid.UUID(workspace_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid workspace_id")
+
+    if body.developer_id:
+        # Per-member override — admin-locked
+        member = (
+            db.query(GuardMemberConfig)
+            .filter(
+                GuardMemberConfig.workspace_id == ws_uuid,
+                GuardMemberConfig.clerk_user_id == body.developer_id,
+            )
+            .first()
+        )
+        if not member:
+            raise HTTPException(status_code=404, detail="Developer not in this workspace")
+        member.persona = body.persona
+        member.assigned_by = "admin"
+        db.commit()
+        log.info("guard.persona_set_member", workspace_id=workspace_id, developer_id=body.developer_id, persona=body.persona)
+        cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
+        workspace_default = cfg.persona if cfg else "standard"
+        return PersonaOut(persona=body.persona, assigned_by="admin", workspace_default=workspace_default)
+
+    # Workspace-wide default
+    cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
+    if not cfg:
+        raise HTTPException(status_code=404, detail="Guard not installed for this workspace")
+    cfg.persona = body.persona
+    db.commit()
+    log.info("guard.persona_set_workspace", workspace_id=workspace_id, persona=body.persona)
+    return PersonaOut(persona=body.persona, assigned_by="admin", workspace_default=body.persona)
 
 
 @router.post("/resync", response_model=ResyncOut, status_code=200)

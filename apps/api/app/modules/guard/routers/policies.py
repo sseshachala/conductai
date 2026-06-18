@@ -182,6 +182,7 @@ class PolicySyncRule(BaseModel):
 class PolicySyncOut(BaseModel):
     workspace_id: str
     version: str
+    persona: str
     rules: list[PolicySyncRule]
 
 
@@ -357,9 +358,18 @@ def sync_policies(
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid workspace_id")
 
+    # Resolve active persona: workspace default → 'standard'
+    gc = db.query(_GuardConfig).filter(_GuardConfig.workspace_id == ws_uuid).first()
+    active_persona = (gc.persona if gc and gc.persona else "standard")
+
     active_policies = (
         db.query(GuardPolicy)
-        .filter(GuardPolicy.workspace_id == ws_uuid, GuardPolicy.enabled.is_(True), GuardPolicy.archived_at.is_(None))
+        .filter(
+            GuardPolicy.workspace_id == ws_uuid,
+            GuardPolicy.enabled.is_(True),
+            GuardPolicy.archived_at.is_(None),
+            GuardPolicy.persona_affinity.contains([active_persona]),
+        )
         .order_by(GuardPolicy.updated_at.desc())
         .all()
     )
@@ -369,7 +379,6 @@ def sync_policies(
     else:
         latest_ts = None
 
-    gc = db.query(_GuardConfig).filter(_GuardConfig.workspace_id == ws_uuid).first()
     if gc and gc.resync_requested_at:
         resync_ts = gc.resync_requested_at if gc.resync_requested_at.tzinfo is not None \
             else gc.resync_requested_at.replace(tzinfo=timezone.utc)
@@ -395,7 +404,7 @@ def sync_policies(
         for p in active_policies
     ]
 
-    return PolicySyncOut(workspace_id=workspace_id, version=version, rules=rules)
+    return PolicySyncOut(workspace_id=workspace_id, version=version, persona=active_persona, rules=rules)
 
 
 @router.get("", response_model=list[PolicyOut])
