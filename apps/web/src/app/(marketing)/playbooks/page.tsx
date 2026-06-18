@@ -52,15 +52,6 @@ const MODULES = [
     badge: "Governance",
     badgeColor: "bg-teal-100 text-teal-700",
   },
-  {
-    id: "security-loop",
-    icon: "🔒",
-    name: "Security Loop",
-    description: "Automated security scanning on every PR. Runs BugHunter, posts findings to Slack, and creates fix issues for critical vulnerabilities.",
-    href: "/marketplace?tab=modules",
-    badge: "Security",
-    badgeColor: "bg-red-100 text-red-700",
-  },
 ]
 
 const COMPLIANCE_PACKS = [
@@ -112,13 +103,6 @@ function ProductsDropdown() {
             <div>
               <p className="font-semibold">Conduct Guard</p>
               <p className="text-xs text-stone-400">AI session governance</p>
-            </div>
-          </a>
-          <a href="/tools/security-loop" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span>🔒</span>
-            <div>
-              <p className="font-semibold">Security Loop</p>
-              <p className="text-xs text-stone-400">Automated PR scanning</p>
             </div>
           </a>
           <a href="/playbooks" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">

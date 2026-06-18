@@ -40,13 +40,6 @@ function ProductsDropdown() {
               <p className="text-xs text-stone-400">AI session governance</p>
             </div>
           </a>
-          <a href="/tools/security-loop" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span>🔒</span>
-            <div>
-              <p className="font-semibold">Security Loop</p>
-              <p className="text-xs text-stone-400">Automated PR scanning</p>
-            </div>
-          </a>
           <a href="/playbooks" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
             <span>⚡</span>
             <div>
