@@ -51,7 +51,7 @@ const GUARD_TABS = [
   { href: "/guard/settings",        label: "Settings"        },
 ]
 
-function GuardShell({ children }: { children: React.ReactNode }) {
+function GuardShell({ children, live, lastUpdated }: { children: React.ReactNode; live?: boolean; lastUpdated?: Date | null }) {
   const pathname = usePathname()
   return (
     <div style={{ maxWidth: 1240, margin: "0 auto", padding: "28px 24px 48px" }}>
@@ -61,17 +61,26 @@ function GuardShell({ children }: { children: React.ReactNode }) {
             <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", letterSpacing: "-.02em", margin: 0 }}>
               Guard
             </h1>
-            <span className="sbadge ok" style={{ marginTop: 2 }}>
-              <span className="conduct-pulse-dot" />
-              live
-            </span>
+            {live ? (
+              <span className="sbadge ok" style={{ marginTop: 2 }}>
+                <span className="conduct-pulse-dot" />
+                live
+              </span>
+            ) : (
+              <span className="sbadge" style={{ marginTop: 2, background: "var(--surface-3)", color: "var(--text-muted)", border: "1px solid var(--border)" }}>
+                offline
+              </span>
+            )}
           </div>
           <p style={{ fontSize: 13, color: "var(--text-3)", marginTop: 5 }}>
             MDM for AI coding tools — policies and spend limits enforced on every Claude Code, Codex, and Cursor call.
           </p>
         </div>
         <div style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)", paddingTop: 4 }}>
-          last updated: just now
+          {lastUpdated
+            ? <>last updated: {Math.floor((Date.now() - lastUpdated.getTime()) / 1000) < 10 ? "just now" : lastUpdated.toLocaleTimeString()}</>
+            : "connecting…"
+          }
         </div>
       </div>
       <div className="guard-tab-nav">
@@ -243,10 +252,13 @@ function ActivityContent() {
   const [events, setEvents] = useState<AuditEvent[]>([])
   const [sessions, setSessions] = useState<GuardSession[]>([])
   const [sessionsLoading, setSessionsLoading] = useState(false)
+  const [sessionsError, setSessionsError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [live, setLive] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const offsetRef = useRef(0)
 
   // Filters
@@ -297,19 +309,50 @@ function ActivityContent() {
       setEvents(rows)
       setHasMore(rows.length === PAGE_SIZE)
       offsetRef.current = rows.length
+      setLive(true)
+      setLastUpdated(new Date())
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error")
+      setLive(false)
     } finally {
       setLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getToken, teamId, effectiveDeveloperFilter, filterTool, filterDecision, filterSince, filterUntil])
 
+  const loadSessions = useCallback(async () => {
+    if (!teamId) return
+    setSessionsLoading(true)
+    setSessionsError(null)
+    const token = await getToken()
+    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    if (token) headers["Authorization"] = `Bearer ${token}`
+    try {
+      const p = new URLSearchParams({ limit: "100", offset: "0" })
+      if (teamId) p.set("workspace_id", teamId)
+      const res = await fetch(`${base}/guard/spend/sessions?${p}`, { headers })
+      if (!res.ok) throw new Error("Failed to load sessions")
+      setSessions(await res.json())
+    } catch (err) {
+      setSessionsError(err instanceof Error ? err.message : "Failed to load sessions")
+    } finally {
+      setSessionsLoading(false)
+    }
+  }, [getToken, teamId])
+
   useEffect(() => {
     load()
     const t = setInterval(load, 30_000)
     return () => clearInterval(t)
   }, [load])
+
+  useEffect(() => {
+    if (activeView !== "sessions") return
+    loadSessions()
+    const t = setInterval(loadSessions, 60_000)
+    return () => clearInterval(t)
+  }, [activeView, loadSessions])
 
   async function loadMore() {
     setLoadingMore(true)
@@ -331,25 +374,8 @@ function ActivityContent() {
     }
   }
 
-  async function loadSessions() {
-    if (!teamId) return
-    setSessionsLoading(true)
-    const token = await getToken()
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-    const headers: Record<string, string> = { "Content-Type": "application/json" }
-    if (token) headers["Authorization"] = `Bearer ${token}`
-    try {
-      const p = new URLSearchParams({ limit: "100", offset: "0" })
-      if (teamId) p.set("workspace_id", teamId)
-      const res = await fetch(`${base}/guard/spend/sessions?${p}`, { headers })
-      if (res.ok) setSessions(await res.json())
-    } catch { /* non-fatal */ } finally {
-      setSessionsLoading(false)
-    }
-  }
-
   return (
-    <GuardShell>
+    <GuardShell live={live} lastUpdated={lastUpdated}>
       {/* Viewer-scoped notice */}
       {!permissions.canViewAllActivity && (
         <div
@@ -372,7 +398,7 @@ function ActivityContent() {
         {(["events", "sessions"] as const).map(v => (
           <button
             key={v}
-            onClick={() => { setActiveView(v); if (v === "sessions") loadSessions() }}
+            onClick={() => setActiveView(v)}
             style={{
               fontSize: 12, fontWeight: 600, padding: "5px 14px", borderRadius: 20,
               border: "1px solid",
@@ -489,6 +515,21 @@ function ActivityContent() {
       </div>)}
 
       {/* Sessions & Machines view */}
+      {activeView === "sessions" && sessionsError && (
+        <div
+          style={{
+            borderRadius: 8,
+            border: "1px solid var(--err-bd)",
+            background: "var(--err-bg)",
+            padding: "10px 16px",
+            fontSize: 13,
+            color: "var(--err)",
+            marginBottom: 16,
+          }}
+        >
+          {sessionsError}
+        </div>
+      )}
       {activeView === "sessions" && (
         <div className="card" style={{ overflow: "hidden" }}>
           <div style={{
@@ -633,7 +674,7 @@ function ActivityContent() {
 
               {/* Input */}
               <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {ev.input_summary ? `{${ev.input_summary}…}` : "—"}
+                {ev.input_summary ? `${ev.input_summary}…` : "—"}
               </div>
 
               {/* Decision */}

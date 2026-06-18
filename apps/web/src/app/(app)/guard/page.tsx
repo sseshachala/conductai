@@ -133,10 +133,16 @@ function GuardShell({
             <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", letterSpacing: "-.02em", margin: 0 }}>
               Guard
             </h1>
-            <span className="sbadge ok" style={{ marginTop: 2 }}>
-              <span className="conduct-pulse-dot" />
-              live
-            </span>
+            {live ? (
+              <span className="sbadge ok" style={{ marginTop: 2 }}>
+                <span className="conduct-pulse-dot" />
+                live
+              </span>
+            ) : (
+              <span className="sbadge" style={{ marginTop: 2, background: "var(--surface-3)", color: "var(--text-muted)", border: "1px solid var(--border)" }}>
+                offline
+              </span>
+            )}
             {persona && (
               <span style={{
                 marginTop: 2,
@@ -662,6 +668,11 @@ function GuardDashboard() {
     const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params  = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(events.length) })
     params.set("workspace_id", teamId)
+    if (filterDecision !== "all") params.set("decision", filterDecision)
+    if (filterTool !== "all")     params.set("ai_tool", filterTool)
+    if (filterDev !== "all")      params.set("user_email", filterDev)
+    const since = dateRangeToSince(filterDateRange)
+    if (since) params.set("since", since)
     try {
       const res = await fetch(`${base}/guard/events?${params}`, { headers })
       if (res.ok) {
@@ -674,7 +685,7 @@ function GuardDashboard() {
     } finally {
       setLoadingMore(false)
     }
-  }, [buildHeaders, teamId, events.length, loadingMore, PAGE_SIZE])
+  }, [buildHeaders, teamId, events.length, loadingMore, PAGE_SIZE, filterDecision, filterTool, filterDev, filterDateRange, dateRangeToSince])
 
   const loadStats = useCallback(async () => {
     if (!teamId) return
@@ -886,6 +897,46 @@ function GuardDashboard() {
 
   const blockedToday = stats?.blocked_today || derivedStats.blocked_today
 
+  if (!teamLoading && !teamId) {
+    return (
+      <GuardShell live={false} lastUpdated={null}>
+        <div style={{
+          marginTop: 48,
+          padding: "32px 24px",
+          borderRadius: 12,
+          border: "1px solid var(--border)",
+          background: "var(--surface)",
+          textAlign: "center",
+          maxWidth: 480,
+          marginLeft: "auto",
+          marginRight: "auto",
+        }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>
+            Guard is not installed for this workspace.
+          </div>
+          <p style={{ fontSize: 13, color: "var(--text-3)", marginBottom: 20, lineHeight: 1.6 }}>
+            Go to Settings → Modules to install.
+          </p>
+          <Link
+            href="/settings/modules"
+            style={{
+              display: "inline-block",
+              fontSize: 13,
+              fontWeight: 600,
+              padding: "8px 20px",
+              borderRadius: 8,
+              background: "var(--accent)",
+              color: "var(--on-accent, #fff)",
+              textDecoration: "none",
+            }}
+          >
+            Go to Settings → Modules
+          </Link>
+        </div>
+      </GuardShell>
+    )
+  }
+
   return (
     <GuardShell live={live} lastUpdated={lastUpdated} persona={persona} ruleCount={ruleCount}>
 
@@ -952,15 +1003,15 @@ function GuardDashboard() {
         return (
           <>
             {loading ? (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 12, marginBottom: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12, marginBottom: 16 }}>
                 {[...Array(7)].map((_, i) => (
                   <div key={i} className="card card-pad" style={{ height: 80 }} />
                 ))}
               </div>
             ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 12, marginBottom: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12, marginBottom: 16 }}>
                 <GuardStatCard
-                  label="Sessions"
+                  label="Active developers"
                   value={stats?.active_developers || derivedStats.active_developers}
                   tone="ok"
                   sub="developers active"
