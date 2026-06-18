@@ -159,6 +159,61 @@ def _install_session_hooks() -> None:
 
 # ── Guard config helpers ──────────────────────────────────────────────────────
 
+_PERSONA_LABELS = {
+    "conservative": "Conservative  — production-safe, default deny",
+    "standard":     "Standard      — engineering teams, balanced",
+    "developer":    "Developer     — local dev, audit-first",
+}
+
+
+def _ensure_persona(workspace_id: str, api_key: str, base_url: str) -> str:
+    """Prompt for persona if none is set yet. Saves choice to guard config and API.
+
+    Returns the active persona name. Skips prompt silently if already set.
+    """
+    cfg = _load_guard_config()
+    if cfg.get("persona"):
+        return cfg["persona"]
+
+    print(f"\n{BOLD}Choose a policy persona for your agents:{RESET}")
+    choices = list(_PERSONA_LABELS.keys())
+    for i, key in enumerate(choices, 1):
+        print(f"  {i}. {_PERSONA_LABELS[key]}")
+
+    while True:
+        try:
+            raw = input(f"\nEnter 1-{len(choices)} [default: 2 — Standard]: ").strip()
+            if raw == "":
+                raw = "2"
+            idx = int(raw) - 1
+            if 0 <= idx < len(choices):
+                chosen = choices[idx]
+                break
+            print(f"  Enter a number between 1 and {len(choices)}")
+        except (ValueError, EOFError):
+            chosen = "standard"
+            break
+
+    # Push to API
+    try:
+        _req(
+            "PATCH",
+            f"{base_url}/guard/config/persona",
+            body={"persona": chosen},
+            api_key=api_key,
+        )
+    except Exception:
+        pass  # non-fatal — local config still records the choice
+
+    # Persist locally so we skip the prompt on subsequent syncs
+    cfg = _load_guard_config()
+    cfg["persona"] = chosen
+    _save_guard_config(cfg)
+
+    print(f"  {GREEN}Persona set:{RESET} {chosen.capitalize()}")
+    return chosen
+
+
 def _load_guard_config() -> dict:
     if CONFIG_PATH.exists():
         return json.loads(CONFIG_PATH.read_text())
@@ -484,6 +539,9 @@ def cmd_guard_install(args):
     except Exception:
         pass
 
+    # Persona selection — prompt once, skip if already chosen
+    _ensure_persona(workspace_id, api_key, server)
+
     # Persist guard config — include api_key so CLI commands can authenticate
     import time as _time
     _save_guard_config({
@@ -721,6 +779,9 @@ def cmd_guard_sync(args):
     workspace_id = cfg.get("workspace_id")
     api_key      = cfg.get("api_key", "")
     base_url     = _api_url(cfg)
+
+    # Persona selection — prompt once, skip if already chosen
+    _ensure_persona(workspace_id, api_key, base_url)
 
     print(f"Syncing policy…")
 
