@@ -17,6 +17,13 @@ interface OutcomeStats {
   incidents_investigated: number
   successful_automations: number
   failed_automations: number
+  // optional prev-period deltas from API
+  prev_prs_opened?: number
+  prev_issues_triaged?: number
+  prev_reviews_completed?: number
+  prev_incidents_investigated?: number
+  prev_successful_automations?: number
+  prev_failed_automations?: number
 }
 
 interface AgentHealth {
@@ -326,9 +333,14 @@ function PriorityItem({
           {run.trigger_summary ?? formatTrigger(run.triggered_by)}
           {run.repo && ` · ${run.repo}`}
         </div>
-        <span className={badgeClass} style={{ marginTop: 7, height: 18, fontSize: 9.5, display: "inline-flex" }}>
-          {badgeLabel}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7 }}>
+          <span className={badgeClass} style={{ height: 18, fontSize: 9.5, display: "inline-flex" }}>
+            {badgeLabel}
+          </span>
+          <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>
+            {timeAgo(run.created_at)}
+          </span>
+        </div>
         {/* #1: inline error message */}
         {approveError && (
           <div style={{ fontSize: 11.5, color: "var(--err)", marginTop: 5 }}>{approveError}</div>
@@ -405,6 +417,23 @@ function GuardSnapshotPanel({
   const topPolicyHits = guardSnapshot?.top_policy_hits ?? []
   const developerNearLimit = guardSnapshot?.developer_near_limit ?? []
 
+  // Burn rate: project days until cap based on spend so far this month
+  const dayOfMonth = new Date().getDate()
+  const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate()
+  const dailyRate = spent !== null && dayOfMonth > 0 ? spent / dayOfMonth : null
+  const daysUntilCap = dailyRate && dailyRate > 0 && cap !== null && spent !== null
+    ? Math.max(0, Math.round((cap - spent) / dailyRate))
+    : null
+  const onPaceToHitCap = daysUntilCap !== null && daysUntilCap < (daysInMonth - dayOfMonth)
+
+  // Priority alert: most urgent item to surface at the top
+  const priorityAlert =
+    (pct ?? 0) >= 90 ? { tone: "err" as const, msg: `Spend at ${pct}% of cap — action needed` }
+    : onPaceToHitCap ? { tone: "warn" as const, msg: `On pace to hit cap in ~${daysUntilCap}d` }
+    : developerNearLimit.length > 0 ? { tone: "warn" as const, msg: `${developerNearLimit.length} developer${developerNearLimit.length > 1 ? "s" : ""} near spend limit` }
+    : (policyBlocksToday ?? 0) > 5 ? { tone: "warn" as const, msg: `${policyBlocksToday} policy blocks today` }
+    : null
+
   return (
     <div className="card" style={{ padding: 0, overflow: "hidden" }}>
       {/* Header */}
@@ -442,6 +471,20 @@ function GuardSnapshotPanel({
         </Link>
       </div>
 
+      {/* Priority alert */}
+      {priorityAlert && (
+        <div style={{
+          padding: "9px 16px",
+          borderBottom: "1px solid var(--border)",
+          background: priorityAlert.tone === "err" ? "var(--err-bg)" : "var(--warn-bg)",
+          display: "flex", alignItems: "center", gap: 8,
+        }}>
+          <span style={{ fontSize: 12, color: priorityAlert.tone === "err" ? "var(--err)" : "var(--warn)", fontWeight: 600 }}>
+            {priorityAlert.tone === "err" ? "⚠ " : "↑ "}{priorityAlert.msg}
+          </span>
+        </div>
+      )}
+
       {/* Spend vs cap — donut row */}
       <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 18px", borderBottom: "1px solid var(--border)" }}>
         <SpendArc pct={pct ?? 0} warn={(pct ?? 0) > 80} />
@@ -464,6 +507,13 @@ function GuardSnapshotPanel({
               <span style={{ fontSize: 11, color: "var(--text-muted)" }}>${(cap - spent).toFixed(0)} left</span>
             )}
           </div>
+          {daysUntilCap !== null && (
+            <div style={{ fontSize: 11, color: onPaceToHitCap ? "var(--warn)" : "var(--text-muted)", marginTop: 5 }}>
+              {onPaceToHitCap
+                ? `↑ On pace to hit cap in ~${daysUntilCap}d`
+                : `At this rate, cap lasts the month`}
+            </div>
+          )}
         </div>
       </div>
 
@@ -499,15 +549,26 @@ function GuardSnapshotPanel({
         {developerNearLimit.length === 0 ? (
           <span style={{ fontSize: 12, color: "var(--ok)" }}>All developers within limits</span>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            {developerNearLimit.map((dev, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 12, flex: 1, color: "var(--text)" }}>{dev.name}</span>
-                <span style={{ fontSize: 11.5, color: "var(--warn)", fontWeight: 600 }}>
-                  ${dev.spent_usd.toFixed(0)}{dev.limit_usd !== null ? ` / $${dev.limit_usd}` : ""}
-                </span>
-              </div>
-            ))}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {developerNearLimit.map((dev, i) => {
+              const devPct = dev.limit_usd ? Math.min(100, Math.round((dev.spent_usd / dev.limit_usd) * 100)) : null
+              const devColor = (devPct ?? 0) >= 90 ? "var(--err)" : "var(--warn)"
+              return (
+                <div key={i}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                    <span style={{ fontSize: 12, flex: 1, color: "var(--text)", fontWeight: 500 }}>{dev.name}</span>
+                    <span style={{ fontSize: 11, color: devColor, fontWeight: 600 }}>
+                      {devPct !== null ? `${devPct}%` : `$${dev.spent_usd.toFixed(0)}`}
+                    </span>
+                  </div>
+                  {devPct !== null && (
+                    <div style={{ height: 4, borderRadius: 4, background: "var(--surface-3)", overflow: "hidden" }}>
+                      <div style={{ width: `${devPct}%`, height: "100%", borderRadius: 4, background: devColor }} />
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
@@ -560,14 +621,11 @@ function AgentHealthRow({ agent }: { agent: AgentHealth }) {
       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--surface-2)" }}
       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "" }}
     >
-      {/* Agent name + slug */}
+      {/* Agent name + last run time */}
       <div>
         <div style={{ fontWeight: 600, fontSize: 13.5 }}>{agent.name}</div>
-        <div
-          className="mono"
-          style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}
-        >
-          {agent.playbook_slug ?? agent.workflow_id.slice(0, 8)}
+        <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>
+          {agent.last_run_at ? `last run ${timeAgo(agent.last_run_at)}` : "never run"}
         </div>
       </div>
 
@@ -1027,28 +1085,47 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                     }}
                   >
                     {[
-                      { k: "PRs opened",              v: data.outcomes.prs_opened,              tone: "plain" },
-                      { k: "Issues triaged",          v: data.outcomes.issues_triaged,          tone: "plain" },
-                      { k: "Reviews completed",       v: data.outcomes.reviews_completed,       tone: "plain" },
-                      { k: "Incidents investigated",  v: data.outcomes.incidents_investigated,  tone: "plain" },
-                      { k: "Successful automations",  v: data.outcomes.successful_automations,  tone: "ok" },
-                      { k: "Failed automations",      v: data.outcomes.failed_automations,      tone: data.outcomes.failed_automations > 0 ? "err" : "plain" },
-                    ].map(o => (
-                      <div key={o.k} className="card" style={{ padding: "14px 15px" }}>
-                        <div
-                          style={{
-                            fontSize: 22,
-                            fontWeight: 700,
-                            color: o.tone === "ok" ? "var(--ok)" : o.tone === "err" ? "var(--err)" : "var(--text)",
-                            letterSpacing: "-.015em",
-                          }}
-                        >
-                          {o.v}
+                      { k: "PRs opened",              v: data.outcomes.prs_opened,              prev: data.outcomes.prev_prs_opened,              tone: "plain" },
+                      { k: "Issues triaged",          v: data.outcomes.issues_triaged,          prev: data.outcomes.prev_issues_triaged,          tone: "plain" },
+                      { k: "Reviews completed",       v: data.outcomes.reviews_completed,       prev: data.outcomes.prev_reviews_completed,       tone: "plain" },
+                      { k: "Incidents investigated",  v: data.outcomes.incidents_investigated,  prev: data.outcomes.prev_incidents_investigated,  tone: "plain" },
+                      { k: "Successful automations",  v: data.outcomes.successful_automations,  prev: data.outcomes.prev_successful_automations,  tone: "ok" },
+                      { k: "Failed automations",      v: data.outcomes.failed_automations,      prev: data.outcomes.prev_failed_automations,      tone: data.outcomes.failed_automations > 0 ? "err" : "plain" },
+                    ].map(o => {
+                      const delta = o.prev !== undefined ? o.v - o.prev : null
+                      const deltaUp = delta !== null && delta > 0
+                      const deltaDown = delta !== null && delta < 0
+                      const isBadUp = o.tone === "err" // failed automations: up is bad
+                      return (
+                        <div key={o.k} className="card" style={{ padding: "14px 15px" }}>
+                          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 4 }}>
+                            <div
+                              style={{
+                                fontSize: 22,
+                                fontWeight: 700,
+                                color: o.tone === "ok" ? "var(--ok)" : o.tone === "err" ? "var(--err)" : "var(--text)",
+                                letterSpacing: "-.015em",
+                              }}
+                            >
+                              {o.v}
+                            </div>
+                            {delta !== null && delta !== 0 && (
+                              <span style={{
+                                fontSize: 10,
+                                fontWeight: 700,
+                                padding: "2px 5px",
+                                borderRadius: 4,
+                                color: (deltaUp && !isBadUp) || (deltaDown && isBadUp) ? "var(--ok)" : "var(--err)",
+                                background: (deltaUp && !isBadUp) || (deltaDown && isBadUp) ? "var(--ok-bg)" : "var(--err-bg)",
+                              }}>
+                                {deltaUp ? "+" : ""}{delta}
+                              </span>
+                            )}
+                          </div>
+                          <div className="eyebrow" style={{ marginTop: 6, fontSize: 11 }}>{o.k}</div>
                         </div>
-                        {/* #17: fontSize 11 instead of 9 */}
-                        <div className="eyebrow" style={{ marginTop: 6, fontSize: 11 }}>{o.k}</div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
 
