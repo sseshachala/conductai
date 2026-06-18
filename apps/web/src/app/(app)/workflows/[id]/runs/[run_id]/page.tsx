@@ -7,7 +7,7 @@ import Link from "next/link"
 import RunTrace from "@/components/runs/RunTrace"
 import ConversationTrace from "@/components/runs/ConversationTrace"
 import AppShell from "@/components/AppShell"
-import { statusStyle, formatTrigger, duration, isTerminal, isActive } from "@/lib/runUtils"
+import { statusStyle, formatTrigger, duration, isTerminal, isActive, isAwaiting } from "@/lib/runUtils"
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
@@ -71,10 +71,15 @@ export default function RunDetailPage() {
   }
 
   async function fetchRun(headers: Record<string, string>) {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}`, { headers })
-    if (res.ok) { const data = await res.json(); setRun(data); return data as RunMeta }
-    setFetchError(res.status === 403 ? "Access denied — you may not be a member of this workspace." : res.status === 404 ? "Run not found." : `Error ${res.status} — could not load run.`)
-    return null
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}`, { headers })
+      if (res.ok) { const data = await res.json(); setRun(data); return data as RunMeta }
+      setFetchError(res.status === 403 ? "Access denied — you may not be a member of this workspace." : res.status === 404 ? "Run not found." : `Error ${res.status} — could not load run.`)
+      return null
+    } catch {
+      setFetchError("Could not reach the server — check your connection and refresh.")
+      return null
+    }
   }
 
   async function refresh() {
@@ -225,7 +230,7 @@ export default function RunDetailPage() {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-            {isActive(run.status) && (
+            {isActive(run.status) && !isAwaiting(run.status) && (
               <button onClick={stopRun} disabled={stopping} className="btn btn-ghost btn-sm" style={{ color: "var(--err)", borderColor: "var(--err-bd)" }}>
                 {stopping ? "Stopping…" : "⏹ Stop"}
               </button>
@@ -307,7 +312,7 @@ export default function RunDetailPage() {
               </div>
 
               {/* Approval notice */}
-              {(run.status === "paused" || run.status === "waiting_approval" || run.status === "waiting") && (
+              {isAwaiting(run.status) && (
                 <div className="card" style={{ marginTop: 24, padding: "16px 18px", display: "flex", gap: 13, alignItems: "flex-start", maxWidth: 720 }}>
                   <span style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, display: "grid", placeItems: "center", background: "var(--warn-bg)", color: "var(--warn)" }}>
                     <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -316,7 +321,7 @@ export default function RunDetailPage() {
                   </span>
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 13.5, marginBottom: 2 }}>Paused on approval</div>
-                    <div style={{ fontSize: 12.5, color: "var(--text-3)", lineHeight: 1.5 }}>This run is waiting on a human decision in the <b>Approvals</b> tab before it merges to main.</div>
+                    <div style={{ fontSize: 12.5, color: "var(--text-3)", lineHeight: 1.5 }}>This run is waiting on a human decision in the <b>Approvals</b> tab before the run continues.</div>
                   </div>
                 </div>
               )}
@@ -347,6 +352,13 @@ export default function RunDetailPage() {
               }}
               maxTurns={run.max_turns ?? null}
               getToken={getToken}
+              onSseConnected={() => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null } }}
+              onSseEnded={() => {
+                if (!run || isTerminal(run.status)) return
+                if (!pollRef.current) {
+                  pollRef.current = setInterval(async () => { await fetchRun(await buildHeaders()) }, 4000)
+                }
+              }}
             />
           )}
 
@@ -426,7 +438,7 @@ export default function RunDetailPage() {
           {/* Approvals */}
           {activeTab === "approvals" && (
             <div>
-              {run.status === "paused" && !approvalDecision ? (
+              {isAwaiting(run.status) ? (
                 <div className="card" style={{ padding: 0, overflow: "hidden" }}>
                   <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
                     <span className="chip bk-approval" style={{ height: 21, fontSize: 9.5, fontWeight: 800, letterSpacing: ".07em", textTransform: "uppercase" }}>Approval</span>
