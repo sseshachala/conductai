@@ -36,6 +36,7 @@ interface BlockEditorProps {
   projectSlug?: string | null
   onWebhookChange?: (hookId: string | null, hookRepo: string | null) => void
   onClose?: () => void
+  onDelete?: (blockId: string) => void
   sandboxBlocks?: { id: string; label: string }[]
 }
 
@@ -1264,6 +1265,7 @@ export default function BlockEditor({
   previousBlockId,
   isReadOnly = false,
   onClose,
+  onDelete,
   sandboxBlocks,
 }: BlockEditorProps) {
   const [promptOpen, setPromptOpen] = useState(false)
@@ -1476,7 +1478,7 @@ export default function BlockEditor({
     setPromptOpen(false)
     setStreamedPrompt("")
     setIsStreaming(false)
-    setShowAdvanced(false)
+    // showAdvanced intentionally NOT reset — preserve user's expanded state on block switch
   }, [blockId])
 
   const section = "px-4 py-3 space-y-3 border-b border-stone-100"
@@ -1494,7 +1496,7 @@ export default function BlockEditor({
           </span>
           <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: "auto" }}>#{blockId.slice(0, 8)}</span>
           {onClose && (
-            <button className="btn btn-ghost btn-icon btn-sm" onClick={onClose}>×</button>
+            <button className="btn btn-ghost btn-icon btn-sm" aria-label="Close" onClick={onClose}>×</button>
           )}
         </div>
         <input
@@ -2414,7 +2416,7 @@ export default function BlockEditor({
         </div>
       )}
 
-      {/* Footer — close only; changes auto-save on every edit */}
+      {/* Footer — close + optional delete; changes auto-save on every edit */}
       <div style={{ padding: "10px 18px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }} className="shrink-0 bg-white sticky bottom-0">
         {schemaRequiredKeys.length > 0 && (() => {
           const missing = schemaRequiredKeys.filter(key => {
@@ -2433,7 +2435,19 @@ export default function BlockEditor({
           )
         })()}
         {schemaRequiredKeys.length === 0 && <span />}
-        <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>Done</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {!isViewer && onDelete && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              style={{ color: "var(--err)" }}
+              onClick={() => onDelete(blockId)}
+            >
+              Delete block
+            </button>
+          )}
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>Close</button>
+        </div>
       </div>
 
     </div>

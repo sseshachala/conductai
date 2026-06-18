@@ -33,7 +33,7 @@ export default function RunsPage() {
   const [workflowName, setWorkflowName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [hoveredRunId, setHoveredRunId] = useState<string | null>(null)
+  // hoveredRunId removed — use CSS :hover via className instead (was changing same borderColor value)
 
   async function load() {
     setLoading(true)
@@ -46,7 +46,7 @@ export default function RunsPage() {
       if (workspaceId) headers["X-Workspace-Id"] = workspaceId
 
       const [runsRes, wfRes] = await Promise.all([
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs`, { headers }),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs?limit=50`, { headers }),
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, { headers }),
       ])
 
@@ -86,7 +86,7 @@ export default function RunsPage() {
               href={`/workflows/${workflowId}`}
               className="btn btn-primary btn-sm"
             >
-              Edit agent
+              Edit workflow
             </Link>
           </div>
 
@@ -169,10 +169,8 @@ export default function RunsPage() {
                     padding: "16px 20px",
                     textDecoration: "none",
                     transition: "box-shadow 0.15s, border-color 0.15s",
-                    boxShadow: hoveredRunId === run.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
                   }}
-                  onMouseEnter={() => setHoveredRunId(run.id)}
-                  onMouseLeave={() => setHoveredRunId(null)}
+                  className="run-row-link"
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
                     <StatusBadge status={run.status} />

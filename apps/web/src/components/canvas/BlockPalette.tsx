@@ -11,6 +11,7 @@ import {
   Database,
   Network,
   Repeat2,
+  Box,
 } from "lucide-react"
 import { BLOCK_LIBRARY, BLOCK_STYLES, type BlockType } from "@/lib/block-types"
 import { cn } from "@/lib/utils"
@@ -28,6 +29,7 @@ function BlockIcon({ type, className }: { type: BlockType; className?: string })
     case "cleanup":  return <RefreshCw {...props} />
     case "memory":   return <Database {...props} />
     case "mcp":      return <Network {...props} />
+    case "sandbox":  return <Box {...props} />
   }
 }
 

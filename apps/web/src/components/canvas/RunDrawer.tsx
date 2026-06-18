@@ -61,6 +61,7 @@ export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, 
   const [killing, setKilling] = useState(false)
 
   async function killRun() {
+    if (!window.confirm("Stop this run? This cannot be undone.")) return
     setKilling(true)
     const params = new URLSearchParams()
     const wsId = getCookie("delegator_project_id")
