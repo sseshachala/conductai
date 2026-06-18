@@ -364,26 +364,7 @@ def sync_policies(
     gc = db.query(_GuardConfig).filter(_GuardConfig.workspace_id == ws_uuid).first()
     active_persona = gc.persona if gc and gc.persona else "standard"
 
-    try:
-        active_rules = compute_policy(db, ws_uuid, active_persona)
-    except Exception as exc:
-        # Migration 0017 not yet applied — fall back to legacy guard_policies table
-        if "workspace_skill_packs" in str(exc) or "skill_packs" in str(exc):
-            import logging as _log
-            _log.getLogger("guard.sync").warning(
-                "skill_packs tables missing — falling back to guard_policies (run migration 0017)"
-            )
-            from app.modules.guard.models import GuardPolicy as _GP
-            legacy = db.query(_GP).filter(
-                _GP.workspace_id == ws_uuid, _GP.enabled == True
-            ).all()
-            active_rules = [
-                {"id": p.rule_id, "match_tool": p.match_tool, "match_pattern": p.match_pattern,
-                 "match_path_pattern": p.match_path_pattern, "action": p.action, "message": p.message}
-                for p in legacy
-            ]
-        else:
-            raise
+    active_rules = compute_policy(db, ws_uuid, active_persona)
 
     # version = hash of active rule set so hook knows when to re-download
     version_hash = __import__("hashlib").sha256(
@@ -417,73 +398,60 @@ def list_policies(
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid workspace_id")
 
-    policies = (
+    # Custom user-created rules (builtins come exclusively from skill packs)
+    custom = (
         db.query(GuardPolicy)
-        .filter(GuardPolicy.workspace_id == ws_uuid, GuardPolicy.archived_at.is_(None))
-        .order_by(GuardPolicy.builtin.desc(), GuardPolicy.created_at.asc())
+        .filter(GuardPolicy.workspace_id == ws_uuid, GuardPolicy.builtin == False, GuardPolicy.archived_at.is_(None))
+        .order_by(GuardPolicy.created_at.asc())
         .all()
     )
-    # Build rule_id → pack_slug map from installed skill packs
+    result: list[PolicyOut] = [_policy_to_out(p) for p in custom]
+
     installed = (
         db.query(WorkspaceSkillPack)
         .filter(WorkspaceSkillPack.workspace_id == ws_uuid)
         .order_by(WorkspaceSkillPack.installed_at)
         .all()
     )
-
-    pack_rule_map: dict[str, tuple[str, dict, datetime]] = {}  # rule_id → (pack_slug, rule_dict, installed_at)
-    for wp in installed:
-        pack = (
-            db.query(SkillPack)
-            .filter(SkillPack.slug == wp.pack_slug)
-            .order_by(SkillPack.version.desc())
-            .first()
-        )
-        if not pack:
-            continue
-        for rule in pack.rules:
-            pack_rule_map[rule["id"]] = (wp.pack_slug, rule, wp.installed_at)
-
-    # Fix pack_id for existing guard_policies builtin rows missing their pack association
-    legacy_ids: set[str] = set()
-    result: list[PolicyOut] = []
-    for p in policies:
-        out = _policy_to_out(p)
-        if p.builtin and out.pack_id is None and p.rule_id in pack_rule_map:
-            out.pack_id = pack_rule_map[p.rule_id][0]
-        result.append(out)
-        legacy_ids.add(p.rule_id)
-
-    # Add skill-pack rules that don't exist in guard_policies at all
-    if pack_rule_map:
+    if installed:
         overrides = {
             o.rule_id: o
             for o in db.query(GuardRuleOverride)
             .filter(GuardRuleOverride.workspace_id == ws_uuid)
             .all()
         }
-        for rule_id, (pack_slug, rule, installed_at) in pack_rule_map.items():
-            if rule_id in legacy_ids:
+        seen: set[str] = set()
+        for wp in installed:
+            pack = (
+                db.query(SkillPack)
+                .filter(SkillPack.slug == wp.pack_slug)
+                .order_by(SkillPack.version.desc())
+                .first()
+            )
+            if not pack:
                 continue
-            override = overrides.get(rule_id)
-            enabled = not (override and override.disabled)
-            result.append(PolicyOut(
-                id=rule_id,
-                workspace_id=str(ws_uuid),
-                rule_id=rule_id,
-                description=rule.get("description", ""),
-                match_tool=rule.get("match_tool"),
-                match_pattern=rule.get("match_pattern"),
-                match_path_pattern=rule.get("match_path_pattern"),
-                action=rule["action"],
-                message=rule.get("message"),
-                enabled=enabled,
-                builtin=True,
-                pack_id=pack_slug,
-                persona_affinity=rule.get("persona_affinity", []),
-                created_at=installed_at,
-                updated_at=installed_at,
-            ))
+            for rule in pack.rules:
+                if rule["id"] in seen:
+                    continue
+                seen.add(rule["id"])
+                override = overrides.get(rule["id"])
+                result.append(PolicyOut(
+                    id=rule["id"],
+                    workspace_id=str(ws_uuid),
+                    rule_id=rule["id"],
+                    description=rule.get("description", ""),
+                    match_tool=rule.get("match_tool"),
+                    match_pattern=rule.get("match_pattern"),
+                    match_path_pattern=rule.get("match_path_pattern"),
+                    action=rule["action"],
+                    message=rule.get("message"),
+                    enabled=not (override and override.disabled),
+                    builtin=True,
+                    pack_id=wp.pack_slug,
+                    persona_affinity=rule.get("persona_affinity", []),
+                    created_at=wp.installed_at,
+                    updated_at=wp.installed_at,
+                ))
 
     return result
 
