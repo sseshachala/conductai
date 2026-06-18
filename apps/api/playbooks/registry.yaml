@@ -30,6 +30,14 @@ playbooks:
     description: "Implement fix → run tests → human approves in Slack → open PR. Nothing ships without a gate."
     github_events: [issues]
 
+  oss_issue_sweep:
+    file: oss-issue-sweep.yaml
+    icon: "🧹"
+    category: Issue to PR
+    tags: [github, oss, code, autopilot]
+    featured: true
+    description: "Point it at any OSS repo. It reads all open issues, picks the top ones by impact, maps dependencies between them, and fixes each one in the right order — opening a PR per fix. Memory accumulates so later fixes learn from earlier ones."
+
   thirdparty_autopilot_fix:
     file: thirdparty-autopilot-fix.yaml
     icon: "🔀"
