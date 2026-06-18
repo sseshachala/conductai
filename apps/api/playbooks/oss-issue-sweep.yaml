@@ -1,0 +1,288 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# oss-issue-sweep — dependency-aware bulk issue fixer for open source repos
+#
+# Fetches all open issues, maps dependencies between them, orders fixes from
+# simplest/most-blocked to complex, then fixes and PRs each one in sequence.
+# Memory accumulates across fixes — the agent gets smarter with every issue.
+# ──────────────────────────────────────────────────────────────────────────────
+extends: base-autopilot
+name: OSS Issue Sweep
+version: 1
+description: >
+  Fetches every open issue from a GitHub repo, maps cross-issue dependencies,
+  orders fixes by blast radius (blockers first, complex last), then implements
+  each fix and opens a PR. Memory carries context forward — lessons from issue
+  #3 inform how issue #7 is fixed. Designed for third-party OSS repos where
+  you want to contribute a batch of fixes in one run.
+
+inputs:
+  upstream_owner:
+    label: Upstream repo owner
+    type: string
+    placeholder: "openclaw"
+    description: GitHub username or org that owns the target repo.
+
+  upstream_repo:
+    label: Upstream repo name
+    type: string
+    placeholder: "Peekaboo"
+    description: Repo name only (not owner/repo — just the repo name).
+
+  max_issues:
+    label: Max issues to fix
+    type: string
+    default: "10"
+    description: >
+      Cap on how many issues to attempt. Set lower for a trial run.
+      Issues are ordered — simplest and most blocking come first.
+
+  label_filter:
+    label: Label filter (optional)
+    type: string
+    placeholder: "bug, good first issue"
+    description: >
+      Only attempt issues with these labels (comma-separated).
+      Leave blank to attempt all open issues.
+    required: false
+
+  skip_issues:
+    label: Skip issue numbers (optional)
+    type: string
+    placeholder: "12, 34, 56"
+    description: >
+      Comma-separated issue numbers to skip (e.g. too large, needs discussion).
+    required: false
+
+  model:
+    label: AI model
+    type: select
+    default: claude-sonnet-4-6
+    options:
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+    description: Opus for complex multi-file fixes. Sonnet for most issues.
+
+on:
+  manual:
+    next: fetch_all_issues
+
+blocks:
+
+  # ── 1. Fetch all open issues ─────────────────────────────────────────────────
+  fetch_all_issues:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    label: Fetch open issues
+    description: Pull all open issues from the upstream repo via GitHub API.
+    credentials:
+      github: github
+    prompt: |
+      Fetch all open issues from https://github.com/{{inputs.upstream_owner}}/{{inputs.upstream_repo}}
+
+      Use the GitHub API:
+        GET https://api.github.com/repos/{{inputs.upstream_owner}}/{{inputs.upstream_repo}}/issues?state=open&per_page=100
+
+      For each issue collect:
+        - number
+        - title
+        - body (full text)
+        - labels (name list)
+        - created_at
+        - comments count
+        - any issue numbers referenced in the body or title
+          (look for "#123", "fixes #123", "blocked by #123", "depends on #123", "related to #123")
+
+      {% if inputs.label_filter %}
+      Only include issues with at least one of these labels: {{inputs.label_filter}}
+      {% endif %}
+
+      {% if inputs.skip_issues %}
+      Exclude these issue numbers: {{inputs.skip_issues}}
+      {% endif %}
+
+      Return ONLY a JSON array on the last line:
+      [{"number":42,"title":"...","body":"...","labels":["bug"],"comments":3,"references":[12,15]}]
+    next: triage_and_order
+
+  # ── 2. Dependency-aware triage and ordering ───────────────────────────────────
+  triage_and_order:
+    type: brain
+    mode: single
+    allowed_tools: []
+    label: Triage and order issues
+    description: >
+      Map cross-issue dependencies and produce a safe fix order.
+      Blockers first. Issues with unresolved dependencies deferred.
+    prompt: |
+      You are triaging a batch of open issues to determine the safest fix order.
+
+      All open issues:
+      {{fetch_all_issues.output}}
+
+      Max issues to fix: {{inputs.max_issues}}
+
+      Rules for ordering:
+      1. An issue A "blocks" issue B if B's body references A's number.
+         Fix A before B.
+      2. Issues with no cross-references to others are independent — fix these first.
+      3. Simple issues (short body, single file implied, "typo", "missing", "add") before complex ones.
+      4. If an issue references another that is ALSO in the list:
+         - put the referenced issue earlier
+         - note the dependency chain
+      5. If an issue references another that is NOT in the list (already closed or out of scope):
+         - treat it as independent (no blocker)
+      6. If an issue is ambiguous, requires design discussion, or is a feature request
+         rather than a bug/fix — mark it as SKIP with reason.
+      7. Cap the output list at {{inputs.max_issues}} actionable issues.
+
+      Return ONLY compact JSON on the last line — no prose:
+      {
+        "ordered": [
+          {"number": 12, "title": "...", "complexity": "small|medium|large", "rationale": "no deps, single file fix", "blocks": [], "blocked_by": []},
+          {"number": 34, "title": "...", "complexity": "medium", "rationale": "fix #12 first — shares same module", "blocks": [42], "blocked_by": [12]}
+        ],
+        "skipped": [
+          {"number": 99, "title": "...", "reason": "feature request, needs maintainer discussion"}
+        ]
+      }
+    next: fork_upstream
+
+  # ── 3. Fork once, reuse across all fixes ────────────────────────────────────
+  fork_upstream:
+    type: tool
+    integration: github
+    action: fork_repo
+    label: Fork upstream repo
+    description: Fork into authenticated user's account (reuses existing fork).
+    params:
+      owner: "{{inputs.upstream_owner}}"
+      repo: "{{inputs.upstream_repo}}"
+    next: read_memory
+
+  # ── 4. Read accumulated memory for this repo ────────────────────────────────
+  read_memory:
+    $use: base-autopilot.recall_context
+    key: "{{inputs.upstream_owner}}/{{inputs.upstream_repo}}"
+    next: fix_loop
+
+  # ── 5. Dependency-aware fix loop ─────────────────────────────────────────────
+  fix_loop:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    max_turns: 80
+    label: Fix issues in dependency order
+    description: |
+      Iterates through the ordered issue list. For each issue: plans the fix,
+      implements it on a branch, pushes, opens a PR. Carries lessons forward.
+      Skips an issue and continues if a fix fails — never halts the whole run.
+    credentials:
+      github: github
+    system: |
+      You are an expert open-source contributor fixing a batch of issues in sequence.
+
+      You have:
+      - A fork of the repo already created
+      - An ordered list of issues to fix (blockers first)
+      - Prior memory from this repo (patterns, pitfalls, lessons)
+
+      For EACH issue in the ordered list:
+        1. Plan the fix (read relevant files if needed via GitHub API)
+        2. Implement via a single run_shell call that: clones the fork,
+           creates a branch fix/issue-{number}, makes the change, lints, commits, pushes
+        3. Open a PR to upstream via GitHub API
+        4. Record the outcome (success/failure/lesson) before moving to the next
+
+      Rules:
+        - Always push to the fork, PR to upstream
+        - Branch name: fix/issue-{number} for each issue
+        - If a push returns 403, record failure and move to the next issue
+        - If the fix would affect files also touched by a previous fix in this run,
+          git fetch the fork branch first to avoid conflicts
+        - Lint before every commit (ruff/black for Python, eslint/prettier for JS, cargo fmt for Rust)
+        - PR body must include "Fixes #N" and the attribution block
+        - After each PR is opened, summarise the lesson learned in one line
+          and carry it into the next fix
+
+      Attribution to add to every PR body (after the fix description):
+      ---
+      This fix was implemented autonomously by **[Conduct AI](https://conductai.ai)** — an open-source platform for AI agent automation.
+      > Want Conduct AI to automate fixes in your repo? [Get started free →](https://conductai.ai)
+
+    prompt: |
+      Repo: {{inputs.upstream_owner}}/{{inputs.upstream_repo}}
+      Fork: {{fork_upstream.fork_full_name}} (owner: {{fork_upstream.fork_owner}})
+      Default branch: {{fork_upstream.default_branch}}
+
+      Prior memory for this repo:
+      {{read_memory.entries}}
+
+      Ordered issue list (fix in this exact order):
+      {{triage_and_order.output}}
+
+      Work through every issue in the ordered list. After completing all of them,
+      output a JSON summary on the very last line:
+      {
+        "fixed": [{"number": 12, "pr_url": "https://github.com/.../pull/99", "branch": "fix/issue-12", "summary": "one line"}],
+        "failed": [{"number": 34, "reason": "push 403 — token scope"}],
+        "lessons": ["lesson from issue 12", "lesson from issue 34"]
+      }
+    next: write_memory
+
+  # ── 6. Write memory ──────────────────────────────────────────────────────────
+  write_memory:
+    type: memory
+    label: Record sweep outcome
+    action: write
+    scope: repo
+    key: "{{inputs.upstream_owner}}/{{inputs.upstream_repo}}"
+    summary: |
+      OSS Issue Sweep on {{inputs.upstream_owner}}/{{inputs.upstream_repo}}
+      Fixed: {{fix_loop.output.fixed | length}} issues
+      Failed: {{fix_loop.output.failed | length}} issues
+      Skipped at triage: {{triage_and_order.output.skipped | length}} issues
+      Lessons: {{fix_loop.output.lessons}}
+    next: notify_complete
+
+  # ── 7. Final summary ─────────────────────────────────────────────────────────
+  notify_complete:
+    type: output
+    label: Sweep complete
+    output:
+      via: slack
+      slack:
+        channel: "#engineering"
+        approval: false
+      template: |
+        *OSS Issue Sweep complete* — `{{inputs.upstream_owner}}/{{inputs.upstream_repo}}`
+
+        *Fixed:* {{fix_loop.output.fixed | length}} PRs opened
+        {% for f in fix_loop.output.fixed %}
+        • #{{f.number}} → {{f.pr_url}} — {{f.summary}}
+        {% endfor %}
+
+        {% if fix_loop.output.failed %}
+        *Failed (skipped, run continues):*
+        {% for f in fix_loop.output.failed %}
+        • #{{f.number}} — {{f.reason}}
+        {% endfor %}
+        {% endif %}
+
+        {% if triage_and_order.output.skipped %}
+        *Skipped at triage:*
+        {% for s in triage_and_order.output.skipped %}
+        • #{{s.number}} — {{s.reason}}
+        {% endfor %}
+        {% endif %}
+
+        View PRs → https://github.com/{{inputs.upstream_owner}}/{{inputs.upstream_repo}}/pulls
+
+test_trigger:
+  payload:
+    upstream_owner: "openclaw"
+    upstream_repo: "Peekaboo"
+    max_issues: "5"
+    label_filter: ""
+    skip_issues: ""
+    model: claude-sonnet-4-6
