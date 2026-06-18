@@ -114,7 +114,12 @@ async def slack_interactions(request: Request, db: Session = Depends(get_db)):
     timestamp = request.headers.get("X-Slack-Request-Timestamp", "0")
     signature = request.headers.get("X-Slack-Signature", "")
 
-    # Verify with platform-level signing secret first — before any DB access.
+    # Signature verification is mandatory — reject immediately if no platform secret is configured.
+    # This prevents unsigned requests from triggering paid agent runs.
+    if not settings.slack_signing_secret:
+        raise HTTPException(status_code=401, detail="Slack signing secret not configured")
+
+    # Verify with platform-level signing secret — before any DB access.
     # This prevents unauthenticated requests from triggering DB reads.
     if not _verify_slack_signature(body, timestamp, signature, settings.slack_signing_secret):
         raise HTTPException(status_code=401, detail="Invalid Slack signature")
@@ -156,8 +161,9 @@ async def slack_interactions(request: Request, db: Session = Depends(get_db)):
         log.warning("slack.unknown_run", run_id=run_id_str)
         return {"ok": True}
 
-    # For confirmed requests, optionally re-verify with workspace-level signing secret
-    # (workspace-level lookup is safe here because signature is already validated above)
+    # If the workspace has its own signing secret, re-verify against it.
+    # This is mandatory — if the workspace secret is present and the signature does not match,
+    # the request is rejected even though the platform-level check passed.
     signing_secret = _get_slack_signing_secret(run, db)
     if signing_secret and signing_secret != settings.slack_signing_secret:
         if not _verify_slack_signature(body, timestamp, signature, signing_secret):

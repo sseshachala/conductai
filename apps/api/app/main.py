@@ -62,11 +62,13 @@ async def favicon():
     return FileResponse(_STATIC / "favicon.png", media_type="image/png")
 
 _origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
+if not _origins:
+    log.warning("cors.no_origins_configured", msg="ALLOWED_ORIGINS is empty — all cross-origin requests blocked. Set ALLOWED_ORIGINS in .env to enable CORS.")
 
 app.add_middleware(LoggingMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_origins,
+    allow_origins=_origins,  # empty list = block all cross-origin requests
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

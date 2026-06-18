@@ -184,15 +184,23 @@ def _get_workflow(workflow_id: UUID, workspace_id: str, db: Session) -> Workflow
     return workflow
 
 
-def _get_run(run_id: UUID, workflow_id: UUID, db: Session) -> Run:
-    """Fetch run and verify it belongs to the given workflow (prevents cross-tenant access)."""
+def _get_run(run_id: UUID, workflow_id: UUID, db: Session, workspace_id: str | None = None) -> Run:
+    """Fetch run and verify it belongs to the given workflow (prevents cross-tenant access).
+
+    Pass workspace_id to additionally scope the run lookup to a specific tenant.
+    Leave workspace_id=None only for callers (get_run) that intentionally allow
+    cross-workspace lookup and perform their own membership check afterward.
+    """
     version_ids = db.query(WorkflowVersion.id).filter(
         WorkflowVersion.workflow_id == workflow_id
     ).subquery()
-    run = db.query(Run).filter(
+    q = db.query(Run).filter(
         Run.id == run_id,
         Run.workflow_version_id.in_(version_ids),
-    ).first()
+    )
+    if workspace_id:
+        q = q.filter(Run.workspace_id == UUID(workspace_id))
+    run = q.first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     return run
@@ -366,7 +374,7 @@ def stream_run_events(
 ):
     """SSE stream of run_events driven by Redis pub/sub — one DB query per notification."""
     _get_workflow(workflow_id, workspace_id, db)
-    run = _get_run(run_id, workflow_id, db)
+    run = _get_run(run_id, workflow_id, db, workspace_id=workspace_id)
 
     def event_generator():
         import time as _time
@@ -470,7 +478,7 @@ def get_run_trace(
 ):
     """Return the full AI conversation trace for a run — ordered by turn and role."""
     _get_workflow(workflow_id, workspace_id, db)
-    _get_run(run_id, workflow_id, db)
+    _get_run(run_id, workflow_id, db, workspace_id=workspace_id)
     from app.models.run_trace import RunTrace
     rows = (
         db.query(RunTrace)
@@ -507,7 +515,7 @@ def cancel_run(
 ):
     """Mark a running or pending run as cancelled. The worker will abort on next check."""
     _get_workflow(workflow_id, workspace_id, db)
-    run = _get_run(run_id, workflow_id, db)
+    run = _get_run(run_id, workflow_id, db, workspace_id=workspace_id)
     if run.status not in ("running", "pending"):
         raise HTTPException(status_code=400, detail=f"Run cannot be cancelled (status: {run.status})")
     run.status = "cancelled"
@@ -535,7 +543,7 @@ def approve_run(
         raise HTTPException(status_code=422, detail="decision must be 'approved' or 'rejected'")
 
     _get_workflow(workflow_id, workspace_id, db)
-    run = _get_run(run_id, workflow_id, db)
+    run = _get_run(run_id, workflow_id, db, workspace_id=workspace_id)
 
     block_id = run.current_block_id
     if not block_id:
@@ -607,7 +615,7 @@ def clarify_run(
     Stores the answer in run.state and re-queues the run.
     """
     _get_workflow(workflow_id, workspace_id, db)
-    run = _get_run(run_id, workflow_id, db)
+    run = _get_run(run_id, workflow_id, db, workspace_id=workspace_id)
 
     if run.status != "paused_for_clarification":
         raise HTTPException(status_code=400, detail=f"Run is not awaiting clarification (status: {run.status})")

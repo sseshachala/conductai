@@ -205,6 +205,7 @@ def _seed_starter_policies(db, workspace_id: uuid.UUID, now) -> None:
 @router.get("", response_model=list[ProjectOut])
 def list_projects(
     user_id: Annotated[str, Depends(get_user_id)],
+    _: str = Depends(require_permission("platform.workflows.view")),
     db: Session = Depends(get_db),
 ):
     # Accept pending invites synchronously so the workspace appears in this response
@@ -316,17 +317,23 @@ def rename_project(
     project_id: str,
     body: dict,
     db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
+    user_id: Annotated[str, Depends(get_user_id)] = None,
     _: str = Depends(require_permission("platform.workspace.edit")),
 ):
     name = (body.get("name") or "").strip()
     if not name:
         raise HTTPException(status_code=422, detail="Name cannot be empty")
-    if project_id != workspace_id:
-        raise HTTPException(status_code=403, detail="Project not found")
-    row = db.execute(text("SELECT id FROM workspaces WHERE id = :id AND id = :ws"), {"id": project_id, "ws": workspace_id}).fetchone()
+    # Verify the authenticated user is actually a member of the target workspace (project_id).
+    # This prevents a user from setting x-workspace-id to another workspace's ID.
+    row = db.execute(text("SELECT id, owner_id FROM workspaces WHERE id = :id"), {"id": project_id}).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Project not found")
+    membership = db.execute(
+        text("SELECT role FROM workspace_users WHERE workspace_id = :pid AND clerk_user_id = :uid"),
+        {"pid": project_id, "uid": user_id},
+    ).fetchone()
+    if not membership and row.owner_id != user_id:
+        raise HTTPException(status_code=403, detail="Project not found")
     db.execute(text("UPDATE workspaces SET name = :name WHERE id = :id AND id = :ws"), {"name": name, "id": project_id, "ws": workspace_id})
     db.commit()
     row = db.execute(text("""
@@ -345,15 +352,21 @@ def rename_project(
 def delete_project(
     project_id: str,
     db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
+    user_id: Annotated[str, Depends(get_user_id)] = None,
     _: str = Depends(require_permission("platform.workspace.edit")),
     purge: bool = False,  # ?purge=true — also deletes analytics, audit log, API keys, environments
 ):
-    if project_id != workspace_id:
-        raise HTTPException(status_code=403, detail="Project not found")
-    row = db.execute(text("SELECT id FROM workspaces WHERE id = :id AND id = :ws"), {"id": project_id, "ws": workspace_id}).fetchone()
+    # Verify the authenticated user is actually a member of the target workspace (project_id).
+    # This prevents a user from setting x-workspace-id to another workspace's ID.
+    row = db.execute(text("SELECT id, owner_id FROM workspaces WHERE id = :id"), {"id": project_id}).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Project not found")
+    membership = db.execute(
+        text("SELECT role FROM workspace_users WHERE workspace_id = :pid AND clerk_user_id = :uid"),
+        {"pid": project_id, "uid": user_id},
+    ).fetchone()
+    if not membership and row.owner_id != user_id:
+        raise HTTPException(status_code=403, detail="Project not found")
 
     # Deregister any GitHub webhooks before cascade-deleting workflows
     hooked = db.execute(text(
