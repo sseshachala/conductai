@@ -104,6 +104,7 @@ class SessionOut(BaseModel):
 class BudgetCreate(BaseModel):
     workspace_id: str
     clerk_user_id: str | None = None    # null = workspace-wide
+    email: str | None = None            # per-developer: frontend sends email, backend resolves to clerk_user_id
     monthly_limit_usd: float
     alert_threshold_pct: int = 80
     hard_limit_usd: float | None = None
@@ -114,6 +115,7 @@ class BudgetOut(BaseModel):
     id: str
     workspace_id: str
     clerk_user_id: str | None
+    email: str | None = None
     monthly_limit_usd: float
     alert_threshold_pct: int
     hard_limit_usd: float | None
@@ -385,6 +387,19 @@ def upsert_budget(
         raise HTTPException(status_code=422, detail="Invalid workspace_id")
 
     clerk_user_id = body.clerk_user_id  # None = workspace-wide
+    if clerk_user_id is None and body.email:
+        session = (
+            db.query(GuardSession)
+            .filter(
+                GuardSession.workspace_id == ws_uuid,
+                GuardSession.user_email == body.email,
+                GuardSession.clerk_user_id.isnot(None),
+            )
+            .order_by(GuardSession.started_at.desc())
+            .first()
+        )
+        if session:
+            clerk_user_id = session.clerk_user_id
 
     existing = (
         db.query(GuardSpendBudget)
@@ -438,8 +453,20 @@ def list_budgets(
         .order_by(GuardSpendBudget.created_at.asc())
         .all()
     )
+    uid_email: dict[str, str] = {
+        r.clerk_user_id: r.user_email
+        for r in db.query(GuardSession.clerk_user_id, GuardSession.user_email)
+        .filter(
+            GuardSession.workspace_id == ws_uuid,
+            GuardSession.clerk_user_id.isnot(None),
+            GuardSession.user_email.isnot(None),
+        )
+        .distinct()
+        .all()
+        if r.clerk_user_id
+    }
     return [
-        _budget_out(b, _current_month_cost(db, ws_uuid, b.clerk_user_id))
+        _budget_out(b, _current_month_cost(db, ws_uuid, b.clerk_user_id), uid_email.get(b.clerk_user_id) if b.clerk_user_id else None)
         for b in budgets
     ]
 
@@ -558,11 +585,12 @@ def budget_check(
     )
 
 
-def _budget_out(budget: GuardSpendBudget, current_cost: float) -> BudgetOut:
+def _budget_out(budget: GuardSpendBudget, current_cost: float, email: str | None = None) -> BudgetOut:
     return BudgetOut(
         id=str(budget.id),
         workspace_id=str(budget.workspace_id),
         clerk_user_id=budget.clerk_user_id,
+        email=email,
         monthly_limit_usd=budget.monthly_limit_usd,
         alert_threshold_pct=budget.alert_threshold_pct,
         hard_limit_usd=budget.hard_limit_usd,

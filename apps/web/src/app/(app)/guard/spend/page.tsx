@@ -57,6 +57,7 @@ interface BudgetOut {
   id: string
   workspace_id: string
   clerk_user_id: string | null
+  email?: string | null
   monthly_limit_usd: number
   alert_threshold_pct: number
   hard_limit_usd: number | null
@@ -579,9 +580,8 @@ function SpendContent() {
         }
         const map: Record<string, number | null> = {}
         for (const b of budgetList) {
-          if (b.clerk_user_id != null && b.clerk_user_id) {
-            map[b.clerk_user_id] = b.monthly_limit_usd
-          }
+          const key = b.email ?? b.clerk_user_id
+          if (key) map[key] = b.monthly_limit_usd
         }
         setBudgets(map)
       }
