@@ -48,7 +48,7 @@ def upgrade() -> None:
             "persona_affinity",
             ARRAY(TEXT),
             nullable=False,
-            server_default="ARRAY['conservative','standard','developer']::text[]",
+            server_default=sa.text("'{conservative,standard,developer}'::text[]"),
         ),
     )
     op.create_index(
