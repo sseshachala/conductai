@@ -334,7 +334,7 @@ def rename_project(
     ).fetchone()
     if not membership and row.owner_id != user_id:
         raise HTTPException(status_code=403, detail="Project not found")
-    db.execute(text("UPDATE workspaces SET name = :name WHERE id = :id AND id = :ws"), {"name": name, "id": project_id, "ws": workspace_id})
+    db.execute(text("UPDATE workspaces SET name = :name WHERE id = :id"), {"name": name, "id": project_id})
     db.commit()
     row = db.execute(text("""
         SELECT w.id, w.name, w.owner_id, w.is_approved, w.created_at,
