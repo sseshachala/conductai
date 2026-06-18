@@ -1,13 +1,13 @@
 "use client"
 
+import Link from "next/link"
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useAuth, useUser } from "@clerk/nextjs"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
 import AppShell from "@/components/AppShell"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { GuardShell } from "@/components/guard/GuardShell"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,66 +39,6 @@ interface GuardSession {
   hostname: string | null
 }
 
-// ─── Guard Shell ──────────────────────────────────────────────────────────────
-
-const GUARD_TABS = [
-  { href: "/guard",             label: "Overview"    },
-  { href: "/guard/spend",       label: "Spend"       },
-  { href: "/guard/policies",    label: "Policies"    },
-  { href: "/guard/activity",    label: "Activity"    },
-  { href: "/guard/session-reports", label: "Session Reports" },
-  { href: "/guard/team-memory",     label: "Team Memory"     },
-  { href: "/guard/settings",        label: "Settings"        },
-]
-
-function GuardShell({ children, live, lastUpdated }: { children: React.ReactNode; live?: boolean; lastUpdated?: Date | null }) {
-  const pathname = usePathname()
-  return (
-    <div style={{ maxWidth: 1240, margin: "0 auto", padding: "28px 24px 48px" }}>
-      <div style={{ display: "flex", alignItems: "flex-start", marginBottom: 20 }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", letterSpacing: "-.02em", margin: 0 }}>
-              Guard
-            </h1>
-            {live ? (
-              <span className="sbadge ok" style={{ marginTop: 2 }}>
-                <span className="conduct-pulse-dot" />
-                live
-              </span>
-            ) : (
-              <span className="sbadge" style={{ marginTop: 2, background: "var(--surface-3)", color: "var(--text-muted)", border: "1px solid var(--border)" }}>
-                offline
-              </span>
-            )}
-          </div>
-          <p style={{ fontSize: 13, color: "var(--text-3)", marginTop: 5 }}>
-            MDM for AI coding tools — policies and spend limits enforced on every Claude Code, Codex, and Cursor call.
-          </p>
-        </div>
-        <div style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)", paddingTop: 4 }}>
-          {lastUpdated
-            ? <>last updated: {Math.floor((Date.now() - lastUpdated.getTime()) / 1000) < 10 ? "just now" : lastUpdated.toLocaleTimeString()}</>
-            : "connecting…"
-          }
-        </div>
-      </div>
-      <div className="guard-tab-nav">
-        {GUARD_TABS.map(tab => {
-          const isActive = tab.href === "/guard"
-            ? pathname === "/guard"
-            : pathname?.startsWith(tab.href)
-          return (
-            <Link key={tab.href} href={tab.href} className={`guard-tab${isActive ? " active" : ""}`}>
-              {tab.label}
-            </Link>
-          )
-        })}
-      </div>
-      {children}
-    </div>
-  )
-}
 
 // ─── Tool badge ───────────────────────────────────────────────────────────────
 
@@ -375,7 +315,7 @@ function ActivityContent() {
   }
 
   return (
-    <GuardShell live={live} lastUpdated={lastUpdated}>
+    <GuardShell live={live} lastFetched={lastUpdated}>
       {/* Viewer-scoped notice */}
       {!permissions.canViewAllActivity && (
         <div

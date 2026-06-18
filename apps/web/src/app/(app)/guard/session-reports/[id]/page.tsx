@@ -1,10 +1,11 @@
 "use client"
 
+import Link from "next/link"
 import { useEffect, useState, useCallback } from "react"
 import { useAuth } from "@clerk/nextjs"
-import Link from "next/link"
-import { useParams, usePathname } from "next/navigation"
+import { useParams } from "next/navigation"
 import AppShell from "@/components/AppShell"
+import { GuardShell } from "@/components/guard/GuardShell"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
@@ -27,28 +28,6 @@ interface SessionReport {
   planning_ratio: number | null
 }
 
-// ─── Guard Shell (matches all other guard pages) ──────────────────────────────
-
-const GUARD_TABS = [
-  { href: "/guard",                 label: "Overview"        },
-  { href: "/guard/spend",           label: "Spend"           },
-  { href: "/guard/policies",        label: "Policies"        },
-  { href: "/guard/activity",        label: "Activity"        },
-  { href: "/guard/session-reports", label: "Session Reports" },
-  { href: "/guard/team-memory",     label: "Team Memory"     },
-  { href: "/guard/settings",        label: "Settings"        },
-]
-
-function relativeTime(ts: Date | null): string {
-  if (!ts) return "never"
-  const sec = Math.floor((Date.now() - ts.getTime()) / 1000)
-  if (sec < 5) return "just now"
-  if (sec < 60) return `${sec}s ago`
-  const min = Math.floor(sec / 60)
-  if (min < 60) return `${min}m ago`
-  return `${Math.floor(min / 60)}h ago`
-}
-
 function simpleMarkdown(md: string): string {
   return "<p>" + md
     .replace(/&/g, "&amp;")
@@ -63,50 +42,6 @@ function simpleMarkdown(md: string): string {
     .replace(/\n/g, "<br>") + "</p>"
 }
 
-function GuardShell({ children, lastUpdated }: { children: React.ReactNode; lastUpdated?: Date | null }) {
-  const pathname = usePathname()
-  const [, setTick] = useState(0)
-  useEffect(() => {
-    const t = setInterval(() => setTick(n => n + 1), 10_000)
-    return () => clearInterval(t)
-  }, [])
-  return (
-    <div style={{ maxWidth: 1240, margin: "0 auto", padding: "28px 24px 48px" }}>
-      <div style={{ display: "flex", alignItems: "flex-start", marginBottom: 20 }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", letterSpacing: "-.02em", margin: 0 }}>
-              Guard
-            </h1>
-            <span className="sbadge ok" style={{ marginTop: 2 }}>
-              <span className="conduct-pulse-dot" />
-              live
-            </span>
-          </div>
-          <p style={{ fontSize: 13, color: "var(--text-3)", marginTop: 5 }}>
-            MDM for AI coding tools — policies and spend limits enforced on every Claude Code, Codex, and Cursor call.
-          </p>
-        </div>
-        <div style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)", paddingTop: 4 }}>
-          last updated: {relativeTime(lastUpdated ?? null)}
-        </div>
-      </div>
-      <div className="guard-tab-nav">
-        {GUARD_TABS.map(tab => {
-          const isActive = tab.href === "/guard"
-            ? pathname === "/guard"
-            : pathname?.startsWith(tab.href)
-          return (
-            <Link key={tab.href} href={tab.href} className={`guard-tab${isActive ? " active" : ""}`}>
-              {tab.label}
-            </Link>
-          )
-        })}
-      </div>
-      {children}
-    </div>
-  )
-}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -189,7 +124,7 @@ function SessionReportDetailContent() {
     : []
 
   return (
-    <GuardShell lastUpdated={lastUpdated}>
+    <GuardShell lastFetched={lastUpdated}>
       {/* Back link */}
       <div style={{ marginBottom: 16 }}>
         <Link
