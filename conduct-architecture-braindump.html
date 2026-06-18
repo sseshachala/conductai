@@ -1,0 +1,1124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conduct AI — Architecture Brain-dump</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface-2: #22263a;
+    --border: #2e3347;
+    --text: #e8eaf0;
+    --text-2: #a0a8c0;
+    --text-3: #6b7394;
+    --accent: #6366f1;
+    --accent-bg: #1e1f3a;
+    --green: #22c55e;
+    --green-bg: #0d2018;
+    --red: #ef4444;
+    --red-bg: #2a1010;
+    --amber: #f59e0b;
+    --amber-bg: #2a1f00;
+    --blue: #38bdf8;
+    --blue-bg: #0d1f30;
+    --purple: #a78bfa;
+    --mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    display: flex;
+    min-height: 100vh;
+  }
+
+  /* Sidebar */
+  #sidebar {
+    width: 260px;
+    flex-shrink: 0;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    overflow-y: auto;
+    padding: 24px 0;
+    z-index: 100;
+  }
+  .sidebar-logo {
+    padding: 0 20px 20px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+  .sidebar-logo h1 {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -.02em;
+  }
+  .sidebar-logo p {
+    font-size: 11px;
+    color: var(--text-3);
+    margin-top: 3px;
+  }
+  .sidebar-section {
+    padding: 4px 20px 2px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--text-3);
+    margin-top: 12px;
+  }
+  .sidebar-link {
+    display: block;
+    padding: 6px 20px;
+    font-size: 13px;
+    color: var(--text-2);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+    transition: all .12s;
+  }
+  .sidebar-link:hover { color: var(--text); background: var(--surface-2); }
+  .sidebar-link.active { color: var(--accent); border-left-color: var(--accent); background: var(--accent-bg); }
+
+  /* Main */
+  #main {
+    margin-left: 260px;
+    flex: 1;
+    max-width: 900px;
+    padding: 48px 48px 120px;
+  }
+
+  /* Sections */
+  .section {
+    margin-bottom: 64px;
+    scroll-margin-top: 24px;
+  }
+  .section-tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--accent);
+    background: var(--accent-bg);
+    border-radius: 4px;
+    padding: 2px 8px;
+    margin-bottom: 10px;
+  }
+  h2 {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -.03em;
+    margin-bottom: 8px;
+  }
+  h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 28px 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  h4 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--purple);
+    margin: 20px 0 8px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  p { color: var(--text-2); margin-bottom: 12px; }
+  li { color: var(--text-2); margin-bottom: 4px; }
+  ul, ol { padding-left: 20px; margin-bottom: 12px; }
+
+  /* Code blocks */
+  pre {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.65;
+    color: #c9d1e0;
+    margin: 12px 0 16px;
+  }
+  code {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: var(--blue);
+  }
+  pre code { background: none; border: none; padding: 0; color: inherit; }
+
+  /* Tables */
+  .table-wrap { overflow-x: auto; margin: 12px 0 16px; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  th {
+    text-align: left;
+    padding: 8px 12px;
+    background: var(--surface-2);
+    color: var(--text-3);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-2);
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface-2); }
+  td code { font-size: 11.5px; }
+
+  /* Badges */
+  .badge {
+    display: inline-block;
+    font-size: 10.5px;
+    font-weight: 600;
+    border-radius: 4px;
+    padding: 2px 7px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  .badge-block { background: var(--red-bg); color: var(--red); }
+  .badge-warn  { background: var(--amber-bg); color: var(--amber); }
+  .badge-audit { background: var(--blue-bg); color: var(--blue); }
+  .badge-allow { background: var(--green-bg); color: var(--green); }
+  .badge-new   { background: var(--accent-bg); color: var(--accent); }
+
+  /* Callout boxes */
+  .callout {
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin: 16px 0;
+    border-left: 3px solid;
+    font-size: 13px;
+  }
+  .callout-why  { background: var(--accent-bg); border-color: var(--accent); color: #c4c6f0; }
+  .callout-warn { background: var(--amber-bg);  border-color: var(--amber);  color: #d4b870; }
+  .callout-info { background: var(--blue-bg);   border-color: var(--blue);   color: #90cce0; }
+  .callout strong { color: inherit; font-weight: 700; }
+
+  /* Flow diagram */
+  .flow {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: #c9d1e0;
+    line-height: 1.7;
+    overflow-x: auto;
+    white-space: pre;
+    margin: 12px 0 16px;
+  }
+
+  /* Hero */
+  .hero {
+    background: linear-gradient(135deg, var(--accent-bg) 0%, var(--surface) 100%);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px;
+    margin-bottom: 40px;
+  }
+  .hero h1 { font-size: 28px; font-weight: 800; letter-spacing: -.04em; color: var(--text); margin-bottom: 8px; }
+  .hero p  { font-size: 15px; color: var(--text-2); margin-bottom: 0; }
+  .layer-pills { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+  .layer-pill {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 5px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-2);
+  }
+
+  /* Timeline */
+  .timeline { position: relative; padding-left: 24px; margin: 16px 0; }
+  .timeline::before { content: ''; position: absolute; left: 6px; top: 6px; bottom: 6px; width: 2px; background: var(--border); }
+  .timeline-item { position: relative; margin-bottom: 16px; }
+  .timeline-item::before { content: ''; position: absolute; left: -21px; top: 6px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg); }
+  .timeline-item .t-label { font-size: 10.5px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 3px; }
+  .timeline-item .t-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+  .timeline-item .t-desc  { font-size: 12.5px; color: var(--text-2); }
+
+  /* Scroll highlight */
+  .highlight-row td:first-child { border-left: 2px solid var(--accent); }
+
+  /* File path */
+  .filepath { font-family: var(--mono); font-size: 11.5px; color: var(--text-3); }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<nav id="sidebar">
+  <div class="sidebar-logo">
+    <h1>Conduct AI</h1>
+    <p>Architecture Brain-dump · FDE Reference</p>
+  </div>
+
+  <div class="sidebar-section">Overview</div>
+  <a href="#overview" class="sidebar-link">Platform Overview</a>
+  <a href="#why" class="sidebar-link">Why We Built This</a>
+  <a href="#stack" class="sidebar-link">Tech Stack</a>
+
+  <div class="sidebar-section">Guard</div>
+  <a href="#guard-overview" class="sidebar-link">What Guard Does</a>
+  <a href="#guard-data-model" class="sidebar-link">Data Model</a>
+  <a href="#guard-policies" class="sidebar-link">Policy Engine</a>
+  <a href="#guard-hook" class="sidebar-link">Hook System</a>
+  <a href="#guard-mcp" class="sidebar-link">MCP Server</a>
+  <a href="#guard-trust" class="sidebar-link">Trust Model</a>
+  <a href="#guard-session" class="sidebar-link">Session Capture</a>
+
+  <div class="sidebar-section">Security</div>
+  <a href="#pii" class="sidebar-link">3-Layer PII Detection</a>
+  <a href="#auth" class="sidebar-link">Auth & RBAC</a>
+  <a href="#rls" class="sidebar-link">Row-Level Security</a>
+
+  <div class="sidebar-section">Booster</div>
+  <a href="#booster-overview" class="sidebar-link">What Booster Does</a>
+  <a href="#booster-arch" class="sidebar-link">4-Layer Architecture</a>
+  <a href="#booster-tools" class="sidebar-link">MCP Tools</a>
+
+  <div class="sidebar-section">Runtime</div>
+  <a href="#runtime-overview" class="sidebar-link">Compiler + Executor</a>
+  <a href="#blocks" class="sidebar-link">Block Types</a>
+  <a href="#integrations" class="sidebar-link">Integrations</a>
+
+  <div class="sidebar-section">Decisions</div>
+  <a href="#decisions" class="sidebar-link">Key Design Decisions</a>
+  <a href="#migrations" class="sidebar-link">Migration History</a>
+  <a href="#flowdiagram" class="sidebar-link">End-to-End Flow</a>
+  <a href="#filepaths" class="sidebar-link">Critical File Paths</a>
+</nav>
+
+<!-- MAIN -->
+<main id="main">
+
+  <!-- HERO -->
+  <div class="hero">
+    <h1>Conduct AI — Technical Brain-dump</h1>
+    <p>Complete architecture reference for FDE conversations. Covers why decisions were made, how each layer works, and where the critical code lives.</p>
+    <div class="layer-pills">
+      <span class="layer-pill">🛡 Guard — Policy Enforcement</span>
+      <span class="layer-pill">⚡ Agent Booster — Token Optimization</span>
+      <span class="layer-pill">🤖 Conduct Runtime — Playbook Automation</span>
+      <span class="layer-pill">🔐 3-Layer PII Detection</span>
+    </div>
+  </div>
+
+  <!-- ── OVERVIEW ─────────────────────────────────────────── -->
+  <div class="section" id="overview">
+    <div class="section-tag">Overview</div>
+    <h2>Platform Overview</h2>
+    <p>Conduct AI is a three-layer platform that sits between your engineering team and their AI coding tools. Think of it as <strong>MDM (Mobile Device Management) but for AI agents</strong> — the same mental model: policies push down, telemetry flows up, managers get visibility without touching developer machines.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Layer</th><th>What it does</th><th>Who benefits</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Guard</strong></td><td>Intercepts every AI tool call. Enforces team policies (block rm -rf, require approval for prod deploys, redact secrets). Captures session telemetry.</td><td>Security leads, CTOs, compliance teams</td></tr>
+          <tr><td><strong>Agent Booster</strong></td><td>Semantic codebase routing. Returns only the relevant symbols for a task — not the whole file. 5–15× token cost reduction.</td><td>Developers paying per token</td></tr>
+          <tr><td><strong>Conduct Runtime</strong></td><td>YAML playbook automation. 22 pre-built workflows covering GitHub, Slack, CI/CD, incident response. Chain AI brain blocks + tool calls + bash in a visual canvas.</td><td>Engineering leads automating repetitive AI work</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── WHY ───────────────────────────────────────────────── -->
+  <div class="section" id="why">
+    <div class="section-tag">Why</div>
+    <h2>Why We Built This</h2>
+
+    <h3>The problem</h3>
+    <p>When a team goes from 1 developer using Claude Code to 20, three things break:</p>
+    <ol>
+      <li><strong>Control</strong> — No way to prevent a junior dev from force-pushing to main or committing a .env file via AI suggestion</li>
+      <li><strong>Cost visibility</strong> — No one knows who's spending what on LLM tokens across 20 developers × 5 AI tools</li>
+      <li><strong>Audit trail</strong> — When something goes wrong ("who asked the AI to DROP TABLE?"), there's no log</li>
+    </ol>
+
+    <h3>Why not existing tools?</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Alternative</th><th>Gap</th><th>How Conduct fills it</th></tr></thead>
+        <tbody>
+          <tr><td>GitHub branch protection</td><td>Only protects git — doesn't intercept the AI agent before it acts</td><td>Hook fires before the bash command runs, not after</td></tr>
+          <tr><td>Pre-commit hooks</td><td>Only covers commits, not reads/writes/API calls</td><td>Intercepts every tool type (bash, read, write, curl, edit)</td></tr>
+          <tr><td>Anthropic usage dashboard</td><td>Aggregate spend only, no per-developer or per-action breakdown</td><td>Per tool call: who, what, which file, how many tokens, blocked or not</td></tr>
+          <tr><td>Custom MCP servers</td><td>One-off per team, no policy management UI, no cross-tool coverage</td><td>Single install covers Claude Code + Cursor + Codex + Windsurf</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout callout-why">
+      <strong>The insight:</strong> AI coding tools all support MCP (Model Context Protocol) — a standard for tool calls. We sit at the MCP layer. Every tool call passes through us before execution. That's the leverage point no existing product controls.
+    </div>
+  </div>
+
+  <!-- ── STACK ─────────────────────────────────────────────── -->
+  <div class="section" id="stack">
+    <div class="section-tag">Stack</div>
+    <h2>Tech Stack</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Layer</th><th>Technology</th><th>Why this choice</th></tr></thead>
+        <tbody>
+          <tr><td>API</td><td>FastAPI + Python 3.11</td><td>Async-first, MCP JSON-RPC fits naturally, rich ecosystem for AI/ML libs (tree-sitter, sentence-transformers)</td></tr>
+          <tr><td>Database</td><td>PostgreSQL + SQLAlchemy + Alembic</td><td>RLS (Row-Level Security) for workspace isolation without app-layer filtering everywhere</td></tr>
+          <tr><td>Auth</td><td>Clerk (JWT)</td><td>Out-of-the-box SSO, org management, webhook notifications — didn't want to build auth</td></tr>
+          <tr><td>Frontend</td><td>Next.js 14 (App Router) + TypeScript</td><td>Server components for fast initial load, streaming UI for real-time activity feed</td></tr>
+          <tr><td>CLI</td><td>Python (conduct-cli)</td><td>Developers already have Python, single binary install via pip. Hook templates are compiled to .claude/hooks/</td></tr>
+          <tr><td>Hook runtime</td><td>Pure Python subprocess (no deps)</td><td>Hooks must be zero-latency. No FastAPI overhead. Subprocess fires async after decision is made.</td></tr>
+          <tr><td>Symbol indexing</td><td>tree-sitter + SQLite</td><td>Parse 15 languages locally. SQLite = no separate service. Portable, works in CI.</td></tr>
+          <tr><td>Embeddings</td><td>all-MiniLM-L6-v2 (local)</td><td>No data leaves the machine. 384-dim, fast enough for real-time retrieval. No API key needed.</td></tr>
+          <tr><td>Deployment</td><td>Render (API) + Vercel (Web)</td><td>Zero-infra ops. Render auto-deploys on push. Vercel handles CDN + edge for web.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── GUARD OVERVIEW ────────────────────────────────────── -->
+  <div class="section" id="guard-overview">
+    <div class="section-tag">Guard</div>
+    <h2>What Guard Does</h2>
+    <p>Guard is the policy enforcement layer. It installs on every developer's machine in one command and intercepts every AI tool call before execution.</p>
+
+    <div class="flow">Developer runs:  "git push --force origin main" inside Claude Code
+                          ↓
+             [PreToolUse hook fires — BEFORE execution]
+                          ↓
+         Load ~/.conductguard/policy.json (cached, 60s TTL)
+                          ↓
+         Match rule: "no-force-push" → action: BLOCK
+                          ↓
+    Return error to Claude Code: "🚫 Force push blocked. Coordinate with team."
+                          ↓
+         POST event to API (async, non-blocking)
+                          ↓
+     API → GuardAuditEvent inserted → Slack 🚨 fires → Dashboard updates</div>
+
+    <p>The key architectural principle: <strong>the decision is made locally</strong> (using a cached policy file) so there is zero network latency on the developer's flow. The telemetry is sent async after the decision. This means Guard works offline too.</p>
+  </div>
+
+  <!-- ── GUARD DATA MODEL ──────────────────────────────────── -->
+  <div class="section" id="guard-data-model">
+    <div class="section-tag">Guard · Data Model</div>
+    <h2>Data Model</h2>
+    <p>8 core tables, all workspace-scoped.</p>
+
+    <h3>GuardConfig</h3>
+    <p>One row per workspace. Holds the team's Guard settings.</p>
+    <pre>GuardConfig
+├─ workspace_id       UUID (FK, PK)
+├─ invite_code        str  — one-time onboarding code distributed by admin
+├─ enforcement_mode   str  — warn | block | audit
+├─ notify_on_block    bool — fire Slack on every block/warn
+├─ slack_webhook_url  str  — Slack integration for alerts
+└─ token_guardrails   JSONB — RTK filter config + model router overrides</pre>
+
+    <h3>GuardPolicy</h3>
+    <p>One row per rule per workspace. Seeded from builtin_policies.yaml at workspace creation. Admins can enable/disable/add rules via the UI.</p>
+    <pre>GuardPolicy
+├─ id                     UUID
+├─ workspace_id           UUID (FK)
+├─ rule_id                str  — slug, e.g. "no-force-push"
+├─ match_tool             str  — bash|edit|write|read|* (comma-separated)
+├─ match_pattern          str  — regex matched against command/content
+├─ match_path_pattern     str  — regex matched against file path
+├─ match_tokens_before_gt int  — fires if context window > N tokens
+├─ action                 str  — block | warn | audit | approval | inject
+├─ message                str  — shown to developer when rule fires
+├─ enabled                bool — soft disable (never deleted)
+└─ builtin                bool — seeded from YAML, cannot be deleted</pre>
+
+    <h3>GuardSession</h3>
+    <p>One row per developer session. A session = one Claude Code conversation.</p>
+    <pre>GuardSession
+├─ id                 UUID
+├─ workspace_id       UUID (FK)
+├─ user_email         str
+├─ ai_tool            str  — claude_code | cursor | codex | windsurf
+├─ started_at         DateTime
+├─ ended_at           DateTime
+├─ total_tokens_*     int  — before/after (measures Booster savings)
+├─ total_cost_usd     float
+├─ event_count        int  — total tool calls this session
+├─ violations_count   int  — blocks + warns
+├─ client_ip          str  — public IP from X-Forwarded-For (Render proxy)
+├─ os_info            str  — "Darwin 24.4.0 arm64"
+└─ hostname           str  — "Sudhis-MacBook-Pro.local"</pre>
+
+    <h3>GuardAuditEvent</h3>
+    <p>One row per tool call. The core audit trail.</p>
+    <pre>GuardAuditEvent
+├─ id               UUID
+├─ session_id       UUID (FK → GuardSession)
+├─ tool_call        str   — bash | read | write | edit | curl | git
+├─ input_summary    str   — first 200 chars, PII/secrets redacted
+├─ decision         str   — allowed | blocked | warned | audited
+├─ rule_id          str   — which policy matched (null if allowed)
+├─ tokens_before    int   — context size when tool was called
+├─ tokens_after     int   — response size
+├─ cost_usd_before  float — what it would have cost
+├─ cost_usd_after   float — what it actually cost (0 if blocked)
+├─ hook_session_id  str   — raw session ID from hook stdin
+└─ ts               DateTime</pre>
+  </div>
+
+  <!-- ── GUARD POLICIES ────────────────────────────────────── -->
+  <div class="section" id="guard-policies">
+    <div class="section-tag">Guard · Policies</div>
+    <h2>Policy Engine</h2>
+    <p>30+ built-in rules seeded from <code>builtin_policies.yaml</code>. Organized in 8 categories. Every workspace starts with all of them; admins toggle on/off via UI.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Category</th><th>Rules</th><th>Actions</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Destructive Operations</strong></td><td>no-rm-rf, no-git-reset-hard, no-force-push, no-drop-table, no-truncate-table, no-delete-without-where</td><td><span class="badge badge-block">block</span></td></tr>
+          <tr><td><strong>Permission Escalation</strong></td><td>no-sudo, no-chmod-permissive, no-chown-root</td><td><span class="badge badge-block">block</span> <span class="badge badge-warn">warn</span></td></tr>
+          <tr><td><strong>Secrets & Credentials</strong></td><td>no-env-commits, no-hardcoded-secrets, no-aws-keys, no-private-key-files, no-secret-in-commit-msg, secret-stripe, secret-slack, secret-private-key</td><td><span class="badge badge-warn">warn</span> <span class="badge badge-block">block</span></td></tr>
+          <tr><td><strong>Production Gates</strong></td><td>approve-prod-deploy, approve-db-migration-prod, approve-terraform-destroy, approve-kubectl-delete, approve-prod-env-edit</td><td><span class="badge badge-audit">approval</span></td></tr>
+          <tr><td><strong>Code Security</strong></td><td>cmd-injection, sql-injection, weak-hash-md5, weak-hash-sha1</td><td><span class="badge badge-warn">warn</span></td></tr>
+          <tr><td><strong>Audit</strong></td><td>audit-migrations, audit-ci-config, audit-dockerfile</td><td><span class="badge badge-audit">audit</span></td></tr>
+          <tr><td><strong>Token Efficiency</strong></td><td>warn-deterministic-compute, warn-large-context-dump (&gt;50K tokens)</td><td><span class="badge badge-warn">warn</span></td></tr>
+          <tr><td><strong>Privacy</strong></td><td>pii-redact (strips PII before LLM), secret-redact (3-layer detection)</td><td><span class="badge badge-block">block</span> <span class="badge badge-audit">audit</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Policy Matching Logic</h3>
+    <pre>for rule in policy["rules"]:
+    if not rule["enabled"]:                          continue
+    if tool_name not in rule["match_tool"].split(","): continue
+    if rule["match_pattern"] and
+       not re.search(rule["match_pattern"], input):  continue
+    if rule["match_path_pattern"] and
+       not re.search(rule["match_path_pattern"], path): continue
+    if rule["match_tokens_before_gt"] and
+       tokens_before &lt;= rule["match_tokens_before_gt"]: continue
+
+    return (rule["action"], rule["rule_id"], rule["message"])
+
+return ("allow", None, None)</pre>
+
+    <div class="callout callout-why">
+      <strong>Design decision:</strong> Rules are evaluated top-to-bottom, first match wins. Order in YAML matters. Destructive ops are first so they can't be bypassed by a later rule. The <code>match_tokens_before_gt</code> field was added specifically for the "warn when context &gt; 50K tokens" use case — a field type no other tool policy engine has.
+    </div>
+
+    <h3>Refresh Built-ins</h3>
+    <p>Seeding only inserts missing rules (<code>if exists: continue</code>). When we add new rules to the YAML or update descriptions, existing workspaces don't get them automatically. The <strong>Refresh Built-ins</strong> button (<code>POST /guard/policies/refresh-builtins</code>) upserts all rules from YAML into the workspace — updating description, pattern, action, and message while preserving the admin's enabled/disabled toggle.</p>
+  </div>
+
+  <!-- ── GUARD HOOK ────────────────────────────────────────── -->
+  <div class="section" id="guard-hook">
+    <div class="section-tag">Guard · Hook System</div>
+    <h2>Hook System</h2>
+    <p>The hook is a Python script that Claude Code executes before (PreToolUse) and after (PostToolUse) every tool call. It's the enforcement point.</p>
+
+    <h3>Three hook entry points</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Hook</th><th>When it fires</th><th>What it does</th><th>File</th></tr></thead>
+        <tbody>
+          <tr><td><code>hook.py</code></td><td>Before every tool call</td><td>Policy check → allow/block/warn → async telemetry POST</td><td class="filepath">~/.conductguard/hook.py</td></tr>
+          <tr><td><code>guard-session-start.py</code></td><td>Session start</td><td>Detect AI tool, detect repo, create session record</td><td class="filepath">~/.conductguard/guard-session-start.py</td></tr>
+          <tr><td><code>guard-stop.py</code></td><td>Session end</td><td>Close session, push final token counts</td><td class="filepath">~/.conductguard/guard-stop.py</td></tr>
+          <tr><td><code>guard-precompact.py</code></td><td>Before context compaction</td><td>Save session snapshot before context window shrinks</td><td class="filepath">~/.conductguard/guard-precompact.py</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Policy caching strategy</h3>
+    <p>Policy is cached locally to eliminate network latency from the critical path:</p>
+    <pre>Startup:  Pull policy from /guard/policies/sync → save to ~/.conductguard/policy.json
+Per call: Load policy.json (disk read, microseconds)
+Every 60s: Background check policy version → if changed, re-download silently
+Offline:  Stale policy.json used — Guard works without network</pre>
+
+    <div class="callout callout-info">
+      <strong>Why local cache?</strong> A network round-trip on every tool call would add 100–300ms to every bash command, read, and write. That's unusable. The 60-second staleness window is an acceptable trade-off — policy changes propagate within a minute, not instantly.
+    </div>
+
+    <h3>OS / IP / Hostname capture</h3>
+    <p>Every event now includes machine fingerprint data — captured once per session on first event:</p>
+    <pre>os_info:  platform.system() + platform.release() + platform.machine()
+          → "Darwin 24.4.0 arm64"
+hostname: platform.node()
+          → "Sudhis-MacBook-Pro.local"
+client_ip: Server captures from X-Forwarded-For header (Render proxy)
+          → "203.0.113.42"</pre>
+    <p>This solves the multi-machine problem: the same developer on two laptops now shows as two distinct sources in session reports.</p>
+  </div>
+
+  <!-- ── GUARD MCP ─────────────────────────────────────────── -->
+  <div class="section" id="guard-mcp">
+    <div class="section-tag">Guard · MCP Server</div>
+    <h2>MCP Server</h2>
+    <p>Guard exposes 5 tools via the Model Context Protocol. Two deployment modes:</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Mode</th><th>Transport</th><th>Runs where</th><th>Auth</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Local</strong> (guardmcp.py)</td><td>stdio</td><td>Developer's machine (subprocess)</td><td>Reads ~/.conductguard/config.json</td></tr>
+          <tr><td><strong>Remote</strong> (mcp.py in FastAPI)</td><td>HTTP (SSE + POST)</td><td>Render (api.conductai.ai)</td><td>workspace_id + member_token in URL params</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>The 5 MCP tools</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Tool</th><th>Purpose</th><th>Returns</th></tr></thead>
+        <tbody>
+          <tr><td><code>guard_check</code></td><td>Evaluate a tool call against policy</td><td>ALLOWED | BLOCKED | WARNING + message</td></tr>
+          <tr><td><code>guard_status</code></td><td>Current policy summary</td><td>Rule count, enforcement mode, version</td></tr>
+          <tr><td><code>guard_sync</code></td><td>Pull latest policy from server</td><td>OK + rule count</td></tr>
+          <tr><td><code>guard_enable</code></td><td>Return MCP config snippet for Claude Desktop</td><td>JSON config block to paste</td></tr>
+          <tr><td><code>guard_activity</code></td><td>Log session intent at conversation start</td><td>OK (audit trail)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout callout-why">
+      <strong>Why two modes?</strong> Claude Desktop uses stdio MCP servers (subprocess). Claude.ai and remote agents use HTTP MCP servers. Same 5 tools, same schema, different transport. The system prompt injected into every conversation instructs the AI to call <code>guard_check</code> before every tool execution — the LLM enforces the policy, not just the hook binary.
+    </div>
+  </div>
+
+  <!-- ── GUARD TRUST ───────────────────────────────────────── -->
+  <div class="section" id="guard-trust">
+    <div class="section-tag">Guard · Security</div>
+    <h2>Trust Model</h2>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Caller</th><th>Auth method</th><th>Stored in</th></tr></thead>
+        <tbody>
+          <tr><td>Claude Code hook</td><td>member_token (Bearer)</td><td>~/.conductguard/config.json</td></tr>
+          <tr><td>Guard MCP (local)</td><td>Reads config.json</td><td>~/.conductguard/config.json</td></tr>
+          <tr><td>Guard MCP (remote)</td><td>workspace_id + member_token (query params)</td><td>Claude.ai Project Settings (MCP URL)</td></tr>
+          <tr><td>Conduct CLI</td><td>HMAC SHA-256 API key</td><td>Environment / conduct-cli config</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Member token flow</h3>
+    <pre>Developer runs:  conduct guard join &lt;invite_code&gt;
+CLI calls:       POST /guard/join  { invite_code, email }
+Backend:         Validates invite_code → issues member_token (crypto nonce)
+                 Stores in GuardMemberConfig(workspace_id, clerk_user_id, member_token)
+CLI saves:       { member_token, workspace_id, api_url } → ~/.conductguard/config.json
+Subsequent:      All hook events carry member_token as Authorization: Bearer &lt;token&gt;</pre>
+
+    <div class="callout callout-warn">
+      <strong>Important:</strong> The trust anchor is possession of workspace_id + member_token. There is no per-request signature — the token is a long-lived bearer token. Revocation is done by deleting the GuardMemberConfig row.
+    </div>
+  </div>
+
+  <!-- ── GUARD SESSION ─────────────────────────────────────── -->
+  <div class="section" id="guard-session">
+    <div class="section-tag">Guard · Pipeline</div>
+    <h2>Session Capture Pipeline</h2>
+    <p>End-to-end timeline of a single blocked tool call:</p>
+
+    <div class="timeline">
+      <div class="timeline-item">
+        <div class="t-label">T+0ms — Developer action</div>
+        <div class="t-title">Runs <code>git push --force origin main</code> in Claude Code</div>
+      </div>
+      <div class="timeline-item">
+        <div class="t-label">T+1ms — Hook fires</div>
+        <div class="t-title">PreToolUse hook executes (synchronous, in-process)</div>
+        <div class="t-desc">Loads ~/.conductguard/policy.json. Matches "no-force-push". Decision: BLOCK.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="t-label">T+2ms — Developer blocked</div>
+        <div class="t-title">Error returned to Claude Code UI</div>
+        <div class="t-desc">"🚫 BLOCKED — no-force-push: Force push blocked. Coordinate with your team before rewriting history."</div>
+      </div>
+      <div class="timeline-item">
+        <div class="t-label">T+100ms — Async telemetry</div>
+        <div class="t-title">Subprocess POSTs to /guard/events</div>
+        <div class="t-desc">Includes workspace_id, user_email, tool_call, decision, rule_id, os_info, hostname</div>
+      </div>
+      <div class="timeline-item">
+        <div class="t-label">T+150ms — API processing</div>
+        <div class="t-title">GuardAuditEvent inserted</div>
+        <div class="t-desc">PII redacted from input_summary. Spend budget checked. Slack webhook fired if notify_on_block=true.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="t-label">T+2s — Dashboard</div>
+        <div class="t-title">SSE stream delivers new event to admin's browser</div>
+        <div class="t-desc">"14:32 · sudhi@b2bsphere.com · Claude Code · bash · BLOCKED · no-force-push"</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PII ───────────────────────────────────────────────── -->
+  <div class="section" id="pii">
+    <div class="section-tag">Security</div>
+    <h2>3-Layer PII Detection</h2>
+    <p>All tool inputs are scanned before being written to audit logs or sent to the LLM. Detection runs in three ordered layers.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Layer</th><th>What it catches</th><th>How</th><th>False positive risk</th></tr></thead>
+        <tbody>
+          <tr><td><strong>1. Structural</strong></td><td>AWS access keys (AKIA*), GitHub tokens (ghp_, gho_, ghs_, github_pat_), PEM private keys</td><td>High-confidence regex on unmistakable formats</td><td>Zero — these formats are unique</td></tr>
+          <tr><td><strong>2. Bare-in-text</strong></td><td>Slack tokens (xox*), OpenAI/Anthropic keys (sk-, ak-), Stripe keys (sk_live_*, rk_*), Bearer tokens, URL passwords</td><td>Regex on token prefixes without needing keyword context</td><td>Very low — prefixes are service-specific</td></tr>
+          <tr><td><strong>3. Context-aware</strong></td><td>Any value ≥8 chars after a credential keyword (api_key, token, password, secret, auth, credential, access_key, etc.)</td><td>Keyword + separator (= or :) + value regex</td><td>Low — requires keyword context. Catches new services automatically.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Layer 3 keyword list</h3>
+    <pre>api_key | token | password | passwd | secret | auth | authorization |
+credential | access_key | private_key | client_secret | client_id |
+bearer | api_token | service_key</pre>
+
+    <div class="callout callout-why">
+      <strong>Why 3 layers?</strong> Layer 1 alone misses new services. Layer 3 alone produces false positives on code (e.g., <code>headers["Authorization"]</code> is not a credential). The layered approach gives zero false positives for known formats, near-zero for bare tokens, and acceptable catch-all for context-aware. Layer 3 also catches any new service (PyPI, npm, Vercel, Render, Twilio) without adding a new pattern — the keyword match is generic.
+    </div>
+
+    <h3>False positive fix (shipped June 2026)</h3>
+    <p>Original separator: <code>[=:"]</code> — the <code>"</code> matched the closing quote of dict keys like <code>headers["Authorization"]</code>. Fixed to <code>[=:]</code> — only <code>=</code> and <code>:</code> trigger the context-aware layer. All 18 self-tests pass.</p>
+  </div>
+
+  <!-- ── AUTH ─────────────────────────────────────────────── -->
+  <div class="section" id="auth">
+    <div class="section-tag">Security · Auth</div>
+    <h2>Auth & RBAC</h2>
+
+    <h3>Dual authentication</h3>
+    <pre>Resolution order:
+1. Clerk JWT (Bearer token) — human users via Claude.ai / web UI
+2. X-Api-Key header — programmatic access (CLI, Conduct agents)
+3. Dev workspace fallback — when Clerk not configured (local dev only)</pre>
+
+    <h3>RBAC permission matrix</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Permission</th><th>Admin</th><th>Security</th><th>Developer</th><th>Viewer</th></tr></thead>
+        <tbody>
+          <tr><td>guard.policies.edit</td><td>✓</td><td>✓</td><td></td><td></td></tr>
+          <tr><td>guard.activity.view_all</td><td>✓</td><td>✓</td><td></td><td></td></tr>
+          <tr><td>guard.activity.view_own</td><td>✓</td><td>✓</td><td>✓</td><td></td></tr>
+          <tr><td>guard.spend.view_all</td><td>✓</td><td>✓</td><td></td><td></td></tr>
+          <tr><td>guard.spend.budgets.edit</td><td>✓</td><td></td><td></td><td></td></tr>
+          <tr><td>guard.settings.edit</td><td>✓</td><td></td><td></td><td></td></tr>
+          <tr><td>platform.workflows.run</td><td>✓</td><td>✓</td><td>✓</td><td></td></tr>
+          <tr><td>platform.credentials.manage</td><td>✓</td><td>✓</td><td>✓</td><td></td></tr>
+          <tr><td>platform.members.manage</td><td>✓</td><td></td><td></td><td></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout callout-why">
+      <strong>Why require_permission() over role strings?</strong> <code>require_permission("guard.policies.edit")</code> checks a DB-seeded RBAC table rather than hardcoding role names. When we add a new role or rearrange permissions, one DB update covers all endpoints. No code change needed.
+    </div>
+  </div>
+
+  <!-- ── RLS ───────────────────────────────────────────────── -->
+  <div class="section" id="rls">
+    <div class="section-tag">Security · Isolation</div>
+    <h2>Row-Level Security</h2>
+    <p>PostgreSQL RLS enforces workspace isolation at the database level — a misconfigured query can't accidentally leak another tenant's data.</p>
+
+    <pre>-- Migration 0004
+ALTER TABLE guard_policies ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON guard_policies
+  AS PERMISSIVE FOR ALL
+  USING (workspace_id = current_setting('app.current_workspace', true)::uuid);
+
+-- Set per request in middleware:
+db.execute("SET LOCAL app.current_workspace = :ws", {"ws": workspace_id})</pre>
+
+    <p>Applied to: guard_policies, guard_sessions, audit_log, workflows, conduct_api_keys.<br>
+    Not applied to: runs (the worker needs cross-workspace visibility to execute queued jobs).</p>
+  </div>
+
+  <!-- ── BOOSTER OVERVIEW ──────────────────────────────────── -->
+  <div class="section" id="booster-overview">
+    <div class="section-tag">Agent Booster</div>
+    <h2>What Agent Booster Does</h2>
+    <p>Agent Booster replaces full file reads with semantic symbol retrieval. Instead of sending 2000 lines of executor.py to the LLM, it sends only the 80-line function that's relevant to the task.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Without Booster</th><th>With Booster</th></tr></thead>
+        <tbody>
+          <tr><td>Read executor.py (1778 lines = ~45K tokens)</td><td>smart_read("executor.py", "how blocks handle errors") → 3 functions = ~800 tokens</td></tr>
+          <tr><td>Grep for "GuardSession" across codebase</td><td>search_context("GuardSession usage") → 5 relevant symbol slices</td></tr>
+          <tr><td>Read file to see what functions exist</td><td>get_symbols("models.py") → list of 20 function/class names, no content</td></tr>
+          <tr><td>Always use Opus (expensive)</td><td>route_model("fix typo in comment") → haiku (10× cheaper)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Typical savings: <strong>70–95% token reduction</strong> on file reads, <strong>5–15× cost reduction</strong> via model routing.</p>
+  </div>
+
+  <!-- ── BOOSTER ARCH ──────────────────────────────────────── -->
+  <div class="section" id="booster-arch">
+    <div class="section-tag">Agent Booster · Architecture</div>
+    <h2>4-Layer Architecture</h2>
+
+    <h4>Layer 1 — Symbol Index</h4>
+    <pre>indexer.py
+├─ tree-sitter: parse .py / .ts / .tsx / .js / .jsx
+├─ Extract: functions, classes, methods → {name, start_line, end_line, kind}
+├─ SQLite store: .booster/symbols.db
+└─ File hash + mtime: skip re-indexing unchanged files</pre>
+
+    <h4>Layer 2 — Vector Embeddings</h4>
+    <pre>indexer.py → _embed_for_index()
+├─ Model: all-MiniLM-L6-v2 (local, 384-dim, ~25MB)
+├─ No data leaves the machine
+├─ Storage: SQLite BLOB (normalized L2 vectors)
+└─ Prefix: "passage: " for indexing, "query: " for retrieval</pre>
+
+    <h4>Layer 3 — Smart Retrieval</h4>
+    <pre>retriever.py
+├─ Input: file path + task description
+├─ Keyword search: BM25-style token match on symbol names
+├─ Vector search: cosine similarity on embeddings
+├─ Fusion: Reciprocal Rank Fusion (RRF) combines both scores
+└─ Output: only matching symbol line ranges (sliced from file)</pre>
+
+    <h4>Layer 4 — SmartCrusher</h4>
+    <pre>crusher.py
+├─ Threshold: 2048 bytes (don't compress small outputs)
+├─ Strategy 1: JSON array → keep head[5] + tail[3], collapse middle
+├─ Strategy 2: Consecutive repeated lines → "// … N identical lines omitted"
+└─ Never returns larger than input</pre>
+
+    <div class="callout callout-why">
+      <strong>Why local embeddings?</strong> Sending codebase content to an embedding API (OpenAI, Cohere) risks leaking proprietary code. The all-MiniLM-L6-v2 model runs locally in ~80ms, produces vectors good enough for retrieval, and requires no API key or network access.
+    </div>
+  </div>
+
+  <!-- ── BOOSTER TOOLS ─────────────────────────────────────── -->
+  <div class="section" id="booster-tools">
+    <div class="section-tag">Agent Booster · MCP Tools</div>
+    <h2>MCP Tools</h2>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Tool</th><th>Input</th><th>Output</th><th>When to use</th></tr></thead>
+        <tbody>
+          <tr><td><code>get_symbols</code></td><td>file path</td><td>List of {name, kind, line} for all functions/classes</td><td>Exploring a file's structure before deciding what to read</td></tr>
+          <tr><td><code>search_context</code></td><td>task description</td><td>Top-K relevant symbol slices across all indexed files</td><td>Finding where something is implemented without knowing the file</td></tr>
+          <tr><td><code>smart_read</code></td><td>file path + task</td><td>Only the line ranges that match the task</td><td>Reading a specific function/class from a large file</td></tr>
+          <tr><td><code>route_model</code></td><td>task description + optional file list</td><td>"haiku" | "sonnet" | "opus" with reasoning</td><td>Picking the cheapest model that can handle the task</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Cache alignment (P0 — June 2026)</h3>
+    <p>Anthropic's prompt cache uses the first 1024 tokens as a stable prefix. If tool schemas arrive in different orders across requests, the cache prefix changes and you pay full price every time.</p>
+    <pre>Fix: mcp_server.py sorts tools alphabetically + sorts schema keys
+     → Stable schema hash → Anthropic KV cache hit on every request
+     → ~30% cost reduction on repeated tool calls in long sessions</pre>
+  </div>
+
+  <!-- ── RUNTIME ───────────────────────────────────────────── -->
+  <div class="section" id="runtime-overview">
+    <div class="section-tag">Runtime</div>
+    <h2>Compiler + Executor</h2>
+
+    <h3>Compiler (compiler/compiler.py)</h3>
+    <p>Turns a human-written playbook description into structured Brain block prompts.</p>
+    <pre>Step 1 — Extraction (Claude Sonnet, single-turn)
+  Input:  "Extract and fix all unused imports in src/lib/*.ts"
+  Output: { goal, constraints, output_format } (structured)
+
+Step 2 — Template assembly
+  system_prompt = brain_prompt(
+    goal="Identify and remove unused imports",
+    constraints=["Match TypeScript import statements", "Preserve type imports"],
+    output_format="List of removed import statements",
+    max_turns=3
+  )</pre>
+
+    <h3>Executor (runtime/executor.py, 1778 lines)</h3>
+    <p>Orchestrates playbook run execution. Manages state, branching, token budgets, and block-level retries.</p>
+    <pre>execute_run(run_id):
+  while state.current_block:
+    block = load_block(state.current_block)
+    result = execute_block(block, state)    # brain|bash|tool|output|logic
+    state.record_event(block.id, result)
+    state.current_block = graph.next(current_block, result.decision)
+  finalize_run(state)</pre>
+
+    <div class="callout callout-why">
+      <strong>Why YAML playbooks?</strong> Engineers already understand YAML (CI/CD pipelines, Kubernetes configs). A playbook that calls GitHub, Slack, and runs bash is readable and version-controllable. No visual canvas required to create one — the canvas is just a viewer/editor on top of the YAML.
+    </div>
+  </div>
+
+  <!-- ── BLOCKS ────────────────────────────────────────────── -->
+  <div class="section" id="blocks">
+    <div class="section-tag">Runtime · Blocks</div>
+    <h2>Block Types</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Block type</th><th>What it does</th><th>Key config</th></tr></thead>
+        <tbody>
+          <tr><td><code>brain</code></td><td>LLM reasoning. Takes context, produces structured output. The "AI step" in a playbook.</td><td>max_turns, model, system_prompt (compiled)</td></tr>
+          <tr><td><code>bash</code></td><td>Shell command. Runs in Modal or E2B sandbox.</td><td>command, sandbox_type, timeout</td></tr>
+          <tr><td><code>tool</code></td><td>Structured API call. One of 13 integrations (Slack, GitHub, Stripe, etc.)</td><td>integration, action, inputs</td></tr>
+          <tr><td><code>output</code></td><td>Terminal block. Formats and returns the final result.</td><td>template, format (json|markdown|text)</td></tr>
+          <tr><td><code>logic</code></td><td>Branching. Routes to different next blocks based on conditions.</td><td>condition, true_block, false_block</td></tr>
+          <tr><td><code>memory</code></td><td>Recall or record context across sessions.</td><td>mode (recall|record), namespace</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── INTEGRATIONS ──────────────────────────────────────── -->
+  <div class="section" id="integrations">
+    <div class="section-tag">Runtime · Integrations</div>
+    <h2>Integrations (13)</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Integration</th><th>Actions available</th></tr></thead>
+        <tbody>
+          <tr><td>Slack</td><td>post_message, thread_reply, delete_message, list_channels</td></tr>
+          <tr><td>GitHub</td><td>create_pr, update_issue, commit_files, get_repo, list_prs</td></tr>
+          <tr><td>Stripe</td><td>lookup_customer, refund_charge, list_subscriptions</td></tr>
+          <tr><td>Vercel</td><td>deploy, get_logs, list_deployments, rollback</td></tr>
+          <tr><td>Linear</td><td>create_issue, update_issue, list_issues</td></tr>
+          <tr><td>Notion</td><td>create_page, update_page, query_database</td></tr>
+          <tr><td>PagerDuty</td><td>create_incident, resolve_incident, list_oncall</td></tr>
+          <tr><td>Datadog</td><td>query_metrics, list_alerts, mute_monitor</td></tr>
+          <tr><td>Jira</td><td>create_ticket, update_ticket, transition_issue</td></tr>
+          <tr><td>SendGrid</td><td>send_email, get_stats</td></tr>
+          <tr><td>Twilio</td><td>send_sms, make_call</td></tr>
+          <tr><td>AWS</td><td>invoke_lambda, describe_instances, s3_put</td></tr>
+          <tr><td>PostgreSQL</td><td>query, insert, update (via workspace credentials)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── DECISIONS ─────────────────────────────────────────── -->
+  <div class="section" id="decisions">
+    <div class="section-tag">Architecture</div>
+    <h2>Key Design Decisions</h2>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Decision</th><th>Why</th><th>Trade-off</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Policy cached locally, not per-call network</strong></td><td>Zero latency on critical developer path. Works offline.</td><td>60-second policy staleness window. Acceptable for team policy changes.</td></tr>
+          <tr><td><strong>Dual MCP modes (local stdio + remote HTTP)</strong></td><td>Claude Desktop requires subprocess MCP. Claude.ai requires HTTP MCP. Same 5 tools, two transports.</td><td>Two codebases to maintain (guardmcp.py + mcp.py). Worth it for coverage.</td></tr>
+          <tr><td><strong>YAML for playbooks</strong></td><td>Versionable, readable, no proprietary format lock-in. Engineers already know it from CI/CD.</td><td>Less flexible than code. But constraint = fewer footguns.</td></tr>
+          <tr><td><strong>PostgreSQL RLS for isolation</strong></td><td>Database-level tenant isolation. Misconfigured queries can't leak data.</td><td>Requires SET LOCAL per request. Slight overhead. Prevents catastrophic bugs.</td></tr>
+          <tr><td><strong>Local embeddings (MiniLM)</strong></td><td>No proprietary code leaves the machine. No API key. Fast enough (~80ms).</td><td>Lower quality than ada-002. Good enough for code retrieval which is mostly keyword-driven anyway.</td></tr>
+          <tr><td><strong>Workspace as top-level tenant</strong></td><td>Simple — one workspace per company. Avoids org/team/project hierarchy complexity.</td><td>No sub-team isolation. When needed, RBAC roles (admin/security/dev/viewer) fill that gap.</td></tr>
+          <tr><td><strong>Async telemetry via subprocess</strong></td><td>Hook decision must be instant. Telemetry can be slightly delayed.</td><td>Small chance of telemetry loss if machine crashes mid-session. Acceptable trade-off.</td></tr>
+          <tr><td><strong>3-layer PII detection</strong></td><td>Layer 1 has zero false positives. Layer 3 catches new services automatically without code changes.</td><td>Context-aware layer (Layer 3) can false-positive on code. Mitigated by requiring = or : separator (not ").</td></tr>
+          <tr><td><strong>Invite code onboarding</strong></td><td>Zero friction for developers. One code → fully enrolled with all policies.</td><td>Invite code has no expiry by default. Should add TTL for enterprise.</td></tr>
+          <tr><td><strong>Seed-only builtin policies</strong></td><td>Never overwrite admin customizations on deploy. Predictable behavior.</td><td>When we update YAML, existing workspaces don't auto-update. Solved by "Refresh Built-ins" button.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── MIGRATIONS ────────────────────────────────────────── -->
+  <div class="section" id="migrations">
+    <div class="section-tag">History</div>
+    <h2>Migration History (Story of What We Built)</h2>
+
+    <div class="timeline">
+      <div class="timeline-item">
+        <div class="t-label">Migration 0001</div>
+        <div class="t-title">Baseline tables</div>
+        <div class="t-desc">Workspaces, workflows, runs, audit_log. Core Conduct platform.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="t-label">Migration 0004</div>
+        <div class="t-title">Row-Level Security</div>
+        <div class="t-desc">RLS enabled on 5 core tables. Workspace isolation guaranteed at DB level.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="t-label">Migration 0007</div>
+        <div class="t-title">Model routing policies</div>
+        <div class="t-desc">GuardPolicy model + model_routing_policies seeded. First Guard data model.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="t-label">Migration 0008–0009</div>
+        <div class="t-title">Soft delete + archived_at</div>
+        <div class="t-desc">Workflows and policies never hard-deleted. audit trail preserved.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="t-label">Migration 0010</div>
+        <div class="t-title">Backfill audit email</div>
+        <div class="t-desc">user_email added to GuardAuditEvent retroactively via Clerk lookup.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="t-label">Migration 0011</div>
+        <div class="t-title">match_tokens_before_gt</div>
+        <div class="t-desc">Enables the "warn if context > 50K tokens" policy. New policy condition type.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="t-label">Migration 0012</div>
+        <div class="t-title">client_ip + os_info on GuardSession</div>
+        <div class="t-desc">Machine fingerprinting. Public IP captured server-side. OS from platform module.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="t-label">Migration 0013</div>
+        <div class="t-title">hostname on GuardSession</div>
+        <div class="t-desc">Distinguishes same user on two laptops (e.g. MacBook-Pro-1.local vs MacBook-Pro-2.local).</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── FLOW DIAGRAM ──────────────────────────────────────── -->
+  <div class="section" id="flowdiagram">
+    <div class="section-tag">Architecture</div>
+    <h2>End-to-End Flow</h2>
+<div class="flow">┌──────────────────────────────────────────────────────────────────────┐
+│  DEVELOPER MACHINE                                                       │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  Claude Code / Cursor / Codex / Windsurf                                │
+│       ↓ tool call (bash/read/write/edit)                                │
+│  ┌────────────────────────────────────┐                                  │
+│  │ PreToolUse Hook (hook.py)          │  ← runs in &lt;2ms, no network     │
+│  │  1. Load policy.json (disk)        │                                  │
+│  │  2. Match rules (pure Python)      │                                  │
+│  │  3. allow / block / warn           │                                  │
+│  │  4. Spawn async telemetry POST     │                                  │
+│  └────────────────────────────────────┘                                  │
+│       ↓ (if allowed)                                                    │
+│  Tool executes                                                           │
+│                                                                          │
+│  Agent Booster MCP (booster)                                            │
+│       get_symbols / search_context / smart_read / route_model           │
+│       → Local SQLite index → Vector search → Slice file → Return        │
+│                                                                          │
+└──────────────────────────┬───────────────────────────────────────────────┘
+                           │ HTTPS async
+                           ↓
+┌──────────────────────────────────────────────────────────────────────────┐
+│  FastAPI BACKEND  (api.conductai.ai — Render)                           │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  POST /guard/events                                                      │
+│    → Validate workspace + token                                         │
+│    → Redact PII/secrets (3-layer)                                       │
+│    → Insert GuardAuditEvent                                             │
+│    → Update GuardSession totals (tokens, cost, violations)              │
+│    → Check spend budget → alert if &gt; 80%                               │
+│    → Fire Slack webhook if notify_on_block                              │
+│                                                                          │
+│  GET /guard/events/stream (SSE)                                         │
+│    → Poll new audit events every 2s → push to dashboard                │
+│                                                                          │
+│  POST /guard/mcp (JSON-RPC)                                             │
+│    → guard_check: match policy → ALLOWED|BLOCKED|WARNING                │
+│    → guard_activity: log session intent                                 │
+│                                                                          │
+│  POST /guard/policies/refresh-builtins                                  │
+│    → Upsert all YAML rules into workspace (preserves enabled state)     │
+│                                                                          │
+└──────────────────────────┬──────────────────┬────────────────────────────┘
+                           │                  │
+                    ↓ SSE feed         ↓ Slack webhook
+         ┌──────────────────┐    POST hooks.slack.com
+         │ Next.js Dashboard│    🚨 "Guard blocked — no-force-push"
+         │ (Vercel)         │    "User: sudhi · Tool: bash"
+         │                  │
+         │ Activity feed    │
+         │ Spend by dev     │
+         │ Session reports  │
+         │ Policy manager   │
+         └──────────────────┘</div>
+  </div>
+
+  <!-- ── FILE PATHS ────────────────────────────────────────── -->
+  <div class="section" id="filepaths">
+    <div class="section-tag">Reference</div>
+    <h2>Critical File Paths</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Component</th><th>File</th><th>Key lines</th></tr></thead>
+        <tbody>
+          <tr><td>Guard data model</td><td class="filepath">apps/api/app/modules/guard/models.py</td><td>60–130</td></tr>
+          <tr><td>Built-in policy rules</td><td class="filepath">apps/api/app/modules/guard/builtin_policies.yaml</td><td>1–267 (all 30 rules)</td></tr>
+          <tr><td>3-layer PII detection</td><td class="filepath">apps/api/app/core/pii.py</td><td>15–95</td></tr>
+          <tr><td>Auth & RBAC</td><td class="filepath">apps/api/app/core/auth.py</td><td>1–150, 250+</td></tr>
+          <tr><td>MCP remote server</td><td class="filepath">apps/api/app/modules/guard/routers/mcp.py</td><td>1–500</td></tr>
+          <tr><td>Event ingest + budget check</td><td class="filepath">apps/api/app/modules/guard/routers/events.py</td><td>35–300</td></tr>
+          <tr><td>Policy CRUD + seed + refresh</td><td class="filepath">apps/api/app/modules/guard/routers/policies.py</td><td>45–90, 427+</td></tr>
+          <tr><td>Hook template (PreToolUse)</td><td class="filepath">packages/conduct-cli/src/conduct_cli/hook_template.py</td><td>30–600</td></tr>
+          <tr><td>Guard CLI subcommand</td><td class="filepath">packages/conduct-cli/src/conduct_cli/guard.py</td><td>700–830</td></tr>
+          <tr><td>Booster symbol indexer</td><td class="filepath">tools/booster/booster/indexer.py</td><td>full file</td></tr>
+          <tr><td>Booster smart retrieval</td><td class="filepath">tools/booster/booster/retriever.py</td><td>full file</td></tr>
+          <tr><td>Booster MCP server</td><td class="filepath">tools/booster/booster/mcp_server.py</td><td>1–150</td></tr>
+          <tr><td>SmartCrusher</td><td class="filepath">tools/booster/booster/crusher.py</td><td>full file</td></tr>
+          <tr><td>Runtime executor</td><td class="filepath">apps/api/app/runtime/executor.py</td><td>1–100, 500+</td></tr>
+          <tr><td>Playbook compiler</td><td class="filepath">apps/api/app/compiler/compiler.py</td><td>1–196</td></tr>
+          <tr><td>Guard policies UI</td><td class="filepath">apps/web/src/app/(app)/guard/policies/page.tsx</td><td>full file</td></tr>
+          <tr><td>Alembic migrations</td><td class="filepath">apps/api/alembic/versions/</td><td>0004, 0007, 0011–0013</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  // Active sidebar highlight on scroll
+  const sections = document.querySelectorAll('.section[id]');
+  const links = document.querySelectorAll('.sidebar-link');
+
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        const active = document.querySelector(`.sidebar-link[href="#${entry.target.id}"]`);
+        if (active) active.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-10% 0px -80% 0px' });
+
+  sections.forEach(s => observer.observe(s));
+
+  // Smooth scroll
+  document.querySelectorAll('.sidebar-link').forEach(link => {
+    link.addEventListener('click', e => {
+      e.preventDefault();
+      const target = document.querySelector(link.getAttribute('href'));
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+</script>
+</body>
+</html>

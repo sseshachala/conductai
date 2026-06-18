@@ -1,0 +1,1619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conduct — AI-SDLC Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --indigo: #4F46E5;
+  --indigo-light: #EEF2FF;
+  --indigo-mid: #C7D2FE;
+  --violet: #7C3AED;
+  --violet-light: #F5F3FF;
+  --sky: #0284C7;
+  --sky-light: #E0F2FE;
+  --green: #16A34A;
+  --green-light: #F0FDF4;
+  --red: #DC2626;
+  --red-light: #FEF2F2;
+  --amber: #D97706;
+  --amber-light: #FFFBEB;
+  --bg: #F7F6F5;
+  --surface: #FFFFFF;
+  --border: #E7E5E4;
+  --ink: #0C0A09;
+  --ink-muted: #78716C;
+  --ink-subtle: #A8A29E;
+  --sidebar-w: 212px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--ink); font-size: 13px; line-height: 1.5; overflow: hidden; height: 100vh; }
+
+/* Layout */
+.shell { display: flex; height: 100vh; }
+.sidebar { width: var(--sidebar-w); background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; z-index: 10; }
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+.topbar { height: 48px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 20px; gap: 12px; flex-shrink: 0; }
+.content { flex: 1; overflow: hidden; display: flex; position: relative; }
+.view { flex: 1; overflow-y: auto; padding: 24px; display: none; }
+.view.active { display: block; }
+
+/* Sidebar */
+.sidebar-logo { padding: 16px 16px 12px; border-bottom: 1px solid var(--border); }
+.logo-mark { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; color: var(--ink); }
+.logo-icon { width: 28px; height: 28px; background: var(--indigo); border-radius: 7px; display: flex; align-items: center; justify-content: center; color: white; font-size: 13px; font-weight: 700; }
+.sidebar-nav { flex: 1; padding: 8px 8px; overflow-y: auto; }
+.nav-section { margin-bottom: 16px; }
+.nav-section-label { font-size: 10px; font-weight: 600; color: var(--ink-subtle); text-transform: uppercase; letter-spacing: 0.08em; padding: 4px 8px 6px; }
+.nav-item { display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--ink-muted); transition: all 0.15s; margin-bottom: 1px; user-select: none; }
+.nav-item:hover { background: var(--bg); color: var(--ink); }
+.nav-item.active { background: var(--indigo-light); color: var(--indigo); }
+.nav-item .ni-icon { width: 16px; height: 16px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.nav-item .ni-badge { margin-left: auto; font-size: 10px; background: var(--red-light); color: var(--red); padding: 1px 5px; border-radius: 20px; font-weight: 600; }
+.sidebar-footer { padding: 12px; border-top: 1px solid var(--border); }
+.avatar-row { display: flex; align-items: center; gap: 8px; }
+.avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #6366F1, #8B5CF6); display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; font-weight: 600; flex-shrink: 0; }
+.avatar-info { flex: 1; min-width: 0; }
+.avatar-name { font-size: 12px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.avatar-role { font-size: 10px; color: var(--ink-muted); }
+
+/* Topbar */
+.topbar-title { font-size: 14px; font-weight: 600; color: var(--ink); }
+.topbar-sub { font-size: 12px; color: var(--ink-muted); }
+.topbar-spacer { flex: 1; }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 9px; font-size: 12px; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; font-family: inherit; }
+.btn-primary { background: var(--indigo); color: white; }
+.btn-primary:hover { background: #4338CA; }
+.btn-ghost { background: transparent; color: var(--ink-muted); border: 1px solid var(--border); }
+.btn-ghost:hover { background: var(--bg); color: var(--ink); }
+.btn-green { background: var(--green); color: white; }
+.btn-green:hover { background: #15803D; }
+.btn-sm { padding: 5px 10px; font-size: 11px; }
+.btn-danger { background: var(--red-light); color: var(--red); border: 1px solid #FECACA; }
+.btn-danger:hover { background: #FEE2E2; }
+
+/* Cards */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+.card-sm { padding: 12px; }
+
+/* Stats bar */
+.stats-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+.stat-label { font-size: 11px; font-weight: 500; color: var(--ink-muted); margin-bottom: 4px; }
+.stat-value { font-size: 22px; font-weight: 700; color: var(--ink); line-height: 1; }
+.stat-sub { font-size: 11px; color: var(--ink-muted); margin-top: 3px; }
+.stat-red .stat-value { color: var(--red); }
+.stat-amber .stat-value { color: var(--amber); }
+.stat-sky .stat-value { color: var(--sky); }
+
+/* Feed */
+.feed-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.feed-title { font-size: 14px; font-weight: 600; }
+.tab-row { display: flex; gap: 2px; background: var(--bg); border-radius: 9px; padding: 3px; }
+.tab { padding: 5px 12px; border-radius: 7px; font-size: 12px; font-weight: 500; color: var(--ink-muted); cursor: pointer; transition: all 0.15s; }
+.tab.active { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.add-rule-bar { border: 1.5px dashed var(--border); border-radius: 10px; padding: 12px 16px; display: flex; align-items: center; gap: 10px; margin-bottom: 20px; cursor: pointer; transition: all 0.15s; color: var(--ink-muted); font-size: 13px; }
+.add-rule-bar:hover { border-color: var(--indigo); color: var(--indigo); background: var(--indigo-light); }
+.add-rule-bar svg { opacity: 0.5; }
+.add-rule-bar:hover svg { opacity: 1; }
+
+/* Feed rows */
+.feed-list { display: flex; flex-direction: column; gap: 2px; }
+.feed-row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; transition: all 0.15s; }
+.feed-row:hover { border-color: var(--indigo-mid); background: var(--indigo-light); }
+.feed-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.dot-red { background: var(--red); }
+.dot-amber { background: var(--amber); }
+.dot-violet { background: var(--violet); }
+.dot-sky { background: var(--sky); }
+.dot-green { background: var(--green); }
+.feed-lens { flex-shrink: 0; }
+.lens-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 20px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.lens-guard { background: var(--red-light); color: var(--red); }
+.lens-secure { background: var(--violet-light); color: var(--violet); }
+.lens-automate { background: var(--sky-light); color: var(--sky); }
+.feed-body { flex: 1; min-width: 0; }
+.feed-title-text { font-size: 13px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.feed-desc { font-size: 12px; color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.feed-meta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.feed-time { font-size: 11px; color: var(--ink-subtle); }
+.status-pill { display: inline-flex; padding: 2px 7px; border-radius: 20px; font-size: 10px; font-weight: 600; }
+.pill-block { background: var(--red-light); color: var(--red); }
+.pill-warn { background: var(--amber-light); color: var(--amber); }
+.pill-ran { background: var(--sky-light); color: var(--sky); }
+.pill-paused { background: var(--amber-light); color: var(--amber); }
+.pill-flagged { background: var(--violet-light); color: var(--violet); }
+.pill-clear { background: var(--green-light); color: var(--green); }
+
+/* Right panel */
+.right-panel { width: 0; background: var(--surface); border-left: 1px solid var(--border); overflow: hidden; transition: width 0.25s cubic-bezier(0.4,0,0.2,1); flex-shrink: 0; display: flex; flex-direction: column; }
+.right-panel.open { width: 360px; }
+.rp-inner { width: 360px; display: flex; flex-direction: column; height: 100%; overflow-y: auto; }
+.rp-header { display: flex; align-items: center; justify-content: space-between; padding: 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.rp-title { font-size: 13px; font-weight: 700; }
+.rp-close { width: 28px; height: 28px; border-radius: 7px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink-muted); background: transparent; border: none; font-size: 16px; transition: background 0.15s; }
+.rp-close:hover { background: var(--bg); }
+.rp-body { padding: 16px; flex: 1; }
+.rp-section { margin-bottom: 16px; }
+.rp-section-label { font-size: 10px; font-weight: 600; color: var(--ink-subtle); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 6px; }
+.rp-value { font-size: 13px; color: var(--ink); }
+.code-box { background: #1E1B4B; border-radius: 8px; padding: 12px; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px; color: #A5B4FC; line-height: 1.6; overflow-x: auto; white-space: pre; margin: 6px 0; }
+.steer-box { margin-top: 12px; }
+.steer-input { width: 100%; border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; font-size: 12px; font-family: inherit; color: var(--ink); resize: none; height: 72px; outline: none; transition: border-color 0.15s; }
+.steer-input:focus { border-color: var(--indigo); }
+.steer-label { font-size: 11px; font-weight: 600; color: var(--ink-muted); margin-bottom: 5px; }
+.rp-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+/* Rules view */
+.rules-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.rules-list { display: flex; flex-direction: column; gap: 2px; }
+.rule-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; transition: all 0.15s; }
+.rule-row:hover { border-color: var(--indigo-mid); }
+.rule-lens-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+.rule-body { flex: 1; min-width: 0; }
+.rule-name { font-size: 13px; font-weight: 600; color: var(--ink); }
+.rule-meta { font-size: 11px; color: var(--ink-muted); margin-top: 2px; }
+.rule-stats { display: flex; gap: 16px; align-items: center; flex-shrink: 0; }
+.rule-stat { text-align: right; }
+.rule-stat-val { font-size: 13px; font-weight: 600; color: var(--ink); }
+.rule-stat-label { font-size: 10px; color: var(--ink-subtle); }
+.toggle { position: relative; display: inline-block; width: 32px; height: 18px; flex-shrink: 0; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-slider { position: absolute; inset: 0; background: #D6D3D1; border-radius: 20px; cursor: pointer; transition: 0.2s; }
+.toggle-slider::before { content: ''; position: absolute; width: 14px; height: 14px; left: 2px; top: 2px; background: white; border-radius: 50%; transition: 0.2s; }
+.toggle input:checked + .toggle-slider { background: var(--indigo); }
+.toggle input:checked + .toggle-slider::before { transform: translateX(14px); }
+
+/* Canvas view */
+.canvas-view { background: #111827; min-height: 100%; display: flex; flex-direction: column; padding: 0; }
+.canvas-toolbar { background: #1F2937; border-bottom: 1px solid #374151; padding: 10px 16px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.canvas-title { font-size: 13px; font-weight: 600; color: #F9FAFB; }
+.canvas-select { background: #374151; border: 1px solid #4B5563; border-radius: 8px; color: #F9FAFB; font-size: 13px; font-weight: 600; padding: 6px 10px; outline: none; cursor: pointer; font-family: inherit; }
+.canvas-select option { background: #1F2937; }
+.canvas-spacer { flex: 1; }
+.canvas-btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; border: none; font-family: inherit; transition: all 0.15s; }
+.canvas-btn-ghost { background: transparent; color: #9CA3AF; border: 1px solid #374151; }
+.canvas-btn-ghost:hover { background: #374151; color: #F9FAFB; }
+.canvas-btn-green { background: #16A34A; color: white; }
+.canvas-btn-green:hover { background: #15803D; }
+.canvas-btn-blue { background: #0284C7; color: white; }
+.canvas-btn-blue:hover { background: #0369A1; }
+.canvas-btn-back { background: transparent; color: #9CA3AF; border: none; font-size: 12px; padding: 6px 0; cursor: pointer; font-family: inherit; }
+.canvas-area { flex: 1; position: relative; overflow: auto; min-height: 500px; }
+.canvas-stage { position: absolute; top: 0; left: 0; width: 900px; height: 600px; }
+.canvas-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+.block { position: absolute; z-index: 2; background: #1F2937; border: 1px solid #374151; border-radius: 12px; min-width: 180px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; }
+.block:hover { border-color: #6B7280; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+.block-accent { width: 4px; position: absolute; left: 0; top: 0; bottom: 0; border-radius: 12px 0 0 12px; }
+.block-inner { padding: 12px 14px 12px 18px; }
+.block-type { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #6B7280; margin-bottom: 4px; }
+.block-label { font-size: 13px; font-weight: 600; color: #F9FAFB; }
+.block-sub { font-size: 11px; color: #9CA3AF; margin-top: 3px; }
+.block-tag { display: inline-flex; padding: 2px 6px; border-radius: 5px; font-size: 10px; font-weight: 600; background: #374151; color: #A5B4FC; margin-top: 5px; }
+.block-warn { border-color: #D97706 !important; }
+.block-warn-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: #D97706; background: rgba(217,119,6,0.15); padding: 3px 7px; border-radius: 6px; margin-top: 6px; }
+.yaml-panel { background: #0F172A; border-top: 1px solid #374151; padding: 12px 20px; }
+.yaml-toggle-btn { background: transparent; border: 1px solid #374151; border-radius: 7px; color: #9CA3AF; padding: 5px 10px; font-size: 11px; font-weight: 500; cursor: pointer; font-family: inherit; transition: all 0.15s; }
+.yaml-toggle-btn:hover { background: #374151; color: #F9FAFB; }
+.yaml-content { display: none; margin-top: 10px; }
+.yaml-content.open { display: block; }
+.yaml-code { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 11px; color: #A5B4FC; line-height: 1.7; white-space: pre; }
+
+/* Security view */
+.sec-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.sec-title { font-size: 16px; font-weight: 700; }
+.sec-meta { font-size: 12px; color: var(--ink-muted); }
+.findings-list { display: flex; flex-direction: column; gap: 2px; }
+.finding-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; transition: all 0.15s; }
+.finding-row:hover { border-color: var(--violet); background: var(--violet-light); }
+.sev-pill { display: inline-flex; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; flex-shrink: 0; }
+.sev-critical { background: #FEE2E2; color: #991B1B; }
+.sev-high { background: #FFEDD5; color: #9A3412; }
+.sev-medium { background: var(--amber-light); color: #92400E; }
+.sev-low { background: #F0FDF4; color: #166534; }
+.finding-body { flex: 1; min-width: 0; }
+.finding-type { font-size: 13px; font-weight: 600; color: var(--ink); }
+.finding-file { font-size: 11px; color: var(--ink-muted); font-family: monospace; }
+.finding-meta { display: flex; gap: 12px; align-items: center; flex-shrink: 0; }
+.status-badge { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 7px; }
+.status-fix-pr { background: var(--indigo-light); color: var(--indigo); }
+.status-open { background: var(--amber-light); color: var(--amber); }
+.status-dismissed { background: var(--bg); color: var(--ink-subtle); border: 1px solid var(--border); }
+.status-resolved { background: var(--green-light); color: var(--green); }
+.scan-config { margin-top: 20px; }
+
+/* Analytics view */
+.analytics-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 24px; }
+.dora-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+.dora-label { font-size: 11px; font-weight: 500; color: var(--ink-muted); margin-bottom: 6px; }
+.dora-value { font-size: 24px; font-weight: 700; color: var(--indigo); line-height: 1; }
+.dora-unit { font-size: 12px; color: var(--ink-muted); margin-top: 3px; }
+.charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+.chart-title { font-size: 13px; font-weight: 600; margin-bottom: 14px; }
+.bar-chart { display: flex; align-items: flex-end; gap: 6px; height: 100px; }
+.bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.bar-fill { width: 100%; background: var(--indigo); border-radius: 4px 4px 0 0; min-height: 4px; transition: height 0.3s; }
+.bar-label { font-size: 10px; color: var(--ink-muted); }
+.hbar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.hbar-label { font-size: 11px; color: var(--ink); width: 60px; flex-shrink: 0; }
+.hbar-track { flex: 1; background: var(--bg); border-radius: 4px; height: 8px; overflow: hidden; }
+.hbar-fill { height: 100%; border-radius: 4px; }
+.hbar-val { font-size: 11px; color: var(--ink-muted); width: 24px; text-align: right; flex-shrink: 0; }
+
+/* Playbooks */
+.playbooks-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
+.playbook-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; transition: all 0.15s; }
+.playbook-card:hover { border-color: var(--indigo-mid); box-shadow: 0 2px 12px rgba(79,70,229,0.08); }
+.playbook-card.dashed { border-style: dashed; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 140px; cursor: pointer; color: var(--ink-muted); }
+.playbook-card.dashed:hover { color: var(--indigo); border-color: var(--indigo); background: var(--indigo-light); }
+.pb-icon { font-size: 22px; margin-bottom: 6px; }
+.pb-name { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 4px; }
+.pb-desc { font-size: 12px; color: var(--ink-muted); line-height: 1.5; margin-bottom: 10px; }
+.pb-footer { display: flex; align-items: center; justify-content: space-between; }
+.pb-tag { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 20px; }
+.pb-actions { display: flex; align-items: center; gap: 8px; }
+.pb-link { font-size: 11px; color: var(--indigo); cursor: pointer; text-decoration: none; }
+.pb-link:hover { text-decoration: underline; }
+
+/* Settings */
+.settings-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+.settings-tab { padding: 10px 16px; font-size: 13px; font-weight: 500; color: var(--ink-muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all 0.15s; }
+.settings-tab.active { color: var(--indigo); border-bottom-color: var(--indigo); }
+.settings-tab:hover:not(.active) { color: var(--ink); }
+.settings-section { display: none; }
+.settings-section.active { display: block; }
+.cred-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 6px; }
+.cred-icon { font-size: 18px; flex-shrink: 0; }
+.cred-body { flex: 1; }
+.cred-name { font-size: 13px; font-weight: 600; }
+.cred-scope { font-size: 11px; color: var(--ink-muted); }
+.conn-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 500; padding: 3px 8px; border-radius: 20px; }
+.conn-yes { background: var(--green-light); color: var(--green); }
+.conn-no { background: var(--bg); color: var(--ink-muted); border: 1px solid var(--border); }
+.table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+table { width: 100%; border-collapse: collapse; }
+th { font-size: 11px; font-weight: 600; color: var(--ink-muted); text-align: left; padding: 10px 16px; background: var(--bg); border-bottom: 1px solid var(--border); }
+td { font-size: 12px; color: var(--ink); padding: 11px 16px; border-bottom: 1px solid var(--border); }
+tr:last-child td { border-bottom: none; }
+.role-badge { display: inline-flex; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 600; }
+.role-admin { background: var(--indigo-light); color: var(--indigo); }
+.role-dev { background: var(--sky-light); color: var(--sky); }
+.role-viewer { background: var(--bg); color: var(--ink-muted); border: 1px solid var(--border); }
+
+/* Modal */
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.45); backdrop-filter: blur(4px); z-index: 100; display: none; align-items: center; justify-content: center; }
+.modal-backdrop.open { display: flex; }
+.modal { background: var(--surface); border-radius: 16px; width: 540px; max-width: 95vw; padding: 28px; box-shadow: 0 24px 64px rgba(0,0,0,0.18); position: relative; }
+.modal-title { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+.modal-sub { font-size: 13px; color: var(--ink-muted); margin-bottom: 20px; }
+.modal-close { position: absolute; top: 16px; right: 16px; width: 32px; height: 32px; border-radius: 8px; border: none; background: var(--bg); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; color: var(--ink-muted); transition: background 0.15s; }
+.modal-close:hover { background: var(--border); }
+.intent-input { width: 100%; border: 1.5px solid var(--border); border-radius: 10px; padding: 12px 14px; font-size: 14px; font-family: inherit; color: var(--ink); outline: none; transition: border-color 0.15s; }
+.intent-input:focus { border-color: var(--indigo); }
+.intent-input::placeholder { color: var(--ink-subtle); }
+
+/* Proposed card */
+.proposed-card { margin-top: 16px; border-radius: 12px; border: 1.5px solid var(--border); padding: 18px; background: var(--bg); opacity: 0; transform: translateY(8px); transition: all 0.3s; }
+.proposed-card.visible { opacity: 1; transform: translateY(0); }
+.proposed-lens-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; padding: 3px 8px; border-radius: 20px; margin-bottom: 10px; }
+.proposed-title { font-size: 14px; font-weight: 700; color: var(--ink); margin-bottom: 10px; }
+.proposed-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 500; background: var(--surface); border: 1px solid var(--border); color: var(--ink-muted); opacity: 0; transform: scale(0.85); transition: all 0.25s; }
+.chip.show { opacity: 1; transform: scale(1); }
+.proposed-stat { font-size: 12px; color: var(--ink-muted); padding: 10px 12px; background: var(--surface); border-radius: 8px; border: 1px solid var(--border); margin-bottom: 14px; }
+.proposed-stat strong { color: var(--ink); }
+.proposed-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.confirm-btn { padding: 9px 20px; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; font-family: inherit; transition: all 0.15s; }
+.confirm-btn-primary { background: var(--indigo); color: white; }
+.confirm-btn-primary:hover { background: #4338CA; }
+.confirm-btn-canvas { background: var(--green); color: white; }
+.confirm-btn-canvas:hover { background: #15803D; }
+@keyframes pulse-confirm { 0%,100% { box-shadow: 0 0 0 0 rgba(79,70,229,0.4); } 50% { box-shadow: 0 0 0 8px rgba(79,70,229,0); } }
+.pulse { animation: pulse-confirm 1.4s ease-in-out 1s 2; }
+
+/* Intent examples */
+.intent-examples { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.intent-ex { font-size: 11px; padding: 4px 9px; border-radius: 20px; background: var(--bg); border: 1px solid var(--border); color: var(--ink-muted); cursor: pointer; transition: all 0.15s; }
+.intent-ex:hover { background: var(--indigo-light); color: var(--indigo); border-color: var(--indigo-mid); }
+
+/* Misc */
+.section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.section-title { font-size: 15px; font-weight: 700; }
+.dot-online { width: 8px; height: 8px; border-radius: 50%; background: var(--green); display: inline-block; margin-right: 4px; }
+.filter-row { display: flex; gap: 8px; margin-bottom: 14px; align-items: center; }
+.cli-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; align-items: center; gap: 16px; }
+.cli-info { flex: 1; }
+.cli-name { font-size: 13px; font-weight: 700; }
+.cli-meta { font-size: 12px; color: var(--ink-muted); }
+.webhook-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 6px; }
+.wh-url { font-family: monospace; font-size: 11px; color: var(--ink-muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wh-event { font-size: 11px; font-weight: 600; color: var(--indigo); background: var(--indigo-light); padding: 2px 7px; border-radius: 5px; }
+.page-loading { display: none; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #D6D3D1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #A8A29E; }
+
+/* Section divider */
+.divider { height: 1px; background: var(--border); margin: 16px 0; }
+.text-muted { color: var(--ink-muted); }
+.text-sm { font-size: 12px; }
+.mt-4 { margin-top: 4px; }
+.mt-8 { margin-top: 8px; }
+.mt-12 { margin-top: 12px; }
+.mt-16 { margin-top: 16px; }
+.mb-8 { margin-bottom: 8px; }
+.mb-12 { margin-bottom: 12px; }
+.mb-16 { margin-bottom: 16px; }
+.flex { display: flex; }
+.items-center { align-items: center; }
+.gap-8 { gap: 8px; }
+.gap-12 { gap: 12px; }
+.fw-600 { font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark">
+        <div class="logo-icon">C</div>
+        Conduct
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-section-label">Platform</div>
+        <div class="nav-item active" data-view="home">
+          <span class="ni-icon"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg></span>
+          Home
+          <span class="ni-badge">4</span>
+        </div>
+        <div class="nav-item" data-view="rules">
+          <span class="ni-icon"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 12h6M9 15h4"/></svg></span>
+          Rules
+        </div>
+        <div class="nav-item" data-view="canvas">
+          <span class="ni-icon"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
+          Canvas
+        </div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Lenses</div>
+        <div class="nav-item" data-view="security">
+          <span class="ni-icon"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+          Security Loop
+          <span class="ni-badge">3</span>
+        </div>
+        <div class="nav-item" data-view="analytics">
+          <span class="ni-icon"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
+          Analytics
+        </div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Resources</div>
+        <div class="nav-item" data-view="playbooks">
+          <span class="ni-icon"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg></span>
+          Playbooks
+        </div>
+        <div class="nav-item" data-view="settings">
+          <span class="ni-icon"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></span>
+          Settings
+        </div>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="avatar-row">
+        <div class="avatar">SS</div>
+        <div class="avatar-info">
+          <div class="avatar-name">Sudhi Seshachala</div>
+          <div class="avatar-role">Admin · Owner</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <div class="main">
+    <!-- Topbar -->
+    <div class="topbar" id="topbar">
+      <span class="topbar-title" id="topbar-title">Home</span>
+      <span class="topbar-sub" id="topbar-sub">b2bsphere workspace</span>
+      <div class="topbar-spacer"></div>
+      <button class="btn btn-ghost btn-sm" onclick="openModal()">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Rule
+      </button>
+      <div class="avatar" style="cursor:pointer">SS</div>
+    </div>
+
+    <!-- Content area with right panel -->
+    <div class="content">
+
+      <!-- ============ HOME VIEW ============ -->
+      <div class="view active" id="view-home">
+        <div class="stats-bar">
+          <div class="stat-card stat-red">
+            <div class="stat-label">Guard blocks today</div>
+            <div class="stat-value">4</div>
+            <div class="stat-sub">↑ 2 from yesterday</div>
+          </div>
+          <div class="stat-card stat-amber">
+            <div class="stat-label">Open findings</div>
+            <div class="stat-value">3</div>
+            <div class="stat-sub">2 high · 1 medium</div>
+          </div>
+          <div class="stat-card stat-sky">
+            <div class="stat-label">Playbook runs</div>
+            <div class="stat-value">31</div>
+            <div class="stat-sub">This week</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">AI spend</div>
+            <div class="stat-value">$12.40</div>
+            <div class="stat-sub">of $50.00 limit</div>
+          </div>
+        </div>
+
+        <div class="add-rule-bar" onclick="openModal()">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          What do you want to govern, secure, or automate?
+        </div>
+
+        <div class="feed-header">
+          <span class="feed-title">Activity</span>
+          <div class="tab-row" id="feed-tabs">
+            <div class="tab active" onclick="filterFeed('all', this)">All</div>
+            <div class="tab" onclick="filterFeed('guard', this)">Guard</div>
+            <div class="tab" onclick="filterFeed('secure', this)">Secure</div>
+            <div class="tab" onclick="filterFeed('automate', this)">Automate</div>
+          </div>
+        </div>
+        <div class="feed-list" id="feed-list"></div>
+      </div>
+
+      <!-- ============ RULES VIEW ============ -->
+      <div class="view" id="view-rules">
+        <div class="rules-header">
+          <div>
+            <div class="section-title">Rules</div>
+            <div class="text-sm text-muted mt-4">Active trigger → condition → response policies across all lenses</div>
+          </div>
+          <button class="btn btn-primary" onclick="openModal()">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add rule
+          </button>
+        </div>
+        <div class="tab-row mb-12" id="rules-tabs" style="display:inline-flex">
+          <div class="tab active" onclick="filterRules('all', this)">All</div>
+          <div class="tab" onclick="filterRules('guard', this)">Guard</div>
+          <div class="tab" onclick="filterRules('secure', this)">Secure</div>
+          <div class="tab" onclick="filterRules('automate', this)">Automate</div>
+        </div>
+        <div class="rules-list" id="rules-list"></div>
+      </div>
+
+      <!-- ============ CANVAS VIEW ============ -->
+      <div class="view" id="view-canvas" style="padding:0; background:#111827; min-height:100%;">
+        <div class="canvas-view" style="height:100%; min-height:calc(100vh - 48px);">
+          <div class="canvas-toolbar">
+            <button class="canvas-btn-back" onclick="switchView('rules')">← Back to Rules</button>
+            <div style="width:1px; height:20px; background:#374151; margin:0 4px;"></div>
+            <select class="canvas-select" id="canvas-select" onchange="switchCanvas(this.value)">
+              <option value="triage">Issue Triage</option>
+              <option value="pr">PR Summariser</option>
+            </select>
+            <div class="canvas-spacer"></div>
+            <button class="canvas-btn canvas-btn-ghost">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Block
+            </button>
+            <button class="canvas-btn canvas-btn-green">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21 5,3"/></svg>
+              Run
+            </button>
+            <button class="canvas-btn canvas-btn-blue">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17,21 17,13 7,13 7,21"/><polyline points="7,3 7,8 15,8"/></svg>
+              Save
+            </button>
+          </div>
+          <div class="canvas-area" id="canvas-area">
+            <div class="canvas-stage" id="canvas-stage">
+              <svg class="canvas-svg" id="canvas-svg"></svg>
+              <!-- blocks rendered by JS -->
+            </div>
+          </div>
+          <div class="yaml-panel">
+            <button class="yaml-toggle-btn" onclick="toggleYaml()">{ } View YAML</button>
+            <div class="yaml-content" id="yaml-content">
+              <pre class="yaml-code" id="yaml-code"></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ SECURITY VIEW ============ -->
+      <div class="view" id="view-security">
+        <div class="sec-header">
+          <div style="flex:1">
+            <div class="section-title">Security Loop</div>
+            <div class="text-sm text-muted mt-4">Last scan: 6h ago · 4 repos monitored</div>
+          </div>
+          <button class="btn btn-primary btn-sm">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+            Scan now
+          </button>
+        </div>
+
+        <div class="filter-row">
+          <div class="tab-row" id="sec-tabs" style="display:inline-flex">
+            <div class="tab active" onclick="filterFindings('all', this)">All</div>
+            <div class="tab" onclick="filterFindings('critical', this)">Critical</div>
+            <div class="tab" onclick="filterFindings('high', this)">High</div>
+            <div class="tab" onclick="filterFindings('medium', this)">Medium</div>
+            <div class="tab" onclick="filterFindings('low', this)">Low</div>
+          </div>
+        </div>
+
+        <div class="findings-list" id="findings-list"></div>
+
+        <div class="scan-config mt-16">
+          <div class="section-title mb-8">Scan configuration</div>
+          <div class="card">
+            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px;">
+              <div>
+                <div class="text-sm text-muted mb-4">Connected repos</div>
+                <div style="font-weight:600; font-size:16px;">4</div>
+                <div class="text-sm text-muted mt-4">api · web · infra · scripts</div>
+              </div>
+              <div>
+                <div class="text-sm text-muted mb-4">Schedule</div>
+                <div style="font-weight:600;">Nightly at 2am</div>
+                <div class="text-sm text-muted mt-4">UTC · on-push for PRs</div>
+              </div>
+              <div>
+                <div class="text-sm text-muted mb-4">Severity threshold</div>
+                <div style="font-weight:600;">Medium+</div>
+                <div class="text-sm text-muted mt-4">Low findings logged only</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ ANALYTICS VIEW ============ -->
+      <div class="view" id="view-analytics">
+        <div class="section-header mb-16">
+          <div class="section-title">Analytics</div>
+          <div class="text-sm text-muted">Last 7 days · b2bsphere workspace</div>
+        </div>
+
+        <div style="font-size:12px; font-weight:600; color:var(--ink-muted); text-transform:uppercase; letter-spacing:0.07em; margin-bottom:10px;">DORA Metrics</div>
+        <div class="analytics-grid">
+          <div class="dora-card">
+            <div class="dora-label">Deployment Frequency</div>
+            <div class="dora-value">4.2</div>
+            <div class="dora-unit">per week · Elite</div>
+          </div>
+          <div class="dora-card">
+            <div class="dora-label">Lead Time</div>
+            <div class="dora-value">1.8</div>
+            <div class="dora-unit">days · High</div>
+          </div>
+          <div class="dora-card">
+            <div class="dora-label">Change Failure Rate</div>
+            <div class="dora-value" style="color:#D97706;">3.1%</div>
+            <div class="dora-unit">Medium · target &lt;5%</div>
+          </div>
+          <div class="dora-card">
+            <div class="dora-label">MTTR</div>
+            <div class="dora-value" style="color:var(--green);">42</div>
+            <div class="dora-unit">minutes · Elite</div>
+          </div>
+        </div>
+
+        <div class="charts-row">
+          <div class="chart-card">
+            <div class="chart-title">AI Spend by Day ($)</div>
+            <div class="bar-chart" id="spend-chart"></div>
+          </div>
+          <div class="chart-card">
+            <div class="chart-title">Security Findings by Severity</div>
+            <div id="sev-chart" style="margin-top:8px;"></div>
+          </div>
+        </div>
+
+        <div class="charts-row">
+          <div class="chart-card">
+            <div class="chart-title">Guard Blocks by Tool</div>
+            <div id="guard-chart" style="margin-top:8px;"></div>
+          </div>
+          <div class="chart-card">
+            <div class="chart-title">Playbook Runs This Week</div>
+            <div id="runs-chart" style="margin-top:8px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ PLAYBOOKS VIEW ============ -->
+      <div class="view" id="view-playbooks">
+        <div class="section-header mb-16">
+          <div class="section-title">Playbooks</div>
+          <button class="btn btn-ghost btn-sm">Browse marketplace</button>
+        </div>
+        <div class="playbooks-grid" id="playbooks-grid"></div>
+      </div>
+
+      <!-- ============ SETTINGS VIEW ============ -->
+      <div class="view" id="view-settings">
+        <div class="section-header mb-16">
+          <div class="section-title">Settings</div>
+        </div>
+        <div class="settings-tabs">
+          <div class="settings-tab active" onclick="switchSettings('credentials', this)">Credentials</div>
+          <div class="settings-tab" onclick="switchSettings('team', this)">Team</div>
+          <div class="settings-tab" onclick="switchSettings('integrations', this)">Integrations</div>
+          <div class="settings-tab" onclick="switchSettings('auditlog', this)">Audit log</div>
+        </div>
+
+        <!-- Credentials -->
+        <div class="settings-section active" id="settings-credentials">
+          <div class="cred-row">
+            <div class="cred-icon">🐙</div>
+            <div class="cred-body">
+              <div class="cred-name">GitHub</div>
+              <div class="cred-scope">Scopes: repo · webhooks · pull_requests</div>
+            </div>
+            <span class="conn-badge conn-yes">● Connected</span>
+          </div>
+          <div class="cred-row">
+            <div class="cred-icon">💬</div>
+            <div class="cred-body">
+              <div class="cred-name">Slack</div>
+              <div class="cred-scope">Scopes: chat:write · channels:read</div>
+            </div>
+            <span class="conn-badge conn-yes">● Connected</span>
+          </div>
+          <div class="cred-row">
+            <div class="cred-icon">▲</div>
+            <div class="cred-body">
+              <div class="cred-name">Vercel</div>
+              <div class="cred-scope">Not connected</div>
+            </div>
+            <button class="btn btn-ghost btn-sm">Connect</button>
+          </div>
+          <div class="cred-row">
+            <div class="cred-icon">🔔</div>
+            <div class="cred-body">
+              <div class="cred-name">PagerDuty</div>
+              <div class="cred-scope">Scopes: incidents:write · services:read</div>
+            </div>
+            <span class="conn-badge conn-yes">● Connected</span>
+          </div>
+          <div class="mt-16">
+            <button class="btn btn-ghost btn-sm">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add credential
+            </button>
+          </div>
+        </div>
+
+        <!-- Team -->
+        <div class="settings-section" id="settings-team">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <div class="text-sm text-muted">4 members</div>
+            <button class="btn btn-primary btn-sm">Invite member</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Member</th><th>Role</th><th>Joined</th><th></th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><div style="display:flex; align-items:center; gap:8px;"><div class="avatar" style="width:24px;height:24px;font-size:10px;">SS</div>Sudhi Seshachala<span style="font-size:10px;color:var(--ink-subtle);margin-left:4px;">· you</span></div></td>
+                  <td><span class="role-badge role-admin">admin · owner</span></td>
+                  <td class="text-muted">Jan 2025</td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td><div style="display:flex; align-items:center; gap:8px;"><div class="avatar" style="width:24px;height:24px;font-size:10px;background:linear-gradient(135deg,#0EA5E9,#2DD4BF);">M</div>Maya Patel</div></td>
+                  <td><span class="role-badge role-dev">developer</span></td>
+                  <td class="text-muted">Mar 2025</td>
+                  <td><button class="btn btn-ghost btn-sm">···</button></td>
+                </tr>
+                <tr>
+                  <td><div style="display:flex; align-items:center; gap:8px;"><div class="avatar" style="width:24px;height:24px;font-size:10px;background:linear-gradient(135deg,#F59E0B,#EF4444);">A</div>Alex Chen</div></td>
+                  <td><span class="role-badge role-dev">developer</span></td>
+                  <td class="text-muted">Apr 2025</td>
+                  <td><button class="btn btn-ghost btn-sm">···</button></td>
+                </tr>
+                <tr>
+                  <td><div style="display:flex; align-items:center; gap:8px;"><div class="avatar" style="width:24px;height:24px;font-size:10px;background:linear-gradient(135deg,#8B5CF6,#EC4899);">D</div>Dan Torres</div></td>
+                  <td><span class="role-badge role-viewer">viewer</span></td>
+                  <td class="text-muted">May 2025</td>
+                  <td><button class="btn btn-ghost btn-sm">···</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Integrations -->
+        <div class="settings-section" id="settings-integrations">
+          <div class="cli-card mb-12">
+            <div style="font-size:22px;">⌨️</div>
+            <div class="cli-info">
+              <div class="cli-name"><span class="dot-online"></span>conduct CLI — v0.4.93</div>
+              <div class="cli-meta">6 machines synced · Hook active on all devices</div>
+            </div>
+            <button class="btn btn-ghost btn-sm">Manage</button>
+          </div>
+          <div style="font-size:13px; font-weight:600; margin-bottom:10px;">Webhook endpoints</div>
+          <div class="webhook-row">
+            <div class="wh-url">https://api.conduct.dev/webhooks/gh/b2bsphere</div>
+            <span class="wh-event">push · pr · issue</span>
+            <span class="conn-badge conn-yes" style="font-size:10px;">Active</span>
+          </div>
+          <div class="webhook-row">
+            <div class="wh-url">https://api.conduct.dev/webhooks/slack/b2bsphere</div>
+            <span class="wh-event">action · slash_command</span>
+            <span class="conn-badge conn-yes" style="font-size:10px;">Active</span>
+          </div>
+          <div class="webhook-row">
+            <div class="wh-url">https://api.conduct.dev/webhooks/pd/b2bsphere</div>
+            <span class="wh-event">incident</span>
+            <span class="conn-badge conn-yes" style="font-size:10px;">Active</span>
+          </div>
+          <div class="mt-12"><button class="btn btn-ghost btn-sm">+ Add webhook</button></div>
+        </div>
+
+        <!-- Audit log -->
+        <div class="settings-section" id="settings-auditlog">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Timestamp</th><th>Actor</th><th>Action</th><th>Resource</th></tr></thead>
+              <tbody>
+                <tr><td class="text-muted" style="font-family:monospace;font-size:11px;">2026-06-12 14:22</td><td>Sudhi</td><td>Created rule</td><td>Guard / no-rm-rf</td></tr>
+                <tr><td class="text-muted" style="font-family:monospace;font-size:11px;">2026-06-12 13:05</td><td>Maya</td><td>Triggered run</td><td>Playbook / Issue Triage</td></tr>
+                <tr><td class="text-muted" style="font-family:monospace;font-size:11px;">2026-06-12 11:48</td><td>Sudhi</td><td>Dismissed finding</td><td>Secure / hardcoded-secret #3</td></tr>
+                <tr><td class="text-muted" style="font-family:monospace;font-size:11px;">2026-06-11 17:30</td><td>Sudhi</td><td>Invited member</td><td>Team / Dan Torres</td></tr>
+                <tr><td class="text-muted" style="font-family:monospace;font-size:11px;">2026-06-11 09:12</td><td>Alex</td><td>Triggered run</td><td>Playbook / PR Summariser</td></tr>
+                <tr><td class="text-muted" style="font-family:monospace;font-size:11px;">2026-06-10 16:44</td><td>Sudhi</td><td>Updated credential</td><td>Credentials / GitHub</td></tr>
+                <tr><td class="text-muted" style="font-family:monospace;font-size:11px;">2026-06-10 10:01</td><td>Maya</td><td>Edited rule</td><td>Secure / no-hardcoded-secrets</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right panel -->
+      <div class="right-panel" id="right-panel">
+        <div class="rp-inner" id="rp-inner"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Rule Modal -->
+<div class="modal-backdrop" id="modal-backdrop" onclick="handleBackdropClick(event)">
+  <div class="modal" id="modal">
+    <button class="modal-close" onclick="closeModal()">×</button>
+    <div class="modal-title">Add a rule</div>
+    <div class="modal-sub">Describe what you want to govern, secure, or automate. Conduct will propose a rule.</div>
+    <input class="intent-input" id="intent-input" type="text" placeholder="e.g. Block AI tools from running rm -rf…" oninput="handleIntent(this.value)">
+    <div class="intent-examples">
+      <span class="intent-ex" onclick="setIntent('Block AI tools from running destructive bash commands')">Block destructive bash</span>
+      <span class="intent-ex" onclick="setIntent('Catch SQL injection before PRs merge')">Catch SQL injection</span>
+      <span class="intent-ex" onclick="setIntent('Triage incoming GitHub issues automatically')">Triage GitHub issues</span>
+      <span class="intent-ex" onclick="setIntent('Summarize PRs and post to Slack')">Summarise PRs → Slack</span>
+    </div>
+    <div class="proposed-card" id="proposed-card">
+      <div class="proposed-lens-tag" id="proposed-lens-tag"></div>
+      <div class="proposed-title" id="proposed-title"></div>
+      <div class="proposed-chips" id="proposed-chips"></div>
+      <div class="proposed-stat" id="proposed-stat"></div>
+      <div class="proposed-actions">
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button class="confirm-btn confirm-btn-primary" id="confirm-btn" onclick="confirmRule()"></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// DATA
+// ============================================================
+const feedData = [
+  { id:1, lens:'guard', dot:'red', pill:'block', title:'rm -rf /tmp/secrets', desc:'Claude Code · bash · maya', time:'2m ago' },
+  { id:2, lens:'automate', dot:'sky', pill:'ran', title:'PR Summariser ran', desc:'Summarised PR #484 → #eng-updates', time:'9m ago' },
+  { id:3, lens:'secure', dot:'violet', pill:'flagged', title:'Hardcoded key in PR #482', desc:'sk-proj-... in payments/client.py', time:'1h ago' },
+  { id:4, lens:'automate', dot:'sky', pill:'ran', title:'Issue Triage ran', desc:'Labelled #589 as bug · assigned @kai', time:'2h ago' },
+  { id:5, lens:'guard', dot:'amber', pill:'warn', title:'.env read attempt', desc:'Cursor · read · alex', time:'3h ago' },
+  { id:6, lens:'automate', dot:'amber', pill:'paused', title:'Incident Responder paused', desc:'Needs clarification on severity', time:'3h ago' },
+  { id:7, lens:'secure', dot:'green', pill:'clear', title:'Nightly scan complete', desc:'0 findings across 4 repos', time:'6h ago' },
+  { id:8, lens:'guard', dot:'red', pill:'block', title:'chmod 777 on prod config', desc:'Claude Code · bash · dan', time:'8h ago' },
+];
+
+const rulesData = [
+  { id:1, lens:'guard', icon:'🛡️', name:'No destructive shell commands', trigger:'on tool-call: bash', response:'block & notify Slack', hits:14, last:'2m ago', on:true },
+  { id:2, lens:'guard', icon:'🛡️', name:'No .env file reads', trigger:'on tool-call: read', response:'warn & log', hits:3, last:'3h ago', on:true },
+  { id:3, lens:'guard', icon:'🛡️', name:'No chmod on prod configs', trigger:'on tool-call: bash', response:'block & notify', hits:1, last:'8h ago', on:true },
+  { id:4, lens:'secure', icon:'🔒', name:'Catch hardcoded secrets', trigger:'on PR opened', response:'comment & open fix PR', hits:3, last:'1h ago', on:true },
+  { id:5, lens:'secure', icon:'🔒', name:'SQL injection detection', trigger:'on PR opened', response:'comment & block merge', hits:1, last:'2d ago', on:true },
+  { id:6, lens:'secure', icon:'🔒', name:'Debug code scanner', trigger:'on PR opened', response:'comment', hits:1, last:'5d ago', on:false },
+  { id:7, lens:'automate', icon:'⚡', name:'Issue Triage', trigger:'on issue.opened', response:'classify → label → assign', hits:24, last:'2h ago', on:true },
+  { id:8, lens:'automate', icon:'⚡', name:'PR Summariser', trigger:'on pr.opened', response:'summarise → post Slack', hits:7, last:'9m ago', on:true },
+  { id:9, lens:'automate', icon:'⚡', name:'Incident Responder', trigger:'on PagerDuty alert', response:'classify → notify → escalate', hits:2, last:'3h ago', on:true },
+];
+
+const findingsData = [
+  { id:1, sev:'critical', type:'hardcoded-secret', file:'payments/client.py', line:14, repo:'api', status:'fix-pr', statusLabel:'Fix PR open (#483)', time:'1h ago', snippet:'secret_key = "REDACTED"', pattern:'OPENAI_KEY_PATTERN', rule:'no-hardcoded-secrets', fixPR:'#483' },
+  { id:2, sev:'high', type:'sql-injection', file:'api/users/views.py', line:87, repo:'api', status:'open', statusLabel:'Open', time:'2d ago', snippet:'query = f"SELECT * FROM users WHERE id = {user_id}"', pattern:'FORMAT_STRING_SQL', rule:'no-sql-injection', fixPR:null },
+  { id:3, sev:'medium', type:'hardcoded-secret', file:'scripts/seed.js', line:3, repo:'web', status:'dismissed', statusLabel:'Dismissed', time:'3d ago', snippet:'const DB_PASS = "devpassword123";', pattern:'GENERIC_SECRET', rule:'no-hardcoded-secrets', fixPR:null },
+  { id:4, sev:'low', type:'debug-code', file:'src/components/Auth.tsx', line:22, repo:'web', status:'open', statusLabel:'Open', time:'5d ago', snippet:'console.log("auth token:", token);', pattern:'CONSOLE_LOG_SENSITIVE', rule:'no-debug-leaks', fixPR:null },
+];
+
+const playbooksData = [
+  { icon:'🐛', name:'Issue Triage', desc:'Classify incoming GitHub issues, apply labels, and assign to the right team member.', tag:'Automate', tagColor:'var(--sky)', installed:true },
+  { icon:'📝', name:'PR Summariser', desc:'Auto-summarise pull requests and post a digest to your Slack channel.', tag:'Automate', tagColor:'var(--sky)', installed:true },
+  { icon:'🚨', name:'Incident Responder', desc:'Triage PagerDuty alerts, classify severity, notify stakeholders, escalate if needed.', tag:'Automate', tagColor:'var(--sky)', installed:true },
+  { icon:'📊', name:'Standup Bot', desc:'Collect async standups from GitHub activity and post a daily summary to Slack.', tag:'Automate', tagColor:'var(--sky)', installed:false },
+  { icon:'🔑', name:'Secret Scanner', desc:'Detect hardcoded secrets and API keys in every PR before they reach main.', tag:'Secure', tagColor:'var(--violet)', installed:true },
+  { icon:'💉', name:'SQLi Guard', desc:'Catch SQL injection patterns in Python, Node, and Go code on every PR.', tag:'Secure', tagColor:'var(--violet)', installed:true },
+  { icon:'🛡️', name:'Shell Guard', desc:'Block destructive bash commands from AI coding tools in real time.', tag:'Guard', tagColor:'var(--red)', installed:true },
+  { icon:'📦', name:'Deploy Gatekeeper', desc:'Run pre-deploy checks on Vercel/Railway deployments and block on failure.', tag:'Automate', tagColor:'var(--sky)', installed:false },
+  { icon:'🔍', name:'Code Review Bot', desc:'Post AI-generated code review comments on every PR, filtered by diff size.', tag:'Automate', tagColor:'var(--sky)', installed:false },
+];
+
+// CANVAS data
+const canvases = {
+  triage: {
+    blocks: [
+      { id:'t1', x:310, y:30, type:'Trigger', accent:'#0284C7', label:'on issue.opened', sub:'GitHub webhook' },
+      { id:'t2', x:310, y:140, type:'Brain', accent:'#4F46E5', label:'Classify issue', sub:'', tag:'gpt-4o' },
+      { id:'t3', x:310, y:265, type:'Condition', accent:'#D97706', label:'is bug?', sub:'confidence > 0.8' },
+      { id:'t4', x:140, y:385, type:'GitHub', accent:'#374151', label:'Label: bug', sub:'assign @kai' },
+      { id:'t5', x:480, y:385, type:'GitHub', accent:'#374151', label:'Label: question', sub:'close if stale' },
+    ],
+    edges: [
+      { from:'t1', to:'t2', fromAnchor:'bottom', toAnchor:'top' },
+      { from:'t2', to:'t3', fromAnchor:'bottom', toAnchor:'top' },
+      { from:'t3', to:'t4', fromAnchor:'bottomLeft', toAnchor:'top', label:'Yes' },
+      { from:'t3', to:'t5', fromAnchor:'bottomRight', toAnchor:'top', label:'No' },
+    ],
+    yaml: `name: issue-triage
+on:
+  event: github.issue.opened
+
+steps:
+  - id: classify
+    type: brain
+    model: gpt-4o
+    prompt: |
+      Classify this GitHub issue as one of:
+      bug, feature, question, or duplicate.
+      Return JSON: {label, confidence}
+
+  - id: route
+    type: condition
+    if: "{{ classify.label == 'bug' && classify.confidence > 0.8 }}"
+    then:
+      - id: label-bug
+        type: github
+        action: add_label
+        label: bug
+        assign: "@kai"
+    else:
+      - id: label-question
+        type: github
+        action: add_label
+        label: question`
+  },
+  pr: {
+    blocks: [
+      { id:'p1', x:310, y:30, type:'Trigger', accent:'#0284C7', label:'on pr.opened', sub:'GitHub webhook' },
+      { id:'p2', x:310, y:140, type:'Brain', accent:'#4F46E5', label:'Summarise PR', sub:'', tag:'gpt-4o', warn:true },
+      { id:'p3', x:310, y:270, type:'Slack', accent:'#7C3AED', label:'Post to #eng-updates', sub:'with summary + link' },
+    ],
+    edges: [
+      { from:'p1', to:'p2', fromAnchor:'bottom', toAnchor:'top' },
+      { from:'p2', to:'p3', fromAnchor:'bottom', toAnchor:'top' },
+    ],
+    yaml: `name: pr-summariser
+on:
+  event: github.pull_request.opened
+
+steps:
+  - id: summarise
+    type: brain
+    model: gpt-4o
+    prompt: |
+      Summarise this pull request in 3 bullet points.
+      Focus on: what changed, why, and risk level.
+    inputs:
+      diff: "{{ pr.diff }}"
+      title: "{{ pr.title }}"
+
+  - id: notify
+    type: slack
+    channel: "#eng-updates"
+    message: |
+      *PR #{{ pr.number }}:* {{ pr.title }}
+
+      {{ summarise.output }}
+
+      <{{ pr.url }}|View PR>`
+  }
+};
+
+let currentCanvas = 'triage';
+let yamlOpen = false;
+let currentView = 'home';
+let currentFeedFilter = 'all';
+let currentRulesFilter = 'all';
+let currentFindingsFilter = 'all';
+let rpOpen = false;
+let intentTimer = null;
+let currentLens = null;
+
+// ============================================================
+// NAVIGATION
+// ============================================================
+function switchView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  document.querySelector(`[data-view="${name}"]`).classList.add('active');
+  currentView = name;
+  closeRightPanel();
+
+  const titles = {
+    home: ['Home', 'b2bsphere workspace'],
+    rules: ['Rules', 'All active policies'],
+    canvas: ['Canvas', 'Workflow editor'],
+    security: ['Security Loop', 'Findings & scans'],
+    analytics: ['Analytics', 'DORA · Spend · Guard'],
+    playbooks: ['Playbooks', 'Library & marketplace'],
+    settings: ['Settings', 'b2bsphere workspace'],
+  };
+  const [title, sub] = titles[name] || ['', ''];
+  document.getElementById('topbar-title').textContent = title;
+  document.getElementById('topbar-sub').textContent = sub;
+}
+
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', () => {
+    const view = item.dataset.view;
+    if (view) switchView(view);
+  });
+});
+
+// ============================================================
+// FEED
+// ============================================================
+function renderFeed(filter) {
+  const list = document.getElementById('feed-list');
+  const rows = filter === 'all' ? feedData : feedData.filter(r => r.lens === filter);
+  list.innerHTML = rows.map(r => `
+    <div class="feed-row" onclick="openFeedPanel(${r.id})">
+      <div class="feed-dot dot-${r.dot}"></div>
+      <div class="feed-lens"><span class="lens-pill lens-${r.lens}">${lensIcon(r.lens)} ${r.lens}</span></div>
+      <div class="feed-body">
+        <div class="feed-title-text">${r.title}</div>
+        <div class="feed-desc">${r.desc}</div>
+      </div>
+      <div class="feed-meta">
+        <span class="feed-time">${r.time}</span>
+        <span class="status-pill pill-${r.pill}">${r.pill}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function lensIcon(lens) {
+  const icons = { guard: '🛡', secure: '🔒', automate: '⚡' };
+  return icons[lens] || '';
+}
+
+function filterFeed(filter, el) {
+  currentFeedFilter = filter;
+  document.querySelectorAll('#feed-tabs .tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  renderFeed(filter);
+}
+
+// ============================================================
+// RULES
+// ============================================================
+function renderRules(filter) {
+  const list = document.getElementById('rules-list');
+  const rows = filter === 'all' ? rulesData : rulesData.filter(r => r.lens === filter);
+  list.innerHTML = rows.map(r => `
+    <div class="rule-row">
+      <div class="rule-lens-icon" style="background:${lensColor(r.lens, 'light')};">${r.icon}</div>
+      <div class="rule-body">
+        <div class="rule-name">${r.name}</div>
+        <div class="rule-meta">${r.trigger} → ${r.response}</div>
+      </div>
+      <div class="rule-stats">
+        <div class="rule-stat">
+          <div class="rule-stat-val">${r.hits}</div>
+          <div class="rule-stat-label">hits</div>
+        </div>
+        <div class="rule-stat">
+          <div class="rule-stat-val" style="font-size:11px; font-weight:500; color:var(--ink-muted);">${r.last}</div>
+          <div class="rule-stat-label">last fired</div>
+        </div>
+        ${r.lens === 'automate' ? `<button class="btn btn-ghost btn-sm" onclick="switchView('canvas')">Edit canvas</button>` : ''}
+        <label class="toggle"><input type="checkbox" ${r.on ? 'checked' : ''} onchange="toggleRule(${r.id}, this)"><span class="toggle-slider"></span></label>
+      </div>
+    </div>
+  `).join('');
+}
+
+function lensColor(lens, variant) {
+  const map = { guard: { light:'#FEF2F2', mid:'#DC2626' }, secure: { light:'#F5F3FF', mid:'#7C3AED' }, automate: { light:'#E0F2FE', mid:'#0284C7' } };
+  return (map[lens] || {})[variant] || '#F7F6F5';
+}
+
+function filterRules(filter, el) {
+  currentRulesFilter = filter;
+  document.querySelectorAll('#rules-tabs .tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  renderRules(filter);
+}
+
+function toggleRule(id, cb) {
+  const rule = rulesData.find(r => r.id === id);
+  if (rule) rule.on = cb.checked;
+}
+
+// ============================================================
+// CANVAS
+// ============================================================
+function switchCanvas(val) {
+  currentCanvas = val;
+  renderCanvas(val);
+}
+
+function blockWidth() { return 190; }
+function blockHeight() { return 78; }
+
+function getAnchorPoint(block, anchor) {
+  const bw = blockWidth(), bh = blockHeight();
+  const cx = block.x + bw / 2;
+  const cy = block.y + bh / 2;
+  switch (anchor) {
+    case 'top': return { x: cx, y: block.y };
+    case 'bottom': return { x: cx, y: block.y + bh };
+    case 'bottomLeft': return { x: block.x + bw * 0.3, y: block.y + bh };
+    case 'bottomRight': return { x: block.x + bw * 0.7, y: block.y + bh };
+    default: return { x: cx, y: cy };
+  }
+}
+
+function renderCanvas(key) {
+  const data = canvases[key];
+  const stage = document.getElementById('canvas-stage');
+  const svg = document.getElementById('canvas-svg');
+
+  // Remove old blocks
+  stage.querySelectorAll('.block').forEach(b => b.remove());
+
+  // Render blocks
+  data.blocks.forEach(b => {
+    const el = document.createElement('div');
+    el.className = 'block' + (b.warn ? ' block-warn' : '');
+    el.style.left = b.x + 'px';
+    el.style.top = b.y + 'px';
+    el.style.width = blockWidth() + 'px';
+    el.innerHTML = `
+      <div class="block-accent" style="background:${b.accent};"></div>
+      <div class="block-inner">
+        <div class="block-type">${b.type}</div>
+        <div class="block-label">${b.label}</div>
+        ${b.sub ? `<div class="block-sub">${b.sub}</div>` : ''}
+        ${b.tag ? `<span class="block-tag">${b.tag}</span>` : ''}
+        ${b.warn ? `<div class="block-warn-badge">⏸ Waiting for input</div>` : ''}
+      </div>
+    `;
+    stage.appendChild(el);
+  });
+
+  // Render SVG edges
+  const blockMap = {};
+  data.blocks.forEach(b => blockMap[b.id] = b);
+
+  const paths = data.edges.map(e => {
+    const from = getAnchorPoint(blockMap[e.from], e.fromAnchor || 'bottom');
+    const to = getAnchorPoint(blockMap[e.to], e.toAnchor || 'top');
+    const dy = Math.abs(to.y - from.y) * 0.5;
+    const cp1 = { x: from.x, y: from.y + dy };
+    const cp2 = { x: to.x, y: to.y - dy };
+    const d = `M ${from.x} ${from.y} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${to.x} ${to.y}`;
+    const midX = (from.x + to.x) / 2;
+    const midY = (from.y + to.y) / 2;
+    const labelEl = e.label ? `<text x="${midX + 6}" y="${midY}" fill="#9CA3AF" font-size="10" font-family="Inter, sans-serif" font-weight="600">${e.label}</text>` : '';
+    return `<path d="${d}" stroke="#4B5563" stroke-width="2" fill="none" stroke-dasharray="none"/>
+            <circle cx="${to.x}" cy="${to.y}" r="3" fill="#4B5563"/>
+            ${labelEl}`;
+  }).join('');
+
+  svg.innerHTML = paths;
+
+  // YAML
+  document.getElementById('yaml-code').textContent = data.yaml;
+}
+
+function toggleYaml() {
+  yamlOpen = !yamlOpen;
+  document.getElementById('yaml-content').classList.toggle('open', yamlOpen);
+  document.querySelector('.yaml-toggle-btn').textContent = yamlOpen ? '{ } Hide YAML' : '{ } View YAML';
+}
+
+// ============================================================
+// FINDINGS
+// ============================================================
+function renderFindings(filter) {
+  const list = document.getElementById('findings-list');
+  const rows = filter === 'all' ? findingsData : findingsData.filter(f => f.sev === filter);
+  list.innerHTML = rows.map(f => `
+    <div class="finding-row" onclick="openFindingPanel(${f.id})">
+      <span class="sev-pill sev-${f.sev}">${f.sev}</span>
+      <div class="finding-body">
+        <div class="finding-type">${f.type}</div>
+        <div class="finding-file">${f.file}:${f.line} · ${f.repo} repo</div>
+      </div>
+      <div class="finding-meta">
+        <span class="status-badge status-${f.status.replace(' ','-')}">${f.statusLabel}</span>
+        <span class="feed-time">${f.time}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function filterFindings(filter, el) {
+  currentFindingsFilter = filter;
+  document.querySelectorAll('#sec-tabs .tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  renderFindings(filter);
+}
+
+// ============================================================
+// ANALYTICS
+// ============================================================
+function renderAnalytics() {
+  // Spend chart
+  const spendData = [
+    { day:'Mon', val:1.2 },{ day:'Tue', val:2.8 },{ day:'Wed', val:1.9 },{ day:'Thu', val:3.2 },
+    { day:'Fri', val:1.6 },{ day:'Sat', val:0.4 },{ day:'Sun', val:1.3 },
+  ];
+  const maxSpend = Math.max(...spendData.map(d => d.val));
+  document.getElementById('spend-chart').innerHTML = spendData.map(d => `
+    <div class="bar-col">
+      <div style="font-size:10px;color:var(--ink-muted);margin-bottom:3px;">$${d.val}</div>
+      <div class="bar-fill" style="height:${Math.max(4, (d.val/maxSpend)*80)}px;"></div>
+      <div class="bar-label">${d.day}</div>
+    </div>
+  `).join('');
+
+  // Severity chart
+  const sevData = [
+    { label:'Critical', val:1, color:'#991B1B' },
+    { label:'High', val:1, color:'#9A3412' },
+    { label:'Medium', val:1, color:'#92400E' },
+    { label:'Low', val:1, color:'#166534' },
+  ];
+  document.getElementById('sev-chart').innerHTML = sevData.map(d => `
+    <div class="hbar-row">
+      <div class="hbar-label">${d.label}</div>
+      <div class="hbar-track"><div class="hbar-fill" style="width:${d.val * 100}%;background:${d.color};"></div></div>
+      <div class="hbar-val">${d.val}</div>
+    </div>
+  `).join('');
+
+  // Guard blocks
+  const guardData = [
+    { label:'bash', val:12, color:'var(--red)' },
+    { label:'read', val:4, color:'var(--amber)' },
+    { label:'write', val:2, color:'var(--violet)' },
+    { label:'edit', val:1, color:'var(--sky)' },
+  ];
+  const maxG = Math.max(...guardData.map(d => d.val));
+  document.getElementById('guard-chart').innerHTML = guardData.map(d => `
+    <div class="hbar-row">
+      <div class="hbar-label">${d.label}</div>
+      <div class="hbar-track"><div class="hbar-fill" style="width:${(d.val/maxG)*100}%;background:${d.color};"></div></div>
+      <div class="hbar-val">${d.val}</div>
+    </div>
+  `).join('');
+
+  // Runs
+  const runsData = [
+    { label:'Issue Triage', val:24, color:'var(--sky)' },
+    { label:'PR Summariser', val:7, color:'var(--indigo)' },
+    { label:'Incident Resp.', val:2, color:'var(--red)' },
+    { label:'Standup', val:5, color:'var(--green)' },
+  ];
+  const maxR = Math.max(...runsData.map(d => d.val));
+  document.getElementById('runs-chart').innerHTML = runsData.map(d => `
+    <div class="hbar-row">
+      <div class="hbar-label" style="width:90px;">${d.label}</div>
+      <div class="hbar-track"><div class="hbar-fill" style="width:${(d.val/maxR)*100}%;background:${d.color};"></div></div>
+      <div class="hbar-val">${d.val}</div>
+    </div>
+  `).join('');
+}
+
+// ============================================================
+// PLAYBOOKS
+// ============================================================
+function renderPlaybooks() {
+  const grid = document.getElementById('playbooks-grid');
+  const tagStyles = {
+    'Automate': { bg:'var(--sky-light)', color:'var(--sky)' },
+    'Secure': { bg:'var(--violet-light)', color:'var(--violet)' },
+    'Guard': { bg:'var(--red-light)', color:'var(--red)' },
+  };
+  grid.innerHTML = playbooksData.map(p => {
+    const ts = tagStyles[p.tag] || {};
+    return `
+      <div class="playbook-card">
+        <div class="pb-icon">${p.icon}</div>
+        <div class="pb-name">${p.name}</div>
+        <div class="pb-desc">${p.desc}</div>
+        <div class="pb-footer">
+          <span class="pb-tag" style="background:${ts.bg};color:${ts.color};">${p.tag}</span>
+          <div class="pb-actions">
+            <a class="pb-link">View YAML</a>
+            <button class="btn btn-ghost btn-sm">${p.installed ? '✓ Installed' : 'Install'}</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('') + `
+    <div class="playbook-card dashed" onclick="">
+      <div style="font-size:22px;">+</div>
+      <div style="font-size:13px; font-weight:600;">Browse marketplace</div>
+      <div class="text-sm text-muted">More playbooks from the community</div>
+    </div>
+  `;
+}
+
+// ============================================================
+// RIGHT PANEL
+// ============================================================
+function openFeedPanel(id) {
+  const item = feedData.find(r => r.id === id);
+  if (!item) return;
+
+  const ruleNames = { guard: 'no-destructive-shell', secure: 'no-hardcoded-secrets', automate: 'issue-triage' };
+  const toolDetails = {
+    1: { tool:'bash', cmd:'rm -rf /tmp/secrets', user:'maya', client:'Claude Code' },
+    5: { tool:'read', cmd:'cat .env', user:'alex', client:'Cursor' },
+    8: { tool:'bash', cmd:'chmod 777 /etc/nginx/prod.conf', user:'dan', client:'Claude Code' },
+  };
+
+  const detail = toolDetails[id];
+  let bodyHtml = '';
+
+  if (item.lens === 'guard' && detail) {
+    bodyHtml = `
+      <div class="rp-section">
+        <div class="rp-section-label">Tool call</div>
+        <div class="code-box">${detail.cmd}</div>
+        <div class="text-sm text-muted mt-8">${detail.client} · ${detail.tool} · ${detail.user}</div>
+      </div>
+      <div class="rp-section">
+        <div class="rp-section-label">Rule fired</div>
+        <div class="rp-value">${ruleNames[item.lens]}</div>
+      </div>
+      <div class="rp-section">
+        <div class="rp-section-label">Outcome</div>
+        <span class="status-pill pill-${item.pill}" style="margin-right:6px;">${item.pill}</span>
+        <span class="text-sm text-muted">${item.time}</span>
+      </div>
+      <div class="rp-actions">
+        <button class="btn btn-ghost btn-sm">Mark expected</button>
+        <button class="btn btn-ghost btn-sm">False positive</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--indigo);">Adjust rule</button>
+      </div>
+      <div class="steer-box mt-12">
+        <div class="steer-label">Steer</div>
+        <textarea class="steer-input" placeholder="Describe adjustment — Conduct will update the rule."></textarea>
+        <button class="btn btn-primary btn-sm mt-8">Apply steer</button>
+      </div>
+    `;
+  } else if (item.lens === 'automate') {
+    bodyHtml = `
+      <div class="rp-section">
+        <div class="rp-section-label">Playbook</div>
+        <div class="rp-value fw-600">${item.title}</div>
+      </div>
+      <div class="rp-section">
+        <div class="rp-section-label">Result</div>
+        <div class="text-sm">${item.desc}</div>
+      </div>
+      <div class="rp-section">
+        <div class="rp-section-label">Status</div>
+        <span class="status-pill pill-${item.pill}">${item.pill}</span>
+        ${item.pill === 'paused' ? `<div class="text-sm text-muted mt-8">Waiting for clarification on severity level before escalating to PagerDuty.</div>` : ''}
+      </div>
+      ${item.pill === 'paused' ? `
+        <div class="rp-actions">
+          <button class="btn btn-green btn-sm">Resume</button>
+          <button class="btn btn-ghost btn-sm">Skip step</button>
+          <button class="btn btn-danger btn-sm">Abort</button>
+        </div>
+        <div class="steer-box mt-12">
+          <div class="steer-label">Clarify</div>
+          <textarea class="steer-input" placeholder="Provide context to resume the run…"></textarea>
+          <button class="btn btn-primary btn-sm mt-8">Send</button>
+        </div>
+      ` : ''}
+    `;
+  } else if (item.lens === 'secure') {
+    bodyHtml = `
+      <div class="rp-section">
+        <div class="rp-section-label">Event</div>
+        <div class="rp-value fw-600">${item.title}</div>
+        <div class="text-sm text-muted">${item.desc}</div>
+      </div>
+      <div class="rp-section">
+        <div class="rp-section-label">Status</div>
+        <span class="status-pill pill-${item.pill}">${item.pill}</span>
+      </div>
+      ${item.pill === 'flagged' ? `
+        <div class="rp-actions">
+          <button class="btn btn-primary btn-sm" style="background:var(--violet);">View PR #483</button>
+          <button class="btn btn-ghost btn-sm">Dismiss</button>
+        </div>
+      ` : ''}
+    `;
+  }
+
+  showRightPanel(`
+    <div class="rp-header">
+      <div>
+        <span class="lens-pill lens-${item.lens}" style="margin-right:6px;">${lensIcon(item.lens)} ${item.lens}</span>
+        <span class="rp-title">${item.title}</span>
+      </div>
+      <button class="rp-close" onclick="closeRightPanel()">×</button>
+    </div>
+    <div class="rp-body">${bodyHtml}</div>
+  `);
+}
+
+function openFindingPanel(id) {
+  const f = findingsData.find(r => r.id === id);
+  if (!f) return;
+
+  showRightPanel(`
+    <div class="rp-header">
+      <div>
+        <span class="sev-pill sev-${f.sev}" style="margin-right:6px;">${f.sev}</span>
+        <span class="rp-title">${f.type}</span>
+      </div>
+      <button class="rp-close" onclick="closeRightPanel()">×</button>
+    </div>
+    <div class="rp-body">
+      <div class="rp-section">
+        <div class="rp-section-label">File</div>
+        <div class="rp-value" style="font-family:monospace;">${f.file}:${f.line}</div>
+        <div class="text-sm text-muted">${f.repo} repo</div>
+      </div>
+      <div class="rp-section">
+        <div class="rp-section-label">Code snippet</div>
+        <div class="code-box">${f.snippet}</div>
+      </div>
+      <div class="rp-section">
+        <div class="rp-section-label">Pattern matched</div>
+        <div class="rp-value">${f.pattern}</div>
+      </div>
+      <div class="rp-section">
+        <div class="rp-section-label">Rule</div>
+        <div class="rp-value">${f.rule}</div>
+      </div>
+      ${f.fixPR ? `
+        <div class="rp-section">
+          <div class="rp-section-label">Fix PR</div>
+          <div class="rp-value" style="color:var(--indigo);">PR ${f.fixPR} — auto-generated fix</div>
+        </div>
+      ` : ''}
+      <div class="rp-actions mt-12">
+        <button class="btn btn-green btn-sm">Resolve</button>
+        <button class="btn btn-ghost btn-sm">Dismiss</button>
+        ${f.fixPR ? `<button class="btn btn-primary btn-sm">View fix PR</button>` : ''}
+      </div>
+    </div>
+  `);
+}
+
+function showRightPanel(html) {
+  document.getElementById('rp-inner').innerHTML = html;
+  document.getElementById('right-panel').classList.add('open');
+  rpOpen = true;
+}
+
+function closeRightPanel() {
+  document.getElementById('right-panel').classList.remove('open');
+  rpOpen = false;
+}
+
+// ============================================================
+// SETTINGS TABS
+// ============================================================
+function switchSettings(tab, el) {
+  document.querySelectorAll('.settings-section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('settings-' + tab).classList.add('active');
+  el.classList.add('active');
+}
+
+// ============================================================
+// MODAL / INTENT
+// ============================================================
+const intentMap = [
+  { keywords:['bash','delete','rm','chmod','block','stop ai','destructive','shell'], lens:'guard' },
+  { keywords:['secret','sqli','sql','injection','pr','merge','vulnerability','hardcoded'], lens:'secure' },
+  { keywords:['triage','summarize','summarise','automate','standup','notify','issue','deploy','slack'], lens:'automate' },
+];
+
+const proposedCards = {
+  guard: {
+    title: 'Stop AI tools from running destructive shell commands',
+    chips: ['on tool-call: bash', 'matches rm -rf, chmod 777', 'block & notify (danger)'],
+    stat: 'Would have blocked <strong>4 actions</strong> yesterday',
+    btnLabel: 'Confirm',
+    btnClass: 'confirm-btn-primary',
+    lensLabel: '🛡️ Guard',
+    lensStyle: 'background:var(--red-light);color:var(--red);',
+  },
+  secure: {
+    title: 'Catch SQL injection and hardcoded secrets before merge',
+    chips: ['on PR opened', 'SQLi / secret findings (warn)', 'comment & open fix PR'],
+    stat: 'Would have flagged <strong>3 of last 20 PRs</strong>',
+    btnLabel: 'Confirm',
+    btnClass: 'confirm-btn-primary',
+    lensLabel: '🔒 Secure',
+    lensStyle: 'background:var(--violet-light);color:var(--violet);',
+  },
+  automate: {
+    title: 'Triage incoming GitHub issues',
+    chips: ['on issue opened', 'classify & label', 'assign & comment'],
+    stat: 'Matches <strong>38 issues</strong> from last week',
+    btnLabel: 'Open canvas →',
+    btnClass: 'confirm-btn-canvas',
+    lensLabel: '⚡ Automate',
+    lensStyle: 'background:var(--sky-light);color:var(--sky);',
+  },
+};
+
+function detectLens(text) {
+  const lower = text.toLowerCase();
+  for (const rule of intentMap) {
+    if (rule.keywords.some(kw => lower.includes(kw))) return rule.lens;
+  }
+  return null;
+}
+
+function handleIntent(val) {
+  clearTimeout(intentTimer);
+  const card = document.getElementById('proposed-card');
+  if (!val.trim()) {
+    card.classList.remove('visible');
+    currentLens = null;
+    return;
+  }
+  intentTimer = setTimeout(() => {
+    const lens = detectLens(val);
+    if (!lens) { card.classList.remove('visible'); currentLens = null; return; }
+    showProposedCard(lens);
+  }, 520);
+}
+
+function showProposedCard(lens) {
+  currentLens = lens;
+  const data = proposedCards[lens];
+  const card = document.getElementById('proposed-card');
+
+  document.getElementById('proposed-lens-tag').innerHTML = `<span class="proposed-lens-tag" style="${data.lensStyle}">${data.lensLabel}</span>`;
+  document.getElementById('proposed-title').textContent = data.title;
+  document.getElementById('proposed-stat').innerHTML = data.stat;
+
+  const chipsEl = document.getElementById('proposed-chips');
+  chipsEl.innerHTML = data.chips.map((c,i) => `<span class="chip" data-idx="${i}">${c}</span>`).join('');
+
+  const btn = document.getElementById('confirm-btn');
+  btn.textContent = data.btnLabel;
+  btn.className = `confirm-btn ${data.btnClass}`;
+
+  card.classList.add('visible');
+
+  // Stagger chips
+  data.chips.forEach((_, i) => {
+    setTimeout(() => {
+      const chip = chipsEl.querySelector(`[data-idx="${i}"]`);
+      if (chip) chip.classList.add('show');
+    }, 180 + i * 180);
+  });
+
+  // Pulse confirm btn
+  setTimeout(() => {
+    btn.classList.add('pulse');
+    setTimeout(() => btn.classList.remove('pulse'), 3000);
+  }, 800);
+}
+
+function setIntent(text) {
+  document.getElementById('intent-input').value = text;
+  handleIntent(text);
+}
+
+function openModal() {
+  document.getElementById('modal-backdrop').classList.add('open');
+  document.getElementById('intent-input').value = '';
+  document.getElementById('proposed-card').classList.remove('visible');
+  document.getElementById('proposed-chips').innerHTML = '';
+  currentLens = null;
+  setTimeout(() => document.getElementById('intent-input').focus(), 100);
+}
+
+function closeModal() {
+  document.getElementById('modal-backdrop').classList.remove('open');
+}
+
+function handleBackdropClick(e) {
+  if (e.target === document.getElementById('modal-backdrop')) closeModal();
+}
+
+function confirmRule() {
+  if (currentLens === 'automate') {
+    closeModal();
+    switchView('canvas');
+    currentCanvas = 'triage';
+    document.getElementById('canvas-select').value = 'triage';
+    renderCanvas('triage');
+  } else if (currentLens) {
+    closeModal();
+    // Add a mock rule
+    const newRule = {
+      id: rulesData.length + 1,
+      lens: currentLens,
+      icon: currentLens === 'guard' ? '🛡️' : '🔒',
+      name: proposedCards[currentLens].title.substring(0, 40) + '…',
+      trigger: proposedCards[currentLens].chips[0],
+      response: proposedCards[currentLens].chips[2],
+      hits: 0,
+      last: 'just now',
+      on: true,
+    };
+    rulesData.unshift(newRule);
+    if (currentView === 'rules') renderRules(currentRulesFilter);
+  }
+}
+
+// ============================================================
+// INIT
+// ============================================================
+function init() {
+  renderFeed('all');
+  renderRules('all');
+  renderCanvas('triage');
+  renderFindings('all');
+  renderAnalytics();
+  renderPlaybooks();
+}
+
+init();
+</script>
+</body>
+</html>

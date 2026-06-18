@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Conduct — In-App Mockup</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --indigo: #4F46E5; --indigo-light: #EEF2FF; --indigo-mid: #C7D2FE;
+      --violet: #7C3AED; --violet-light: #F5F3FF;
+      --sky: #0284C7;    --sky-light: #E0F2FE;
+      --green: #16A34A;  --green-light: #F0FDF4;
+      --red: #DC2626;    --red-light: #FEF2F2;
+      --amber: #D97706;  --amber-light: #FFFBEB;
+      --bg: #F7F6F5;
+      --surface: #FFFFFF;
+      --border: #E7E5E4;
+      --ink: #0C0A09;
+      --stone-9: #1C1917; --stone-7: #44403C;
+      --stone-5: #78716C; --stone-4: #A8A29E; --stone-2: #E7E5E4;
+    }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--stone-9); height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+
+    /* ── TOP BAR ── */
+    .topbar {
+      height: 48px; background: var(--surface); border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; padding: 0 1rem; gap: 0.75rem; flex-shrink: 0; z-index: 20;
+    }
+    .topbar-logo { font-size: 0.875rem; font-weight: 800; color: var(--ink); letter-spacing: -0.02em; display: flex; align-items: center; gap: 0.375rem; }
+    .logo-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--indigo); }
+    .ws-pill {
+      display: flex; align-items: center; gap: 0.375rem;
+      background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      padding: 0.25rem 0.625rem; font-size: 0.8125rem; font-weight: 500; color: var(--stone-7);
+      cursor: pointer;
+    }
+    .ws-pill svg { width: 10px; height: 10px; color: var(--stone-4); }
+    .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 0.625rem; }
+    .avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--indigo-light); display: flex; align-items: center; justify-content: center; font-size: 0.6875rem; font-weight: 700; color: var(--indigo); cursor: pointer; }
+    .top-btn { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 0.3rem 0.7rem; font-size: 0.8125rem; font-weight: 500; color: var(--stone-5); cursor: pointer; font-family: inherit; transition: border-color 0.15s, color 0.15s; }
+    .top-btn:hover { border-color: var(--indigo-mid); color: var(--ink); }
+    .top-btn.primary { background: var(--indigo); color: white; border-color: var(--indigo); }
+    .top-btn.primary:hover { background: #4338CA; }
+
+    /* ── SHELL ── */
+    .shell { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── SIDEBAR ── */
+    .sidebar {
+      width: 212px; flex-shrink: 0; background: var(--surface);
+      border-right: 1px solid var(--border); display: flex; flex-direction: column;
+      padding: 0.75rem 0; overflow-y: auto;
+    }
+    .nav-section { padding: 0 0.5rem; margin-bottom: 0.25rem; }
+    .nav-label { font-size: 0.6875rem; font-weight: 600; color: var(--stone-4); text-transform: uppercase; letter-spacing: 0.08em; padding: 0.5rem 0.625rem 0.25rem; }
+    .nav-item {
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.4375rem 0.625rem; border-radius: 8px; cursor: pointer;
+      font-size: 0.8125rem; font-weight: 500; color: var(--stone-5);
+      transition: background 0.12s, color 0.12s; position: relative;
+      user-select: none;
+    }
+    .nav-item:hover { background: var(--bg); color: var(--stone-9); }
+    .nav-item.active { background: var(--indigo-light); color: var(--indigo); font-weight: 600; }
+    .nav-item .ni-icon { font-size: 0.875rem; width: 18px; text-align: center; }
+    .nav-badge {
+      margin-left: auto; font-size: 0.65rem; font-weight: 700;
+      background: var(--red); color: white; border-radius: 20px;
+      padding: 0.1rem 0.4rem; min-width: 18px; text-align: center;
+    }
+    .nav-badge.amber { background: var(--amber); }
+    .nav-divider { height: 1px; background: var(--border); margin: 0.5rem 0.75rem; }
+    .sidebar-bottom { margin-top: auto; padding: 0 0.5rem; }
+    .cli-status {
+      margin: 0.5rem; padding: 0.625rem 0.75rem; border-radius: 10px;
+      background: var(--bg); border: 1px solid var(--border);
+      font-size: 0.75rem; color: var(--stone-5);
+    }
+    .cli-status strong { display: block; color: var(--stone-7); font-weight: 600; margin-bottom: 0.125rem; }
+    .cli-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--green); margin-right: 0.25rem; }
+
+    /* ── MAIN ── */
+    .main { flex: 1; overflow: hidden; display: flex; position: relative; }
+    .view { flex: 1; overflow-y: auto; padding: 1.5rem; display: none; }
+    .view.active { display: block; }
+
+    /* ── STATS BAR ── */
+    .stats-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-bottom: 1.5rem; }
+    .stat-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      padding: 1rem 1.125rem;
+    }
+    .stat-label { font-size: 0.75rem; font-weight: 500; color: var(--stone-4); margin-bottom: 0.375rem; }
+    .stat-value { font-size: 1.625rem; font-weight: 800; color: var(--ink); letter-spacing: -0.03em; line-height: 1; }
+    .stat-delta { font-size: 0.75rem; font-weight: 500; margin-top: 0.25rem; }
+    .stat-delta.up   { color: var(--green); }
+    .stat-delta.down { color: var(--red); }
+    .stat-delta.neutral { color: var(--stone-4); }
+
+    /* ── SECTION HEADER ── */
+    .section-hd {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 0.75rem;
+    }
+    .section-hd h2 { font-size: 0.8125rem; font-weight: 700; color: var(--stone-7); text-transform: uppercase; letter-spacing: 0.06em; }
+    .section-hd-actions { display: flex; gap: 0.5rem; }
+
+    /* ── ADD RULE BAR ── */
+    .add-rule-bar {
+      background: var(--surface); border: 1.5px dashed var(--border); border-radius: 12px;
+      padding: 0.75rem 1rem; display: flex; align-items: center; gap: 0.75rem;
+      cursor: pointer; margin-bottom: 1.25rem;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .add-rule-bar:hover { border-color: var(--indigo-mid); box-shadow: 0 0 0 3px rgba(79,70,229,0.06); }
+    .add-rule-bar span { font-size: 0.875rem; color: var(--stone-4); flex: 1; }
+    .add-rule-btn {
+      background: var(--indigo); color: white; border: none; border-radius: 8px;
+      padding: 0.375rem 0.875rem; font-size: 0.8125rem; font-weight: 600;
+      cursor: pointer; font-family: inherit;
+    }
+
+    /* ── FEED ── */
+    .feed-filters { display: flex; gap: 0.375rem; margin-bottom: 0.875rem; }
+    .filter-btn {
+      font-size: 0.8rem; font-weight: 500; color: var(--stone-5);
+      background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+      padding: 0.25rem 0.75rem; cursor: pointer; font-family: inherit;
+      transition: all 0.12s;
+    }
+    .filter-btn:hover { border-color: var(--indigo-mid); color: var(--indigo); }
+    .filter-btn.active { background: var(--indigo-light); border-color: var(--indigo-mid); color: var(--indigo); font-weight: 600; }
+
+    .feed { display: flex; flex-direction: column; gap: 0.375rem; }
+    .feed-row {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 11px;
+      padding: 0.75rem 1rem; display: flex; align-items: flex-start; gap: 0.75rem;
+      cursor: pointer; transition: border-color 0.12s, box-shadow 0.12s;
+    }
+    .feed-row:hover { border-color: var(--indigo-mid); box-shadow: 0 1px 8px rgba(0,0,0,0.05); }
+    .feed-row.selected { border-color: var(--indigo); box-shadow: 0 0 0 2px var(--indigo-light); }
+    .feed-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+    .dot-block   { background: var(--red); }
+    .dot-warn    { background: var(--amber); }
+    .dot-ran     { background: var(--sky); }
+    .dot-flagged { background: var(--violet); }
+    .dot-paused  { background: var(--amber); }
+    .dot-clear   { background: var(--green); }
+    .feed-body { flex: 1; min-width: 0; }
+    .feed-title { font-size: 0.875rem; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 0.125rem; }
+    .feed-desc  { font-size: 0.8rem; color: var(--stone-5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .feed-right { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem; }
+    .feed-time  { font-size: 0.75rem; color: var(--stone-4); white-space: nowrap; }
+    .feed-pill  { font-size: 0.7rem; font-weight: 600; border-radius: 20px; padding: 0.125rem 0.5rem; white-space: nowrap; }
+    .pill-block   { background: var(--red-light);   color: var(--red); }
+    .pill-warn    { background: var(--amber-light);  color: var(--amber); }
+    .pill-ran     { background: var(--sky-light);    color: var(--sky); }
+    .pill-flagged { background: var(--violet-light); color: var(--violet); }
+    .pill-paused  { background: var(--amber-light);  color: var(--amber); }
+    .pill-clear   { background: var(--green-light);  color: var(--green); }
+    .feed-lens-icon { font-size: 0.875rem; }
+
+    /* ── RULES VIEW ── */
+    .rules-tabs { display: flex; gap: 0.25rem; margin-bottom: 1rem; background: var(--bg); border-radius: 10px; padding: 0.25rem; display: inline-flex; }
+    .rules-tab { font-size: 0.8125rem; font-weight: 500; color: var(--stone-5); padding: 0.35rem 0.875rem; border-radius: 8px; cursor: pointer; transition: all 0.15s; }
+    .rules-tab.active { background: white; color: var(--ink); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .rules-list { display: flex; flex-direction: column; gap: 0.5rem; }
+    .rule-row {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 11px;
+      padding: 0.875rem 1rem; display: flex; align-items: center; gap: 0.875rem;
+    }
+    .rule-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 0.875rem; flex-shrink: 0; }
+    .rule-icon.guard    { background: var(--indigo-light); }
+    .rule-icon.secure   { background: var(--violet-light); }
+    .rule-icon.automate { background: var(--sky-light); }
+    .rule-body { flex: 1; min-width: 0; }
+    .rule-name { font-size: 0.875rem; font-weight: 600; color: var(--ink); margin-bottom: 0.125rem; }
+    .rule-meta { font-size: 0.75rem; color: var(--stone-4); display: flex; gap: 0.75rem; }
+    .rule-stats { display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem; flex-shrink: 0; }
+    .rule-hits { font-size: 0.75rem; color: var(--stone-5); font-weight: 500; }
+    .rule-last { font-size: 0.7rem; color: var(--stone-4); }
+    .toggle { width: 34px; height: 20px; border-radius: 20px; background: var(--green); position: relative; cursor: pointer; flex-shrink: 0; transition: background 0.2s; }
+    .toggle::after { content: ''; position: absolute; width: 16px; height: 16px; border-radius: 50%; background: white; top: 2px; right: 2px; transition: right 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
+    .toggle.off { background: var(--stone-2); }
+    .toggle.off::after { right: auto; left: 2px; }
+
+    /* ── ANALYTICS VIEW ── */
+    .analytics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .analytics-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; }
+    .ac-title { font-size: 0.8125rem; font-weight: 700; color: var(--stone-7); margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .dora-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    .dora-item { }
+    .dora-label { font-size: 0.75rem; color: var(--stone-4); margin-bottom: 0.25rem; }
+    .dora-value { font-size: 1.375rem; font-weight: 800; color: var(--ink); letter-spacing: -0.03em; }
+    .dora-unit  { font-size: 0.75rem; color: var(--stone-4); font-weight: 400; }
+    .spend-bars { display: flex; flex-direction: column; gap: 0.5rem; }
+    .spend-row  { display: flex; align-items: center; gap: 0.625rem; }
+    .spend-label { font-size: 0.75rem; color: var(--stone-5); width: 24px; text-align: right; }
+    .spend-track { flex: 1; height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; }
+    .spend-fill  { height: 100%; border-radius: 4px; background: var(--indigo); }
+    .spend-amt   { font-size: 0.75rem; color: var(--stone-5); width: 38px; text-align: right; }
+    .finding-bars { display: flex; flex-direction: column; gap: 0.625rem; margin-top: 0.25rem; }
+    .finding-row { display: flex; align-items: center; gap: 0.625rem; }
+    .finding-label { font-size: 0.75rem; color: var(--stone-5); width: 52px; }
+    .finding-track { flex: 1; height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; }
+    .finding-fill  { height: 100%; border-radius: 4px; }
+    .fill-critical { background: var(--red); }
+    .fill-high     { background: var(--amber); }
+    .fill-medium   { background: var(--sky); }
+    .fill-low      { background: var(--green); }
+    .finding-count { font-size: 0.75rem; color: var(--stone-5); width: 20px; text-align: right; }
+
+    /* ── RIGHT PANEL ── */
+    .panel {
+      width: 0; flex-shrink: 0; background: var(--surface);
+      border-left: 1px solid var(--border); overflow: hidden;
+      transition: width 0.25s ease; display: flex; flex-direction: column;
+    }
+    .panel.open { width: 360px; }
+    .panel-inner { width: 360px; display: flex; flex-direction: column; height: 100%; overflow-y: auto; }
+    .panel-hd {
+      padding: 1rem 1.125rem 0.75rem; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+    }
+    .panel-hd h3 { font-size: 0.875rem; font-weight: 700; color: var(--ink); }
+    .panel-close { background: none; border: none; cursor: pointer; color: var(--stone-4); font-size: 1.125rem; line-height: 1; padding: 0.125rem; transition: color 0.15s; }
+    .panel-close:hover { color: var(--ink); }
+    .panel-body { padding: 1rem 1.125rem; flex: 1; display: flex; flex-direction: column; gap: 1rem; }
+    .panel-section { }
+    .panel-sec-label { font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--stone-4); margin-bottom: 0.5rem; }
+    .panel-code { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.625rem 0.75rem; font-family: monospace; font-size: 0.8125rem; color: var(--stone-7); line-height: 1.5; }
+    .panel-rule-box { background: var(--indigo-light); border: 1px solid var(--indigo-mid); border-radius: 8px; padding: 0.625rem 0.75rem; }
+    .panel-rule-name { font-size: 0.8125rem; font-weight: 600; color: var(--indigo); }
+    .panel-rule-meta { font-size: 0.75rem; color: #818CF8; margin-top: 0.125rem; }
+    .panel-actions { display: flex; flex-direction: column; gap: 0.5rem; }
+    .panel-action {
+      display: flex; align-items: center; gap: 0.5rem;
+      background: var(--bg); border: 1px solid var(--border); border-radius: 9px;
+      padding: 0.5rem 0.75rem; cursor: pointer; transition: border-color 0.15s;
+      font-size: 0.8125rem; color: var(--stone-7); font-weight: 500;
+    }
+    .panel-action:hover { border-color: var(--indigo-mid); color: var(--ink); }
+    .panel-action .pa-icon { font-size: 0.875rem; width: 18px; text-align: center; }
+    .steer-box { margin-top: 0.25rem; }
+    .steer-input {
+      width: 100%; background: white; border: 1.5px solid var(--border); border-radius: 10px;
+      padding: 0.5rem 0.75rem; font-size: 0.8125rem; font-family: inherit; color: var(--stone-9);
+      outline: none; transition: border-color 0.15s;
+    }
+    .steer-input:focus { border-color: var(--indigo-mid); box-shadow: 0 0 0 3px rgba(79,70,229,0.07); }
+    .steer-hint { font-size: 0.75rem; color: var(--stone-4); margin-top: 0.375rem; }
+
+    /* ── ADD RULE MODAL ── */
+    .modal-bg {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 50;
+      display: none; align-items: center; justify-content: center;
+      backdrop-filter: blur(2px);
+    }
+    .modal-bg.open { display: flex; }
+    .modal-card {
+      background: white; border-radius: 20px; padding: 2rem;
+      width: 520px; box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+      display: flex; flex-direction: column; gap: 1.25rem;
+    }
+    .modal-title { font-size: 1rem; font-weight: 700; color: var(--ink); }
+    .modal-input-box {
+      display: flex; align-items: center; gap: 0.625rem;
+      background: var(--bg); border: 1.5px solid var(--border); border-radius: 12px;
+      padding: 0.625rem 0.625rem 0.625rem 1rem;
+      transition: border-color 0.2s;
+    }
+    .modal-input-box.focused { border-color: var(--indigo-mid); }
+    .modal-input { flex: 1; border: none; outline: none; font-size: 0.9375rem; font-family: inherit; background: transparent; color: var(--stone-9); caret-color: var(--indigo); }
+    .modal-input::placeholder { color: #C4BFBB; }
+    .modal-send { width: 32px; height: 32px; border-radius: 8px; background: var(--indigo); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .modal-rule-card { background: var(--bg); border: 1.5px solid var(--border); border-radius: 14px; padding: 1.125rem; opacity: 0; transform: translateY(8px); transition: opacity 0.3s, transform 0.3s; }
+    .modal-rule-card.show { opacity: 1; transform: translateY(0); }
+    .mrc-hd { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.375rem; }
+    .mrc-icon { width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; }
+    .mrc-lens { font-size: 0.875rem; font-weight: 700; color: var(--ink); }
+    .mrc-q    { font-size: 0.8125rem; color: var(--stone-4); }
+    .mrc-example { font-size: 0.875rem; font-style: italic; color: var(--stone-7); margin-bottom: 0.75rem; }
+    .mrc-chips { display: flex; gap: 0.375rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+    .mrc-chip { font-size: 0.75rem; color: var(--stone-7); background: white; border: 1px solid var(--border); border-radius: 20px; padding: 0.2rem 0.6rem; opacity: 0; transform: translateY(4px); transition: opacity 0.18s, transform 0.18s; }
+    .mrc-chip.show { opacity: 1; transform: none; }
+    .mrc-chip.danger { color: var(--red); background: var(--red-light); border-color: #FECACA; }
+    .mrc-chip.warn   { color: var(--amber); background: var(--amber-light); border-color: #FDE68A; }
+    .mrc-footer { display: flex; align-items: center; justify-content: space-between; }
+    .mrc-stat { font-size: 0.8125rem; color: var(--indigo); font-weight: 500; opacity: 0; transition: opacity 0.3s; }
+    .mrc-stat.show { opacity: 1; }
+    .mrc-confirm { font-size: 0.8125rem; font-weight: 600; color: var(--ink); background: white; border: 1.5px solid var(--border); border-radius: 9px; padding: 0.35rem 0.875rem; cursor: pointer; font-family: inherit; opacity: 0; transform: scale(0.95); transition: opacity 0.15s, transform 0.15s, background 0.15s, border-color 0.15s, color 0.15s; }
+    .mrc-confirm.show { opacity: 1; transform: scale(1); }
+    .mrc-confirm.pulse { animation: cpulse 0.7s ease infinite alternate; }
+    .mrc-confirm.done  { background: #22C55E; border-color: #22C55E; color: white; animation: none; }
+    @keyframes cpulse {
+      from { box-shadow: 0 0 0 0 rgba(79,70,229,0.2); border-color: var(--indigo-mid); }
+      to   { box-shadow: 0 0 0 5px rgba(79,70,229,0); border-color: #818CF8; }
+    }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 0.5rem; }
+    .modal-cancel { background: none; border: 1px solid var(--border); border-radius: 9px; padding: 0.5rem 1rem; font-size: 0.875rem; color: var(--stone-5); cursor: pointer; font-family: inherit; }
+  </style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="topbar-logo"><div class="logo-dot"></div>Conduct</div>
+  <div class="ws-pill">
+    <svg viewBox="0 0 10 10" fill="none"><rect x="1" y="1" width="3.5" height="3.5" rx="0.5" fill="currentColor"/><rect x="5.5" y="1" width="3.5" height="3.5" rx="0.5" fill="currentColor"/><rect x="1" y="5.5" width="3.5" height="3.5" rx="0.5" fill="currentColor"/><rect x="5.5" y="5.5" width="3.5" height="3.5" rx="0.5" fill="currentColor"/></svg>
+    acme-eng
+    <svg viewBox="0 0 10 10" fill="none"><path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/></svg>
+  </div>
+  <div class="topbar-right">
+    <button class="top-btn" onclick="openAddRule()">+ Add rule</button>
+    <div class="avatar">S</div>
+  </div>
+</div>
+
+<!-- SHELL -->
+<div class="shell">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="nav-section">
+      <div class="nav-item active" onclick="switchView('home', this)">
+        <span class="ni-icon">🏠</span> Home
+      </div>
+      <div class="nav-item" onclick="switchView('analytics', this)">
+        <span class="ni-icon">📊</span> Analytics
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Rules</div>
+      <div class="nav-item" onclick="switchView('rules', this)">
+        <span class="ni-icon">🛡</span> Guard
+        <span class="nav-badge">2</span>
+      </div>
+      <div class="nav-item" onclick="switchView('rules', this)">
+        <span class="ni-icon">🔒</span> Secure
+        <span class="nav-badge amber">3</span>
+      </div>
+      <div class="nav-item" onclick="switchView('rules', this)">
+        <span class="ni-icon">⚡</span> Automate
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Library</div>
+      <div class="nav-item" onclick="switchView('playbooks', this)">
+        <span class="ni-icon">📦</span> Playbooks
+        <span style="margin-left:auto;font-size:0.7rem;color:var(--stone-4)">22</span>
+      </div>
+      <div class="nav-item">
+        <span class="ni-icon">🛒</span> Marketplace
+      </div>
+    </div>
+
+    <div class="nav-divider"></div>
+
+    <div class="nav-section">
+      <div class="nav-item">
+        <span class="ni-icon">🔑</span> Credentials
+      </div>
+      <div class="nav-item">
+        <span class="ni-icon">👥</span> Team
+      </div>
+      <div class="nav-item">
+        <span class="ni-icon">📋</span> Audit log
+      </div>
+      <div class="nav-item">
+        <span class="ni-icon">⚙️</span> Settings
+      </div>
+    </div>
+
+    <div class="sidebar-bottom">
+      <div class="cli-status">
+        <strong><span class="cli-dot"></span>CLI active</strong>
+        conduct v0.4.93 · 6 machines
+      </div>
+    </div>
+  </nav>
+
+  <!-- MAIN CONTENT -->
+  <div class="main">
+
+    <!-- VIEW: HOME -->
+    <div class="view active" id="view-home">
+
+      <!-- Stats -->
+      <div class="stats-bar">
+        <div class="stat-card">
+          <div class="stat-label">Guard blocks today</div>
+          <div class="stat-value">4</div>
+          <div class="stat-delta up">↑ 2 vs yesterday</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Open findings</div>
+          <div class="stat-value">3</div>
+          <div class="stat-delta down">1 critical</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Playbook runs</div>
+          <div class="stat-value">31</div>
+          <div class="stat-delta neutral">this week</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">AI spend today</div>
+          <div class="stat-value" style="font-size:1.375rem">$12.40</div>
+          <div class="stat-delta neutral">of $50 limit</div>
+        </div>
+      </div>
+
+      <!-- Add rule bar -->
+      <div class="add-rule-bar" onclick="openAddRule()">
+        <span>What do you want to govern, secure, or automate?</span>
+        <button class="add-rule-btn">+ Add rule</button>
+      </div>
+
+      <!-- Feed -->
+      <div class="section-hd">
+        <h2>Activity</h2>
+        <div class="section-hd-actions">
+          <div class="feed-filters">
+            <button class="filter-btn active" onclick="filterFeed('all', this)">All</button>
+            <button class="filter-btn" onclick="filterFeed('guard', this)">Guard</button>
+            <button class="filter-btn" onclick="filterFeed('secure', this)">Secure</button>
+            <button class="filter-btn" onclick="filterFeed('automate', this)">Automate</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="feed" id="feed">
+        <!-- rows injected by JS -->
+      </div>
+
+    </div>
+
+    <!-- VIEW: RULES -->
+    <div class="view" id="view-rules">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+        <div class="rules-tabs">
+          <div class="rules-tab active" onclick="switchRulesTab('all',this)">All rules</div>
+          <div class="rules-tab" onclick="switchRulesTab('guard',this)">Guard</div>
+          <div class="rules-tab" onclick="switchRulesTab('secure',this)">Secure</div>
+          <div class="rules-tab" onclick="switchRulesTab('automate',this)">Automate</div>
+        </div>
+        <button class="top-btn primary" onclick="openAddRule()">+ Add rule</button>
+      </div>
+      <div class="rules-list" id="rulesList"></div>
+    </div>
+
+    <!-- VIEW: ANALYTICS -->
+    <div class="view" id="view-analytics">
+      <div style="margin-bottom:1.25rem;">
+        <div style="font-size:1.125rem;font-weight:800;color:var(--ink);letter-spacing:-0.02em;">Analytics</div>
+        <div style="font-size:0.875rem;color:var(--stone-4);margin-top:0.125rem;">Last 30 days · acme-eng workspace</div>
+      </div>
+      <div class="analytics-grid">
+        <div class="analytics-card">
+          <div class="ac-title">DORA Metrics</div>
+          <div class="dora-grid">
+            <div class="dora-item">
+              <div class="dora-label">Deployment freq.</div>
+              <div class="dora-value">4.2 <span class="dora-unit">/wk</span></div>
+            </div>
+            <div class="dora-item">
+              <div class="dora-label">Lead time</div>
+              <div class="dora-value">1.8 <span class="dora-unit">days</span></div>
+            </div>
+            <div class="dora-item">
+              <div class="dora-label">Change fail rate</div>
+              <div class="dora-value">3.1 <span class="dora-unit">%</span></div>
+            </div>
+            <div class="dora-item">
+              <div class="dora-label">MTTR</div>
+              <div class="dora-value">42 <span class="dora-unit">min</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="analytics-card">
+          <div class="ac-title">AI Spend by day</div>
+          <div class="spend-bars" id="spendBars"></div>
+        </div>
+        <div class="analytics-card">
+          <div class="ac-title">Security Findings</div>
+          <div class="finding-bars">
+            <div class="finding-row"><div class="finding-label">Critical</div><div class="finding-track"><div class="finding-fill fill-critical" style="width:20%"></div></div><div class="finding-count">1</div></div>
+            <div class="finding-row"><div class="finding-label">High</div><div class="finding-track"><div class="finding-fill fill-high" style="width:40%"></div></div><div class="finding-count">2</div></div>
+            <div class="finding-row"><div class="finding-label">Medium</div><div class="finding-track"><div class="finding-fill fill-medium" style="width:60%"></div></div><div class="finding-count">3</div></div>
+            <div class="finding-row"><div class="finding-label">Low</div><div class="finding-track"><div class="finding-fill fill-low" style="width:80%"></div></div><div class="finding-count">4</div></div>
+          </div>
+        </div>
+        <div class="analytics-card">
+          <div class="ac-title">Guard blocks by tool</div>
+          <div class="spend-bars">
+            <div class="spend-row"><div class="spend-label" style="width:48px;font-size:0.75rem">bash</div><div class="spend-track"><div class="spend-fill" style="width:75%"></div></div><div class="spend-amt">12 blocks</div></div>
+            <div class="spend-row"><div class="spend-label" style="width:48px;font-size:0.75rem">read</div><div class="spend-track"><div class="spend-fill" style="width:30%;background:var(--violet)"></div></div><div class="spend-amt">4 warns</div></div>
+            <div class="spend-row"><div class="spend-label" style="width:48px;font-size:0.75rem">write</div><div class="spend-track"><div class="spend-fill" style="width:12%;background:var(--amber)"></div></div><div class="spend-amt">2 warns</div></div>
+            <div class="spend-row"><div class="spend-label" style="width:48px;font-size:0.75rem">edit</div><div class="spend-track"><div class="spend-fill" style="width:6%;background:var(--green)"></div></div><div class="spend-amt">1 allow</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW: PLAYBOOKS -->
+    <div class="view" id="view-playbooks">
+      <div style="font-size:1.125rem;font-weight:800;color:var(--ink);letter-spacing:-0.02em;margin-bottom:1.25rem;">Playbooks</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;" id="playbookGrid"></div>
+    </div>
+
+  </div><!-- /main -->
+
+  <!-- RIGHT PANEL -->
+  <div class="panel" id="eventPanel">
+    <div class="panel-inner">
+      <div class="panel-hd">
+        <h3 id="panelTitle">Event detail</h3>
+        <button class="panel-close" onclick="closePanel()">×</button>
+      </div>
+      <div class="panel-body" id="panelBody"></div>
+    </div>
+  </div>
+
+</div><!-- /shell -->
+
+<!-- ADD RULE MODAL -->
+<div class="modal-bg" id="addRuleModal">
+  <div class="modal-card">
+    <div class="modal-title">Add a rule</div>
+    <div class="modal-input-box" id="modalInputBox">
+      <input class="modal-input" id="modalInput" type="text" placeholder="Stop AI from deleting files, triage issues, catch secrets…">
+      <button class="modal-send" onclick="proposeRule()">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 6H11M6 1L11 6L6 11" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+    <div class="modal-rule-card" id="modalCard">
+      <div class="mrc-hd">
+        <div class="mrc-icon" id="mrcIcon"></div>
+        <span class="mrc-lens" id="mrcLens"></span>
+        <span class="mrc-q"   id="mrcQ"></span>
+      </div>
+      <div class="mrc-example" id="mrcExample"></div>
+      <div class="mrc-chips"   id="mrcChips"></div>
+      <div class="mrc-footer">
+        <div class="mrc-stat"    id="mrcStat"></div>
+        <button class="mrc-confirm" id="mrcConfirm">Confirm</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="modal-cancel" onclick="closeAddRule()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── DATA ── */
+const FEED_DATA = [
+  { id:1, lens:"guard",    dot:"block",   pill:"block",   icon:"🛡", title:"rm -rf /tmp/secrets", desc:"Claude Code · bash · maya@acme · blocked by policy", rule:"No destructive shell commands", time:"2m ago",
+    detail: { tool:"bash", cmd:"rm -rf /tmp/secrets", user:"maya", machine:"maya-mbp", ruleName:"No destructive shell commands", ruleEffect:"block & notify", context:"Claude Code was cleaning up temp files during a migration task." } },
+  { id:2, lens:"automate", dot:"ran",     pill:"ran",     icon:"⚡", title:"PR Summarizer ran", desc:"Summarized PR #484 → posted to #eng-updates", rule:"PR Summarizer playbook", time:"9m ago",
+    detail: { tool:null, cmd:null, user:"system", machine:null, ruleName:"PR Summarizer", ruleEffect:"post to Slack", context:"PR #484 opened by @dan. Summary generated and posted to #eng-updates." } },
+  { id:3, lens:"secure",   dot:"flagged", pill:"flagged", icon:"🔒", title:"Hardcoded key in PR #482", desc:"sk-proj-... in payments/client.py · Fix PR opened", rule:"No hardcoded secrets", time:"1h ago",
+    detail: { tool:null, cmd:null, user:"alex", machine:null, ruleName:"No hardcoded secrets", ruleEffect:"flag + open fix PR", context:"OpenAI API key found in payments/client.py line 14. Fix PR #483 opened automatically." } },
+  { id:4, lens:"automate", dot:"ran",     pill:"ran",     icon:"⚡", title:"Issue Triage ran", desc:"Labeled #589 as bug · assigned to @kai", rule:"Issue Triage playbook", time:"2h ago",
+    detail: { tool:null, cmd:null, user:"system", machine:null, ruleName:"Issue Triage", ruleEffect:"classify + assign", context:"Issue #589: 'Login fails on Safari' classified as bug, assigned to @kai." } },
+  { id:5, lens:"guard",    dot:"warn",    pill:"warn",    icon:"🛡", title:".env read attempt", desc:"Cursor · read · alex@acme · warned", rule:"No credential file reads", time:"3h ago",
+    detail: { tool:"read", cmd:".env", user:"alex", machine:"alex-desktop", ruleName:"No credential file reads", ruleEffect:"warn", context:"Cursor attempted to read .env file in /api directory. Warned and logged." } },
+  { id:6, lens:"automate", dot:"paused",  pill:"paused",  icon:"⚡", title:"Incident Responder paused", desc:"Needs clarification on severity level", rule:"Incident Responder playbook", time:"3h ago",
+    detail: { tool:null, cmd:null, user:"system", machine:null, ruleName:"Incident Responder", ruleEffect:"page on-call", context:"Alert fired but severity unclear. Paused and waiting for human input on escalation level." } },
+  { id:7, lens:"secure",   dot:"clear",   pill:"clear",   icon:"🔒", title:"Nightly scan complete", desc:"0 findings across 4 repos", rule:"Nightly Security Scan", time:"6h ago",
+    detail: { tool:null, cmd:null, user:"system", machine:null, ruleName:"Nightly Security Scan", ruleEffect:"report findings", context:"Scanned: api, web, mobile, infra. No critical, high, or medium findings." } },
+  { id:8, lens:"guard",    dot:"block",   pill:"block",   icon:"🛡", title:"chmod 777 on prod config", desc:"Claude Code · bash · dan@acme · blocked", rule:"No permission escalation", time:"8h ago",
+    detail: { tool:"bash", cmd:"chmod 777 /etc/app.conf", user:"dan", machine:"dan-mbp", ruleName:"No permission escalation", ruleEffect:"block & notify", context:"Claude Code attempted to change permissions on production config file." } },
+]
+
+const RULES_DATA = [
+  { lens:"guard",    icon:"🛡", name:"No destructive shell commands", trigger:"on tool-call: bash", response:"block & notify", hits:4,  last:"2m ago",  active:true },
+  { lens:"guard",    icon:"🛡", name:"No credential file reads",      trigger:"on tool-call: read", response:"warn",          hits:1,  last:"3h ago",  active:true },
+  { lens:"guard",    icon:"🛡", name:"Spend limit — $50/day",         trigger:"on spend threshold", response:"block + alert", hits:0,  last:"Never",   active:true },
+  { lens:"secure",   icon:"🔒", name:"No hardcoded secrets",          trigger:"on PR opened",       response:"flag + fix PR", hits:3,  last:"1h ago",  active:true },
+  { lens:"secure",   icon:"🔒", name:"SQLi detection",                trigger:"on PR opened",       response:"flag + comment",hits:0,  last:"2d ago",  active:true },
+  { lens:"automate", icon:"⚡", name:"Issue Triage",                  trigger:"on issue opened",    response:"classify + assign", hits:24, last:"2h ago", active:true },
+  { lens:"automate", icon:"⚡", name:"PR Summarizer",                 trigger:"on PR opened",       response:"summarize + Slack", hits:7, last:"9m ago",  active:true },
+  { lens:"automate", icon:"⚡", name:"Incident Responder",            trigger:"on alert fired",     response:"page + channel", hits:2,  last:"3h ago",  active:true },
+]
+
+const PLAYBOOKS_DATA = [
+  { icon:"🏷", name:"Issue Triage",          tag:"GitHub",         desc:"Classify and assign incoming issues" },
+  { icon:"📋", name:"PR Summarizer",          tag:"GitHub · Slack", desc:"Summarize PRs and post to Slack" },
+  { icon:"🚨", name:"Incident Responder",     tag:"PagerDuty",      desc:"Page on-call and create channel" },
+  { icon:"☀️", name:"Standup Summary",        tag:"Slack",          desc:"Daily async standup digest" },
+  { icon:"⚡", name:"CI/CD Monitor",          tag:"GitHub Actions", desc:"Alert on build failures with context" },
+  { icon:"🛡", name:"Deploy Guard",           tag:"Guard",          desc:"Block deploys outside safe windows" },
+  { icon:"🔍", name:"Secret Scanner",         tag:"Security",       desc:"Find secrets in PRs before merge" },
+  { icon:"👁", name:"Code Review Assistant", tag:"GitHub",         desc:"AI review comments on opened PRs" },
+  { icon:"💬", name:"Slack Digest",           tag:"Slack",          desc:"Summarize noisy channels daily" },
+]
+
+const SPEND_DAYS = [
+  {day:"Mon", amt:8.2}, {day:"Tue", amt:14.1}, {day:"Wed", amt:11.3},
+  {day:"Thu", amt:9.8}, {day:"Fri", amt:12.4}, {day:"Sat", amt:4.1}, {day:"Sun", amt:2.9},
+]
+
+/* ── RENDER FEED ── */
+let currentFilter = "all"
+let selectedRow = null
+
+function renderFeed(filter) {
+  const feed = document.getElementById("feed")
+  const rows = filter === "all" ? FEED_DATA : FEED_DATA.filter(r => r.lens === filter)
+  feed.innerHTML = rows.map(r => `
+    <div class="feed-row" id="row-${r.id}" onclick="openPanel(${r.id})">
+      <div class="feed-dot dot-${r.dot}"></div>
+      <div class="feed-lens-icon">${r.icon}</div>
+      <div class="feed-body">
+        <div class="feed-title">${r.title}</div>
+        <div class="feed-desc">${r.desc}</div>
+      </div>
+      <div class="feed-right">
+        <div class="feed-time">${r.time}</div>
+        <div class="feed-pill pill-${r.pill}">${r.pill.charAt(0).toUpperCase()+r.pill.slice(1)}</div>
+      </div>
+    </div>
+  `).join("")
+}
+
+function filterFeed(filter, btn) {
+  currentFilter = filter
+  document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"))
+  btn.classList.add("active")
+  renderFeed(filter)
+  if (selectedRow) { const el = document.getElementById("row-"+selectedRow); if(el) el.classList.add("selected") }
+}
+
+/* ── RENDER RULES ── */
+let currentRulesTab = "all"
+function renderRules(filter) {
+  const list = document.getElementById("rulesList")
+  const rules = filter === "all" ? RULES_DATA : RULES_DATA.filter(r => r.lens === filter)
+  list.innerHTML = rules.map((r,i) => `
+    <div class="rule-row">
+      <div class="rule-icon ${r.lens}">${r.icon}</div>
+      <div class="rule-body">
+        <div class="rule-name">${r.name}</div>
+        <div class="rule-meta">
+          <span>${r.trigger}</span>
+          <span>→ ${r.response}</span>
+        </div>
+      </div>
+      <div class="rule-stats">
+        <div class="rule-hits">${r.hits} hits</div>
+        <div class="rule-last">${r.last}</div>
+      </div>
+      <div class="toggle ${r.active ? '' : 'off'}" onclick="this.classList.toggle('off')"></div>
+    </div>
+  `).join("")
+}
+function switchRulesTab(tab, el) {
+  document.querySelectorAll(".rules-tab").forEach(t => t.classList.remove("active"))
+  el.classList.add("active")
+  currentRulesTab = tab
+  renderRules(tab)
+}
+
+/* ── RENDER SPEND BARS ── */
+function renderSpend() {
+  const max = Math.max(...SPEND_DAYS.map(d => d.amt))
+  document.getElementById("spendBars").innerHTML = SPEND_DAYS.map(d => `
+    <div class="spend-row">
+      <div class="spend-label">${d.day}</div>
+      <div class="spend-track"><div class="spend-fill" style="width:${(d.amt/max*100).toFixed(0)}%"></div></div>
+      <div class="spend-amt">$${d.amt.toFixed(1)}</div>
+    </div>
+  `).join("")
+}
+
+/* ── RENDER PLAYBOOKS ── */
+function renderPlaybooks() {
+  document.getElementById("playbookGrid").innerHTML = PLAYBOOKS_DATA.map(p => `
+    <div style="background:white;border:1px solid var(--border);border-radius:12px;padding:1rem 1.125rem;cursor:pointer;transition:border-color 0.15s,box-shadow 0.15s;" onmouseenter="this.style.borderColor='var(--indigo-mid)'" onmouseleave="this.style.borderColor='var(--border)'">
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.375rem;">
+        <span style="font-size:1rem">${p.icon}</span>
+        <span style="font-size:0.875rem;font-weight:600;color:var(--ink)">${p.name}</span>
+      </div>
+      <div style="font-size:0.8rem;color:var(--stone-5);margin-bottom:0.5rem;line-height:1.5">${p.desc}</div>
+      <span style="font-size:0.7rem;font-weight:500;background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:0.15rem 0.5rem;color:var(--stone-5)">${p.tag}</span>
+    </div>
+  `).join("")
+}
+
+/* ── PANEL ── */
+function openPanel(id) {
+  const r = FEED_DATA.find(x => x.id === id)
+  if (!r) return
+  selectedRow = id
+  document.querySelectorAll(".feed-row").forEach(el => el.classList.remove("selected"))
+  const row = document.getElementById("row-"+id)
+  if (row) row.classList.add("selected")
+
+  const d = r.detail
+  document.getElementById("panelTitle").textContent = r.title
+
+  const guardExtra = d.tool ? `
+    <div class="panel-section">
+      <div class="panel-sec-label">Tool call</div>
+      <div class="panel-code">${d.tool}${d.cmd ? ` ${d.cmd}` : ''}</div>
+    </div>
+    <div class="panel-section">
+      <div class="panel-sec-label">Triggered by</div>
+      <div style="font-size:0.8125rem;color:var(--stone-7)">${d.user}  ·  ${d.machine||'unknown'}</div>
+    </div>
+  ` : `
+    <div class="panel-section">
+      <div class="panel-sec-label">Context</div>
+      <div style="font-size:0.8125rem;color:var(--stone-7);line-height:1.6">${d.context}</div>
+    </div>
+  `
+
+  document.getElementById("panelBody").innerHTML = `
+    ${guardExtra}
+    <div class="panel-section">
+      <div class="panel-sec-label">Rule</div>
+      <div class="panel-rule-box">
+        <div class="panel-rule-name">${d.ruleName}</div>
+        <div class="panel-rule-meta">→ ${d.ruleEffect}</div>
+      </div>
+    </div>
+    <div class="panel-section">
+      <div class="panel-sec-label">Actions</div>
+      <div class="panel-actions">
+        <div class="panel-action"><span class="pa-icon">✓</span> Mark as expected</div>
+        <div class="panel-action"><span class="pa-icon">🚫</span> Dismiss — false positive</div>
+        <div class="panel-action"><span class="pa-icon">🔧</span> Adjust this rule</div>
+      </div>
+    </div>
+    <div class="panel-section steer-box">
+      <div class="panel-sec-label">Steer</div>
+      <input class="steer-input" placeholder="e.g. Change to warn instead of block…">
+      <div class="steer-hint">Describe the adjustment — Conduct will update the rule.</div>
+    </div>
+  `
+
+  document.getElementById("eventPanel").classList.add("open")
+}
+
+function closePanel() {
+  document.getElementById("eventPanel").classList.remove("open")
+  document.querySelectorAll(".feed-row").forEach(el => el.classList.remove("selected"))
+  selectedRow = null
+}
+
+/* ── VIEW SWITCHING ── */
+function switchView(view, navEl) {
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"))
+  document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"))
+  document.getElementById("view-"+view).classList.add("active")
+  navEl.classList.add("active")
+  closePanel()
+}
+
+/* ── ADD RULE MODAL ── */
+const PROPOSE = {
+  "guard":    { lens:"guard",    name:"Guard",    q:"— what do you want to guard?",          iconCls:"icon-guard",    icon:"🛡", example:'"Stop AI tools from running destructive shell commands"', chips:[{l:"on tool-call: bash"},{l:"matches rm -rf, chmod 777"},{l:"block & notify",c:"danger"}], prefix:"Would have blocked ", n:4, suffix:" actions yesterday" },
+  "secure":   { lens:"secure",   name:"Secure",   q:"— how do you want to write secure code?",iconCls:"icon-secure",   icon:"🔒", example:'"Catch SQL injection and hardcoded secrets before merge"', chips:[{l:"on PR opened"},{l:"SQLi / secret findings",c:"warn"},{l:"comment & open fix PR"}], prefix:"Would have flagged ", n:3, suffix:" of last 20 PRs" },
+  "automate": { lens:"automate", name:"Automate", q:"— what do you want to automate?",       iconCls:"icon-automate", icon:"⚡", example:'"Triage incoming GitHub issues"', chips:[{l:"on issue opened"},{l:"classify & label"},{l:"assign & comment"}], prefix:"Matches ", n:38, suffix:" issues from last week" },
+}
+
+let proposeTimer = null
+const wait = ms => new Promise(r => setTimeout(r,ms))
+
+function openAddRule() {
+  document.getElementById("addRuleModal").classList.add("open")
+  document.getElementById("modalInput").focus()
+  document.getElementById("modalCard").classList.remove("show")
+  document.getElementById("mrcChips").innerHTML = ""
+  document.getElementById("mrcStat").className = "mrc-stat"
+  document.getElementById("mrcConfirm").className = "mrc-confirm"
+  document.getElementById("mrcConfirm").textContent = "Confirm"
+}
+
+function closeAddRule() {
+  document.getElementById("addRuleModal").classList.remove("open")
+  document.getElementById("modalInput").value = ""
+  document.getElementById("modalCard").classList.remove("show")
+  if (proposeTimer) clearTimeout(proposeTimer)
+}
+
+async function proposeRule() {
+  const val = document.getElementById("modalInput").value.toLowerCase()
+  let key = "guard"
+  if (val.includes("triage") || val.includes("automate") || val.includes("standup") || val.includes("pr")) key = "automate"
+  if (val.includes("secret") || val.includes("sqli") || val.includes("secure") || val.includes("sql")) key = "secure"
+  const s = PROPOSE[key]
+
+  document.getElementById("modalCard").classList.remove("show")
+  document.getElementById("mrcChips").innerHTML = ""
+  document.getElementById("mrcStat").className = "mrc-stat"
+  document.getElementById("mrcConfirm").className = "mrc-confirm"
+  document.getElementById("mrcConfirm").textContent = "Confirm"
+
+  document.getElementById("mrcIcon").className = `mrc-icon ${s.iconCls}`
+  document.getElementById("mrcIcon").textContent = s.icon
+  document.getElementById("mrcLens").textContent = s.name
+  document.getElementById("mrcQ").textContent = s.q
+  document.getElementById("mrcExample").textContent = s.example
+  document.getElementById("mrcStat").textContent = s.prefix + "0" + s.suffix
+
+  s.chips.forEach(c => {
+    const el = document.createElement("span")
+    el.className = `mrc-chip${c.c ? " "+c.c : ""}`
+    el.textContent = c.l
+    document.getElementById("mrcChips").appendChild(el)
+  })
+
+  await wait(200)
+  document.getElementById("modalCard").classList.add("show")
+  await wait(300)
+
+  const chips = document.getElementById("mrcChips").querySelectorAll(".mrc-chip")
+  for (const ch of chips) { await wait(130); ch.classList.add("show") }
+  await wait(200)
+
+  document.getElementById("mrcStat").classList.add("show")
+  const steps=20, dur=600
+  for(let i=0;i<=steps;i++) {
+    document.getElementById("mrcStat").textContent = s.prefix + Math.round(s.n*i/steps) + s.suffix
+    await wait(dur/steps)
+  }
+  await wait(300)
+
+  const btn = document.getElementById("mrcConfirm")
+  btn.classList.add("show")
+  await wait(300)
+  btn.classList.add("pulse")
+  btn.onclick = async () => {
+    btn.classList.remove("pulse")
+    btn.classList.add("done")
+    btn.textContent = "✓ Active"
+    await wait(900)
+    closeAddRule()
+  }
+}
+
+/* ── INIT ── */
+renderFeed("all")
+renderRules("all")
+renderSpend()
+renderPlaybooks()
+</script>
+</body>
+</html>

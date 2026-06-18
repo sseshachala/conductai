@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Conduct — Full Homepage Mockup</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --indigo: #4F46E5;
+      --violet: #7C3AED;
+      --sky:    #0284C7;
+      --stone-50:  #FAFAF9;
+      --stone-100: #F5F5F4;
+      --stone-200: #E7E5E4;
+      --stone-400: #A8A29E;
+      --stone-500: #78716C;
+      --stone-700: #44403C;
+      --stone-900: #1C1917;
+      --ink:       #0C0A09;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: white;
+      color: var(--stone-900);
+    }
+
+    /* ── NAV ── */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.125rem 2.5rem;
+      border-bottom: 1px solid var(--stone-200);
+      position: sticky; top: 0;
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(8px);
+      z-index: 10;
+    }
+    .nav-logo {
+      font-size: 1rem;
+      font-weight: 800;
+      color: var(--ink);
+      letter-spacing: -0.02em;
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+    .nav-logo-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--indigo); }
+    .nav-links {
+      display: flex; gap: 1.75rem;
+      list-style: none;
+    }
+    .nav-links a {
+      font-size: 0.875rem; font-weight: 500;
+      color: var(--stone-500); text-decoration: none;
+      transition: color 0.15s;
+    }
+    .nav-links a:hover { color: var(--ink); }
+    .nav-cta {
+      font-size: 0.875rem; font-weight: 600;
+      background: var(--indigo); color: white;
+      border: none; border-radius: 9px;
+      padding: 0.5rem 1.125rem;
+      cursor: pointer; font-family: inherit;
+      transition: background 0.15s;
+    }
+    .nav-cta:hover { background: #4338CA; }
+
+    /* ── SHARED ── */
+    section { padding: 6rem 1.5rem; }
+    section.alt { background: var(--stone-50); }
+
+    .section-inner {
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    .section-label {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--stone-400);
+      margin-bottom: 0.875rem;
+    }
+    .section-title {
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--ink);
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 1rem;
+    }
+    .section-sub {
+      font-size: 1rem;
+      color: var(--stone-500);
+      line-height: 1.6;
+      max-width: 520px;
+    }
+
+    /* ── HERO ── */
+    #hero {
+      background: var(--stone-50);
+      padding: 5rem 1.5rem 6rem;
+    }
+    .hero {
+      max-width: 600px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2.25rem;
+    }
+    .badge {
+      display: flex; align-items: center; gap: 0.5rem;
+      font-size: 0.6875rem; font-weight: 600;
+      color: var(--stone-400); text-transform: uppercase; letter-spacing: 0.1em;
+    }
+    .badge-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--indigo); }
+    .headline { text-align: center; }
+    .headline h1 {
+      font-size: 2.75rem; font-weight: 800;
+      line-height: 1.12; color: var(--ink); letter-spacing: -0.035em;
+    }
+    .headline p { margin-top: 0.625rem; font-size: 0.9375rem; color: var(--stone-400); }
+    .c-govern   { color: var(--indigo); }
+    .c-secure   { color: var(--violet); }
+    .c-automate { color: var(--sky); }
+
+    .intent-box {
+      width: 100%; display: flex; align-items: center;
+      background: white; border: 1.5px solid var(--stone-200);
+      border-radius: 14px; padding: 0.625rem 0.625rem 0.625rem 1.25rem;
+      gap: 0.625rem; box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .intent-box.focused { border-color: #C7D2FE; box-shadow: 0 0 0 3px rgba(79,70,229,0.07); }
+    .intent-input {
+      flex: 1; border: none; outline: none;
+      font-size: 0.9375rem; font-family: inherit;
+      color: var(--stone-900); background: transparent;
+      caret-color: var(--indigo); min-width: 0;
+    }
+    .intent-input::placeholder { color: #C4BFBB; }
+    .intent-btn {
+      width: 34px; height: 34px; border-radius: 9px;
+      background: var(--indigo); border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; transition: background 0.15s;
+    }
+    .intent-btn:hover { background: #4338CA; }
+
+    .rule-card {
+      width: 100%; background: white;
+      border: 1.5px solid var(--stone-200); border-radius: 20px;
+      padding: 1.5rem; box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+      opacity: 0; transform: translateY(14px); min-height: 170px;
+      transition: opacity 0.35s ease, transform 0.35s ease,
+                  border-color 0.4s ease, box-shadow 0.4s ease;
+    }
+    .rule-card.visible  { opacity: 1; transform: translateY(0); }
+    .rule-card.activated {
+      border-color: #86EFAC;
+      box-shadow: 0 4px 24px rgba(34,197,94,0.1);
+    }
+    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .card-icon { width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 0.8125rem; flex-shrink: 0; }
+    .icon-guard    { background: #EEF2FF; }
+    .icon-secure   { background: #F5F3FF; }
+    .icon-automate { background: #EFF6FF; }
+    .card-lens-name { font-size: 0.9375rem; font-weight: 700; }
+    .card-lens-q    { font-size: 0.875rem; color: var(--stone-400); }
+    .card-example   { font-size: 0.9375rem; color: var(--stone-700); font-style: italic; margin-bottom: 1rem; line-height: 1.5; }
+    .card-chips     { display: flex; gap: 0.4375rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .card-chip {
+      font-size: 0.8rem; color: var(--stone-700);
+      background: var(--stone-100); border: 1px solid var(--stone-200);
+      border-radius: 20px; padding: 0.275rem 0.7rem;
+      opacity: 0; transform: translateY(5px);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .card-chip.show   { opacity: 1; transform: translateY(0); }
+    .card-chip.danger { color: #DC2626; background: #FEF2F2; border-color: #FECACA; }
+    .card-chip.warn   { color: #D97706; background: #FFFBEB; border-color: #FDE68A; }
+    .card-footer { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+    .card-stat { font-size: 0.875rem; color: var(--indigo); font-weight: 500; opacity: 0; transition: opacity 0.3s ease; }
+    .card-stat.show { opacity: 1; }
+    .confirm-btn {
+      font-size: 0.875rem; font-weight: 600; color: var(--stone-900);
+      background: white; border: 1.5px solid #D6D3D1; border-radius: 10px;
+      padding: 0.375rem 1rem; cursor: pointer; font-family: inherit;
+      opacity: 0; transform: scale(0.94); white-space: nowrap; flex-shrink: 0;
+      transition: opacity 0.2s, transform 0.2s, background 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s;
+    }
+    .confirm-btn.show  { opacity: 1; transform: scale(1); }
+    .confirm-btn.pulse { animation: btn-pulse 0.7s ease infinite alternate; }
+    .confirm-btn.done  { background: #22C55E; border-color: #22C55E; color: white; animation: none; }
+    @keyframes btn-pulse {
+      from { box-shadow: 0 0 0 0 rgba(79,70,229,0.2); border-color: #C7D2FE; }
+      to   { box-shadow: 0 0 0 5px rgba(79,70,229,0); border-color: #818CF8; }
+    }
+    .active-badge {
+      display: none; align-items: center; gap: 0.3rem;
+      font-size: 0.8rem; font-weight: 600; color: #16A34A;
+      background: #F0FDF4; border: 1px solid #BBF7D0;
+      border-radius: 20px; padding: 0.275rem 0.7rem;
+    }
+    .active-badge.show { display: flex; }
+    .cta-row {
+      display: flex; gap: 0.75rem; align-items: center;
+      opacity: 0; transform: translateY(6px);
+      transition: opacity 0.4s ease, transform 0.4s ease;
+    }
+    .cta-row.show { opacity: 1; transform: translateY(0); }
+    .cta-primary {
+      background: var(--indigo); color: white; border: none; border-radius: 10px;
+      padding: 0.625rem 1.375rem; font-size: 0.9375rem; font-weight: 600;
+      cursor: pointer; font-family: inherit; transition: background 0.15s;
+    }
+    .cta-primary:hover { background: #4338CA; }
+    .cta-secondary { color: var(--stone-500); font-size: 0.9375rem; font-weight: 500; text-decoration: none; transition: color 0.15s; }
+    .cta-secondary:hover { color: var(--ink); }
+
+    /* ── HOW IT WORKS ── */
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+      margin-top: 3rem;
+      position: relative;
+    }
+    .steps::before {
+      content: '';
+      position: absolute;
+      top: 22px;
+      left: calc(12.5% + 16px);
+      right: calc(12.5% + 16px);
+      height: 1px;
+      background: var(--stone-200);
+    }
+    .step { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 0 1rem; }
+    .step-num {
+      width: 44px; height: 44px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.8125rem; font-weight: 700;
+      background: white; border: 1.5px solid var(--stone-200);
+      color: var(--stone-500); margin-bottom: 1rem;
+      position: relative; z-index: 1;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .step:hover .step-num { border-color: var(--indigo); color: var(--indigo); }
+    .step-title { font-size: 0.9375rem; font-weight: 700; color: var(--ink); margin-bottom: 0.375rem; }
+    .step-desc  { font-size: 0.8125rem; color: var(--stone-500); line-height: 1.55; }
+
+    /* ── PLAYBOOKS ── */
+    .playbooks-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-top: 2.5rem;
+    }
+    .pb-card {
+      background: white; border: 1.5px solid var(--stone-200);
+      border-radius: 14px; padding: 1.125rem 1.25rem;
+      display: flex; flex-direction: column; gap: 0.375rem;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      cursor: default;
+    }
+    .pb-card:hover { border-color: #C7D2FE; box-shadow: 0 2px 12px rgba(79,70,229,0.08); }
+    .pb-card-top { display: flex; align-items: center; gap: 0.5rem; }
+    .pb-icon { font-size: 1rem; }
+    .pb-name { font-size: 0.875rem; font-weight: 600; color: var(--ink); }
+    .pb-desc { font-size: 0.8rem; color: var(--stone-500); line-height: 1.5; }
+    .pb-tag {
+      display: inline-flex; align-items: center;
+      font-size: 0.7rem; font-weight: 500;
+      background: var(--stone-100); color: var(--stone-500);
+      border-radius: 20px; padding: 0.15rem 0.5rem;
+      margin-top: 0.25rem; align-self: flex-start;
+    }
+    .playbooks-footer {
+      margin-top: 1.5rem; text-align: center;
+    }
+    .playbooks-footer a {
+      font-size: 0.875rem; font-weight: 600;
+      color: var(--indigo); text-decoration: none;
+      transition: color 0.15s;
+    }
+    .playbooks-footer a:hover { color: #4338CA; }
+
+    /* ── INSTALL ── */
+    #install { text-align: center; }
+    #install .section-inner { display: flex; flex-direction: column; align-items: center; gap: 1.25rem; }
+    #install .section-sub { text-align: center; max-width: 420px; }
+    .install-box {
+      display: flex; align-items: center; gap: 0.75rem;
+      background: var(--stone-900); border-radius: 12px;
+      padding: 0.875rem 1.25rem;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+    }
+    .install-prompt { color: #6EE7B7; font-family: monospace; font-size: 0.875rem; user-select: none; }
+    .install-cmd    { color: #E2E8F0; font-family: monospace; font-size: 0.875rem; }
+    .copy-btn {
+      background: none; border: 1px solid #374151; border-radius: 6px;
+      color: #9CA3AF; font-size: 0.7rem; font-weight: 500;
+      padding: 0.25rem 0.6rem; cursor: pointer; font-family: inherit;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .copy-btn:hover { border-color: #6B7280; color: #E2E8F0; }
+    .install-links { display: flex; gap: 1rem; align-items: center; }
+    .gh-link {
+      display: flex; align-items: center; gap: 0.375rem;
+      font-size: 0.875rem; font-weight: 500; color: var(--stone-500);
+      text-decoration: none; transition: color 0.15s;
+    }
+    .gh-link:hover { color: var(--ink); }
+
+    /* ── FINAL CTA ── */
+    #final-cta {
+      background: var(--ink);
+      text-align: center;
+    }
+    #final-cta .section-inner {
+      display: flex; flex-direction: column; align-items: center; gap: 1.5rem;
+    }
+    #final-cta .section-title { color: white; font-size: 2.25rem; }
+    #final-cta .section-sub   { color: #A8A29E; text-align: center; }
+    .final-btns { display: flex; gap: 0.75rem; align-items: center; }
+    .btn-white {
+      background: white; color: var(--ink); border: none; border-radius: 10px;
+      padding: 0.75rem 1.5rem; font-size: 0.9375rem; font-weight: 600;
+      cursor: pointer; font-family: inherit; transition: background 0.15s;
+    }
+    .btn-white:hover { background: #F5F5F4; }
+    .btn-ghost {
+      background: none; color: #A8A29E; border: 1px solid #374151;
+      border-radius: 10px; padding: 0.75rem 1.5rem;
+      font-size: 0.9375rem; font-weight: 500;
+      cursor: pointer; font-family: inherit; transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-ghost:hover { border-color: #6B7280; color: white; }
+    .early-note { font-size: 0.8rem; color: #6B7280; }
+
+    /* ── FOOTER ── */
+    footer {
+      border-top: 1px solid #1F2937;
+      background: var(--ink);
+      padding: 2rem 2.5rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .footer-logo { font-size: 0.875rem; font-weight: 700; color: #4B5563; letter-spacing: -0.01em; }
+    .footer-links { display: flex; gap: 1.5rem; }
+    .footer-links a { font-size: 0.8rem; color: #4B5563; text-decoration: none; transition: color 0.15s; }
+    .footer-links a:hover { color: #9CA3AF; }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo"><div class="nav-logo-dot"></div>Conduct</div>
+  <ul class="nav-links">
+    <li><a href="#">Playbooks</a></li>
+    <li><a href="#">Guard</a></li>
+    <li><a href="#">Docs</a></li>
+    <li><a href="#">GitHub</a></li>
+  </ul>
+  <button class="nav-cta">Start free</button>
+</nav>
+
+<!-- HERO -->
+<section id="hero">
+  <div class="hero">
+    <div class="badge"><div class="badge-dot"></div>Conduct · AI-SDLC Platform</div>
+    <div class="headline">
+      <h1><span class="c-govern">Govern.</span> <span class="c-secure">Secure.</span> <span class="c-automate">Automate.</span></h1>
+      <p>The operating layer for AI-assisted engineering teams.</p>
+    </div>
+    <div class="intent-box" id="intentBox">
+      <input class="intent-input" id="intentInput" type="text" placeholder="What do you want to govern, secure, or automate?" readonly>
+      <button class="intent-btn">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M1 7H13M7 1L13 7L7 13" stroke="white" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+    <div class="rule-card" id="ruleCard">
+      <div class="card-header">
+        <div class="card-icon" id="cardIcon"></div>
+        <span class="card-lens-name" id="cardName"></span>
+        <span class="card-lens-q"    id="cardQ"></span>
+      </div>
+      <div class="card-example" id="cardExample"></div>
+      <div class="card-chips"   id="cardChips"></div>
+      <div class="card-footer">
+        <div class="card-stat" id="cardStat"></div>
+        <div style="display:flex;align-items:center;gap:0.5rem;">
+          <div class="active-badge" id="activeBadge">
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+              <path d="M1.5 5.5L4.5 8.5L9.5 2.5" stroke="#16A34A" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Active
+          </div>
+          <button class="confirm-btn" id="confirmBtn">Confirm</button>
+        </div>
+      </div>
+    </div>
+    <div class="cta-row" id="ctaRow">
+      <button class="cta-primary">Start free</button>
+      <a class="cta-secondary" href="#">See the playbooks →</a>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section>
+  <div class="section-inner">
+    <div class="section-label">How it works</div>
+    <div class="section-title">From intent to active rule<br>in under two minutes.</div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-title">Intent</div>
+        <div class="step-desc">Describe what you want in plain English. No YAML, no config files.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-title">Propose</div>
+        <div class="step-desc">Conduct generates a rule pre-wired to your trigger, condition, and response.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-title">Dry-run</div>
+        <div class="step-desc">See how the rule would have fired on your real history before you arm it.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-title">Activate</div>
+        <div class="step-desc">One click. Live, governed, logged, and adjustable from the dashboard.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PLAYBOOKS -->
+<section class="alt">
+  <div class="section-inner">
+    <div class="section-label">Playbook library</div>
+    <div class="section-title">22 pre-built playbooks.<br>Ready to install.</div>
+    <div class="section-sub">Built for the workflows engineering teams run every day — GitHub, Slack, CI/CD, and incident response. Install in one click, configure with intent.</div>
+    <div class="playbooks-grid">
+
+      <div class="pb-card">
+        <div class="pb-card-top"><span class="pb-icon">🏷</span><span class="pb-name">Issue Triage</span></div>
+        <div class="pb-desc">Classify, label, and assign incoming GitHub issues automatically.</div>
+        <span class="pb-tag">GitHub</span>
+      </div>
+
+      <div class="pb-card">
+        <div class="pb-card-top"><span class="pb-icon">📋</span><span class="pb-name">PR Summarizer</span></div>
+        <div class="pb-desc">Generate plain-English summaries of pull requests and post to Slack.</div>
+        <span class="pb-tag">GitHub · Slack</span>
+      </div>
+
+      <div class="pb-card">
+        <div class="pb-card-top"><span class="pb-icon">🚨</span><span class="pb-name">Incident Responder</span></div>
+        <div class="pb-desc">Page on-call, create an incident channel, and post a status update.</div>
+        <span class="pb-tag">PagerDuty · Slack</span>
+      </div>
+
+      <div class="pb-card">
+        <div class="pb-card-top"><span class="pb-icon">☀️</span><span class="pb-name">Standup Summary</span></div>
+        <div class="pb-desc">Collect async updates and post a morning digest to your team channel.</div>
+        <span class="pb-tag">Slack</span>
+      </div>
+
+      <div class="pb-card">
+        <div class="pb-card-top"><span class="pb-icon">⚡</span><span class="pb-name">CI/CD Monitor</span></div>
+        <div class="pb-desc">Alert on build failures with context — branch, author, last passing run.</div>
+        <span class="pb-tag">GitHub Actions</span>
+      </div>
+
+      <div class="pb-card">
+        <div class="pb-card-top"><span class="pb-icon">🛡</span><span class="pb-name">Deploy Guard</span></div>
+        <div class="pb-desc">Block deploys outside approved windows or without a passing security scan.</div>
+        <span class="pb-tag">Guard</span>
+      </div>
+
+      <div class="pb-card">
+        <div class="pb-card-top"><span class="pb-icon">🔍</span><span class="pb-name">Secret Scanner</span></div>
+        <div class="pb-desc">Detect hardcoded secrets in PRs before they merge. Open a fix PR automatically.</div>
+        <span class="pb-tag">Security</span>
+      </div>
+
+      <div class="pb-card">
+        <div class="pb-card-top"><span class="pb-icon">👁</span><span class="pb-name">Code Review Assistant</span></div>
+        <div class="pb-desc">Post AI-generated review comments on opened PRs, scoped to changed files.</div>
+        <span class="pb-tag">GitHub</span>
+      </div>
+
+      <div class="pb-card">
+        <div class="pb-card-top"><span class="pb-icon">💬</span><span class="pb-name">Slack Digest</span></div>
+        <div class="pb-desc">Summarize noisy channels daily and surface the three things that matter.</div>
+        <span class="pb-tag">Slack</span>
+      </div>
+
+    </div>
+    <div class="playbooks-footer">
+      <a href="#">Browse all 22 playbooks →</a>
+    </div>
+  </div>
+</section>
+
+<!-- INSTALL -->
+<section id="install">
+  <div class="section-inner">
+    <div class="section-label">Developer-first</div>
+    <div class="section-title">Self-serve. No demo required.</div>
+    <div class="section-sub">Install the CLI, connect your first integration, and have your first rule active in under five minutes.</div>
+    <div class="install-box">
+      <span class="install-prompt">$</span>
+      <span class="install-cmd" id="installCmd">pip install 'agent-booster[full]'</span>
+      <button class="copy-btn" onclick="copyInstall()">copy</button>
+    </div>
+    <div class="install-links">
+      <a class="gh-link" href="#">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+        View on GitHub
+      </a>
+      <span style="color:var(--stone-200)">·</span>
+      <a class="gh-link" href="#">Read the docs</a>
+    </div>
+  </div>
+</section>
+
+<!-- FINAL CTA -->
+<section id="final-cta">
+  <div class="section-inner">
+    <div class="section-title">Be one of the first<br>engineering teams on Conduct.</div>
+    <div class="section-sub">No waitlist. No sales call required. Start with the free tier and expand as your team grows.</div>
+    <div class="final-btns">
+      <button class="btn-white">Start free</button>
+      <button class="btn-ghost">Book 15 min →</button>
+    </div>
+    <div class="early-note">Free tier includes Guard, 5 playbooks, and 1 security scan per day.</div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-logo">Conduct</div>
+  <div class="footer-links">
+    <a href="#">Playbooks</a>
+    <a href="#">Docs</a>
+    <a href="#">GitHub</a>
+    <a href="#">Privacy</a>
+    <a href="#">Terms</a>
+  </div>
+</footer>
+
+<script>
+/* ── HERO ANIMATION ── */
+const SCENARIOS = [
+  {
+    intent: "Stop AI tools from running destructive commands",
+    lens: "guard", name: "Guard", q: "— what do you want to guard?",
+    iconCls: "icon-guard", icon: "🛡",
+    example: '"Stop AI tools from running destructive shell commands"',
+    chips: [
+      { label: "on tool-call: bash" },
+      { label: "matches rm -rf, chmod 777" },
+      { label: "block & notify", cls: "danger" },
+    ],
+    statPrefix: "Would have blocked ", statN: 4, statSuffix: " actions yesterday",
+  },
+  {
+    intent: "Catch secrets and SQL injection before they merge",
+    lens: "secure", name: "Secure", q: "— how do you want to write secure code?",
+    iconCls: "icon-secure", icon: "🔒",
+    example: '"Catch SQL injection and hardcoded secrets before merge"',
+    chips: [
+      { label: "on PR opened" },
+      { label: "SQLi / secret findings", cls: "warn" },
+      { label: "comment & open fix PR" },
+    ],
+    statPrefix: "Would have flagged ", statN: 3, statSuffix: " of last 20 PRs",
+  },
+  {
+    intent: "Triage incoming GitHub issues automatically",
+    lens: "automate", name: "Automate", q: "— what do you want to automate?",
+    iconCls: "icon-automate", icon: "⚡",
+    example: '"Triage incoming GitHub issues"',
+    chips: [
+      { label: "on issue opened" },
+      { label: "classify & label" },
+      { label: "assign & comment" },
+    ],
+    statPrefix: "Matches ", statN: 38, statSuffix: " issues from last week",
+  },
+]
+
+const $    = id => document.getElementById(id)
+const wait = ms => new Promise(r => setTimeout(r, ms))
+
+const intentBox  = $("intentBox")
+const intentInput= $("intentInput")
+const ruleCard   = $("ruleCard")
+const cardIcon   = $("cardIcon")
+const cardName   = $("cardName")
+const cardQ      = $("cardQ")
+const cardExample= $("cardExample")
+const cardChips  = $("cardChips")
+const cardStat   = $("cardStat")
+const confirmBtn = $("confirmBtn")
+const activeBadge= $("activeBadge")
+const ctaRow     = $("ctaRow")
+
+async function typeIn(text) {
+  intentBox.classList.add("focused")
+  intentInput.value = ""
+  for (const ch of text) {
+    intentInput.value += ch
+    let d = 52 + Math.random() * 18
+    if (ch === ",") d = 120
+    if (".!?".includes(ch)) d = 200
+    await wait(d)
+  }
+}
+
+async function countUp(target, setter) {
+  const steps = 28, dur = 800
+  for (let i = 0; i <= steps; i++) {
+    setter(Math.round(target * i / steps))
+    await wait(dur / steps)
+  }
+}
+
+function reset() {
+  ruleCard.classList.remove("visible","activated")
+  confirmBtn.className = "confirm-btn"
+  confirmBtn.style.cssText = ""
+  activeBadge.className = "active-badge"
+  cardStat.className = "card-stat"
+  cardStat.textContent = ""
+  cardChips.innerHTML = ""
+  ctaRow.classList.remove("show")
+}
+
+async function run(s) {
+  reset()
+  await typeIn(s.intent)
+  await wait(350)
+
+  cardIcon.className = `card-icon ${s.iconCls}`
+  cardIcon.textContent = s.icon
+  cardName.textContent = s.name
+  cardQ.textContent = s.q
+  cardExample.textContent = s.example
+  cardStat.textContent = s.statPrefix + "0" + s.statSuffix
+  confirmBtn.textContent = "Confirm"
+
+  s.chips.forEach(c => {
+    const el = document.createElement("span")
+    el.className = `card-chip${c.cls ? " "+c.cls : ""}`
+    el.textContent = c.label
+    cardChips.appendChild(el)
+  })
+
+  ruleCard.classList.add("visible")
+  await wait(420)
+
+  for (const chip of cardChips.querySelectorAll(".card-chip")) {
+    await wait(180)
+    chip.classList.add("show")
+  }
+  await wait(300)
+
+  cardStat.classList.add("show")
+  await countUp(s.statN, v => { cardStat.textContent = s.statPrefix + v + s.statSuffix })
+  await wait(500)
+
+  confirmBtn.classList.add("show")
+  await wait(400)
+  confirmBtn.classList.add("pulse")
+  await wait(1300)
+
+  confirmBtn.classList.remove("pulse")
+  confirmBtn.classList.add("done")
+  confirmBtn.textContent = "✓"
+  ruleCard.classList.add("activated")
+  await wait(500)
+
+  confirmBtn.style.opacity = "0"
+  confirmBtn.style.transform = "scale(0.9)"
+  await wait(160)
+  confirmBtn.style.display = "none"
+  activeBadge.classList.add("show")
+  await wait(2400)
+
+  ruleCard.classList.remove("visible","activated")
+  activeBadge.classList.remove("show")
+  await wait(400)
+  intentBox.classList.remove("focused")
+  intentInput.value = ""
+  await wait(350)
+}
+
+async function loop() {
+  while (true) {
+    for (let i = 0; i < SCENARIOS.length; i++) {
+      await run(SCENARIOS[i])
+      if (i === SCENARIOS.length - 1) {
+        ctaRow.classList.add("show")
+        await wait(3000)
+        ctaRow.classList.remove("show")
+        await wait(400)
+      }
+    }
+  }
+}
+
+setTimeout(loop, 1000)
+
+/* ── COPY INSTALL ── */
+function copyInstall() {
+  navigator.clipboard.writeText("pip install 'agent-booster[full]'")
+  const btn = document.querySelector(".copy-btn")
+  btn.textContent = "copied!"
+  setTimeout(() => btn.textContent = "copy", 2000)
+}
+</script>
+</body>
+</html>

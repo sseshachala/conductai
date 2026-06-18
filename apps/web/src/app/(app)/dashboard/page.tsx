@@ -633,151 +633,13 @@ function EmptyChecklist() {
 
 /* ── Main content ── */
 
-interface SecurityFindingSummary {
-  total: number
-  by_severity: Record<string, number>
-  by_status: Record<string, number>
-  by_type: Record<string, number>
-  mttr_hours: number | null
-}
 
-function FindingsArc({ open, total }: { open: number, total: number }) {
-  const pct = total > 0 ? Math.round(((total - open) / total) * 100) : 0
-  const warn = open > 5
-  const r = 30, cx = 38, cy = 38, sw = 7
-  const circ = 2 * Math.PI * r
-  const arc = circ * Math.min(pct / 100, 1)
-  const col = warn ? "var(--err)" : open === 0 ? "var(--ok)" : "var(--warn)"
-  return (
-    <svg width={76} height={76} viewBox="0 0 76 76" style={{ flexShrink: 0 }}>
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--surface-3)" strokeWidth={sw} />
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke={col} strokeWidth={sw}
-        strokeDasharray={`${arc.toFixed(1)} ${circ.toFixed(1)}`}
-        strokeLinecap="round" transform={`rotate(-90 ${cx} ${cy})`} />
-      <text x={cx} y={cy - 3} textAnchor="middle" fontSize="13" fontWeight="700"
-        fill="var(--text)" fontFamily="inherit">{pct}%</text>
-      <text x={cx} y={cy + 12} textAnchor="middle" fontSize="9" fill="var(--text-muted)"
-        fontFamily="inherit">fixed</text>
-    </svg>
-  )
-}
 
-const TYPE_LABELS: Record<string, string> = {
-  "secret-leak":    "Secret leak",
-  "injection":      "Injection",
-  "path-traversal": "Path traversal",
-  "auth-bypass":    "Auth bypass",
-  "crypto":         "Weak crypto",
-  "other":          "Other",
-}
 
-function SecurityLoopSnapshot({ summary, installed }: {
-  summary: SecurityFindingSummary | null
-  installed: boolean
-}) {
-  if (!installed) return null
-
-  const open  = summary?.by_status?.open ?? 0
-  const total = summary?.total ?? 0
-  const critical = summary?.by_severity?.critical ?? 0
-  const high     = summary?.by_severity?.high ?? 0
-
-  const topTypes = summary
-    ? Object.entries(summary.by_type)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
-    : []
-
-  const typeSevBadge: Record<string, string> = {
-    "secret-leak":    "err",
-    "injection":      "err",
-    "auth-bypass":    "err",
-    "path-traversal": "warn",
-    "crypto":         "warn",
-    "other":          "idle",
-  }
-
-  return (
-    <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-      {/* Header */}
-      <div style={{ padding: "13px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-        <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="var(--accent-text)" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-          <line x1="12" y1="8" x2="12" y2="12" strokeLinecap="round" />
-          <line x1="12" y1="16" x2="12.01" y2="16" strokeLinecap="round" />
-        </svg>
-        <span style={{ fontWeight: 650, fontSize: 14 }}>Security Loop</span>
-        <span className="sbadge ok" style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 4 }}>
-          <span className="dot pulse" style={{ background: "var(--ok)" }} />
-          live
-        </span>
-        <a href="/secure" className="btn btn-ghost btn-sm" style={{ textDecoration: "none" }}>
-          Full dashboard →
-        </a>
-      </div>
-
-      {/* Open findings arc row */}
-      <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 18px", borderBottom: "1px solid var(--border)" }}>
-        <FindingsArc open={open} total={total} />
-        <div>
-          <div className="eyebrow" style={{ fontSize: 9.5, marginBottom: 5 }}>Open findings · this month</div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 5, marginBottom: 6 }}>
-            <span style={{ fontSize: 24, fontWeight: 750, letterSpacing: "-.03em" }}>{open}</span>
-            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>of {total}</span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span className={"sbadge " + (open === 0 ? "ok" : critical > 0 ? "err" : "warn")} style={{ height: 18, fontSize: 10.5 }}>
-              {open === 0 ? "All clear" : critical > 0 ? "Needs action" : "In review"}
-            </span>
-            {total > 0 && open < total && (
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{total - open} fixed</span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Top finding types */}
-      <div style={{ padding: "13px 16px", borderBottom: "1px solid var(--border)" }}>
-        <div className="eyebrow" style={{ fontSize: 9.5, marginBottom: 9 }}>Top finding types (30d)</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-          {topTypes.length === 0
-            ? [1, 2, 3].map(i => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span className="mono" style={{ fontSize: 11.5, fontWeight: 600, flex: 1, color: "var(--text-muted)" }}>—</span>
-                  <span className="sbadge run" style={{ height: 17, fontSize: 9, padding: "0 6px" }}>—</span>
-                  <span className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)", minWidth: 22, textAlign: "right" }}>—</span>
-                </div>
-              ))
-            : topTypes.map(([type, count]) => (
-                <div key={type} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span className="mono" style={{ fontSize: 11.5, fontWeight: 600, flex: 1 }}>{TYPE_LABELS[type] ?? type}</span>
-                  <span className={"sbadge " + (typeSevBadge[type] ?? "idle")} style={{ height: 17, fontSize: 9, padding: "0 6px" }}>{type}</span>
-                  <span className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)", minWidth: 22, textAlign: "right" }}>{count}</span>
-                </div>
-              ))
-          }
-        </div>
-      </div>
-
-      {/* Needs attention footer */}
-      <div style={{ padding: "13px 16px" }}>
-        <div className="eyebrow" style={{ fontSize: 9.5, marginBottom: 9 }}>Critical / high open</div>
-        {critical === 0 && high === 0
-          ? <span style={{ fontSize: 12, color: "var(--ok)" }}>No critical or high findings open</span>
-          : <span style={{ fontSize: 12, color: "var(--err)", fontWeight: 600 }}>
-              {critical > 0 && `${critical} critical`}{critical > 0 && high > 0 && " · "}{high > 0 && `${high} high`} need attention
-            </span>
-        }
-      </div>
-    </div>
-  )
-}
 
 function DashboardContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [secSummary, setSecSummary] = useState<SecurityFindingSummary | null>(null)
-  const [secInstalled, setSecInstalled] = useState(false)
   const [guardSynced, setGuardSynced] = useState<boolean | null>(null)
   const [mySynced, setMySynced] = useState<boolean | null>(null)
 
@@ -802,19 +664,10 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
         try {
           const base = process.env.NEXT_PUBLIC_API_URL ?? ""
           const wsHeaders = { ...headers, "X-Workspace-Id": workspaceId }
-          const [cfgRes, summaryRes, toolsRes, meRes] = await Promise.all([
-            fetch(`${base}/secure/installed?workspace_id=${workspaceId}`, { headers }),
-            fetch(`${base}/security-findings/summary?workspace_id=${workspaceId}&days=30`, { headers }),
+          const [toolsRes, meRes] = await Promise.all([
             fetch(`${base}/guard/developer-tools`, { headers: wsHeaders }),
             fetch(`${base}/guard/developer-tools/me`, { headers: wsHeaders }),
           ])
-          if (cfgRes.ok) {
-            const cfg = await cfgRes.json()
-            setSecInstalled(cfg.installed === true)
-          }
-          if (summaryRes.ok) {
-            setSecSummary(await summaryRes.json())
-          }
           if (toolsRes.ok) {
             const tools = await toolsRes.json()
             setGuardSynced(Array.isArray(tools) && tools.length > 0)
@@ -1133,47 +986,6 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                   />
                 </div>
 
-                {/* Security Loop snapshot */}
-                {secInstalled && (
-                  <div>
-                    <SectionLabel>Security Loop</SectionLabel>
-                    <SecurityLoopSnapshot
-                      summary={secSummary}
-                      installed={secInstalled}
-                    />
-                  </div>
-                )}
-
-                {/* Agent health table */}
-                <div>
-                  <SectionLabel action="Manage agents" href="/workflows">Agent health</SectionLabel>
-                  <div className="card" style={{ overflow: "hidden", padding: 0 }}>
-                    {/* Table header */}
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "2fr 1fr 1fr 0.9fr 0.8fr",
-                        gap: 12,
-                        padding: "9px 16px",
-                        borderBottom: "1px solid var(--border)",
-                        background: "var(--surface-2)",
-                      }}
-                    >
-                      {["Agent", "Status", "Success", "Quality", "Spend"].map((h, i) => (
-                        <div
-                          key={i}
-                          className="eyebrow"
-                          style={{ fontSize: 9, textAlign: i >= 3 ? "right" : "left" }}
-                        >
-                          {h}
-                        </div>
-                      ))}
-                    </div>
-                    {data.agent_health.slice(0, 5).map(agent => (
-                      <AgentHealthRow key={agent.workflow_id} agent={agent} />
-                    ))}
-                  </div>
-                </div>
               </div>
             </div>
           </>

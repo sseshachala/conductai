@@ -1,0 +1,72 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/sudhiseshachala/projects/marshal/tools/booster/.claude/hooks/booster-gate.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/sudhiseshachala/projects/marshal/tools/booster/.claude/hooks/booster-grep-nudge.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/sudhiseshachala/projects/marshal/tools/booster/.claude/hooks/booster-agent-inject.py"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/sudhiseshachala/projects/marshal/tools/booster/.claude/hooks/booster-route.py"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/sudhiseshachala/projects/marshal/tools/booster/.claude/hooks/booster-session-start.py",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/sudhiseshachala/projects/marshal/tools/booster/.claude/hooks/booster-stop.py"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "mcp__agent-booster__search_context",
+      "mcp__agent-booster__smart_read",
+      "mcp__agent-booster__get_symbols",
+      "mcp__agent-booster__route_model"
+    ]
+  }
+}

@@ -65,7 +65,6 @@ class InstallStatusOut(BaseModel):
     member_token: str | None = None
     user_email: str | None = None
     clerk_user_id: str | None = None
-    security_loop_installed: bool = False
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -169,19 +168,6 @@ def get_install_status(
 
     from app.core.auth import get_clerk_user_email as _get_email
     user_email = _get_email(user_id)
-
-    # Check if Security Loop module is installed
-    security_loop_installed = False
-    try:
-        from app.models.security_config import SecurityConfig
-        sec_cfg = db.query(SecurityConfig).filter(
-            SecurityConfig.workspace_id == ws_uuid,
-            SecurityConfig.installed == True,
-        ).first()
-        security_loop_installed = sec_cfg is not None
-    except Exception:
-        pass
-
     return InstallStatusOut(
         installed=True,
         workspace_id=workspace_id,
@@ -189,7 +175,6 @@ def get_install_status(
         member_token=token_row.member_token if token_row else None,
         user_email=user_email,
         clerk_user_id=user_id,
-        security_loop_installed=security_loop_installed,
     )
 
 
@@ -237,24 +222,6 @@ def patch_config(
     db.refresh(config)
 
     out = _config_to_out(config)
-
-    # Warn if automation_security_scan is enabled but Security Loop is not installed
-    if config.automation_security_scan:
-        try:
-            import uuid as _uuid
-            from app.models.security_config import SecurityConfig
-            ws_uuid = _uuid.UUID(workspace_id)
-            sec_cfg = db.query(SecurityConfig).filter(
-                SecurityConfig.workspace_id == ws_uuid
-            ).first()
-            if not sec_cfg or not sec_cfg.installed:
-                out.automation_warnings = [
-                    "automation_security_scan is enabled but Security Loop is not installed "
-                    "— automation will be a no-op until Security Loop is installed."
-                ]
-        except Exception:
-            pass
-
     return out
 
 

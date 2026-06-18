@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Conduct — Hero Mockup</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: #FAFAF9;
+      color: #1C1917;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 1.5rem;
+    }
+
+    .hero {
+      max-width: 660px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.75rem;
+    }
+
+    /* Badge */
+    .badge {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.6875rem;
+      font-weight: 600;
+      color: #A8A29E;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+    .badge-dot { width: 6px; height: 6px; border-radius: 50%; background: #4F46E5; }
+
+    /* Headline */
+    .headline { text-align: center; }
+    .headline h1 {
+      font-size: 2.625rem;
+      font-weight: 800;
+      line-height: 1.12;
+      color: #0C0A09;
+      letter-spacing: -0.035em;
+    }
+    .headline h1 em { font-style: normal; color: #4F46E5; }
+    .headline p {
+      margin-top: 0.875rem;
+      font-size: 1.0625rem;
+      color: #78716C;
+      line-height: 1.6;
+    }
+
+    /* Intent box */
+    .intent-wrap { width: 100%; display: flex; flex-direction: column; gap: 0.625rem; }
+    .intent-box {
+      display: flex;
+      align-items: center;
+      background: white;
+      border: 1.5px solid #E7E5E4;
+      border-radius: 14px;
+      padding: 0.625rem 0.625rem 0.625rem 1.125rem;
+      gap: 0.625rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .intent-box.focused {
+      border-color: #C7D2FE;
+      box-shadow: 0 0 0 3px rgba(79,70,229,0.07);
+    }
+    .intent-input {
+      flex: 1;
+      border: none;
+      outline: none;
+      font-size: 0.9375rem;
+      font-family: inherit;
+      color: #1C1917;
+      background: transparent;
+      caret-color: #4F46E5;
+      min-width: 0;
+    }
+    .intent-input::placeholder { color: #C4BFBB; }
+    .intent-btn {
+      width: 34px; height: 34px;
+      border-radius: 9px;
+      background: #4F46E5;
+      border: none;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.15s;
+    }
+    .intent-btn:hover { background: #4338CA; }
+
+    .suggestions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+    .suggestion-chip {
+      font-size: 0.8rem;
+      color: #78716C;
+      background: white;
+      border: 1px solid #E7E5E4;
+      border-radius: 20px;
+      padding: 0.25rem 0.75rem;
+      cursor: pointer;
+      font-family: inherit;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+    .suggestion-chip:hover { border-color: #C7D2FE; color: #4F46E5; background: #EEF2FF; }
+
+    /* Rule card */
+    .card-wrap { width: 100%; min-height: 178px; position: relative; }
+    .rule-card {
+      width: 100%;
+      background: white;
+      border: 1.5px solid #E7E5E4;
+      border-radius: 20px;
+      padding: 1.375rem 1.5rem;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+      opacity: 0;
+      transform: translateY(14px);
+      transition: opacity 0.35s ease, transform 0.35s ease, border-color 0.4s ease, box-shadow 0.4s ease;
+    }
+    .rule-card.visible { opacity: 1; transform: translateY(0); }
+    .rule-card.activated {
+      border-color: #86EFAC;
+      box-shadow: 0 4px 20px rgba(34,197,94,0.1);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .card-lens-icon {
+      width: 26px; height: 26px;
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.8125rem;
+      flex-shrink: 0;
+    }
+    .icon-guard  { background: #EEF2FF; }
+    .icon-secure { background: #F5F3FF; }
+    .icon-automate { background: #EFF6FF; }
+
+    .card-lens-name { font-size: 0.9375rem; font-weight: 700; color: #1C1917; }
+    .card-lens-q { font-size: 0.875rem; color: #A8A29E; font-weight: 400; }
+
+    .card-example {
+      font-size: 0.9375rem;
+      color: #44403C;
+      font-style: italic;
+      margin-bottom: 0.875rem;
+      line-height: 1.5;
+    }
+
+    .card-chips { display: flex; gap: 0.4375rem; flex-wrap: wrap; margin-bottom: 0.875rem; }
+    .card-chip {
+      font-size: 0.8rem;
+      color: #44403C;
+      background: #F5F5F4;
+      border: 1px solid #E7E5E4;
+      border-radius: 20px;
+      padding: 0.275rem 0.7rem;
+      opacity: 0;
+      transform: translateY(5px);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .card-chip.show { opacity: 1; transform: translateY(0); }
+    .card-chip.danger { color: #DC2626; background: #FEF2F2; border-color: #FECACA; }
+    .card-chip.warn  { color: #D97706; background: #FFFBEB; border-color: #FDE68A; }
+
+    .card-footer { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+
+    .card-stat {
+      font-size: 0.875rem;
+      color: #4F46E5;
+      font-weight: 500;
+      display: flex; align-items: center; gap: 0.375rem;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    .card-stat.show { opacity: 1; }
+
+    .confirm-btn {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #1C1917;
+      background: white;
+      border: 1.5px solid #D6D3D1;
+      border-radius: 10px;
+      padding: 0.375rem 1rem;
+      cursor: pointer;
+      font-family: inherit;
+      opacity: 0;
+      transform: scale(0.94);
+      transition: opacity 0.2s ease, transform 0.2s ease, background 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .confirm-btn.show { opacity: 1; transform: scale(1); }
+    .confirm-btn.pulse { animation: btn-pulse 0.7s ease infinite alternate; }
+    .confirm-btn.done { background: #22C55E; border-color: #22C55E; color: white; animation: none; }
+
+    @keyframes btn-pulse {
+      from { box-shadow: 0 0 0 0 rgba(79,70,229,0.2); border-color: #C7D2FE; }
+      to   { box-shadow: 0 0 0 5px rgba(79,70,229,0); border-color: #818CF8; }
+    }
+
+    .active-badge {
+      display: none;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #16A34A;
+      background: #F0FDF4;
+      border: 1px solid #BBF7D0;
+      border-radius: 20px;
+      padding: 0.275rem 0.7rem;
+      flex-shrink: 0;
+    }
+    .active-badge.show { display: flex; }
+
+    /* Lifecycle */
+    .lifecycle {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      font-size: 0.75rem;
+      color: #C4BFBB;
+    }
+    .lc-step {
+      padding: 0.3rem 0.75rem;
+      border-radius: 20px;
+      font-weight: 500;
+      white-space: nowrap;
+      transition: background 0.3s, color 0.3s, font-weight 0.3s;
+    }
+    .lc-step.active { background: #EEF2FF; color: #4F46E5; font-weight: 600; }
+    .lc-step.done   { color: #A3A09E; }
+    .lc-arrow { color: #E2DDD9; padding: 0 0.1rem; font-size: 0.625rem; }
+
+    /* CTA */
+    .cta-row {
+      display: flex; gap: 0.75rem; align-items: center;
+      opacity: 0; transform: translateY(8px);
+      transition: opacity 0.4s ease, transform 0.4s ease;
+    }
+    .cta-row.show { opacity: 1; transform: translateY(0); }
+    .cta-primary {
+      background: #4F46E5; color: white;
+      border: none; border-radius: 10px;
+      padding: 0.625rem 1.375rem;
+      font-size: 0.9375rem; font-weight: 600;
+      cursor: pointer; font-family: inherit;
+      transition: background 0.15s;
+    }
+    .cta-primary:hover { background: #4338CA; }
+    .cta-secondary {
+      color: #78716C; font-size: 0.9375rem; font-weight: 500;
+      text-decoration: none; transition: color 0.15s;
+    }
+    .cta-secondary:hover { color: #1C1917; }
+
+    /* Cursor blink inside input */
+    .intent-input.typing { border-right: 2px solid #4F46E5; }
+  </style>
+</head>
+<body>
+
+<div class="hero">
+
+  <div class="badge">
+    <div class="badge-dot"></div>
+    Conduct · AI-SDLC Platform
+  </div>
+
+  <div class="headline">
+    <h1>AI is in your engineering workflow.<br><em>Make sure it goes right.</em></h1>
+    <p>Govern, secure, and automate AI-assisted engineering —<br>for your whole team, from one platform.</p>
+  </div>
+
+  <div class="intent-wrap">
+    <div class="intent-box" id="intentBox">
+      <input class="intent-input" id="intentInput" type="text" placeholder="What do you want to govern, secure, or automate?" readonly>
+      <button class="intent-btn">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M1 7H13M7 1L13 7L7 13" stroke="white" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+    <div class="suggestions">
+      <button class="suggestion-chip">Stop AI from deleting files</button>
+      <button class="suggestion-chip">Triage GitHub issues</button>
+      <button class="suggestion-chip">Catch secrets before merge</button>
+    </div>
+  </div>
+
+  <div class="card-wrap">
+    <div class="rule-card" id="ruleCard">
+      <div class="card-header">
+        <div class="card-lens-icon" id="cardIcon"></div>
+        <span class="card-lens-name" id="cardName"></span>
+        <span class="card-lens-q" id="cardQ"></span>
+      </div>
+      <div class="card-example" id="cardExample"></div>
+      <div class="card-chips" id="cardChips"></div>
+      <div class="card-footer">
+        <div class="card-stat" id="cardStat">
+          <span id="statIcon"></span>
+          <span id="statText"></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.5rem;">
+          <div class="active-badge" id="activeBadge">
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+              <path d="M1.5 5.5L4.5 8.5L9.5 2.5" stroke="#16A34A" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Active
+          </div>
+          <button class="confirm-btn" id="confirmBtn">Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="lifecycle">
+    <span class="lc-step" id="lc0">Intent</span>
+    <span class="lc-arrow">›</span>
+    <span class="lc-step" id="lc1">Propose</span>
+    <span class="lc-arrow">›</span>
+    <span class="lc-step" id="lc2">Dry-run</span>
+    <span class="lc-arrow">›</span>
+    <span class="lc-step" id="lc3">Activate</span>
+    <span class="lc-arrow">›</span>
+    <span class="lc-step" id="lc4">Watch</span>
+    <span class="lc-arrow">›</span>
+    <span class="lc-step" id="lc5">Steer</span>
+  </div>
+
+  <div class="cta-row" id="ctaRow">
+    <button class="cta-primary">Start free</button>
+    <a class="cta-secondary" href="#">See the playbooks →</a>
+  </div>
+
+</div>
+
+<script>
+const SCENARIOS = [
+  {
+    intent: "Stop AI tools from running destructive commands",
+    lens: "guard", name: "Guard", q: "— what do you want to guard?",
+    iconClass: "icon-guard", icon: "🛡",
+    example: '"Stop AI tools from running destructive shell commands"',
+    chips: [
+      { label: "on tool-call: bash" },
+      { label: "matches rm -rf, chmod 777" },
+      { label: "block & notify", cls: "danger" },
+    ],
+    statPrefix: "Would have blocked ", statCount: 4, statSuffix: " actions yesterday",
+    statIcon: "›",
+  },
+  {
+    intent: "Catch secrets and SQL injection before they merge",
+    lens: "secure", name: "Secure", q: "— how do you want to write secure code?",
+    iconClass: "icon-secure", icon: "🔒",
+    example: '"Catch SQL injection and hardcoded secrets before merge"',
+    chips: [
+      { label: "on PR opened" },
+      { label: "SQLi / secret findings", cls: "warn" },
+      { label: "comment & open fix PR" },
+    ],
+    statPrefix: "Would have flagged ", statCount: 3, statSuffix: " of last 20 PRs",
+    statIcon: "›",
+  },
+  {
+    intent: "Triage incoming GitHub issues automatically",
+    lens: "automate", name: "Automate", q: "— what do you want to automate?",
+    iconClass: "icon-automate", icon: "⚡",
+    example: '"Triage incoming GitHub issues"',
+    chips: [
+      { label: "on issue opened" },
+      { label: "classify & label" },
+      { label: "assign & comment" },
+    ],
+    statPrefix: "Matches ", statCount: 38, statSuffix: " issues from last week",
+    statIcon: "›",
+  },
+]
+
+const LC_STEPS = ["lc0","lc1","lc2","lc3","lc4","lc5"]
+
+const $  = id => document.getElementById(id)
+const intentInput = $("intentInput")
+const intentBox   = $("intentBox")
+const ruleCard    = $("ruleCard")
+const cardIcon    = $("cardIcon")
+const cardName    = $("cardName")
+const cardQ       = $("cardQ")
+const cardExample = $("cardExample")
+const cardChips   = $("cardChips")
+const cardStat    = $("cardStat")
+const statIcon    = $("statIcon")
+const statText    = $("statText")
+const confirmBtn  = $("confirmBtn")
+const activeBadge = $("activeBadge")
+const ctaRow      = $("ctaRow")
+
+const wait = ms => new Promise(r => setTimeout(r, ms))
+
+async function typeIn(text) {
+  intentBox.classList.add("focused")
+  intentInput.classList.add("typing")
+  intentInput.value = ""
+  for (const ch of text) {
+    intentInput.value += ch
+    let d = 36 + Math.random() * 14
+    if (",".includes(ch)) d = 90
+    if (".!?".includes(ch)) d = 140
+    await wait(d)
+  }
+  intentInput.classList.remove("typing")
+}
+
+async function clearInput() {
+  intentBox.classList.remove("focused")
+  intentInput.value = ""
+}
+
+async function countUp(target, setter) {
+  const steps = 28, dur = 600
+  for (let i = 0; i <= steps; i++) {
+    setter(Math.round(target * i / steps))
+    await wait(dur / steps)
+  }
+}
+
+function setLC(idx) {
+  LC_STEPS.forEach((id, i) => {
+    const el = $(id)
+    el.classList.remove("active","done")
+    if (i < idx)  el.classList.add("done")
+    if (i === idx) el.classList.add("active")
+  })
+}
+
+function resetCard() {
+  ruleCard.classList.remove("visible","activated")
+  confirmBtn.className = "confirm-btn"
+  activeBadge.className = "active-badge"
+  cardStat.className = "card-stat"
+  ctaRow.classList.remove("show")
+  cardChips.innerHTML = ""
+}
+
+async function runScenario(s) {
+  resetCard()
+  setLC(0)  // Intent
+
+  await typeIn(s.intent)
+  await wait(320)
+
+  setLC(1)  // Propose
+  await wait(480)
+
+  // Populate card data
+  cardIcon.className = `card-lens-icon ${s.iconClass}`
+  cardIcon.textContent = s.icon
+  cardName.textContent = s.name
+  cardQ.textContent = s.q
+  cardExample.textContent = s.example
+
+  s.chips.forEach(chip => {
+    const el = document.createElement("span")
+    el.className = `card-chip${chip.cls ? " "+chip.cls : ""}`
+    el.textContent = chip.label
+    cardChips.appendChild(el)
+  })
+
+  statText.textContent = s.statPrefix + "0" + s.statSuffix
+  confirmBtn.textContent = "Confirm"
+
+  // Show card
+  ruleCard.classList.add("visible")
+  await wait(260)
+
+  setLC(2)  // Dry-run
+
+  // Stagger chips
+  const chips = cardChips.querySelectorAll(".card-chip")
+  for (const chip of chips) {
+    await wait(130)
+    chip.classList.add("show")
+  }
+
+  await wait(180)
+
+  // Count up stat
+  cardStat.classList.add("show")
+  statIcon.textContent = s.statIcon
+  await countUp(s.statCount, v => {
+    statText.textContent = s.statPrefix + v + s.statSuffix
+  })
+
+  await wait(350)
+
+  // Show confirm button
+  confirmBtn.classList.add("show")
+  await wait(280)
+  confirmBtn.classList.add("pulse")
+  await wait(900)
+
+  setLC(3)  // Activate
+
+  // Click confirm
+  confirmBtn.classList.remove("pulse")
+  confirmBtn.classList.add("done")
+  confirmBtn.textContent = "✓"
+  ruleCard.classList.add("activated")
+
+  await wait(480)
+  confirmBtn.style.opacity = "0"
+  confirmBtn.style.transform = "scale(0.9)"
+  await wait(180)
+  confirmBtn.style.display = "none"
+  activeBadge.classList.add("show")
+
+  setLC(4)  // Watch
+  await wait(1800)
+
+  // Reset for next
+  confirmBtn.style.display = ""
+  confirmBtn.style.opacity = ""
+  confirmBtn.style.transform = ""
+  ruleCard.classList.remove("visible","activated")
+  activeBadge.classList.remove("show")
+  await wait(380)
+  await clearInput()
+  await wait(220)
+}
+
+async function loop() {
+  let iter = 0
+  while (true) {
+    for (let i = 0; i < SCENARIOS.length; i++) {
+      await runScenario(SCENARIOS[i])
+      if (i === SCENARIOS.length - 1) {
+        setLC(5)  // Steer — after last scenario
+        ctaRow.classList.add("show")
+        await wait(3200)
+        ctaRow.classList.remove("show")
+        await wait(500)
+        setLC(-1)
+      }
+    }
+    iter++
+  }
+}
+
+setTimeout(loop, 600)
+</script>
+</body>
+</html>

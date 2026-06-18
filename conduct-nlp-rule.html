@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Conduct — NLP → Rule</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --indigo: #4F46E5; --indigo-l: #EEF2FF; --indigo-m: #C7D2FE;
+      --violet: #7C3AED; --violet-l: #F5F3FF;
+      --sky:    #0284C7; --sky-l:    #E0F2FE;
+      --green:  #16A34A; --green-l:  #F0FDF4; --green-m: #BBF7D0;
+      --red:    #DC2626; --red-l:    #FEF2F2;
+      --amber:  #D97706; --amber-l:  #FFFBEB;
+      --teal:   #0D9488; --teal-l:   #F0FDFA;
+      --bg: #F7F6F5; --surface: #fff;
+      --border: #E7E5E4; --border2: #D6D3D1;
+      --ink: #0C0A09; --s7: #44403C; --s5: #78716C; --s4: #A8A29E; --s2: #E7E5E4;
+    }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg); color: var(--ink);
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      padding: 2rem 1rem;
+    }
+    .wrap { max-width: 900px; width: 100%; display: flex; flex-direction: column; gap: 1.5rem; }
+
+    /* ── INTENT BOX ── */
+    .intent-section { }
+    .intent-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--s4); margin-bottom: 0.625rem; }
+    .intent-box {
+      display: flex; align-items: center; gap: 0.625rem;
+      background: var(--surface); border: 1.5px solid var(--border2);
+      border-radius: 14px; padding: 0.75rem 0.75rem 0.75rem 1.25rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .intent-box.focused { border-color: var(--indigo-m); box-shadow: 0 0 0 3px rgba(79,70,229,.07); }
+    .intent-input { flex: 1; border: none; outline: none; font-size: 1rem; font-family: inherit; color: var(--ink); background: transparent; caret-color: var(--indigo); }
+    .intent-input::placeholder { color: #C4BFBB; }
+    .intent-btn { width: 36px; height: 36px; border-radius: 10px; background: var(--indigo); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background .15s; }
+    .intent-btn:hover { background: #4338CA; }
+    .example-chips { display: flex; gap: 0.375rem; flex-wrap: wrap; margin-top: 0.625rem; }
+    .ex-chip { font-size: 0.8rem; color: var(--s5); background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 0.25rem 0.75rem; cursor: pointer; font-family: inherit; transition: all .12s; }
+    .ex-chip:hover { border-color: var(--indigo-m); color: var(--indigo); background: var(--indigo-l); }
+
+    /* ── DECOMPOSITION PANEL ── */
+    .decomp {
+      background: var(--surface); border: 1.5px solid var(--border); border-radius: 16px;
+      overflow: hidden; opacity: 0; transform: translateY(12px);
+      transition: opacity .35s ease, transform .35s ease;
+    }
+    .decomp.show { opacity: 1; transform: translateY(0); }
+
+    .decomp-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; }
+    .dcol {
+      padding: 1.375rem 1.25rem; border-right: 1px solid var(--border);
+    }
+    .dcol:last-child { border-right: none; }
+    .dcol-label { font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.09em; color: var(--s4); margin-bottom: 0.875rem; display: flex; align-items: center; gap: 0.375rem; }
+    .dcol-num { width: 18px; height: 18px; border-radius: 50%; background: var(--border); display: flex; align-items: center; justify-content: center; font-size: 0.6rem; font-weight: 700; color: var(--s5); }
+
+    /* Col 1 — sentence */
+    .sentence { font-size: 1rem; line-height: 1.8; color: var(--s7); }
+    .seg {
+      display: inline; border-radius: 4px; padding: 1px 3px; margin: 0 1px;
+      cursor: pointer; position: relative; transition: opacity .15s;
+    }
+    .seg:hover { opacity: .85; }
+    .seg-trigger  { background: #DBEAFE; color: #1E40AF; border-bottom: 2px solid #3B82F6; }
+    .seg-condition{ background: #FEE2E2; color: #991B1B; border-bottom: 2px solid #EF4444; }
+    .seg-scope    { background: #D1FAE5; color: #065F46; border-bottom: 2px solid #10B981; }
+    .seg-response { background: #EDE9FE; color: #5B21B6; border-bottom: 2px solid #8B5CF6; }
+    .seg-tooltip {
+      display: none; position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+      background: var(--ink); color: white; font-size: 0.75rem; font-weight: 500;
+      padding: 0.375rem 0.625rem; border-radius: 7px; white-space: nowrap; z-index: 10;
+    }
+    .seg-tooltip::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--ink); }
+    .seg:hover .seg-tooltip { display: block; }
+    .legend { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+    .leg-item { display: flex; align-items: center; gap: 0.3rem; font-size: 0.7rem; color: var(--s5); }
+    .leg-dot { width: 8px; height: 8px; border-radius: 2px; }
+
+    /* Col 2 — rule fields */
+    .rule-fields { display: flex; flex-direction: column; gap: 0.75rem; }
+    .rf { display: flex; flex-direction: column; gap: 0.25rem; }
+    .rf-label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--s4); }
+    .rf-val { font-size: 0.875rem; font-weight: 500; color: var(--s7); line-height: 1.5; }
+    .rf-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.125rem; }
+    .rf-chip {
+      font-size: 0.8rem; font-weight: 500; padding: 0.2rem 0.6rem;
+      border-radius: 20px; border: 1px solid; cursor: pointer;
+      transition: all .12s; display: flex; align-items: center; gap: 0.25rem;
+    }
+    .rf-chip.trigger  { background: #DBEAFE; color: #1E40AF; border-color: #BFDBFE; }
+    .rf-chip.condition{ background: #FEE2E2; color: #991B1B; border-color: #FECACA; }
+    .rf-chip.scope    { background: #D1FAE5; color: #065F46; border-color: #A7F3D0; }
+    .rf-chip.response { background: #EDE9FE; color: #5B21B6; border-color: #DDD6FE; }
+    .rf-chip.neutral  { background: var(--bg); color: var(--s7); border-color: var(--border); }
+    .rf-chip .edit-icon { opacity: 0; font-size: 0.65rem; transition: opacity .12s; }
+    .rf-chip:hover .edit-icon { opacity: 1; }
+    .rf-chip:hover { filter: brightness(.96); }
+    .add-chip {
+      font-size: 0.8rem; color: var(--s4); background: none; border: 1px dashed var(--border2);
+      border-radius: 20px; padding: 0.2rem 0.6rem; cursor: pointer; font-family: inherit;
+      transition: all .12s;
+    }
+    .add-chip:hover { border-color: var(--indigo-m); color: var(--indigo); }
+    .confidence {
+      margin-top: 0.875rem; padding: 0.625rem 0.75rem;
+      background: var(--green-l); border: 1px solid var(--green-m); border-radius: 9px;
+      font-size: 0.8rem; color: var(--green); font-weight: 500;
+      display: flex; align-items: center; gap: 0.375rem;
+    }
+    .confidence.medium { background: var(--amber-l); border-color: #FDE68A; color: var(--amber); }
+
+    /* Col 3 — real examples */
+    .examples-list { display: flex; flex-direction: column; gap: 0.5rem; }
+    .ex-row {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 9px;
+      padding: 0.5rem 0.75rem; opacity: 0; transform: translateX(8px);
+      transition: opacity .25s ease, transform .25s ease;
+    }
+    .ex-row.show { opacity: 1; transform: none; }
+    .ex-cmd { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--red); margin-bottom: 0.125rem; }
+    .ex-meta { font-size: 0.75rem; color: var(--s4); }
+    .ex-stat {
+      margin-top: 0.875rem; padding: 0.5rem 0.75rem;
+      background: var(--indigo-l); border: 1px solid var(--indigo-m); border-radius: 9px;
+      font-size: 0.8125rem; color: var(--indigo); font-weight: 600;
+      display: flex; align-items: center; gap: 0.375rem;
+      opacity: 0; transition: opacity .3s ease;
+    }
+    .ex-stat.show { opacity: 1; }
+    .no-data {
+      font-size: 0.8rem; color: var(--s4); text-align: center; padding: 1rem 0;
+      font-style: italic;
+    }
+
+    /* ── ADJUST ROW ── */
+    .adjust-row {
+      border-top: 1px solid var(--border); padding: 1rem 1.25rem;
+      display: flex; align-items: center; gap: 0.75rem;
+      background: #FAFAF9;
+    }
+    .adjust-label { font-size: 0.8125rem; font-weight: 600; color: var(--s5); white-space: nowrap; }
+    .adjust-input {
+      flex: 1; border: 1px solid var(--border); background: white; border-radius: 9px;
+      padding: 0.4rem 0.75rem; font-size: 0.875rem; font-family: inherit;
+      color: var(--ink); outline: none; transition: border-color .15s;
+    }
+    .adjust-input:focus { border-color: var(--indigo-m); box-shadow: 0 0 0 3px rgba(79,70,229,.07); }
+    .adjust-btn {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 9px;
+      padding: 0.4rem 0.875rem; font-size: 0.8125rem; font-weight: 600;
+      color: var(--s7); cursor: pointer; font-family: inherit; white-space: nowrap;
+      transition: all .12s;
+    }
+    .adjust-btn:hover { border-color: var(--indigo-m); color: var(--indigo); }
+
+    /* ── CONFIRM ROW ── */
+    .confirm-row {
+      border-top: 1px solid var(--border); padding: 1rem 1.25rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .yaml-toggle { font-size: 0.8rem; color: var(--s4); cursor: pointer; font-family: 'JetBrains Mono', monospace; text-decoration: underline; text-decoration-style: dotted; }
+    .yaml-toggle:hover { color: var(--s7); }
+    .confirm-actions { display: flex; align-items: center; gap: 0.625rem; }
+    .btn-cancel { background: none; border: 1px solid var(--border); border-radius: 9px; padding: 0.475rem 1rem; font-size: 0.875rem; color: var(--s5); cursor: pointer; font-family: inherit; transition: all .12s; }
+    .btn-cancel:hover { border-color: var(--border2); color: var(--ink); }
+    .btn-confirm {
+      background: var(--indigo); color: white; border: none; border-radius: 9px;
+      padding: 0.475rem 1.25rem; font-size: 0.875rem; font-weight: 600;
+      cursor: pointer; font-family: inherit; transition: background .15s;
+      animation: cpulse 0.8s ease infinite alternate;
+    }
+    .btn-confirm:hover { background: #4338CA; }
+    .btn-confirm.done { background: var(--green); animation: none; }
+    @keyframes cpulse {
+      from { box-shadow: 0 0 0 0 rgba(79,70,229,.25); }
+      to   { box-shadow: 0 0 0 6px rgba(79,70,229,0); }
+    }
+
+    /* ── YAML PANEL ── */
+    .yaml-panel {
+      border-top: 1px solid var(--border); background: #111827;
+      max-height: 0; overflow: hidden; transition: max-height .3s ease;
+    }
+    .yaml-panel.open { max-height: 300px; }
+    .yaml-pre { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: #D1D5DB; padding: 1.25rem; line-height: 1.7; }
+    .y-key   { color: #93C5FD; }
+    .y-val   { color: #6EE7B7; }
+    .y-str   { color: #FCA5A5; }
+    .y-cmt   { color: #4B5563; }
+
+    /* ── VARIANTS ── */
+    .variant-bar { display: flex; gap: 0.375rem; margin-bottom: 0.25rem; }
+    .variant-btn {
+      font-size: 0.8rem; font-weight: 500; color: var(--s5); background: var(--surface);
+      border: 1px solid var(--border); border-radius: 20px; padding: 0.25rem 0.75rem;
+      cursor: pointer; font-family: inherit; transition: all .12s;
+    }
+    .variant-btn:hover { border-color: var(--indigo-m); color: var(--indigo); }
+    .variant-btn.active { background: var(--indigo-l); border-color: var(--indigo-m); color: var(--indigo); font-weight: 600; }
+
+    /* ── ACTIVE STATE ── */
+    .active-banner {
+      background: var(--green-l); border: 1.5px solid var(--green-m); border-radius: 14px;
+      padding: 1rem 1.25rem; display: none; align-items: center; gap: 0.75rem;
+    }
+    .active-banner.show { display: flex; }
+    .active-banner h3 { font-size: 0.9375rem; font-weight: 700; color: var(--green); }
+    .active-banner p  { font-size: 0.8rem; color: #166534; margin-top: 0.125rem; }
+    .active-icon { font-size: 1.5rem; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- HEADER -->
+  <div>
+    <div style="font-size:0.6875rem;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--s4);margin-bottom:0.375rem;">Conduct · Add rule</div>
+    <div style="font-size:1.5rem;font-weight:800;color:var(--ink);letter-spacing:-.03em;">What do you want to govern?</div>
+    <div style="font-size:0.9375rem;color:var(--s5);margin-top:.25rem;">Describe it in plain English. We'll build the rule.</div>
+  </div>
+
+  <!-- INTENT BOX -->
+  <div class="intent-section">
+    <div class="intent-box" id="intentBox">
+      <input class="intent-input" id="intentInput" type="text" placeholder="e.g. Stop AI from deleting files on production servers">
+      <button class="intent-btn" onclick="handleIntent()">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 7H13M7 1L13 7L7 13" stroke="white" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+    <div class="example-chips">
+      <button class="ex-chip" onclick="fillIntent(this.textContent)">Stop AI from deleting files</button>
+      <button class="ex-chip" onclick="fillIntent(this.textContent)">Block secrets from being read</button>
+      <button class="ex-chip" onclick="fillIntent(this.textContent)">Warn when AI edits production config</button>
+      <button class="ex-chip" onclick="fillIntent(this.textContent)">Triage incoming GitHub issues</button>
+      <button class="ex-chip" onclick="fillIntent(this.textContent)">Catch SQL injection before merge</button>
+    </div>
+  </div>
+
+  <!-- VARIANT SELECTOR (appears after proposal) -->
+  <div class="variant-bar" id="variantBar" style="display:none;">
+    <span style="font-size:0.8rem;color:var(--s4);margin-right:0.25rem;align-self:center;">Interpreted as:</span>
+    <button class="variant-btn active" id="vGuard"    onclick="switchVariant('guard',this)">🛡 Guard rule</button>
+    <button class="variant-btn"        id="vSecure"   onclick="switchVariant('secure',this)">🔒 Secure rule</button>
+    <button class="variant-btn"        id="vAutomate" onclick="switchVariant('automate',this)">⚡ Automate rule</button>
+  </div>
+
+  <!-- DECOMP PANEL -->
+  <div class="decomp" id="decomp">
+    <div class="decomp-grid">
+
+      <!-- COL 1: YOUR WORDS -->
+      <div class="dcol">
+        <div class="dcol-label"><div class="dcol-num">1</div>Your words</div>
+        <div class="sentence" id="sentence"></div>
+        <div class="legend" id="legend"></div>
+      </div>
+
+      <!-- COL 2: WHAT WE BUILT -->
+      <div class="dcol">
+        <div class="dcol-label"><div class="dcol-num">2</div>What we built</div>
+        <div class="rule-fields" id="ruleFields"></div>
+        <div class="confidence" id="confidence"></div>
+      </div>
+
+      <!-- COL 3: REAL EXAMPLES -->
+      <div class="dcol">
+        <div class="dcol-label"><div class="dcol-num">3</div>Real examples from your team</div>
+        <div class="examples-list" id="examplesList"></div>
+        <div class="ex-stat" id="exStat"></div>
+      </div>
+
+    </div>
+
+    <!-- ADJUST ROW -->
+    <div class="adjust-row">
+      <span class="adjust-label">Adjust:</span>
+      <input class="adjust-input" id="adjustInput" placeholder="Also catch Python file deletions… exclude /tmp… change to warn…">
+      <button class="adjust-btn" onclick="applyAdjust()">Apply →</button>
+    </div>
+
+    <!-- CONFIRM ROW -->
+    <div class="confirm-row">
+      <span class="yaml-toggle" onclick="toggleYaml()">{ } View YAML</span>
+      <div class="confirm-actions">
+        <button class="btn-cancel" onclick="resetAll()">Start over</button>
+        <button class="btn-confirm" id="confirmBtn" onclick="confirmRule()">Activate rule</button>
+      </div>
+    </div>
+
+    <!-- YAML PANEL -->
+    <div class="yaml-panel" id="yamlPanel">
+      <pre class="yaml-pre" id="yamlContent"></pre>
+    </div>
+  </div>
+
+  <!-- ACTIVE BANNER -->
+  <div class="active-banner" id="activeBanner">
+    <div class="active-icon">✓</div>
+    <div>
+      <h3>Rule is active</h3>
+      <p id="activeBannerDesc">Your rule is now live and enforcing.</p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const wait = ms => new Promise(r => setTimeout(r, ms))
+
+/* ── RULE DEFINITIONS ── */
+const RULES = {
+  guard: {
+    sentence: `<span class="seg seg-response" title="response">Stop</span> <span class="seg seg-trigger">AI tools<span class="seg-tooltip">→ triggers on any AI tool call</span></span> from <span class="seg seg-condition">deleting files<span class="seg-tooltip">→ matches rm -rf, unlink, os.remove</span></span> on <span class="seg seg-scope">production servers<span class="seg-tooltip">→ path contains /prod, /var/www, /etc</span></span>`,
+    legend: [
+      { cls:'seg-trigger',   color:'#DBEAFE', label:'Trigger' },
+      { cls:'seg-condition', color:'#FEE2E2', label:'Condition' },
+      { cls:'seg-scope',     color:'#D1FAE5', label:'Scope' },
+      { cls:'seg-response',  color:'#EDE9FE', label:'Response' },
+    ],
+    fields: [
+      { label:'When', type:'trigger',   chips:['any tool call','bash'] },
+      { label:'If',   type:'condition', chips:['rm -rf','unlink','rmdir','os.remove','shutil.rmtree'] },
+      { label:'Scope',type:'scope',     chips:['/prod','/var/www','/etc'], addable: true },
+      { label:'Then', type:'response',  chips:['block','notify Slack'] },
+    ],
+    confidence: { level:'high', text:'High confidence — matched destructive bash pattern' },
+    examples: [
+      { cmd:'rm -rf /var/www/html',         meta:'Claude Code · maya · yesterday' },
+      { cmd:'rm -rf /etc/app.conf',         meta:'Claude Code · dan · 3 days ago' },
+      { cmd:'unlink /home/alex/.env',       meta:'Cursor · alex · 4 days ago' },
+      { cmd:'shutil.rmtree("/prod/data")',   meta:'Claude Code · maya · 6 days ago' },
+    ],
+    stat: '4 commands would have been blocked in the last 7 days',
+    yaml: `<span class="y-cmt"># Guard rule — auto-generated from intent</span>
+<span class="y-key">name</span>: <span class="y-str">"No destructive file operations"</span>
+<span class="y-key">lens</span>: <span class="y-val">guard</span>
+<span class="y-key">trigger</span>:
+  <span class="y-key">family</span>: <span class="y-val">tool_call</span>
+  <span class="y-key">event</span>:  <span class="y-val">tool.bash</span>
+<span class="y-key">condition</span>:
+  <span class="y-key">match</span>:
+    <span class="y-key">tool</span>:    <span class="y-str">"bash"</span>
+    <span class="y-key">pattern</span>: <span class="y-str">"rm\\s+-rf|unlink|rmdir|os\\.remove|shutil\\.rmtree"</span>
+    <span class="y-key">path_pattern</span>: <span class="y-str">"/prod|/var/www|/etc"</span>
+<span class="y-key">response</span>:
+  <span class="y-key">kind</span>:    <span class="y-val">gate</span>
+  <span class="y-key">effect</span>: <span class="y-val">block</span>
+  <span class="y-key">message</span>: <span class="y-str">"Blocked destructive file operation"</span>`,
+    activateLabel: 'Guard rule is live — destructive file operations will be blocked.',
+  },
+
+  secure: {
+    sentence: `<span class="seg seg-trigger">Catch<span class="seg-tooltip">→ triggers on PR opened</span></span> <span class="seg seg-condition">SQL injection<span class="seg-tooltip">→ matches parameterized query anti-patterns</span></span> <span class="seg seg-response">before<span class="seg-tooltip">→ response: flag + comment + open fix PR</span></span> <span class="seg seg-scope">merge<span class="seg-tooltip">→ scoped to: pre-merge on all branches</span></span>`,
+    legend: [
+      { cls:'seg-trigger',   color:'#DBEAFE', label:'When' },
+      { cls:'seg-condition', color:'#FEE2E2', label:'What to catch' },
+      { cls:'seg-scope',     color:'#D1FAE5', label:'Scope' },
+      { cls:'seg-response',  color:'#EDE9FE', label:'Response' },
+    ],
+    fields: [
+      { label:'When',         type:'trigger',   chips:['PR opened'] },
+      { label:'Catch',        type:'condition', chips:['SQLi patterns','f-string queries','string concat SQL'], addable: true },
+      { label:'Severity',     type:'scope',     chips:['high+'] },
+      { label:'Then',         type:'response',  chips:['flag','comment on PR','open fix PR'] },
+    ],
+    confidence: { level:'high', text:'High confidence — matched SQL injection detection pattern' },
+    examples: [
+      { cmd:'f"SELECT * FROM users WHERE id={uid}"', meta:'PR #482 · api/users.py:87 · 2 days ago' },
+      { cmd:'"SELECT * FROM orders WHERE id="+str(id)', meta:'PR #476 · api/orders.py:34 · 5 days ago' },
+      { cmd:'cursor.execute("SELECT..."+user_input)', meta:'PR #471 · api/search.py:12 · 8 days ago' },
+    ],
+    stat: '3 of last 20 PRs would have been flagged',
+    yaml: `<span class="y-cmt"># Secure rule — auto-generated from intent</span>
+<span class="y-key">name</span>: <span class="y-str">"Catch SQL injection before merge"</span>
+<span class="y-key">lens</span>: <span class="y-val">secure</span>
+<span class="y-key">trigger</span>:
+  <span class="y-key">family</span>: <span class="y-val">code</span>
+  <span class="y-key">event</span>:  <span class="y-val">pr.opened</span>
+<span class="y-key">condition</span>:
+  <span class="y-key">match</span>:
+    <span class="y-key">finding_type</span>: <span class="y-str">"sql-injection"</span>
+    <span class="y-key">severity_gte</span>: <span class="y-str">"high"</span>
+<span class="y-key">response</span>:
+  <span class="y-key">kind</span>:        <span class="y-val">remediate</span>
+  <span class="y-key">finding_type</span>: <span class="y-str">"sql-injection"</span>
+  <span class="y-key">severity</span>:    <span class="y-str">"high"</span>
+  <span class="y-key">run_playbook</span>: <span class="y-str">"security_loop"</span>`,
+    activateLabel: 'Secure rule is live — PRs will be scanned for SQL injection.',
+  },
+
+  automate: {
+    sentence: `<span class="seg seg-response">Triage<span class="seg-tooltip">→ response: classify, label, assign</span></span> <span class="seg seg-trigger">incoming<span class="seg-tooltip">→ triggers on: issue.opened</span></span> <span class="seg seg-condition">GitHub issues<span class="seg-tooltip">→ matched to Issue Triage playbook</span></span> <span class="seg seg-scope">automatically<span class="seg-tooltip">→ no human approval needed</span></span>`,
+    legend: [
+      { cls:'seg-trigger',   color:'#DBEAFE', label:'When' },
+      { cls:'seg-condition', color:'#FEE2E2', label:'What' },
+      { cls:'seg-scope',     color:'#D1FAE5', label:'Mode' },
+      { cls:'seg-response',  color:'#EDE9FE', label:'Action' },
+    ],
+    fields: [
+      { label:'When',     type:'trigger',   chips:['issue opened','on GitHub'] },
+      { label:'Playbook', type:'condition', chips:['Issue Triage ✓ matched'] },
+      { label:'Steps',    type:'scope',     chips:['Brain: classify','GitHub: label','GitHub: assign @kai'] },
+      { label:'Then',     type:'response',  chips:['run automatically','no approval'] },
+    ],
+    confidence: { level:'high', text:'Matched to existing "Issue Triage" playbook (pre-built)' },
+    examples: [
+      { cmd:'#589 "Login fails on Safari"',    meta:'→ labeled: bug · assigned @kai · 2h ago' },
+      { cmd:'#583 "Add dark mode support"',    meta:'→ labeled: enhancement · assigned @maya · 1d ago' },
+      { cmd:'#571 "Docs outdated for v2 API"', meta:'→ labeled: docs · assigned @alex · 3d ago' },
+    ],
+    stat: 'Matches 38 issues from last week',
+    yaml: `<span class="y-cmt"># Automate rule — matched to Issue Triage playbook</span>
+<span class="y-key">name</span>: <span class="y-str">"Issue Triage"</span>
+<span class="y-key">lens</span>: <span class="y-val">automate</span>
+<span class="y-key">trigger</span>:
+  <span class="y-key">family</span>: <span class="y-val">platform</span>
+  <span class="y-key">event</span>:  <span class="y-val">github.issue_opened</span>
+<span class="y-key">response</span>:
+  <span class="y-key">kind</span>: <span class="y-val">act</span>
+  <span class="y-key">blocks</span>:
+    <span class="y-key">brain</span>:   <span class="y-val">{ classify: true, model: gpt-4o }</span>
+    <span class="y-key">github</span>:  <span class="y-val">{ label: "{{brain.label}}", assign: "@kai" }</span>`,
+    activateLabel: 'Automate rule is live — new GitHub issues will be triaged automatically.',
+  },
+}
+
+/* ── STATE ── */
+let currentLens = 'guard'
+let yamlOpen = false
+
+/* ── CLASSIFY INTENT ── */
+function classifyIntent(text) {
+  const t = text.toLowerCase()
+  if (t.match(/triage|standup|automate|notify|summarize|issue|deploy|schedule/)) return 'automate'
+  if (t.match(/secret|sqli|sql|injection|pr|merge|vulnerab|secure|catch/))       return 'secure'
+  return 'guard'
+}
+
+/* ── FILL + HANDLE ── */
+function fillIntent(text) {
+  document.getElementById('intentInput').value = text
+  document.getElementById('intentBox').classList.add('focused')
+  handleIntent()
+}
+
+async function handleIntent() {
+  const val = document.getElementById('intentInput').value.trim()
+  if (!val) return
+  document.getElementById('intentBox').classList.add('focused')
+  const lens = classifyIntent(val)
+  await showDecomp(lens)
+}
+
+/* ── SWITCH VARIANT ── */
+function switchVariant(lens, btn) {
+  document.querySelectorAll('.variant-btn').forEach(b => b.classList.remove('active'))
+  btn.classList.add('active')
+  currentLens = lens
+  renderDecomp(lens)
+  renderExamples(lens)
+}
+
+/* ── SHOW DECOMP ── */
+async function showDecomp(lens) {
+  currentLens = lens
+
+  // show variant bar
+  const vBar = document.getElementById('variantBar')
+  vBar.style.display = 'flex'
+  document.querySelectorAll('.variant-btn').forEach(b => b.classList.remove('active'))
+  document.getElementById('v'+lens.charAt(0).toUpperCase()+lens.slice(1)).classList.add('active')
+
+  // reset
+  const decomp = document.getElementById('decomp')
+  decomp.classList.remove('show')
+  document.getElementById('exStat').classList.remove('show')
+  document.querySelectorAll('.ex-row').forEach(r => r.classList.remove('show'))
+  document.getElementById('yamlPanel').classList.remove('open')
+  document.getElementById('activeBanner').classList.remove('show')
+  document.getElementById('confirmBtn').className = 'btn-confirm'
+  document.getElementById('confirmBtn').textContent = lens === 'automate' ? 'Open canvas →' : 'Activate rule'
+  yamlOpen = false
+
+  renderDecomp(lens)
+
+  await wait(80)
+  decomp.classList.add('show')
+  await wait(400)
+  renderExamples(lens)
+}
+
+/* ── RENDER DECOMP ── */
+function renderDecomp(lens) {
+  const r = RULES[lens]
+
+  // sentence
+  document.getElementById('sentence').innerHTML = r.sentence
+
+  // legend
+  document.getElementById('legend').innerHTML = r.legend.map(l =>
+    `<div class="leg-item"><div class="leg-dot" style="background:${l.color}"></div>${l.label}</div>`
+  ).join('')
+
+  // rule fields
+  document.getElementById('ruleFields').innerHTML = r.fields.map(f => `
+    <div class="rf">
+      <div class="rf-label">${f.label}</div>
+      <div class="rf-chips">
+        ${f.chips.map(c => `<div class="rf-chip ${f.type}">${c}<span class="edit-icon">✏</span></div>`).join('')}
+        ${f.addable ? `<button class="add-chip" onclick="addChip(this, '${f.type}')">+ add</button>` : ''}
+      </div>
+    </div>
+  `).join('')
+
+  // confidence
+  const conf = r.confidence
+  document.getElementById('confidence').className = `confidence ${conf.level === 'high' ? '' : 'medium'}`
+  document.getElementById('confidence').innerHTML = `
+    <span>${conf.level === 'high' ? '✓' : '~'}</span>${conf.text}
+  `
+
+  // yaml
+  document.getElementById('yamlContent').innerHTML = r.yaml
+  document.getElementById('confirmBtn').textContent = lens === 'automate' ? 'Open canvas →' : 'Activate rule'
+}
+
+/* ── RENDER EXAMPLES ── */
+async function renderExamples(lens) {
+  const r = RULES[lens]
+  const list = document.getElementById('examplesList')
+  list.innerHTML = r.examples.length
+    ? r.examples.map((e,i) => `
+        <div class="ex-row" id="ex-${i}">
+          <div class="ex-cmd">${e.cmd}</div>
+          <div class="ex-meta">${e.meta}</div>
+        </div>`).join('')
+    : `<div class="no-data">No matching events in last 7 days</div>`
+
+  document.getElementById('exStat').textContent = r.stat
+
+  for (let i = 0; i < r.examples.length; i++) {
+    await wait(150 + i * 120)
+    const el = document.getElementById('ex-'+i)
+    if (el) el.classList.add('show')
+  }
+  await wait(200)
+  document.getElementById('exStat').classList.add('show')
+}
+
+/* ── ADD CHIP ── */
+function addChip(btn, type) {
+  const val = prompt('Add pattern or value:')
+  if (!val) return
+  const chip = document.createElement('div')
+  chip.className = `rf-chip ${type}`
+  chip.innerHTML = `${val}<span class="edit-icon">✏</span>`
+  btn.parentNode.insertBefore(chip, btn)
+}
+
+/* ── ADJUST ── */
+async function applyAdjust() {
+  const val = document.getElementById('adjustInput').value.trim()
+  if (!val) return
+  const t = val.toLowerCase()
+  const r = RULES[currentLens]
+
+  // Add chips based on adjustment text
+  if (t.includes('python') || t.includes('os.remove') || t.includes('shutil')) {
+    const chips = document.querySelector('.rf-chips')
+    if (chips) {
+      const newChips = ['os.remove','shutil.rmtree'].map(c => {
+        const el = document.createElement('div')
+        el.className = 'rf-chip condition'
+        el.innerHTML = `${c}<span class="edit-icon">✏</span>`
+        el.style.opacity = '0'
+        el.style.transform = 'translateY(4px)'
+        el.style.transition = 'opacity .2s, transform .2s'
+        return el
+      })
+      const addBtn = chips.querySelector('.add-chip')
+      newChips.forEach(el => { chips.insertBefore(el, addBtn); })
+      await wait(50)
+      newChips.forEach(el => { el.style.opacity='1'; el.style.transform='none' })
+    }
+  }
+  if (t.includes('warn')) {
+    const responseChips = document.querySelectorAll('.rf-chip.response')
+    responseChips.forEach(c => { if (c.textContent.includes('block')) c.innerHTML = 'warn<span class="edit-icon">✏</span>' })
+  }
+  if (t.includes('/tmp') || t.includes('exclude')) {
+    const scopeRow = document.querySelectorAll('.rf-chip.scope')
+    scopeRow.forEach(c => {
+      if (c.textContent.trim().includes('add')) return
+      c.style.textDecoration = c.textContent.includes('/tmp') ? '' : ''
+    })
+    // Add exclusion chip
+    const fields = document.querySelectorAll('.rf')
+    fields.forEach(f => {
+      if (f.querySelector('.rf-label').textContent === 'Scope') {
+        const chips = f.querySelector('.rf-chips')
+        const el = document.createElement('div')
+        el.className = 'rf-chip neutral'
+        el.innerHTML = `exclude /tmp<span class="edit-icon">✏</span>`
+        el.style.opacity='0'; el.style.transform='translateY(4px)'
+        el.style.transition='opacity .2s, transform .2s'
+        chips.insertBefore(el, chips.querySelector('.add-chip') || null)
+        setTimeout(() => { el.style.opacity='1'; el.style.transform='none' }, 50)
+      }
+    })
+  }
+  document.getElementById('adjustInput').value = ''
+}
+
+/* ── YAML TOGGLE ── */
+function toggleYaml() {
+  yamlOpen = !yamlOpen
+  document.getElementById('yamlPanel').classList.toggle('open', yamlOpen)
+  document.querySelector('.yaml-toggle').textContent = yamlOpen ? '{ } Hide YAML' : '{ } View YAML'
+}
+
+/* ── CONFIRM ── */
+async function confirmRule() {
+  const btn = document.getElementById('confirmBtn')
+  if (currentLens === 'automate') {
+    alert('Opening canvas → Issue Triage playbook pre-loaded')
+    return
+  }
+  btn.classList.add('done')
+  btn.textContent = '✓ Rule active'
+  await wait(600)
+  document.getElementById('decomp').classList.remove('show')
+  document.getElementById('variantBar').style.display = 'none'
+  document.getElementById('activeBannerDesc').textContent = RULES[currentLens].activateLabel
+  document.getElementById('activeBanner').classList.add('show')
+}
+
+/* ── RESET ── */
+function resetAll() {
+  document.getElementById('intentInput').value = ''
+  document.getElementById('intentBox').classList.remove('focused')
+  document.getElementById('decomp').classList.remove('show')
+  document.getElementById('variantBar').style.display = 'none'
+  document.getElementById('activeBanner').classList.remove('show')
+  document.getElementById('yamlPanel').classList.remove('open')
+  yamlOpen = false
+}
+
+/* ── ENTER KEY ── */
+document.getElementById('intentInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') handleIntent()
+})
+document.getElementById('adjustInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') applyAdjust()
+})
+</script>
+</body>
+</html>

@@ -16,7 +16,6 @@ from app.core.auth import get_workspace_id, require_permission
 from app.core.database import get_db
 from app.modules.guard.models import GuardPolicy, SkillPack, WorkspaceSkillPack
 from app.modules.guard.policy_engine import invalidate_policy_cache
-from app.models.security_config import SecurityPolicy
 
 router = APIRouter(prefix="/compliance", tags=["compliance"])
 
@@ -337,7 +336,6 @@ LEGACY_SLUG_MAP = {
 class PackStatusOut(BaseModel):
     pack_id: str
     guard_rules_installed: int
-    security_rules_installed: int
 
 
 class InstalledPacksOut(BaseModel):
@@ -398,14 +396,7 @@ def list_installed_packs(
         .distinct()
         .all()
     )
-    sec_packs = (
-        db.query(SecurityPolicy.pack_id)
-        .filter(SecurityPolicy.workspace_id == ws_uuid, SecurityPolicy.pack_id.isnot(None))
-        .distinct()
-        .all()
-    )
-    legacy = {LEGACY_SLUG_MAP.get(r[0], r[0]) for r in guard_packs} | \
-             {LEGACY_SLUG_MAP.get(r[0], r[0]) for r in sec_packs}
+    legacy = {LEGACY_SLUG_MAP.get(r[0], r[0]) for r in guard_packs}
     return InstalledPacksOut(installed=sorted(legacy))
 
 
@@ -455,36 +446,6 @@ def install_pack(
             existing.updated_at = now
         guard_count += 1
 
-    sec_count = 0
-    for rule in pack.get("security_rules", []):
-        existing = (
-            db.query(SecurityPolicy)
-            .filter(SecurityPolicy.workspace_id == ws_uuid, SecurityPolicy.rule_id == rule["rule_id"])
-            .first()
-        )
-        if existing is None:
-            db.add(SecurityPolicy(
-                workspace_id=ws_uuid,
-                rule_id=rule["rule_id"],
-                description=rule.get("description", "")[:255],
-                pattern=rule.get("pattern"),
-                category=rule.get("category"),
-                finding_type=rule.get("finding_type", "vulnerability"),
-                severity=rule.get("severity", "medium"),
-                enabled=True,
-                builtin=False,
-                pack_id=pack_id,
-                created_at=now,
-                updated_at=now,
-            ))
-        else:
-            existing.description = rule.get("description", existing.description)[:255]
-            existing.pattern = rule.get("pattern", existing.pattern)
-            existing.category = rule.get("category", existing.category)
-            existing.pack_id = pack_id
-            existing.updated_at = now
-        sec_count += 1
-
     # dual-write: register in workspace_skill_packs so compute_policy() sees it
     new_slug = LEGACY_SLUG_MAP.get(pack_id, f"conduct-{pack_id.replace('_', '-')}")
     existing_wsp = db.get(WorkspaceSkillPack, (ws_uuid, new_slug))
@@ -498,7 +459,7 @@ def install_pack(
     invalidate_policy_cache(db, ws_uuid)
 
     db.commit()
-    return PackStatusOut(pack_id=pack_id, guard_rules_installed=guard_count, security_rules_installed=sec_count)
+    return PackStatusOut(pack_id=pack_id, guard_rules_installed=guard_count)
 
 
 @router.delete("/packs/{pack_id}/uninstall", response_model=PackStatusOut)
@@ -518,11 +479,6 @@ def uninstall_pack(
         .filter(GuardPolicy.workspace_id == ws_uuid, GuardPolicy.pack_id == pack_id)
         .delete(synchronize_session=False)
     )
-    sec_deleted = (
-        db.query(SecurityPolicy)
-        .filter(SecurityPolicy.workspace_id == ws_uuid, SecurityPolicy.pack_id == pack_id)
-        .delete(synchronize_session=False)
-    )
 
     # dual-write: remove from workspace_skill_packs
     new_slug = LEGACY_SLUG_MAP.get(pack_id, f"conduct-{pack_id.replace('_', '-')}")
@@ -533,4 +489,4 @@ def uninstall_pack(
     invalidate_policy_cache(db, ws_uuid)
 
     db.commit()
-    return PackStatusOut(pack_id=pack_id, guard_rules_installed=guard_deleted, security_rules_installed=sec_deleted)
+    return PackStatusOut(pack_id=pack_id, guard_rules_installed=guard_deleted)
