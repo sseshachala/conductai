@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -38,8 +38,23 @@ const GUARD_TABS = [
   { href: "/guard/settings",        label: "Settings"        },
 ]
 
-function GuardShell({ children }: { children: React.ReactNode }) {
+function relativeTime(ts: Date | null): string {
+  if (!ts) return "never"
+  const sec = Math.floor((Date.now() - ts.getTime()) / 1000)
+  if (sec < 5) return "just now"
+  if (sec < 60) return `${sec}s ago`
+  const min = Math.floor(sec / 60)
+  if (min < 60) return `${min}m ago`
+  return `${Math.floor(min / 60)}h ago`
+}
+
+function GuardShell({ children, lastUpdated }: { children: React.ReactNode; lastUpdated?: Date | null }) {
   const pathname = usePathname()
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setTick(n => n + 1), 10_000)
+    return () => clearInterval(t)
+  }, [])
   return (
     <div style={{ maxWidth: 1240, margin: "0 auto", padding: "28px 24px 48px" }}>
       <div style={{ display: "flex", alignItems: "flex-start", marginBottom: 20 }}>
@@ -58,7 +73,7 @@ function GuardShell({ children }: { children: React.ReactNode }) {
           </p>
         </div>
         <div style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)", paddingTop: 4 }}>
-          last updated: just now
+          last updated: {relativeTime(lastUpdated ?? null)}
         </div>
       </div>
       <div className="guard-tab-nav">
@@ -112,9 +127,32 @@ function SessionReportsContent() {
   const [reports, setReports] = useState<SessionReport[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
   const wsId = activeWorkspace?.id ?? teamId ?? null
-  const { role } = useGuardRole(teamId, wsId)
+  const { role, loading: roleLoading } = useGuardRole(teamId, wsId)
+
+  const load = useCallback(async () => {
+    if (!wsId) return
+    setLoading(true)
+    setError(null)
+    try {
+      const token = await getToken()
+      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+      const headers: Record<string, string> = {}
+      if (token) headers["Authorization"] = `Bearer ${token}`
+      const res = await fetch(`${base}/guard/session-reports?workspace_id=${wsId}`, { headers })
+      if (!res.ok) throw new Error(`Failed to load session reports (${res.status})`)
+      const data: SessionReport[] = await res.json()
+      data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      setReports(data)
+      setLastUpdated(new Date())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error")
+    } finally {
+      setLoading(false)
+    }
+  }, [getToken, wsId])
 
   useEffect(() => {
     if (!teamLoading && !wsId) {
@@ -122,32 +160,11 @@ function SessionReportsContent() {
       return
     }
     if (!wsId) return
-
-    async function load() {
-      setLoading(true)
-      setError(null)
-      try {
-        const token = await getToken()
-        const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-        const headers: Record<string, string> = {}
-        if (token) headers["Authorization"] = `Bearer ${token}`
-        const res = await fetch(`${base}/guard/session-reports?workspace_id=${wsId}`, { headers })
-        if (!res.ok) throw new Error(`Failed to load session reports (${res.status})`)
-        const data: SessionReport[] = await res.json()
-        data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        setReports(data)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Unknown error")
-      } finally {
-        setLoading(false)
-      }
-    }
-
     load()
-  }, [getToken, wsId, teamLoading])
+  }, [load, teamLoading, wsId])
 
   return (
-    <GuardShell>
+    <GuardShell lastUpdated={lastUpdated}>
       {/* Page sub-header */}
       <div style={{ display: "flex", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
@@ -162,7 +179,7 @@ function SessionReportsContent() {
       </div>
 
       {/* Admin gate */}
-      {role !== "admin" ? (
+      {!roleLoading && role !== "admin" ? (
         <div className="card" style={{ padding: "48px 24px", textAlign: "center" }}>
           <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>
             Session Reports are visible to workspace admins only.
@@ -180,8 +197,17 @@ function SessionReportsContent() {
               fontSize: 13,
               color: "var(--err)",
               marginBottom: 16,
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
             }}>
-              {error}
+              <span style={{ flex: 1 }}>{error}</span>
+              <button
+                onClick={load}
+                style={{ fontSize: 12, fontWeight: 600, background: "var(--err)", color: "#fff", border: "none", borderRadius: 6, padding: "4px 12px", cursor: "pointer", flexShrink: 0 }}
+              >
+                Retry
+              </button>
             </div>
           )}
 
