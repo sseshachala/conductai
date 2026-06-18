@@ -205,7 +205,6 @@ def _seed_starter_policies(db, workspace_id: uuid.UUID, now) -> None:
 @router.get("", response_model=list[ProjectOut])
 def list_projects(
     user_id: Annotated[str, Depends(get_user_id)],
-    _: str = Depends(require_permission("platform.workflows.view")),
     db: Session = Depends(get_db),
 ):
     # Accept pending invites synchronously so the workspace appears in this response
