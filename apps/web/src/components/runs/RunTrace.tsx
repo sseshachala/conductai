@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { duration as formatDuration } from "@/lib/runUtils"
 
 interface RunEvent {
   id: string
@@ -47,6 +48,8 @@ interface Props {
   initialMeta: RunMeta
   maxTurns?: number | null
   getToken?: (() => Promise<string | null>) | null
+  onSseConnected?: () => void
+  onSseEnded?: () => void
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -55,12 +58,6 @@ function fmt(ts: string | null) {
   return ts ? new Date(ts).toLocaleString() : "—"
 }
 
-function duration(startTs?: string, endTs?: string): string | null {
-  if (!startTs || !endTs) return null
-  const ms = new Date(endTs).getTime() - new Date(startTs).getTime()
-  if (ms < 1000) return `${ms}ms`
-  return `${(ms / 1000).toFixed(1)}s`
-}
 
 /** Pull a human-readable one-liner from a block output */
 function summariseOutput(output: Record<string, unknown>, blockType?: string): string | null {
@@ -284,7 +281,8 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
   const isTimedOut = row.timedOut === true
   const [expanded, setExpanded] = useState(row.status === "failed")
   const [diffExpanded, setDiffExpanded] = useState(false)
-  const dur = duration(row.startedAt, row.completedAt)
+  const durRaw = formatDuration(row.startedAt ?? null, row.completedAt ?? null)
+  const dur = durRaw === "—" ? null : durRaw
   const summary = row.output ? summariseOutput(row.output, row.type) : null
   const isSkipped = row.output?.skipped === true
   const prUrl = row.output?.pr_url as string | undefined
@@ -653,7 +651,7 @@ async function buildHeaders(getToken?: (() => Promise<string | null>) | null): P
   return h
 }
 
-export default function RunTrace({ workflowId, runId, initialStatus, initialMeta, maxTurns, getToken }: Props) {
+export default function RunTrace({ workflowId, runId, initialStatus, initialMeta, maxTurns, getToken, onSseConnected, onSseEnded }: Props) {
   const [events, setEvents] = useState<RunEvent[]>([])
   const [status, setStatus] = useState(initialStatus)
   const [meta, setMeta] = useState<RunMeta>(initialMeta)
@@ -663,6 +661,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
   const [approvalPending, setApprovalPending] = useState(initialStatus === "paused")
   const [approvalBlockId, setApprovalBlockId] = useState<string | null>(initialMeta.current_block_id)
   const [approvalSubmitting, setApprovalSubmitting] = useState(false)
+  const [sseError, setSseError] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   const refreshMeta = async () => {
@@ -724,8 +723,9 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
       if (wsId) params.set("workspace_id", wsId)
       const qs = params.toString() ? `?${params.toString()}` : ""
       es = new EventSource(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}/stream${qs}`)
+      es.onopen = () => { setSseError(false); onSseConnected?.() }
       es.onmessage = (e) => {
-        if (e.data === "[DONE]") { setDone(true); es?.close(); refreshMeta(); return }
+        if (e.data === "[DONE]") { setDone(true); es?.close(); onSseEnded?.(); refreshMeta(); return }
         const event: RunEvent = JSON.parse(e.data)
         setEvents(prev => prev.find(p => p.id === event.id) ? prev : [...prev, event])
         if (event.kind === "run_completed") setStatus("succeeded")
@@ -734,7 +734,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
           setStatus("paused"); setApprovalPending(true); setApprovalBlockId(event.block_id)
         }
       }
-      es.onerror = () => { es?.close(); setDone(true); refreshMeta() }
+      es.onerror = () => { es?.close(); setSseError(true); setDone(true); onSseEnded?.(); refreshMeta() }
     })
 
     return () => { cancelled = true; es?.close() }
@@ -835,7 +835,8 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
 
   const runFailed = events.find(e => e.kind === "run_failed")
   const runCompleted = events.find(e => e.kind === "run_completed")
-  const totalDur = duration(meta.started_at ?? undefined, meta.completed_at ?? undefined)
+  const totalDurRaw = formatDuration(meta.started_at ?? null, meta.completed_at ?? null)
+  const totalDur = totalDurRaw === "—" ? null : totalDurRaw
 
   // Aggregate tokens + cost from block_completed events
   const totalTokens = blockRows.reduce((acc, r) => acc + (r.inputTokens ?? 0) + (r.outputTokens ?? 0), 0)
@@ -861,6 +862,14 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+      {/* SSE disconnect banner */}
+      {sseError && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 8, background: "var(--err-bg, #fef2f2)", border: "1px solid var(--err-bd, #fecaca)", padding: "8px 12px", fontSize: 12, color: "var(--err, #dc2626)", fontWeight: 500 }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--err, #dc2626)", flexShrink: 0 }} />
+          Stream disconnected — refresh to resume live updates.
+        </div>
+      )}
 
       {/* Dry run banner */}
       {events.some(e => e.payload?.output && (e.payload.output as Record<string,unknown>)?.dry_run) && (

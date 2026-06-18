@@ -29,7 +29,11 @@ export function needsAttention(status: string): boolean {
 }
 
 export function isActive(status: string): boolean {
-  return ["pending", "running", "paused"].includes(status)
+  return ["pending", "running"].includes(status)
+}
+
+export function isAwaiting(status: string): boolean {
+  return status === "paused" || status === "waiting_approval"
 }
 
 export function isTerminal(status: string): boolean {
