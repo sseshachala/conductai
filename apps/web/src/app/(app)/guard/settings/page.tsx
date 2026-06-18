@@ -816,51 +816,7 @@ function SettingsContent() {
             </div>
           </div>
 
-          {/* ── Automation ───────────────────────────────────────────────────────── */}
-          <div className="card" style={{ overflow: "hidden", marginTop: 20 }}>
-            <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ width: 30, height: 30, borderRadius: 8, background: "#7c3aed", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-                </svg>
-              </span>
-              <div>
-                <div style={{ fontWeight: 650, fontSize: 14.5 }}>Automation</div>
-                <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 1 }}>Connect Guard to Workflows to trigger automated responses on policy violations.</div>
-              </div>
-            </div>
-            <div style={{ padding: "4px 20px 16px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 0", borderTop: "1px solid var(--border)" }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13.5 }}>Trigger security scan on violation</div>
-                  <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
-                    When Guard blocks a policy, run a security scan scoped to your installed skill packs — surfaces related findings without developer action.
-                  </div>
-                </div>
-                <GuardToggle
-                  on={prefs.automation_security_scan}
-                  onClick={() => handleToggle("automation_security_scan" as any, !prefs.automation_security_scan)}
-                  disabled={!isAdmin}
-                />
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 0", borderTop: "1px solid var(--border)" }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13.5 }}>Auto-run Workflow on violation</div>
-                  <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
-                    Fire an Autopilot workflow when Guard blocks a call — e.g. notify the team, open a task, or lock the affected repo until reviewed.
-                  </div>
-                </div>
-                <GuardToggle
-                  on={prefs.automation_workflow_trigger}
-                  onClick={() => handleToggle("automation_workflow_trigger" as any, !prefs.automation_workflow_trigger)}
-                  disabled={!isAdmin}
-                />
-              </div>
-              <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 8, padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8 }}>
-                Scans use your installed skill packs. Workflows must be configured to run. <a href="/guard/policies" style={{ color: "var(--accent)", textDecoration: "none", fontWeight: 600 }}>Configure Security Automation →</a>
-              </div>
-            </div>
-          </div>
+          {/* Automation — hidden until operation cleanup complete */}
         </>
       )}
     </GuardShell>
