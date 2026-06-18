@@ -226,23 +226,6 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   const [installedWorkflowId, setInstalledWorkflowId] = useState<Map<string, string>>(new Map())
   const [uninstalling, setUninstalling] = useState<string | null>(null)
   const [scores, setScores] = useState<Map<string, PlaybookScore>>(new Map())
-  const [secureInstalling, setSecureInstalling] = useState(false)
-  const [secureInstalled, setSecureInstalled] = useState(false)
-  const [secureDismissed, setSecureDismissed] = useState(false)
-
-  // Check if Security Loop is already installed
-  useEffect(() => {
-    const wsId = getWorkspaceId()
-    if (!wsId) return
-    authHeaders().then(h =>
-      fetch(`${process.env.NEXT_PUBLIC_API_URL}/secure/installed?workspace_id=${wsId}`, { headers: h })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => { if (d?.installed) setSecureInstalled(true) })
-        .catch(() => {})
-    )
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
   useEffect(() => {
     const wsId = getWorkspaceId()
     if (!wsId) return
@@ -254,26 +237,6 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
     )
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  async function installSecureModule() {
-    const wsId = getWorkspaceId()
-    if (!wsId || secureInstalling) return
-    setSecureInstalling(true)
-    try {
-      const token = getToken ? await getToken() : null
-      const h: Record<string, string> = { "Content-Type": "application/json" }
-      if (token) h["Authorization"] = `Bearer ${token}`
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/secure/install?workspace_id=${wsId}`, {
-        method: "POST", headers: h,
-      })
-      if (res.ok) {
-        setSecureInstalled(true)
-        window.dispatchEvent(new CustomEvent("secure-install-changed", { detail: { installed: true } }))
-        setTimeout(() => setSecureDismissed(true), 1500)
-      }
-    } catch {}
-    finally { setSecureInstalling(false) }
-  }
 
   // YAML preview modal
   const [yamlSlug, setYamlSlug] = useState<string | null>(null)
@@ -1086,16 +1049,6 @@ function PlaybookCard({
         {playbook.featured && (
           <span style={{ fontSize: 9.5, fontWeight: 800, color: "var(--accent-text)", letterSpacing: ".05em" }}>
             ★ POPULAR
-          </span>
-        )}
-        {playbook.bundled_with === "security-loop-module" && (
-          <span style={{
-            fontSize: 9.5, fontWeight: 700, letterSpacing: ".04em",
-            padding: "2px 7px", borderRadius: 20,
-            background: "rgba(220,38,38,.10)", color: "#dc2626",
-            border: "1px solid rgba(220,38,38,.25)",
-          }}>
-            🔐 bundled
           </span>
         )}
       </div>
