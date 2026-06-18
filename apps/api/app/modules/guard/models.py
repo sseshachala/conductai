@@ -230,3 +230,58 @@ class SessionReport(Base):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
+
+
+# ── Skill Pack Model ───────────────────────────────────────────────────────────
+
+class SkillPack(Base):
+    """Catalog of available skill packs. Rules live here, not per-workspace."""
+
+    __tablename__ = "skill_packs"
+
+    slug        = Column(Text, primary_key=True)            # "conduct-base", "conduct-soc2"
+    version     = Column(Text, primary_key=True)            # "1.0.0"
+    name        = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    tier        = Column(Text, nullable=False, default="free")  # free / paid / enterprise
+    rules       = Column(JSONB, nullable=False, default=list)   # [{id, match_tool, match_pattern, ...}]
+    published_at = Column(DateTime(timezone=True), nullable=True)
+    created_at  = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+class WorkspaceSkillPack(Base):
+    """Which skill packs each workspace has installed."""
+
+    __tablename__ = "workspace_skill_packs"
+
+    workspace_id    = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True)
+    pack_slug       = Column(Text, primary_key=True)
+    pinned_version  = Column(Text, nullable=True)   # null = always latest
+    installed_by    = Column(Text, nullable=True)   # clerk_user_id
+    installed_at    = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+class GuardRuleOverride(Base):
+    """Per-workspace overrides on top of skill pack defaults."""
+
+    __tablename__ = "guard_rule_overrides"
+
+    workspace_id    = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True)
+    rule_id         = Column(Text, primary_key=True)
+    action          = Column(Text, nullable=True)           # null = use pack default
+    disabled        = Column(Boolean, nullable=False, default=False)
+    custom_message  = Column(Text, nullable=True)
+    overridden_by   = Column(Text, nullable=True)           # clerk_user_id
+    overridden_at   = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+class GuardPolicyCache(Base):
+    """Pre-computed flattened policy per workspace+persona. Invalidated on pack/override change."""
+
+    __tablename__ = "guard_policy_cache"
+
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True)
+    persona      = Column(Text, primary_key=True)
+    payload      = Column(JSONB, nullable=False, default=list)
+    version_hash = Column(Text, nullable=False)
+    computed_at  = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))

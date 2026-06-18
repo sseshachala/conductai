@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_permission
 from app.core.database import get_db
-from app.modules.guard.models import GuardPolicy
+from app.modules.guard.models import GuardPolicy, SkillPack, WorkspaceSkillPack
+from app.modules.guard.policy_engine import invalidate_policy_cache
 from app.models.security_config import SecurityPolicy
 
 router = APIRouter(prefix="/compliance", tags=["compliance"])
@@ -324,6 +325,15 @@ COMPLIANCE_PACKS: dict[str, dict] = {
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+LEGACY_SLUG_MAP = {
+    "owasp_top10":      "conduct-owasp",
+    "soc2":             "conduct-soc2",
+    "hipaa":            "conduct-hipaa",
+    "pci_dss":          "conduct-pci-dss",
+    "startup_baseline": "conduct-base",
+}
+
+
 class PackStatusOut(BaseModel):
     pack_id: str
     guard_rules_installed: int
@@ -334,12 +344,54 @@ class InstalledPacksOut(BaseModel):
     installed: list[str]
 
 
+class AvailablePackOut(BaseModel):
+    slug: str
+    name: str
+    description: str | None
+    tier: str
+    rule_count: int
+
+
+@router.get("/packs/available", response_model=list[AvailablePackOut])
+def list_available_packs(
+    db: Session = Depends(get_db),
+    _workspace_id: str = Depends(get_workspace_id),
+):
+    """Return all skill packs in the catalog."""
+    packs = db.query(SkillPack).order_by(SkillPack.slug, SkillPack.version.desc()).all()
+    seen: set[str] = set()
+    out = []
+    for p in packs:
+        if p.slug in seen:
+            continue
+        seen.add(p.slug)
+        out.append(AvailablePackOut(
+            slug=p.slug,
+            name=p.name,
+            description=p.description,
+            tier=p.tier,
+            rule_count=len(p.rules or []),
+        ))
+    return out
+
+
 @router.get("/packs/installed", response_model=InstalledPacksOut)
 def list_installed_packs(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
 ):
     ws_uuid = uuid.UUID(workspace_id)
+
+    # primary: new workspace_skill_packs table
+    new_packs = (
+        db.query(WorkspaceSkillPack.pack_slug)
+        .filter(WorkspaceSkillPack.workspace_id == ws_uuid)
+        .all()
+    )
+    if new_packs:
+        return InstalledPacksOut(installed=sorted(r[0] for r in new_packs))
+
+    # fallback: legacy guard_policies.pack_id (pre-migration workspaces)
     guard_packs = (
         db.query(GuardPolicy.pack_id)
         .filter(GuardPolicy.workspace_id == ws_uuid, GuardPolicy.pack_id.isnot(None))
@@ -352,8 +404,9 @@ def list_installed_packs(
         .distinct()
         .all()
     )
-    installed = sorted({r[0] for r in guard_packs} | {r[0] for r in sec_packs})
-    return InstalledPacksOut(installed=installed)
+    legacy = {LEGACY_SLUG_MAP.get(r[0], r[0]) for r in guard_packs} | \
+             {LEGACY_SLUG_MAP.get(r[0], r[0]) for r in sec_packs}
+    return InstalledPacksOut(installed=sorted(legacy))
 
 
 @router.post("/packs/{pack_id}/install", response_model=PackStatusOut)
@@ -432,6 +485,18 @@ def install_pack(
             existing.updated_at = now
         sec_count += 1
 
+    # dual-write: register in workspace_skill_packs so compute_policy() sees it
+    new_slug = LEGACY_SLUG_MAP.get(pack_id, f"conduct-{pack_id.replace('_', '-')}")
+    existing_wsp = db.get(WorkspaceSkillPack, (ws_uuid, new_slug))
+    if not existing_wsp:
+        db.add(WorkspaceSkillPack(
+            workspace_id=ws_uuid,
+            pack_slug=new_slug,
+            installed_by="compliance:install",
+            installed_at=now,
+        ))
+    invalidate_policy_cache(db, ws_uuid)
+
     db.commit()
     return PackStatusOut(pack_id=pack_id, guard_rules_installed=guard_count, security_rules_installed=sec_count)
 
@@ -458,5 +523,14 @@ def uninstall_pack(
         .filter(SecurityPolicy.workspace_id == ws_uuid, SecurityPolicy.pack_id == pack_id)
         .delete(synchronize_session=False)
     )
+
+    # dual-write: remove from workspace_skill_packs
+    new_slug = LEGACY_SLUG_MAP.get(pack_id, f"conduct-{pack_id.replace('_', '-')}")
+    db.query(WorkspaceSkillPack).filter(
+        WorkspaceSkillPack.workspace_id == ws_uuid,
+        WorkspaceSkillPack.pack_slug == new_slug,
+    ).delete(synchronize_session=False)
+    invalidate_policy_cache(db, ws_uuid)
+
     db.commit()
     return PackStatusOut(pack_id=pack_id, guard_rules_installed=guard_deleted, security_rules_installed=sec_deleted)

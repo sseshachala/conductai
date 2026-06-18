@@ -1,0 +1,63 @@
+{
+  "slug": "conduct-owasp",
+  "name": "Conduct OWASP",
+  "version": "1.0.0",
+  "tier": "paid",
+  "description": "OWASP Top 10 enforcement rules",
+  "rules": [
+    {
+      "id": "owasp_injection_guard",
+      "description": "Block SQL string concatenation (OWASP A03)",
+      "match_tool": "bash,edit,write",
+      "match_pattern": "SELECT\\s+.*\\+|execute\\(.*f['\"]",
+      "action": "block",
+      "message": "Possible SQL injection — use parameterised queries.",
+      "persona_affinity": ["conservative", "standard"]
+    },
+    {
+      "id": "owasp_crypto_guard",
+      "description": "Warn on MD5/SHA1 for passwords (OWASP A02)",
+      "match_tool": "edit,write",
+      "match_pattern": "md5|sha1",
+      "action": "warn",
+      "message": "MD5/SHA1 is weak for password hashing — use bcrypt or argon2.",
+      "persona_affinity": ["conservative", "standard", "developer"]
+    },
+    {
+      "id": "owasp_weak_session_guard",
+      "description": "Block weak session token generation (OWASP A07)",
+      "match_tool": "edit,write",
+      "match_pattern": "random\\.random\\(\\).*session|Math\\.random\\(\\).*token",
+      "action": "block",
+      "message": "Weak randomness for session/token — use secrets.token_hex().",
+      "persona_affinity": ["conservative", "standard"]
+    },
+    {
+      "id": "owasp_ssrf_guard",
+      "description": "Warn on unvalidated URL fetch (OWASP A10)",
+      "match_tool": "edit,write",
+      "match_pattern": "requests\\.get\\(.*request\\.|fetch\\(.*req\\.(query|body|params)",
+      "action": "warn",
+      "message": "Possible SSRF — validate and allowlist URLs before outbound requests.",
+      "persona_affinity": ["conservative", "standard", "developer"]
+    },
+    {
+      "id": "owasp_eval_guard",
+      "description": "Block eval() calls (OWASP A03)",
+      "match_tool": "edit,write",
+      "match_pattern": "\\beval\\s*\\(",
+      "action": "block",
+      "message": "eval() enables code injection — avoid it.",
+      "persona_affinity": ["conservative", "standard", "developer"]
+    },
+    {
+      "id": "owasp_xss_guard",
+      "description": "Warn on innerHTML assignment (XSS)",
+      "match_tool": "edit,write",
+      "match_pattern": "innerHTML\\s*=",
+      "action": "warn",
+      "message": "innerHTML assignment can introduce XSS — use textContent or DOMPurify.",
+      "persona_affinity": ["conservative", "standard", "developer"]
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "slug": "conduct-hipaa",
+  "name": "Conduct HIPAA",
+  "version": "1.0.0",
+  "tier": "paid",
+  "description": "HIPAA PHI protection rules",
+  "rules": [
+    {
+      "id": "hipaa_phi_field",
+      "description": "Warn on PHI field access (HIPAA §164.312)",
+      "match_tool": "edit,write,bash",
+      "match_pattern": "(patient_id|ssn|dob|date_of_birth|medical_record)",
+      "action": "warn",
+      "message": "PHI field — ensure encrypted at rest and access is logged.",
+      "persona_affinity": ["conservative", "standard", "developer"]
+    },
+    {
+      "id": "hipaa_http_phi",
+      "description": "Block PHI over plain HTTP",
+      "match_tool": "edit,write,bash",
+      "match_pattern": "http://.*patient|http://.*health",
+      "action": "block",
+      "message": "PHI over plain HTTP is a HIPAA violation — use HTTPS.",
+      "persona_affinity": ["conservative", "standard"]
+    },
+    {
+      "id": "hipaa_ssn_pattern",
+      "description": "Block SSN patterns in source",
+      "match_tool": "edit,write",
+      "match_pattern": "\\b\\d{3}-\\d{2}-\\d{4}\\b",
+      "action": "block",
+      "message": "Social Security Number detected — never store in source.",
+      "persona_affinity": ["conservative", "standard", "developer"]
+    }
+  ]
+}

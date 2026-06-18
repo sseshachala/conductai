@@ -1,0 +1,45 @@
+{
+  "slug": "conduct-soc2",
+  "name": "Conduct SOC 2",
+  "version": "1.0.0",
+  "tier": "paid",
+  "description": "SOC 2 compliance rules",
+  "rules": [
+    {
+      "id": "soc2_hardcoded_secret",
+      "description": "Block hardcoded secrets (SOC2 CC6.1)",
+      "match_tool": "edit,write",
+      "match_pattern": "(password|secret|api_key)\\s*=\\s*['\"][^'\"]{8,}",
+      "action": "block",
+      "message": "Hardcoded credential — use environment variables or a secrets manager.",
+      "persona_affinity": ["conservative", "standard"]
+    },
+    {
+      "id": "soc2_log_pii",
+      "description": "Warn on PII logged to console (SOC2 CC7.2)",
+      "match_tool": "edit,write",
+      "match_pattern": "(console\\.log|print|logger)\\(.*email",
+      "action": "warn",
+      "message": "Possible PII in logs — scrub before production.",
+      "persona_affinity": ["conservative", "standard", "developer"]
+    },
+    {
+      "id": "soc2_debug_mode",
+      "description": "Warn on DEBUG=True in production config",
+      "match_tool": "edit,write",
+      "match_pattern": "DEBUG\\s*=\\s*True",
+      "action": "warn",
+      "message": "DEBUG=True must not reach production.",
+      "persona_affinity": ["conservative", "standard", "developer"]
+    },
+    {
+      "id": "soc2_unencrypted_storage",
+      "description": "Warn on unencrypted write with sensitive filename",
+      "match_tool": "write",
+      "match_pattern": "open\\(['\"].*secret.*['\"],\\s*['\"]w",
+      "action": "warn",
+      "message": "Writing sensitive data unencrypted — use a secrets manager.",
+      "persona_affinity": ["conservative", "standard", "developer"]
+    }
+  ]
+}
