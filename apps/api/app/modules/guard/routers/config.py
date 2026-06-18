@@ -19,8 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, get_user_id, require_workspace_role, require_permission
 from app.core.database import get_db
-from app.modules.guard.models import GuardConfig, GuardMemberConfig
-from app.modules.guard.routers.policies import seed_builtin_policies
+from app.modules.guard.models import GuardConfig, GuardMemberConfig, WorkspaceSkillPack
 
 router = APIRouter(prefix="/guard/config", tags=["guard-config"])
 
@@ -83,8 +82,11 @@ def _get_or_create_config(db: Session, workspace_id: str) -> GuardConfig:
         invite_code=secrets.token_hex(16),
     )
     db.add(config)
-    db.flush()  # get workspace_id before seeding
-    seed_builtin_policies(db, workspace_id)
+    db.flush()
+    # Auto-install conduct-base for new workspaces
+    existing = db.get(WorkspaceSkillPack, (ws_uuid, "conduct-base"))
+    if not existing:
+        db.add(WorkspaceSkillPack(workspace_id=ws_uuid, pack_slug="conduct-base", installed_by="system:onboard"))
     db.commit()
     db.refresh(config)
     log.info("guard.config_created", workspace_id=workspace_id)
@@ -397,9 +399,6 @@ def request_resync(
         raise HTTPException(status_code=404, detail="Guard not installed")
     config.resync_requested_at = datetime.now(timezone.utc)
     db.commit()
-    # Re-seed any builtin policies added since this workspace was first set up
-    from app.modules.guard.routers.policies import seed_builtin_policies
-    seed_builtin_policies(db, ws_uuid)
     log.info("guard.resync_requested", workspace_id=workspace_id)
     return ResyncOut(ok=True, resync_requested_at=config.resync_requested_at.isoformat())
 
