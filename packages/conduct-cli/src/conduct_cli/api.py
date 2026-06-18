@@ -31,7 +31,7 @@ def req(method: str, url: str, hdrs: dict, body=None, timeout: int = 30) -> dict
             detail = json.loads(raw).get("detail", raw)
         except Exception:
             detail = raw
-        print(f"{RED}HTTP {e.code}: {detail}{RESET}")
+        print(f"{RED}HTTP {e.code}: {detail} [{url}]{RESET}")
         sys.exit(1)
     except (socket.timeout, TimeoutError):
         print(f"{RED}Request timed out: {url}{RESET}")
@@ -50,7 +50,7 @@ def req_text(method: str, url: str, hdrs: dict, body_text: str, timeout: int = 3
             detail = json.loads(raw).get("detail", raw)
         except Exception:
             detail = raw
-        print(f"{RED}HTTP {e.code}: {detail}{RESET}")
+        print(f"{RED}HTTP {e.code}: {detail} [{url}]{RESET}")
         sys.exit(1)
     except (socket.timeout, TimeoutError):
         print(f"{RED}Request timed out: {url}{RESET}")
