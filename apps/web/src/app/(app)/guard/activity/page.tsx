@@ -208,7 +208,7 @@ function exportCsv(events: AuditEvent[]) {
   const a = document.createElement("a")
   a.href = url
   a.download = `conduct-guard-activity-${new Date().toISOString().slice(0, 10)}.csv`
-  a.click()
+  document.body.appendChild(a); a.click(); document.body.removeChild(a)
   URL.revokeObjectURL(url)
 }
 
