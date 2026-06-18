@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, get_guard_hook_auth
 from app.core.database import get_db
-from app.modules.guard.models import GuardAuditEvent, GuardConfig as _GuardConfig, GuardPolicy, GuardRuleOverride
+from app.modules.guard.models import GuardAuditEvent, GuardConfig as _GuardConfig, GuardPolicy, GuardRuleOverride, SkillPack, WorkspaceSkillPack
 from app.modules.guard.policy_engine import compute_policy, invalidate_policy_cache
 
 router = APIRouter(prefix="/guard/policies", tags=["guard-policies"])
@@ -423,7 +423,69 @@ def list_policies(
         .order_by(GuardPolicy.builtin.desc(), GuardPolicy.created_at.asc())
         .all()
     )
-    return [_policy_to_out(p) for p in policies]
+    # Build rule_id → pack_slug map from installed skill packs
+    installed = (
+        db.query(WorkspaceSkillPack)
+        .filter(WorkspaceSkillPack.workspace_id == ws_uuid)
+        .order_by(WorkspaceSkillPack.installed_at)
+        .all()
+    )
+
+    pack_rule_map: dict[str, tuple[str, dict, datetime]] = {}  # rule_id → (pack_slug, rule_dict, installed_at)
+    for wp in installed:
+        pack = (
+            db.query(SkillPack)
+            .filter(SkillPack.slug == wp.pack_slug)
+            .order_by(SkillPack.version.desc())
+            .first()
+        )
+        if not pack:
+            continue
+        for rule in pack.rules:
+            pack_rule_map[rule["id"]] = (wp.pack_slug, rule, wp.installed_at)
+
+    # Fix pack_id for existing guard_policies builtin rows missing their pack association
+    legacy_ids: set[str] = set()
+    result: list[PolicyOut] = []
+    for p in policies:
+        out = _policy_to_out(p)
+        if p.builtin and out.pack_id is None and p.rule_id in pack_rule_map:
+            out.pack_id = pack_rule_map[p.rule_id][0]
+        result.append(out)
+        legacy_ids.add(p.rule_id)
+
+    # Add skill-pack rules that don't exist in guard_policies at all
+    if pack_rule_map:
+        overrides = {
+            o.rule_id: o
+            for o in db.query(GuardRuleOverride)
+            .filter(GuardRuleOverride.workspace_id == ws_uuid)
+            .all()
+        }
+        for rule_id, (pack_slug, rule, installed_at) in pack_rule_map.items():
+            if rule_id in legacy_ids:
+                continue
+            override = overrides.get(rule_id)
+            enabled = not (override and override.disabled)
+            result.append(PolicyOut(
+                id=rule_id,
+                workspace_id=str(ws_uuid),
+                rule_id=rule_id,
+                description=rule.get("description", ""),
+                match_tool=rule.get("match_tool"),
+                match_pattern=rule.get("match_pattern"),
+                match_path_pattern=rule.get("match_path_pattern"),
+                action=rule["action"],
+                message=rule.get("message"),
+                enabled=enabled,
+                builtin=True,
+                pack_id=pack_slug,
+                persona_affinity=rule.get("persona_affinity", []),
+                created_at=installed_at,
+                updated_at=installed_at,
+            ))
+
+    return result
 
 
 @router.post("", response_model=PolicyOut, status_code=201)
@@ -567,7 +629,6 @@ def reinstall_base(
     """Re-seed conduct-base skill pack rules for this workspace.
     Replaces refresh-builtins — install conduct-base pack if missing, then invalidate cache.
     """
-    from app.modules.guard.models import WorkspaceSkillPack
     ws_uuid = uuid.UUID(str(workspace_id))
     existing = db.get(WorkspaceSkillPack, (ws_uuid, "conduct-base"))
     if not existing:
