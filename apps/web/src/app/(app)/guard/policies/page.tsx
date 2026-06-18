@@ -1152,11 +1152,14 @@ function PoliciesContent() {
                       <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                         Last hit: <strong style={{ color: "var(--text-2)" }}>{formatLastTriggered(p.last_triggered)}</strong>
                       </span>
-                      {(p.persona_affinity ?? []).length > 0 && (
-                        <span style={{ display: "flex", gap: 3, marginLeft: 8 }}>
+                      {(p.persona_affinity ?? []).length > 0 && (p.persona_affinity ?? []).length < 3 && (
+                        <span style={{ display: "flex", gap: 3, marginLeft: 8, alignItems: "center" }}>
                           {(p.persona_affinity ?? []).map(pa => (
-                            <span key={pa} title={pa} style={{ fontSize: 10 }}>
-                              {pa === "conservative" ? "🔴" : pa === "standard" ? "🟡" : "🟢"}
+                            <span key={pa} title={pa} style={{
+                              fontSize: 10, background: "var(--surface-2)", borderRadius: 99,
+                              padding: "1px 6px", color: "var(--text-3)", fontWeight: 500,
+                            }}>
+                              {pa === "conservative" ? "🔴" : pa === "standard" ? "🟡" : "🟢"} {pa}
                             </span>
                           ))}
                         </span>
