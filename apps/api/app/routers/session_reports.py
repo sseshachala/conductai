@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_permission
 from app.core.database import get_db
-from app.models.security_config import SecurityConfig
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/session-reports", tags=["session-reports"])
@@ -77,12 +76,7 @@ def _notify_admin_slack(
         import uuid as _uuid
         from app.models.integration import Integration
 
-        cfg = (
-            db.query(SecurityConfig)
-            .filter(SecurityConfig.workspace_id == _uuid.UUID(workspace_id))
-            .first()
-        )
-        primary_channel = (cfg.security_slack_channel if cfg else None) or "#engineering"
+        primary_channel = "#engineering"
         channels = [primary_channel]
         if "#general" not in channels:
             channels.append("#general")

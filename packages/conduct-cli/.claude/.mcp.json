@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "agent-booster": {
+      "command": "booster",
+      "args": [
+        "serve"
+      ],
+      "env": {
+        "BOOSTER_SECRET": "2a0abdca292d2b00d63a1ee4d5b896688f01d42645e832ea1e8889569d64899c"
+      }
+    }
+  }
+}

@@ -5,7 +5,6 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
-import { SecureLoopIcon } from "@/app/(app)/secure/_components"
 import ModulesManager from "@/components/settings/ModulesManager"
 
 interface Playbook {

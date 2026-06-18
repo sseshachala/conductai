@@ -766,15 +766,15 @@ function SettingsContent() {
               </span>
               <div>
                 <div style={{ fontWeight: 650, fontSize: 14.5 }}>Automation</div>
-                <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 1 }}>Connect Guard to Security Loop and Workflows to close the AI-SDLC cycle.</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 1 }}>Connect Guard to Workflows to trigger automated responses on policy violations.</div>
               </div>
             </div>
             <div style={{ padding: "4px 20px 16px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 0", borderTop: "1px solid var(--border)" }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13.5 }}>Trigger Security Loop on violation</div>
+                  <div style={{ fontWeight: 600, fontSize: 13.5 }}>Trigger security scan on violation</div>
                   <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
-                    When Guard blocks a policy, automatically run a Security Loop scan on the affected session. Surfaces related findings without developer action.
+                    When Guard blocks a policy, run a security scan scoped to your installed skill packs — surfaces related findings without developer action.
                   </div>
                 </div>
                 <GuardToggle
@@ -786,7 +786,7 @@ function SettingsContent() {
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600, fontSize: 13.5 }}>Auto-run Workflow on violation</div>
                   <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
-                    Fire a workflow playbook when Guard blocks a call — e.g. notify the team, open a task, or lock the affected repo until reviewed.
+                    Fire an Autopilot workflow when Guard blocks a call — e.g. notify the team, open a task, or lock the affected repo until reviewed.
                   </div>
                 </div>
                 <GuardToggle
@@ -795,8 +795,7 @@ function SettingsContent() {
                 />
               </div>
               <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 8, padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8 }}>
-                Security Loop and Workflow must be installed for these automations to run.{" "}
-                <a href="/secure/settings" style={{ color: "var(--accent-text)", textDecoration: "none" }}>Configure Security Loop →</a>
+                Scans use your installed skill packs. Workflows must be configured to run. <a href="/guard/policies" style={{ color: "var(--accent)", textDecoration: "none", fontWeight: 600 }}>Configure Security Automation →</a>
               </div>
             </div>
           </div>

@@ -291,27 +291,6 @@ def _bg_spend_and_scan(
             _check_spend_budget(db, workspace_id_str, config=config)
         except Exception as exc:
             log.warning("guard.spend_budget_check_failed", exc=str(exc))
-        # Security loop scan on block
-        if decision == "blocked" and automation_security_scan:
-            try:
-                from app.routers.security import FindingIn, _ingest_finding_core, _trigger_security_loop
-                severity_map = {"CRITICAL": "critical", "HIGH": "high", "MEDIUM": "medium", "LOW": "low"}
-                br = blast_radius or {}
-                severity = severity_map.get(br.get("tier", ""), "medium")
-                scan_body = FindingIn(
-                    tool=ai_tool or "claude_code",
-                    severity=severity,
-                    type="guard_violation",
-                    description=f"Guard blocked: {rule_message or rule_id or 'policy violation'}",
-                    reporter_email=user_email,
-                )
-                sec_finding = _ingest_finding_core(scan_body, workspace_id_str, db)
-                _trigger_security_loop(sec_finding, workspace_id_str, db)
-                from app.routers.security import _maybe_trigger_automation_workflow
-                _maybe_trigger_automation_workflow(sec_finding, workspace_id_str, db)
-                log.info("guard.violation_security_scan_triggered", event_id=event_id, finding_id=str(sec_finding.id))
-            except Exception as exc:
-                log.warning("guard.violation_security_scan_failed", error=str(exc))
     finally:
         db.close()
 

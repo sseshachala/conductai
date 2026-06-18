@@ -5,7 +5,6 @@ import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { setGuardTeamId, removeGuardTeamId } from "@/lib/guardStorage"
-import { SecureLoopIcon } from "@/app/(app)/secure/_components"
 
 interface GuardConfig {
   workspace_id: string
@@ -240,162 +239,11 @@ function ConductGuardModule() {
   )
 }
 
-function SecurityLoopModule() {
-  const { getToken } = useAuth()
-  const { activeWorkspace } = useWorkspace()
-  const [installed, setInstalled] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [installing, setInstalling] = useState(false)
-  const [uninstalling, setUninstalling] = useState(false)
-  const [confirmUninstall, setConfirmUninstall] = useState(false)
-  const [uninstallConfirmValue, setUninstallConfirmValue] = useState("")
-  const [error, setError] = useState<string | null>(null)
-
-  const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-
-  const buildHeaders = useCallback(async (): Promise<Record<string, string>> => {
-    const h: Record<string, string> = { "Content-Type": "application/json" }
-    if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
-    return h
-  }, [getToken])
-
-  useEffect(() => {
-    const wsId = activeWorkspace?.id
-    if (!wsId) { setLoading(false); return }
-    buildHeaders().then(h =>
-      fetch(`${base}/secure/installed?workspace_id=${wsId}`, { headers: h })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => { if (d) setInstalled(!!d.installed) })
-        .catch(() => {})
-        .finally(() => setLoading(false))
-    )
-  }, [activeWorkspace?.id, buildHeaders, base])
-
-  async function handleInstall() {
-    const wsId = activeWorkspace?.id
-    if (!wsId) return
-    setInstalling(true)
-    setError(null)
-    try {
-      const h = await buildHeaders()
-      const res = await fetch(`${base}/secure/install?workspace_id=${wsId}`, { method: "POST", headers: h })
-      if (!res.ok) { setError(`Install failed (${res.status})`); return }
-      setInstalled(true)
-      if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("secure-install-changed", { detail: { installed: true } }))
-    } catch {
-      setError("Install failed — check your connection.")
-    } finally {
-      setInstalling(false)
-    }
-  }
-
-  async function handleUninstall() {
-    if (uninstallConfirmValue !== "SecurityLoop") return
-    const wsId = activeWorkspace?.id
-    setUninstalling(true)
-    try {
-      const h = await buildHeaders()
-      await fetch(`${base}/secure/install${wsId ? `?workspace_id=${wsId}` : ""}`, { method: "DELETE", headers: h })
-    } catch {}
-    finally {
-      setInstalled(false)
-      setConfirmUninstall(false)
-      setUninstallConfirmValue("")
-      setUninstalling(false)
-      if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("secure-install-changed", { detail: { installed: false } }))
-    }
-  }
-
-  if (loading) {
-    return <ModuleCard><div style={{ height: 100, borderRadius: 12, background: "var(--surface-2)", opacity: 0.7 }} /></ModuleCard>
-  }
-
-  return (
-    <ModuleCard>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <span style={{ width: 40, height: 40, borderRadius: 10, background: "#fee2e2", color: "#dc2626", display: "grid", placeItems: "center", flexShrink: 0 }}>
-            <SecureLoopIcon size={20} />
-          </span>
-          <div>
-            <h3 style={{ fontSize: 15, fontWeight: 650, color: "var(--text)", margin: 0 }}>Security Loop</h3>
-            <p style={{ fontSize: 12.5, color: "var(--text-3)", margin: "3px 0 0" }}>Passive security classifier for Claude Code — zero developer action required.</p>
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          {installed && <span className="sbadge ok">✓ Installed</span>}
-          {installed ? (
-            <button onClick={() => setConfirmUninstall(true)} disabled={uninstalling} className="btn btn-ghost btn-sm" style={{ color: "var(--err)" }}>Uninstall</button>
-          ) : (
-            <button onClick={handleInstall} disabled={installing} className="btn btn-primary btn-sm">
-              {installing ? "Installing…" : "Install"}
-            </button>
-          )}
-        </div>
-      </div>
-
-      {!installed && (
-        <ul style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13, color: "var(--text-2)", listStyle: "none", margin: 0, padding: 0 }}>
-          {[
-            "Runs on every Claude Code tool call — no hooks to configure per developer",
-            "Detects secrets, injections, path traversal, and OWASP patterns automatically",
-            "Findings surface in the Secure dashboard with severity, file, and session ID",
-            "Slack alerts on high/critical findings with one toggle",
-            "Custom detection rules via regex — add your own patterns",
-          ].map(feat => (
-            <li key={feat} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-              <span style={{ color: "var(--ok)", marginTop: 2, flexShrink: 0, fontSize: 12 }}>✓</span>
-              <span>{feat}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {installed && (
-        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
-          <Link href="/secure" className="btn btn-ghost btn-sm" style={{ color: "var(--accent-text)" }}>
-            Go to Security Loop dashboard →
-          </Link>
-        </div>
-      )}
-
-      {error && <p style={{ fontSize: 12, color: "var(--err)", borderTop: "1px solid var(--err-bd)", paddingTop: 12, margin: 0 }}>{error}</p>}
-
-      {confirmUninstall && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.3)", backdropFilter: "blur(4px)" }}>
-          <div className="card" style={{ maxWidth: 400, width: "100%", margin: "0 16px", padding: 24, display: "flex", flexDirection: "column", gap: 16, boxShadow: "var(--shadow-lg)" }}>
-            <h4 style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", margin: 0 }}>Uninstall Security Loop?</h4>
-            <p style={{ fontSize: 13, color: "var(--text-2)" }}>The classifier will stop running on all developers' machines on next sync. Findings data is retained.</p>
-            <p style={{ fontSize: 12, color: "var(--err)" }}>Type <strong>SecurityLoop</strong> to confirm.</p>
-            <input
-              value={uninstallConfirmValue}
-              onChange={e => setUninstallConfirmValue(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") handleUninstall(); if (e.key === "Escape") { setConfirmUninstall(false); setUninstallConfirmValue("") } }}
-              placeholder="SecurityLoop"
-              style={{ height: 36, border: "1px solid var(--err-bd)", borderRadius: 8, padding: "0 12px", fontSize: 13, width: "100%", background: "var(--surface)", color: "var(--text)", outline: "none", boxSizing: "border-box" }}
-            />
-            <div style={{ display: "flex", gap: 12, paddingTop: 4 }}>
-              <button onClick={() => { setConfirmUninstall(false); setUninstallConfirmValue("") }} className="btn btn-ghost" style={{ flex: 1 }}>Cancel</button>
-              <button
-                onClick={handleUninstall}
-                disabled={uninstalling || uninstallConfirmValue !== "SecurityLoop"}
-                style={{ flex: 1, background: "var(--err)", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: uninstallConfirmValue === "SecurityLoop" ? "pointer" : "not-allowed", opacity: uninstallConfirmValue === "SecurityLoop" ? 1 : 0.4 }}
-              >
-                {uninstalling ? "Uninstalling…" : "Uninstall"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </ModuleCard>
-  )
-}
 
 export default function ModulesManager() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <ConductGuardModule />
-      <SecurityLoopModule />
     </div>
   )
 }

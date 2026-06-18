@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Conduct AI — AI Governance for Engineering Teams</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --indigo:     #4F46E5;
+      --indigo-dark:#3730A3;
+      --violet:     #7C3AED;
+      --violet-light:#EDE9FE;
+      --sky:        #0284C7;
+      --emerald:    #059669;
+      --rose:       #E11D48;
+      --amber:      #D97706;
+      --stone-50:   #FAFAF9;
+      --stone-100:  #F5F5F4;
+      --stone-200:  #E7E5E4;
+      --stone-300:  #D6D3D1;
+      --stone-400:  #A8A29E;
+      --stone-500:  #78716C;
+      --stone-600:  #57534E;
+      --stone-700:  #44403C;
+      --stone-800:  #292524;
+      --stone-900:  #1C1917;
+      --ink:        #0C0A09;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: #fff;
+      color: var(--stone-900);
+      line-height: 1.6;
+    }
+
+    /* ── NAV ── */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.125rem 2.5rem;
+      border-bottom: 1px solid var(--stone-200);
+      position: sticky;
+      top: 0;
+      background: rgba(255,255,255,0.95);
+      backdrop-filter: blur(10px);
+      z-index: 100;
+    }
+
+    .nav-logo {
+      font-size: 1.2rem;
+      font-weight: 800;
+      color: var(--ink);
+      letter-spacing: -0.03em;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .nav-logo-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--indigo);
+      display: inline-block;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--stone-600);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: color 0.15s;
+    }
+
+    .nav-links a:hover { color: var(--ink); }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.55rem 1.25rem;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--stone-700);
+      border: 1px solid var(--stone-300);
+    }
+
+    .btn-ghost:hover {
+      background: var(--stone-100);
+      color: var(--ink);
+    }
+
+    .btn-primary {
+      background: var(--indigo);
+      color: #fff;
+      border: 1px solid var(--indigo);
+    }
+
+    .btn-primary:hover {
+      background: var(--indigo-dark);
+      border-color: var(--indigo-dark);
+    }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--indigo);
+      border: 1.5px solid var(--indigo);
+    }
+
+    .btn-outline:hover {
+      background: #EEF2FF;
+    }
+
+    .btn-lg {
+      padding: 0.8rem 1.75rem;
+      font-size: 1rem;
+      border-radius: 10px;
+    }
+
+    .btn-xl {
+      padding: 1rem 2rem;
+      font-size: 1.05rem;
+      border-radius: 10px;
+    }
+
+    /* ── HERO ── */
+    .hero {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 7rem 2rem 5rem;
+      text-align: center;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--violet-light);
+      color: var(--violet);
+      padding: 0.35rem 0.9rem;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-bottom: 1.75rem;
+      letter-spacing: 0.01em;
+    }
+
+    .hero-badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--violet);
+    }
+
+    .hero h1 {
+      font-size: clamp(2.5rem, 5vw, 4rem);
+      font-weight: 900;
+      line-height: 1.1;
+      letter-spacing: -0.04em;
+      color: var(--ink);
+      margin-bottom: 1.5rem;
+    }
+
+    .hero h1 em {
+      font-style: normal;
+      background: linear-gradient(135deg, var(--indigo), var(--violet));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-sub {
+      font-size: 1.2rem;
+      color: var(--stone-500);
+      max-width: 640px;
+      margin: 0 auto 2.5rem;
+      line-height: 1.7;
+    }
+
+    .hero-ctas {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+
+    .hero-note {
+      font-size: 0.8rem;
+      color: var(--stone-400);
+      margin-top: 0.75rem;
+    }
+
+    /* ── TOOLS STRIP ── */
+    .tools-strip {
+      border-top: 1px solid var(--stone-200);
+      border-bottom: 1px solid var(--stone-200);
+      padding: 1.5rem 2rem;
+      text-align: center;
+      background: var(--stone-50);
+    }
+
+    .tools-strip-label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--stone-400);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 1rem;
+    }
+
+    .tools-strip-logos {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 2.5rem;
+      flex-wrap: wrap;
+    }
+
+    .tool-logo {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--stone-400);
+      letter-spacing: -0.01em;
+    }
+
+    /* ── SECTION WRAPPER ── */
+    section {
+      padding: 6rem 2rem;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .section-label {
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--indigo);
+      margin-bottom: 0.75rem;
+    }
+
+    .section-title {
+      font-size: clamp(1.75rem, 3vw, 2.5rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      color: var(--ink);
+      margin-bottom: 1rem;
+    }
+
+    .section-sub {
+      font-size: 1.1rem;
+      color: var(--stone-500);
+      max-width: 580px;
+      line-height: 1.7;
+    }
+
+    /* ── PROBLEM SECTION ── */
+    .problem {
+      background: var(--ink);
+      color: #fff;
+    }
+
+    .problem .section-label {
+      color: #818CF8;
+    }
+
+    .problem-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5rem;
+      align-items: center;
+      margin-top: 3.5rem;
+    }
+
+    .problem-left h2 {
+      font-size: clamp(1.75rem, 3vw, 2.25rem);
+      font-weight: 800;
+      line-height: 1.2;
+      letter-spacing: -0.03em;
+      margin-bottom: 1.5rem;
+      color: #fff;
+    }
+
+    .problem-left p {
+      color: #A8A29E;
+      line-height: 1.8;
+      margin-bottom: 1rem;
+      font-size: 1rem;
+    }
+
+    .problem-left p strong {
+      color: #fff;
+    }
+
+    .problem-symptoms {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .symptom {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 1rem 1.25rem;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+    }
+
+    .symptom-icon {
+      font-size: 1.1rem;
+      flex-shrink: 0;
+      margin-top: 0.1rem;
+    }
+
+    .symptom-text {
+      font-size: 0.9rem;
+      color: #D6D3D1;
+      line-height: 1.5;
+    }
+
+    /* ── PILLARS ── */
+    .pillars {
+      background: var(--stone-50);
+    }
+
+    .pillars-header {
+      text-align: center;
+      margin-bottom: 4rem;
+    }
+
+    .pillars-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+    }
+
+    .pillar-card {
+      background: #fff;
+      border: 1px solid var(--stone-200);
+      border-radius: 16px;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      transition: box-shadow 0.2s, border-color 0.2s;
+    }
+
+    .pillar-card:hover {
+      box-shadow: 0 8px 30px rgba(0,0,0,0.08);
+      border-color: var(--stone-300);
+    }
+
+    .pillar-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+    }
+
+    .pillar-icon.guard   { background: #EEF2FF; }
+    .pillar-icon.secure  { background: #F0FDF4; }
+    .pillar-icon.automate { background: #FFF7ED; }
+
+    .pillar-card h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--ink);
+      letter-spacing: -0.02em;
+    }
+
+    .pillar-card p {
+      font-size: 0.925rem;
+      color: var(--stone-500);
+      line-height: 1.7;
+    }
+
+    .pillar-scenario {
+      background: var(--stone-50);
+      border: 1px solid var(--stone-200);
+      border-radius: 10px;
+      padding: 1rem 1.125rem;
+    }
+
+    .scenario-pain {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--stone-400);
+      margin-bottom: 0.4rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .scenario-outcome {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--emerald);
+      margin-top: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .scenario-text {
+      font-size: 0.875rem;
+      color: var(--stone-700);
+      line-height: 1.55;
+    }
+
+    .pillar-link {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--indigo);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      margin-top: auto;
+    }
+
+    .pillar-link:hover { text-decoration: underline; }
+
+    /* ── TWO TRACKS ── */
+    .two-tracks {
+      background: #fff;
+    }
+
+    .tracks-header {
+      text-align: center;
+      margin-bottom: 3.5rem;
+    }
+
+    .tracks-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+
+    .track-card {
+      border-radius: 16px;
+      padding: 2.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .track-card.platform {
+      background: #EEF2FF;
+      border: 1.5px solid #C7D2FE;
+    }
+
+    .track-card.solutions {
+      background: var(--ink);
+      border: 1.5px solid #3F3F46;
+    }
+
+    .track-badge {
+      display: inline-flex;
+      padding: 0.3rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      width: fit-content;
+    }
+
+    .track-card.platform .track-badge {
+      background: var(--indigo);
+      color: #fff;
+    }
+
+    .track-card.solutions .track-badge {
+      background: rgba(255,255,255,0.1);
+      color: #D6D3D1;
+    }
+
+    .track-card h3 {
+      font-size: 1.5rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+    }
+
+    .track-card.platform h3 { color: var(--ink); }
+    .track-card.solutions h3 { color: #fff; }
+
+    .track-card p {
+      font-size: 0.95rem;
+      line-height: 1.75;
+    }
+
+    .track-card.platform p { color: var(--stone-600); }
+    .track-card.solutions p { color: #A8A29E; }
+
+    .track-features {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      list-style: none;
+    }
+
+    .track-features li {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+
+    .track-card.platform .track-features li { color: var(--stone-700); }
+    .track-card.solutions .track-features li { color: #D6D3D1; }
+
+    .check {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.65rem;
+      flex-shrink: 0;
+    }
+
+    .track-card.platform .check { background: var(--indigo); color: #fff; }
+    .track-card.solutions .check { background: rgba(255,255,255,0.15); color: #fff; }
+
+    /* ── WHO IT'S FOR ── */
+    .personas {
+      background: var(--stone-50);
+    }
+
+    .personas-header {
+      text-align: center;
+      margin-bottom: 3.5rem;
+    }
+
+    .personas-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+    }
+
+    .persona-card {
+      background: #fff;
+      border: 1px solid var(--stone-200);
+      border-radius: 14px;
+      padding: 2rem;
+    }
+
+    .persona-role {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--indigo);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 0.6rem;
+    }
+
+    .persona-card h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--ink);
+      letter-spacing: -0.02em;
+      margin-bottom: 0.75rem;
+    }
+
+    .persona-card p {
+      font-size: 0.9rem;
+      color: var(--stone-500);
+      line-height: 1.7;
+      margin-bottom: 1.25rem;
+    }
+
+    .persona-outcomes {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      list-style: none;
+    }
+
+    .persona-outcomes li {
+      font-size: 0.825rem;
+      color: var(--stone-600);
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+      line-height: 1.5;
+    }
+
+    .persona-outcomes li::before {
+      content: "→";
+      color: var(--indigo);
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    /* ── FINAL CTA ── */
+    .final-cta {
+      background: linear-gradient(135deg, var(--indigo), var(--violet));
+      color: #fff;
+      text-align: center;
+    }
+
+    .final-cta h2 {
+      font-size: clamp(1.75rem, 3.5vw, 2.75rem);
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 1.15;
+      margin-bottom: 1rem;
+    }
+
+    .final-cta p {
+      font-size: 1.1rem;
+      color: rgba(255,255,255,0.75);
+      max-width: 520px;
+      margin: 0 auto 2.5rem;
+      line-height: 1.7;
+    }
+
+    .final-cta .btn-primary {
+      background: #fff;
+      color: var(--indigo);
+      border-color: #fff;
+    }
+
+    .final-cta .btn-primary:hover {
+      background: #EEF2FF;
+    }
+
+    .final-cta .btn-outline {
+      border-color: rgba(255,255,255,0.5);
+      color: #fff;
+    }
+
+    .final-cta .btn-outline:hover {
+      background: rgba(255,255,255,0.1);
+      border-color: #fff;
+    }
+
+    .final-cta-note {
+      font-size: 0.8rem;
+      color: rgba(255,255,255,0.5);
+      margin-top: 1rem;
+    }
+
+    /* ── FOOTER ── */
+    footer {
+      background: var(--ink);
+      color: var(--stone-400);
+      padding: 3rem 2rem;
+    }
+
+    .footer-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 2rem;
+      flex-wrap: wrap;
+    }
+
+    .footer-brand {
+      font-size: 1.1rem;
+      font-weight: 800;
+      color: #fff;
+      letter-spacing: -0.03em;
+      margin-bottom: 0.5rem;
+    }
+
+    .footer-tagline {
+      font-size: 0.825rem;
+      color: var(--stone-500);
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 3rem;
+    }
+
+    .footer-col h4 {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--stone-500);
+      margin-bottom: 1rem;
+    }
+
+    .footer-col ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    .footer-col a {
+      font-size: 0.875rem;
+      color: var(--stone-400);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+
+    .footer-col a:hover { color: #fff; }
+
+    .footer-bottom {
+      max-width: 1100px;
+      margin: 2rem auto 0;
+      padding-top: 2rem;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      color: var(--stone-600);
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 768px) {
+      nav { padding: 1rem 1.25rem; }
+      .nav-links { display: none; }
+      section { padding: 4rem 1.25rem; }
+      .problem-grid { grid-template-columns: 1fr; gap: 2.5rem; }
+      .pillars-grid { grid-template-columns: 1fr; }
+      .tracks-grid { grid-template-columns: 1fr; }
+      .personas-grid { grid-template-columns: 1fr; }
+      .footer-links { flex-direction: column; gap: 2rem; }
+      .footer-bottom { flex-direction: column; gap: 0.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── NAV ── -->
+<nav>
+  <a href="/" class="nav-logo">
+    <span class="nav-logo-dot"></span>
+    Conduct AI
+  </a>
+  <ul class="nav-links">
+    <li><a href="/guard">Guard</a></li>
+    <li><a href="/secure">Secure</a></li>
+    <li><a href="/workflows">Workflows</a></li>
+    <li><a href="/pricing">Pricing</a></li>
+    <li><a href="/docs">Docs</a></li>
+  </ul>
+  <div class="nav-actions">
+    <a href="/login" class="btn btn-ghost">Sign in</a>
+    <a href="/talk" class="btn btn-ghost">Talk to Us</a>
+    <a href="/start" class="btn btn-primary">Start Free</a>
+  </div>
+</nav>
+
+<!-- ── HERO ── -->
+<div class="hero">
+  <div class="hero-badge">
+    <span class="hero-badge-dot"></span>
+    AI Governance for Engineering Teams
+  </div>
+  <h1>Your team already<br>runs on AI.<br><em>Now govern it.</em></h1>
+  <p class="hero-sub">
+    Conduct AI is the governance layer between your engineering team and their AI tools —
+    protecting sessions, enforcing security, and running the workflows that used to take human hours.
+  </p>
+  <div class="hero-ctas">
+    <a href="/start" class="btn btn-primary btn-xl">Start Free — Deploy in Minutes</a>
+    <a href="/talk" class="btn btn-outline btn-xl">Talk to Us — We'll Run It For You</a>
+  </div>
+  <p class="hero-note">No credit card required &nbsp;·&nbsp; Free tier for up to 5 developers &nbsp;·&nbsp; Works with tools your team already uses</p>
+</div>
+
+<!-- ── TOOLS STRIP ── -->
+<div class="tools-strip">
+  <p class="tools-strip-label">Governs the AI tools your team already uses</p>
+  <div class="tools-strip-logos">
+    <span class="tool-logo">Claude Code</span>
+    <span class="tool-logo">Cursor</span>
+    <span class="tool-logo">GitHub Copilot</span>
+    <span class="tool-logo">Claude.ai</span>
+    <span class="tool-logo">Codex</span>
+    <span class="tool-logo">Any MCP Client</span>
+  </div>
+</div>
+
+<!-- ── PROBLEM ── -->
+<section class="problem">
+  <div class="container">
+    <p class="section-label">The Problem</p>
+    <div class="problem-grid">
+      <div class="problem-left">
+        <h2>AI tools are everywhere in engineering.<br>Nobody owns what they do.</h2>
+        <p>Claude Code. Cursor. Copilot. Codex. Your team is using all of them. Every day. Without controls, without visibility, and without an audit trail.</p>
+        <p><strong>Governance was supposed to solve this.</strong> Instead it became documentation — policies nobody reads and reviews nobody enforces.</p>
+        <p>Conduct makes governance infrastructure. Enforcement that runs at the same layer as your AI tools, not above them.</p>
+      </div>
+      <div class="problem-symptoms">
+        <div class="symptom">
+          <span class="symptom-icon">🔑</span>
+          <span class="symptom-text">Developers paste API keys and credentials directly into AI prompts — and nobody knows until an incident.</span>
+        </div>
+        <div class="symptom">
+          <span class="symptom-icon">📊</span>
+          <span class="symptom-text">Finance asks what AI is costing the team. Engineering leadership has no answer.</span>
+        </div>
+        <div class="symptom">
+          <span class="symptom-icon">🔍</span>
+          <span class="symptom-text">Security can't audit AI sessions. Compliance asks questions nobody can answer.</span>
+        </div>
+        <div class="symptom">
+          <span class="symptom-icon">🤖</span>
+          <span class="symptom-text">AI agents run workflows without policy enforcement. No audit trail. No controls.</span>
+        </div>
+        <div class="symptom">
+          <span class="symptom-icon">🛡️</span>
+          <span class="symptom-text">Vulnerabilities ship in AI-generated code because security review happens too late.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── THREE PILLARS ── -->
+<section class="pillars">
+  <div class="container">
+    <div class="pillars-header">
+      <p class="section-label">How It Works</p>
+      <h2 class="section-title">Three layers. One governance platform.</h2>
+      <p class="section-sub" style="margin: 0 auto;">Guard protects your developer sessions. Secure enforces policy in your code. Workflows automate your engineering processes — with governance baked in to every run.</p>
+    </div>
+    <div class="pillars-grid">
+
+      <!-- GUARD -->
+      <div class="pillar-card">
+        <div class="pillar-icon guard">🛡️</div>
+        <h3>Guard — Protect Developer Sessions</h3>
+        <p>Real-time policy enforcement on every AI session. Blocks risky actions before they execute. Logs every tool call. Tracks spend across your entire team.</p>
+        <div class="pillar-scenario">
+          <p class="scenario-pain">⚠ Pain: A developer pasted a Stripe key into Claude. It reached the model, the log, and the audit trail.</p>
+          <p class="scenario-text">Guard's secret-redact policy blocked the tool call before it hit the LLM. The audit log stored [REDACTED:secret_key] — never the value.</p>
+          <p class="scenario-outcome">✓ Key never reached the model. Session logged. Security notified.</p>
+        </div>
+        <a href="/guard" class="pillar-link">See how Guard works →</a>
+      </div>
+
+      <!-- SECURE -->
+      <div class="pillar-card">
+        <div class="pillar-icon secure">🔒</div>
+        <h3>Secure — Enforce Security in Code</h3>
+        <p>Automated security scanning on every PR. Vulnerabilities flagged before they merge. Security policies that enforce themselves — continuously, not just at gates.</p>
+        <div class="pillar-scenario">
+          <p class="scenario-pain">⚠ Pain: A hardcoded password sat in the codebase for 14 months. Three security reviews missed it.</p>
+          <p class="scenario-text">Conduct scanned the repo, found the credential with file and line number, and flagged it with a remediation suggestion.</p>
+          <p class="scenario-outcome">✓ Caught. Rotated within the hour. Added to Guard's block list.</p>
+        </div>
+        <a href="/secure" class="pillar-link">See how Secure works →</a>
+      </div>
+
+      <!-- WORKFLOWS -->
+      <div class="pillar-card">
+        <div class="pillar-icon automate">⚡</div>
+        <h3>Workflows — Run Governed Automations</h3>
+        <p>AI agents built as YAML playbooks. Triggered by the events that matter. Guard and security policies enforced on every action — no workflow escapes governance.</p>
+        <div class="pillar-scenario">
+          <p class="scenario-pain">⚠ Pain: A GitHub issue was filed at 2am. The fix needed to ship before market open.</p>
+          <p class="scenario-text">The autopilot workflow triggered on the issue label, planned the fix, wrote the patch, and opened a PR — all under Guard policy enforcement.</p>
+          <p class="scenario-outcome">✓ PR open by 9am. Engineer woke up to a fix ready for review.</p>
+        </div>
+        <a href="/workflows" class="pillar-link">See how Workflows work →</a>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ── TWO TRACKS ── -->
+<section class="two-tracks">
+  <div class="container">
+    <div class="tracks-header">
+      <p class="section-label">Two Ways to Work With Us</p>
+      <h2 class="section-title">Platform or partnership.<br>You choose how.</h2>
+      <p class="section-sub" style="margin: 0 auto;">In the AI era, software alone is not enough. We offer the platform for teams that move fast — and the expertise for organizations that need governance done right.</p>
+    </div>
+    <div class="tracks-grid">
+
+      <!-- PLATFORM -->
+      <div class="track-card platform">
+        <span class="track-badge">Platform</span>
+        <h3>Use the platform yourself.</h3>
+        <p>Install in minutes. Connect your team's AI tools. Policies live immediately. Start with the free tier — no infrastructure changes, no professional services required.</p>
+        <ul class="track-features">
+          <li><span class="check">✓</span> Deploy Guard policies in one command</li>
+          <li><span class="check">✓</span> 22+ production-ready workflow playbooks</li>
+          <li><span class="check">✓</span> Security scanning on every PR — automatic</li>
+          <li><span class="check">✓</span> Full audit log from day one</li>
+          <li><span class="check">✓</span> Free tier for up to 5 developers</li>
+        </ul>
+        <a href="/start" class="btn btn-primary btn-lg" style="width: fit-content;">Start Free — No Credit Card</a>
+      </div>
+
+      <!-- SOLUTIONS -->
+      <div class="track-card solutions">
+        <span class="track-badge">Solutions</span>
+        <h3 style="color:#fff;">Let us run it for you.</h3>
+        <p>We scope your AI governance posture, implement policies across your stack, build custom workflows for your engineering processes, and operate the governance layer for you.</p>
+        <ul class="track-features">
+          <li><span class="check">✓</span> AI governance audit and policy design</li>
+          <li><span class="check">✓</span> Guard deployment across your team</li>
+          <li><span class="check">✓</span> Custom workflow builds for your processes</li>
+          <li><span class="check">✓</span> Ongoing monitoring and tuning</li>
+          <li><span class="check">✓</span> Dedicated engineering point of contact</li>
+        </ul>
+        <a href="/talk" class="btn btn-ghost btn-lg" style="width: fit-content; color:#fff; border-color:rgba(255,255,255,0.3);">Book a Discovery Call</a>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ── WHO IT'S FOR ── -->
+<section class="personas">
+  <div class="container">
+    <div class="personas-header">
+      <p class="section-label">Who It's For</p>
+      <h2 class="section-title">Built for the people responsible<br>for how AI gets used.</h2>
+    </div>
+    <div class="personas-grid">
+
+      <div class="persona-card">
+        <p class="persona-role">Engineering Leaders</p>
+        <h3>Visibility and control — without slowing your team down.</h3>
+        <p>You're responsible for how AI gets used across your engineering organization. Right now you have no visibility and no controls. Conduct changes that without adding process overhead.</p>
+        <ul class="persona-outcomes">
+          <li>See every AI tool your team uses — in one dashboard</li>
+          <li>Know what AI is costing you, by person and by project</li>
+          <li>Enforce your engineering standards automatically</li>
+          <li>Answer security and compliance questions on demand</li>
+        </ul>
+      </div>
+
+      <div class="persona-card">
+        <p class="persona-role">IT Managers & Directors</p>
+        <h3>Policy enforcement that works without blocking productivity.</h3>
+        <p>You need governance that actually runs — not documentation that developers ignore. Conduct deploys in minutes, works with every AI tool already in use, and gives you one audit trail across all of them.</p>
+        <ul class="persona-outcomes">
+          <li>One policy layer across Claude Code, Cursor, Copilot, and more</li>
+          <li>No infrastructure changes — works with your existing stack</li>
+          <li>Role-based policies for different teams and access levels</li>
+          <li>Spend budgets per developer, per tool, per project</li>
+        </ul>
+      </div>
+
+      <div class="persona-card">
+        <p class="persona-role">Security Analysts</p>
+        <h3>Governance at the layer where AI actually operates.</h3>
+        <p>You need AI sessions audited, credentials protected, vulnerabilities caught before production, and compliance evidence on demand. Conduct makes all of this the default — not the exception.</p>
+        <ul class="persona-outcomes">
+          <li>Credentials and PII blocked before they reach any LLM</li>
+          <li>Every tool call logged with decision, rule, and developer identity</li>
+          <li>Security scanning on every PR — automatic, not manual</li>
+          <li>Compliance audit trail exportable on demand</li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ── FINAL CTA ── -->
+<section class="final-cta">
+  <div class="container" style="text-align:center;">
+    <h2>Stop governing AI<br>with documentation.<br>Start governing it<br>with infrastructure.</h2>
+    <p>Platform for teams that move fast. Partnership for teams that need it done right. Either way — your AI layer gets governed.</p>
+    <div style="display:flex; gap:1rem; justify-content:center; flex-wrap:wrap;">
+      <a href="/start" class="btn btn-primary btn-xl">Start Free — No Credit Card</a>
+      <a href="/talk" class="btn btn-outline btn-xl">Book a Discovery Call</a>
+    </div>
+    <p class="final-cta-note">Free tier · No infrastructure changes · Works in minutes</p>
+  </div>
+</section>
+
+<!-- ── FOOTER ── -->
+<footer>
+  <div class="footer-inner">
+    <div>
+      <p class="footer-brand">Conduct AI</p>
+      <p class="footer-tagline">AI Governance for Engineering Teams</p>
+    </div>
+    <div class="footer-links">
+      <div class="footer-col">
+        <h4>Product</h4>
+        <ul>
+          <li><a href="/guard">Guard</a></li>
+          <li><a href="/secure">Secure</a></li>
+          <li><a href="/workflows">Workflows</a></li>
+          <li><a href="/pricing">Pricing</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Solutions</h4>
+        <ul>
+          <li><a href="/solutions/governance-audit">Governance Audit</a></li>
+          <li><a href="/solutions/guard-implementation">Guard Implementation</a></li>
+          <li><a href="/solutions/workflow-build">Workflow Build</a></li>
+          <li><a href="/solutions/managed">Managed Governance</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Resources</h4>
+        <ul>
+          <li><a href="/docs">Documentation</a></li>
+          <li><a href="/playbooks">Playbook Library</a></li>
+          <li><a href="https://github.com/sseshachala/conductai">GitHub</a></li>
+          <li><a href="/blog">Blog</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Company</h4>
+        <ul>
+          <li><a href="/about">About</a></li>
+          <li><a href="/talk">Contact</a></li>
+          <li><a href="/privacy">Privacy</a></li>
+          <li><a href="/terms">Terms</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>© 2026 Conduct AI. All rights reserved.</span>
+    <span>conductai.ai</span>
+  </div>
+</footer>
+
+</body>
+</html>

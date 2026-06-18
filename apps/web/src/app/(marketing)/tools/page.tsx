@@ -34,13 +34,6 @@ function ProductsDropdown() {
               <p className="text-xs text-stone-400">AI session governance</p>
             </div>
           </a>
-          <a href="/tools/security-loop" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span>🔒</span>
-            <div>
-              <p className="font-semibold">Security Loop</p>
-              <p className="text-xs text-stone-400">Automated PR scanning</p>
-            </div>
-          </a>
           <a href="/playbooks" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
             <span>⚡</span>
             <div>
@@ -254,59 +247,6 @@ function ToolsSection() {
               <code className="font-mono text-xs text-stone-400 bg-stone-50 px-2 py-1 rounded">pip install conduct-cli</code>
             </div>
           </div>
-
-          {/* Security Loop */}
-          <div className="rounded-2xl border border-stone-200 bg-white px-8 py-8 flex flex-col gap-5 hover:border-indigo-200 hover:shadow-sm transition-all">
-            <div className="flex items-start justify-between">
-              <div>
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-100 px-2.5 py-1 rounded-full mb-3">
-                  v0.4 · Shipped
-                </span>
-                <h2 className="text-2xl font-bold text-stone-900">Security Loop</h2>
-                <p className="text-sm text-stone-500 mt-1">Finding to PR, automatically</p>
-              </div>
-              <span className="text-3xl font-black text-indigo-600">🔐</span>
-            </div>
-
-            <p className="text-sm text-stone-600 leading-relaxed">
-              Connect Claude Code, Codex, Cursor, or Windsurf to Conduct once. Every vulnerability
-              they surface gets captured automatically, triaged, and routed through a fix pipeline —
-              GitHub issue, agent fix, PR, Slack alert, full audit trail.
-            </p>
-
-            <div className="flex flex-col gap-2">
-              <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">What it does</p>
-              <ul className="space-y-1.5">
-                {[
-                  "Passive hook captures findings from every tool call — zero developer action",
-                  "BugHunter Active Scan runs 8 targeted hunt skills on demand",
-                  "GitHub issue created with severity, labels, and suggested fix",
-                  "Fix agent branches, patches, and opens a PR — you review, you merge",
-                ].map(item => (
-                  <li key={item} className="flex items-start gap-2 text-sm text-stone-600">
-                    <span className="text-emerald-500 mt-0.5 shrink-0">✓</span>
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="mt-auto pt-4 border-t border-stone-100 flex items-center gap-3 flex-wrap">
-              <a
-                href="/tools/security-loop"
-                className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 transition-colors"
-              >
-                Learn more →
-              </a>
-              <a
-                href="/secure"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 px-4 py-2 text-sm font-medium text-stone-600 hover:border-stone-300 transition-colors"
-              >
-                Open Security console →
-              </a>
-            </div>
-          </div>
-
           {/* Session Report */}
           <div className="rounded-2xl border border-stone-200 bg-white px-8 py-8 flex flex-col gap-5 hover:border-amber-200 hover:shadow-sm transition-all">
             <div className="flex items-start justify-between">

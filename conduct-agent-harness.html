@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Conduct AI — The AI Agent Harness for Engineering Teams</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --indigo:     #4F46E5;
+      --indigo-dim: #3730A3;
+      --violet:     #7C3AED;
+      --emerald:    #059669;
+      --amber:      #D97706;
+      --rose:       #E11D48;
+      --sky:        #0284C7;
+      --stone-50:   #FAFAF9;
+      --stone-100:  #F5F5F4;
+      --stone-200:  #E7E5E4;
+      --stone-300:  #D6D3D1;
+      --stone-400:  #A8A29E;
+      --stone-500:  #78716C;
+      --stone-600:  #57534E;
+      --stone-700:  #44403C;
+      --stone-800:  #292524;
+      --stone-900:  #1C1917;
+      --ink:        #0C0A09;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: white;
+      color: var(--stone-900);
+      line-height: 1.6;
+    }
+
+    /* ── NAV ── */
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.125rem 2.5rem;
+      border-bottom: 1px solid var(--stone-200);
+      position: sticky;
+      top: 0;
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(8px);
+      z-index: 100;
+    }
+    .nav-logo {
+      font-size: 1rem;
+      font-weight: 800;
+      color: var(--ink);
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      text-decoration: none;
+    }
+    .nav-logo-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--indigo);
+    }
+    .nav-links {
+      display: flex;
+      gap: 1.75rem;
+      list-style: none;
+    }
+    .nav-links a {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--stone-500);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+    .nav-links a:hover { color: var(--ink); }
+    .nav-cta {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: white;
+      background: var(--indigo);
+      padding: 0.5rem 1.125rem;
+      border-radius: 6px;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+    .nav-cta:hover { background: var(--indigo-dim); }
+
+    /* ── HERO ── */
+    #hero {
+      padding: 6rem 2.5rem 5rem;
+      max-width: 860px;
+      margin: 0 auto;
+      text-align: center;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--indigo);
+      background: #EEF2FF;
+      border: 1px solid #C7D2FE;
+      border-radius: 100px;
+      padding: 0.3125rem 0.875rem;
+      margin-bottom: 2rem;
+      letter-spacing: 0.01em;
+    }
+    .hero-badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--indigo);
+    }
+    .hero-headline {
+      font-size: clamp(2.25rem, 5vw, 3.5rem);
+      font-weight: 900;
+      color: var(--ink);
+      letter-spacing: -0.04em;
+      line-height: 1.1;
+      margin-bottom: 1.25rem;
+    }
+    .hero-headline em {
+      font-style: normal;
+      color: var(--indigo);
+    }
+    .hero-sub {
+      font-size: 1.125rem;
+      color: var(--stone-500);
+      max-width: 600px;
+      margin: 0 auto 2.5rem;
+      line-height: 1.65;
+    }
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .btn-primary {
+      font-size: 0.9375rem;
+      font-weight: 700;
+      color: white;
+      background: var(--indigo);
+      padding: 0.75rem 1.75rem;
+      border-radius: 8px;
+      text-decoration: none;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .btn-primary:hover {
+      background: var(--indigo-dim);
+      transform: translateY(-1px);
+    }
+    .btn-ghost {
+      font-size: 0.9375rem;
+      font-weight: 500;
+      color: var(--stone-700);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+    }
+    .btn-ghost:hover { color: var(--ink); }
+
+    /* ── PROBLEM ── */
+    #problem {
+      background: var(--stone-50);
+      border-top: 1px solid var(--stone-200);
+      border-bottom: 1px solid var(--stone-200);
+      padding: 5rem 2.5rem;
+    }
+    .problem-inner {
+      max-width: 760px;
+      margin: 0 auto;
+    }
+    .section-label {
+      font-size: 0.8125rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--stone-400);
+      margin-bottom: 1.25rem;
+    }
+    .problem-headline {
+      font-size: clamp(1.625rem, 3vw, 2.25rem);
+      font-weight: 800;
+      color: var(--ink);
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+      margin-bottom: 1.75rem;
+    }
+    .problem-body {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+    }
+    .problem-card {
+      background: white;
+      border: 1px solid var(--stone-200);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+    }
+    .problem-card-icon {
+      font-size: 1.25rem;
+      margin-bottom: 0.625rem;
+    }
+    .problem-card h4 {
+      font-size: 0.9375rem;
+      font-weight: 700;
+      color: var(--ink);
+      margin-bottom: 0.375rem;
+    }
+    .problem-card p {
+      font-size: 0.875rem;
+      color: var(--stone-500);
+      line-height: 1.55;
+    }
+
+    /* ── LAYERS ── */
+    #layers {
+      padding: 6rem 2.5rem;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .layers-header {
+      max-width: 640px;
+      margin-bottom: 4rem;
+    }
+    .layers-headline {
+      font-size: clamp(1.75rem, 3vw, 2.5rem);
+      font-weight: 800;
+      color: var(--ink);
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+      margin-bottom: 0.875rem;
+    }
+    .layers-sub {
+      font-size: 1rem;
+      color: var(--stone-500);
+      line-height: 1.6;
+    }
+    .layers-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.5rem;
+    }
+    .layer-card {
+      border: 1px solid var(--stone-200);
+      border-radius: 12px;
+      padding: 1.75rem;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .layer-card:hover {
+      border-color: var(--stone-300);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+    }
+    .layer-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--stone-400);
+      margin-bottom: 0.875rem;
+    }
+    .layer-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.125rem;
+      margin-bottom: 1rem;
+    }
+    .layer-icon.observe   { background: #FFF7ED; }
+    .layer-icon.context   { background: #EFF6FF; }
+    .layer-icon.reason    { background: #F5F3FF; }
+    .layer-icon.act       { background: #ECFDF5; }
+    .layer-icon.memory    { background: #FFFBEB; }
+    .layer-icon.govern    { background: #FFF1F2; }
+    .layer-card h3 {
+      font-size: 1.0625rem;
+      font-weight: 700;
+      color: var(--ink);
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.01em;
+    }
+    .layer-card p {
+      font-size: 0.9rem;
+      color: var(--stone-500);
+      line-height: 1.6;
+      margin-bottom: 1rem;
+    }
+    .layer-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+    .tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      font-weight: 500;
+      color: var(--stone-600);
+      background: var(--stone-100);
+      border: 1px solid var(--stone-200);
+      border-radius: 4px;
+      padding: 0.2rem 0.5rem;
+    }
+
+    /* ── EXAMPLE ── */
+    #example {
+      background: var(--ink);
+      padding: 6rem 2.5rem;
+    }
+    .example-inner {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .example-label {
+      font-size: 0.8125rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--stone-400);
+      margin-bottom: 1.25rem;
+    }
+    .example-headline {
+      font-size: clamp(1.75rem, 3vw, 2.5rem);
+      font-weight: 800;
+      color: white;
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+      margin-bottom: 0.75rem;
+    }
+    .example-sub {
+      font-size: 1rem;
+      color: var(--stone-400);
+      margin-bottom: 3.5rem;
+      line-height: 1.6;
+    }
+    .example-playbook-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8125rem;
+      color: #A5B4FC;
+      background: rgba(79, 70, 229, 0.2);
+      border: 1px solid rgba(79, 70, 229, 0.4);
+      border-radius: 6px;
+      padding: 0.25rem 0.625rem;
+      display: inline-block;
+      margin-bottom: 3rem;
+    }
+    .steps {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+    .step {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 2rem;
+      padding: 1.5rem 0;
+      border-top: 1px solid rgba(255,255,255,0.07);
+      align-items: start;
+    }
+    .step:first-child { border-top: none; }
+    .step-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 0.375rem;
+    }
+    .step-layer {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .step-layer.observe  { color: #FB923C; }
+    .step-layer.context  { color: #60A5FA; }
+    .step-layer.reason   { color: #A78BFA; }
+    .step-layer.act      { color: #34D399; }
+    .step-layer.human    { color: #FBBF24; }
+    .step-layer.govern   { color: #F472B6; }
+    .step-block {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--stone-400);
+    }
+    .step-body h4 {
+      font-size: 0.9375rem;
+      font-weight: 700;
+      color: white;
+      margin-bottom: 0.375rem;
+      letter-spacing: -0.01em;
+    }
+    .step-body p {
+      font-size: 0.875rem;
+      color: var(--stone-400);
+      line-height: 1.55;
+    }
+    .step-arrow {
+      display: flex;
+      align-items: center;
+      color: var(--stone-600);
+      font-size: 0.8125rem;
+      padding: 0.75rem 0;
+      padding-left: 0;
+      border-top: none;
+      grid-column: 2;
+    }
+
+    /* ── CTA ── */
+    #cta {
+      padding: 6rem 2.5rem;
+      text-align: center;
+      border-top: 1px solid var(--stone-200);
+    }
+    .cta-inner {
+      max-width: 620px;
+      margin: 0 auto;
+    }
+    .cta-headline {
+      font-size: clamp(1.875rem, 3vw, 2.75rem);
+      font-weight: 900;
+      color: var(--ink);
+      letter-spacing: -0.04em;
+      line-height: 1.15;
+      margin-bottom: 1rem;
+    }
+    .cta-sub {
+      font-size: 1rem;
+      color: var(--stone-500);
+      margin-bottom: 2rem;
+      line-height: 1.6;
+    }
+    .cta-actions {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .btn-primary-lg {
+      font-size: 1rem;
+      font-weight: 700;
+      color: white;
+      background: var(--indigo);
+      padding: 0.875rem 2rem;
+      border-radius: 8px;
+      text-decoration: none;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .btn-primary-lg:hover {
+      background: var(--indigo-dim);
+      transform: translateY(-1px);
+    }
+    .btn-text {
+      font-size: 0.9375rem;
+      font-weight: 500;
+      color: var(--stone-500);
+      text-decoration: none;
+    }
+    .btn-text:hover { color: var(--ink); text-decoration: underline; }
+
+    /* ── FOOTER ── */
+    footer {
+      border-top: 1px solid var(--stone-200);
+      padding: 1.75rem 2.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .footer-logo {
+      font-size: 0.875rem;
+      font-weight: 800;
+      color: var(--stone-400);
+      letter-spacing: -0.01em;
+    }
+    .footer-copy {
+      font-size: 0.8125rem;
+      color: var(--stone-400);
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 768px) {
+      .layers-grid { grid-template-columns: 1fr; }
+      .problem-body { grid-template-columns: 1fr; }
+      .step {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+      }
+      .nav-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <a class="nav-logo" href="#">
+    <span class="nav-logo-dot"></span>
+    Conduct
+  </a>
+  <ul class="nav-links">
+    <li><a href="#layers">How it works</a></li>
+    <li><a href="#example">Example</a></li>
+    <li><a href="#">Playbooks</a></li>
+    <li><a href="#">Docs</a></li>
+  </ul>
+  <a class="nav-cta" href="#">Get started free</a>
+</nav>
+
+
+<!-- ══════════════════════════════════════════
+     SECTION 1 — HERO
+     ══════════════════════════════════════════ -->
+<section id="hero">
+
+  <div class="hero-badge">
+    <span class="hero-badge-dot"></span>
+    AI Agent Harness for engineering teams
+  </div>
+
+  <h1 class="hero-headline">
+    The LLM is the engine.<br>
+    <em>Conduct is the vehicle.</em>
+  </h1>
+
+  <p class="hero-sub">
+    A climbing harness doesn't make the climber stronger — it makes them safe,
+    controlled, and connected to the right anchors. Conduct does the same for AI agents:
+    wraps your LLM with observation, context, memory, actions, and governance
+    so it can operate in the real world, not just answer questions.
+  </p>
+
+  <div class="hero-actions">
+    <a class="btn-primary" href="#">Deploy your first playbook</a>
+    <a class="btn-ghost" href="#example">See a live example &rarr;</a>
+  </div>
+
+</section>
+
+
+<!-- ══════════════════════════════════════════
+     SECTION 2 — PROBLEM
+     ══════════════════════════════════════════ -->
+<section id="problem">
+  <div class="problem-inner">
+
+    <p class="section-label">The gap nobody talks about</p>
+    <h2 class="problem-headline">
+      Your team has the engine.<br>Nobody gave them the vehicle.
+    </h2>
+
+    <div class="problem-body">
+
+      <div class="problem-card">
+        <div class="problem-card-icon">🔭</div>
+        <h4>No observation layer</h4>
+        <p>LLMs don't watch your GitHub, CI pipeline, or agent tool calls. They answer when you ask. Automation requires something that listens without being prompted.</p>
+      </div>
+
+      <div class="problem-card">
+        <div class="problem-card-icon">🗂️</div>
+        <h4>No persistent context</h4>
+        <p>Each conversation starts cold. Your AI doesn't know the repo layout, the last incident, or who owns this service. Without memory, agents repeat mistakes and ask the same questions.</p>
+      </div>
+
+      <div class="problem-card">
+        <div class="problem-card-icon">🔗</div>
+        <h4>No action layer</h4>
+        <p>Generating a fix is not the same as opening a PR, posting to Slack, or running tests. Closing the loop requires real integrations, not copy-paste output from a chat window.</p>
+      </div>
+
+      <div class="problem-card">
+        <div class="problem-card-icon">🛡️</div>
+        <h4>No governance</h4>
+        <p>AI agents make calls to external APIs, write files, and push code. Without policy enforcement at the tool level, you find out about the damage after it happens.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════
+     SECTION 3 — THE 6 LAYERS
+     ══════════════════════════════════════════ -->
+<section id="layers">
+
+  <div class="layers-header">
+    <p class="section-label">The six layers</p>
+    <h2 class="layers-headline">Everything an agent needs to act, in one platform.</h2>
+    <p class="layers-sub">
+      Each layer is a first-class primitive in Conduct — not bolted-on integrations, not configuration files scattered across twelve services.
+    </p>
+  </div>
+
+  <div class="layers-grid">
+
+    <!-- 1. Observe -->
+    <div class="layer-card">
+      <div class="layer-num">01</div>
+      <div class="layer-icon observe">🔭</div>
+      <h3>Observe — catch the signal</h3>
+      <p>
+        Conduct listens to your environment without polling. GitHub webhooks, CI events, and
+        ConductGuard's <strong>PreToolUse / PostToolUse</strong> hooks fire the moment something happens
+        and hand a structured payload directly to the next block.
+        Agents react in real time, not on a cron.
+      </p>
+      <div class="layer-tags">
+        <span class="tag">GitHub webhooks</span>
+        <span class="tag">CI events</span>
+        <span class="tag">PreToolUse hook</span>
+        <span class="tag">PostToolUse hook</span>
+      </div>
+    </div>
+
+    <!-- 2. Context -->
+    <div class="layer-card">
+      <div class="layer-num">02</div>
+      <div class="layer-icon context">📚</div>
+      <h3>Build Context — know the codebase</h3>
+      <p>
+        <strong>Agent Booster</strong> runs a semantic index across your entire codebase and returns
+        only the relevant symbol slices for the task at hand — not a file dump, a precise answer.
+        Combine it with a <strong>recall_context memory block</strong> to hydrate every run with
+        workspace-scoped facts from prior sessions.
+      </p>
+      <div class="layer-tags">
+        <span class="tag">Agent Booster</span>
+        <span class="tag">recall_context block</span>
+        <span class="tag">semantic search</span>
+      </div>
+    </div>
+
+    <!-- 3. Reason -->
+    <div class="layer-card">
+      <div class="layer-num">03</div>
+      <div class="layer-icon reason">🧠</div>
+      <h3>Reason &amp; Plan — the brain block</h3>
+      <p>
+        Every playbook has a <strong>Brain block</strong> — a Claude call you configure: model tier,
+        single-turn or agentic mode, and an explicit <code>max_turns</code> turn budget so it never
+        spirals. Use a <strong>plan_fix block</strong> in single-turn mode to produce a structured plan
+        before handing off to an agentic block that executes it.
+      </p>
+      <div class="layer-tags">
+        <span class="tag">Brain block</span>
+        <span class="tag">plan_fix block</span>
+        <span class="tag">max_turns</span>
+        <span class="tag">model-selectable</span>
+      </div>
+    </div>
+
+    <!-- 4. Act -->
+    <div class="layer-card">
+      <div class="layer-num">04</div>
+      <div class="layer-icon act">⚡</div>
+      <h3>Act — close the loop</h3>
+      <p>
+        Tool blocks connect reasoning to real outcomes. Open a GitHub PR, post a Slack message,
+        file a Linear issue, run tests in an <strong>E2B sandbox</strong>, deploy a preview to Vercel.
+        Twelve-plus integrations ship out of the box. The MCP server exposes every block to any
+        MCP-compatible client.
+      </p>
+      <div class="layer-tags">
+        <span class="tag">GitHub block</span>
+        <span class="tag">Slack block</span>
+        <span class="tag">E2B sandbox</span>
+        <span class="tag">Modal block</span>
+        <span class="tag">Vercel block</span>
+        <span class="tag">MCP server</span>
+      </div>
+    </div>
+
+    <!-- 5. Memory -->
+    <div class="layer-card">
+      <div class="layer-num">05</div>
+      <div class="layer-icon memory">💾</div>
+      <h3>Learn &amp; Remember — workspace memory</h3>
+      <p>
+        <strong>Memory blocks</strong> give agents durable state scoped to your workspace: key-value
+        storage, structured recall, and outcome recording. A <strong>record_outcome block</strong> at
+        the end of every run writes what happened — so the next agent that touches the same service
+        starts informed, not blank.
+      </p>
+      <div class="layer-tags">
+        <span class="tag">memory block</span>
+        <span class="tag">record_outcome</span>
+        <span class="tag">recall_context</span>
+        <span class="tag">key-value store</span>
+      </div>
+    </div>
+
+    <!-- 6. Govern -->
+    <div class="layer-card">
+      <div class="layer-num">06</div>
+      <div class="layer-icon govern">🛡️</div>
+      <h3>Govern &amp; Oversee — ConductGuard</h3>
+      <p>
+        <strong>ConductGuard</strong> enforces policy at the hook level — before any AI tool call
+        executes. Block, warn, or audit based on workspace policies. Set spend limits per model.
+        Insert <strong>approval blocks</strong> to require human sign-off before an agent takes a
+        destructive action. Every event is logged to an immutable audit trail.
+      </p>
+      <div class="layer-tags">
+        <span class="tag">ConductGuard</span>
+        <span class="tag">approval block</span>
+        <span class="tag">spend controls</span>
+        <span class="tag">policy enforcement</span>
+        <span class="tag">audit log</span>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════
+     SECTION 4 — HOW IT WORKS IN PRACTICE
+     ══════════════════════════════════════════ -->
+<section id="example">
+  <div class="example-inner">
+
+    <p class="example-label">How it works in practice</p>
+    <h2 class="example-headline">All six layers, one GitHub issue.</h2>
+    <p class="example-sub">
+      Here's the autopilot playbook running end-to-end — from a labeled issue to a merged PR,
+      with a human in the loop and guard enforced throughout.
+    </p>
+    <span class="example-playbook-name">autopilot.yaml</span>
+
+    <div class="steps">
+
+      <div class="step">
+        <div class="step-meta">
+          <span class="step-layer observe">01 &mdash; Observe</span>
+          <span class="step-block">trigger: github_webhook</span>
+        </div>
+        <div class="step-body">
+          <h4>GitHub issue labeled <code>ai-fix</code></h4>
+          <p>
+            The GitHub webhook fires the moment the label is applied. Conduct receives a structured
+            payload — issue body, repo, author — and starts the run. No polling. No manual trigger.
+          </p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-meta">
+          <span class="step-layer context">02 &mdash; Build Context</span>
+          <span class="step-block">recall_context + agent_booster</span>
+        </div>
+        <div class="step-body">
+          <h4>AI reads the relevant code</h4>
+          <p>
+            A <code>recall_context</code> block retrieves prior knowledge about this service.
+            Agent Booster runs a semantic search across the codebase and returns only the files
+            and symbols relevant to the issue — not the entire repo.
+          </p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-meta">
+          <span class="step-layer reason">03 &mdash; Reason &amp; Plan</span>
+          <span class="step-block">plan_fix (mode: single)</span>
+        </div>
+        <div class="step-body">
+          <h4>Brain block drafts a fix plan</h4>
+          <p>
+            A <code>plan_fix</code> Brain block running in single-turn mode produces a structured
+            JSON plan — files to change, approach, risk notes. It outputs JSON only.
+            No prose, no hallucinated code yet.
+          </p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-meta">
+          <span class="step-layer act">04 &mdash; Act</span>
+          <span class="step-block">run_shell + e2b_sandbox</span>
+        </div>
+        <div class="step-body">
+          <h4>Implements the fix &amp; runs tests</h4>
+          <p>
+            An agentic Brain block executes the plan: edits files, runs the test suite inside
+            an E2B sandbox (isolated, no prod access), and reports pass/fail.
+            The <code>max_turns</code> budget is enforced — the block stops before it can spiral.
+          </p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-meta">
+          <span class="step-layer human">05 &mdash; Human-in-the-Loop</span>
+          <span class="step-block">approval_block</span>
+        </div>
+        <div class="step-body">
+          <h4>Engineer approves before the PR opens</h4>
+          <p>
+            An <code>approval_block</code> posts the diff and test results to Slack and pauses the
+            run. The engineer reviews and clicks Approve or Reject directly in Slack.
+            The playbook resumes only on approval.
+          </p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-meta">
+          <span class="step-layer act">06 &mdash; Act + Remember</span>
+          <span class="step-block">github_pr + record_outcome</span>
+        </div>
+        <div class="step-body">
+          <h4>PR opened &amp; outcome recorded</h4>
+          <p>
+            The GitHub tool block opens a PR with the diff, links it to the original issue, and
+            requests review. A <code>record_outcome</code> memory block writes what was fixed and
+            how — so the next run on this service starts with that context already loaded.
+          </p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-meta">
+          <span class="step-layer govern">Every step &mdash; Govern</span>
+          <span class="step-block">ConductGuard (always on)</span>
+        </div>
+        <div class="step-body">
+          <h4>Guard enforced at every tool call</h4>
+          <p>
+            ConductGuard's PreToolUse hook intercepts every action before it executes — sandbox,
+            GitHub, Slack, memory writes. Spend limits prevent runaway model usage. Every event
+            is logged to the immutable audit trail whether the run succeeds or fails.
+          </p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════
+     SECTION 5 — CLOSING CTA
+     ══════════════════════════════════════════ -->
+<section id="cta">
+  <div class="cta-inner">
+    <h2 class="cta-headline">
+      Your team already has the LLM.<br>Now give it the harness.
+    </h2>
+    <p class="cta-sub">
+      Deploy the autopilot playbook in under ten minutes. No infrastructure to manage.
+      Connect GitHub, add a policy, and your first AI agent is live.
+    </p>
+    <div class="cta-actions">
+      <a class="btn-primary-lg" href="#">Start for free</a>
+      <a class="btn-text" href="#">Read the docs &rarr;</a>
+    </div>
+  </div>
+</section>
+
+
+<!-- FOOTER -->
+<footer>
+  <span class="footer-logo">Conduct</span>
+  <span class="footer-copy">&copy; 2026 Conduct AI. All rights reserved.</span>
+</footer>
+
+</body>
+</html>

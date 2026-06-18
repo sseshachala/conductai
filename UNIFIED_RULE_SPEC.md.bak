@@ -1,0 +1,351 @@
+# Unified Rule Spec — one `trigger → condition → response` for Playbooks, Guard, and Security
+
+**Status:** Draft v0.1 · Owner: Sudhi · Supersedes the parallel modelling in
+`app/dsl/schema.py` (playbooks), `app/modules/guard` (policies), and
+`app/modules/security` (detection policies).
+
+---
+
+## 1. Why this exists
+
+Conduct ships three products that are, structurally, the **same object**:
+
+| Product | "When…" | "…if…" | "…then" |
+|---|---|---|---|
+| **Playbook** (Automate) | a platform event fires (webhook / schedule / manual) | optional logic gate | run a block graph — *act* |
+| **Guard policy** | an AI tool tries a tool-call (PreToolUse hook) | tool + command/path matches | allow · warn · block · approval — *gate* |
+| **Security loop** | code / a PR / a finding is ingested | content matches a detector | record finding, optionally open a fix PR — *remediate* |
+
+Today these are three codebases (`app/dsl`, `app/modules/guard`,
+`app/modules/security`), three storage shapes (`workflows`+`workflow_versions`,
+`guard_policies`, `security_policies`), three authoring surfaces, and three
+activity streams. That is why the three-lens UX would otherwise be built three
+times.
+
+**This spec defines a single object — the `Rule` — that all three compile to.**
+The playbook DSL is already `trigger → condition → response`; Guard and Security
+are *constrained profiles* of the same schema. Unifying the model is what makes
+the intent box, the activity feed, and dry-run buildable once instead of thrice.
+
+Non-goal: this is not a destructive rewrite. §8 defines a facade-first path that
+preserves the live CLI policy-sync contract and the shipped Security Loop.
+
+---
+
+## 2. The core object
+
+```
+Rule
+ ├── trigger     WHEN — an event the platform observes
+ ├── condition   IF   — a predicate over that event
+ └── response    THEN — one of three kinds: act | gate | remediate
+```
+
+A `Rule` is the unit the three lenses share. The **lens** (`automate` / `guard`
+/ `secure`) is *derivable* from `trigger.family` + `response.kind`, but is stored
+denormalized for cheap feed/UI filtering.
+
+```python
+class Rule(BaseModel):
+    id: str | None = None
+    workspace_id: str | None = None
+    name: str
+    lens: Literal["automate", "guard", "secure"]   # derived, stored for query
+    version: int = 1
+    enabled: bool = True
+    builtin: bool = False
+
+    trigger: Trigger
+    condition: Condition | None = None             # None == always true
+    response: ActResponse | GateResponse | RemediateResponse  # discriminated by .kind
+```
+
+Today's `Workflow` (`app/dsl/schema.py`) becomes the `lens="automate"` profile of
+`Rule`: its `on:` is the `trigger`, its `logic` blocks are inline `condition`s,
+and its `blocks:` graph is an `ActResponse`.
+
+---
+
+## 3. The three sections
+
+### 3.1 `trigger` — WHEN
+
+A trigger names an **event family** and a concrete event, plus open-ended
+per-event filters (preserving today's `extra="allow"` Trigger).
+
+```python
+class Trigger(BaseModel):
+    family: Literal["platform", "tool_call", "code"]
+    event: str               # see families below
+    integration: str | None = None
+    next: str | None = None  # automate-only: entry block id
+    model_config = ConfigDict(extra="allow")   # event-specific filters
+```
+
+| `family` | Source | Example `event` | Latency class | Feeds lens |
+|---|---|---|---|---|
+| `platform` | webhook / schedule / manual (existing `webhooks.py`, run queue) | `github.issue_opened`, `schedule.daily`, `manual` | async | automate |
+| `tool_call` | CLI PreToolUse hook (existing guard gate) | `tool.bash`, `tool.edit`, `tool.write`, `tool.read` | **synchronous** | guard |
+| `code` | PR / commit / finding ingest (existing `security.ingest_finding`) | `pr.opened`, `finding.ingested`, `file.scanned` | async | secure |
+
+The `tool_call` family is the one hard constraint: it runs **inline in the
+developer's CLI hook** and must return a verdict in single-digit milliseconds. It
+never spawns a run (see §6).
+
+### 3.2 `condition` — IF
+
+Every existing matcher reduces to one of three predicate forms. `condition` is a
+small tagged union; `None` means "always fire" (the common automate case).
+
+```python
+class Condition(BaseModel):
+    # exactly one of:
+    expr: str | None = None              # automate: expression over run state, e.g. "{{triage.label}} == 'bug'"
+    match: MatchClause | None = None     # guard/secure: tool + regex matchers
+    all: list["Condition"] | None = None # boolean composition
+    any: list["Condition"] | None = None
+
+class MatchClause(BaseModel):
+    tool: str | None = None          # guard match_tool: "bash,edit,write" | "*"
+    pattern: str | None = None       # regex over command / content   (guard match_pattern, security pattern)
+    path_pattern: str | None = None  # regex over file path           (guard match_path_pattern)
+    finding_type: str | None = None  # secure: injection | secret-leak | …
+    severity_gte: str | None = None  # secure: act only at/above this severity
+```
+
+- **Guard** `no-rm-rf` → `match: { tool: "bash", pattern: "rm\\s+-rf" }`
+- **Security** `secret-sk-key` → `match: { pattern: "sk-[A-Za-z0-9]{20,}", finding_type: "secret-leak", severity_gte: "high" }`
+- **Playbook** logic block → `expr: "{{classify.output}} == 'bug'"`
+
+`MatchClause` is a strict superset of `GuardPolicy(match_tool, match_pattern,
+match_path_pattern)` and `SecurityPolicy(pattern, finding_type, severity)` — no
+expressiveness is lost.
+
+### 3.3 `response` — THEN
+
+Three kinds, discriminated by `kind`. This is the heart of the unification: the
+difference between the products is *which verb the response uses*, not the
+object's shape.
+
+```python
+class ActResponse(BaseModel):          # automate — run a block graph
+    kind: Literal["act"] = "act"
+    blocks: dict[str, Block]           # today's DSL blocks, unchanged
+    cleanup: dict[str, CleanupBlock] = {}
+
+class GateResponse(BaseModel):         # guard — synchronous verdict to the caller
+    kind: Literal["gate"] = "gate"
+    effect: Literal["allow", "warn", "block", "approval", "audit", "inject"]
+    message: str | None = None
+    inject: str | None = None          # for effect=inject (context injection)
+
+class RemediateResponse(BaseModel):    # secure — record + optional fix run
+    kind: Literal["remediate"] = "remediate"
+    finding_type: str
+    severity: str
+    suggested_fix: str | None = None
+    run_playbook: str | None = None    # e.g. "security_loop" — an act-Rule slug to chain
+```
+
+`GateResponse.effect` is exactly `GuardPolicy.action` (block | warn | audit |
+approval | inject) plus an explicit `allow`. `RemediateResponse` is
+`SecurityFinding`'s write-shape plus an optional pointer to an `act` Rule — which
+is how "open a fix PR" already works (the Security Loop *is* a playbook).
+
+---
+
+## 4. The lenses as constrained profiles
+
+A lens is a validated subset of `Rule`. The loader picks the profile from
+`lens`; authors never assemble the full union by hand.
+
+| | **Automate** | **Guard** | **Secure** |
+|---|---|---|---|
+| `trigger.family` | `platform` | `tool_call` | `code` |
+| `condition` | usually `None`; `expr` via logic blocks | required `match` | required `match` |
+| `response.kind` | `act` | `gate` | `remediate` |
+| Executes | async, via run queue | **sync, in CLI hook** | async, via run queue |
+| Produces | a `run` + `run_traces` | a `guard_audit_event` | a `security_finding` (+ optional run) |
+| Authoring | canvas / YAML / intent | list + intent | list + intent |
+
+The asymmetry that must survive: **Guard evaluates synchronously and never
+creates a run row.** Everything else flows through the existing executor + queue.
+
+---
+
+## 5. Field-level mapping from today's models
+
+### 5.1 `GuardPolicy` → `Rule` (lens=guard)
+
+| `guard_policies` column | Unified `Rule` field |
+|---|---|
+| `rule_id` | `id` / `name` |
+| `description` | `name` (display) |
+| `match_tool` | `condition.match.tool` |
+| `match_pattern` | `condition.match.pattern` |
+| `match_path_pattern` | `condition.match.path_pattern` |
+| `action` | `response.effect` |
+| `message` | `response.message` |
+| `enabled` | `enabled` |
+| `builtin` | `builtin` |
+| — (implicit) | `trigger = {family: tool_call, event: tool.<match_tool>}` |
+
+`app/modules/guard/builtin_policies.yaml` maps 1:1 — every rule already carries
+`match_tool`, `match_pattern`, `action`, `message`.
+
+### 5.2 `SecurityPolicy` + `SecurityFinding` → `Rule` (lens=secure)
+
+| `security_policies` column | Unified `Rule` field |
+|---|---|
+| `rule_id` / `description` | `id` / `name` |
+| `pattern` | `condition.match.pattern` |
+| `finding_type` | `condition.match.finding_type` **and** `response.finding_type` |
+| `severity` | `response.severity` (+ `severity_gte` if used as a gate) |
+| `enabled` / `builtin` | `enabled` / `builtin` |
+| — | `trigger = {family: code, event: finding.ingested}` |
+| — | `response.kind = remediate`, `run_playbook = security_config.automation_workflow_on_finding ? "security_loop" : None` |
+
+`SecurityConfig.automation_finding_severity` becomes the rule's
+`condition.match.severity_gte`. The autopilot/`run_playbook` chain already exists
+in `security.ingest_finding` → `_trigger_security_loop`.
+
+### 5.3 `Workflow` (DSL) → `Rule` (lens=automate)
+
+| `Workflow` field | Unified `Rule` field |
+|---|---|
+| `on:` (`dict[str, Trigger]`) | `trigger` (family=platform) |
+| `blocks:` | `response.blocks` (kind=act) |
+| `cleanup:` | `response.cleanup` |
+| `logic` blocks (`condition`) | inline `condition.expr` (unchanged at runtime) |
+| `params` / `inputs` | carried on `Rule` unchanged |
+
+Automate is the full-power form; the DSL is unchanged for authors. Multi-trigger
+workflows (today `on:` is a dict) are modelled as **N rules sharing one
+response** — see §11 Q1.
+
+---
+
+## 6. Compile & execution model
+
+Two execution paths, selected by `response.kind`. **This split is the contract
+that keeps Guard fast and the rest unchanged.**
+
+```
+                       ┌─ kind=act ───────► run queue ► executor ► run + run_traces
+ Rule ─ compile ─►  ───┤
+                       ├─ kind=remediate ─► write security_finding ─► (optional) act-Rule via queue
+                       │
+                       └─ kind=gate ──────► evaluate inline in CLI hook ► guard_audit_event
+                                            (NO queue, NO run row, sync verdict)
+```
+
+- `act` / `remediate` reuse the **existing** queue + `executor.py`. No runtime
+  change — `remediate` is "write a row, then maybe enqueue an `act` Rule," which
+  is what `ingest_finding` does today.
+- `gate` rules compile to the **same flat matcher list the CLI gate already
+  consumes** (§8). The unified model is an authoring/storage convenience on top;
+  the wire format the hook reads does not change.
+- Condition evaluation is one shared function `evaluate(condition, event) -> bool`
+  used by all three paths and by dry-run (§7).
+
+---
+
+## 7. Dry-run falls out of the schema
+
+Because a Rule is data and `evaluate()` is pure, dry-run is "replay historical
+events through a *proposed* rule without executing the response":
+
+```python
+def dry_run(rule: Rule, since: datetime) -> DryRunReport:
+    events = load_events(rule.trigger.family, rule.workspace_id, since)
+    hits = [e for e in events if evaluate(rule.condition, e)]
+    return DryRunReport(
+        matched=len(hits),
+        sample=hits[:20],
+        would=simulate(rule.response, hits),  # "block", "flag", "run" — describe, don't do
+    )
+```
+
+Event sources already exist per family:
+
+| `trigger.family` | Replay source table |
+|---|---|
+| `platform` | `runs` + `run_analytics_events` |
+| `tool_call` | `guard_audit_events` |
+| `code` | `security_findings` |
+
+This is the one genuinely new capability, and it is the trust step that makes
+intent-first safe for governance (you see blast radius before you arm a rule).
+
+---
+
+## 8. Storage & backward compatibility
+
+**Phase-1 storage is a facade, not a migration.** Keep `guard_policies`,
+`security_policies`, and `workflows`/`workflow_versions` as the systems of
+record. Add:
+
+1. A read model `rule_view` — a `UNION` over the three tables projecting the
+   common `Rule` columns (`id, workspace_id, name, lens, enabled, trigger, …`).
+   The feed and the lens lists read from this.
+2. A unified **feed view** over `runs` ∪ `guard_audit_events` ∪
+   `security_findings` ∪ `audit_log` — the activity surface.
+
+**The CLI contract is sacred.** `conduct guard` syncs policies from
+`/guard/policies/sync` and the local gate reads a flat
+`{match_tool, match_pattern, match_path_pattern, action, message}` list. The
+unified model must continue to *serialize gate rules to exactly that shape*.
+Adding `Rule` on the server does not change the bytes the hook reads. Any future
+change to that wire format is versioned (`policy_schema_version`) and the CLI
+negotiates.
+
+A physical `rules` table (single system of record) is **Phase 4**, behind the
+preserved contract, only once the facade has proven the model.
+
+---
+
+## 9. What this collapses (the payoff)
+
+- `app/modules/guard` policy CRUD + `app/modules/security` policy CRUD →
+  one rule service with three profile validators.
+- `security.py` + `secure.py` + `guard_policies` routers → one `rules` router
+  with a `lens` filter (closes the router-sprawl item).
+- Two `builtin_policies.yaml` → one seed file with `lens:` per entry.
+- Intent endpoint (`generate_workflow`) → one endpoint that emits any lens
+  (add `lens` param + per-lens system prompt).
+- Three activity pages → one feed view, filtered by lens.
+
+No behaviour is removed. The executor, the queue, the webhook triggers, the CLI
+gate, and all 22 playbooks are untouched.
+
+---
+
+## 10. Migration phases (maps to the impact analysis)
+
+| Phase | Work | Risk |
+|---|---|---|
+| **0** | This spec; freeze the `Rule` schema + `policy_schema_version` | none |
+| **1** | `rule_view` + unified feed view; home/feed UI reads them | none (additive read) |
+| **2** | Generalize intent endpoint to emit guard/secure rules | low |
+| **3** | `dry_run()` + replay sources; dry-run UI | low (read-only) |
+| **4** | Physical `rules` table; refactor guard/security enforcement onto shared compiler target; collapse routers/modules | medium — gated by CLI contract preservation |
+
+---
+
+## 11. Open decisions
+
+1. **Multi-trigger workflows.** Today `on:` is a `dict[str, Trigger]`. Options:
+   (a) one Rule with `trigger: list[Trigger]`, or (b) N rules sharing a response.
+   Recommend (a) — keeps a workflow one object in the feed. Requires `trigger`
+   to accept a list.
+2. **`approval` effect lives in both lenses.** Guard has `action=approval`;
+   playbooks have `approval` blocks. Keep them distinct: Guard `approval` is a
+   sync hold on a tool-call; the playbook approval block is an async run step.
+   They do not merge.
+3. **Severity as gate vs filter.** For Secure, `severity_gte` can act as a
+   condition filter (only act on high+) or as a gate effect (block merge on
+   critical). Spec models it as a condition filter; a future `code`-family gate
+   (block PR merge) would add a `GateResponse` to the secure lens.
+4. **Where does `lens` live — derived or authored?** Stored denormalized for
+   query speed; validated against `trigger.family` + `response.kind` on save so
+   it can never drift.
