@@ -33,74 +33,6 @@ interface Policy {
   persona_affinity?: string[]
 }
 
-// ─── Category mapping ─────────────────────────────────────────────────────────
-
-const RULE_CATEGORIES: Record<string, string> = {
-  "no-rm-rf": "Destructive Operations",
-  "no-git-reset-hard": "Destructive Operations",
-  "no-force-push": "Destructive Operations",
-  "no-drop-table": "Destructive Operations",
-  "no-truncate-table": "Destructive Operations",
-  "no-delete-without-where": "Destructive Operations",
-  "no-env-commits": "Secrets & Credentials",
-  "no-hardcoded-secrets": "Secrets & Credentials",
-  "no-aws-keys": "Secrets & Credentials",
-  "no-private-key-files": "Secrets & Credentials",
-  "no-secret-in-commit-msg": "Secrets & Credentials",
-  "secret-stripe": "Secrets & Credentials",
-  "secret-slack": "Secrets & Credentials",
-  "secret-private-key": "Secrets & Credentials",
-  "no-sudo": "Permission Escalation",
-  "no-chmod-permissive": "Permission Escalation",
-  "no-chown-root": "Permission Escalation",
-  "approve-prod-deploy": "Production Gates",
-  "approve-db-migration-prod": "Production Gates",
-  "approve-terraform-destroy": "Production Gates",
-  "approve-kubectl-delete": "Production Gates",
-  "approve-prod-env-edit": "Production Gates",
-  "audit-migrations": "Audit",
-  "audit-ci-config": "Audit",
-  "audit-dockerfile": "Audit",
-  "cmd-injection": "Code Security",
-  "sql-injection": "Code Security",
-  "weak-hash-md5": "Code Security",
-  "weak-hash-sha1": "Code Security",
-  "warn-deterministic-compute": "Token Efficiency",
-  "warn-large-context-dump": "Token Efficiency",
-  "pii-redact": "Privacy",
-  "secret-redact": "Privacy",
-  // Compliance pack rules
-  "owasp_injection_guard": "Code Security",
-  "owasp_crypto_guard": "Code Security",
-  "owasp_eval_guard": "Code Security",
-  "owasp_hardcoded_role_guard": "Permission Escalation",
-  "owasp_weak_session_guard": "Code Security",
-  "owasp_ssrf_guard": "Code Security",
-  "soc2_hardcoded_secret_guard": "Secrets & Credentials",
-  "soc2_log_pii_guard": "Privacy",
-  "hipaa_phi_guard": "Privacy",
-  "hipaa_unencrypted_phi_guard": "Privacy",
-  "pci_pan_guard": "Secrets & Credentials",
-  "pci_cvv_guard": "Secrets & Credentials",
-  "baseline_no_api_keys_guard": "Secrets & Credentials",
-}
-
-const CATEGORY_ORDER = [
-  "Destructive Operations",
-  "Secrets & Credentials",
-  "Permission Escalation",
-  "Production Gates",
-  "Code Security",
-  "Audit",
-  "Token Efficiency",
-  "Privacy",
-  "Custom Rules",
-]
-
-function categoryFor(p: { rule_id: string; category?: string }): string {
-  return p.category || RULE_CATEGORIES[p.rule_id] || "Custom Rules"
-}
-
 // ─── Guard Shell ──────────────────────────────────────────────────────────────
 
 const GUARD_TABS = [
@@ -113,20 +45,13 @@ const GUARD_TABS = [
   { href: "/guard/settings",        label: "Settings"        },
 ]
 
-// slug → display name for installed skill packs
-// legacyId: old pack_id value still stored in guard_policies.pack_id rows (pre-migration)
-const PACK_LABELS: { id: string; legacyId: string; name: string }[] = [
-  { id: "conduct-owasp",   legacyId: "owasp_top10",      name: "OWASP Top 10" },
-  { id: "conduct-soc2",    legacyId: "soc2",             name: "SOC 2" },
-  { id: "conduct-hipaa",   legacyId: "hipaa",            name: "HIPAA" },
-  { id: "conduct-pci-dss", legacyId: "pci_dss",          name: "PCI-DSS" },
-  { id: "conduct-base",    legacyId: "startup_baseline", name: "Base" },
+const PACK_LABELS: { id: string; name: string }[] = [
+  { id: "conduct-owasp",   name: "OWASP Top 10" },
+  { id: "conduct-soc2",    name: "SOC 2" },
+  { id: "conduct-hipaa",   name: "HIPAA" },
+  { id: "conduct-pci-dss", name: "PCI-DSS" },
+  { id: "conduct-base",    name: "Base" },
 ]
-
-function matchesPack(policyPackId: string | null | undefined, packSlug: string, legacyId: string): boolean {
-  if (!policyPackId) return false
-  return policyPackId === packSlug || policyPackId === legacyId
-}
 
 function GuardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -718,7 +643,6 @@ function PoliciesContent() {
   const [refreshing, setRefreshing] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [confirmDeleteValue, setConfirmDeleteValue] = useState("")
-  const [activeTab, setActiveTab] = useState<string | null>(null)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [installedPacks, setInstalledPacks] = useState<Set<string>>(new Set())
   const [activePackFilter, setActivePackFilter] = useState<string | null>(null)
@@ -768,14 +692,7 @@ function PoliciesContent() {
         .then(r => r.ok ? r.json() : null)
         .then(d => {
           if (d?.installed) {
-            // normalise: API may return legacy IDs (owasp_top10) or new slugs (conduct-owasp)
-            const ids = new Set<string>()
-            for (const raw of d.installed) {
-              const match = PACK_LABELS.find(pl => pl.id === raw || pl.legacyId === raw)
-              if (match) { ids.add(match.id); ids.add(match.legacyId) }
-              else ids.add(raw)
-            }
-            setInstalledPacks(ids)
+            setInstalledPacks(new Set<string>(d.installed))
           }
         })
         .catch(() => {})
@@ -866,25 +783,9 @@ function PoliciesContent() {
     }
   }
 
-  // Group by category
-  const grouped = policies.reduce<Record<string, Policy[]>>((acc, p) => {
-    const cat = categoryFor(p)
-    if (!acc[cat]) acc[cat] = []
-    acc[cat].push(p)
-    return acc
-  }, {})
-
-  const orderedCategories = [
-    ...CATEGORY_ORDER.filter(c => grouped[c]),
-    ...Object.keys(grouped).filter(c => !CATEGORY_ORDER.includes(c)),
-  ]
-
-  const currentTab = activePackFilter ? null : (activeTab && grouped[activeTab] ? activeTab : orderedCategories[0] ?? null)
   const baseVisible = activePackFilter
     ? policies.filter(p => p.pack_id === activePackFilter)
-    : activeTab === "__all__"
-      ? policies
-      : currentTab ? (grouped[currentTab] ?? []) : []
+    : policies
   const visiblePolicies = activePersonaFilter
     ? baseVisible.filter(p => (p.persona_affinity ?? []).includes(activePersonaFilter))
     : baseVisible
@@ -957,24 +858,23 @@ function PoliciesContent() {
         )}
 
         {/* Empty */}
-        {!loading && !error && orderedCategories.length === 0 && (
+        {!loading && !error && policies.length === 0 && (
           <div className="card" style={{ padding: "48px 24px", textAlign: "center" }}>
-            <p style={{ fontSize: 13, color: "var(--text-muted)" }}>No policies yet. Add a rule to get started.</p>
+            <p style={{ fontSize: 13, color: "var(--text-muted)" }}>No policies yet. Install a skill pack to get started.</p>
           </div>
         )}
 
-        {/* Category tabs + 2-col grid */}
-        {!loading && !error && orderedCategories.length > 0 && (
+        {!loading && !error && policies.length > 0 && (
           <>
             <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
             {/* Left sidebar */}
             <div style={{ width: 190, flexShrink: 0 }}>
-              {/* All tab */}
+              {/* All */}
               {(() => {
-                const active = !activePackFilter && (activeTab === "__all__")
+                const active = !activePackFilter
                 return (
                   <button
-                    onClick={() => { setActivePackFilter(null); setActiveTab("__all__") }}
+                    onClick={() => setActivePackFilter(null)}
                     style={{
                       display: "flex", alignItems: "center", justifyContent: "space-between",
                       width: "100%", background: active ? "var(--accent-bg, #eff6ff)" : "none",
@@ -995,48 +895,17 @@ function PoliciesContent() {
                 )
               })()}
 
-              <div style={{ height: 1, background: "var(--border)", margin: "8px 4px" }} />
-
-              {orderedCategories.map(cat => {
-                const active = !activePackFilter && cat === currentTab && activeTab !== "__all__"
-                const enabledCount = grouped[cat].filter(p => p.enabled).length
-                const total = grouped[cat].length
-                return (
-                  <button
-                    key={cat}
-                    onClick={() => { setActivePackFilter(null); setActiveTab(cat) }}
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "space-between",
-                      width: "100%", background: active ? "var(--accent-bg, #eff6ff)" : "none",
-                      border: "none", borderRadius: 8, padding: "7px 10px",
-                      fontSize: 12.5, fontWeight: active ? 600 : 400,
-                      color: active ? "var(--accent)" : "var(--text-3)",
-                      cursor: "pointer", textAlign: "left", marginBottom: 2,
-                      transition: "background .1s, color .1s",
-                    }}
-                  >
-                    <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cat}</span>
-                    <span style={{
-                      marginLeft: 8, fontSize: 10.5, flexShrink: 0,
-                      background: active ? "var(--accent)" : "var(--surface-2, #f4f4f5)",
-                      color: active ? "#fff" : "var(--text-muted)",
-                      borderRadius: 99, padding: "1px 7px", fontWeight: 600,
-                    }}>{enabledCount}/{total}</span>
-                  </button>
-                )
-              })}
-
               {installedPacks.size > 0 && (
                 <>
                   <div style={{ height: 1, background: "var(--border)", margin: "8px 4px" }} />
                   <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".08em", padding: "2px 10px 6px" }}>Skill Packs</div>
                   {PACK_LABELS.filter(p => installedPacks.has(p.id)).map(pack => {
                     const active = activePackFilter === pack.id
-                    const count = policies.filter(p => matchesPack(p.pack_id, pack.id, pack.legacyId)).length
+                    const count = policies.filter(p => p.pack_id === pack.id).length
                     return (
                       <button
                         key={pack.id}
-                        onClick={() => { setActivePackFilter(active ? null : pack.id); setActiveTab(null) }}
+                        onClick={() => setActivePackFilter(active ? null : pack.id)}
                         style={{
                           display: "flex", alignItems: "center", justifyContent: "space-between",
                           width: "100%", background: active ? "var(--accent-bg, #eff6ff)" : "none",
@@ -1051,7 +920,7 @@ function PoliciesContent() {
                           marginLeft: 6, fontSize: 9.5, fontWeight: 700, flexShrink: 0,
                           background: "var(--accent-weak)", color: "var(--accent-text)",
                           borderRadius: 99, padding: "1px 6px",
-                        }}>Installed · {count}</span>
+                        }}>{count}</span>
                       </button>
                     )
                   })}
@@ -1093,19 +962,14 @@ function PoliciesContent() {
 
             {/* Right: header + 2-column card grid */}
             <div style={{ flex: 1, minWidth: 0 }}>
-              {(activePackFilter || currentTab) && (
+              {activePackFilter && (
                 <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
-                    {activePackFilter ? (PACK_LABELS.find(p => p.id === activePackFilter)?.name ?? activePackFilter) : activeTab === "__all__" ? "All Policies" : currentTab}
+                    {PACK_LABELS.find(p => p.id === activePackFilter)?.name ?? activePackFilter}
                   </span>
                   <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
                     — {visiblePolicies.filter(p => p.enabled).length} of {visiblePolicies.length} active
                   </span>
-                  {activePackFilter && (
-                    <span style={{ fontSize: 10.5, fontWeight: 700, background: "var(--accent-weak)", color: "var(--accent-text)", borderRadius: 99, padding: "1px 8px" }}>
-                      Installed
-                    </span>
-                  )}
                 </div>
               )}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, alignItems: "start" }}>
@@ -1127,7 +991,7 @@ function PoliciesContent() {
                           <ActionBadge action={p.action} />
                           {(p.builtin || p.pack_id) && (
                             <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 4, padding: "1px 5px" }}>
-                              {p.pack_id ? (PACK_LABELS.find(pl => pl.id === p.pack_id || pl.legacyId === p.pack_id)?.name ?? p.pack_id) : "base"}
+                              {p.pack_id ? (PACK_LABELS.find(pl => pl.id === p.pack_id)?.name ?? p.pack_id) : "base"}
                             </span>
                           )}
                         </div>
