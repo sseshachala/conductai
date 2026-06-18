@@ -128,6 +128,7 @@ export default function PublicPlaybookPage() {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [showYaml, setShowYaml] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL
@@ -264,7 +265,7 @@ export default function PublicPlaybookPage() {
             onClick={() => setShowYaml(v => !v)}
             className="inline-flex items-center gap-2 border border-stone-200 text-stone-600 text-sm font-medium px-5 py-2.5 rounded-lg hover:bg-stone-50 transition-colors"
           >
-            {showYaml ? "Hide YAML" : "View YAML"}
+            {showYaml ? "Hide YAML" : "Show YAML"}
           </button>
         </div>
 
@@ -274,10 +275,15 @@ export default function PublicPlaybookPage() {
             <div className="flex items-center justify-between px-4 py-2 border-b border-stone-800">
               <span className="text-xs text-stone-400 font-mono">{playbook.slug}.yaml</span>
               <button
-                onClick={() => navigator.clipboard?.writeText(playbook.yaml_source)}
+                onClick={() => {
+                  navigator.clipboard?.writeText(playbook.yaml_source).then(() => {
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 2000)
+                  }).catch(() => {})
+                }}
                 className="text-[11px] text-stone-500 hover:text-stone-300 transition-colors"
               >
-                Copy
+                {copied ? "Copied!" : "Copy"}
               </button>
             </div>
             <pre className="text-xs text-stone-300 font-mono p-4 overflow-x-auto leading-relaxed max-h-[500px] overflow-y-auto">

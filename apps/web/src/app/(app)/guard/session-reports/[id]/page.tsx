@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import { useParams, usePathname } from "next/navigation"
@@ -39,8 +39,37 @@ const GUARD_TABS = [
   { href: "/guard/settings",        label: "Settings"        },
 ]
 
-function GuardShell({ children }: { children: React.ReactNode }) {
+function relativeTime(ts: Date | null): string {
+  if (!ts) return "never"
+  const sec = Math.floor((Date.now() - ts.getTime()) / 1000)
+  if (sec < 5) return "just now"
+  if (sec < 60) return `${sec}s ago`
+  const min = Math.floor(sec / 60)
+  if (min < 60) return `${min}m ago`
+  return `${Math.floor(min / 60)}h ago`
+}
+
+function simpleMarkdown(md: string): string {
+  return "<p>" + md
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+    .replace(/^## (.+)$/gm, "</p><h3 style=\"font-size:14px;font-weight:700;margin:16px 0 6px\">$1</h3><p>")
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/^- (.+)$/gm, "<li>$1</li>")
+    .replace(/\n\n/g, "</p><p>")
+    .replace(/\n/g, "<br>") + "</p>"
+}
+
+function GuardShell({ children, lastUpdated }: { children: React.ReactNode; lastUpdated?: Date | null }) {
   const pathname = usePathname()
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setTick(n => n + 1), 10_000)
+    return () => clearInterval(t)
+  }, [])
   return (
     <div style={{ maxWidth: 1240, margin: "0 auto", padding: "28px 24px 48px" }}>
       <div style={{ display: "flex", alignItems: "flex-start", marginBottom: 20 }}>
@@ -59,7 +88,7 @@ function GuardShell({ children }: { children: React.ReactNode }) {
           </p>
         </div>
         <div style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)", paddingTop: 4 }}>
-          last updated: just now
+          last updated: {relativeTime(lastUpdated ?? null)}
         </div>
       </div>
       <div className="guard-tab-nav">
@@ -115,9 +144,36 @@ function SessionReportDetailContent() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [notFound, setNotFound] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
   const wsId = activeWorkspace?.id ?? teamId ?? null
-  const { role } = useGuardRole(teamId, wsId)
+  const { role, loading: roleLoading } = useGuardRole(teamId, wsId)
+
+  const load = useCallback(async () => {
+    if (!wsId) return
+    setLoading(true)
+    setError(null)
+    setNotFound(false)
+    try {
+      const token = await getToken()
+      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+      const headers: Record<string, string> = {}
+      if (token) headers["Authorization"] = `Bearer ${token}`
+      const res = await fetch(`${base}/guard/session-reports/${id}?workspace_id=${wsId}`, { headers })
+      if (res.status === 404) {
+        setNotFound(true)
+        return
+      }
+      if (!res.ok) throw new Error(`Failed to load session report (${res.status})`)
+      const data: SessionReport = await res.json()
+      setReport(data)
+      setLastUpdated(new Date())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error")
+    } finally {
+      setLoading(false)
+    }
+  }, [getToken, wsId, id])
 
   useEffect(() => {
     if (!teamLoading && !wsId) {
@@ -125,40 +181,15 @@ function SessionReportDetailContent() {
       return
     }
     if (!wsId) return
-
-    async function load() {
-      setLoading(true)
-      setError(null)
-      setNotFound(false)
-      try {
-        const token = await getToken()
-        const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-        const headers: Record<string, string> = {}
-        if (token) headers["Authorization"] = `Bearer ${token}`
-        const res = await fetch(`${base}/guard/session-reports/${id}?workspace_id=${wsId}`, { headers })
-        if (res.status === 404) {
-          setNotFound(true)
-          return
-        }
-        if (!res.ok) throw new Error(`Failed to load session report (${res.status})`)
-        const data: SessionReport = await res.json()
-        setReport(data)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Unknown error")
-      } finally {
-        setLoading(false)
-      }
-    }
-
     load()
-  }, [getToken, wsId, teamLoading, id])
+  }, [load, teamLoading, wsId])
 
   const topTools: [string, number][] = report?.tools_json
     ? Object.entries(report.tools_json).sort((a, b) => b[1] - a[1]).slice(0, 12)
     : []
 
   return (
-    <GuardShell>
+    <GuardShell lastUpdated={lastUpdated}>
       {/* Back link */}
       <div style={{ marginBottom: 16 }}>
         <Link
@@ -170,7 +201,7 @@ function SessionReportDetailContent() {
       </div>
 
       {/* Admin gate */}
-      {role !== "admin" ? (
+      {!roleLoading && role !== "admin" ? (
         <div style={{ padding: "48px 24px", textAlign: "center" }}>
           <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>
             Session Reports are visible to workspace admins only.
@@ -188,8 +219,17 @@ function SessionReportDetailContent() {
               fontSize: 13,
               color: "var(--err)",
               marginBottom: 16,
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
             }}>
-              {error}
+              <span style={{ flex: 1 }}>{error}</span>
+              <button
+                onClick={load}
+                style={{ fontSize: 12, fontWeight: 600, background: "var(--err)", color: "#fff", border: "none", borderRadius: 6, padding: "4px 12px", cursor: "pointer", flexShrink: 0 }}
+              >
+                Retry
+              </button>
             </div>
           )}
 
@@ -270,10 +310,10 @@ function SessionReportDetailContent() {
                   { label: "Prompts", value: report.prompts, unit: null, color: "var(--text)" },
                   { label: "Commits", value: report.commits, unit: null, color: "var(--text)" },
                   {
-                    label: "Autonomy",
-                    value: report.autonomy_score !== null ? report.autonomy_score.toFixed(1) : "—",
-                    unit: "/ 100",
-                    color: report.autonomy_score !== null ? autonomyColor(report.autonomy_score) : "var(--text-muted)",
+                    label: "Lines / hr",
+                    value: report.lines_per_hour !== null ? Math.round(report.lines_per_hour) : "—",
+                    unit: null,
+                    color: report.lines_per_hour !== null ? "var(--text)" : "var(--text-muted)",
                   },
                 ].map(card => (
                   <div key={card.label} style={{
@@ -302,7 +342,7 @@ function SessionReportDetailContent() {
                     Top Tools
                   </div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {topTools.map(([tool]) => (
+                    {topTools.map(([tool, count]) => (
                       <span key={tool} style={{
                         display: "inline-block",
                         fontSize: 12,
@@ -313,7 +353,7 @@ function SessionReportDetailContent() {
                         padding: "4px 10px",
                         color: "var(--text-2)",
                       }}>
-                        {tool}
+                        {tool} <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>× {count}</span>
                       </span>
                     ))}
                   </div>
@@ -336,15 +376,7 @@ function SessionReportDetailContent() {
                       color: "var(--text-2)",
                       lineHeight: 1.7,
                     }}
-                    dangerouslySetInnerHTML={{
-                      __html: report.report_md
-                        .replace(/&/g, "&amp;")
-                        .replace(/</g, "&lt;")
-                        .replace(/>/g, "&gt;")
-                        .replace(/"/g, "&quot;")
-                        .replace(/'/g, "&#39;")
-                        .replace(/\n/g, "<br>"),
-                    }}
+                    dangerouslySetInnerHTML={{ __html: simpleMarkdown(report.report_md) }}
                   />
                 ) : (
                   <div style={{ padding: "24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
