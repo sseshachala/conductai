@@ -156,6 +156,10 @@ async def _ws_listener() -> None:
             async with websockets.connect(ws_url) as ws:
                 LOG.info("WS connected to %s", ws_url)
                 backoff = 2
+                # Re-fetch on every (re)connect — catches any changes missed while disconnected
+                await asyncio.get_event_loop().run_in_executor(
+                    None, _fetch_policy, workspace_id, "standard"
+                )
                 async for raw in ws:
                     try:
                         msg = json.loads(raw)
