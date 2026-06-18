@@ -141,6 +141,11 @@ function SettingsContent() {
   // Enforcement mode
   const [enforcementMode, setEnforcementMode] = useState<"block" | "warn" | "audit">("warn")
 
+  // Persona
+  const [persona, setPersona] = useState<string | null>(null)
+  const [personaSaving, setPersonaSaving] = useState(false)
+  const [personaSaved, setPersonaSaved] = useState(false)
+
   // Re-sync state
   const [resyncing, setResyncing] = useState(false)
   const [resyncDone, setResyncDone] = useState(false)
@@ -198,6 +203,9 @@ function SettingsContent() {
       fetch(`${base}/guard/members/me/token?workspace_id=${wsId}`, { headers })
         .then(r => r.ok ? r.json() : null)
         .then(d => setMemberToken(d?.member_token ?? null))
+      fetch(`${base}/guard/config/persona`, { headers: { ...headers, "x-workspace-id": wsId } })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.persona) setPersona(d.persona) })
         .catch(() => setMemberToken(null))
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load settings")
@@ -595,6 +603,75 @@ function SettingsContent() {
               </div>
 
             </div>
+          </div>
+
+          {/* ── Policy Persona ───────────────────────────────────────────────── */}
+          <div className="card" style={{ overflow: "hidden", marginTop: 20 }}>
+            <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ width: 30, height: 30, borderRadius: 8, background: "#7c3aed", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+              </span>
+              <div>
+                <div style={{ fontWeight: 650, fontSize: 14.5 }}>Policy persona</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 1 }}>Sets which rules are enforced for all agents in this workspace.</div>
+              </div>
+              {personaSaved && <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--ok)", fontWeight: 600 }}>Saved</span>}
+            </div>
+            <div style={{ padding: "18px 20px", display: "flex", gap: 12 }}>
+              {[
+                { key: "conservative", label: "Conservative", badge: "🔴", desc: "Default deny. Block everything not explicitly allowed. Best for production agents and regulated environments." },
+                { key: "standard",     label: "Standard",     badge: "🟡", desc: "Allow common read ops, block destructive actions. Best for most engineering teams." },
+                { key: "developer",    label: "Developer",    badge: "🟢", desc: "Audit everything, block only catastrophic risks. Best for local dev and experimentation." },
+              ].map(p => {
+                const active = (persona ?? "standard") === p.key
+                return (
+                  <button
+                    key={p.key}
+                    disabled={!isAdmin || personaSaving}
+                    onClick={async () => {
+                      if (!isAdmin || active) return
+                      setPersonaSaving(true)
+                      try {
+                        const headers = await authHeaders()
+                        const res = await fetch(`${base}/guard/config/persona`, {
+                          method: "PATCH",
+                          headers: { ...headers, "x-workspace-id": wsId ?? "" },
+                          body: JSON.stringify({ persona: p.key }),
+                        })
+                        if (res.ok) {
+                          setPersona(p.key)
+                          setPersonaSaved(true)
+                          setTimeout(() => setPersonaSaved(false), 2500)
+                        }
+                      } finally {
+                        setPersonaSaving(false)
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: "14px 16px",
+                      borderRadius: 10,
+                      border: `2px solid ${active ? "var(--accent)" : "var(--border)"}`,
+                      background: active ? "var(--accent-weak)" : "var(--surface)",
+                      textAlign: "left",
+                      cursor: isAdmin ? "pointer" : "default",
+                      opacity: personaSaving ? 0.6 : 1,
+                      transition: "border-color 0.15s, background 0.15s",
+                    }}
+                  >
+                    <div style={{ fontSize: 15, marginBottom: 5 }}>{p.badge} <strong style={{ color: active ? "var(--accent-text)" : "var(--text)" }}>{p.label}</strong></div>
+                    <div style={{ fontSize: 12, color: "var(--text-3)", lineHeight: 1.4 }}>{p.desc}</div>
+                  </button>
+                )
+              })}
+            </div>
+            {!isAdmin && (
+              <div style={{ padding: "0 20px 16px", fontSize: 12, color: "var(--text-muted)" }}>
+                Only admins can change the workspace persona.
+              </div>
+            )}
           </div>
 
           {/* ── MCP Integration ─────────────────────────────────────────────── */}
