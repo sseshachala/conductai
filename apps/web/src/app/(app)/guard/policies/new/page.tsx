@@ -2,13 +2,12 @@
 
 import { useState, useCallback, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
-import { getGuardTeamId } from "@/lib/guardStorage"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { POLICY_TEMPLATES } from "@/lib/guardPolicyTemplates"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -25,31 +24,6 @@ interface GeneratedPolicy {
   match_path_pattern: string
   action: PolicyAction
   message: string
-}
-
-// ---------------------------------------------------------------------------
-// Templates
-// ---------------------------------------------------------------------------
-
-const TEMPLATES = [
-  { label: "Approve merge to main",        prompt: "Require approval before merging to the main or master branch" },
-  { label: "Meaningful commit messages",   prompt: "Warn when commit messages are shorter than 10 characters or left empty" },
-  { label: "No PII in files",              prompt: "Block writing files that contain email addresses or phone numbers" },
-  { label: "No SELECT *",                  prompt: "Warn when SQL queries use SELECT * instead of explicit column names" },
-  { label: "No hardcoded IPs",             prompt: "Block hardcoded IP addresses in source code files" },
-  { label: "Audit dependency changes",     prompt: "Audit any changes to package.json, requirements.txt, or pyproject.toml" },
-  { label: "Non-standard registries",      prompt: "Warn when installing packages from non-standard or private registries" },
-  { label: "No privileged ports",          prompt: "Block opening or binding to ports below 1024 in code" },
-  { label: "Approve K8s manifests",        prompt: "Require approval before modifying Kubernetes manifest files" },
-  { label: "Audit Terraform state",        prompt: "Audit any changes to Terraform state files (.tfstate)" },
-]
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function getTeamId(): string {
-  return getGuardTeamId()
 }
 
 // ---------------------------------------------------------------------------
@@ -120,12 +94,14 @@ function ReviewCard({
   policy,
   onChange,
   onSave,
+  onDiscard,
   saving,
   saveError,
 }: {
   policy: GeneratedPolicy
   onChange: (p: GeneratedPolicy) => void
   onSave: () => void
+  onDiscard: () => void
   saving: boolean
   saveError: string | null
 }) {
@@ -299,12 +275,13 @@ function ReviewCard({
         justifyContent: "flex-end",
         gap: 12,
       }}>
-        <Link
-          href="/guard/policies"
+        <button
+          type="button"
           className="btn btn-ghost btn-sm"
+          onClick={onDiscard}
         >
           Discard
-        </Link>
+        </button>
         <button
           type="button"
           onClick={handleSaveClick}
@@ -375,7 +352,6 @@ export default function NewPolicyPage() {
 
     try {
       const headers = await authHeaders()
-      const teamId = getTeamId()
       const res = await fetch(`${apiUrl}/guard/policies/generate`, {
         method: "POST",
         headers,
@@ -417,7 +393,6 @@ export default function NewPolicyPage() {
 
     try {
       const headers = await authHeaders()
-      const teamId = getTeamId()
       const body: Record<string, unknown> = {
         rule_id: generatedPolicy.rule_id.trim(),
         description: generatedPolicy.description.trim(),
@@ -439,6 +414,15 @@ export default function NewPolicyPage() {
         body: JSON.stringify(body),
       })
       if (!res.ok) {
+        if (res.status === 422) {
+          const json = await res.json().catch(() => null)
+          const d = json?.detail
+          if (Array.isArray(d) && d.length > 0) {
+            const field = Array.isArray(d[0]?.loc) ? d[0].loc.join(".") : null
+            const msg = d[0]?.msg ?? "Validation error"
+            throw new Error(field ? `${field}: ${msg}` : msg)
+          }
+        }
         const detail = await res.text().catch(() => "")
         throw new Error(detail || `HTTP ${res.status}`)
       }
@@ -463,14 +447,23 @@ export default function NewPolicyPage() {
       }}>
         {/* Back link */}
         <div>
-          <Link
-            href="/guard/policies"
+          <button
+            type="button"
+            onClick={() => {
+              const hasContent = prompt.trim() || generatedPolicy?.rule_id || generatedPolicy?.match_pattern
+              if (hasContent && !confirm("Discard this policy? Your changes will be lost.")) return
+              router.push("/guard/policies")
+            }}
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: 4,
               fontSize: 13,
               color: "var(--text-3)",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 0,
               textDecoration: "none",
             }}
           >
@@ -478,7 +471,7 @@ export default function NewPolicyPage() {
               <path fillRule="evenodd" d="M9.78 4.22a.75.75 0 0 1 0 1.06L7.06 8l2.72 2.72a.75.75 0 1 1-1.06 1.06L5.47 8.53a.75.75 0 0 1 0-1.06l3.25-3.25a.75.75 0 0 1 1.06 0Z" clipRule="evenodd" />
             </svg>
             Back to policies
-          </Link>
+          </button>
         </div>
 
         {/* Page heading */}
@@ -493,7 +486,7 @@ export default function NewPolicyPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <p style={{ fontSize: 12, fontWeight: 500, color: "var(--text-3)" }}>Start from a template</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {TEMPLATES.map((t) => (
+            {POLICY_TEMPLATES.map((t) => (
               <button
                 key={t.label}
                 type="button"
@@ -503,6 +496,43 @@ export default function NewPolicyPage() {
                   setGeneratedPolicy(null)
                   setSaveError(null)
                   setGenerateError(null)
+                  // auto-generate after setting the prompt
+                  setTimeout(() => {
+                    setPrompt(t.prompt)
+                    // call generate via the prompt value directly
+                    void (async () => {
+                      setGenerating(true)
+                      setGenerateError(null)
+                      setGeneratedPolicy(null)
+                      setSaveError(null)
+                      try {
+                        const headers = await authHeaders()
+                        const res = await fetch(`${apiUrl}/guard/policies/generate`, {
+                          method: "POST",
+                          headers,
+                          body: JSON.stringify({ prompt: t.prompt, workspace_id: teamId }),
+                        })
+                        if (!res.ok) {
+                          const detail = await res.text().catch(() => "")
+                          throw new Error(detail || `HTTP ${res.status}`)
+                        }
+                        const data = await res.json()
+                        setGeneratedPolicy({
+                          rule_id: data.rule_id ?? "",
+                          description: data.description ?? "",
+                          match_tool: (data.match_tool as MatchTool) ?? "*",
+                          match_pattern: data.match_pattern ?? "",
+                          match_path_pattern: data.match_path_pattern ?? "",
+                          action: (data.action as PolicyAction) ?? "block",
+                          message: data.message ?? "",
+                        })
+                      } catch (e) {
+                        setGenerateError(e instanceof Error ? e.message : "Failed to generate rule. Please try again.")
+                      } finally {
+                        setGenerating(false)
+                      }
+                    })()
+                  }, 0)
                 }}
                 style={{
                   fontSize: 12,
@@ -621,6 +651,11 @@ export default function NewPolicyPage() {
             policy={generatedPolicy}
             onChange={setGeneratedPolicy}
             onSave={handleSave}
+            onDiscard={() => {
+              const hasContent = prompt.trim() || generatedPolicy?.rule_id || generatedPolicy?.match_pattern
+              if (hasContent && !confirm("Discard this policy? Your changes will be lost.")) return
+              router.push("/guard/policies")
+            }}
             saving={saving}
             saveError={saveError}
           />

@@ -7,6 +7,7 @@ import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
+import { POLICY_TEMPLATES } from "@/lib/guardPolicyTemplates"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -388,14 +389,7 @@ function AddRuleModal({
           <div style={{ background: "var(--surface-2)", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
             <label style={labelStyle}>Generate with AI</label>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 2 }}>
-              {[
-                { label: "Approve merge to main",    prompt: "Require approval before merging to the main or master branch" },
-                { label: "No PII in files",          prompt: "Block writing files that contain email addresses or phone numbers" },
-                { label: "No hardcoded IPs",         prompt: "Block hardcoded IP addresses in source code files" },
-                { label: "Audit dependency changes", prompt: "Audit any changes to package.json, requirements.txt, or pyproject.toml" },
-                { label: "No SELECT *",              prompt: "Warn when SQL queries use SELECT * instead of explicit column names" },
-                { label: "Approve K8s manifests",    prompt: "Require approval before modifying Kubernetes manifest files" },
-              ].map(t => (
+              {POLICY_TEMPLATES.map(t => (
                 <button
                   key={t.label}
                   type="button"
@@ -595,9 +589,9 @@ export default function PoliciesPage() {
 
 function PoliciesContent() {
   const { getToken } = useAuth()
-  const { teamId, loading: teamLoading } = useGuardTeam()
+  const { teamId, loading: teamLoading, error: teamError } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
-  const { permissions } = useGuardRole(teamId, activeWorkspace?.id ?? null)
+  const { permissions, loading: permissionsLoading } = useGuardRole(teamId, activeWorkspace?.id ?? null)
   const [policies, setPolicies] = useState<Policy[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -613,7 +607,7 @@ function PoliciesContent() {
   const [successBanner, setSuccessBanner] = useState<string | null>(null)
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ""
-  const canWrite = permissions.canEditPolicies
+  const canWrite = !permissionsLoading && permissions.canEditPolicies
 
   const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
     const headers: Record<string, string> = { "Content-Type": "application/json" }
@@ -840,8 +834,18 @@ function PoliciesContent() {
           </div>
         )}
 
+        {/* Guard not installed */}
+        {!loading && teamError && (
+          <div className="card" style={{ padding: "48px 24px", textAlign: "center" }}>
+            <p style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>ConductGuard not set up</p>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 0 }}>
+              Run <code style={{ fontFamily: "ui-monospace,monospace", background: "var(--surface-2)", padding: "1px 6px", borderRadius: 4 }}>conduct guard init</code> in your terminal to get started.
+            </p>
+          </div>
+        )}
+
         {/* Empty */}
-        {!loading && !error && policies.length === 0 && (
+        {!loading && !teamError && !error && policies.length === 0 && (
           <div className="card" style={{ padding: "48px 24px", textAlign: "center" }}>
             <p style={{ fontSize: 13, color: "var(--text-muted)" }}>No policies yet. Install a skill pack to get started.</p>
           </div>
@@ -911,9 +915,9 @@ function PoliciesContent() {
               )}
               {(() => {
                 const personaDefs = [
-                  { id: "conservative", label: "Conservative", emoji: "🔴" },
-                  { id: "standard",     label: "Standard",     emoji: "🟡" },
-                  { id: "developer",    label: "Developer",    emoji: "🟢" },
+                  { id: "conservative", label: "Conservative" },
+                  { id: "standard",     label: "Standard"     },
+                  { id: "developer",    label: "Developer"    },
                 ] as const
                 const personaCounts = personaDefs.map(pd => policies.filter(p => (p.persona_affinity ?? []).includes(pd.id)).length)
                 if (personaCounts.every(c => c === 0)) return null
@@ -921,7 +925,7 @@ function PoliciesContent() {
                   <>
                     <div style={{ height: 1, background: "var(--border)", margin: "8px 4px" }} />
                     <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".08em", padding: "2px 10px 6px" }}>Persona</div>
-                    {personaDefs.map(({ id, label, emoji }, idx) => {
+                    {personaDefs.map(({ id, label }, idx) => {
                       const active = activePersonaFilter === id
                       const count = personaCounts[idx]
                       return (
@@ -937,7 +941,7 @@ function PoliciesContent() {
                             cursor: "pointer", textAlign: "left", marginBottom: 2,
                           }}
                         >
-                          <span>{emoji} {label}</span>
+                          <span>{label}</span>
                           <span style={{
                             marginLeft: 6, fontSize: 10.5, flexShrink: 0,
                             background: active ? "var(--accent)" : "var(--surface-2, #f4f4f5)",
@@ -1033,10 +1037,13 @@ function PoliciesContent() {
                         <span style={{ display: "flex", gap: 3, marginLeft: 8, alignItems: "center" }}>
                           {(p.persona_affinity ?? []).map(pa => (
                             <span key={pa} title={pa} style={{
-                              fontSize: 10, background: "var(--surface-2)", borderRadius: 99,
-                              padding: "1px 6px", color: "var(--text-3)", fontWeight: 500,
+                              fontSize: 10, borderRadius: 99,
+                              padding: "1px 6px", fontWeight: 600,
+                              background: pa === "conservative" ? "var(--err-bg)" : pa === "standard" ? "var(--warn-bg)" : "var(--ok-bg)",
+                              color: pa === "conservative" ? "var(--err)" : pa === "standard" ? "var(--warn)" : "var(--ok)",
+                              border: `1px solid ${pa === "conservative" ? "var(--err-bd)" : pa === "standard" ? "var(--warn-bd)" : "var(--ok-bd)"}`,
                             }}>
-                              {pa === "conservative" ? "🔴" : pa === "standard" ? "🟡" : "🟢"} {pa}
+                              {pa}
                             </span>
                           ))}
                         </span>
@@ -1087,28 +1094,6 @@ function PoliciesContent() {
                       </div>
                     )}
 
-                    {/* Delete confirm */}
-                    {!p.builtin && canWrite && confirmDeleteId === p.id && (
-                      <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10, marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-                        <p style={{ margin: 0, fontSize: 11, color: "var(--err)" }}>
-                          Type <strong>{p.rule_id}</strong> to confirm deletion.
-                        </p>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <input
-                            value={confirmDeleteValue}
-                            onChange={e => setConfirmDeleteValue(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === "Enter") handleDelete(p.id)
-                              if (e.key === "Escape") { setConfirmDeleteId(null); setConfirmDeleteValue("") }
-                            }}
-                            placeholder={p.rule_id}
-                            style={{ flex: 1, minWidth: 0, fontSize: 11.5, border: "1px solid var(--err-bd, #fecaca)", borderRadius: 8, padding: "6px 10px", outline: "none", background: "var(--surface)", color: "var(--text)" }}
-                          />
-                          <button onClick={() => handleDelete(p.id)} disabled={confirmDeleteValue !== p.rule_id} className="btn btn-sm" style={{ background: "var(--err)", color: "#fff", border: "none", opacity: confirmDeleteValue !== p.rule_id ? 0.4 : 1 }}>Confirm</button>
-                          <button onClick={() => { setConfirmDeleteId(null); setConfirmDeleteValue("") }} className="btn btn-ghost btn-sm">Cancel</button>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )
               })}
@@ -1133,6 +1118,57 @@ function PoliciesContent() {
           submitting={submitting}
         />
       )}
+
+      {/* Delete confirm modal */}
+      {confirmDeleteId && (() => {
+        const target = policies.find(p => p.id === confirmDeleteId)
+        if (!target) return null
+        return (
+          <div
+            style={{
+              position: "fixed", inset: 0, zIndex: 200,
+              background: "rgba(0,0,0,0.45)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+            onClick={() => { setConfirmDeleteId(null); setConfirmDeleteValue("") }}
+          >
+            <div
+              className="card"
+              style={{ width: 400, padding: "24px", display: "flex", flexDirection: "column", gap: 14 }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div>
+                <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>Delete policy</h2>
+                <p style={{ fontSize: 13, color: "var(--text-3)", marginTop: 6 }}>
+                  This cannot be undone. Type <strong style={{ color: "var(--err)" }}>{target.rule_id}</strong> to confirm.
+                </p>
+              </div>
+              <input
+                autoFocus
+                value={confirmDeleteValue}
+                onChange={e => setConfirmDeleteValue(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter") handleDelete(target.id)
+                  if (e.key === "Escape") { setConfirmDeleteId(null); setConfirmDeleteValue("") }
+                }}
+                placeholder={target.rule_id}
+                style={{ fontSize: 13, border: "1px solid var(--err-bd, #fecaca)", borderRadius: 8, padding: "8px 12px", outline: "none", background: "var(--surface)", color: "var(--text)" }}
+              />
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button onClick={() => { setConfirmDeleteId(null); setConfirmDeleteValue("") }} className="btn btn-ghost btn-sm">Cancel</button>
+                <button
+                  onClick={() => handleDelete(target.id)}
+                  disabled={confirmDeleteValue !== target.rule_id}
+                  className="btn btn-sm"
+                  style={{ background: "var(--err)", color: "#fff", border: "none", opacity: confirmDeleteValue !== target.rule_id ? 0.4 : 1 }}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </>
   )
 }

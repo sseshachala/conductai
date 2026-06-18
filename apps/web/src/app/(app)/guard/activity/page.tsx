@@ -187,7 +187,7 @@ function ActivityContent() {
   const { user } = useUser()
   const { teamId, loading: teamLoading } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
-  const { permissions } = useGuardRole(teamId, activeWorkspace?.id ?? null)
+  const { permissions, loading: permissionsLoading } = useGuardRole(teamId, activeWorkspace?.id ?? null)
   const [activeView, setActiveView] = useState<"events" | "sessions">("events")
   const [events, setEvents] = useState<AuditEvent[]>([])
   const [sessions, setSessions] = useState<GuardSession[]>([])
@@ -378,7 +378,7 @@ function ActivityContent() {
         })}
 
         {/* More filters */}
-        {permissions.canViewAllActivity && (
+        {!permissionsLoading && permissions.canViewAllActivity && (
           <select
             value={filterDeveloper}
             onChange={e => setFilterDeveloper(e.target.value)}
@@ -524,6 +524,11 @@ function ActivityContent() {
               {sessions.length} session{sessions.length !== 1 ? "s" : ""}
             </div>
           )}
+          {sessions.length >= 100 && (
+            <div style={{ borderTop: "1px solid var(--border)", padding: "8px 18px", fontSize: 12, color: "var(--warn)", textAlign: "center" }}>
+              Showing 100 sessions — older sessions may not be visible.
+            </div>
+          )}
         </div>
       )}
 
@@ -576,7 +581,14 @@ function ActivityContent() {
             }}
           >
             {["Time", "Developer", "Tool", "Call", "Input", "Decision", "Rule", "Blast Radius"].map((h, i) => (
-              <div key={i} className="eyebrow" style={{ fontSize: 9.5 }}>{h}</div>
+              <div
+                key={i}
+                className="eyebrow"
+                style={{ fontSize: 9.5 }}
+                title={h === "Blast Radius" ? "Risk tier (CRITICAL/HIGH/MEDIUM/LOW) + affected files count (f)" : undefined}
+              >
+                {h}
+              </div>
             ))}
           </div>
 
@@ -620,8 +632,13 @@ function ActivityContent() {
               {/* Decision */}
               <div>
                 {ev.conductai_run_id ? (
-                  <Link href={`/runs/${ev.conductai_run_id}`} style={{ opacity: 1, transition: "opacity 0.15s" }}>
+                  <Link
+                    href={`/runs/${ev.conductai_run_id}`}
+                    style={{ opacity: 1, transition: "opacity 0.15s", display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" }}
+                    aria-label="View run"
+                  >
                     <DecisionBadge decision={ev.decision} />
+                    <span style={{ fontSize: 11, color: "var(--accent-text)" }}>→</span>
                   </Link>
                 ) : (
                   <DecisionBadge decision={ev.decision} />
