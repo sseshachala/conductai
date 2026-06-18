@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
-from sqlalchemy.dialects.postgresql import JSON, JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSON, JSONB, UUID
 
 from app.core.database import Base
 
@@ -27,6 +27,9 @@ class GuardConfig(Base):
     alert_slack_integration_id = Column(UUID(as_uuid=True), nullable=True)
     automation_security_scan = Column(Boolean, nullable=False, default=False)
     automation_workflow_trigger = Column(Boolean, nullable=False, default=False)
+    # Persona governs which policy rule set applies to agents in this workspace.
+    # 'conservative' | 'standard' | 'developer' — admin-managed via dashboard.
+    persona = Column(String(20), nullable=False, default="standard")
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
@@ -44,6 +47,10 @@ class GuardMemberConfig(Base):
     clerk_user_id = Column(Text, nullable=False, primary_key=True)
     member_token = Column(Text, nullable=False)
     active = Column(Boolean, nullable=False, default=True)
+    # NULL = inherit workspace default persona from guard_config.persona
+    persona = Column(String(20), nullable=True)
+    # 'user' = self-selected via conduct init; 'admin' = locked by admin
+    assigned_by = Column(String(10), nullable=False, default="user")
     joined_at = Column(
         DateTime(timezone=True),
         nullable=False,
@@ -67,6 +74,9 @@ class GuardPolicy(Base):
     enabled = Column(Boolean, nullable=False, default=True)
     builtin = Column(Boolean, nullable=False, default=False)
     pack_id = Column(String(100), nullable=True)
+    # Which personas include this rule. GIN-indexed for array containment queries.
+    # e.g. ['conservative','standard'] means developer persona skips this rule.
+    persona_affinity = Column(ARRAY(Text), nullable=False, default=lambda: ["conservative", "standard", "developer"])
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
