@@ -5,7 +5,8 @@ import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
-import { duration } from "@/lib/runUtils"
+import StatusBadge from "@/components/runs/StatusBadge"
+import { isActive, duration, timeAgo } from "@/lib/runUtils"
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
@@ -24,16 +25,6 @@ interface Run {
   trigger_summary: string | null
 }
 
-function statusBadgeClass(status: string): string {
-  switch (status) {
-    case "succeeded": return "sbadge ok"
-    case "running":   return "sbadge run"
-    case "failed":    return "sbadge err"
-    case "cancelled": return "sbadge warn"
-    default:          return "sbadge idle"
-  }
-}
-
 export default function RunsPage() {
   const { id: workflowId } = useParams<{ id: string }>()
   const { getToken } = useAuth()
@@ -41,34 +32,47 @@ export default function RunsPage() {
   const [runs, setRuns] = useState<Run[]>([])
   const [workflowName, setWorkflowName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [hoveredRunId, setHoveredRunId] = useState<string | null>(null)
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const token = await getToken()
-        const workspaceId = getCookie("delegator_project_id")
-        const headers: Record<string, string> = {}
-        if (token) headers["Authorization"] = `Bearer ${token}`
-        if (workspaceId) headers["X-Workspace-Id"] = workspaceId
+  async function load() {
+    setLoading(true)
+    setError(null)
+    try {
+      const token = await getToken()
+      const workspaceId = getCookie("delegator_project_id")
+      const headers: Record<string, string> = {}
+      if (token) headers["Authorization"] = `Bearer ${token}`
+      if (workspaceId) headers["X-Workspace-Id"] = workspaceId
 
-        const [runsRes, wfRes] = await Promise.all([
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs`, { headers }),
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, { headers }),
-        ])
+      const [runsRes, wfRes] = await Promise.all([
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs`, { headers }),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, { headers }),
+      ])
 
-        if (runsRes.ok) setRuns(await runsRes.json())
-        if (wfRes.ok) {
-          const wf = await wfRes.json()
-          setWorkflowName(wf.name ?? null)
-        }
-      } finally {
-        setLoading(false)
+      if (runsRes.ok) {
+        setRuns(await runsRes.json())
+      } else {
+        setError(`Failed to load runs (${runsRes.status})`)
       }
+      if (wfRes.ok) {
+        const wf = await wfRes.json()
+        setWorkflowName(wf.name ?? null)
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load runs")
+    } finally {
+      setLoading(false)
     }
+  }
+
+  useEffect(() => {
     load()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId])
+
+  // Suppress unused var lint — workflowName shown in title when available
+  void workflowName
 
   return (
     <AppShell noPadding>
@@ -86,9 +90,46 @@ export default function RunsPage() {
             </Link>
           </div>
 
+          {/* Error state (#1) */}
+          {error && !loading && (
+            <div
+              style={{
+                marginBottom: 16,
+                padding: "12px 16px",
+                borderRadius: 8,
+                background: "var(--err-bg)",
+                border: "1px solid var(--err)",
+                color: "var(--err)",
+                fontSize: 13,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+              }}
+            >
+              <span>{error}</span>
+              <button
+                onClick={load}
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  padding: "4px 12px",
+                  borderRadius: 6,
+                  border: "1px solid var(--err)",
+                  background: "transparent",
+                  color: "var(--err)",
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
           {loading ? (
             <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading…</p>
-          ) : runs.length === 0 ? (
+          ) : runs.length === 0 && !error ? (
             <div
               style={{
                 borderRadius: 12,
@@ -129,15 +170,13 @@ export default function RunsPage() {
                     textDecoration: "none",
                     transition: "box-shadow 0.15s, border-color 0.15s",
                     boxShadow: hoveredRunId === run.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
-                    borderColor: hoveredRunId === run.id ? "var(--border)" : "var(--border)",
                   }}
                   onMouseEnter={() => setHoveredRunId(run.id)}
                   onMouseLeave={() => setHoveredRunId(null)}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                    <span className={statusBadgeClass(run.status)}>
-                      {run.status}
-                    </span>
+                    <StatusBadge status={run.status} />
+                    {/* Outcome text in left cell only — no trigger_summary duplication (#12) */}
                     {run.trigger_summary ? (
                       <span
                         style={{
@@ -155,11 +194,6 @@ export default function RunsPage() {
                         {run.id.slice(0, 8)}…
                       </span>
                     )}
-                    {run.triggered_by && (
-                      <span style={{ flexShrink: 0, fontSize: 12, color: "var(--text-muted)" }}>
-                        {run.triggered_by}
-                      </span>
-                    )}
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                     {run.max_turns != null && (
@@ -167,16 +201,28 @@ export default function RunsPage() {
                         est. {run.max_turns} turns
                       </span>
                     )}
+                    {/* Duration — elapsed for active runs (#7) */}
                     <span className="mono" style={{ fontSize: 12, color: "var(--text-2)" }}>
-                      {duration(run.started_at, run.completed_at)}
+                      {duration(run.started_at, run.completed_at, run.status)}
                     </span>
-                    <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                      {new Date(run.created_at).toLocaleString()}
+                    {/* Absolute date on hover (#15) */}
+                    <span
+                      title={new Date(run.created_at).toLocaleString()}
+                      style={{ fontSize: 12, color: "var(--text-muted)" }}
+                    >
+                      {timeAgo(run.created_at)}
                     </span>
                   </div>
                 </Link>
               ))}
             </div>
+          )}
+
+          {/* Run count (#19) */}
+          {!loading && runs.length > 0 && (
+            <p style={{ marginTop: 12, fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
+              {`Showing ${runs.length} run${runs.length !== 1 ? "s" : ""}`}
+            </p>
           )}
         </div>
       </div>

@@ -64,9 +64,13 @@ export function timeAgo(ts: string): string {
   return `${Math.floor(hrs / 24)}d ago`
 }
 
-export function duration(startedAt: string | null, completedAt: string | null): string {
-  if (!startedAt || !completedAt) return "—"
-  const ms = new Date(completedAt).getTime() - new Date(startedAt).getTime()
+export function duration(startedAt: string | null, completedAt: string | null, status?: string): string {
+  if (!startedAt) return "—"
+  const endMs = completedAt
+    ? new Date(completedAt).getTime()
+    : isActive(status ?? "") ? Date.now() : null
+  if (endMs === null) return "—"
+  const ms = endMs - new Date(startedAt).getTime()
   if (ms < 1000) return "< 1s"
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
   const totalSecs = Math.floor(ms / 1000)

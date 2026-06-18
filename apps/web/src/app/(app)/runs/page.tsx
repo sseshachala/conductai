@@ -1,11 +1,11 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
-import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
+import StatusBadge from "@/components/runs/StatusBadge"
 import { needsAttention, isActive, formatTrigger, timeAgo, duration } from "@/lib/runUtils"
 
 interface Run {
@@ -30,80 +30,6 @@ function getCookie(name: string): string | null {
   return m ? decodeURIComponent(m[1]) : null
 }
 
-// Map API status values to display variants used in the design
-type BadgeVariant = "ok" | "run" | "wait" | "err" | "idle"
-
-function getVariant(status: string): BadgeVariant {
-  if (status === "succeeded") return "ok"
-  if (status === "running") return "run"
-  if (status === "paused") return "wait"
-  if (status === "failed" || status === "cancelled") return "err"
-  return "idle"
-}
-
-interface BadgeConfig {
-  bg: string
-  color: string
-  border: string
-  label: string
-  pulse: boolean
-}
-
-const BADGE_MAP: Record<BadgeVariant, BadgeConfig> = {
-  ok:   { bg: "var(--ok-bg)",   color: "var(--ok)",   border: "var(--ok)",   label: "Succeeded", pulse: false },
-  run:  { bg: "var(--info-bg)", color: "var(--info)",  border: "var(--info)",  label: "Running",   pulse: true  },
-  wait: { bg: "var(--warn-bg)", color: "var(--warn)",  border: "var(--warn)",  label: "Awaiting",  pulse: true  },
-  err:  { bg: "var(--err-bg)",  color: "var(--err)",   border: "var(--err)",   label: "Failed",    pulse: false },
-  idle: { bg: "var(--surface-3)", color: "var(--text-2)", border: "var(--border)", label: "Pending", pulse: false },
-}
-
-interface StatusBadgeProps {
-  status: string
-}
-
-function StatusBadge({ status }: StatusBadgeProps) {
-  const variant = getVariant(status)
-  const cfg = BADGE_MAP[variant]
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 5,
-        fontSize: 11,
-        fontWeight: 600,
-        lineHeight: 1,
-        padding: "3px 8px",
-        borderRadius: 999,
-        background: cfg.bg,
-        color: cfg.color,
-        border: `1px solid ${cfg.border}`,
-        whiteSpace: "nowrap",
-        flexShrink: 0,
-      }}
-    >
-      {cfg.pulse && (
-        <span
-          className="conduct-pulse-dot"
-          style={{
-            width: 6,
-            height: 6,
-            borderRadius: "50%",
-            background: cfg.color,
-            flexShrink: 0,
-          }}
-        />
-      )}
-      {cfg.label}
-    </span>
-  )
-}
-
-interface OutcomeTextProps {
-  status: string
-  triggerSummary: string | null
-}
-
 function outcomeText(status: string, triggerSummary: string | null): string {
   if (triggerSummary) return triggerSummary
   if (status === "succeeded") return "Completed successfully"
@@ -111,7 +37,8 @@ function outcomeText(status: string, triggerSummary: string | null): string {
   if (status === "paused") return "Waiting for approval"
   if (status === "failed") return "Execution failed"
   if (status === "cancelled") return "Cancelled"
-  return "Pending"
+  if (status === "skipped") return "Skipped"
+  return "Queued"
 }
 
 interface FilterChipProps {
@@ -125,6 +52,7 @@ function FilterChip({ label, count, active, onClick }: FilterChipProps) {
   return (
     <button
       onClick={onClick}
+      aria-pressed={active}
       style={{
         height: 30,
         cursor: "pointer",
@@ -203,7 +131,6 @@ function FilterPanel({
         }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Panel header */}
         <div
           style={{
             padding: "16px 20px",
@@ -229,9 +156,7 @@ function FilterPanel({
           </button>
         </div>
 
-        {/* Panel body */}
         <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 20 }}>
-          {/* Repository */}
           <div>
             <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
               Repository
@@ -260,7 +185,6 @@ function FilterPanel({
             </select>
           </div>
 
-          {/* Playbook */}
           <div>
             <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
               Playbook
@@ -289,7 +213,6 @@ function FilterPanel({
             </select>
           </div>
 
-          {/* Time Range */}
           <div>
             <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
               Time range
@@ -320,7 +243,6 @@ function FilterPanel({
           </div>
         </div>
 
-        {/* Panel footer */}
         <div
           style={{
             padding: "12px 20px",
@@ -370,58 +292,24 @@ function matchesFilter(run: Run, filter: FilterLabel): boolean {
   return true
 }
 
-function getTimeRangeStart(range: TimeRangeLabel): Date | null {
-  const now = new Date()
-  if (range === "Last 24 hours") {
-    return new Date(now.getTime() - 24 * 60 * 60 * 1000)
-  }
-  if (range === "Last 7 days") {
-    return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-  }
-  if (range === "Last 30 days") {
-    return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-  }
-  return null
-}
-
-function matchesTimeRange(run: Run, range: TimeRangeLabel): boolean {
-  const startDate = getTimeRangeStart(range)
-  if (!startDate) return true
-  const runDate = new Date(run.created_at)
-  return runDate >= startDate
-}
-
-function matchesAdvancedFilters(
-  run: Run,
-  repository: string | null,
-  playbook: string | null,
-  timeRange: TimeRangeLabel
-): boolean {
-  if (repository && repository !== "All repositories" && run.repo !== repository) return false
-  if (playbook && playbook !== "All playbooks" && run.workflow_name !== playbook) return false
-  if (!matchesTimeRange(run, timeRange)) return false
-  return true
-}
-
 const GRID = "1.6fr 1fr 1.2fr 0.7fr 0.7fr 30px"
 const HEADERS = ["Workflow", "Trigger", "Outcome", "Duration", "When", ""]
 
 interface RunRowProps {
   run: Run
-  onClick: () => void
 }
 
-function RunRow({ run, onClick }: RunRowProps) {
+function RunRow({ run }: RunRowProps) {
   const [hovered, setHovered] = useState(false)
   const ts = run.started_at ?? run.created_at
   const triggerLabel = formatTrigger(run.triggered_by)
-  const triggerDetail = run.trigger_summary ?? (run.repo ? run.repo : null)
-  const durationStr = duration(run.started_at, run.completed_at)
+  // Only show repo under workflow name — trigger_summary lives in Outcome only (#12)
+  const triggerDetail = run.repo ?? null
+  const durationStr = duration(run.started_at, run.completed_at, run.status)
 
   return (
-    <div
-      role="row"
-      onClick={onClick}
+    <Link
+      href={`/workflows/${run.workflow_id}/runs/${run.id}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -434,6 +322,7 @@ function RunRow({ run, onClick }: RunRowProps) {
         cursor: "pointer",
         transition: "background .12s",
         background: hovered ? "var(--surface-2)" : "transparent",
+        textDecoration: "none",
       }}
     >
       {/* Workflow + project breadcrumb */}
@@ -453,15 +342,11 @@ function RunRow({ run, onClick }: RunRowProps) {
               <span style={{ color: "var(--border-2)", fontSize: 11, flexShrink: 0 }}>/</span>
             </>
           )}
-          <Link
-            href={`/workflows/${run.workflow_id}`}
-            onClick={e => e.stopPropagation()}
-            style={{ fontWeight: 600, fontSize: 13.5, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: "none" }}
-            onMouseEnter={e => (e.currentTarget.style.color = "var(--accent-text)")}
-            onMouseLeave={e => (e.currentTarget.style.color = "var(--text)")}
+          <span
+            style={{ fontWeight: 600, fontSize: 13.5, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
           >
             {run.workflow_name}
-          </Link>
+          </span>
         </div>
         {triggerDetail && (
           <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 11, color: "var(--text-muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -475,7 +360,7 @@ function RunRow({ run, onClick }: RunRowProps) {
         {triggerLabel}
       </div>
 
-      {/* Outcome */}
+      {/* Outcome — StatusBadge + trigger_summary text here only (#12) */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
         <StatusBadge status={run.status} />
         <span style={{ fontSize: 12.5, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -483,13 +368,16 @@ function RunRow({ run, onClick }: RunRowProps) {
         </span>
       </div>
 
-      {/* Duration */}
+      {/* Duration (#7 — elapsed for active runs) */}
       <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12, color: "var(--text-3)" }}>
         {durationStr}
       </div>
 
-      {/* When */}
-      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+      {/* When — absolute date on hover (#15) */}
+      <div
+        title={new Date(run.created_at).toLocaleString()}
+        style={{ fontSize: 12, color: "var(--text-muted)" }}
+      >
         {timeAgo(ts)}
       </div>
 
@@ -504,16 +392,15 @@ function RunRow({ run, onClick }: RunRowProps) {
       >
         <path d="M5.5 3.5L9.5 7.5L5.5 11.5" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
       </svg>
-    </div>
+    </Link>
   )
 }
 
 interface RunsTableProps {
   runs: Run[]
-  onNavigate: (run: Run) => void
 }
 
-function RunsTable({ runs, onNavigate }: RunsTableProps) {
+function RunsTable({ runs }: RunsTableProps) {
   if (runs.length === 0) {
     return (
       <div
@@ -540,7 +427,6 @@ function RunsTable({ runs, onNavigate }: RunsTableProps) {
         boxShadow: "var(--shadow-sm)",
       }}
     >
-      {/* Header row */}
       <div
         style={{
           display: "grid",
@@ -567,14 +453,9 @@ function RunsTable({ runs, onNavigate }: RunsTableProps) {
         ))}
       </div>
 
-      {/* Data rows */}
       <div>
         {runs.map(run => (
-          <RunRow
-            key={run.id}
-            run={run}
-            onClick={() => onNavigate(run)}
-          />
+          <RunRow key={run.id} run={run} />
         ))}
       </div>
     </div>
@@ -595,22 +476,31 @@ function RunsWithAuth() {
 const PAGE_SIZE = 50
 
 function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
-  const router = useRouter()
-  // Keep searchParams import for potential future use; suppress lint by referencing it
-  const searchParams = useSearchParams()
-  void searchParams
-
   const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(false)
   const [offset, setOffset] = useState(0)
-  const [activeFilter, setActiveFilter] = useState<FilterLabel>("All")
+  const [error, setError] = useState<string | null>(null)
+  const [activeStatus, setActiveStatus] = useState<FilterLabel>("All")
   const [filterOpen, setFilterOpen] = useState(false)
   const [selectedRepository, setSelectedRepository] = useState<string | null>(null)
   const [selectedPlaybook, setSelectedPlaybook] = useState<string | null>(null)
   const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRangeLabel>("All time")
+  // searchQuery drives the visible input; debouncedQuery fires the fetch (#5)
   const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedQuery, setDebouncedQuery] = useState("")
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Track whether this is the initial mount to avoid double-load
+  const didMountRef = useRef(false)
+
+  function handleSearchChange(value: string) {
+    setSearchQuery(value)
+    if (debounceTimer.current) clearTimeout(debounceTimer.current)
+    debounceTimer.current = setTimeout(() => {
+      setDebouncedQuery(value)
+    }, 400)
+  }
 
   async function buildHeaders() {
     const headers: Record<string, string> = {}
@@ -627,48 +517,70 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
     const params = new URLSearchParams()
     params.append("limit", PAGE_SIZE.toString())
     params.append("offset", baseOffset.toString())
-    
-    // Add advanced filters
+
     if (selectedRepository && selectedRepository !== "All repositories") {
       params.append("repository", selectedRepository)
     }
     if (selectedPlaybook && selectedPlaybook !== "All playbooks") {
       params.append("workflow_name", selectedPlaybook)
     }
-    
-    // Convert time range to created_after timestamp
+    if (debouncedQuery.trim()) {
+      params.append("q", debouncedQuery.trim())
+    }
     if (selectedTimeRange !== "All time") {
       const now = new Date()
-      let daysBack = 7 // default
+      let daysBack = 7
       if (selectedTimeRange === "Last 24 hours") daysBack = 1
       else if (selectedTimeRange === "Last 7 days") daysBack = 7
       else if (selectedTimeRange === "Last 30 days") daysBack = 30
       const afterDate = new Date(now.getTime() - daysBack * 24 * 60 * 60 * 1000)
       params.append("created_after", afterDate.toISOString())
     }
-    
+
     return `${process.env.NEXT_PUBLIC_API_URL}/runs?${params.toString()}`
   }
 
-  useEffect(() => {
-    async function load() {
-      const headers = await buildHeaders()
-      try {
-        const url = buildRunsUrl(0)
-        const res = await fetch(url, { headers })
-        if (res.ok) {
-          const data: Run[] = await res.json()
-          setRuns(data)
-          setHasMore(data.length === PAGE_SIZE)
-          setOffset(PAGE_SIZE)
-        }
-      } finally {
-        setLoading(false)
+  // load() is stable — defined outside effect so Retry button can call it too (#1)
+  async function load() {
+    setLoading(true)
+    setError(null)
+    const headers = await buildHeaders()
+    try {
+      const url = buildRunsUrl(0)
+      const res = await fetch(url, { headers })
+      if (res.ok) {
+        const data: Run[] = await res.json()
+        setRuns(data)
+        setHasMore(data.length === PAGE_SIZE)
+        setOffset(PAGE_SIZE)
+      } else {
+        setError(`Failed to load runs (${res.status})`)
       }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load runs")
+    } finally {
+      setLoading(false)
     }
+  }
+
+  // When server-side filters change, reset client chips and reload (#8)
+  useEffect(() => {
+    setActiveStatus("All")
+    setSearchQuery("")
+    setDebouncedQuery("")
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRepository, selectedPlaybook, selectedTimeRange])
+
+  // When debounced search changes, reload (skip initial mount to avoid double-load)
+  useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true
+      return
+    }
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedQuery])
 
   async function loadMore() {
     setLoadingMore(true)
@@ -678,18 +590,24 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
       const res = await fetch(url, { headers })
       if (res.ok) {
         const data: Run[] = await res.json()
-        setRuns(prev => [...prev, ...data])
-        setHasMore(data.length === PAGE_SIZE)
-        setOffset(o => o + PAGE_SIZE)
+        if (data.length === 0) {
+          // Exact-multiple edge-case (#6): server returned nothing on next page
+          setHasMore(false)
+        } else {
+          setRuns(prev => [...prev, ...data])
+          setHasMore(data.length === PAGE_SIZE)
+          setOffset(o => o + PAGE_SIZE)
+        }
       }
     } finally {
       setLoadingMore(false)
     }
   }
 
+  // Keep existing data visible during refresh — don't clear upfront (#2)
   async function handleRefresh() {
     setLoading(true)
-    setRuns([])
+    setError(null)
     setOffset(0)
     setHasMore(false)
     const headers = await buildHeaders()
@@ -701,40 +619,28 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
         setRuns(data)
         setHasMore(data.length === PAGE_SIZE)
         setOffset(PAGE_SIZE)
+      } else {
+        setError(`Failed to refresh (${res.status})`)
       }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to refresh")
     } finally {
       setLoading(false)
     }
   }
 
-  function handleNavigate(run: Run) {
-    router.push(`/workflows/${run.workflow_id}/runs/${run.id}`)
-  }
-
-  // Extract unique repositories and playbooks
+  // Extract unique repositories and playbooks from loaded data
   const repositories = Array.from(new Set(runs.map(r => r.repo).filter(Boolean))).sort() as string[]
   const playbooks = Array.from(new Set(runs.map(r => r.workflow_name))).sort()
 
-  // Apply all filters
-  const q = searchQuery.trim().toLowerCase()
-  const shownRuns = runs.filter(r => {
-    if (!matchesFilter(r, activeFilter)) return false
-    if (!matchesAdvancedFilters(r, selectedRepository, selectedPlaybook, selectedTimeRange)) return false
-    if (q && !r.workflow_name.toLowerCase().includes(q) && !(r.project_name ?? "").toLowerCase().includes(q)) return false
-    return true
-  })
+  // Client-side filter: status chips only (search is server-side now)
+  const shownRuns = runs.filter(r => matchesFilter(r, activeStatus))
 
-  // Count badges for chips
+  // Counts for all chips (#10)
   const countFor = (f: FilterLabel) => {
     if (f === "All") return runs.length
     return runs.filter(r => matchesFilter(r, f)).length
   }
-
-  // Keep existing derived counts (used for backwards compat logic)
-  const _needsReview = runs.filter(r => needsAttention(r.status)).length
-  void _needsReview
-  const _activeRuns = runs.filter(r => isActive(r.status)).length
-  void _activeRuns
 
   function handleResetFilters() {
     setSelectedRepository(null)
@@ -742,6 +648,10 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
     setSelectedTimeRange("All time")
     setFilterOpen(false)
   }
+
+  // needsAttention imported for consumers of this module — suppress lint
+  void needsAttention
+  void isActive
 
   return (
     <AppShell>
@@ -780,7 +690,6 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
           </div>
 
           <div style={{ marginLeft: "auto", display: "flex", gap: 9 }}>
-            {/* Filter button (placeholder — filter is done by chips) */}
             <button
               onClick={() => setFilterOpen(true)}
               style={{
@@ -838,13 +747,51 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
           </div>
         </div>
 
-        {/* Search + filter chips */}
+        {/* Error state with Retry (#1) */}
+        {error && !loading && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: "12px 16px",
+              borderRadius: 8,
+              background: "var(--err-bg)",
+              border: "1px solid var(--err)",
+              color: "var(--err)",
+              fontSize: 13,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+            }}
+          >
+            <span>{error}</span>
+            <button
+              onClick={load}
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                padding: "4px 12px",
+                borderRadius: 6,
+                border: "1px solid var(--err)",
+                background: "transparent",
+                color: "var(--err)",
+                cursor: "pointer",
+                flexShrink: 0,
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* Search + status filter chips (#17 aria-label, #18 aria-pressed) */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
           <input
-            type="text"
+            type="search"
+            aria-label="Search runs"
             placeholder="Search by agent or project…"
             value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
+            onChange={e => handleSearchChange(e.target.value)}
             style={{
               height: 32, padding: "0 12px", borderRadius: 8, fontSize: 13,
               border: "1px solid var(--border)", background: "var(--surface)",
@@ -856,9 +803,9 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
               <FilterChip
                 key={f}
                 label={f}
-                count={f === "All" ? countFor("All") : undefined}
-                active={activeFilter === f}
-                onClick={() => setActiveFilter(f)}
+                count={countFor(f)}
+                active={activeStatus === f}
+                onClick={() => setActiveStatus(f)}
               />
             ))}
           </div>
@@ -881,7 +828,7 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
               />
             ))}
           </div>
-        ) : runs.length === 0 ? (
+        ) : runs.length === 0 && !error ? (
           <div
             style={{
               borderRadius: 12,
@@ -896,35 +843,39 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
             </p>
           </div>
         ) : (
-          <RunsTable runs={shownRuns} onNavigate={handleNavigate} />
+          <RunsTable runs={shownRuns} />
         )}
 
-        {/* Load more */}
-        {!loading && hasMore && (
-          <div style={{ marginTop: 16, textAlign: "center" }}>
-            <button
-              onClick={loadMore}
-              disabled={loadingMore}
-              style={{
-                fontSize: 13,
-                color: "var(--text-2)",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                padding: "7px 20px",
-                background: "var(--surface)",
-                cursor: loadingMore ? "not-allowed" : "pointer",
-                opacity: loadingMore ? 0.5 : 1,
-                transition: "background .12s",
-              }}
-              onMouseEnter={e => { if (!loadingMore) e.currentTarget.style.background = "var(--surface-2)" }}
-              onMouseLeave={e => { e.currentTarget.style.background = "var(--surface)" }}
-            >
-              {loadingMore ? "Loading…" : "Load more"}
-            </button>
+        {/* Run count + Load more (#19, #6) */}
+        {!loading && runs.length > 0 && (
+          <div style={{ marginTop: 16, display: "flex", alignItems: "center", justifyContent: "center", gap: 16, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              {`Showing ${runs.length} run${runs.length !== 1 ? "s" : ""}${hasMore ? " — load more to see all" : ""}`}
+            </span>
+            {hasMore && (
+              <button
+                onClick={loadMore}
+                disabled={loadingMore}
+                style={{
+                  fontSize: 13,
+                  color: "var(--text-2)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  padding: "7px 20px",
+                  background: "var(--surface)",
+                  cursor: loadingMore ? "not-allowed" : "pointer",
+                  opacity: loadingMore ? 0.5 : 1,
+                  transition: "background .12s",
+                }}
+                onMouseEnter={e => { if (!loadingMore) e.currentTarget.style.background = "var(--surface-2)" }}
+                onMouseLeave={e => { e.currentTarget.style.background = "var(--surface)" }}
+              >
+                {loadingMore ? "Loading…" : "Load more"}
+              </button>
+            )}
           </div>
         )}
 
-        {/* Filter Panel */}
         <FilterPanel
           isOpen={filterOpen}
           onClose={() => setFilterOpen(false)}
