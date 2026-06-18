@@ -246,7 +246,7 @@ def store_session_memory(
 
 @router.get("/search")
 def search_session_memory(
-    q: str = Query(..., min_length=1),
+    q: str | None = Query(default=None),
     repo: str | None = Query(default=None),
     limit: int = Query(default=5, ge=1, le=50),
     workspace_id: str = Depends(get_workspace_id),
@@ -254,7 +254,7 @@ def search_session_memory(
     background_tasks: BackgroundTasks = BackgroundTasks(),
 ) -> list[dict[str, Any]]:
     background_tasks.add_task(_synthesize_mcp_sessions, workspace_id)
-    embedding = _embed(q)
+    embedding = _embed(q) if q else None
 
     if embedding is not None:
         params: dict[str, Any] = {
