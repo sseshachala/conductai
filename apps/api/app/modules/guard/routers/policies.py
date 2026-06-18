@@ -501,40 +501,89 @@ def patch_policy(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
 ):
-    """Update a policy rule (enable/disable/edit). Works on both builtin and custom rules."""
+    """Update a policy rule (enable/disable/edit). Works on both custom and skill-pack rules."""
     if body.action is not None and body.action not in _VALID_ACTIONS:
         raise HTTPException(
             status_code=422,
             detail=f"Invalid action '{body.action}'. Must be one of: {sorted(_VALID_ACTIONS)}",
         )
-    policy = _get_policy_or_404(db, policy_id)
 
+    # Try UUID → custom rule in guard_policies
+    try:
+        ws_uuid = uuid.UUID(workspace_id)
+        pid = uuid.UUID(policy_id)
+        policy = db.query(GuardPolicy).filter(GuardPolicy.id == pid).first()
+        if not policy:
+            raise HTTPException(status_code=404, detail="Policy not found")
+        if body.enabled is not None:
+            policy.enabled = body.enabled
+            _upsert_override(db, policy.workspace_id, policy.rule_id,
+                             disabled=not body.enabled, action=None, message=None)
+            invalidate_policy_cache(db, policy.workspace_id)
+        if body.description is not None:
+            policy.description = body.description
+        if body.match_pattern is not None:
+            policy.match_pattern = body.match_pattern
+        if body.match_path_pattern is not None:
+            policy.match_path_pattern = body.match_path_pattern
+        if body.action is not None:
+            policy.action = body.action
+            _upsert_override(db, policy.workspace_id, policy.rule_id,
+                             disabled=False, action=body.action, message=body.message)
+            invalidate_policy_cache(db, policy.workspace_id)
+        if body.message is not None:
+            policy.message = body.message
+        policy.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(policy)
+        _write_policy_audit(db, policy.workspace_id, "policy_updated", policy)
+        return _policy_to_out(policy)
+    except ValueError:
+        pass  # non-UUID → skill-pack rule
+
+    # Skill-pack rule: write override directly (no guard_policies row)
+    ws_uuid = uuid.UUID(workspace_id)
+    rule_id = policy_id
     if body.enabled is not None:
-        policy.enabled = body.enabled
-        # dual-write: also write GuardRuleOverride so compute_policy() sees the change
-        _upsert_override(db, policy.workspace_id, policy.rule_id,
-                         disabled=not body.enabled, action=None, message=None)
-        invalidate_policy_cache(db, policy.workspace_id)
-
-    if body.description is not None:
-        policy.description = body.description
-    if body.match_pattern is not None:
-        policy.match_pattern = body.match_pattern
-    if body.match_path_pattern is not None:
-        policy.match_path_pattern = body.match_path_pattern
+        _upsert_override(db, ws_uuid, rule_id, disabled=not body.enabled, action=None, message=None)
+        invalidate_policy_cache(db, ws_uuid)
     if body.action is not None:
-        policy.action = body.action
-        _upsert_override(db, policy.workspace_id, policy.rule_id,
-                         disabled=False, action=body.action, message=body.message)
-        invalidate_policy_cache(db, policy.workspace_id)
-    if body.message is not None:
-        policy.message = body.message
-
-    policy.updated_at = datetime.now(timezone.utc)
+        _upsert_override(db, ws_uuid, rule_id, disabled=False, action=body.action, message=body.message)
+        invalidate_policy_cache(db, ws_uuid)
     db.commit()
-    db.refresh(policy)
-    _write_policy_audit(db, policy.workspace_id, "policy_updated", policy)
-    return _policy_to_out(policy)
+
+    # Return updated PolicyOut synthesised from skill-pack rule + override
+    override = db.query(GuardRuleOverride).filter(
+        GuardRuleOverride.workspace_id == ws_uuid, GuardRuleOverride.rule_id == rule_id
+    ).first()
+    installed = (
+        db.query(WorkspaceSkillPack)
+        .filter(WorkspaceSkillPack.workspace_id == ws_uuid)
+        .order_by(WorkspaceSkillPack.installed_at)
+        .all()
+    )
+    for wp in installed:
+        pack = (
+            db.query(SkillPack).filter(SkillPack.slug == wp.pack_slug)
+            .order_by(SkillPack.version.desc()).first()
+        )
+        if not pack:
+            continue
+        for rule in pack.rules:
+            if rule["id"] == rule_id:
+                return PolicyOut(
+                    id=rule_id, workspace_id=str(ws_uuid), rule_id=rule_id,
+                    description=rule.get("description", ""),
+                    match_tool=rule.get("match_tool"), match_pattern=rule.get("match_pattern"),
+                    match_path_pattern=rule.get("match_path_pattern"),
+                    action=(override.action if (override and override.action) else rule["action"]),
+                    message=rule.get("message"),
+                    enabled=not (override and override.disabled),
+                    builtin=True, pack_id=wp.pack_slug,
+                    persona_affinity=rule.get("persona_affinity", []),
+                    created_at=wp.installed_at, updated_at=datetime.now(timezone.utc),
+                )
+    raise HTTPException(status_code=404, detail="Policy not found")
 
 
 @router.delete("/{policy_id}", status_code=204)
@@ -543,7 +592,11 @@ def delete_policy(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
 ):
-    """Delete a custom policy rule. Built-in rules cannot be deleted."""
+    """Delete a custom policy rule. Skill-pack rules cannot be deleted — uninstall the pack."""
+    try:
+        uuid.UUID(policy_id)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Skill-pack rules cannot be deleted. Uninstall the pack instead.")
     policy = _get_policy_or_404(db, policy_id)
 
     if policy.builtin:

@@ -148,20 +148,7 @@ def _warm_eval_cache() -> None:
         except Exception as exc:
             log.warning("eval.cache_warm_failed", error=str(exc))
 
-    def _seed_guard_builtins() -> None:
-        try:
-            from app.core.database import SessionLocal
-            from app.modules.guard.routers.policies import auto_seed_if_changed
-            db = SessionLocal()
-            try:
-                auto_seed_if_changed(db)
-            finally:
-                db.close()
-        except Exception as exc:
-            log.warning("guard.startup_seed_failed", error=str(exc))
-
     threading.Thread(target=_warm, daemon=True, name="eval-cache-warmer").start()
-    threading.Thread(target=_seed_guard_builtins, daemon=True, name="guard-builtin-seeder").start()
 
 
 @app.get("/health")
