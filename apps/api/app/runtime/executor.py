@@ -1019,8 +1019,9 @@ def _execute_approval(block: dict, state: dict, credentials: dict, run_id: str) 
     from app.runtime.blocks.approval_block import _execute_approval as _approval_impl
     return _approval_impl(block, state, credentials, run_id)
 
+from app.runtime.blocks.guard_block import _execute_guard as _guard_impl
+
 def _execute_guard(block: dict, state: dict, workspace_id: str, db) -> dict:
-    from app.runtime.blocks.guard_block import _execute_guard as _guard_impl
     return _guard_impl(block, state, workspace_id, db)
 
 # ── main executor ─────────────────────────────────────────────────────────────

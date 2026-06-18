@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import { useWorkspace } from "@/lib/WorkspaceContext"
-import { setGuardTeamId, removeGuardTeamId } from "@/lib/guardStorage"
+import { setGuardTeamId } from "@/lib/guardStorage"
 
 interface GuardConfig {
   workspace_id: string
@@ -31,12 +31,9 @@ function ConductGuardModule() {
   const [config, setConfig] = useState<GuardConfig | null>(null)
   const [loading, setLoading] = useState(true)
   const [installing, setInstalling] = useState(false)
-  const [uninstalling, setUninstalling] = useState(false)
-  const [confirmUninstall, setConfirmUninstall] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showTeamPicker, setShowTeamPicker] = useState(false)
   const [selectedOrg, setSelectedOrg] = useState<OrgOption | null>(null)
-  const [uninstallConfirmValue, setUninstallConfirmValue] = useState("")
 
   const availableOrgs: OrgOption[] = workspaces.map(w => ({ id: w.id, name: w.name }))
   const base = process.env.NEXT_PUBLIC_API_URL ?? ""
@@ -99,22 +96,6 @@ function ConductGuardModule() {
     }
   }
 
-  async function handleUninstall() {
-    if (uninstallConfirmValue !== "ConductGuard") return
-    setUninstalling(true)
-    try {
-      const wsId = activeWorkspace?.id
-      const h = await buildHeaders(wsId)
-      await fetch(`${base}/guard/config${wsId ? `?workspace_id=${wsId}` : ""}`, { method: "DELETE", headers: h })
-    } catch { /* non-fatal */ } finally {
-      if (typeof window !== "undefined") {
-        if (activeWorkspace?.id) removeGuardTeamId(activeWorkspace.id)
-        window.dispatchEvent(new CustomEvent("guard-install-changed", { detail: { installed: false } }))
-      }
-      setConfig(null); setConfirmUninstall(false); setUninstallConfirmValue(""); setUninstalling(false)
-    }
-  }
-
   if (loading) {
     return (
       <ModuleCard>
@@ -138,9 +119,7 @@ function ConductGuardModule() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           {isInstalled && <span className="sbadge ok">✓ Installed</span>}
-          {isInstalled ? (
-            <button onClick={() => setConfirmUninstall(true)} disabled={uninstalling} className="btn btn-ghost btn-sm" style={{ color: "var(--err)" }}>Uninstall</button>
-          ) : (
+          {!isInstalled && (
             <button onClick={handleInstall} disabled={installing} className="btn btn-primary btn-sm">{installing ? "Installing…" : "Install"}</button>
           )}
         </div>
@@ -213,28 +192,6 @@ function ConductGuardModule() {
         </div>
       )}
 
-      {/* Uninstall confirmation */}
-      {confirmUninstall && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.3)", backdropFilter: "blur(4px)" }}>
-          <div className="card" style={{ maxWidth: 400, width: "100%", margin: "0 16px", padding: 24, display: "flex", flexDirection: "column", gap: 16, boxShadow: "var(--shadow-lg)" }}>
-            <h4 style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", margin: 0 }}>Uninstall ConductGuard?</h4>
-            <p style={{ fontSize: 13, color: "var(--text-2)" }}>This will disconnect all developers. Audit data is retained for 90 days.</p>
-            <p style={{ fontSize: 12, color: "var(--err)" }}>Type <strong>ConductGuard</strong> to confirm.</p>
-            <input value={uninstallConfirmValue} onChange={e => setUninstallConfirmValue(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") handleUninstall(); if (e.key === "Escape") { setConfirmUninstall(false); setUninstallConfirmValue("") } }}
-              placeholder="ConductGuard"
-              style={{ height: 36, border: "1px solid var(--err-bd)", borderRadius: 8, padding: "0 12px", fontSize: 13, width: "100%", background: "var(--surface)", color: "var(--text)", outline: "none", boxSizing: "border-box" }}
-            />
-            <div style={{ display: "flex", gap: 12, paddingTop: 4 }}>
-              <button onClick={() => { setConfirmUninstall(false); setUninstallConfirmValue("") }} className="btn btn-ghost" style={{ flex: 1 }}>Cancel</button>
-              <button onClick={handleUninstall} disabled={uninstalling || uninstallConfirmValue !== "ConductGuard"}
-                style={{ flex: 1, background: "var(--err)", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: uninstallConfirmValue === "ConductGuard" ? "pointer" : "not-allowed", opacity: uninstallConfirmValue === "ConductGuard" ? 1 : 0.4 }}>
-                {uninstalling ? "Uninstalling…" : "Uninstall"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </ModuleCard>
   )
 }

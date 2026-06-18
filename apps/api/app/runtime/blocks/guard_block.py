@@ -12,6 +12,7 @@ import uuid as _uuid
 from datetime import datetime, timezone
 
 import structlog
+from app.modules.guard.models import GuardAuditEvent, GuardPolicy
 
 log = structlog.get_logger(__name__)
 
@@ -32,8 +33,6 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db) -> dict:
       rule_ids: list of specific rule IDs to evaluate
                 (default: all enabled rules)
     """
-    from app.modules.guard.models import GuardAuditEvent, GuardPolicy
-
     config           = block.get("config") or {}
     enforcement_mode = config.get("enforcement_mode", "block")
     context_keys     = config.get("context_keys") or []
