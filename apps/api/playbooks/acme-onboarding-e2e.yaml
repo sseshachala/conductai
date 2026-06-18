@@ -1,0 +1,283 @@
+name: Acme Onboarding E2E Test
+version: 1
+description: >
+  Full role-coverage E2E test using Peekaboo (macOS GUI automation via MCP).
+  Creates a test org "Acme", invites 3 developers + 1 security user, then
+  walks each persona through their core journey — capturing screenshots at
+  every step and asserting expected UI state. Posts a pass/fail summary to Slack.
+
+  Prerequisites:
+    - Peekaboo MCP installed: brew install peekaboo
+    - Peekaboo wired as MCP server in Claude Code settings
+    - 5 test email addresses that can receive Clerk invites
+    - conductai.ai staging or production URL
+
+  Run: conduct run acme-onboarding-e2e --input base_url=https://staging.conductai.ai
+
+inputs:
+  base_url:
+    label: App URL to test
+    default: https://conductai.ai
+    type: string
+  admin_email:
+    label: Admin test email
+    default: test-admin@acme-test.com
+    type: string
+  dev1_email:
+    label: Developer 1 email
+    default: test-dev1@acme-test.com
+    type: string
+  dev2_email:
+    label: Developer 2 email
+    default: test-dev2@acme-test.com
+    type: string
+  dev3_email:
+    label: Developer 3 email
+    default: test-dev3@acme-test.com
+    type: string
+  security_email:
+    label: Security user email
+    default: test-security@acme-test.com
+    type: string
+  slack_channel:
+    label: Slack channel for results
+    default: "#e2e-results"
+    type: string
+  model:
+    label: AI Model
+    default: claude-sonnet-4-6
+    type: select
+    options:
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+
+on:
+  manual:
+    next: admin_signup
+
+blocks:
+
+  # ── ADMIN JOURNEY ────────────────────────────────────────────────────
+
+  admin_signup:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    max_turns: 20
+    label: "Admin: Sign up + create Acme workspace"
+    description: |
+      Use Peekaboo MCP tools to drive the browser through admin signup.
+
+      URL: {{inputs.base_url}}/sign-up
+      Admin email: {{inputs.admin_email}}
+
+      Steps:
+      1. Open {{inputs.base_url}}/sign-up in the default browser
+      2. Take a screenshot — assert the sign-up form is visible
+      3. Fill in the email {{inputs.admin_email}} and complete signup
+         (use a strong password like "AcmeTest2026!" and save it)
+      4. Complete Clerk's email verification if prompted
+         (check for a verification code UI — if present, note we need manual intervention)
+      5. On the workspace setup screen, enter org name "Acme Test Corp"
+      6. Take a screenshot — assert the dashboard or setup page loaded
+      7. Take a screenshot of the workspace settings or home page
+
+      For each screenshot, describe what you see and whether it matches expected state.
+      If anything breaks or looks wrong, describe it clearly.
+
+      Output ONLY the following JSON on the last line:
+        {"step": "admin_signup", "passed": true/false, "screenshot_count": <n>, "issues": ["<issue description>", ...]}
+    next: admin_invite_users
+
+  admin_invite_users:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    max_turns: 20
+    label: "Admin: Invite 3 developers + 1 security user"
+    description: |
+      Continue as the Acme admin. Navigate to team/members settings and invite users.
+
+      App URL: {{inputs.base_url}}
+      Users to invite:
+        - {{inputs.dev1_email}} → role: Developer
+        - {{inputs.dev2_email}} → role: Developer
+        - {{inputs.dev3_email}} → role: Developer
+        - {{inputs.security_email}} → role: Security
+
+      Steps:
+      1. Navigate to Settings → Members (or Team)
+      2. Take a screenshot — assert the members page is visible
+      3. Invite {{inputs.dev1_email}} as Developer — take screenshot after invite sent
+      4. Invite {{inputs.dev2_email}} as Developer — take screenshot after invite sent
+      5. Invite {{inputs.dev3_email}} as Developer — take screenshot after invite sent
+      6. Invite {{inputs.security_email}} as Security — take screenshot after invite sent
+      7. Take a final screenshot of the members list showing 4 pending invites
+
+      Note any UI errors, missing role options, or unexpected states.
+
+      Output ONLY the following JSON on the last line:
+        {"step": "admin_invite_users", "passed": true/false, "screenshot_count": <n>, "issues": ["<issue description>", ...]}
+    next: dev_journey
+
+  # ── DEVELOPER JOURNEY ────────────────────────────────────────────────
+
+  dev_journey:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    max_turns: 25
+    label: "Developer: Accept invite + run a playbook"
+    description: |
+      Open a new browser window/incognito and simulate the developer journey.
+
+      Dev email: {{inputs.dev1_email}}
+      App URL: {{inputs.base_url}}
+
+      Steps:
+      1. Open a new incognito/private browser window
+      2. Navigate to {{inputs.base_url}}/sign-in
+      3. Sign in as {{inputs.dev1_email}}
+         (if invite link needed, navigate to the accept-invite URL from the email —
+          note: you may need to check the email client or use the direct accept-invite URL)
+      4. Take a screenshot — assert the dashboard is visible with Acme workspace
+      5. Navigate to Playbooks or Workflows
+      6. Take a screenshot — assert playbooks/workflows list is visible
+      7. Try to open or install a playbook (e.g. "PR Reviewer")
+      8. Take a screenshot — assert the playbook detail or canvas is visible
+      9. Navigate to Guard → Activity
+      10. Take a screenshot — assert the Guard activity page loads (even if empty)
+      11. Try to navigate to Guard → Settings (developer should NOT have access)
+      12. Take a screenshot — assert a 403/forbidden or redirect happens (not full access)
+
+      Note any broken layouts, missing pages, wrong permissions, or unexpected behavior.
+
+      Output ONLY the following JSON on the last line:
+        {"step": "dev_journey", "passed": true/false, "screenshot_count": <n>, "issues": ["<issue description>", ...]}
+    next: security_journey
+
+  # ── SECURITY JOURNEY ──────────────────────────────────────────────────
+
+  security_journey:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    max_turns: 25
+    label: "Security user: Accept invite + manage Guard policies"
+    description: |
+      Open a new incognito window and simulate the security user journey.
+
+      Security email: {{inputs.security_email}}
+      App URL: {{inputs.base_url}}
+
+      Steps:
+      1. Open a new incognito/private browser window
+      2. Sign in as {{inputs.security_email}}
+      3. Take a screenshot — assert dashboard loads with correct workspace
+      4. Navigate to Guard → Policies
+      5. Take a screenshot — assert policies list is visible
+      6. Try to create a new policy
+      7. Take a screenshot — assert the policy creation form or modal opens
+      8. Fill in a test policy name "E2E Test Policy" and save
+      9. Take a screenshot — assert the policy was saved and appears in the list
+      10. Navigate to Guard → Activity
+      11. Take a screenshot — assert activity log is visible (should show dev1's session activity)
+      12. Navigate to Guard → Spend
+      13. Take a screenshot — assert spend page loads
+      14. Try to access Settings → Members (security should NOT be able to add members)
+      15. Take a screenshot — assert appropriate restriction
+
+      Note any missing features, wrong access levels, broken pages.
+
+      Output ONLY the following JSON on the last line:
+        {"step": "security_journey", "passed": true/false, "screenshot_count": <n>, "issues": ["<issue description>", ...]}
+    next: admin_verify
+
+  # ── ADMIN VERIFICATION ────────────────────────────────────────────────
+
+  admin_verify:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    max_turns: 20
+    label: "Admin: Verify org state after all journeys"
+    description: |
+      Return to the admin session and verify the full org state looks correct.
+
+      App URL: {{inputs.base_url}}
+      Admin email: {{inputs.admin_email}}
+
+      Steps:
+      1. Switch back to the admin browser window (or re-open and sign in)
+      2. Navigate to Settings → Members
+      3. Take a screenshot — assert 4 members are now active (not just pending)
+      4. Navigate to Guard → Activity
+      5. Take a screenshot — assert activity from dev1 and security user are visible
+      6. Navigate to Guard → Spend
+      7. Take a screenshot — assert spend data shows activity from team members
+      8. Navigate to Guard → Policies
+      9. Take a screenshot — assert "E2E Test Policy" created by security user is visible
+      10. Navigate to the main dashboard
+      11. Take a screenshot — assert dashboard KPIs and metrics are populated
+
+      Note any data isolation issues, missing activity, wrong member counts.
+
+      Output ONLY the following JSON on the last line:
+        {"step": "admin_verify", "passed": true/false, "screenshot_count": <n>, "issues": ["<issue description>", ...]}
+    next: compile_results
+
+  # ── RESULTS ───────────────────────────────────────────────────────────
+
+  compile_results:
+    type: brain
+    mode: single
+    model: "{{inputs.model}}"
+    label: Compile test results
+    description: |
+      Compile the results from all 4 test steps into a final report.
+
+      Results:
+      - Admin signup: {{admin_signup.passed}} — issues: {{admin_signup.issues}}
+      - Admin invite: {{admin_invite_users.passed}} — issues: {{admin_invite_users.issues}}
+      - Developer journey: {{dev_journey.passed}} — issues: {{dev_journey.issues}}
+      - Security journey: {{security_journey.passed}} — issues: {{security_journey.issues}}
+      - Admin verify: {{admin_verify.passed}} — issues: {{admin_verify.issues}}
+
+      Count total passed steps, failed steps, and all unique issues.
+      Assign severity to each issue: P0 (broken flow), P1 (wrong permission), P2 (UI glitch).
+
+      Output ONLY the following JSON on the last line:
+        {
+          "passed": <count>,
+          "failed": <count>,
+          "total": 5,
+          "all_issues": [{"step": "<step>", "severity": "P0/P1/P2", "description": "<issue>"}],
+          "summary": "<one paragraph plain-English summary>"
+        }
+    next: post_results
+
+  post_results:
+    type: output
+    label: Post results to Slack
+    description: |
+      E2E Test — Acme Onboarding Journey
+      ✅ {{compile_results.passed}}/{{compile_results.total}} steps passed
+
+      {% if compile_results.failed > 0 %}
+      🔴 {{compile_results.failed}} step(s) failed:
+      {% for issue in compile_results.all_issues %}
+      • [{{issue.severity}}] {{issue.step}}: {{issue.description}}
+      {% endfor %}
+      {% else %}
+      All journeys clean. Ready for production.
+      {% endif %}
+
+      {{compile_results.summary}}
+    output:
+      via: slack
+      slack:
+        channel: "{{inputs.slack_channel}}"
+
+test_trigger:
+  payload:
+    manual: true
