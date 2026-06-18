@@ -43,6 +43,60 @@ def _load_builtin_rules() -> list[dict]:
 _BUILTIN_RULES: list[dict] = _load_builtin_rules()
 
 
+_SKILL_PACKS_DIR = Path(__file__).parent.parent / "skill_packs"
+
+
+def auto_refresh_skill_packs(db: Session) -> None:
+    """Upsert every skill pack JSON from disk into the skill_packs table.
+
+    Uses INSERT ... ON CONFLICT (slug, version) DO UPDATE so that any fields
+    added to the JSON after the initial seed (e.g. persona_affinity inside rules)
+    are written to the DB on next startup.  Non-fatal.
+    """
+    from sqlalchemy import text as _text
+
+    try:
+        import json as _json
+        for json_path in _SKILL_PACKS_DIR.glob("*.json"):
+            try:
+                data = _json.loads(json_path.read_text())
+            except Exception:
+                continue
+            slug = data.get("slug") or json_path.stem
+            version = str(data.get("version", "1.0.0"))
+            name = data.get("name", slug)
+            description = data.get("description")
+            tier = data.get("tier", "free")
+            rules = data.get("rules", [])
+            db.execute(
+                _text(
+                    """
+                    INSERT INTO skill_packs (slug, version, name, description, tier, rules, created_at)
+                    VALUES (:slug, :version, :name, :description, :tier, :rules::jsonb, NOW())
+                    ON CONFLICT (slug, version) DO UPDATE
+                        SET rules       = EXCLUDED.rules,
+                            name        = EXCLUDED.name,
+                            description = EXCLUDED.description,
+                            tier        = EXCLUDED.tier
+                    """
+                ),
+                {
+                    "slug": slug,
+                    "version": version,
+                    "name": name,
+                    "description": description,
+                    "tier": tier,
+                    "rules": _json.dumps(rules),
+                },
+            )
+        db.commit()
+        import structlog as _sl
+        _sl.get_logger(__name__).info("guard.skill_packs_refreshed")
+    except Exception as exc:
+        import structlog as _sl
+        _sl.get_logger(__name__).warning("guard.skill_packs_refresh_failed", error=str(exc))
+
+
 def auto_seed_if_changed(db: Session) -> None:
     """On startup: if builtin_policies.yaml has changed since last run, upsert
     policies for every workspace that has Guard enabled (has a GuardConfig row).
@@ -97,6 +151,9 @@ def auto_seed_if_changed(db: Session) -> None:
                 added=added,
                 updated=updated,
             )
+
+        # Refresh skill pack rules from disk so persona_affinity stays in sync
+        auto_refresh_skill_packs(db)
 
         # Persist new checksum so next startup is a no-op
         _CHECKSUM_FILE.write_text(current_sha)
