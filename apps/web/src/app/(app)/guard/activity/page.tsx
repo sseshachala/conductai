@@ -317,7 +317,7 @@ function ActivityContent() {
   return (
     <GuardShell live={live} lastFetched={lastUpdated}>
       {/* Viewer-scoped notice */}
-      {!permissions.canViewAllActivity && (
+      {!permissionsLoading && !permissions.canViewAllActivity && (
         <div
           style={{
             borderRadius: 8,
