@@ -1,14 +1,13 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useTokenGuardrails, patchTokenGuardrails } from "@/hooks/useTokenGuardrails"
 import AppShell from "@/components/AppShell"
+import { GuardShell } from "@/components/guard/GuardShell"
 import { SlackIntegrationPicker } from "@/components/SlackIntegrationPicker"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -22,69 +21,6 @@ interface TeamPrefs {
   automation_workflow_trigger: boolean
 }
 
-// ─── Guard Shell ──────────────────────────────────────────────────────────────
-
-const GUARD_TABS = [
-  { href: "/guard",             label: "Overview"    },
-  { href: "/guard/spend",       label: "Spend"       },
-  { href: "/guard/policies",    label: "Policies"    },
-  { href: "/guard/activity",    label: "Activity"    },
-  { href: "/guard/session-reports", label: "Session Reports" },
-  { href: "/guard/team-memory",     label: "Team Memory"     },
-  { href: "/guard/settings",        label: "Settings"        },
-]
-
-function GuardShell({ children, lastFetched }: { children: React.ReactNode; lastFetched?: Date | null }) {
-  const pathname = usePathname()
-
-  function formatLastFetched(d: Date | null | undefined): string {
-    if (!d) return "never"
-    const diffMs = Date.now() - d.getTime()
-    const diffS = Math.floor(diffMs / 1000)
-    if (diffS < 60) return "just now"
-    const diffM = Math.floor(diffS / 60)
-    if (diffM < 60) return `${diffM}m ago`
-    const diffH = Math.floor(diffM / 60)
-    return `${diffH}h ago`
-  }
-
-  return (
-    <div style={{ maxWidth: 1240, margin: "0 auto", padding: "28px 24px 48px" }}>
-      <div style={{ display: "flex", alignItems: "flex-start", marginBottom: 20 }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", letterSpacing: "-.02em", margin: 0 }}>
-              Guard
-            </h1>
-            <span className="sbadge ok" style={{ marginTop: 2 }}>
-              <span className="conduct-pulse-dot" />
-              live
-            </span>
-          </div>
-          <p style={{ fontSize: 13, color: "var(--text-3)", marginTop: 5 }}>
-            MDM for AI coding tools — policies and spend limits enforced on every Claude Code, Codex, and Cursor call.
-          </p>
-        </div>
-        <div style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)", paddingTop: 4 }}>
-          last updated: {formatLastFetched(lastFetched)}
-        </div>
-      </div>
-      <div className="guard-tab-nav">
-        {GUARD_TABS.map(tab => {
-          const isActive = tab.href === "/guard"
-            ? pathname === "/guard"
-            : pathname?.startsWith(tab.href)
-          return (
-            <Link key={tab.href} href={tab.href} className={`guard-tab${isActive ? " active" : ""}`}>
-              {tab.label}
-            </Link>
-          )
-        })}
-      </div>
-      {children}
-    </div>
-  )
-}
 
 // ─── Toggle ───────────────────────────────────────────────────────────────────
 
