@@ -122,19 +122,27 @@ blocks:
 
       Max issues to fix: {{inputs.max_issues}}
 
-      Rules for ordering:
-      1. An issue A "blocks" issue B if B's body references A's number.
-         Fix A before B.
-      2. Issues with no cross-references to others are independent — fix these first.
-      3. Simple issues (short body, single file implied, "typo", "missing", "add") before complex ones.
-      4. If an issue references another that is ALSO in the list:
-         - put the referenced issue earlier
-         - note the dependency chain
-      5. If an issue references another that is NOT in the list (already closed or out of scope):
-         - treat it as independent (no blocker)
-      6. If an issue is ambiguous, requires design discussion, or is a feature request
-         rather than a bug/fix — mark it as SKIP with reason.
-      7. Cap the output list at {{inputs.max_issues}} actionable issues.
+      Step 1 — Score every issue by impact (higher = fix sooner):
+        +3  confirmed bug with repro steps
+        +2  affects multiple users (many comments, "me too" replies)
+        +2  blocks another open issue
+        +1  labelled "bug" or "good first issue"
+        +1  short body — likely a simple targeted fix
+        -2  feature request or enhancement
+        -2  needs design discussion or maintainer input
+        -3  ambiguous — no repro, no clear expected behaviour
+
+      Step 2 — Dependency ordering within the top N:
+        If issue A is referenced by issue B ("fixes #A", "blocked by #A"), A must come before B.
+        Independent issues (no cross-references) sorted highest score first.
+
+      Step 3 — Skip anything that:
+        - Is a feature request or RFC
+        - Has no actionable description
+        - Requires a breaking API change
+        - Explicitly says "needs discussion" or is labelled "wontfix"
+
+      Cap the output list at {{inputs.max_issues}} actionable issues — the highest-impact, fixable ones.
 
       Return ONLY compact JSON on the last line — no prose:
       {
