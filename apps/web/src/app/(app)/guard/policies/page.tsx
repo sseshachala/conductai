@@ -973,8 +973,40 @@ function PoliciesContent() {
                 <p style={{ fontSize: 13, color: "var(--text-muted)" }}>No policies match this filter.</p>
               </div>
             )}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, alignItems: "start" }}>
-              {visiblePolicies.map(p => {
+            {(() => {
+              // Group visiblePolicies by pack_id. Custom rules (no pack_id) go first.
+              const customRules = visiblePolicies.filter(p => !p.pack_id)
+              // Preserve pack order from PACK_LABELS, only include packs present in visible set
+              const packGroups: { packId: string; packName: string; rules: Policy[] }[] = PACK_LABELS
+                .map(pl => ({
+                  packId: pl.id,
+                  packName: pl.name,
+                  rules: visiblePolicies.filter(p => p.pack_id === pl.id),
+                }))
+                .filter(g => g.rules.length > 0)
+
+              async function handleBulkToggle(packId: string, packName: string, enable: boolean) {
+                const group = visiblePolicies.filter(p => p.pack_id === packId)
+                const label = enable ? "Enable" : "Disable"
+                if (!window.confirm(`${label} all ${group.length} rules in ${packName}?`)) return
+                const headers = await authHeaders()
+                // Optimistic update
+                setPolicies(ps => ps.map(p => p.pack_id === packId ? { ...p, enabled: enable } : p))
+                try {
+                  await Promise.all(group.map(p =>
+                    fetch(`${apiUrl}/guard/policies/${p.id}`, {
+                      method: "PATCH", headers,
+                      body: JSON.stringify({ enabled: enable }),
+                    })
+                  ))
+                } catch {
+                  // Rollback on error
+                  setPolicies(ps => ps.map(p => p.pack_id === packId ? { ...p, enabled: !enable } : p))
+                  setError(`Failed to ${label.toLowerCase()} pack rules. Please try again.`)
+                }
+              }
+
+              function renderCard(p: Policy, inPackSection: boolean) {
                 const expanded = expandedIds.has(p.id)
                 const hasDetails = !!(p.match_pattern || p.match_path_pattern || p.message)
                 return (
@@ -990,7 +1022,8 @@ function PoliciesContent() {
                         <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 4 }}>
                           <span className="mono" style={{ fontWeight: 650, fontSize: 12.5 }}>{p.rule_id}</span>
                           <ActionBadge action={p.action} />
-                          {(p.builtin || p.pack_id) && (
+                          {/* Only show pack chip when NOT inside a pack section header */}
+                          {!inPackSection && (p.builtin || p.pack_id) && (
                             <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 4, padding: "1px 5px" }}>
                               {p.pack_id ? (PACK_LABELS.find(pl => pl.id === p.pack_id)?.name ?? p.pack_id) : "base"}
                             </span>
@@ -1093,11 +1126,56 @@ function PoliciesContent() {
                         )}
                       </div>
                     )}
-
                   </div>
                 )
-              })}
-            </div>
+              }
+
+              return (
+                <>
+                  {/* Custom rules — no section header, rendered flat */}
+                  {customRules.length > 0 && (
+                    <>
+                      {packGroups.length > 0 && (
+                        <div style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".07em", color: "var(--text-muted)" }}>Custom Rules</span>
+                          <span style={{ height: 1, flex: 1, background: "var(--border)" }} />
+                        </div>
+                      )}
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, alignItems: "start", marginBottom: packGroups.length > 0 ? 20 : 0 }}>
+                        {customRules.map(p => renderCard(p, false))}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Pack sections */}
+                  {packGroups.map(({ packId, packName, rules }) => {
+                    const allEnabled = rules.every(p => p.enabled)
+                    return (
+                      <div key={packId} style={{ marginBottom: 20 }}>
+                        {/* Section header */}
+                        <div style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 10 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".07em", color: "var(--text-muted)" }}>{packName}</span>
+                          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{rules.length} rules</span>
+                          <span style={{ height: 1, flex: 1, background: "var(--border)" }} />
+                          {canWrite && (
+                            <button
+                              onClick={() => handleBulkToggle(packId, packName, !allEnabled)}
+                              className="btn btn-ghost btn-sm"
+                              style={{ fontSize: 11.5, padding: "3px 10px" }}
+                            >
+                              {allEnabled ? "Disable pack" : "Enable pack"}
+                            </button>
+                          )}
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, alignItems: "start" }}>
+                          {rules.map(p => renderCard(p, true))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </>
+              )
+            })()}
 
             {/* Footer */}
             {policies.length > 0 && (
