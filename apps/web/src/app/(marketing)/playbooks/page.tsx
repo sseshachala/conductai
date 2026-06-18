@@ -288,10 +288,10 @@ export default function AutomationsPage() {
           </div>
         </section>
 
-        {/* Compliance Packs */}
+        {/* Skill Packs */}
         <section>
           <SectionHeader
-            title="Compliance Packs"
+            title="Skill Packs"
             description="Pre-built guard + security rule sets mapped to industry standards. Install in one click."
           />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -631,7 +631,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                 marginBottom: 1, fontFamily: "inherit",
               }}
             >
-              Compliance Packs
+              Skill Packs
             </button>
           </div>
 
@@ -641,7 +641,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
         {/* Modules tab */}
         {marketTab === "modules" && <ModulesManager />}
 
-        {/* Compliance Packs tab */}
+        {/* Skill Packs tab */}
         {marketTab === "compliance" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {PACK_CATALOG.map(pack => {
