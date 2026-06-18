@@ -21,23 +21,23 @@ inputs:
     type: string
   admin_email:
     label: Admin test email
-    default: test-admin@acme-test.com
+    default: info+acme.admin@b2bsphere.com
     type: string
   dev1_email:
     label: Developer 1 email
-    default: test-dev1@acme-test.com
+    default: info+acme.dev1@b2bsphere.com
     type: string
   dev2_email:
     label: Developer 2 email
-    default: test-dev2@acme-test.com
+    default: info+acme.dev2@b2bsphere.com
     type: string
   dev3_email:
     label: Developer 3 email
-    default: test-dev3@acme-test.com
+    default: info+acme.dev3@b2bsphere.com
     type: string
   security_email:
     label: Security user email
-    default: test-security@acme-test.com
+    default: info+acme.security@b2bsphere.com
     type: string
   slack_channel:
     label: Slack channel for results
