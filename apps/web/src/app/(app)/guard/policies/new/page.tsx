@@ -1,11 +1,14 @@
 "use client"
 
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { getGuardTeamId } from "@/lib/guardStorage"
+import { useGuardTeam } from "@/hooks/useGuardTeam"
+import { useGuardRole } from "@/hooks/useGuardRole"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -78,22 +81,34 @@ const inputStyle: React.CSSProperties = {
 function TextInput({
   value,
   onChange,
+  onBlur,
   placeholder,
   mono,
+  error,
 }: {
   value: string
   onChange: (v: string) => void
+  onBlur?: () => void
   placeholder?: string
   mono?: boolean
+  error?: string
 }) {
   return (
-    <input
-      type="text"
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      placeholder={placeholder}
-      style={{ ...inputStyle, fontFamily: mono ? "var(--font-mono, monospace)" : undefined }}
-    />
+    <div>
+      <input
+        type="text"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        onBlur={onBlur}
+        placeholder={placeholder}
+        style={{
+          ...inputStyle,
+          fontFamily: mono ? "var(--font-mono, monospace)" : undefined,
+          borderColor: error ? "var(--err-bd)" : undefined,
+        }}
+      />
+      {error && <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "var(--err)" }}>{error}</p>}
+    </div>
   )
 }
 
@@ -114,8 +129,24 @@ function ReviewCard({
   saving: boolean
   saveError: string | null
 }) {
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof GeneratedPolicy, string>>>({})
+
   function set<K extends keyof GeneratedPolicy>(key: K, value: GeneratedPolicy[K]) {
     onChange({ ...policy, [key]: value })
+    setFieldErrors(prev => ({ ...prev, [key]: undefined }))
+  }
+
+  function validate(): boolean {
+    const errs: Partial<Record<keyof GeneratedPolicy, string>> = {}
+    if (!policy.rule_id.trim()) errs.rule_id = "Required"
+    else if (!/^[a-z0-9-]+$/.test(policy.rule_id.trim())) errs.rule_id = "Lowercase letters, numbers, and hyphens only"
+    if (!policy.match_pattern.trim()) errs.match_pattern = "Required"
+    setFieldErrors(errs)
+    return Object.keys(errs).length === 0
+  }
+
+  function handleSaveClick() {
+    if (validate()) onSave()
   }
 
   return (
@@ -159,7 +190,14 @@ function ReviewCard({
           <TextInput
             value={policy.rule_id}
             onChange={v => set("rule_id", v)}
+            onBlur={() => {
+              const v = policy.rule_id.trim()
+              if (v && !/^[a-z0-9-]+$/.test(v)) {
+                setFieldErrors(prev => ({ ...prev, rule_id: "Lowercase letters, numbers, and hyphens only" }))
+              }
+            }}
             placeholder="no-rm-rf"
+            error={fieldErrors.rule_id}
           />
         </div>
 
@@ -213,6 +251,7 @@ function ReviewCard({
             onChange={v => set("match_pattern", v)}
             placeholder={String.raw`rm\s+-rf`}
             mono
+            error={fieldErrors.match_pattern}
           />
         </div>
 
@@ -268,7 +307,7 @@ function ReviewCard({
         </Link>
         <button
           type="button"
-          onClick={onSave}
+          onClick={handleSaveClick}
           disabled={saving}
           className="btn btn-primary btn-sm"
           style={{ display: "inline-flex", alignItems: "center", gap: 6, opacity: saving ? 0.5 : 1, cursor: saving ? "not-allowed" : undefined }}
@@ -295,7 +334,16 @@ function ReviewCard({
 export default function NewPolicyPage() {
   const router = useRouter()
   const { getToken } = useAuth()
+  const { teamId } = useGuardTeam()
+  const { activeWorkspace } = useWorkspace()
+  const { permissions, loading: permissionsLoading } = useGuardRole(teamId, activeWorkspace?.id ?? null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (!permissionsLoading && !permissions.canEditPolicies) {
+      router.replace("/guard/policies")
+    }
+  }, [permissionsLoading, permissions.canEditPolicies, router])
 
   const [prompt, setPrompt] = useState("")
   const [generating, setGenerating] = useState(false)
@@ -394,6 +442,7 @@ export default function NewPolicyPage() {
         const detail = await res.text().catch(() => "")
         throw new Error(detail || `HTTP ${res.status}`)
       }
+      sessionStorage.setItem("guard.policies.saved", "Rule saved successfully.")
       router.push("/guard/policies")
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "Failed to save rule. Please try again.")

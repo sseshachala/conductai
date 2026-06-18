@@ -312,6 +312,7 @@ function AddRuleModal({
   const [aiPrompt, setAiPrompt] = useState("")
   const [aiGenerating, setAiGenerating] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   async function handleGenerate() {
     const text = aiPrompt.trim()
@@ -364,7 +365,12 @@ function AddRuleModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!validate()) return
-    await onSubmit(form)
+    setSubmitError(null)
+    try {
+      await onSubmit(form)
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Failed to add rule. Please try again.")
+    }
   }
 
   return (
@@ -501,6 +507,12 @@ function AddRuleModal({
               type="text"
               value={form.rule_id}
               onChange={e => set("rule_id", e.target.value)}
+              onBlur={() => {
+                const v = form.rule_id.trim()
+                if (v && !/^[a-z0-9-]+$/.test(v)) {
+                  setErrors(prev => ({ ...prev, rule_id: "Lowercase letters, numbers, and hyphens only" }))
+                }
+              }}
               placeholder="no-rm-rf"
               style={errors.rule_id ? fieldErrStyle : fieldStyle}
             />
@@ -601,6 +613,9 @@ function AddRuleModal({
           </div>
 
           {/* Footer actions */}
+          {submitError && (
+            <p style={{ margin: 0, fontSize: 11.5, color: "var(--err)" }}>{submitError}</p>
+          )}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, paddingTop: 4 }}>
             <button
               type="button"
@@ -647,6 +662,7 @@ function PoliciesContent() {
   const [installedPacks, setInstalledPacks] = useState<Set<string>>(new Set())
   const [activePackFilter, setActivePackFilter] = useState<string | null>(null)
   const [activePersonaFilter, setActivePersonaFilter] = useState<string | null>(null)
+  const [successBanner, setSuccessBanner] = useState<string | null>(null)
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ""
   const canWrite = permissions.canEditPolicies
@@ -699,6 +715,16 @@ function PoliciesContent() {
     )
   }, [apiUrl, teamId, authHeaders])
 
+  useEffect(() => {
+    const msg = sessionStorage.getItem("guard.policies.saved")
+    if (msg) {
+      sessionStorage.removeItem("guard.policies.saved")
+      setSuccessBanner(msg)
+      const t = setTimeout(() => setSuccessBanner(null), 5000)
+      return () => clearTimeout(t)
+    }
+  }, [])
+
   async function handleRefreshBuiltins() {
     if (!teamId) return
     setRefreshing(true)
@@ -730,8 +756,9 @@ function PoliciesContent() {
         body: JSON.stringify({ enabled: !prev.enabled }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    } catch {
+    } catch (e) {
       setPolicies(ps => ps.map(p => p.id === id ? { ...p, enabled: prev.enabled } : p))
+      setError(e instanceof Error ? e.message : "Failed to update rule. Please try again.")
     }
   }
 
@@ -746,8 +773,9 @@ function PoliciesContent() {
       const headers = await authHeaders()
       const res = await fetch(`${apiUrl}/guard/policies/${id}`, { method: "DELETE", headers })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    } catch {
+    } catch (e) {
       setPolicies(ps => [...ps, prev].sort((a, b) => a.rule_id.localeCompare(b.rule_id)))
+      setError(e instanceof Error ? e.message : "Failed to delete rule. Please try again.")
     }
   }
 
@@ -811,7 +839,7 @@ function PoliciesContent() {
         <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
           <span style={{ fontSize: 13.5, color: "var(--text-3)" }}>
             Rules sync to every developer&apos;s machine within <strong style={{ color: "var(--text)" }}>60 seconds</strong>.
-            {" "}{policies.filter(p => p.enabled).length} active.
+            {" "}{visiblePolicies.filter(p => p.enabled).length} active.
           </span>
           {canWrite && (
             <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
@@ -840,6 +868,13 @@ function PoliciesContent() {
             </div>
           )}
         </div>
+
+        {/* Success */}
+        {successBanner && (
+          <div style={{ borderRadius: 10, border: "1px solid var(--success-bd, #bbf7d0)", background: "var(--success-bg, #f0fdf4)", padding: "10px 16px", fontSize: 13, color: "var(--success, #15803d)", marginBottom: 16 }}>
+            {successBanner}
+          </div>
+        )}
 
         {/* Error */}
         {error && (
@@ -926,38 +961,47 @@ function PoliciesContent() {
                   })}
                 </>
               )}
-              <div style={{ height: 1, background: "var(--border)", margin: "8px 4px" }} />
-              <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".08em", padding: "2px 10px 6px" }}>Persona</div>
-              {([
-                { id: "conservative", label: "Conservative", emoji: "🔴" },
-                { id: "standard",     label: "Standard",     emoji: "🟡" },
-                { id: "developer",    label: "Developer",    emoji: "🟢" },
-              ] as const).map(({ id, label, emoji }) => {
-                const active = activePersonaFilter === id
-                const count = policies.filter(p => (p.persona_affinity ?? []).includes(id)).length
+              {(() => {
+                const personaDefs = [
+                  { id: "conservative", label: "Conservative", emoji: "🔴" },
+                  { id: "standard",     label: "Standard",     emoji: "🟡" },
+                  { id: "developer",    label: "Developer",    emoji: "🟢" },
+                ] as const
+                const personaCounts = personaDefs.map(pd => policies.filter(p => (p.persona_affinity ?? []).includes(pd.id)).length)
+                if (personaCounts.every(c => c === 0)) return null
                 return (
-                  <button
-                    key={id}
-                    onClick={() => setActivePersonaFilter(active ? null : id)}
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "space-between",
-                      width: "100%", background: active ? "var(--accent-bg, #eff6ff)" : "none",
-                      border: "none", borderRadius: 8, padding: "7px 10px",
-                      fontSize: 12.5, fontWeight: active ? 600 : 400,
-                      color: active ? "var(--accent)" : "var(--text-3)",
-                      cursor: "pointer", textAlign: "left", marginBottom: 2,
-                    }}
-                  >
-                    <span>{emoji} {label}</span>
-                    <span style={{
-                      marginLeft: 6, fontSize: 10.5, flexShrink: 0,
-                      background: active ? "var(--accent)" : "var(--surface-2, #f4f4f5)",
-                      color: active ? "#fff" : "var(--text-muted)",
-                      borderRadius: 99, padding: "1px 7px", fontWeight: 600,
-                    }}>{count}</span>
-                  </button>
+                  <>
+                    <div style={{ height: 1, background: "var(--border)", margin: "8px 4px" }} />
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".08em", padding: "2px 10px 6px" }}>Persona</div>
+                    {personaDefs.map(({ id, label, emoji }, idx) => {
+                      const active = activePersonaFilter === id
+                      const count = personaCounts[idx]
+                      return (
+                        <button
+                          key={id}
+                          onClick={() => setActivePersonaFilter(active ? null : id)}
+                          style={{
+                            display: "flex", alignItems: "center", justifyContent: "space-between",
+                            width: "100%", background: active ? "var(--accent-bg, #eff6ff)" : "none",
+                            border: "none", borderRadius: 8, padding: "7px 10px",
+                            fontSize: 12.5, fontWeight: active ? 600 : 400,
+                            color: active ? "var(--accent)" : "var(--text-3)",
+                            cursor: "pointer", textAlign: "left", marginBottom: 2,
+                          }}
+                        >
+                          <span>{emoji} {label}</span>
+                          <span style={{
+                            marginLeft: 6, fontSize: 10.5, flexShrink: 0,
+                            background: active ? "var(--accent)" : "var(--surface-2, #f4f4f5)",
+                            color: active ? "#fff" : "var(--text-muted)",
+                            borderRadius: 99, padding: "1px 7px", fontWeight: 600,
+                          }}>{count}</span>
+                        </button>
+                      )
+                    })}
+                  </>
                 )
-              })}
+              })()}
             </div>
 
             {/* Right: header + 2-column card grid */}
@@ -972,6 +1016,11 @@ function PoliciesContent() {
                   </span>
                 </div>
               )}
+            {visiblePolicies.length === 0 && (
+              <div className="card" style={{ padding: "48px 24px", textAlign: "center" }}>
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>No policies match this filter.</p>
+              </div>
+            )}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, alignItems: "start" }}>
               {visiblePolicies.map(p => {
                 const expanded = expandedIds.has(p.id)

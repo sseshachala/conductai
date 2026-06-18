@@ -84,8 +84,23 @@ const GUARD_TABS = [
   { href: "/guard/settings",        label: "Settings"        },
 ]
 
-function GuardShell({ children }: { children: React.ReactNode }) {
+function relativeTime(ts: Date | null): string {
+  if (!ts) return "never"
+  const sec = Math.floor((Date.now() - ts.getTime()) / 1000)
+  if (sec < 5) return "just now"
+  if (sec < 60) return `${sec}s ago`
+  const min = Math.floor(sec / 60)
+  if (min < 60) return `${min}m ago`
+  return `${Math.floor(min / 60)}h ago`
+}
+
+function GuardShell({ children, lastUpdated }: { children: React.ReactNode; lastUpdated?: Date | null }) {
   const pathname = usePathname()
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setTick(n => n + 1), 10_000)
+    return () => clearInterval(t)
+  }, [])
   return (
     <div style={{ maxWidth: 1240, margin: "0 auto", padding: "28px 24px 48px" }}>
       <div style={{ display: "flex", alignItems: "flex-start", marginBottom: 20 }}>
@@ -104,7 +119,7 @@ function GuardShell({ children }: { children: React.ReactNode }) {
           </p>
         </div>
         <div style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)", paddingTop: 4 }}>
-          last updated: just now
+          last updated: {relativeTime(lastUpdated ?? null)}
         </div>
       </div>
       <div className="guard-tab-nav">
@@ -124,7 +139,7 @@ function GuardShell({ children }: { children: React.ReactNode }) {
   )
 }
 
-// ─── Tool coverage ────────────────────────────────────────────────────────────
+// ─── Tool coverage ─────────────────────────────────────────────────────────
 
 const TOOL_LABELS: Record<string, string> = {
   "claude-code":    "Claude Code",
@@ -166,11 +181,13 @@ function SpendControlsPanel({
   onSave,
   currency,
   readOnly,
+  totalCostUsd,
 }: {
   settings: TeamBudgetSettings
   onSave: (s: TeamBudgetSettings) => Promise<void>
   currency: Currency
   readOnly?: boolean
+  totalCostUsd: number
 }) {
   const [editing, setEditing] = useState(false)
   const [local, setLocal] = useState(settings)
@@ -198,7 +215,7 @@ function SpendControlsPanel({
 
   const teamPct =
     settings.team_monthly_limit_usd && settings.team_monthly_limit_usd > 0
-      ? Math.min((0 / settings.team_monthly_limit_usd) * 100, 100)
+      ? Math.min(((totalCostUsd ?? 0) / settings.team_monthly_limit_usd) * 100, 100)
       : null
 
   const gridItems: [React.ReactNode, React.ReactNode, React.ReactNode | null][] = [
@@ -364,12 +381,12 @@ function SpendControlsPanel({
 
 // ─── Budget bar ───────────────────────────────────────────────────────────────
 
-function BudgetBar({ used, limit }: { used: number; limit: number | null }) {
+function BudgetBar({ used, limit, warnAt = 80 }: { used: number; limit: number | null; warnAt?: number }) {
   if (limit == null || limit === 0) {
     return <span style={{ fontSize: 12, color: "var(--text-muted)" }}>No limit</span>
   }
   const pct = Math.min((used / limit) * 100, 100)
-  const over = pct >= 95
+  const over = pct >= warnAt
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 9, flex: 1 }}>
       <div style={{ flex: 1, height: 7, borderRadius: 6, background: "var(--surface-3)", overflow: "hidden" }}>
@@ -461,8 +478,13 @@ function MonthPicker({ value, onChange }: { value: string; onChange: (v: string)
   const [open, setOpen] = useState(false)
   const [year, month] = value.split("-").map(Number)
   const label = `${MONTHS[month - 1]} ${year}`
+  const now = new Date()
+  const isNextYearDisabled = year >= now.getFullYear()
 
   function select(m: number) {
+    const nowY = new Date().getFullYear()
+    const nowM = new Date().getMonth() + 1
+    if (year > nowY || (year === nowY && m > nowM)) return
     onChange(`${year}-${String(m).padStart(2, "0")}`)
     setOpen(false)
   }
@@ -511,30 +533,38 @@ function MonthPicker({ value, onChange }: { value: string; onChange: (v: string)
             </button>
             <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text-2)" }}>{year}</span>
             <button
-              onClick={() => onChange(`${year + 1}-${String(month).padStart(2, "0")}`)}
-              style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", fontSize: 12, padding: "0 4px" }}
+              onClick={() => !isNextYearDisabled && onChange(`${year + 1}-${String(month).padStart(2, "0")}`)}
+              disabled={isNextYearDisabled}
+              style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: isNextYearDisabled ? "not-allowed" : "pointer", fontSize: 12, padding: "0 4px", opacity: isNextYearDisabled ? 0.4 : 1 }}
             >
               {year + 1} &rsaquo;
             </button>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 4 }}>
-            {MONTHS.map((m, i) => (
-              <button
-                key={m}
-                onClick={() => select(i + 1)}
-                style={{
-                  fontSize: 12,
-                  borderRadius: 5,
-                  padding: "4px 6px",
-                  border: "none",
-                  cursor: "pointer",
-                  background: i + 1 === month ? "var(--accent)" : "none",
-                  color: i + 1 === month ? "#fff" : "var(--text-3)",
-                }}
-              >
-                {m}
-              </button>
-            ))}
+            {MONTHS.map((m, i) => {
+              const nowY = new Date().getFullYear()
+              const nowM = new Date().getMonth() + 1
+              const isFuture = year > nowY || (year === nowY && i + 1 > nowM)
+              return (
+                <button
+                  key={m}
+                  onClick={() => select(i + 1)}
+                  disabled={isFuture}
+                  style={{
+                    fontSize: 12,
+                    borderRadius: 5,
+                    padding: "4px 6px",
+                    border: "none",
+                    cursor: isFuture ? "not-allowed" : "pointer",
+                    background: i + 1 === month ? "var(--accent)" : "none",
+                    color: i + 1 === month ? "#fff" : "var(--text-3)",
+                    opacity: isFuture ? 0.4 : 1,
+                  }}
+                >
+                  {m}
+                </button>
+              )
+            })}
           </div>
         </div>
       )}
@@ -552,7 +582,7 @@ function SpendContent() {
   const { getToken } = useAuth()
   const { teamId, loading: teamLoading, error: teamError } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
-  const { permissions } = useGuardRole(teamId, activeWorkspace?.id ?? null)
+  const { permissions, loading: roleLoading } = useGuardRole(teamId, activeWorkspace?.id ?? null)
   const { savings, loading: savingsLoading } = useGuardSavings(teamId)
   const now = new Date()
   const [month, setMonth] = useState(
@@ -570,6 +600,7 @@ function SpendContent() {
     hard_cap_enabled: false,
     default_per_developer_usd: null,
   })
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
   const isAdmin = permissions.canEditBudgets
   const canViewSpend = permissions.canViewAllSpend || permissions.canViewOwnSpend
@@ -613,6 +644,7 @@ function SpendContent() {
         }
         setBudgets(map)
       }
+      setLastUpdated(new Date())
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error")
     } finally {
@@ -676,9 +708,9 @@ function SpendContent() {
     return `${MONTHS[m - 1]} ${y}`
   })()
 
-  if (!canViewSpend) {
+  if (!roleLoading && !canViewSpend) {
     return (
-      <GuardShell>
+      <GuardShell lastUpdated={lastUpdated}>
         <div className="card" style={{ padding: "64px 24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
           You don&apos;t have access to spend data. Contact your admin.
         </div>
@@ -687,7 +719,7 @@ function SpendContent() {
   }
 
   return (
-    <GuardShell>
+    <GuardShell lastUpdated={lastUpdated}>
       {/* Page controls row */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, marginBottom: 20 }}>
         <select
@@ -720,13 +752,28 @@ function SpendContent() {
           fontSize: 13,
           color: "var(--err)",
           marginBottom: 16,
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
         }}>
-          {error}
+          <span style={{ flex: 1 }}>{error}</span>
+          <button
+            onClick={load}
+            style={{ fontSize: 12, fontWeight: 600, background: "var(--err)", color: "#fff", border: "none", borderRadius: 6, padding: "4px 12px", cursor: "pointer", flexShrink: 0 }}
+          >
+            Retry
+          </button>
         </div>
       )}
 
       {/* Spend controls card */}
-      <SpendControlsPanel settings={teamSettings} onSave={saveTeamSettings} currency={currency} readOnly={!isAdmin} />
+      <SpendControlsPanel
+        settings={teamSettings}
+        onSave={saveTeamSettings}
+        currency={currency}
+        readOnly={!isAdmin}
+        totalCostUsd={data?.total_cost_usd ?? 0}
+      />
 
       {/* 4 stat cards */}
       {loading ? (
@@ -892,7 +939,7 @@ function SpendContent() {
                     )}
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <BudgetBar used={dev.cost_usd} limit={budgetLimit} />
+                    <BudgetBar used={dev.cost_usd} limit={budgetLimit} warnAt={teamSettings.alert_threshold_pct ?? 80} />
                     {isAdmin && (
                       <span onClick={e => e.stopPropagation()}>
                         <BudgetInput email={dev.email} current={budgetLimit} onSave={saveBudget} />
