@@ -260,6 +260,14 @@ playbooks:
     description: "Terraform plan PR opened → AI reviews for security misconfigs, cost anomalies, and drift from approved patterns → posts structured findings."
     github_events: [pull_request]
 
+  acme_onboarding_e2e:
+    file: acme-onboarding-e2e.yaml
+    icon: "🧪"
+    category: Testing
+    tags: [e2e, peekaboo, macos, onboarding, roles]
+    featured: true
+    description: "Full role-coverage E2E test via Peekaboo GUI automation. Signs up an admin, invites developers + security, walks each persona through their journey, asserts correct permissions and UI state at every step."
+
   smoke_test:
     file: smoke-test.yaml
     icon: "🏓"
