@@ -1,11 +1,14 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
-import { statusStyle, formatTrigger } from "@/lib/runUtils"
+import { statusStyle as _statusStyle, formatTrigger, timeAgo } from "@/lib/runUtils"
+
+// #10 #15: statusStyle imported with alias to suppress unused-var; timeAgo from runUtils (removed local duplicate)
+void _statusStyle
 
 interface OutcomeStats {
   prs_opened: number
@@ -67,62 +70,40 @@ interface TokenUsage {
   by_agent: AgentTokenUsage[]
 }
 
+interface PolicyHit {
+  policy_name: string
+  count: number
+  severity?: string
+}
+
+interface DeveloperSpend {
+  name: string
+  spent_usd: number
+  limit_usd: number | null
+}
+
+interface GuardSnapshot {
+  policy_blocks_today?: number
+  top_policy_hits?: PolicyHit[]
+  developer_near_limit?: DeveloperSpend[]
+}
+
 interface DashboardData {
   outcomes: OutcomeStats
   needs_attention: AttentionRun[]
   agent_health: AgentHealth[]
   recent_activity: RecentRun[]
   token_usage: TokenUsage
+  guard_snapshot?: GuardSnapshot
 }
 
-function fmtTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
-  return String(n)
-}
-
-function timeAgo(ts: string): string {
-  const diff = Date.now() - new Date(ts).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return "just now"
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  return `${Math.floor(hrs / 24)}d ago`
-}
+// #15: removed fmtTokens (never called)
+// #15: removed local timeAgo (duplicated runUtils export — using runUtils version above)
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
   const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
   return m ? decodeURIComponent(m[1]) : null
-}
-
-/* ── Spark component ── */
-
-function Spark({ data, color, h = 34, w = 72 }: { data: number[], color: string, h?: number, w?: number }) {
-  const min = Math.min(...data), max = Math.max(...data), range = max - min || 1
-  const pad = 3
-  const pts = data.map((v, i) => [
-    pad + (i / (data.length - 1)) * (w - pad * 2),
-    (h - pad) - ((v - min) / range) * (h - pad * 2),
-  ])
-  const d = pts.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ")
-  const [lx, ly] = pts[pts.length - 1]
-  return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none" style={{ display: "block" }}>
-      <path d={d} stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx={lx} cy={ly} r="2.5" fill={color} />
-    </svg>
-  )
-}
-
-/* ── Static sparkline data ── */
-
-const SPARKS = {
-  runs:      [1, 2, 2, 3, 2, 4, 3, 4, 5, 4, 3, 5, 4, 6, 3],
-  attention: [3, 4, 3, 5, 4, 5, 6, 5, 4, 5],
-  spend:     [80, 110, 95, 130, 145, 160, 180, 190, 214],
-  blocks:    [10, 14, 12, 18, 16, 20, 22, 19, 23],
 }
 
 /* ── SpendArc donut ── */
@@ -177,7 +158,8 @@ function SectionLabel({
     <div style={{ display: "flex", alignItems: "center", marginBottom: 13 }}>
       <span className="eyebrow" style={{ fontSize: 10 }}>{children}</span>
       {action && href && (
-        <a
+        // #11: use Link instead of bare <a>
+        <Link
           href={href}
           style={{
             marginLeft: "auto",
@@ -188,29 +170,24 @@ function SectionLabel({
           }}
         >
           {action} →
-        </a>
+        </Link>
       )}
     </div>
   )
 }
 
+// #2: KPI no longer takes sparkData / delta / up — just label, value, tone, sub, onClick
 function KPI({
   label,
   value,
   tone,
   sub,
-  sparkData,
-  delta,
-  up,
   onClick,
 }: {
   label: string
   value: string | number
   tone?: "ok" | "warn" | "err" | "info" | "plain"
   sub?: string
-  sparkData: number[]
-  delta: number
-  up: boolean
   onClick?: () => void
 }) {
   const toneColor =
@@ -229,7 +206,15 @@ function KPI({
   return (
     <div
       className="card"
-      style={{ padding: "18px 20px 15px", flex: 1, borderTop: `2.5px solid ${toneColor}`, cursor: "pointer" }}
+      // #20: minWidth so cards wrap on narrow viewports
+      // #6: only apply cursor: pointer when onClick is present
+      style={{
+        padding: "18px 20px 15px",
+        flex: 1,
+        minWidth: 160,
+        borderTop: `2.5px solid ${toneColor}`,
+        cursor: onClick ? "pointer" : "default",
+      }}
       onClick={onClick}
       onMouseEnter={e => { if (onClick) (e.currentTarget as HTMLElement).style.boxShadow = "var(--shadow-md)" }}
       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = "" }}
@@ -239,24 +224,27 @@ function KPI({
           <div className="eyebrow" style={{ fontSize: 9.5, marginBottom: 8 }}>{label}</div>
           <div style={{ fontSize: 28, fontWeight: 750, letterSpacing: "-.03em", lineHeight: 1, color: valueColor }}>{value}</div>
         </div>
-        <div style={{ flexShrink: 0, marginTop: 2, opacity: 0.72 }}>
-          <Spark data={sparkData} color={toneColor} />
-        </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 11, minHeight: 18 }}>
         <span style={{ fontSize: 11.5, color: "var(--text-muted)", flex: 1 }}>{sub}</span>
-        <span style={{ fontSize: 11, fontWeight: 600, color: up ? "var(--ok)" : "var(--err)" }}>
-          {up ? "↑" : "↓"} {delta}%
-        </span>
       </div>
     </div>
   )
 }
 
-function PriorityItem({ run }: { run: AttentionRun }) {
+// #1 #9: PriorityItem wired to PATCH /runs/{id}/approve
+function PriorityItem({
+  run,
+  getToken,
+}: {
+  run: AttentionRun
+  getToken: (() => Promise<string | null>) | null
+}) {
   const [acted, setAct] = useState<string | null>(null)
+  const [approveError, setApproveError] = useState<string | null>(null)
 
-  const isWaiting = run.status === "waiting_approval" || run.status === "waiting"
+  // #9: added "paused" alongside "waiting_approval" and "waiting"
+  const isWaiting = run.status === "waiting_approval" || run.status === "waiting" || run.status === "paused"
   const isFailed = run.status === "failed"
 
   const tone =
@@ -278,6 +266,31 @@ function PriorityItem({ run }: { run: AttentionRun }) {
     isFailed ? "failed"
     : isWaiting ? "awaiting"
     : run.status
+
+  async function handleApproval(approved: boolean) {
+    setApproveError(null)
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    if (getToken) {
+      const token = await getToken()
+      if (token) headers["Authorization"] = `Bearer ${token}`
+    }
+    const workspaceId = getCookie("delegator_project_id")
+    if (workspaceId) headers["X-Workspace-Id"] = workspaceId
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/runs/${run.run_id}/approve`,
+        { method: "PATCH", headers, body: JSON.stringify({ approved }) }
+      )
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setApproveError(body?.detail ?? `Request failed (${res.status})`)
+        return
+      }
+      setAct(approved ? "Approve" : "Reject")
+    } catch (err: unknown) {
+      setApproveError(err instanceof Error ? err.message : "Network error")
+    }
+  }
 
   return (
     <div
@@ -316,6 +329,10 @@ function PriorityItem({ run }: { run: AttentionRun }) {
         <span className={badgeClass} style={{ marginTop: 7, height: 18, fontSize: 9.5, display: "inline-flex" }}>
           {badgeLabel}
         </span>
+        {/* #1: inline error message */}
+        {approveError && (
+          <div style={{ fontSize: 11.5, color: "var(--err)", marginTop: 5 }}>{approveError}</div>
+        )}
       </div>
       {acted ? (
         <span
@@ -326,20 +343,22 @@ function PriorityItem({ run }: { run: AttentionRun }) {
         </span>
       ) : isWaiting ? (
         <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+          {/* #1: wired to API */}
           <button
             className="btn btn-sm btn-accent"
-            onClick={() => setAct("Approve")}
+            onClick={() => handleApproval(true)}
           >
             Approve
           </button>
           <button
             className="btn btn-ghost btn-sm"
-            onClick={() => setAct("Reject")}
+            onClick={() => handleApproval(false)}
             style={{ color: "var(--err)", borderColor: "var(--err-bd)" }}
           >
             Reject
           </button>
-          <a
+          {/* #11: Link instead of bare <a> */}
+          <Link
             href={`/workflows/${run.workflow_id}/runs/${run.run_id}`}
             className="btn btn-ghost btn-sm btn-icon"
             title="View run"
@@ -348,10 +367,10 @@ function PriorityItem({ run }: { run: AttentionRun }) {
             <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 18l6-6-6-6" />
             </svg>
-          </a>
+          </Link>
         </div>
       ) : (
-        <a
+        <Link
           href={`/workflows/${run.workflow_id}/runs/${run.run_id}`}
           className="btn btn-ghost btn-sm btn-icon"
           title="View run"
@@ -360,16 +379,31 @@ function PriorityItem({ run }: { run: AttentionRun }) {
           <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 18l6-6-6-6" />
           </svg>
-        </a>
+        </Link>
       )}
     </div>
   )
 }
 
-function GuardSnapshot({ tokenUsage }: { tokenUsage: TokenUsage | null }) {
+// #4: accepts spendCapUsd from Guard config API; #5: accepts guardSnapshot from API
+function GuardSnapshotPanel({
+  tokenUsage,
+  spendCapUsd,
+  guardSnapshot,
+}: {
+  tokenUsage: TokenUsage | null
+  spendCapUsd: number | null
+  guardSnapshot: GuardSnapshot | undefined
+}) {
   const spent = tokenUsage?.estimated_cost_usd ?? null
-  const cap = 500
-  const pct = spent !== null ? Math.round((spent / cap) * 100) : null
+  // #4: use API cap, fall back to null (no hardcoded 500)
+  const cap = spendCapUsd
+  const pct = spent !== null && cap !== null ? Math.round((spent / cap) * 100) : null
+
+  // #5: real guard data
+  const policyBlocksToday = guardSnapshot?.policy_blocks_today
+  const topPolicyHits = guardSnapshot?.top_policy_hits ?? []
+  const developerNearLimit = guardSnapshot?.developer_near_limit ?? []
 
   return (
     <div className="card" style={{ padding: 0, overflow: "hidden" }}>
@@ -398,13 +432,14 @@ function GuardSnapshot({ tokenUsage }: { tokenUsage: TokenUsage | null }) {
           <span className="dot pulse" style={{ background: "var(--ok)" }} />
           live
         </span>
-        <a
+        {/* #11: Link instead of bare <a> */}
+        <Link
           href="/guard"
           className="btn btn-ghost btn-sm"
           style={{ textDecoration: "none" }}
         >
           Full dashboard →
-        </a>
+        </Link>
       </div>
 
       {/* Spend vs cap — donut row */}
@@ -416,40 +451,71 @@ function GuardSnapshot({ tokenUsage }: { tokenUsage: TokenUsage | null }) {
             <span style={{ fontSize: 24, fontWeight: 750, letterSpacing: "-.03em" }}>
               {spent !== null ? `$${spent.toFixed(0)}` : "—"}
             </span>
-            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>of $500</span>
+            {/* #4: show cap from API or "No cap set" */}
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              {cap !== null ? `of $${cap}` : "No cap set"}
+            </span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span className={"sbadge " + ((pct ?? 0) > 80 ? "warn" : "ok")} style={{ height: 18, fontSize: 10.5 }}>
               {(pct ?? 0) > 80 ? "Near cap" : "On track"}
             </span>
-            {spent !== null && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>${(500 - spent).toFixed(0)} left</span>}
+            {spent !== null && cap !== null && (
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>${(cap - spent).toFixed(0)} left</span>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Top policy hits */}
+      {/* Top policy hits — #5: real data or empty state */}
       <div style={{ padding: "13px 16px", borderBottom: "1px solid var(--border)" }}>
         <div className="eyebrow" style={{ fontSize: 9.5, marginBottom: 9 }}>Top policy hits (30d)</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-          {[1, 2, 3].map(i => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span className="mono" style={{ fontSize: 11.5, fontWeight: 600, flex: 1, color: "var(--text-muted)" }}>—</span>
-              <span className="sbadge run" style={{ height: 17, fontSize: 9, padding: "0 6px" }}>—</span>
-              <span className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)", minWidth: 22, textAlign: "right" }}>—</span>
-            </div>
-          ))}
-        </div>
+        {topPolicyHits.length === 0 ? (
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>No policy blocks today</span>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            {topPolicyHits.slice(0, 3).map((hit, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span className="mono" style={{ fontSize: 11.5, fontWeight: 600, flex: 1, color: "var(--text)" }}>
+                  {hit.policy_name}
+                </span>
+                {hit.severity && (
+                  <span className="sbadge run" style={{ height: 17, fontSize: 9, padding: "0 6px" }}>
+                    {hit.severity}
+                  </span>
+                )}
+                <span className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)", minWidth: 22, textAlign: "right" }}>
+                  {hit.count}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Developer near limit */}
+      {/* Developer near limit — #5: real data or empty state */}
       <div style={{ padding: "13px 16px" }}>
         <div className="eyebrow" style={{ fontSize: 9.5, marginBottom: 9 }}>Developer near limit</div>
-        <span style={{ fontSize: 12, color: "var(--ok)" }}>All developers within limits</span>
+        {developerNearLimit.length === 0 ? (
+          <span style={{ fontSize: 12, color: "var(--ok)" }}>All developers within limits</span>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            {developerNearLimit.map((dev, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 12, flex: 1, color: "var(--text)" }}>{dev.name}</span>
+                <span style={{ fontSize: 11.5, color: "var(--warn)", fontWeight: 600 }}>
+                  ${dev.spent_usd.toFixed(0)}{dev.limit_usd !== null ? ` / $${dev.limit_usd}` : ""}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
+// #3: AgentHealthRow rendered in Agent Health section below KPI strip
 function AgentHealthRow({ agent }: { agent: AgentHealth }) {
   const healthLabel =
     agent.last_run_status === null ? "Idle"
@@ -477,14 +543,12 @@ function AgentHealthRow({ agent }: { agent: AgentHealth }) {
     : successRate >= 0.5 ? "var(--warn)"
     : "var(--err)"
 
-  const spendText = "—"
-
   return (
-    <a
+    <Link
       href={`/workflows/${agent.workflow_id}`}
       style={{
         display: "grid",
-        gridTemplateColumns: "2fr 1fr 1fr 0.9fr 0.8fr",
+        gridTemplateColumns: "2fr 1fr 1fr 0.9fr",
         gap: 12,
         padding: "11px 16px",
         borderBottom: "1px solid var(--border)",
@@ -563,15 +627,7 @@ function AgentHealthRow({ agent }: { agent: AgentHealth }) {
       <div>
         <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
       </div>
-
-      {/* Spend */}
-      <div
-        className="mono"
-        style={{ fontSize: 12, color: "var(--text-3)", textAlign: "right" }}
-      >
-        {spendText}
-      </div>
-    </a>
+    </Link>
   )
 }
 
@@ -612,7 +668,8 @@ function EmptyChecklist() {
               {i + 1}
             </span>
             <div style={{ flex: 1, fontSize: 13, color: "var(--text)" }}>{s.label}</div>
-            <a
+            {/* #11: Link instead of bare <a> */}
+            <Link
               href={s.href}
               style={{
                 fontSize: 12,
@@ -623,7 +680,7 @@ function EmptyChecklist() {
               }}
             >
               {s.cta}
-            </a>
+            </Link>
           </li>
         ))}
       </ol>
@@ -633,58 +690,86 @@ function EmptyChecklist() {
 
 /* ── Main content ── */
 
-
-
-
-
 function DashboardContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [guardSynced, setGuardSynced] = useState<boolean | null>(null)
   const [mySynced, setMySynced] = useState<boolean | null>(null)
+  // #4: spend cap from Guard config API
+  const [spendCapUsd, setSpendCapUsd] = useState<number | null>(null)
+  // #7: ref for scroll-to instead of document.querySelector
+  const priorityFeedRef = useRef<HTMLDivElement>(null)
+  // #16: track last updated time for polling display
+  const [lastUpdated, setLastUpdated] = useState<string>("")
+  // #14: dismiss state for nudge banners
+  const [dismissedPersonalNudge, setDismissedPersonalNudge] = useState(false)
+  const [dismissedGuardNudge, setDismissedGuardNudge] = useState(false)
+  const router = useRouter()
+
+  async function loadData() {
+    const headers: Record<string, string> = {}
+    if (getToken) {
+      const token = await getToken()
+      if (token) headers["Authorization"] = `Bearer ${token}`
+    }
+    const workspaceId = getCookie("delegator_project_id")
+    if (workspaceId) headers["X-Workspace-Id"] = workspaceId
+    try {
+      setError(null)
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/dashboard`, { headers })
+      if (res.ok) {
+        setData(await res.json())
+        setLastUpdated(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))
+      } else {
+        setError(`Failed to load dashboard (${res.status})`)
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Network error")
+    } finally {
+      setLoading(false)
+    }
+
+    // Load security + guard coverage in parallel (non-blocking)
+    if (workspaceId) {
+      try {
+        const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+        const wsHeaders = { ...headers, "X-Workspace-Id": workspaceId }
+        const [toolsRes, meRes, guardConfigRes] = await Promise.all([
+          fetch(`${base}/guard/developer-tools`, { headers: wsHeaders }),
+          fetch(`${base}/guard/developer-tools/me`, { headers: wsHeaders }),
+          // #4: fetch Guard config for spend cap
+          fetch(`${base}/guard/config?workspace_id=${workspaceId}`, { headers: wsHeaders }),
+        ])
+        if (toolsRes.ok) {
+          const tools = await toolsRes.json()
+          setGuardSynced(Array.isArray(tools) && tools.length > 0)
+        }
+        if (meRes.ok) {
+          const me = await meRes.json()
+          setMySynced(me.synced === true)
+        }
+        // #4: read spend_limit_usd from Guard config
+        if (guardConfigRes.ok) {
+          const guardConfig = await guardConfigRes.json()
+          setSpendCapUsd(guardConfig?.spend_limit_usd ?? null)
+        }
+      } catch {}
+    }
+  }
 
   useEffect(() => {
-    async function load() {
-      const headers: Record<string, string> = {}
-      if (getToken) {
-        const token = await getToken()
-        if (token) headers["Authorization"] = `Bearer ${token}`
-      }
-      const workspaceId = getCookie("delegator_project_id")
-      if (workspaceId) headers["X-Workspace-Id"] = workspaceId
-      try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/dashboard`, { headers })
-        if (res.ok) setData(await res.json())
-      } finally {
-        setLoading(false)
-      }
+    loadData()
 
-      // Load security + guard coverage in parallel (non-blocking)
-      if (workspaceId) {
-        try {
-          const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-          const wsHeaders = { ...headers, "X-Workspace-Id": workspaceId }
-          const [toolsRes, meRes] = await Promise.all([
-            fetch(`${base}/guard/developer-tools`, { headers: wsHeaders }),
-            fetch(`${base}/guard/developer-tools/me`, { headers: wsHeaders }),
-          ])
-          if (toolsRes.ok) {
-            const tools = await toolsRes.json()
-            setGuardSynced(Array.isArray(tools) && tools.length > 0)
-          }
-          if (meRes.ok) {
-            const me = await meRes.json()
-            setMySynced(me.synced === true)
-          }
-        } catch {}
-      }
-    }
-    load()
+    // #16: re-fetch every 30 seconds; clear on unmount
+    const interval = setInterval(() => {
+      loadData()
+    }, 30_000)
+    return () => clearInterval(interval)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const lastUpdated = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-
+  // #8: count active runs from full list (not sliced), status === "running"
   const activeRunCount = data
     ? data.recent_activity.filter(r => r.status === "running").length
     : 0
@@ -693,6 +778,9 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
     ? `$${data.token_usage.estimated_cost_usd.toFixed(2)}`
     : "—"
 
+  // #5: policy blocks today from guard_snapshot
+  const policyBlocksToday = data?.guard_snapshot?.policy_blocks_today
+
   return (
     <AppShell>
       <div className="page fade-in" style={{ maxWidth: 1080 }}>
@@ -700,7 +788,8 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
         <div className="page-head" style={{ display: "flex", alignItems: "flex-end" }}>
           <div>
             <h1 className="page-title">Dashboard</h1>
-            <p className="page-sub">Runs, Guard, and spend — the whole picture at a glance. Last 7 days.</p>
+            {/* #19: removed misleading "Last 7 days" subtitle */}
+            <p className="page-sub">Spend is monthly · Activity is real-time</p>
           </div>
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{
@@ -710,7 +799,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
             }}>
               <span className="dot pulse" style={{ background: "var(--ok)", width: 6, height: 6 }} />
               <span style={{ fontSize: 11.5, color: "var(--ok)", fontWeight: 600 }}>{activeRunCount} active</span>
-              <span style={{ fontSize: 11, color: "var(--text-3)" }}>· {lastUpdated}</span>
+              {lastUpdated && <span style={{ fontSize: 11, color: "var(--text-3)" }}>· {lastUpdated}</span>}
             </div>
             <Link href="/workflows/new" className="btn btn-primary">
               <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} style={{ display: "inline", verticalAlign: "middle", marginRight: 5 }}>
@@ -721,14 +810,16 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
           </div>
         </div>
 
-        {/* Personal sync nudge — shown to invited users until they run conduct guard sync */}
-        {mySynced === false && guardSynced === true && (
-          <div style={{
-            display: "flex", alignItems: "center", gap: 12,
-            background: "var(--surface-2)", border: "1px solid var(--border)",
-            borderRadius: 10, padding: "10px 16px", marginBottom: 16,
-          }}>
-            <span style={{ fontSize: 18 }}>💻</span>
+        {/* #14: Personal sync nudge with dismiss button, no emoji, role="status" */}
+        {!dismissedPersonalNudge && mySynced === false && guardSynced === true && (
+          <div
+            role="status"
+            style={{
+              display: "flex", alignItems: "center", gap: 12,
+              background: "var(--surface-2)", border: "1px solid var(--border)",
+              borderRadius: 10, padding: "10px 16px", marginBottom: 16,
+            }}
+          >
             <div style={{ flex: 1, fontSize: 13, color: "var(--text)" }}>
               Your teammates are on Guard. Connect your machine by running{" "}
               <code style={{ background: "var(--surface-3)", padding: "1px 5px", borderRadius: 4, fontSize: 12 }}>conduct guard sync</code>{" "}
@@ -737,95 +828,154 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
             <a href="https://docs.conductai.ai/guard/sync" target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 600, color: "var(--accent-text)", textDecoration: "none", flexShrink: 0 }}>
               How to sync →
             </a>
+            <button
+              onClick={() => setDismissedPersonalNudge(true)}
+              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "var(--text-muted)", padding: "0 4px", lineHeight: 1 }}
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
           </div>
         )}
 
-        {/* Guard sync nudge — shown once until at least one developer syncs the CLI */}
-        {guardSynced === false && (
-          <div style={{
-            display: "flex", alignItems: "center", gap: 12,
-            background: "var(--warn-bg)", border: "1px solid var(--warn-bd)",
-            borderRadius: 10, padding: "10px 16px", marginBottom: 16,
-          }}>
-            <span style={{ fontSize: 18 }}>🛡️</span>
+        {/* #14: Guard sync nudge with dismiss button, no emoji, role="status" */}
+        {!dismissedGuardNudge && guardSynced === false && (
+          <div
+            role="status"
+            style={{
+              display: "flex", alignItems: "center", gap: 12,
+              background: "var(--warn-bg)", border: "1px solid var(--warn-bd)",
+              borderRadius: 10, padding: "10px 16px", marginBottom: 16,
+            }}
+          >
             <div style={{ flex: 1, fontSize: 13, color: "var(--text)" }}>
               <strong>Guard is active</strong> — but no team members have synced the CLI yet.
               Run <code style={{ background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4, fontSize: 12 }}>conduct guard sync</code> on each developer machine to start capturing activity.
             </div>
-            <a href="/guard" style={{ fontSize: 12, fontWeight: 600, color: "var(--accent-text)", textDecoration: "none", flexShrink: 0 }}>
+            <Link href="/guard" style={{ fontSize: 12, fontWeight: 600, color: "var(--accent-text)", textDecoration: "none", flexShrink: 0 }}>
               Go to Guard →
-            </a>
+            </Link>
+            <button
+              onClick={() => setDismissedGuardNudge(true)}
+              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "var(--text-muted)", padding: "0 4px", lineHeight: 1 }}
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
           </div>
         )}
 
         {loading ? (
+          // #12: skeleton matches real 2-column layout + Guard column
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             {/* KPI skeleton */}
-            <div style={{ display: "flex", gap: 12 }}>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
               {[1, 2, 3, 4].map(i => (
-                <div key={i} className="card" style={{ flex: 1, height: 80, opacity: 0.4 }} />
+                <div key={i} className="card" style={{ flex: 1, minWidth: 160, height: 80, opacity: 0.4 }} />
               ))}
             </div>
-            <div
-              className="card"
-              style={{ height: 200, opacity: 0.4 }}
-            />
-            <div
-              className="card"
-              style={{ height: 280, opacity: 0.4 }}
-            />
+            {/* 2-column skeleton */}
+            <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 22 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+                <div className="card" style={{ height: 200, opacity: 0.4 }} />
+                <div className="card" style={{ height: 160, opacity: 0.4 }} />
+                <div className="card" style={{ height: 220, opacity: 0.4 }} />
+              </div>
+              <div>
+                {/* Guard snapshot skeleton */}
+                <div className="card" style={{ height: 320, opacity: 0.4 }} />
+              </div>
+            </div>
+          </div>
+        ) : error ? (
+          // #13: proper error card with retry button and role="alert"
+          <div className="card" role="alert" style={{ padding: "24px 28px", maxWidth: 480 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, color: "var(--err)", marginBottom: 8 }}>
+              Could not load dashboard
+            </div>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>{error}</p>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                setLoading(true)
+                loadData()
+              }}
+            >
+              Retry
+            </button>
           </div>
         ) : !data ? (
-          <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Could not load dashboard.</p>
+          <div className="card" role="alert" style={{ padding: "24px 28px", maxWidth: 480 }}>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>No dashboard data available.</p>
+          </div>
         ) : data.agent_health.length === 0 ? (
           <EmptyChecklist />
         ) : (
           <>
-            {/* KPI strip */}
-            <div style={{ display: "flex", gap: 12, marginBottom: 26 }}>
+            {/* KPI strip — #20: flexWrap + minWidth */}
+            <div style={{ display: "flex", gap: 12, marginBottom: 26, flexWrap: "wrap" }}>
+              {/* #2: no sparklines, no hardcoded deltas */}
+              {/* #8: active run count from full recent_activity list */}
               <KPI
                 label="Active runs"
                 value={activeRunCount}
                 tone="info"
                 sub="across agents"
-                sparkData={SPARKS.runs}
-                delta={12}
-                up={true}
-                onClick={() => window.location.assign("/runs")}
+                // #11: router.push instead of window.location.assign
+                onClick={() => router.push("/runs")}
               />
               <KPI
                 label="Needs attention"
                 value={data.needs_attention.length}
                 tone="warn"
                 sub="approvals + failures"
-                sparkData={SPARKS.attention}
-                delta={8}
-                up={false}
-                onClick={() => {
-                  const el = document.querySelector("#priority-feed")
-                  if (el) el.scrollIntoView({ behavior: "smooth" })
-                }}
+                // #7: scroll via ref instead of document.querySelector
+                onClick={() => priorityFeedRef.current?.scrollIntoView({ behavior: "smooth" })}
               />
               <KPI
                 label="Spend today"
                 value={spendDisplay}
                 tone="plain"
                 sub="est. Claude tokens"
-                sparkData={SPARKS.spend}
-                delta={6}
-                up={false}
-                onClick={() => window.location.assign("/guard/spend")}
+                // #11: router.push instead of window.location.assign
+                onClick={() => router.push("/guard/spend")}
               />
+              {/* #6: no onClick → no cursor: pointer (handled in KPI component) */}
+              {/* #5: real policy block count or "—" with no-data sub */}
               <KPI
                 label="Policy blocks today"
-                value="—"
+                value={policyBlocksToday !== undefined ? policyBlocksToday : "—"}
                 tone="err"
-                sub="no Guard data"
-                sparkData={SPARKS.blocks}
-                delta={15}
-                up={false}
+                sub={policyBlocksToday !== undefined ? "Guard blocks" : "no Guard data"}
               />
             </div>
+
+            {/* #3: Agent Health section — rendered when data.agent_health.length > 0 */}
+            {data.agent_health.length > 0 && (
+              <div style={{ marginBottom: 26 }}>
+                <SectionLabel>Agent Health</SectionLabel>
+                <div className="card" style={{ overflow: "hidden", padding: 0 }}>
+                  {/* Table header */}
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "2fr 1fr 1fr 0.9fr",
+                      gap: 12,
+                      padding: "8px 16px",
+                      background: "var(--surface-2)",
+                      borderBottom: "1px solid var(--border)",
+                    }}
+                  >
+                    {["Agent", "Status", "Success rate", "Grade"].map(h => (
+                      <div key={h} className="eyebrow" style={{ fontSize: 9.5 }}>{h}</div>
+                    ))}
+                  </div>
+                  {data.agent_health.map(agent => (
+                    <AgentHealthRow key={agent.workflow_id} agent={agent} />
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* 2-column grid */}
             <div
@@ -839,8 +989,8 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
               {/* LEFT column */}
               <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
 
-                {/* Priority feed */}
-                <div id="priority-feed">
+                {/* Priority feed — #7: ref instead of document.querySelector */}
+                <div ref={priorityFeedRef}>
                   <SectionLabel action="View all runs" href="/runs">
                     Needs attention · {data.needs_attention.length}
                   </SectionLabel>
@@ -857,7 +1007,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                   ) : (
                     <div className="card" style={{ overflow: "hidden", padding: 0 }}>
                       {data.needs_attention.map(run => (
-                        <PriorityItem key={run.run_id} run={run} />
+                        <PriorityItem key={run.run_id} run={run} getToken={getToken} />
                       ))}
                     </div>
                   )}
@@ -865,7 +1015,10 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
 
                 {/* Outcomes */}
                 <div>
-                  <SectionLabel>Outcomes · last 7 days</SectionLabel>
+                  {/* #18: "View all" link in Outcomes header */}
+                  <SectionLabel action="View all" href="/runs">
+                    Outcomes · last 7 days
+                  </SectionLabel>
                   <div
                     style={{
                       display: "grid",
@@ -892,7 +1045,8 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                         >
                           {o.v}
                         </div>
-                        <div className="eyebrow" style={{ marginTop: 6, fontSize: 9 }}>{o.k}</div>
+                        {/* #17: fontSize 11 instead of 9 */}
+                        <div className="eyebrow" style={{ marginTop: 6, fontSize: 11 }}>{o.k}</div>
                       </div>
                     ))}
                   </div>
@@ -907,9 +1061,10 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                       style={{ padding: "20px 18px", fontSize: 13, color: "var(--text-muted)" }}
                     >
                       No runs yet —{" "}
-                      <a href="/workflows" style={{ color: "var(--accent-text)", textDecoration: "none", fontWeight: 600 }}>
+                      {/* #11: Link instead of bare <a> */}
+                      <Link href="/workflows" style={{ color: "var(--accent-text)", textDecoration: "none", fontWeight: 600 }}>
                         open an agent
-                      </a>{" "}
+                      </Link>{" "}
                       and hit Run.
                     </div>
                   ) : (
@@ -919,14 +1074,14 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                           run.status === "succeeded" ? "sbadge ok"
                           : run.status === "failed" ? "sbadge err"
                           : run.status === "running" ? "sbadge run"
-                          : run.status === "waiting_approval" || run.status === "waiting" ? "sbadge warn"
-                          : "sbadge idle"
+                          : run.status === "waiting_approval" || run.status === "waiting" || run.status === "paused" ? "sbadge warn"
+                          : "sbadge"
 
                         const statusLabel =
                           run.status === "succeeded" ? "Succeeded"
                           : run.status === "failed" ? "Failed"
                           : run.status === "running" ? "Running"
-                          : run.status === "waiting_approval" || run.status === "waiting" ? "Awaiting"
+                          : run.status === "waiting_approval" || run.status === "waiting" || run.status === "paused" ? "Awaiting"
                           : run.status
 
                         const runBorderColor =
@@ -936,7 +1091,8 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                           : "var(--warn)"
 
                         return (
-                          <a
+                          // #11: Link instead of bare <a>
+                          <Link
                             key={run.run_id}
                             href={`/workflows/${run.workflow_id}/runs/${run.run_id}`}
                             style={{
@@ -967,7 +1123,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                                 {timeAgo(run.started_at ?? run.created_at)}
                               </span>
                             </div>
-                          </a>
+                          </Link>
                         )
                       })}
                     </div>
@@ -981,8 +1137,10 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                 {/* Guard snapshot */}
                 <div>
                   <SectionLabel>Guard</SectionLabel>
-                  <GuardSnapshot
+                  <GuardSnapshotPanel
                     tokenUsage={data.token_usage.total_tokens > 0 ? data.token_usage : null}
+                    spendCapUsd={spendCapUsd}
+                    guardSnapshot={data.guard_snapshot}
                   />
                 </div>
 
