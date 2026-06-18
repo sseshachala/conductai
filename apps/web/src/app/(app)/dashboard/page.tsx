@@ -550,7 +550,7 @@ function GuardSnapshotPanel({
           <span style={{ fontSize: 12, color: "var(--ok)" }}>All developers within limits</span>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {developerNearLimit.map((dev, i) => {
+            {developerNearLimit.slice(0, 5).map((dev, i) => {
               const devPct = dev.limit_usd ? Math.min(100, Math.round((dev.spent_usd / dev.limit_usd) * 100)) : null
               const devColor = (devPct ?? 0) >= 90 ? "var(--err)" : "var(--warn)"
               return (
@@ -1028,7 +1028,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                       <div key={h} className="eyebrow" style={{ fontSize: 9.5 }}>{h}</div>
                     ))}
                   </div>
-                  {data.agent_health.map(agent => (
+                  {data.agent_health.slice(0, 5).map(agent => (
                     <AgentHealthRow key={agent.workflow_id} agent={agent} />
                   ))}
                 </div>
@@ -1064,7 +1064,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                     </div>
                   ) : (
                     <div className="card" style={{ overflow: "hidden", padding: 0 }}>
-                      {data.needs_attention.map(run => (
+                      {data.needs_attention.slice(0, 5).map(run => (
                         <PriorityItem key={run.run_id} run={run} getToken={getToken} />
                       ))}
                     </div>
