@@ -35,8 +35,20 @@ const GUARD_TABS = [
   { href: "/guard/settings",        label: "Settings"        },
 ]
 
-function GuardShell({ children }: { children: React.ReactNode }) {
+function GuardShell({ children, lastFetched }: { children: React.ReactNode; lastFetched?: Date | null }) {
   const pathname = usePathname()
+
+  function formatLastFetched(d: Date | null | undefined): string {
+    if (!d) return "never"
+    const diffMs = Date.now() - d.getTime()
+    const diffS = Math.floor(diffMs / 1000)
+    if (diffS < 60) return "just now"
+    const diffM = Math.floor(diffS / 60)
+    if (diffM < 60) return `${diffM}m ago`
+    const diffH = Math.floor(diffM / 60)
+    return `${diffH}h ago`
+  }
+
   return (
     <div style={{ maxWidth: 1240, margin: "0 auto", padding: "28px 24px 48px" }}>
       <div style={{ display: "flex", alignItems: "flex-start", marginBottom: 20 }}>
@@ -55,7 +67,7 @@ function GuardShell({ children }: { children: React.ReactNode }) {
           </p>
         </div>
         <div style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)", paddingTop: 4 }}>
-          last updated: just now
+          last updated: {formatLastFetched(lastFetched)}
         </div>
       </div>
       <div className="guard-tab-nav">
@@ -113,13 +125,14 @@ function TeamMemoryContent() {
   const [entries, setEntries] = useState<MemoryEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [lastFetched, setLastFetched] = useState<Date | null>(null)
   const [inputValue, setInputValue] = useState("")
   const [query, setQuery] = useState("")
   const [filterDeveloper, setFilterDeveloper] = useState("")
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const workspaceId = activeWorkspace?.id ?? teamId ?? null
-  const { permissions } = useGuardRole(teamId, workspaceId)
+  const { permissions, loading: roleLoading } = useGuardRole(teamId, workspaceId)
   const currentUserEmail = user?.primaryEmailAddress?.emailAddress ?? null
   const developers = Array.from(new Set(entries.map(e => e.developer_email).filter(Boolean) as string[])).sort()
 
@@ -133,7 +146,9 @@ function TeamMemoryContent() {
     const headers: Record<string, string> = { "Content-Type": "application/json" }
     if (token) headers["Authorization"] = `Bearer ${token}`
 
-    const params = new URLSearchParams({ q: q.trim() || "recent", limit: "50" })
+    const trimmed = q.trim()
+    const params = new URLSearchParams({ limit: "50" })
+    if (trimmed) params.set("q", trimmed)
     params.set("workspace_id", workspaceId)
 
     try {
@@ -142,6 +157,7 @@ function TeamMemoryContent() {
       const data: MemoryEntry[] = await res.json()
       data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       setEntries(data)
+      setLastFetched(new Date())
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error")
     } finally {
@@ -175,8 +191,10 @@ function TeamMemoryContent() {
     ? entries.filter(e => e.developer_email === effectiveDeveloper)
     : entries
 
+  const isSearching = query.trim().length > 0
+
   return (
-    <GuardShell>
+    <GuardShell lastFetched={lastFetched}>
       {/* Filters — same layout as Activity page */}
       <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 16, flexWrap: "wrap" }}>
         <form onSubmit={handleSubmit} style={{ display: "flex", gap: 8, flex: 1, minWidth: 260 }}>
@@ -215,7 +233,7 @@ function TeamMemoryContent() {
         </span>
       </div>
 
-      {!permissions.canViewAllActivity && (
+      {!roleLoading && !permissions.canViewAllActivity && (
         <div style={{ borderRadius: 8, border: "1px solid var(--warn-bd)", background: "var(--warn-bg)", padding: "8px 16px", fontSize: 12, color: "var(--warn)", marginBottom: 16 }}>
           You can view your own sessions only. Contact your admin to request broader access.
         </div>
@@ -224,6 +242,12 @@ function TeamMemoryContent() {
       {error && (
         <div style={{ borderRadius: 8, border: "1px solid var(--err-bd)", background: "var(--err-bg)", padding: "10px 16px", fontSize: 13, color: "var(--err)", marginBottom: 16 }}>
           {error}
+        </div>
+      )}
+
+      {!isSearching && (
+        <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
+          Recent sessions
         </div>
       )}
 
@@ -236,9 +260,9 @@ function TeamMemoryContent() {
         </div>
       ) : filtered.length === 0 ? (
         <div className="card" style={{ padding: "40px 24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
-          {query
+          {isSearching
             ? `No sessions found for "${query}".`
-            : "No team memories yet. Sessions are captured automatically when developers exit Claude Code."
+            : "No team memories yet. Sessions are captured automatically when developers exit Claude Code, Cursor, and Codex."
           }
         </div>
       ) : (
@@ -246,50 +270,82 @@ function TeamMemoryContent() {
           {/* Table header */}
           <div style={{
             display: "grid",
-            gridTemplateColumns: "1.2fr 1fr 2.8fr 1fr 0.6fr",
+            gridTemplateColumns: "1.1fr 0.8fr 2.6fr 0.7fr 1fr 0.6fr",
             gap: 12, padding: "10px 18px",
             borderBottom: "1px solid var(--border)",
             background: "var(--surface-2)",
           }}>
-            {["Developer", "Repo", "Summary", "Tags", "Date"].map(h => (
+            {["Developer", "Repo", "Summary", "Tool", "Tags", "Date"].map(h => (
               <div key={h} className="eyebrow" style={{ fontSize: 9.5 }}>{h}</div>
             ))}
           </div>
 
           {/* Table rows */}
-          {filtered.map((entry, i) => (
-            <div key={`${entry.developer_id}-${entry.created_at}-${i}`}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1.2fr 1fr 2.8fr 1fr 0.6fr",
-                gap: 12, padding: "11px 18px",
-                borderBottom: i < filtered.length - 1 ? "1px solid var(--border)" : "none",
-                alignItems: "start",
-              }}
-            >
-              <div className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {entry.developer_email ?? "—"}
+          {filtered.map((entry, i) => {
+            const extraTagCount = (entry.tags ?? []).length > 3 ? (entry.tags ?? []).length - 3 : 0
+            const confidencePct = entry.confidence != null ? Math.round(entry.confidence * 100) : null
+
+            return (
+              <div key={`${entry.developer_id}-${entry.created_at}-${i}`}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1.1fr 0.8fr 2.6fr 0.7fr 1fr 0.6fr",
+                  gap: 12, padding: "11px 18px",
+                  borderBottom: i < filtered.length - 1 ? "1px solid var(--border)" : "none",
+                  alignItems: "start",
+                }}
+              >
+                <div className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {entry.developer_email ?? "—"}
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {entry.repo ?? "—"}
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--text)", lineHeight: 1.5 }}>
+                  {entry.summary}
+                  {confidencePct !== null && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 4 }}>
+                      <div style={{ width: 48, height: 3, borderRadius: 2, background: "var(--border-2)", overflow: "hidden" }}>
+                        <div style={{ width: `${confidencePct}%`, height: "100%", background: confidencePct >= 75 ? "var(--ok)" : confidencePct >= 40 ? "var(--warn)" : "var(--err)", borderRadius: 2 }} />
+                      </div>
+                      <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{confidencePct}%</span>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  {entry.tool && (
+                    <span style={{
+                      fontSize: 10, fontWeight: 500,
+                      color: "var(--text-2)", background: "var(--surface-2)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 4, padding: "1px 6px",
+                      display: "inline-block",
+                    }}>{entry.tool}</span>
+                  )}
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                  {(entry.tags ?? []).slice(0, 3).map(tag => (
+                    <span key={tag} style={{
+                      fontSize: 10, fontWeight: 500,
+                      color: "var(--accent-text)", background: "var(--accent-weak)",
+                      borderRadius: 4, padding: "1px 6px",
+                    }}>{tag}</span>
+                  ))}
+                  {extraTagCount > 0 && (
+                    <span style={{
+                      fontSize: 10, fontWeight: 500,
+                      color: "var(--text-muted)", background: "var(--surface-2)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 4, padding: "1px 6px",
+                    }}>+{extraTagCount}</span>
+                  )}
+                </div>
+                <div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
+                  {formatTs(entry.created_at)}
+                </div>
               </div>
-              <div style={{ fontSize: 11.5, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {entry.repo ?? "—"}
-              </div>
-              <div style={{ fontSize: 12.5, color: "var(--text)", lineHeight: 1.5 }}>
-                {entry.summary}
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                {(entry.tags ?? []).slice(0, 3).map(tag => (
-                  <span key={tag} style={{
-                    fontSize: 10, fontWeight: 500,
-                    color: "var(--accent-text)", background: "var(--accent-weak)",
-                    borderRadius: 4, padding: "1px 6px",
-                  }}>{tag}</span>
-                ))}
-              </div>
-              <div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
-                {formatTs(entry.created_at)}
-              </div>
-            </div>
-          ))}
+            )
+          })}
 
           <div style={{ borderTop: "1px solid var(--border)", padding: "8px 18px", textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>
             {filtered.length} {filtered.length === 1 ? "session" : "sessions"}

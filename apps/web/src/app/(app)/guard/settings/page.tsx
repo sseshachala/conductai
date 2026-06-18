@@ -34,8 +34,20 @@ const GUARD_TABS = [
   { href: "/guard/settings",        label: "Settings"        },
 ]
 
-function GuardShell({ children }: { children: React.ReactNode }) {
+function GuardShell({ children, lastFetched }: { children: React.ReactNode; lastFetched?: Date | null }) {
   const pathname = usePathname()
+
+  function formatLastFetched(d: Date | null | undefined): string {
+    if (!d) return "never"
+    const diffMs = Date.now() - d.getTime()
+    const diffS = Math.floor(diffMs / 1000)
+    if (diffS < 60) return "just now"
+    const diffM = Math.floor(diffS / 60)
+    if (diffM < 60) return `${diffM}m ago`
+    const diffH = Math.floor(diffM / 60)
+    return `${diffH}h ago`
+  }
+
   return (
     <div style={{ maxWidth: 1240, margin: "0 auto", padding: "28px 24px 48px" }}>
       <div style={{ display: "flex", alignItems: "flex-start", marginBottom: 20 }}>
@@ -54,7 +66,7 @@ function GuardShell({ children }: { children: React.ReactNode }) {
           </p>
         </div>
         <div style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)", paddingTop: 4 }}>
-          last updated: just now
+          last updated: {formatLastFetched(lastFetched)}
         </div>
       </div>
       <div className="guard-tab-nav">
@@ -76,22 +88,24 @@ function GuardShell({ children }: { children: React.ReactNode }) {
 
 // ─── Toggle ───────────────────────────────────────────────────────────────────
 
-function GuardToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
+function GuardToggle({ on, onClick, disabled }: { on: boolean; onClick: () => void; disabled?: boolean }) {
   return (
     <span
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
       role="switch"
       aria-checked={on}
+      aria-disabled={disabled}
       style={{
         width: 40,
         height: 23,
         borderRadius: 20,
         background: on ? "var(--accent)" : "var(--border-2)",
         position: "relative",
-        cursor: "pointer",
+        cursor: disabled ? "default" : "pointer",
         flexShrink: 0,
         transition: "background .15s",
         display: "inline-block",
+        opacity: disabled ? 0.5 : 1,
       }}
     >
       <span
@@ -133,6 +147,7 @@ function SettingsContent() {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [lastFetched, setLastFetched] = useState<Date | null>(null)
 
   // Notification toggles: extend prefs with warn + digest
   const [notifWarn, setNotifWarn] = useState(true)
@@ -140,11 +155,13 @@ function SettingsContent() {
 
   // Enforcement mode
   const [enforcementMode, setEnforcementMode] = useState<"block" | "warn" | "audit">("warn")
+  const [enforcementError, setEnforcementError] = useState<string | null>(null)
 
   // Persona
   const [persona, setPersona] = useState<string | null>(null)
   const [personaSaving, setPersonaSaving] = useState(false)
   const [personaSaved, setPersonaSaved] = useState(false)
+  const [personaError, setPersonaError] = useState<string | null>(null)
 
   // Re-sync state
   const [resyncing, setResyncing] = useState(false)
@@ -154,9 +171,6 @@ function SettingsContent() {
   const { guardrails: tokenGuardrails, refresh: refreshGuardrails } = useTokenGuardrails(activeWorkspace?.id ?? null)
   const [guardrailState, setGuardrailState] = useState({ prompt_caching: true, model_routing: true, prompt_splitting: true })
   const [guardrailSaved, setGuardrailSaved] = useState(false)
-  const [driftChannelInput, setDriftChannelInput] = useState("")
-  const [savingDriftChannel, setSavingDriftChannel] = useState(false)
-  const [driftChannelSaved, setDriftChannelSaved] = useState(false)
 
   // Sync status
   const [toolCoverage, setToolCoverage] = useState<Array<{ detected_tools: string[]; mcp_registered: string[]; hook_registered: string[] }> | null>(null)
@@ -164,6 +178,7 @@ function SettingsContent() {
   // MCP connect
   const [memberToken, setMemberToken] = useState<string | null | undefined>(undefined)
   const [mcpCopied, setMcpCopied] = useState(false)
+  const [tokenRevealed, setTokenRevealed] = useState(false)
 
   const base = process.env.NEXT_PUBLIC_API_URL ?? ""
   const wsId = activeWorkspace?.id ?? null
@@ -195,6 +210,7 @@ function SettingsContent() {
         automation_workflow_trigger: data.automation_workflow_trigger ?? false,
       })
       if (data.enforcement_mode) setEnforcementMode(data.enforcement_mode as "block" | "warn" | "audit")
+      setLastFetched(new Date())
       // Load sync coverage + member token in parallel
       fetch(`${base}/guard/developer-tools?workspace_id=${wsId}`, { headers })
         .then(r => r.ok ? r.json() : null)
@@ -206,7 +222,7 @@ function SettingsContent() {
       fetch(`${base}/guard/config/persona`, { headers: { ...headers, "x-workspace-id": wsId } })
         .then(r => r.ok ? r.json() : null)
         .then(d => { if (d?.persona) setPersona(d.persona) })
-        .catch(() => setMemberToken(null))
+        .catch((e: unknown) => setPersonaError(e instanceof Error ? e.message : "Failed to load persona"))
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load settings")
     } finally {
@@ -223,7 +239,6 @@ function SettingsContent() {
       model_routing:    tokenGuardrails.model_routing,
       prompt_splitting: tokenGuardrails.prompt_splitting,
     })
-    if (tokenGuardrails.slack_webhook_url) setDriftChannelInput(tokenGuardrails.slack_webhook_url.replace(/^#+/, ""))
   }, [tokenGuardrails])
 
   async function patch(body: Partial<TeamPrefs>) {
@@ -281,24 +296,6 @@ function SettingsContent() {
     }
   }
 
-  async function handleSaveDriftChannel() {
-    if (!wsId) return
-    setSavingDriftChannel(true)
-    const stripped = driftChannelInput.replace(/^#+/, "")
-    try {
-      const token = await getToken()
-      await patchTokenGuardrails(wsId, token ?? "", base, { slack_webhook_url: stripped || null })
-      setDriftChannelInput(stripped)
-      refreshGuardrails()
-      setDriftChannelSaved(true)
-      setTimeout(() => setDriftChannelSaved(false), 2000)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed")
-    } finally {
-      setSavingDriftChannel(false)
-    }
-  }
-
   const NOTIFS = [
     { k: "blocks",  t: "Policy blocks",          d: "Notify the channel when a tool call is blocked by a rule." },
     { k: "warns",   t: "Policy warnings",         d: "Notify on warn-mode rule matches (e.g. force-push)." },
@@ -321,8 +318,13 @@ function SettingsContent() {
     else if (k === "digest") setNotifDigest(v => !v)
   }
 
+  const mcpUrl = `https://api.conductai.ai/guard/mcp?workspace_id=${wsId ?? ""}&token=${memberToken ?? ""}`
+  const mcpUrlMasked = `https://api.conductai.ai/guard/mcp?workspace_id=${wsId ?? ""}&token=••••••••`
+
+  const isSlackConnected = prefs.alert_slack_integration_id != null
+
   return (
-    <GuardShell>
+    <GuardShell lastFetched={lastFetched}>
       {loading ? (
         <div style={{ textAlign: "center", padding: "40px 0", fontSize: 13, color: "var(--text-muted)" }}>
           Loading settings…
@@ -356,6 +358,20 @@ function SettingsContent() {
             </div>
           )}
 
+          {personaError && (
+            <div style={{
+              borderRadius: 8,
+              border: "1px solid var(--warn-bd)",
+              background: "var(--warn-bg)",
+              padding: "8px 16px",
+              fontSize: 12,
+              color: "var(--warn)",
+              marginBottom: 16,
+            }}>
+              Could not load policy persona: {personaError}
+            </div>
+          )}
+
           {/* Two-column layout */}
           <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 20, alignItems: "start" }}>
 
@@ -371,10 +387,17 @@ function SettingsContent() {
                     </svg>
                   </span>
                   <div style={{ fontWeight: 650, fontSize: 14.5 }}>Slack notifications</div>
-                  <span className="sbadge ok" style={{ marginLeft: "auto" }}>
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--ok)", display: "inline-block" }} />
-                    Connected
-                  </span>
+                  {isSlackConnected ? (
+                    <span className="sbadge ok" style={{ marginLeft: "auto" }}>
+                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--ok)", display: "inline-block" }} />
+                      Connected
+                    </span>
+                  ) : (
+                    <span className="sbadge" style={{ marginLeft: "auto", background: "var(--surface-2)", color: "var(--text-3)", border: "1px solid var(--border)" }}>
+                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--text-muted)", display: "inline-block" }} />
+                      Not connected
+                    </span>
+                  )}
                 </div>
 
                 <div style={{ padding: "16px 20px" }}>
@@ -400,7 +423,7 @@ function SettingsContent() {
                   <div style={{ marginBottom: 10 }} />
 
                   {/* Notification toggles */}
-                  {NOTIFS.map((x, i) => (
+                  {NOTIFS.map((x) => (
                     <div
                       key={x.k}
                       style={{
@@ -417,7 +440,8 @@ function SettingsContent() {
                       </div>
                       <GuardToggle
                         on={getNotifValue(x.k)}
-                        onClick={() => isAdmin && toggleNotif(x.k)}
+                        onClick={() => toggleNotif(x.k)}
+                        disabled={!isAdmin}
                       />
                     </div>
                   ))}
@@ -515,6 +539,11 @@ function SettingsContent() {
               <div className="card" style={{ padding: "18px 20px" }}>
                 <div className="eyebrow" style={{ marginBottom: 4 }}>Agent guard</div>
                 <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>Enforce policy before every agentic AI step</div>
+                {enforcementError && (
+                  <div style={{ fontSize: 12, color: "var(--err)", background: "var(--err-bg)", border: "1px solid var(--err-bd)", borderRadius: 6, padding: "6px 10px", marginBottom: 10 }}>
+                    {enforcementError}
+                  </div>
+                )}
                 {([
                   ["block", "Block",      "Run halts — the AI step never executes"],
                   ["warn",  "Warn",       "Flagged in the run trace, step proceeds"],
@@ -532,7 +561,18 @@ function SettingsContent() {
                     }}
                   >
                     <span
-                      onClick={() => { if (isAdmin) { setEnforcementMode(k); patch({ enforcement_mode: k } as never).catch(() => {}) } }}
+                      onClick={async () => {
+                        if (!isAdmin || enforcementMode === k) return
+                        const prev = enforcementMode
+                        setEnforcementMode(k)
+                        setEnforcementError(null)
+                        try {
+                          await patch({ enforcement_mode: k } as never)
+                        } catch (e) {
+                          setEnforcementMode(prev)
+                          setEnforcementError(e instanceof Error ? e.message : "Failed to save enforcement mode")
+                        }
+                      }}
                       style={{
                         width: 16,
                         height: 16,
@@ -561,25 +601,33 @@ function SettingsContent() {
               <div className="card" style={{ padding: "18px 20px" }}>
                 <div className="eyebrow" style={{ marginBottom: 4 }}>Token guardrails</div>
                 <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>Auto-detected from installed tools and active policies.</div>
-                {([
-                  { key: "deterministic_offload", label: "Deterministic offload", desc: "warn-deterministic-compute policy" },
-                  { key: "output_compression",    label: "Output compression",    desc: "RTK installed" },
-                  { key: "structured_retrieval",  label: "Structured retrieval",  desc: "Agent Booster installed" },
-                  { key: "metrics_budgets",       label: "Metrics & budgets",     desc: "Spend budgets configured" },
-                ] as const).map((item, i) => {
-                  const active = tokenGuardrails ? tokenGuardrails[item.key] : true
-                  return (
-                    <div key={item.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", borderTop: i > 0 ? "1px solid var(--border)" : undefined }}>
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{item.label}</div>
-                        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{item.desc}</div>
+                {tokenGuardrails === null ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {[...Array(4)].map((_, i) => (
+                      <div key={i} style={{ height: 36, background: "var(--surface-2)", borderRadius: 6, opacity: 0.6 }} />
+                    ))}
+                  </div>
+                ) : (
+                  ([
+                    { key: "deterministic_offload", label: "Deterministic offload", desc: "warn-deterministic-compute policy" },
+                    { key: "output_compression",    label: "Output compression",    desc: "RTK installed" },
+                    { key: "structured_retrieval",  label: "Structured retrieval",  desc: "Agent Booster installed" },
+                    { key: "metrics_budgets",       label: "Metrics & budgets",     desc: "Spend budgets configured" },
+                  ] as const).map((item, i) => {
+                    const active = tokenGuardrails[item.key] ?? false
+                    return (
+                      <div key={item.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", borderTop: i > 0 ? "1px solid var(--border)" : undefined }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{item.label}</div>
+                          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{item.desc}</div>
+                        </div>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: active ? "var(--ok)" : "var(--text-3)", flexShrink: 0, marginLeft: 12 }}>
+                          {active ? "Active" : "Inactive"}
+                        </span>
                       </div>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: active ? "var(--ok)" : "var(--text-3)", flexShrink: 0, marginLeft: 12 }}>
-                        {active ? "Active" : "Inactive"}
-                      </span>
-                    </div>
-                  )
-                })}
+                    )
+                  })
+                )}
               </div>
 
               {/* Re-sync */}
@@ -695,21 +743,32 @@ function SettingsContent() {
                   Run <code style={{ background: "var(--surface-2)", padding: "1px 6px", borderRadius: 4, fontFamily: "ui-monospace,monospace" }}>conduct guard init</code> in your terminal first to generate your token.
                 </p>
               ) : (
-                <div style={{ display: "flex", gap: 8, alignItems: "stretch", marginBottom: 14 }}>
-                  <code style={{ flex: 1, fontSize: 11.5, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px", fontFamily: "ui-monospace,monospace", color: "var(--text-2)", wordBreak: "break-all" }}>
-                    {`https://api.conductai.ai/guard/mcp?workspace_id=${wsId ?? ""}&token=${memberToken}`}
-                  </code>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    style={{ flexShrink: 0, background: mcpCopied ? "var(--ok-bg)" : undefined, color: mcpCopied ? "var(--ok)" : undefined }}
-                    onClick={async () => {
-                      await navigator.clipboard.writeText(`https://api.conductai.ai/guard/mcp?workspace_id=${wsId ?? ""}&token=${memberToken}`)
-                      setMcpCopied(true)
-                      setTimeout(() => setMcpCopied(false), 2000)
-                    }}
-                  >
-                    {mcpCopied ? "Copied!" : "Copy"}
-                  </button>
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "stretch", marginBottom: 6 }}>
+                    <code style={{ flex: 1, fontSize: 11.5, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px", fontFamily: "ui-monospace,monospace", color: "var(--text-2)", wordBreak: "break-all" }}>
+                      {tokenRevealed ? mcpUrl : mcpUrlMasked}
+                    </code>
+                    {!tokenRevealed && (
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ flexShrink: 0 }}
+                        onClick={() => setTokenRevealed(true)}
+                      >
+                        Reveal
+                      </button>
+                    )}
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      style={{ flexShrink: 0, background: mcpCopied ? "var(--ok-bg)" : undefined, color: mcpCopied ? "var(--ok)" : undefined }}
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(mcpUrl)
+                        setMcpCopied(true)
+                        setTimeout(() => setMcpCopied(false), 2000)
+                      }}
+                    >
+                      {mcpCopied ? "Copied!" : "Copy"}
+                    </button>
+                  </div>
                 </div>
               )}
               <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 5 }}>
@@ -749,7 +808,8 @@ function SettingsContent() {
                   </div>
                   <GuardToggle
                     on={guardrailState[item.key]}
-                    onClick={() => isAdmin && handleGuardrailToggle(item.key, !guardrailState[item.key])}
+                    onClick={() => handleGuardrailToggle(item.key, !guardrailState[item.key])}
+                    disabled={!isAdmin}
                   />
                 </div>
               ))}
@@ -779,7 +839,8 @@ function SettingsContent() {
                 </div>
                 <GuardToggle
                   on={prefs.automation_security_scan}
-                  onClick={() => isAdmin && handleToggle("automation_security_scan" as any, !prefs.automation_security_scan)}
+                  onClick={() => handleToggle("automation_security_scan" as any, !prefs.automation_security_scan)}
+                  disabled={!isAdmin}
                 />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 0", borderTop: "1px solid var(--border)" }}>
@@ -791,7 +852,8 @@ function SettingsContent() {
                 </div>
                 <GuardToggle
                   on={prefs.automation_workflow_trigger}
-                  onClick={() => isAdmin && handleToggle("automation_workflow_trigger" as any, !prefs.automation_workflow_trigger)}
+                  onClick={() => handleToggle("automation_workflow_trigger" as any, !prefs.automation_workflow_trigger)}
+                  disabled={!isAdmin}
                 />
               </div>
               <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 8, padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8 }}>
