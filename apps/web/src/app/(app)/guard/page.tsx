@@ -103,14 +103,24 @@ const GUARD_TABS = [
   { href: "/guard/settings",        label: "Settings"        },
 ]
 
+const PERSONA_BADGE: Record<string, { emoji: string; color: string }> = {
+  conservative: { emoji: "🔴", color: "#dc2626" },
+  standard:     { emoji: "🟡", color: "#d97706" },
+  developer:    { emoji: "🟢", color: "#16a34a" },
+}
+
 function GuardShell({
   children,
   live,
   lastUpdated,
+  persona,
+  ruleCount,
 }: {
   children: React.ReactNode
   live?: boolean
   lastUpdated?: Date | null
+  persona?: string
+  ruleCount?: number | null
 }) {
   const pathname = usePathname()
 
@@ -127,6 +137,21 @@ function GuardShell({
               <span className="conduct-pulse-dot" />
               live
             </span>
+            {persona && (
+              <span style={{
+                marginTop: 2,
+                fontSize: 11.5,
+                fontWeight: 600,
+                padding: "2px 8px",
+                borderRadius: 6,
+                background: "var(--surface-2)",
+                color: "var(--text-2)",
+                border: "1px solid var(--border)",
+              }}>
+                {PERSONA_BADGE[persona]?.emoji ?? "🟡"} {persona.charAt(0).toUpperCase() + persona.slice(1)}
+                {ruleCount != null ? ` · ${ruleCount} rules` : ""}
+              </span>
+            )}
           </div>
           <p style={{ fontSize: 13, color: "var(--text-3)", marginTop: 5 }}>
             MDM for AI coding tools — when a hard cap is hit, every tool call across Claude Code, Codex, and Cursor is blocked immediately and your security team is notified on Slack.
@@ -566,6 +591,8 @@ function GuardDashboard() {
   const [live, setLive]               = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [chartToken, setChartToken]   = useState<string | null>(null)
+  const [persona, setPersona]         = useState<string>("standard")
+  const [ruleCount, setRuleCount]     = useState<number | null>(null)
 
   const PAGE_SIZE = 100
 
@@ -661,6 +688,21 @@ function GuardDashboard() {
     } catch {
       // non-fatal
     }
+    // Persona + rule count — non-fatal, best-effort
+    try {
+      const pr = await fetch(`${base}/guard/config/persona`, { headers: { ...headers, "x-workspace-id": teamId } })
+      if (pr.ok) {
+        const pd = await pr.json()
+        if (pd?.persona) setPersona(pd.persona)
+      }
+    } catch { /* non-fatal */ }
+    try {
+      const sr = await fetch(`${base}/guard/policies?workspace_id=${teamId}`, { headers })
+      if (sr.ok) {
+        const sd = await sr.json()
+        if (Array.isArray(sd)) setRuleCount(sd.filter((r: any) => r.enabled && !r.archived_at).length)
+      }
+    } catch { /* non-fatal */ }
   }, [buildHeaders, teamId])
 
   const loadToolCoverage = useCallback(async () => {
@@ -845,7 +887,7 @@ function GuardDashboard() {
   const blockedToday = stats?.blocked_today || derivedStats.blocked_today
 
   return (
-    <GuardShell live={live} lastUpdated={lastUpdated}>
+    <GuardShell live={live} lastUpdated={lastUpdated} persona={persona} ruleCount={ruleCount}>
 
       {/* Viewer-scoped notice */}
       {!loading && !permissionsLoading && !permissions.canViewAllActivity && (
