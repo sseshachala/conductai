@@ -17,9 +17,11 @@ interface Step {
 interface Props {
   hasProject: boolean
   getToken: (() => Promise<string | null>) | null
+  // P2-5: optional callback to trigger new project modal in-page instead of navigating
+  onNewProject?: () => void
 }
 
-export default function OnboardingChecklist({ hasProject, getToken }: Props) {
+export default function OnboardingChecklist({ hasProject, getToken, onNewProject }: Props) {
   const [dismissed, setDismissed] = useState(true) // start hidden; reveal after check
   const [hasEnv, setHasEnv] = useState(false)
   const [hasAgent, setHasAgent] = useState(false)
@@ -161,14 +163,23 @@ export default function OnboardingChecklist({ hasProject, getToken }: Props) {
               )}
             </div>
 
-            {/* CTA */}
+            {/* CTA — P2-5: "Create a project" triggers onNewProject modal when on /projects */}
             {!step.done && (
-              <Link
-                href={step.href}
-                className="shrink-0 text-xs font-medium text-stone-900 border border-stone-200 hover:bg-stone-50 px-3 py-1.5 rounded-lg transition-colors"
-              >
-                {step.cta} →
-              </Link>
+              step.id === "project" && onNewProject ? (
+                <button
+                  onClick={onNewProject}
+                  className="shrink-0 text-xs font-medium text-stone-900 border border-stone-200 hover:bg-stone-50 px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  {step.cta} →
+                </button>
+              ) : (
+                <Link
+                  href={step.href}
+                  className="shrink-0 text-xs font-medium text-stone-900 border border-stone-200 hover:bg-stone-50 px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  {step.cta} →
+                </Link>
+              )
             )}
           </li>
         ))}

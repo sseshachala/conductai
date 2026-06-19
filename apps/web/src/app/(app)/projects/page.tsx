@@ -7,6 +7,8 @@ import Link from "next/link"
 import AppShell from "@/components/AppShell"
 import NewProjectModal from "@/components/NewProjectModal"
 import OnboardingChecklist from "@/components/OnboardingChecklist"
+// P2-1: import timeAgo from runUtils to avoid duplication
+import { timeAgo } from "@/lib/runUtils"
 
 interface Project {
   id: string
@@ -29,18 +31,7 @@ interface Workflow {
   project_name: string | null
 }
 
-function timeAgo(ts: string): string {
-  const diff = Date.now() - new Date(ts).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return "just now"
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  const days = Math.floor(hrs / 24)
-  if (days === 1) return "yesterday"
-  if (days < 30) return `${days}d ago`
-  return new Date(ts).toLocaleDateString()
-}
+// P2-1: removed local timeAgo — imported from @/lib/runUtils
 
 const AVATAR_COLORS = [
   "#4f46e5", "#059669", "#d97706", "#dc2626",
@@ -119,6 +110,7 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
   const [projects, setProjects] = useState<Project[]>([])
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null) // P0-1
   const [showModal, setShowModal] = useState(false)
   const [tab, setTab] = useState<"projects" | "automation">("projects")
   const [q, setQ] = useState("")
@@ -136,27 +128,40 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
     return h
   }
 
+  // P0-5: cookie name is correct — delegator_project_id is the workspace ID cookie (consistent across codebase)
   function getWorkspaceId(): string {
     return document.cookie.match(/delegator_project_id=([^;]+)/)?.[1] ?? ""
   }
 
+  // P0-1: add error handling and setError on non-ok responses
   async function fetchAll() {
-    const wsId = getWorkspaceId()
-    const headers = await authHeaders()
-    if (wsId) headers["X-Workspace-Id"] = wsId
+    setError(null)
+    try {
+      const wsId = getWorkspaceId()
+      const headers = await authHeaders()
+      if (wsId) headers["X-Workspace-Id"] = wsId
 
-    // Load projects first so the page renders immediately
-    const projRes = await (wsId
-      ? fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${wsId}/projects`, { headers })
-      : fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, { headers }))
-    if (projRes.ok) setProjects(await projRes.json())
-    setLoading(false)
+      // Load projects first so the page renders immediately
+      const projRes = await (wsId
+        ? fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${wsId}/projects`, { headers })
+        : fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, { headers }))
+      if (!projRes.ok) {
+        setError(projRes.status === 403 ? "You don't have access to this workspace." : `Failed to load projects (${projRes.status}).`)
+        setLoading(false)
+        return
+      }
+      setProjects(await projRes.json())
+      setLoading(false)
 
-    // Load workflows in the background — agents populate without blocking the page
-    const wfRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, {
-      headers: { ...headers, ...(wsId ? { "X-Workspace-Id": wsId } : {}) },
-    })
-    if (wfRes.ok) setWorkflows(await wfRes.json())
+      // Load workflows in the background — agents populate without blocking the page
+      const wfRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, {
+        headers: { ...headers, ...(wsId ? { "X-Workspace-Id": wsId } : {}) },
+      })
+      if (wfRes.ok) setWorkflows(await wfRes.json())
+    } catch {
+      setError("Network error — please check your connection.")
+      setLoading(false)
+    }
   }
 
   useEffect(() => { fetchAll() }, [])
@@ -200,7 +205,15 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
   return (
     <AppShell>
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "30px 34px 80px" }}>
-        <OnboardingChecklist hasProject={projects.length > 0} getToken={getToken} />
+        {/* P0-1: error card */}
+        {error && (
+          <div style={{ border: "1px solid var(--err-bd, #fecaca)", borderRadius: 12, padding: 24, background: "var(--err-bg, #fff5f5)", marginBottom: 24 }}>
+            <p style={{ color: "var(--err)", fontSize: 13.5, marginBottom: 10 }}>{error}</p>
+            <button onClick={fetchAll} className="btn btn-ghost btn-sm" style={{ color: "var(--err)", borderColor: "var(--err-bd, #fecaca)" }}>Retry</button>
+          </div>
+        )}
+        {/* P2-5: pass onNewProject so checklist CTA opens modal in-page */}
+        <OnboardingChecklist hasProject={projects.length > 0} getToken={getToken} onNewProject={() => setShowModal(true)} />
 
         {/* Page header */}
         <div className="page-head" style={{ display: "flex", alignItems: "flex-end" }}>
@@ -228,6 +241,7 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
               value={q}
               onChange={e => setQ(e.target.value)}
               placeholder="Search projects…"
+              aria-label="Search projects"
               style={{ width: "100%", height: 36, padding: "0 12px 0 33px", borderRadius: 9, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", fontSize: 13.5, outline: "none" }}
             />
           </div>
@@ -235,6 +249,7 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
             {(["list", "grid"] as const).map(v => (
               <button
                 key={v}
+                aria-label={v === "list" ? "List view" : "Grid view"}
                 onClick={() => { setView(v); localStorage.setItem("projects_view", v) }}
                 style={{ border: "none", background: view === v ? "var(--surface)" : "transparent", borderRadius: 6, padding: "5px 9px", cursor: "pointer", color: view === v ? "var(--text)" : "var(--text-3)", boxShadow: view === v ? "var(--shadow-sm)" : "none" }}
               >
@@ -257,27 +272,25 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
           </div>
         </div>
 
-        {/* Tab chips */}
-        {!loading && (
-          <div style={{ display: "flex", gap: 7, marginBottom: 16, flexWrap: "wrap" }}>
-            {(["projects", "automation"] as const).map(t => {
-              const count = t === "projects" ? userProjects.length : automationProjects.length
-              const on = tab === t
-              return (
-                <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className="chip"
-                  style={{ height: 30, cursor: "pointer", fontWeight: 600, display: "flex", alignItems: "center", gap: 5, background: on ? "var(--accent-weak)" : "var(--surface)", borderColor: on ? "var(--accent-ring)" : "var(--border)", color: on ? "var(--accent-text)" : "var(--text-2)" }}
-                >
-                  {t === "automation" && <ShieldIcon />}
-                  {t === "projects" ? "Projects" : "Automation"}
-                  <span style={{ opacity: .6 }}>· {count}</span>
-                </button>
-              )
-            })}
-          </div>
-        )}
+        {/* Tab chips — P1-9: always rendered, no layout jump; counts shown only when loaded */}
+        <div style={{ display: "flex", gap: 7, marginBottom: 16, flexWrap: "wrap" }}>
+          {(["projects", "automation"] as const).map(t => {
+            const count = t === "projects" ? userProjects.length : automationProjects.length
+            const on = tab === t
+            return (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className="chip"
+                style={{ height: 30, cursor: "pointer", fontWeight: 600, display: "flex", alignItems: "center", gap: 5, background: on ? "var(--accent-weak)" : "var(--surface)", borderColor: on ? "var(--accent-ring)" : "var(--border)", color: on ? "var(--accent-text)" : "var(--text-2)" }}
+              >
+                {t === "automation" && <ShieldIcon />}
+                {t === "projects" ? "Projects" : "Automation"}
+                {!loading && <span style={{ opacity: .6 }}>· {count}</span>}
+              </button>
+            )
+          })}
+        </div>
 
         {/* Content */}
         {loading ? (
@@ -308,11 +321,12 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
         )}
       </div>
 
+      {/* P1-11: after creation stay on /projects and refresh; don't navigate away */}
       {showModal && (
         <NewProjectModal
           getToken={getToken}
           onClose={() => setShowModal(false)}
-          onCreate={(id) => router.push(`/workflows?project=${id}`)}
+          onCreate={() => { setShowModal(false); fetchAll() }}
         />
       )}
     </AppShell>
@@ -363,6 +377,7 @@ function ProjectListSection({
   const menuRef = useRef<HTMLDivElement>(null)
   const renameRef = useRef<HTMLInputElement>(null)
   const confirmRef = useRef<HTMLInputElement>(null)
+  const cancelRenameRef = useRef(false) // P2-3
   const color = avatarColor(project.name)
 
   useEffect(() => { if (renaming) renameRef.current?.focus() }, [renaming])
@@ -375,7 +390,9 @@ function ProjectListSection({
     return () => document.removeEventListener("mousedown", h)
   }, [])
 
+  // P2-3: check cancelledRef before committing rename on blur
   async function submitRename() {
+    if (cancelRenameRef.current) { cancelRenameRef.current = false; return }
     const name = nameValue.trim()
     if (name && name !== project.name) await onRename(name)
     else setNameValue(project.name)
@@ -402,7 +419,7 @@ function ProjectListSection({
               onBlur={submitRename}
               onKeyDown={e => {
                 if (e.key === "Enter") submitRename()
-                if (e.key === "Escape") { setNameValue(project.name); setRenaming(false) }
+                if (e.key === "Escape") { cancelRenameRef.current = true; setNameValue(project.name); setRenaming(false) }
               }}
               style={{ fontWeight: 650, fontSize: 14, background: "transparent", border: "none", borderBottom: "1px solid var(--accent-ring)", outline: "none", width: "100%", fontFamily: "inherit" }}
             />
@@ -426,20 +443,24 @@ function ProjectListSection({
             + Agent
           </Link>
           <div ref={menuRef} style={{ position: "relative" }}>
+            {/* P2-8: aria-haspopup on trigger */}
             <button
               className="btn btn-ghost btn-icon btn-sm"
+              aria-label="Project actions"
+              aria-haspopup="menu"
               onClick={() => setMenuOpen(v => !v)}
-              title="Project actions"
             >⋯</button>
             {menuOpen && (
-              <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 20, minWidth: 130, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, boxShadow: "var(--shadow-md)", padding: "4px 0" }}>
+              <div role="menu" style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 20, minWidth: 130, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, boxShadow: "var(--shadow-md)", padding: "4px 0" }}>
                 <button
+                  role="menuitem"
                   onClick={() => { setMenuOpen(false); setRenaming(true) }}
                   style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--text)", background: "none", border: "none", cursor: "pointer" }}
                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}
                 >Rename</button>
                 <button
+                  role="menuitem"
                   onClick={() => { setMenuOpen(false); setConfirmDelete(true) }}
                   style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--err)", background: "none", border: "none", cursor: "pointer" }}
                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
@@ -496,12 +517,13 @@ function ProjectListSection({
   )
 }
 
+// P1-3: row click → canvas (primary); P1-4: Runs stays as secondary button
 function AgentRow({ workflow: w, isLast, router }: { workflow: Workflow; isLast: boolean; router: ReturnType<typeof useRouter> }) {
   const status = mapStatus(w.last_run_status)
   return (
     <div
-      style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 80px", gap: 14, padding: "11px 18px 11px 58px", borderBottom: isLast ? "none" : "1px solid var(--border)", alignItems: "center", cursor: "pointer", transition: "background .12s" }}
-      onClick={() => router.push(`/workflows/${w.id}/runs`)}
+      style={{ display: "grid", gridTemplateColumns: "2fr 1fr 80px", gap: 14, padding: "11px 18px 11px 58px", borderBottom: isLast ? "none" : "1px solid var(--border)", alignItems: "center", cursor: "pointer", transition: "background .12s" }}
+      onClick={() => router.push(`/workflows/${w.id}`)}
       onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
       onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}
     >
@@ -510,20 +532,17 @@ function AgentRow({ workflow: w, isLast, router }: { workflow: Workflow; isLast:
         <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>edited {timeAgo(w.updated_at)}</div>
       </div>
       <AgentStatusPill s={status} />
-      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-        {w.last_run_at ? timeAgo(w.last_run_at) : "—"}
-      </div>
       <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }} onClick={e => e.stopPropagation()}>
         <Link
           href={`/workflows/${w.id}/runs`}
           className="btn btn-ghost btn-sm"
           style={{ fontSize: 11, padding: "3px 9px" }}
-          title="View runs"
+          aria-label="View runs"
         >Runs</Link>
         <Link
           href={`/workflows/${w.id}`}
           className="btn btn-ghost btn-icon btn-sm"
-          title="Open canvas"
+          aria-label="Open in canvas"
         >→</Link>
       </div>
     </div>
@@ -576,6 +595,7 @@ function ProjectGridCard({
   const [hovered, setHovered] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const renameRef = useRef<HTMLInputElement>(null)
+  const cancelRenameRef = useRef(false) // P2-3
   const color = avatarColor(project.name)
 
   useEffect(() => { if (renaming) renameRef.current?.focus() }, [renaming])
@@ -587,7 +607,9 @@ function ProjectGridCard({
     return () => document.removeEventListener("mousedown", h)
   }, [])
 
+  // P2-3: check cancelledRef before committing rename on blur
   async function submitRename() {
+    if (cancelRenameRef.current) { cancelRenameRef.current = false; return }
     const name = nameValue.trim()
     if (name && name !== project.name) await onRename(name)
     else setNameValue(project.name)
@@ -649,7 +671,7 @@ function ProjectGridCard({
               onBlur={submitRename}
               onKeyDown={e => {
                 if (e.key === "Enter") submitRename()
-                if (e.key === "Escape") { setNameValue(project.name); setRenaming(false) }
+                if (e.key === "Escape") { cancelRenameRef.current = true; setNameValue(project.name); setRenaming(false) }
               }}
               style={{ fontWeight: 650, fontSize: 15, background: "transparent", border: "none", borderBottom: "1px solid var(--accent-ring)", outline: "none", width: "100%", fontFamily: "inherit" }}
             />
@@ -662,22 +684,26 @@ function ProjectGridCard({
             created {timeAgo(project.created_at)}
           </div>
         </div>
+        {/* P2-8: aria-haspopup + role="menu" on dropdown */}
         <div ref={menuRef} style={{ position: "relative", flexShrink: 0 }} onClick={e => e.stopPropagation()}>
           <button
             className="btn btn-ghost btn-icon btn-sm"
+            aria-label="Project actions"
+            aria-haspopup="menu"
             style={{ opacity: hovered || menuOpen ? 1 : 0, transition: "opacity .15s" }}
             onClick={() => setMenuOpen(v => !v)}
-            title="Project actions"
           >⋯</button>
           {menuOpen && (
-            <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 20, minWidth: 130, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, boxShadow: "var(--shadow-md)", padding: "4px 0" }}>
+            <div role="menu" style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 20, minWidth: 130, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, boxShadow: "var(--shadow-md)", padding: "4px 0" }}>
               <button
+                role="menuitem"
                 onClick={() => { setMenuOpen(false); setRenaming(true) }}
                 style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--text)", background: "none", border: "none", cursor: "pointer" }}
                 onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
                 onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}
               >Rename</button>
               <button
+                role="menuitem"
                 onClick={() => { setMenuOpen(false); setConfirmDelete(true) }}
                 style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--err)", background: "none", border: "none", cursor: "pointer" }}
                 onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
@@ -705,7 +731,7 @@ function ProjectGridCard({
                 <div
                   key={w.id}
                   style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 18px", borderBottom: idx < Math.min(agents.length, 4) - 1 ? "1px solid var(--border)" : "none", cursor: "pointer", transition: "background .1s" }}
-                  onClick={e => { e.stopPropagation(); router.push(`/workflows/${w.id}/runs`) }}
+                  onClick={e => { e.stopPropagation(); router.push(`/workflows/${w.id}`) }} // P1-3: go to canvas
                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}
                 >
@@ -779,7 +805,19 @@ function NewProjectTile({ onClick }: { onClick: () => void }) {
 
 // ── Loading skeleton ──────────────────────────────────────────────────────────
 
+// P1-8: reads view from localStorage before rendering so skeleton matches the chosen layout
 function LoadingSkeleton() {
+  const storedView = typeof window !== "undefined" ? localStorage.getItem("projects_view") : null
+  const isGrid = storedView === "grid"
+  if (isGrid) {
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} style={{ height: 200, borderRadius: 14, border: "1px solid var(--border)", background: "var(--surface)", opacity: 0.5, animation: "pulse 1.5s ease-in-out infinite" }} />
+        ))}
+      </div>
+    )
+  }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {[1, 2, 3].map(i => (

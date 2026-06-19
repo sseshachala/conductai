@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
-import { formatTrigger, timeAgo as runsTimeAgo, duration } from "@/lib/runUtils"
+import { formatTrigger, timeAgo, duration } from "@/lib/runUtils"
 
 interface Workflow {
   id: string
@@ -34,15 +34,7 @@ interface Run {
   created_at: string
 }
 
-function timeAgo(ts: string): string {
-  const diff = Date.now() - new Date(ts).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return "just now"
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  return `${Math.floor(hrs / 24)}d ago`
-}
+// P2-1: timeAgo imported from @/lib/runUtils — no local definition needed
 
 function mapStatus(s: string | null): string {
   if (!s) return "idle"
@@ -55,6 +47,7 @@ function mapStatus(s: string | null): string {
   return "idle"
 }
 
+// P2-Cross: AgentStatusPill and RunStatusBadge kept local (no shared StatusBadge import needed)
 function AgentStatusPill({ s }: { s: string }) {
   const m = ({
     ok: ["ok", "Succeeded"], wait: ["warn", "Awaiting"], run: ["run", "Running"],
@@ -91,6 +84,13 @@ function ProjectWithAuth() {
   return <ProjectContent getToken={getToken} currentUserId={userId ?? null} />
 }
 
+// P2-2: module-level constants
+const STATUS_FILTERS = ["All", "Running", "Awaiting", "Succeeded", "Failed", "Never run"]
+const STATUS_KEY: Record<string, string> = { Running: "run", Awaiting: "wait", Succeeded: "ok", Failed: "err", "Never run": "idle" }
+// P1-1: "Success 30d" column removed
+const AGENT_GRID = "2fr 1.4fr 64px"
+const AGENT_HEADERS = ["Agent", "Last run", ""]
+
 function ProjectContent({ getToken, currentUserId }: {
   getToken: (() => Promise<string | null>) | null
   currentUserId: string | null
@@ -101,6 +101,7 @@ function ProjectContent({ getToken, currentUserId }: {
   const [project, setProject] = useState<Project | null>(null)
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null) // P0-4
   const [isAdmin, setIsAdmin] = useState(!clerkEnabled)
   const [activeTab, setActiveTab] = useState<"Agents" | "Runs">("Agents")
   const [runs, setRuns] = useState<Run[]>([])
@@ -115,12 +116,14 @@ function ProjectContent({ getToken, currentUserId }: {
   const [menuOpen, setMenuOpen] = useState<string | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState("")
+  const cancelRenameRef = useRef(false) // P2-3
   const [confirming, setConfirming] = useState<string | null>(null)
   const [confirmValue, setConfirmValue] = useState("")
   const menuRef = useRef<HTMLDivElement>(null)
   const renameInputRef = useRef<HTMLInputElement>(null)
   const confirmInputRef = useRef<HTMLInputElement>(null)
 
+  // P0-3: authHeaders reads workspace_id from cookie only (project may not be loaded yet)
   async function authHeaders(): Promise<Record<string, string>> {
     const h: Record<string, string> = {}
     if (getToken) {
@@ -128,14 +131,14 @@ function ProjectContent({ getToken, currentUserId }: {
       if (token) h["Authorization"] = `Bearer ${token}`
     }
     const wsId = project?.workspace_id || document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1]
-    if (wsId) h["X-Workspace-ID"] = wsId
+    if (wsId) h["X-Workspace-Id"] = wsId // P0-3: consistent lowercase d
     return h
   }
 
+  // P0-3: run loadProject first, then loadWorkflows sequentially
   useEffect(() => {
     if (!projectId) return
-    loadProject()
-    loadWorkflows()
+    loadProject().then(loadWorkflows)
   }, [projectId, currentUserId])
 
   useEffect(() => { if (renaming) renameInputRef.current?.focus() }, [renaming])
@@ -148,23 +151,33 @@ function ProjectContent({ getToken, currentUserId }: {
     return () => document.removeEventListener("mousedown", h)
   }, [])
 
+  // P0-4: surface errors; P0-2: fix /workspaces/ endpoint for member check
   async function loadProject() {
     try {
       const h = await authHeaders()
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${projectId}`, { headers: h })
-      if (!res.ok) return
+      if (!res.ok) {
+        setError(res.status === 404 ? "Project not found." : `Failed to load project (${res.status}).`)
+        setLoading(false)
+        return
+      }
       const found: Project = await res.json()
       setProject(found)
       if (clerkEnabled && currentUserId) {
-        const mRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${found.workspace_id}/members`, { headers: h })
+        // P0-2: was /projects/${workspace_id}/members — fixed to /workspaces/${workspace_id}/members
+        const mRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${found.workspace_id}/members`, { headers: h })
         if (mRes.ok) {
           const members: { clerk_user_id: string; role: string }[] = await mRes.json()
           setIsAdmin(members.find(m => m.clerk_user_id === currentUserId)?.role === "admin")
         }
       }
-    } catch {}
+    } catch {
+      setError("Network error while loading project.")
+      setLoading(false)
+    }
   }
 
+  // P0-3: loadWorkflows is called after loadProject resolves
   async function loadWorkflows() {
     try {
       const h = await authHeaders()
@@ -194,9 +207,10 @@ function ProjectContent({ getToken, currentUserId }: {
     }
   }
 
+  // P1-6: always re-fetch runs on tab change to "Runs"
   function handleTabChange(tab: "Agents" | "Runs") {
     setActiveTab(tab)
-    if (tab === "Runs" && runs.length === 0) loadRuns()
+    if (tab === "Runs") loadRuns()
   }
 
   async function renameAgent(id: string, name: string) {
@@ -219,14 +233,13 @@ function ProjectContent({ getToken, currentUserId }: {
     setConfirmValue("")
   }
 
+  // P2-2: STATUS_FILTERS and STATUS_KEY moved to module level above
+
   const filtered = workflows.filter(w => {
     if (!w.name.toLowerCase().includes(q.toLowerCase())) return false
     if (statusFilter !== "All" && mapStatus(w.last_run_status) !== STATUS_KEY[statusFilter]) return false
     return true
   })
-
-  const STATUS_FILTERS = ["All", "Running", "Awaiting", "Succeeded", "Failed", "Never run"]
-  const STATUS_KEY: Record<string, string> = { Running: "run", Awaiting: "wait", Succeeded: "ok", Failed: "err", "Never run": "idle" }
 
   const rows = [...filtered].sort((a, b) => {
     if (sort === "name") return a.name.localeCompare(b.name)
@@ -234,8 +247,25 @@ function ProjectContent({ getToken, currentUserId }: {
     return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
   })
 
-  const AGENT_GRID = "2fr 1.4fr 1fr 64px"
-  const AGENT_HEADERS = ["Agent", "Last run", "Success 30d", ""]
+  // P2-2 + P1-1: AGENT_GRID and AGENT_HEADERS moved to module level
+
+  // P0-4: show error card if project failed to load
+  if (error) {
+    return (
+      <AppShell>
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "30px 34px 80px" }}>
+          <nav style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-3)", marginBottom: 12 }}>
+            <Link href="/projects" style={{ color: "var(--text-3)", textDecoration: "none" }}>Projects</Link>
+            <span>/</span>
+          </nav>
+          <div style={{ border: "1px solid var(--err-bd, #fecaca)", borderRadius: 12, padding: 24, background: "var(--err-bg, #fff5f5)" }}>
+            <p style={{ color: "var(--err)", fontSize: 13.5, marginBottom: 10 }}>{error}</p>
+            <button onClick={() => { setError(null); setLoading(true); loadProject().then(loadWorkflows) }} className="btn btn-ghost btn-sm" style={{ color: "var(--err)", borderColor: "var(--err-bd, #fecaca)" }}>Retry</button>
+          </div>
+        </div>
+      </AppShell>
+    )
+  }
 
   return (
     <AppShell>
@@ -264,19 +294,21 @@ function ProjectContent({ getToken, currentUserId }: {
           </div>
         </div>
 
-        {/* Tab chips */}
+        {/* Tab chips — always rendered (P1-9); runs count shown only when loaded (P1-2) */}
         <div style={{ display: "flex", gap: 7, marginBottom: 16, flexWrap: "wrap" }}>
-          {(["Agents", "Runs"] as const).map(tab => {
-            const on = activeTab === tab
+          {(["Agents", "Runs"] as const).map(t => {
+            const on = activeTab === t
             return (
               <button
-                key={tab}
-                onClick={() => handleTabChange(tab)}
+                key={t}
+                onClick={() => handleTabChange(t)}
                 className="chip"
                 style={{ height: 30, cursor: "pointer", fontWeight: 600, background: on ? "var(--accent-weak)" : "var(--surface)", borderColor: on ? "var(--accent-ring)" : "var(--border)", color: on ? "var(--accent-text)" : "var(--text-2)" }}
               >
-                {tab}
-                <span style={{ opacity: .6, marginLeft: 1 }}>· {tab === "Agents" ? workflows.length : runs.length}</span>
+                {t}
+                {/* P1-2: only show count when it has been loaded (not · 0 placeholder) */}
+                {t === "Agents" && <span style={{ opacity: .6, marginLeft: 1 }}>· {workflows.length}</span>}
+                {t === "Runs" && runs.length > 0 && <span style={{ opacity: .6, marginLeft: 1 }}>· {runs.length}</span>}
               </button>
             )
           })}
@@ -295,6 +327,7 @@ function ProjectContent({ getToken, currentUserId }: {
                   value={q}
                   onChange={e => setQ(e.target.value)}
                   placeholder="Search agents…"
+                  aria-label="Search agents"
                   style={{ width: "100%", height: 36, padding: "0 12px 0 33px", borderRadius: 9, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", fontSize: 13.5, outline: "none" }}
                 />
               </div>
@@ -312,23 +345,25 @@ function ProjectContent({ getToken, currentUserId }: {
                 {(["list", "grid"] as const).map(v => (
                   <button
                     key={v}
+                    aria-label={v === "list" ? "List view" : "Grid view"}
                     onClick={() => { setView(v); localStorage.setItem("agents_view", v) }}
                     style={{ border: "none", background: view === v ? "var(--surface)" : "transparent", borderRadius: 6, padding: "5px 9px", cursor: "pointer", color: view === v ? "var(--text)" : "var(--text-3)", boxShadow: view === v ? "var(--shadow-sm)" : "none" }}
                   >
                     {v === "list" ? (
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="0" y="1" width="14" height="2" rx="1" fill="currentColor" /><rect x="0" y="6" width="14" height="2" rx="1" fill="currentColor" /><rect x="0" y="11" width="14" height="2" rx="1" fill="currentColor" /></svg>
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="0" y="1" width="14" height="2" rx="1" fill="currentColor" /><rect x="0" y="6" width="14" height="2" rx="1" fill="currentColor" /><rect x="0" y="11" width="14" height="2" rx="1" fill="currentColor" /></svg>
                     ) : (
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="0" y="0" width="6" height="6" rx="1" fill="currentColor" /><rect x="8" y="0" width="6" height="6" rx="1" fill="currentColor" /><rect x="0" y="8" width="6" height="6" rx="1" fill="currentColor" /><rect x="8" y="8" width="6" height="6" rx="1" fill="currentColor" /></svg>
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="0" y="0" width="6" height="6" rx="1" fill="currentColor" /><rect x="8" y="0" width="6" height="6" rx="1" fill="currentColor" /><rect x="0" y="8" width="6" height="6" rx="1" fill="currentColor" /><rect x="8" y="8" width="6" height="6" rx="1" fill="currentColor" /></svg>
                     )}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Status chips */}
+            {/* Status chips — P1-7: counts from filteredAgents (post-search), not all workflows */}
             <div style={{ display: "flex", gap: 7, marginBottom: 16, flexWrap: "wrap" }}>
               {STATUS_FILTERS.map(s => {
-                const n = s === "All" ? workflows.length : workflows.filter(w => mapStatus(w.last_run_status) === STATUS_KEY[s]).length
+                const base = workflows.filter(w => w.name.toLowerCase().includes(q.toLowerCase()))
+                const n = s === "All" ? base.length : base.filter(w => mapStatus(w.last_run_status) === STATUS_KEY[s]).length
                 const on = statusFilter === s
                 return (
                   <button
@@ -407,6 +442,8 @@ function ProjectContent({ getToken, currentUserId }: {
                             onChange={e => setRenameValue(e.target.value)}
                             onClick={e => e.stopPropagation()}
                             onBlur={() => {
+                              // P2-3: don't commit on ESC blur
+                              if (cancelRenameRef.current) { cancelRenameRef.current = false; return }
                               const name = renameValue.trim()
                               if (name && name !== w.name) renameAgent(w.id, name)
                               setRenaming(null); setRenameValue("")
@@ -414,7 +451,7 @@ function ProjectContent({ getToken, currentUserId }: {
                             onKeyDown={e => {
                               e.stopPropagation()
                               if (e.key === "Enter") { const name = renameValue.trim(); if (name && name !== w.name) renameAgent(w.id, name); setRenaming(null); setRenameValue("") }
-                              if (e.key === "Escape") { setRenaming(null); setRenameValue("") }
+                              if (e.key === "Escape") { cancelRenameRef.current = true; setRenaming(null); setRenameValue("") }
                             }}
                             style={{ fontWeight: 650, fontSize: 14, background: "transparent", border: "none", borderBottom: "1px solid var(--accent)", outline: "none", width: "100%" }}
                           />
@@ -427,33 +464,36 @@ function ProjectContent({ getToken, currentUserId }: {
                         <AgentStatusPill s={mapStatus(w.last_run_status)} />
                         <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{w.last_run_at ? timeAgo(w.last_run_at) : ""}</span>
                       </div>
-                      <span style={{ fontSize: 12, color: "var(--text-muted)" }}>—</span>
+                      {/* P1-1: "Success 30d" column removed — was <span>—</span> here */}
+                      {/* P1-4: row click → canvas; Runs stays as explicit secondary; P2-8: ARIA on dropdown */}
                       <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }} ref={menuRef}>
                         <button
                           className="btn btn-ghost btn-sm"
                           style={{ fontSize: 11, padding: "3px 9px" }}
-                          title="View runs"
+                          aria-label="View runs"
                           onClick={e => { e.stopPropagation(); router.push(`/workflows/${w.id}/runs`) }}
                         >Runs</button>
                         <button
                           className="btn btn-ghost btn-icon btn-sm"
-                          title="Open canvas"
+                          aria-label="Open in canvas"
                           onClick={e => { e.stopPropagation(); router.push(`/workflows/${w.id}`) }}
                         >→</button>
                         {isAdmin && (
                           <div style={{ position: "relative" }}>
                             <button
                               className="btn btn-ghost btn-icon btn-sm"
-                              title="More"
+                              aria-label="More actions"
+                              aria-haspopup="menu"
                               onClick={e => { e.stopPropagation(); setMenuOpen(menuOpen === w.id ? null : w.id) }}
                             >⋯</button>
                             {menuOpen === w.id && (
                               <div
+                                role="menu"
                                 onMouseDown={e => e.stopPropagation()}
                                 style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, zIndex: 20, minWidth: 130, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, boxShadow: "var(--shadow-md)", padding: "4px 0" }}
                               >
-                                <button onClick={e => { e.stopPropagation(); setMenuOpen(null); setRenaming(w.id); setRenameValue(w.name) }} style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--text)", background: "none", border: "none", cursor: "pointer" }} onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"} onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}>Rename</button>
-                                <button onMouseDown={e => { e.stopPropagation(); setMenuOpen(null); setConfirming(w.id); setConfirmValue("") }} style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--err)", background: "none", border: "none", cursor: "pointer" }} onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"} onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}>Delete</button>
+                                <button role="menuitem" onClick={e => { e.stopPropagation(); setMenuOpen(null); setRenaming(w.id); setRenameValue(w.name) }} style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--text)", background: "none", border: "none", cursor: "pointer" }} onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"} onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}>Rename</button>
+                                <button role="menuitem" onMouseDown={e => { e.stopPropagation(); setMenuOpen(null); setConfirming(w.id); setConfirmValue("") }} style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--err)", background: "none", border: "none", cursor: "pointer" }} onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"} onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}>Delete</button>
                               </div>
                             )}
                           </div>
@@ -522,12 +562,12 @@ function ProjectContent({ getToken, currentUserId }: {
                 >
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 650, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{run.workflow_name}</div>
-                    <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>{runsTimeAgo(run.created_at)}</div>
+                    <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>{timeAgo(run.created_at)}</div>
                   </div>
                   <div className="mono" style={{ fontSize: 12, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{formatTrigger(run.triggered_by)}</div>
                   <RunStatusBadge status={run.status} />
                   <div className="mono" style={{ fontSize: 12, color: "var(--text-3)" }}>{duration(run.started_at, run.completed_at)}</div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{runsTimeAgo(run.started_at ?? run.created_at)}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{timeAgo(run.started_at ?? run.created_at)}</div>
                 </div>
               ))}
             </div>
