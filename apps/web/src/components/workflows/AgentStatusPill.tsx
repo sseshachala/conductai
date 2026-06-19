@@ -1,15 +1,18 @@
 export default function AgentStatusPill({ s }: { s: string }) {
-  const map: Record<string, { label: string; bg: string; color: string }> = {
-    run:  { label: "Running",   bg: "var(--info-weak, #eff6ff)",  color: "var(--info, #2563eb)" },
-    wait: { label: "Awaiting",  bg: "var(--warn-weak, #fffbeb)",  color: "var(--warn, #d97706)" },
-    ok:   { label: "Succeeded", bg: "var(--ok-weak, #f0fdf4)",    color: "var(--ok, #16a34a)"   },
-    err:  { label: "Failed",    bg: "var(--err-weak, #fff5f5)",   color: "var(--err, #dc2626)"  },
-    idle: { label: "Never run", bg: "var(--surface-2)",           color: "var(--text-muted)"    },
-  }
-  const { label, bg, color } = map[s] ?? map.idle
+  const m = ({
+    ok:   ["ok",   "Succeeded"],
+    wait: ["warn", "Awaiting"],
+    run:  ["run",  "Running"],
+    err:  ["err",  "Failed"],
+    idle: ["idle", "Never run"],
+    warn: ["warn", "Degraded"],
+  } as Record<string, [string, string]>)[s] ?? ["idle", "Never run"]
   return (
-    <span style={{ fontSize: 11, fontWeight: 650, padding: "2px 8px", borderRadius: 20, background: bg, color }}>
-      {label}
+    <span className={"sbadge " + m[0]}>
+      {(s === "run" || s === "wait") && (
+        <span className="dot pulse" style={{ background: m[0] === "warn" ? "var(--warn)" : "var(--info)" }} />
+      )}
+      {m[1]}
     </span>
   )
 }

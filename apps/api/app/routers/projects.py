@@ -490,6 +490,8 @@ def get_my_role(
 ):
     if project_id != workspace_id:
         raise HTTPException(status_code=404, detail="Project not found")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
     row = db.execute(text("""
         SELECT role FROM workspace_users
         WHERE workspace_id = :ws AND clerk_user_id = :uid
