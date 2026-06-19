@@ -17,13 +17,18 @@ declare global {
 
 function useRecaptcha() {
   const loaded = useRef(false)
+  const [captchaReady, setCaptchaReady] = useState(false)
 
   useEffect(() => {
-    if (!SITE_KEY || loaded.current) return
+    if (!SITE_KEY || loaded.current) {
+      if (!SITE_KEY) setCaptchaReady(true) // no CAPTCHA needed — unblock immediately
+      return
+    }
     loaded.current = true
     const script = document.createElement("script")
-    script.src = `https://www.google.com/recaptcha/api.js?render=${SITE_KEY}`
+    script.src = `https://www.google.com/recaptcha/api.js?render=${SITE_KEY}&onload=__conductRecaptchaReady`
     script.async = true
+    ;(window as unknown as Record<string, unknown>)["__conductRecaptchaReady"] = () => setCaptchaReady(true)
     document.head.appendChild(script)
   }, [])
 
@@ -41,13 +46,23 @@ function useRecaptcha() {
     })
   }, [])
 
-  return execute
+  return { execute, captchaReady }
+}
+
+function validateYaml(content: string): string | null {
+  const trimmed = content.trim()
+  if (!trimmed) return "YAML content is required"
+  const hasName = /^\s*name\s*:/m.test(trimmed)
+  const hasStepsOrBlocks = /^\s*(steps|blocks)\s*:/m.test(trimmed)
+  if (!hasName) return "Invalid YAML: missing required field 'name'"
+  if (!hasStepsOrBlocks) return "Invalid YAML: missing required field 'steps' or 'blocks'"
+  return null
 }
 
 export default function SubmitPlaybookPage() {
-  const { getToken, isSignedIn } = useAuth()
+  const { getToken, isSignedIn, isLoaded } = useAuth()
   const { user } = useUser()
-  const executeRecaptcha = useRecaptcha()
+  const { execute: executeRecaptcha, captchaReady } = useRecaptcha()
 
   const [yaml, setYaml] = useState("")
   const [email, setEmail] = useState("")
@@ -57,9 +72,22 @@ export default function SubmitPlaybookPage() {
 
   const userEmail = user?.primaryEmailAddress?.emailAddress ?? ""
 
+  // Wait for Clerk to initialise before rendering auth-dependent UI
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen bg-stone-50 flex items-center justify-center">
+        <div className="w-5 h-5 border-2 border-stone-300 border-t-stone-600 rounded-full animate-spin" />
+      </div>
+    )
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!yaml.trim()) { setError("YAML content is required"); return }
+
+    // P1-10: validate YAML structure before submitting
+    const validationError = validateYaml(yaml)
+    if (validationError) { setError(validationError); return }
+
     setError(null)
     setSubmitting(true)
 
@@ -110,7 +138,7 @@ export default function SubmitPlaybookPage() {
     return (
       <div className="min-h-screen bg-stone-50 flex items-center justify-center px-4">
         <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-10 max-w-md w-full text-center space-y-4">
-          <div className="text-3xl">✅</div>
+          <div className="text-3xl">&#10003;</div>
           <h1 className="text-lg font-semibold text-stone-900">Submission received</h1>
           <p className="text-sm text-stone-500">{result.message}</p>
           <div className="flex gap-3 justify-center pt-2">
@@ -120,7 +148,7 @@ export default function SubmitPlaybookPage() {
             >
               Submit another
             </button>
-            <Link href="/marketplace" className="text-sm text-indigo-600 border border-indigo-200 rounded-lg px-4 py-2 hover:bg-indigo-50 transition-colors">
+            <Link href="/playbooks" className="text-sm text-indigo-600 border border-indigo-200 rounded-lg px-4 py-2 hover:bg-indigo-50 transition-colors">
               Browse playbooks
             </Link>
           </div>
@@ -129,12 +157,20 @@ export default function SubmitPlaybookPage() {
     )
   }
 
+  // Submit button is disabled while reCAPTCHA is loading (anon users only)
+  const submitBlocked = submitting || !yaml.trim() || (!isSignedIn && SITE_KEY !== "" && !captchaReady)
+  const submitLabel = submitting
+    ? "Submitting…"
+    : !isSignedIn && SITE_KEY !== "" && !captchaReady
+      ? "Verifying you're human…"
+      : "Submit playbook"
+
   return (
     <div className="min-h-screen bg-stone-50 px-4 py-12">
       <div className="max-w-2xl mx-auto space-y-6">
         {/* Header */}
         <div>
-          <Link href="/marketplace" className="text-sm text-stone-400 hover:text-stone-600 transition-colors">
+          <Link href="/playbooks" className="text-sm text-stone-400 hover:text-stone-600 transition-colors">
             ← Back to playbooks
           </Link>
           <h1 className="text-2xl font-semibold text-stone-900 mt-3">Submit a playbook</h1>
@@ -146,9 +182,9 @@ export default function SubmitPlaybookPage() {
         {/* Auth status */}
         <div className={`rounded-lg px-4 py-3 text-sm flex items-center gap-2 ${isSignedIn ? "bg-green-50 border border-green-200 text-green-700" : "bg-amber-50 border border-amber-200 text-amber-700"}`}>
           {isSignedIn ? (
-            <><span>✓</span> Submitting as <strong>{userEmail}</strong></>
+            <><span>&#10003;</span> Submitting as <strong>{userEmail}</strong></>
           ) : (
-            <><span>⚠</span> You&apos;re not signed in — your submission will be verified with reCAPTCHA. <Link href="/sign-in" className="underline ml-1">Sign in</Link> for a faster review.</>
+            <><span>&#9888;</span> You&apos;re not signed in — your submission will be verified with reCAPTCHA. <Link href="/sign-in" className="underline ml-1">Sign in</Link> for a faster review.</>
           )}
         </div>
 
@@ -193,16 +229,16 @@ export default function SubmitPlaybookPage() {
           <div className="flex items-center justify-between">
             <p className="text-xs text-stone-400">
               {!isSignedIn && SITE_KEY && "Protected by reCAPTCHA · "}
-              <Link href="https://github.com/sseshachala/conductai/blob/main/PLAYBOOK_SPEC.md" target="_blank" className="hover:underline">
+              <Link href="/docs/playbook-spec" className="hover:underline">
                 Playbook spec
               </Link>
             </p>
             <button
               type="submit"
-              disabled={submitting || !yaml.trim()}
+              disabled={submitBlocked}
               className="bg-indigo-600 text-white text-sm font-medium px-5 py-2 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {submitting ? "Submitting…" : "Submit playbook"}
+              {submitLabel}
             </button>
           </div>
         </form>
