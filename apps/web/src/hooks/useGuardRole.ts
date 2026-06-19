@@ -55,16 +55,6 @@ export function useGuardRole(
   workspaceId: string | null,
 ): { role: GuardRole | null; permissions: GuardPermissions; loading: boolean } {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-  if (!clerkEnabled) {
-    return { role: "admin", permissions: ADMIN_PERMISSIONS, loading: false }
-  }
-
-  return useGuardRoleWithClerk(workspaceId)
-}
-
-function useGuardRoleWithClerk(
-  workspaceId: string | null,
-): { role: GuardRole | null; permissions: GuardPermissions; loading: boolean } {
   const { getToken, isLoaded, isSignedIn } = useAuth()
   const { user } = useUser()
   const { activeWorkspace } = useWorkspace()
@@ -73,10 +63,10 @@ function useGuardRoleWithClerk(
 
   const [role, setRole] = useState<GuardRole | null>(null)
   const [permissions, setPermissions] = useState<GuardPermissions>(VIEWER_PERMISSIONS)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(clerkEnabled)
 
   useEffect(() => {
-    if (!effectiveWorkspaceId || !isLoaded || !isSignedIn) return
+    if (!clerkEnabled || !effectiveWorkspaceId || !isLoaded || !isSignedIn) return
     let cancelled = false
     setLoading(true)
 
@@ -106,7 +96,8 @@ function useGuardRoleWithClerk(
 
     fetch_()
     return () => { cancelled = true }
-  }, [effectiveWorkspaceId, isLoaded, isSignedIn, getToken, email])
+  }, [clerkEnabled, effectiveWorkspaceId, isLoaded, isSignedIn, getToken, email])
 
+  if (!clerkEnabled) return { role: "admin", permissions: ADMIN_PERMISSIONS, loading: false }
   return { role, permissions, loading }
 }
