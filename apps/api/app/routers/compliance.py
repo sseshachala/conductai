@@ -331,6 +331,8 @@ LEGACY_SLUG_MAP = {
     "pci_dss":          "conduct-pci-dss",
     "startup_baseline": "conduct-base",
 }
+# reverse: conduct-slug → canonical pack_id
+_SLUG_TO_PACK_ID = {v: k for k, v in LEGACY_SLUG_MAP.items()}
 
 
 class PackStatusOut(BaseModel):
@@ -387,7 +389,7 @@ def list_installed_packs(
         .all()
     )
     if new_packs:
-        return InstalledPacksOut(installed=sorted(r[0] for r in new_packs))
+        return InstalledPacksOut(installed=sorted(_SLUG_TO_PACK_ID.get(r[0], r[0]) for r in new_packs))
 
     # fallback: legacy guard_policies.pack_id (pre-migration workspaces)
     guard_packs = (
