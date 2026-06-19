@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
 interface Props {
   getToken: (() => Promise<string | null>) | null
@@ -12,6 +12,15 @@ export default function NewProjectModal({ getToken, onClose, onCreate }: Props) 
   const [name, setName] = useState("")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
+
+  // P1-10: ESC key closes modal
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose()
+    }
+    document.addEventListener("keydown", handleKey)
+    return () => document.removeEventListener("keydown", handleKey)
+  }, [onClose])
 
   async function handleCreate() {
     if (!name.trim()) { setError("Project name is required"); return }
@@ -61,7 +70,7 @@ export default function NewProjectModal({ getToken, onClose, onCreate }: Props) 
             type="text"
             value={name}
             onChange={e => setName(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && handleCreate()}
+            onKeyDown={e => { if (e.key === "Enter") handleCreate(); if (e.key === "Escape") onClose() }}
             placeholder="e.g. Acme Backend, Mobile App"
             className="w-full border border-stone-200 rounded-lg px-3 py-2.5 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
           />
