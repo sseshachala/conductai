@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface AuditEntry {
   id: string
@@ -43,12 +44,8 @@ function actionLabel(action: string) {
   return action.replace(".", " ").replace(/_/g, " ")
 }
 
-function getCookieWorkspaceId(): string {
-  if (typeof document === "undefined") return ""
-  return document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] ?? ""
-}
-
 export default function AuditLog({ workspaceId, getToken }: Props) {
+  const { activeWorkspace } = useWorkspace()
   const [entries, setEntries] = useState<AuditEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -64,7 +61,7 @@ export default function AuditLog({ workspaceId, getToken }: Props) {
     try {
       const h: Record<string, string> = {}
       if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
-      const ws = getCookieWorkspaceId()
+      const ws = activeWorkspace?.id ?? ""
       const effectiveWorkspaceId = workspaceId || ws
       if (!effectiveWorkspaceId) {
         setEntries([])

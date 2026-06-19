@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 import {
   Zap, Sparkles, Plug, GitBranch, ShieldCheck, Bell, RefreshCw, Database, Network,
 } from "lucide-react"
@@ -29,13 +30,8 @@ const INTEGRATION_LIST = [
   { handle: "digitalocean", label: "DigitalOcean" },
 ]
 
-function getWorkspaceId(): string | null {
-  if (typeof document === "undefined") return null
-  const m = document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)
-  return m ? m[1] : null
-}
-
 export default function Sidebar({ getToken }: { getToken?: (() => Promise<string | null>) | null }) {
+  const { activeWorkspace } = useWorkspace()
   const [connectedHandles, setConnectedHandles] = useState<Set<string>>(new Set())
 
   useEffect(() => {
@@ -46,7 +42,7 @@ export default function Sidebar({ getToken }: { getToken?: (() => Promise<string
           const token = await getToken()
           if (token) headers["Authorization"] = `Bearer ${token}`
         }
-        const ws = getWorkspaceId()
+        const ws = activeWorkspace?.id ?? ""
         if (ws) headers["X-Workspace-Id"] = ws
         const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials`, { headers })
         if (r.ok) {

@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react"
 import { useAuth, useUser } from "@clerk/nextjs"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface Submission {
   slug: string
@@ -23,10 +24,6 @@ const GRADE_STYLES: Record<string, string> = {
   F: "bg-red-100    text-red-700",
 }
 
-function getWorkspaceId(): string | null {
-  if (typeof document === "undefined") return null
-  return document.cookie.split("; ").find(r => r.startsWith("delegator_project_id="))?.split("=")[1] ?? null
-}
 
 export default function PlaybookQueuePage() {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
@@ -80,6 +77,7 @@ function PlaybookQueueContent({
   getToken: (() => Promise<string | null>) | null
   userRole: string | null
 }) {
+  const { activeWorkspace } = useWorkspace()
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [loading, setLoading] = useState(true)
   const [actionInFlight, setActionInFlight] = useState<Set<string>>(new Set())
@@ -91,10 +89,10 @@ function PlaybookQueueContent({
       const token = await getToken()
       if (token) headers["Authorization"] = `Bearer ${token}`
     }
-    const workspaceId = getWorkspaceId()
-    if (workspaceId) headers["X-Workspace-Id"] = workspaceId
+    const wsId = activeWorkspace?.id ?? ""
+    if (wsId) headers["X-Workspace-Id"] = wsId
     return headers
-  }, [getToken])
+  }, [getToken, activeWorkspace])
 
   const loadSubmissions = useCallback(async () => {
     setLoading(true)

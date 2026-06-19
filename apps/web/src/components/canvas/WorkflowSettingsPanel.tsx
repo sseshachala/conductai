@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface WorkflowDetail {
   id: string
@@ -22,6 +23,7 @@ interface Props {
 }
 
 export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }: Props) {
+  const { activeWorkspace } = useWorkspace()
   const [workflow, setWorkflow] = useState<WorkflowDetail | null>(null)
   const [environments, setEnvironments] = useState<Environment[]>([])
   const [loading, setLoading] = useState(true)
@@ -36,8 +38,7 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
   async function headers(): Promise<Record<string, string>> {
     const h: Record<string, string> = {}
     if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
-    const wsId = typeof document !== "undefined"
-      ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
+    const wsId = activeWorkspace?.id ?? ""
     if (wsId) h["X-Workspace-ID"] = wsId
     return h
   }

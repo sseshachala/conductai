@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 import {
   ReactFlow,
   Background,
@@ -105,26 +106,19 @@ interface CanvasEditorProps {
   isAdmin?: boolean
 }
 
-function getWorkspaceId(): string | null {
-  if (typeof document === "undefined") return null
-  return document.cookie
-    .split("; ")
-    .find(r => r.startsWith("delegator_project_id="))
-    ?.split("=")[1] ?? null
-}
-
-async function authHeaders(getToken?: (() => Promise<string | null>) | null): Promise<Record<string, string>> {
+async function authHeaders(getToken?: (() => Promise<string | null>) | null, wsId?: string | null): Promise<Record<string, string>> {
   const headers: Record<string, string> = { "Content-Type": "application/json" }
   if (getToken) {
     const token = await getToken()
     if (token) headers["Authorization"] = `Bearer ${token}`
   }
-  const ws = getWorkspaceId()
-  if (ws) headers["X-Workspace-Id"] = ws
+  if (wsId) headers["X-Workspace-Id"] = wsId
   return headers
 }
 
 function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = false }: CanvasEditorProps) {
+  const { activeWorkspace } = useWorkspace()
+  const wsId = activeWorkspace?.id ?? null
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
@@ -201,7 +195,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     const abort = new AbortController()
     ;(async () => {
       try {
-        const headers = await authHeaders(getToken)
+        const headers = await authHeaders(getToken, wsId)
         if (abort.signal.aborted) return
         const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}`, { headers, signal: abort.signal })
         if (!r.ok) { localStorage.removeItem(STORAGE_KEY); return }
@@ -237,7 +231,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
 
     const poll = async () => {
       try {
-        const headers = await authHeaders(getToken)
+        const headers = await authHeaders(getToken, wsId)
         const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${testRunId}`, { headers })
         if (!r.ok) return
         const run = await r.json()
@@ -257,7 +251,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     const abort = new AbortController()
     ;(async () => {
       try {
-        const headers = await authHeaders(getToken)
+        const headers = await authHeaders(getToken, wsId)
         if (abort.signal.aborted) return
         const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments`, { headers, signal: abort.signal })
         if (!abort.signal.aborted) setEnvironments(r.ok ? await r.json() : [])
@@ -272,7 +266,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     const abort = new AbortController()
     ;(async () => {
       try {
-        const headers = await authHeaders(getToken)
+        const headers = await authHeaders(getToken, wsId)
         if (abort.signal.aborted) return
         const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/by-environment/${selectedEnvId}`, { headers, signal: abort.signal })
         if (!abort.signal.aborted) setEnvCredentials(r.ok ? await r.json() : [])
@@ -284,7 +278,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
   const fetchRuns = () => {
     if (!workflowId) return
     setRunsLoading(true)
-    authHeaders(getToken).then(headers =>
+    authHeaders(getToken, wsId).then(headers =>
       fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs?limit=50`, { headers })
         .then(r => r.ok ? r.json() : [])
         .then(data => { setRuns(data); setRunsLoading(false) })
@@ -314,7 +308,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
   useEffect(() => {
     if (!workflowId || workflowId === "undefined") return
     const abort = new AbortController()
-    authHeaders(getToken).then(headers =>
+    authHeaders(getToken, wsId).then(headers =>
     fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, { headers, signal: abort.signal })
       .then(async (r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
       .then((data) => {
@@ -374,7 +368,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
   const handleEnvChange = useCallback(async (envId: string) => {
     setSelectedEnvId(envId)
     try {
-      const headers = await authHeaders(getToken)
+      const headers = await authHeaders(getToken, wsId)
       headers["Content-Type"] = "application/json"
       await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/environment`, {
         method: "PATCH",
@@ -390,7 +384,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     savingInFlightRef.current = true
     setSaveStatus("saving")
     try {
-      const headers = await authHeaders(getToken)
+      const headers = await authHeaders(getToken, wsId)
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, {
         method: "PUT",
         headers,
@@ -548,7 +542,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
 
     // Server-side pre-flight: credentials, brain descriptions, required fields
     try {
-      const headers = await authHeaders(getToken)
+      const headers = await authHeaders(getToken, wsId)
       const vRes = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/validate`,
         { method: "POST", headers }
@@ -571,7 +565,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     }
 
     try {
-      const headers = await authHeaders(getToken)
+      const headers = await authHeaders(getToken, wsId)
       let initialState: Record<string, unknown> | undefined
 
       // For webhook-triggered workflows, replicate what the CLI does:
@@ -757,7 +751,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     setWebhookModal(null)
     setRunning(dryRun ? "dry" : "live")
     try {
-      const headers = await authHeaders(getToken)
+      const headers = await authHeaders(getToken, wsId)
       const [owner, repoName] = repo.split("/")
       const num = parseInt(prNumber, 10)
       const initialState = {
@@ -838,7 +832,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     setTestRunning(true)
     setTestRunId(null)
     try {
-      const headers = await authHeaders(getToken)
+      const headers = await authHeaders(getToken, wsId)
       const payload: Record<string, unknown> = {}
       if (testPrNumber.trim()) {
         const pr = parseInt(testPrNumber.trim(), 10)
@@ -1350,7 +1344,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
               <div className="flex items-center gap-2">
                 <button
                   onClick={async () => {
-                    const headers = await authHeaders(getToken)
+                    const headers = await authHeaders(getToken, wsId)
                     setPreflight(null)
                     setRunning(preflight.pendingDryRun ? "dry" : "live")
                     try {
@@ -1368,7 +1362,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                 </button>
                 <button
                   onClick={async () => {
-                    const headers = await authHeaders(getToken)
+                    const headers = await authHeaders(getToken, wsId)
                     setPreflight(null)
                     setRunning(preflight.pendingDryRun ? "dry" : "live")
                     try {
@@ -1599,6 +1593,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
 
 function CanvasEditorWithClerk({ workflowId }: { workflowId: string }) {
   const { getToken, userId } = useAuth()
+  const { activeWorkspace } = useWorkspace()
   const [isViewer, setIsViewer] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
 
@@ -1606,9 +1601,7 @@ function CanvasEditorWithClerk({ workflowId }: { workflowId: string }) {
     if (!userId) return
     async function fetchRole() {
       try {
-        const ws = typeof document !== "undefined"
-          ? document.cookie.split("; ").find(r => r.startsWith("delegator_project_id="))?.split("=")[1]
-          : undefined
+        const ws = activeWorkspace?.id
         if (!ws) return
         const token = getToken ? await getToken() : null
         const headers: Record<string, string> = { "X-Workspace-Id": ws }
@@ -1622,7 +1615,7 @@ function CanvasEditorWithClerk({ workflowId }: { workflowId: string }) {
       } catch { /* stay false */ }
     }
     fetchRole()
-  }, [userId])
+  }, [userId, activeWorkspace])
 
   return (
     <ReactFlowProvider>

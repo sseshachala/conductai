@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface Props {
   getToken: (() => Promise<string | null>) | null
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export default function NewProjectModal({ getToken, onClose, onCreate }: Props) {
+  const { activeWorkspace } = useWorkspace()
   const [name, setName] = useState("")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
@@ -32,7 +34,7 @@ export default function NewProjectModal({ getToken, onClose, onCreate }: Props) 
         const token = await getToken()
         if (token) headers["Authorization"] = `Bearer ${token}`
       }
-      const workspaceId = document.cookie.match(/delegator_project_id=([^;]+)/)?.[1] ?? ""
+      const workspaceId = activeWorkspace?.id ?? ""
       if (workspaceId) headers["X-Workspace-Id"] = workspaceId
       const endpoint = workspaceId
         ? `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/projects`

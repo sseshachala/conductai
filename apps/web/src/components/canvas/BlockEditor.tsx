@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useRef } from "react"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 import { BLOCK_STYLES, type BlockType } from "@/lib/block-types"
 import {
   BLOCK_CONFIG_SCHEMAS,
@@ -154,6 +155,7 @@ function GitHubWebhookStatusPanel({
   onWebhookChange?: (hookId: string | null, hookRepo: string | null) => void
   compact?: boolean
 }) {
+  const { activeWorkspace } = useWorkspace()
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [sharedWith, setSharedWith] = useState<string | null>(null)
@@ -161,8 +163,7 @@ function GitHubWebhookStatusPanel({
   async function authHeaders() {
     const h: Record<string, string> = { "Content-Type": "application/json" }
     if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
-    const ws = typeof document !== "undefined"
-      ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
+    const ws = activeWorkspace?.id ?? ""
     if (ws) h["X-Workspace-Id"] = ws
     return h
   }
@@ -276,6 +277,7 @@ function GitHubWebhookStatusPanel({
 function WebhookRegisterButton({ owner, repo, getToken }: {
   owner: string; repo: string; getToken?: (() => Promise<string | null>) | null
 }) {
+  const { activeWorkspace } = useWorkspace()
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle")
   const [msg, setMsg] = useState("")
 
@@ -286,8 +288,7 @@ function WebhookRegisterButton({ owner, repo, getToken }: {
       if (!apiUrl) { setStatus("error"); setMsg("NEXT_PUBLIC_API_URL not set"); return }
       const headers: Record<string, string> = { "Content-Type": "application/json" }
       if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
-      const ws = typeof document !== "undefined"
-        ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
+      const ws = activeWorkspace?.id ?? ""
       if (ws) headers["X-Workspace-Id"] = ws
       const url = `${apiUrl}/credentials/github/repos/${owner}/${repo}/webhook`
       const r = await fetch(url, { method: "POST", headers })
@@ -330,6 +331,7 @@ function WebhookRegisterButton({ owner, repo, getToken }: {
 function VercelWebhookRegisterButton({ eventType, getToken }: {
   eventType: string; getToken?: (() => Promise<string | null>) | null
 }) {
+  const { activeWorkspace } = useWorkspace()
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle")
   const [msg, setMsg] = useState("")
 
@@ -340,8 +342,7 @@ function VercelWebhookRegisterButton({ eventType, getToken }: {
       if (!apiUrl) { setStatus("error"); setMsg("NEXT_PUBLIC_API_URL not set"); return }
       const headers: Record<string, string> = { "Content-Type": "application/json" }
       if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
-      const ws = typeof document !== "undefined"
-        ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
+      const ws = activeWorkspace?.id ?? ""
       if (ws) headers["X-Workspace-Id"] = ws
       const r = await fetch(`${apiUrl}/credentials/vercel/webhook`, {
         method: "POST",
@@ -764,6 +765,7 @@ function GuardBlockPanel({
   isAdmin?: boolean
   isViewer?: boolean
 }) {
+  const { activeWorkspace } = useWorkspace()
   const [installed, setInstalled] = useState<boolean | null>(null)
   const [teamId, setTeamId] = useState<string | null>(null)
   const [policies, setPolicies] = useState<GuardPolicy[]>([])
@@ -772,9 +774,7 @@ function GuardBlockPanel({
     let cancelled = false
     async function load() {
       try {
-        const ws = typeof document !== "undefined"
-          ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1]
-          : null
+        const ws = activeWorkspace?.id ?? ""
         const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
         const token = await getToken?.()
         const headers: Record<string, string> = {}
@@ -989,6 +989,7 @@ function MCPBlockPanel({
   isViewer?: boolean
   environmentId?: string
 }) {
+  const { activeWorkspace } = useWorkspace()
   const [tools, setTools] = useState<MCPTool[]>([])
   const [discovering, setDiscovering] = useState(false)
   const [discoverErr, setDiscoverErr] = useState<string | null>(null)
@@ -1002,8 +1003,7 @@ function MCPBlockPanel({
 
   // Fetch workspace MCP servers from Integrations
   useEffect(() => {
-    const wsId = typeof document !== "undefined"
-      ? document.cookie.split("; ").find(r => r.startsWith("delegator_project_id="))?.split("=")[1] : null
+    const wsId = activeWorkspace?.id ?? ""
     if (!wsId) return
     authHeaders().then(h =>
       fetch(`${process.env.NEXT_PUBLIC_API_URL}/mcp-servers?workspace_id=${wsId}${environmentId ? `&environment_id=${environmentId}` : ""}`, { headers: h })
@@ -1046,8 +1046,7 @@ function MCPBlockPanel({
   async function authHeaders() {
     const h: Record<string, string> = { "Content-Type": "application/json" }
     if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
-    const ws = typeof document !== "undefined"
-      ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
+    const ws = activeWorkspace?.id ?? ""
     if (ws) h["X-Workspace-Id"] = ws
     return h
   }
@@ -1307,6 +1306,8 @@ export default function BlockEditor({
   onDelete,
   sandboxBlocks,
 }: BlockEditorProps) {
+  const { activeWorkspace } = useWorkspace()
+  const wsId = activeWorkspace?.id ?? null
   const [promptOpen, setPromptOpen] = useState(false)
   const [streamedPrompt, setStreamedPrompt] = useState<string>("")
   const [isStreaming, setIsStreaming] = useState(false)
@@ -1468,9 +1469,7 @@ export default function BlockEditor({
       try {
         const headers: Record<string, string> = { "Content-Type": "application/json" }
         if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
-        const ws = typeof document !== "undefined"
-          ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
-        if (ws) headers["X-Workspace-Id"] = ws
+        if (wsId) headers["X-Workspace-Id"] = wsId
         const res = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/blocks/${blockId}/compile/stream`,
           {
@@ -1755,9 +1754,7 @@ export default function BlockEditor({
 
         // Webhook URL helpers (reused from existing logic)
         const webhookBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
-        const workspaceId = typeof document !== "undefined"
-          ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1]
-          : null
+        const workspaceId = wsId
         const githubWebhookUrl = projectSlug && playbookSlug
           ? `${webhookBase}/webhooks/github/${projectSlug}/${playbookSlug}`
           : workspaceId ? `${webhookBase}/webhooks/github?workspace_id=${workspaceId}` : null
@@ -2013,11 +2010,7 @@ export default function BlockEditor({
                           const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
                           const webhookUrl = projectSlug && playbookSlug
                             ? `${base}/webhooks/github/${projectSlug}/${playbookSlug}`
-                            : (() => {
-                                const ws = typeof document !== "undefined"
-                                  ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
-                                return ws ? `${base}/webhooks/github?workspace_id=${ws}` : null
-                              })()
+                            : wsId ? `${base}/webhooks/github?workspace_id=${wsId}` : null
                           return (
                             <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2.5 text-xs text-violet-800 mt-2 space-y-1.5">
                               <div className="flex items-center justify-between">
@@ -2053,11 +2046,7 @@ export default function BlockEditor({
                           const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
                           const githubUrl = projectSlug && playbookSlug
                             ? `${base}/webhooks/github/${projectSlug}/${playbookSlug}`
-                            : (() => {
-                                const ws = typeof document !== "undefined"
-                                  ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
-                                return ws ? `${base}/webhooks/github?workspace_id=${ws}` : null
-                              })()
+                            : wsId ? `${base}/webhooks/github?workspace_id=${wsId}` : null
                           const inboundUrl = `${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}/webhooks/inbound/${workflowId}`
                           const webhookUrl = githubHookRepo ? githubUrl : inboundUrl
                           const displayUrl = webhookUrl ?? inboundUrl
@@ -2104,10 +2093,8 @@ export default function BlockEditor({
                         })()}
                         {/* Vercel deployment trigger URL + auto-register panel */}
                         {blockType === "trigger" && field.key === "config.event_type" && isVercelTrigger && (() => {
-                          const ws = typeof document !== "undefined"
-                            ? document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1] : null
-                          const webhookUrl = ws
-                            ? `${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}/webhooks/vercel?workspace_id=${ws}`
+                          const webhookUrl = wsId
+                            ? `${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}/webhooks/vercel?workspace_id=${wsId}`
                             : null
                           return (
                             <div className="mt-2 space-y-2">

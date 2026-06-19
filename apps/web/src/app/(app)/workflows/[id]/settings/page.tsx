@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface WorkflowDetail {
   id: string
@@ -22,6 +23,7 @@ export default function AgentSettingsPage() {
   const { id: workflowId } = useParams<{ id: string }>()
   const router = useRouter()
   const { getToken } = useAuth()
+  const { activeWorkspace } = useWorkspace()
   const [workflow, setWorkflow] = useState<WorkflowDetail | null>(null)
   const [environments, setEnvironments] = useState<Environment[]>([])
   const [loading, setLoading] = useState(true)
@@ -36,7 +38,7 @@ export default function AgentSettingsPage() {
   async function headers(): Promise<Record<string, string>> {
     const h: Record<string, string> = {}
     if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
-    const wsId = document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1]
+    const wsId = activeWorkspace?.id ?? ""
     if (wsId) h["X-Workspace-ID"] = wsId
     return h
   }

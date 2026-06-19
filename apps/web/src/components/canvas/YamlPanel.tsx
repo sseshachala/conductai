@@ -5,6 +5,7 @@ import type { Edge, Node } from "@xyflow/react"
 
 import { autoLayout } from "@/lib/auto-layout"
 import { yamlFilenameFor } from "@/lib/yaml-filename"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 type Status = "idle" | "loading" | "saving" | "saved" | "error"
 
@@ -35,6 +36,7 @@ export default function YamlPanel({
   edges,
   onLoaded,
 }: YamlPanelProps) {
+  const { activeWorkspace } = useWorkspace()
   const [yamlText, setYamlText] = useState("")
   const [status, setStatus] = useState<Status>("idle")
   const [error, setError] = useState<string | null>(null)
@@ -50,7 +52,7 @@ export default function YamlPanel({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id: workflowId,
-        workspace_id: document.cookie.match(/delegator_project_id=([^;]+)/)?.[1],
+        workspace_id: activeWorkspace?.id,
         name: workflowName,
         graph: { nodes, edges },
       }),

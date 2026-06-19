@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface Project   { id: string; name: string; project_type?: string }
 interface Environment { id: string; name: string }
@@ -57,11 +58,6 @@ const TEMPLATES = [
   { id: "copilot_reviewer",   label: "Copilot Reviewer",        description: "Copilot/Cursor PR → AI reviews → human approves before merge.", tags: ["GitHub", "Slack"] },
 ]
 
-function getWorkspaceId(): string | null {
-  if (typeof document === "undefined") return null
-  return document.cookie.split("; ").find(r => r.startsWith("delegator_project_id="))?.split("=")[1] ?? null
-}
-
 export default function NewWorkflowPage() {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   if (clerkEnabled) return <NewWorkflowWithAuth />
@@ -76,6 +72,7 @@ function NewWorkflowWithAuth() {
 function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { activeWorkspace } = useWorkspace()
   const urlProjectId = searchParams.get("project_id") ?? ""
 
   const [template, setTemplate]           = useState("autopilot_quick")
@@ -109,10 +106,10 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
       const t = await getToken()
       if (t) h["Authorization"] = `Bearer ${t}`
     }
-    const ws = getWorkspaceId()
+    const ws = activeWorkspace?.id ?? ""
     if (ws) h["X-Workspace-Id"] = ws
     return h
-  }, [getToken])
+  }, [getToken, activeWorkspace])
 
   // Close template dropdown on outside click
   useEffect(() => {
@@ -128,7 +125,7 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
     async function boot() {
       setBootstrapping(true)
       const headers = await buildHeaders()
-      const workspaceId = getWorkspaceId()
+      const workspaceId = activeWorkspace?.id ?? ""
       await Promise.all([
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/projects`, { headers }).then(async res => {
           if (res.ok) {

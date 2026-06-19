@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useAuth } from "@clerk/nextjs"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 import {
   SERVICE_DETECTION,
   affectedServices,
@@ -116,11 +117,6 @@ function EyeIcon({ open }: { open: boolean }) {
   )
 }
 
-function getWorkspaceId(): string | null {
-  if (typeof document === "undefined") return null
-  return document.cookie.split("; ").find(r => r.startsWith("delegator_project_id="))?.split("=")[1] ?? null
-}
-
 export default function EnvironmentsManager({ isAdmin = true }: { isAdmin?: boolean }) {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   if (clerkEnabled) return <EnvironmentsManagerWithAuth isAdmin={isAdmin} />
@@ -135,6 +131,7 @@ function EnvironmentsManagerWithAuth({ isAdmin }: { isAdmin: boolean }) {
 interface EnvVar { key: string; value: string; handle?: string }
 
 function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Promise<string | null>) | null; isAdmin: boolean }) {
+  const { activeWorkspace } = useWorkspace()
   const [environments, setEnvironments] = useState<Environment[]>([])
   const [listLoading, setListLoading] = useState(true)
   const [active, setActive] = useState(0)
@@ -158,10 +155,10 @@ function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Prom
       const token = await getToken()
       if (token) headers["Authorization"] = `Bearer ${token}`
     }
-    const ws = getWorkspaceId()
+    const ws = activeWorkspace?.id ?? ""
     if (ws) headers["X-Workspace-Id"] = ws
     return headers
-  }, [getToken])
+  }, [getToken, activeWorkspace])
 
   const loadEnvironments = useCallback(async () => {
     if (loadingRef.current) return
