@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 import EnvironmentsManager from "@/components/settings/EnvironmentsManager"
 import MembersManager from "@/components/settings/MembersManager"
 import PreferencesPanel from "@/components/settings/PreferencesPanel"
@@ -26,9 +27,8 @@ export default function SettingsPage() {
 function SettingsPageWithAuth() {
   const { getToken, userId } = useAuth()
   const [isAdmin, setIsAdmin] = useState(false)
-  const workspaceId = typeof document !== "undefined"
-    ? document.cookie.split("; ").find(r => r.startsWith("delegator_project_id="))?.split("=")[1] ?? ""
-    : ""
+  const { activeWorkspace } = useWorkspace()
+  const workspaceId = activeWorkspace?.id ?? ""
 
   useEffect(() => {
     if (!workspaceId || !userId) return
