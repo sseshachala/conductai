@@ -324,6 +324,40 @@ export default function ObservabilityPage() {
           ))}
         </div>
 
+        {/* DORA-lite */}
+        <div className="eyebrow" style={{ marginBottom: 11 }}>
+          DORA-lite <span style={{ textTransform: "none", letterSpacing: 0, color: "var(--text-muted)", fontWeight: 500 }}>· last 30 days</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 24 }}>
+          {[
+            {
+              v: dora ? `${dora.deployment_frequency.toFixed(1)}/day` : "—",
+              k: "Deploys / day",
+              tone: dora ? (dora.deployment_frequency >= 1 ? "var(--ok)" : dora.deployment_frequency >= 0.5 ? "var(--warn)" : "var(--text-muted)") : "var(--text-muted)",
+            },
+            {
+              v: dora ? `${Math.round(dora.change_failure_rate * 100)}%` : "—",
+              k: "Failure rate",
+              tone: dora ? (dora.change_failure_rate < 0.1 ? "var(--ok)" : dora.change_failure_rate < 0.2 ? "var(--warn)" : "var(--err)") : "var(--text-muted)",
+            },
+            {
+              v: dora?.avg_duration_ms ? fmt_duration(dora.avg_duration_ms) : "—",
+              k: "Avg run time",
+              tone: "var(--text)",
+            },
+            {
+              v: dora ? dora.total_runs : "—",
+              k: "Deployments",
+              tone: "var(--text)",
+            },
+          ].map((s, i) => (
+            <div key={i} className="card" style={{ padding: "16px 18px" }}>
+              <div style={{ fontSize: 23, fontWeight: 700, letterSpacing: "-.02em", color: s.tone, lineHeight: 1.1 }}>{String(s.v)}</div>
+              <div className="eyebrow" style={{ marginTop: 8, fontSize: 9.5 }}>{s.k}</div>
+            </div>
+          ))}
+        </div>
+
         {/* Cost summary */}
         <div className="eyebrow" style={{ marginBottom: 11 }}>
           Cost summary <span style={{ textTransform: "none", letterSpacing: 0, color: "var(--text-muted)", fontWeight: 500 }}>· last 30 days</span>
@@ -453,40 +487,6 @@ export default function ObservabilityPage() {
             </button>
           </div>
         )}
-
-        {/* DORA-lite */}
-        <div className="eyebrow" style={{ marginBottom: 11 }}>
-          DORA-lite <span style={{ textTransform: "none", letterSpacing: 0, color: "var(--text-muted)", fontWeight: 500 }}>· last 30 days</span>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 24 }}>
-          {[
-            {
-              v: dora ? `${dora.deployment_frequency.toFixed(1)}/day` : "—",
-              k: "Deploys / day",
-              tone: dora ? (dora.deployment_frequency >= 1 ? "var(--ok)" : dora.deployment_frequency >= 0.5 ? "var(--warn)" : "var(--text-muted)") : "var(--text-muted)",
-            },
-            {
-              v: dora ? `${Math.round(dora.change_failure_rate * 100)}%` : "—",
-              k: "Failure rate",
-              tone: dora ? (dora.change_failure_rate < 0.1 ? "var(--ok)" : dora.change_failure_rate < 0.2 ? "var(--warn)" : "var(--err)") : "var(--text-muted)",
-            },
-            {
-              v: dora?.avg_duration_ms ? fmt_duration(dora.avg_duration_ms) : "—",
-              k: "Avg run time",
-              tone: "var(--text)",
-            },
-            {
-              v: dora ? dora.total_runs : "—",
-              k: "Deployments",
-              tone: "var(--text)",
-            },
-          ].map((s, i) => (
-            <div key={i} className="card" style={{ padding: "16px 18px" }}>
-              <div style={{ fontSize: 23, fontWeight: 700, letterSpacing: "-.02em", color: s.tone, lineHeight: 1.1 }}>{String(s.v)}</div>
-              <div className="eyebrow" style={{ marginTop: 8, fontSize: 9.5 }}>{s.k}</div>
-            </div>
-          ))}
-        </div>
 
         {/* By-agent + events */}
         <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 16 }}>
