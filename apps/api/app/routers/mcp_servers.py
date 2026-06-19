@@ -36,6 +36,7 @@ class McpServerOut(BaseModel):
     url: str
     transport: str
     has_auth: bool
+    is_system: bool
     created_at: datetime
 
 
@@ -48,6 +49,7 @@ def _row_to_out(r) -> McpServerOut:
         url=r.url,
         transport=r.transport,
         has_auth=bool(r.encrypted_auth),
+        is_system=bool(r.is_system),
         created_at=r.created_at,
     )
 
@@ -103,19 +105,29 @@ def update_mcp_server(
     db: Session = Depends(get_db),
 ):
     encrypted = encrypt({"token": body.auth_token}) if body.auth_token else None
-    row = db.execute(text("""
-        UPDATE mcp_servers
-        SET name = :name, url = :url, transport = :transport,
-            environment_id = :env,
-            encrypted_auth = COALESCE(:auth, encrypted_auth)
-        WHERE id = :id AND workspace_id = :ws
-        RETURNING *
-    """), {
-        "id": server_id, "ws": workspace_id,
-        "env": body.environment_id,
-        "name": body.name, "url": body.url, "transport": body.transport,
-        "auth": encrypted,
-    }).fetchone()
+    existing = db.execute(text("SELECT is_system FROM mcp_servers WHERE id = :id AND workspace_id = :ws"),
+                          {"id": server_id, "ws": workspace_id}).fetchone()
+    is_system = existing and existing.is_system
+    # System entries: only transport can change
+    if is_system:
+        row = db.execute(text("""
+            UPDATE mcp_servers SET transport = :transport
+            WHERE id = :id AND workspace_id = :ws RETURNING *
+        """), {"transport": body.transport, "id": server_id, "ws": workspace_id}).fetchone()
+    else:
+        row = db.execute(text("""
+            UPDATE mcp_servers
+            SET name = :name, url = :url, transport = :transport,
+                environment_id = :env,
+                encrypted_auth = COALESCE(:auth, encrypted_auth)
+            WHERE id = :id AND workspace_id = :ws
+            RETURNING *
+        """), {
+            "id": server_id, "ws": workspace_id,
+            "env": body.environment_id,
+            "name": body.name, "url": body.url, "transport": body.transport,
+            "auth": encrypted,
+        }).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="MCP server not found")
     db.commit()
@@ -129,6 +141,10 @@ def delete_mcp_server(
     _: Annotated[str, Depends(require_permission("platform.workspace.edit"))],
     db: Session = Depends(get_db),
 ):
+    existing = db.execute(text("SELECT is_system FROM mcp_servers WHERE id = :id AND workspace_id = :ws"),
+                          {"id": server_id, "ws": workspace_id}).fetchone()
+    if existing and existing.is_system:
+        raise HTTPException(status_code=403, detail="System MCP servers cannot be deleted")
     result = db.execute(text(
         "DELETE FROM mcp_servers WHERE id = :id AND workspace_id = :ws"
     ), {"id": server_id, "ws": workspace_id})

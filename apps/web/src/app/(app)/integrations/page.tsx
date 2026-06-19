@@ -15,6 +15,7 @@ interface McpServer {
   url: string
   transport: "sse" | "http" | "stdio"
   has_auth: boolean
+  is_system: boolean
   created_at: string
 }
 
@@ -85,16 +86,19 @@ function McpModal({
   environments,
   onSave,
   onClose,
+  isSystem,
 }: {
   mode: "add" | "edit"
   initial: FormState
   environments: Environment[]
   onSave: (form: FormState) => Promise<void>
   onClose: () => void
+  isSystem?: boolean
 }) {
   const [form, setForm] = useState<FormState>(initial)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
+  const readOnly = !!isSystem
 
   function set(key: keyof FormState, value: string) {
     setForm(prev => ({ ...prev, [key]: value }))
@@ -166,9 +170,10 @@ function McpModal({
               autoFocus
               type="text"
               value={form.name}
-              onChange={e => set("name", e.target.value)}
+              onChange={e => !readOnly && set("name", e.target.value)}
               placeholder="e.g. GitHub tools"
-              style={inputStyle}
+              readOnly={readOnly}
+              style={{ ...inputStyle, opacity: readOnly ? 0.6 : 1 }}
             />
           </div>
 
@@ -178,9 +183,10 @@ function McpModal({
             <input
               type="text"
               value={form.url}
-              onChange={e => set("url", e.target.value)}
+              onChange={e => !readOnly && set("url", e.target.value)}
               placeholder="https://mcp.example.com/sse"
-              style={inputStyle}
+              readOnly={readOnly}
+              style={{ ...inputStyle, opacity: readOnly ? 0.6 : 1 }}
             />
           </div>
 
@@ -207,9 +213,10 @@ function McpModal({
             <input
               type="password"
               value={form.auth_token}
-              onChange={e => set("auth_token", e.target.value)}
+              onChange={e => !readOnly && set("auth_token", e.target.value)}
               placeholder="Bearer token or API key"
-              style={inputStyle}
+              readOnly={readOnly}
+              style={{ ...inputStyle, opacity: readOnly ? 0.6 : 1 }}
             />
           </div>
 
@@ -218,8 +225,9 @@ function McpModal({
             <label style={labelStyle}>Environment</label>
             <select
               value={form.environment_id}
-              onChange={e => set("environment_id", e.target.value)}
-              style={inputStyle}
+              onChange={e => !readOnly && set("environment_id", e.target.value)}
+              disabled={readOnly}
+              style={{ ...inputStyle, opacity: readOnly ? 0.6 : 1 }}
             >
               <option value="">All environments</option>
               {environments.map(env => (
@@ -500,14 +508,16 @@ function IntegrationsPageInner({
                           >
                             Edit
                           </button>
-                          <button
-                            onClick={() => handleDelete(server)}
-                            disabled={deletingId === server.id}
-                            className="btn btn-ghost btn-sm"
-                            style={{ color: "var(--err)" }}
-                          >
-                            {deletingId === server.id ? "Deleting…" : "Delete"}
-                          </button>
+                          {!server.is_system && (
+                            <button
+                              onClick={() => handleDelete(server)}
+                              disabled={deletingId === server.id}
+                              className="btn btn-ghost btn-sm"
+                              style={{ color: "var(--err)" }}
+                            >
+                              {deletingId === server.id ? "Deleting…" : "Delete"}
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -523,6 +533,7 @@ function IntegrationsPageInner({
       {modalMode && (
         <McpModal
           mode={modalMode}
+          isSystem={!!editTarget?.is_system}
           initial={initialForm}
           environments={environments}
           onSave={handleSave}
