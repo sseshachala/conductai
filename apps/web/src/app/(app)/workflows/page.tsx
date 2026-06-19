@@ -8,6 +8,7 @@ import AppShell from "@/components/AppShell"
 import AgentStatusPill from "@/components/workflows/AgentStatusPill"
 import Toggle from "@/components/workflows/Toggle"
 import WorkflowMenu from "@/components/workflows/WorkflowMenu"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface Workflow {
   id: string
@@ -29,13 +30,6 @@ function timeAgo(ts: string): string {
   return `${Math.floor(hrs / 24)}d ago`
 }
 
-function getActiveProject(): { id: string; name: string } | null {
-  if (typeof document === "undefined") return null
-  const idMatch = document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)
-  if (!idMatch) return null
-  const nameMatch = document.cookie.match(/(?:^|;\s*)delegator_project_name=([^;]+)/)
-  return { id: idMatch[1], name: nameMatch ? decodeURIComponent(nameMatch[1]) : "Project" }
-}
 
 function mapStatus(s: string | null): string {
   if (!s) return "idle"
@@ -76,6 +70,7 @@ function WorkflowsWithAuth() {
 function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promise<string | null>) | null; currentUserId: string | null }) {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   const router = useRouter()
+  const { activeWorkspace } = useWorkspace()
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [project, setProject] = useState<{ id: string; name: string } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -115,11 +110,11 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
   }
 
   useEffect(() => {
-    const p = getActiveProject()
+    const p = activeWorkspace ? { id: activeWorkspace.id, name: activeWorkspace.name } : null
     setProject(p)
     loadWorkflows(p?.id ?? null)
     if (clerkEnabled && p?.id && currentUserId) loadRole(p.id)
-  }, [currentUserId])
+  }, [currentUserId, activeWorkspace])
 
   useEffect(() => {
     if (confirming !== null) confirmInputRef.current?.focus()

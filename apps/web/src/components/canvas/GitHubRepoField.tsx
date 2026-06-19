@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 const API = process.env.NEXT_PUBLIC_API_URL
 
@@ -14,12 +15,6 @@ interface Repo {
 let reposCache: Repo[] | null = null
 const branchCache: Record<string, string[]> = {}
 
-function getWorkspaceHeader(): Record<string, string> {
-  if (typeof document === "undefined") return {}
-  const match = document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)
-  return match ? { "X-Workspace-Id": match[1] } : {}
-}
-
 // ── Repo picker ───────────────────────────────────────────────────────────────
 
 interface RepoFieldProps {
@@ -29,6 +24,7 @@ interface RepoFieldProps {
 }
 
 export function GitHubRepoField({ value, onChange, getToken }: RepoFieldProps) {
+  const { activeWorkspace } = useWorkspace()
   const [repos, setRepos] = useState<Repo[]>(reposCache ?? [])
   const [loading, setLoading] = useState(!reposCache)
   const [search, setSearch] = useState(value || "")
@@ -39,7 +35,7 @@ export function GitHubRepoField({ value, onChange, getToken }: RepoFieldProps) {
     if (reposCache) { setRepos(reposCache); setLoading(false); return }
     ;(async () => {
       try {
-        const headers: Record<string, string> = { ...getWorkspaceHeader() }
+        const headers: Record<string, string> = activeWorkspace?.id ? { "X-Workspace-Id": activeWorkspace.id } : {}
         if (getToken) {
           const token = await getToken()
           if (token) headers["Authorization"] = `Bearer ${token}`
@@ -115,6 +111,7 @@ interface RepoAllowlistFieldProps {
 }
 
 export function GitHubRepoAllowlistField({ value, onChange, getToken, environmentId }: RepoAllowlistFieldProps) {
+  const { activeWorkspace } = useWorkspace()
   const [repos, setRepos] = useState<Repo[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
@@ -128,7 +125,7 @@ export function GitHubRepoAllowlistField({ value, onChange, getToken, environmen
     setRepos([]); setLoading(true)
     ;(async () => {
       try {
-        const headers: Record<string, string> = { ...getWorkspaceHeader() }
+        const headers: Record<string, string> = activeWorkspace?.id ? { "X-Workspace-Id": activeWorkspace.id } : {}
         if (getToken) {
           const token = await getToken()
           if (token) headers["Authorization"] = `Bearer ${token}`
@@ -231,6 +228,7 @@ interface BranchFieldProps {
 }
 
 export function GitHubBranchField({ owner, repo, value, onChange, getToken }: BranchFieldProps) {
+  const { activeWorkspace } = useWorkspace()
   const [branches, setBranches] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
@@ -244,7 +242,7 @@ export function GitHubBranchField({ owner, repo, value, onChange, getToken }: Br
     setLoading(true)
     ;(async () => {
       try {
-        const headers: Record<string, string> = { ...getWorkspaceHeader() }
+        const headers: Record<string, string> = activeWorkspace?.id ? { "X-Workspace-Id": activeWorkspace.id } : {}
         if (getToken) {
           const token = await getToken()
           if (token) headers["Authorization"] = `Bearer ${token}`

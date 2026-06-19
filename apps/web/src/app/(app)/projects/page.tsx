@@ -10,6 +10,7 @@ import NewProjectModal from "@/components/NewProjectModal"
 import OnboardingChecklist from "@/components/OnboardingChecklist"
 // P2-1: import timeAgo from runUtils to avoid duplication
 import { timeAgo } from "@/lib/runUtils"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface Project {
   id: string
@@ -93,6 +94,7 @@ function ProjectsWithAuth() {
 
 function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
   const router = useRouter()
+  const { activeWorkspace } = useWorkspace()
   const [projects, setProjects] = useState<Project[]>([])
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [loading, setLoading] = useState(true)
@@ -114,16 +116,11 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
     return h
   }
 
-  // P0-5: cookie name is correct — delegator_project_id is the workspace ID cookie (consistent across codebase)
-  function getWorkspaceId(): string {
-    return document.cookie.match(/delegator_project_id=([^;]+)/)?.[1] ?? ""
-  }
-
   // P0-1: add error handling and setError on non-ok responses
   async function fetchAll() {
     setError(null)
     try {
-      const wsId = getWorkspaceId()
+      const wsId = activeWorkspace?.id ?? ""
       const headers = await authHeaders()
       if (wsId) headers["X-Workspace-Id"] = wsId
 
@@ -155,7 +152,7 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
   async function renameProject(id: string, name: string) {
     const h = await authHeaders()
     h["Content-Type"] = "application/json"
-    const wsId = getWorkspaceId()
+    const wsId = activeWorkspace?.id ?? ""
     if (wsId) h["X-Workspace-Id"] = wsId
     const url = wsId
       ? `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${wsId}/projects/${id}`
@@ -169,7 +166,7 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
 
   async function deleteProject(id: string) {
     const h = await authHeaders()
-    const wsId = getWorkspaceId()
+    const wsId = activeWorkspace?.id ?? ""
     if (wsId) h["X-Workspace-Id"] = wsId
     const url = wsId
       ? `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${wsId}/projects/${id}`

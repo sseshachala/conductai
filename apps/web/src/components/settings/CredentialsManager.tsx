@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useAuth } from "@clerk/nextjs"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface Credential {
   handle: string
@@ -128,10 +129,6 @@ const SERVICES: ServiceDef[] = [
   },
 ]
 
-function getWorkspaceId(): string | null {
-  if (typeof document === "undefined") return null
-  return document.cookie.split("; ").find(r => r.startsWith("delegator_project_id="))?.split("=")[1] ?? null
-}
 
 export default function CredentialsManager({ isAdmin = true }: { isAdmin?: boolean }) {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
@@ -158,6 +155,7 @@ function EyeIcon({ open }: { open: boolean }) {
 }
 
 function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promise<string | null>) | null; isAdmin: boolean }) {
+  const { activeWorkspace } = useWorkspace()
   const [credentials, setCredentials] = useState<Credential[]>([])
   const [openService, setOpenService] = useState<string | null>(null)
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({})
@@ -179,7 +177,7 @@ function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promi
       const token = await getToken()
       if (token) headers["Authorization"] = `Bearer ${token}`
     }
-    const ws = getWorkspaceId()
+    const ws = activeWorkspace?.id ?? ""
     if (ws) headers["X-Workspace-Id"] = ws
     return headers
   }

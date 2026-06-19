@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { type BlockNodeData } from "./BlockNode"
 import { type Node } from "@xyflow/react"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface BlockEstimate {
   block_id: string
@@ -53,12 +54,6 @@ function fmtCost(n: number) {
   return `$${n.toFixed(4)}`
 }
 
-function getWorkspaceHeader(): Record<string, string> {
-  if (typeof document === "undefined") return {}
-  const m = document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)
-  return m ? { "X-Workspace-Id": m[1] } : {}
-}
-
 interface Props {
   workflowId: string
   nodes?: Node[]
@@ -66,6 +61,7 @@ interface Props {
 }
 
 export default function CostEstimate({ workflowId, nodes, getToken }: Props) {
+  const { activeWorkspace } = useWorkspace()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [estimate, setEstimate] = useState<Estimate | null>(null)
@@ -75,7 +71,7 @@ export default function CostEstimate({ workflowId, nodes, getToken }: Props) {
     setLoading(true)
     setError("")
     try {
-      const headers: Record<string, string> = { ...getWorkspaceHeader() }
+      const headers: Record<string, string> = activeWorkspace?.id ? { "X-Workspace-Id": activeWorkspace.id } : {}
       if (getToken) {
         const token = await getToken()
         if (token) headers["Authorization"] = `Bearer ${token}`

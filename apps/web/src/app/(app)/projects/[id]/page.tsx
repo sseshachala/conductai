@@ -7,6 +7,7 @@ import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import AgentStatusPill from "@/components/workflows/AgentStatusPill"
 import { formatTrigger, timeAgo, duration } from "@/lib/runUtils"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface Workflow {
   id: string
@@ -82,6 +83,7 @@ function ProjectContent({ getToken, currentUserId }: {
 }) {
   const { id: projectId } = useParams<{ id: string }>()
   const router = useRouter()
+  const { activeWorkspace } = useWorkspace()
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   const [project, setProject] = useState<Project | null>(null)
   const [workflows, setWorkflows] = useState<Workflow[]>([])
@@ -108,14 +110,14 @@ function ProjectContent({ getToken, currentUserId }: {
   const renameInputRef = useRef<HTMLInputElement>(null)
   const confirmInputRef = useRef<HTMLInputElement>(null)
 
-  // P0-3: authHeaders reads workspace_id from cookie only (project may not be loaded yet)
+  // P0-3: authHeaders reads workspace_id from project state, falling back to active workspace
   async function authHeaders(): Promise<Record<string, string>> {
     const h: Record<string, string> = {}
     if (getToken) {
       const token = await getToken()
       if (token) h["Authorization"] = `Bearer ${token}`
     }
-    const wsId = project?.workspace_id || document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1]
+    const wsId = project?.workspace_id || activeWorkspace?.id
     if (wsId) h["X-Workspace-Id"] = wsId // P0-3: consistent lowercase d
     return h
   }
