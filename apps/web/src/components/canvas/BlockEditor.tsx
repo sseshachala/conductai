@@ -1515,12 +1515,6 @@ export default function BlockEditor({
         </div>
       )}
 
-      {/* Basic section header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 18px 0" }}>
-        <span className="eyebrow" style={{ fontSize: 10 }}>Basic</span>
-        <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-      </div>
-
       {/* ── Brain blocks ── */}
       {blockType === "brain" && (
         <>
@@ -1529,7 +1523,7 @@ export default function BlockEditor({
             <textarea
               value={(blockData.custom_instructions as string) || ""}
               onChange={e => onChange(blockId, { ...blockData, custom_instructions: e.target.value })}
-              rows={5}
+              rows={6}
               placeholder="Describe what this AI step should do in plain English. e.g. &quot;Review the PR diff for security issues and post a summary comment.&quot;"
               className={cn(inputBase, "resize-none")}
               disabled={isViewer}
@@ -1554,17 +1548,18 @@ export default function BlockEditor({
             <p className="text-[10px] leading-relaxed mt-1.5 px-2 py-1.5 rounded-lg border">
               {blockData.isAgentic ? (
                 <span className="text-violet-700 border-violet-200 bg-violet-50 rounded-lg">
-                  <strong>Can use tools</strong> — reads files, edits code, runs commands, and pushes branches. Use for implementing fixes, running tests, and making changes.
+                  <strong>Can use tools</strong> — reads files, edits code, runs commands, and pushes branches.
                 </span>
               ) : (
                 <span className="text-stone-500 border-stone-100 bg-stone-50 rounded-lg">
-                  <strong>Single call</strong> — responds once with text only. No file access, no commands. Use for summarising, classifying, or generating messages.
+                  <strong>Single call</strong> — responds once with text only. No file access, no commands.
                 </span>
               )}
             </p>
           </div>
+
           <div className={section}>
-            <span className={sectionLabel}>Model routing</span>
+            <span className={sectionLabel}>Model</span>
             <select
               value={(blockData.routingPreference as string) || "balanced"}
               onChange={e => onChange(blockId, { ...blockData, routingPreference: e.target.value })}
@@ -1578,57 +1573,6 @@ export default function BlockEditor({
               })}
             </select>
           </div>
-
-          <button
-            type="button"
-            style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", padding: "8px 18px", cursor: "pointer" }}
-            onClick={() => setShowAdvanced(v => !v)}
-            disabled={isViewer}
-          >
-            <span style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.14s", display: "inline-block", fontSize: 12, color: "var(--text-3)" }}>›</span>
-            <span className="eyebrow" style={{ fontSize: 10 }}>Advanced</span>
-            <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>settings</span>
-            <div style={{ flex: 1, height: 1, background: "var(--border)", marginLeft: 2 }} />
-          </button>
-
-          {showAdvanced && (
-            <>
-              {blockData.isAgentic && (() => {
-                const runsOn = blockData.runs_on as Record<string, string> | undefined
-                const provider = runsOn?.provider ?? ""
-
-                function setProvider(v: string) {
-                  if (!v) {
-                    onChange(blockId, { ...blockData, runs_in: undefined, runs_on: undefined })
-                  } else {
-                    onChange(blockId, { ...blockData, runs_in: undefined, runs_on: { provider: v, mode: "auto" } })
-                  }
-                }
-
-                const hints: Record<string, string> = {
-                  "modal": "Runs on Modal Labs. Proxy or sandbox mode is chosen automatically based on task complexity. Needs MODAL_TOKEN_ID + MODAL_TOKEN_SECRET.",
-                  "e2b":   "Runs on E2B.dev. Proxy or sandbox mode is chosen automatically based on task complexity. Needs E2B_API_KEY.",
-                }
-
-                return (
-                  <div className={section}>
-                    <span className={sectionLabel}>Runs on</span>
-                    <p className="text-[10px] text-stone-400 mb-2 leading-relaxed">
-                      Execution provider for agentic tool use — runs shell commands, edits files, and pushes code. Proxy vs sandbox mode is chosen automatically based on task complexity.
-                    </p>
-                    <select value={provider || "modal"} onChange={e => setProvider(e.target.value)} className={cn(inputBase)} disabled={isViewer}>
-                      <option value="modal">Modal Labs</option>
-                      <option value="e2b">E2B.dev</option>
-                    </select>
-                    <p className="text-[10px] text-stone-400 mt-1.5 leading-relaxed">{hints[provider || "modal"]}</p>
-                  </div>
-                )
-              })()}
-
-              {/* System prompt + Prompt file hidden — read-only, not editable from canvas */}
-
-            </>
-          )}
         </>
       )}
 
