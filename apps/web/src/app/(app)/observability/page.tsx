@@ -6,12 +6,7 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { timeAgo } from "@/lib/runUtils"
-
-function getCookie(name: string): string | null {
-  if (typeof document === "undefined") return null
-  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
-  return m ? decodeURIComponent(m[1]) : null
-}
+import { getCookie, buildWorkspaceHeaders } from "@/lib/workspaceHeaders"
 
 interface HealthSummary {
   active_runs: number
@@ -149,10 +144,7 @@ export default function ObservabilityPage() {
 
   const loadAgents = useCallback(async () => {
     const token = await getToken()
-    const workspaceId = getCookie("delegator_project_id") ?? ""
-    const headers: Record<string, string> = { "Content-Type": "application/json" }
-    if (token) headers["Authorization"] = `Bearer ${token}`
-    if (workspaceId) headers["x-workspace-id"] = workspaceId
+    const headers = buildWorkspaceHeaders(token)
     const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     try {
       const res = await fetch(`${base}/observability/agents`, { headers })
@@ -167,10 +159,7 @@ export default function ObservabilityPage() {
 
   const loadAnalytics = useCallback(async () => {
     const token = await getToken()
-    const workspaceId = getCookie("delegator_project_id") ?? ""
-    const headers: Record<string, string> = { "Content-Type": "application/json" }
-    if (token) headers["Authorization"] = `Bearer ${token}`
-    if (workspaceId) headers["x-workspace-id"] = workspaceId
+    const headers = buildWorkspaceHeaders(token)
     const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     try {
       const res = await fetch(`${base}/analytics/summary?days=30`, { headers })
@@ -182,10 +171,7 @@ export default function ObservabilityPage() {
 
   const loadDora = useCallback(async () => {
     const token = await getToken()
-    const workspaceId = getCookie("delegator_project_id") ?? ""
-    const headers: Record<string, string> = { "Content-Type": "application/json" }
-    if (token) headers["Authorization"] = `Bearer ${token}`
-    if (workspaceId) headers["x-workspace-id"] = workspaceId
+    const headers = buildWorkspaceHeaders(token)
     const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     try {
       const res = await fetch(`${base}/analytics/dora?days=30`, { headers })
@@ -195,10 +181,7 @@ export default function ObservabilityPage() {
 
   const loadScorecards = useCallback(async () => {
     const token = await getToken()
-    const workspaceId = getCookie("delegator_project_id") ?? ""
-    const headers: Record<string, string> = { "Content-Type": "application/json" }
-    if (token) headers["Authorization"] = `Bearer ${token}`
-    if (workspaceId) headers["x-workspace-id"] = workspaceId
+    const headers = buildWorkspaceHeaders(token)
     const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     try {
       const res = await fetch(`${base}/analytics/scorecards?days=30`, { headers })
@@ -311,9 +294,14 @@ export default function ObservabilityPage() {
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
               <h1 className="page-title">Observability</h1>
-              {live && (
+              {live ? (
                 <span className="sbadge ok" style={{ marginTop: 3, display: "inline-flex", alignItems: "center", gap: 5 }}>
                   <span className="dot pulse" style={{ background: "var(--ok)" }} />live
+                </span>
+              ) : summary !== null && (
+                <span className="sbadge warn" style={{ marginTop: 3, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  stream disconnected
+                  <button onClick={connectSSE} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--warn)", fontWeight: 700, padding: 0, fontSize: 11 }}>Reconnect</button>
                 </span>
               )}
             </div>

@@ -1,16 +1,11 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { timeAgo } from "@/lib/runUtils"
-
-function getCookie(name: string): string | null {
-  if (typeof document === "undefined") return null
-  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
-  return m ? decodeURIComponent(m[1]) : null
-}
+import { buildWorkspaceHeaders } from "@/lib/workspaceHeaders"
 
 interface Alert {
   id: string
@@ -53,26 +48,33 @@ function severityClass(severity: string): string {
 
 const PAGE_SIZE = 50
 
+const SEVERITY_FILTER = [
+  { value: "", label: "All severities" },
+  { value: "error", label: "Error" },
+  { value: "warning", label: "Warning" },
+  { value: "info", label: "Info" },
+] as const
+
 export default function AlertsPage() {
   const { getToken } = useAuth()
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [loading, setLoading] = useState(true)
   const [hasMore, setHasMore] = useState(false)
-  const [offset, setOffset] = useState(0)
+  const offsetRef = useRef(0)
   const [eventType, setEventType] = useState("")
-  const [resolving, setResolving] = useState<string | null>(null)
+  const [severity, setSeverity] = useState("")
+  const [resolving, setResolving] = useState<Set<string>>(new Set())
+  const [resolvingAll, setResolvingAll] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [resolveError, setResolveError] = useState<string | null>(null)
 
-  const load = useCallback(async (off: number, type: string, replace: boolean) => {
+  const load = useCallback(async (off: number, type: string, sev: string, replace: boolean) => {
     const token = await getToken()
-    const workspaceId = getCookie("delegator_project_id") ?? ""
-    const headers: Record<string, string> = {}
-    if (token) headers["Authorization"] = `Bearer ${token}`
-    if (workspaceId) headers["x-workspace-id"] = workspaceId
+    const headers = buildWorkspaceHeaders(token)
     const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(off) })
     if (type) params.set("event_type", type)
+    if (sev) params.set("severity", sev)
 
     try {
       const res = await fetch(`${base}/observability/alerts?${params}`, { headers })
@@ -90,18 +92,15 @@ export default function AlertsPage() {
 
   useEffect(() => {
     setLoading(true)
-    setOffset(0)
-    load(0, eventType, true)
-  }, [eventType, load])
+    offsetRef.current = 0
+    load(0, eventType, severity, true)
+  }, [eventType, severity, load])
 
   async function resolve(id: string) {
-    setResolving(id)
+    setResolving(prev => new Set(prev).add(id))
     setResolveError(null)
     const token = await getToken()
-    const workspaceId = getCookie("delegator_project_id") ?? ""
-    const headers: Record<string, string> = { "Content-Type": "application/json" }
-    if (token) headers["Authorization"] = `Bearer ${token}`
-    if (workspaceId) headers["x-workspace-id"] = workspaceId
+    const headers = buildWorkspaceHeaders(token)
     const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     try {
       const res = await fetch(`${base}/observability/alerts/${id}/resolve`, { method: "POST", headers })
@@ -114,14 +113,43 @@ export default function AlertsPage() {
     } catch {
       setResolveError("Network error — could not resolve alert.")
     } finally {
-      setResolving(null)
+      setResolving(prev => { const next = new Set(prev); next.delete(id); return next })
+    }
+  }
+
+  async function resolveAll() {
+    const open = alerts.filter(a => !a.resolved_at)
+    if (!open.length) return
+    if (!window.confirm(`Resolve all ${open.length} open alerts?`)) return
+    setResolvingAll(true)
+    setResolveError(null)
+    const token = await getToken()
+    const headers = buildWorkspaceHeaders(token)
+    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+    try {
+      const results = await Promise.allSettled(
+        open.map(a => fetch(`${base}/observability/alerts/${a.id}/resolve`, { method: "POST", headers })
+          .then(r => r.ok ? r.json() as Promise<Alert> : Promise.reject(r.status))
+        )
+      )
+      const resolved = results
+        .filter((r): r is PromiseFulfilledResult<Alert> => r.status === "fulfilled")
+        .map(r => r.value)
+      const failed = results.filter(r => r.status === "rejected").length
+      if (resolved.length) {
+        const resolvedIds = new Set(resolved.map(a => a.id))
+        setAlerts(prev => prev.map(a => resolvedIds.has(a.id) ? resolved.find(r => r.id === a.id)! : a))
+      }
+      if (failed) setResolveError(`${failed} alert(s) failed to resolve.`)
+    } finally {
+      setResolvingAll(false)
     }
   }
 
   function loadMore() {
-    const next = offset + PAGE_SIZE
-    setOffset(next)
-    load(next, eventType, false)
+    const next = offsetRef.current + PAGE_SIZE
+    offsetRef.current = next
+    load(next, eventType, severity, false)
   }
 
   return (
@@ -129,38 +157,44 @@ export default function AlertsPage() {
       <div style={{ maxWidth: 960, margin: "0 auto", padding: "32px 24px", display: "flex", flexDirection: "column", gap: 24 }}>
 
         {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-muted)", marginBottom: 4 }}>
-              <Link
-                href="/observability"
-                style={{ color: "var(--text-muted)", textDecoration: "none" }}
-                onMouseEnter={e => (e.currentTarget.style.color = "var(--text-2)")}
-                onMouseLeave={e => (e.currentTarget.style.color = "var(--text-muted)")}
-              >
-                Observability
-              </Link>
+              <Link href="/observability" className="breadcrumb-link">Observability</Link>
               <span>/</span>
               <span style={{ color: "var(--text-2)" }}>Alert History</span>
             </div>
             <h1 className="page-title">Alert History</h1>
             <p className="page-sub" style={{ marginTop: 2 }}>Watchdog events from the last 30 days</p>
           </div>
-          <select
-            value={eventType}
-            onChange={e => setEventType(e.target.value)}
-            style={{
-              fontSize: 13,
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              padding: "6px 12px",
-              background: "var(--surface)",
-              color: "var(--text-2)",
-              outline: "none",
-            }}
-          >
-            {EVENT_TYPES_FILTER.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-          </select>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <select
+              aria-label="Filter by severity"
+              value={severity}
+              onChange={e => setSeverity(e.target.value)}
+              style={{ fontSize: 13, border: "1px solid var(--border)", borderRadius: 8, padding: "6px 12px", background: "var(--surface)", color: "var(--text-2)", outline: "none" }}
+            >
+              {SEVERITY_FILTER.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+            <select
+              aria-label="Filter by event type"
+              value={eventType}
+              onChange={e => setEventType(e.target.value)}
+              style={{ fontSize: 13, border: "1px solid var(--border)", borderRadius: 8, padding: "6px 12px", background: "var(--surface)", color: "var(--text-2)", outline: "none" }}
+            >
+              {EVENT_TYPES_FILTER.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+            {alerts.some(a => !a.resolved_at) && (
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={resolveAll}
+                disabled={resolvingAll}
+                style={{ opacity: resolvingAll ? 0.5 : 1 }}
+              >
+                {resolvingAll ? "Resolving…" : "Resolve all"}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Error banners */}
@@ -308,10 +342,10 @@ export default function AlertsPage() {
                           <button
                             className="btn btn-ghost btn-sm"
                             onClick={() => resolve(a.id)}
-                            disabled={resolving === a.id}
-                            style={{ opacity: resolving === a.id ? 0.4 : 1 }}
+                            disabled={resolving.has(a.id) || resolvingAll}
+                            style={{ opacity: resolving.has(a.id) || resolvingAll ? 0.4 : 1 }}
                           >
-                            {resolving === a.id ? "Resolving…" : "Resolve"}
+                            {resolving.has(a.id) ? "Resolving…" : "Resolve"}
                           </button>
                         )}
                       </td>
