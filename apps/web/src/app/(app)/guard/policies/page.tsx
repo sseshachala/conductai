@@ -629,7 +629,7 @@ function PoliciesContent() {
       setError(null)
       try {
         const headers = await authHeaders()
-        const qs = `?workspace_id=${encodeURIComponent(teamId)}`
+        const qs = `?workspace_id=${encodeURIComponent(teamId ?? "")}`
         const res = await fetch(`${apiUrl}/guard/policies${qs}`, { headers })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data: Policy[] = await res.json()
@@ -646,7 +646,7 @@ function PoliciesContent() {
   useEffect(() => {
     if (!teamId) return
     authHeaders().then(headers =>
-      fetch(`${apiUrl}/compliance/packs/installed?workspace_id=${encodeURIComponent(teamId)}`, { headers })
+      fetch(`${apiUrl}/compliance/packs/installed?workspace_id=${encodeURIComponent(teamId ?? "")}`, { headers })
         .then(r => r.ok ? r.json() : null)
         .then(d => {
           if (d?.installed) {
@@ -673,12 +673,12 @@ function PoliciesContent() {
     try {
       const headers = await authHeaders()
       const res = await fetch(
-        `${apiUrl}/guard/policies/reinstall-base?workspace_id=${encodeURIComponent(teamId)}`,
+        `${apiUrl}/guard/policies/reinstall-base?workspace_id=${encodeURIComponent(teamId ?? "")}`,
         { method: "POST", headers }
       )
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       // reload policies list
-      const listRes = await fetch(`${apiUrl}/guard/policies?workspace_id=${encodeURIComponent(teamId)}`, { headers })
+      const listRes = await fetch(`${apiUrl}/guard/policies?workspace_id=${encodeURIComponent(teamId ?? "")}`, { headers })
       if (listRes.ok) setPolicies(await listRes.json())
     } catch (e) {
       setError(e instanceof Error ? e.message : "Refresh failed.")
@@ -693,7 +693,7 @@ function PoliciesContent() {
     setPolicies(ps => ps.map(p => p.id === id ? { ...p, enabled: !p.enabled } : p))
     try {
       const headers = await authHeaders()
-      const res = await fetch(`${apiUrl}/guard/policies/${id}`, {
+      const res = await fetch(`${apiUrl}/guard/policies/${id}?workspace_id=${encodeURIComponent(teamId ?? "")}`, {
         method: "PATCH", headers,
         body: JSON.stringify({ enabled: !prev.enabled }),
       })
@@ -713,7 +713,7 @@ function PoliciesContent() {
     setPolicies(ps => ps.filter(p => p.id !== id))
     try {
       const headers = await authHeaders()
-      const res = await fetch(`${apiUrl}/guard/policies/${id}`, { method: "DELETE", headers })
+      const res = await fetch(`${apiUrl}/guard/policies/${id}?workspace_id=${encodeURIComponent(teamId ?? "")}`, { method: "DELETE", headers })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
     } catch (e) {
       setPolicies(ps => [...ps, prev].sort((a, b) => a.rule_id.localeCompare(b.rule_id)))
@@ -994,7 +994,7 @@ function PoliciesContent() {
                 setPolicies(ps => ps.map(p => p.pack_id === packId ? { ...p, enabled: enable } : p))
                 try {
                   await Promise.all(group.map(p =>
-                    fetch(`${apiUrl}/guard/policies/${p.id}`, {
+                    fetch(`${apiUrl}/guard/policies/${p.id}?workspace_id=${encodeURIComponent(teamId ?? "")}`, {
                       method: "PATCH", headers,
                       body: JSON.stringify({ enabled: enable }),
                     })
