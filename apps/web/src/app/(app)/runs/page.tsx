@@ -7,6 +7,7 @@ import Link from "next/link"
 import AppShell from "@/components/AppShell"
 import StatusBadge from "@/components/runs/StatusBadge"
 import { needsAttention, isActive, formatTrigger, timeAgo, duration } from "@/lib/runUtils"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface Run {
   id: string
@@ -22,12 +23,6 @@ interface Run {
   completed_at: string | null
   paused_at: string | null
   created_at: string
-}
-
-function getCookie(name: string): string | null {
-  if (typeof document === "undefined") return null
-  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
-  return m ? decodeURIComponent(m[1]) : null
 }
 
 function outcomeText(status: string, triggerSummary: string | null): string {
@@ -499,6 +494,7 @@ function RunsWithAuth() {
 const PAGE_SIZE = 50
 
 function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
+  const { activeWorkspace } = useWorkspace()
   const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -531,7 +527,7 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
       const t = await getToken()
       if (t) headers["Authorization"] = `Bearer ${t}`
     }
-    const wsId = getCookie("delegator_project_id")
+    const wsId = activeWorkspace?.id ?? null
     if (wsId) headers["X-Workspace-Id"] = wsId
     return headers
   }

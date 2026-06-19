@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 // ─── Data shapes ─────────────────────────────────────────────────────────────
 
@@ -39,12 +40,6 @@ interface PlaybookEval {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function getCookie(name: string): string | null {
-  if (typeof document === "undefined") return null
-  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
-  return m ? decodeURIComponent(m[1]) : null
-}
 
 const GRADE_ORDER = ["A", "B", "C", "D", "F"] as const
 const GRADE_C: Record<string, string> = { A: "#059669", B: "#2563eb", C: "#d97706", D: "#ea580c", F: "#dc2626" }
@@ -120,7 +115,7 @@ function ShareButton() {
 
 // ─── Page content ─────────────────────────────────────────────────────────────
 
-function EvalContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
+function EvalContent({ getToken, workspaceId }: { getToken: (() => Promise<string | null>) | null; workspaceId?: string | null }) {
   const [playbooks, setPlaybooks] = useState<PlaybookEval[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -136,7 +131,6 @@ function EvalContent({ getToken }: { getToken: (() => Promise<string | null>) | 
           const token = await getToken()
           if (token) headers["Authorization"] = `Bearer ${token}`
         }
-        const workspaceId = getCookie("delegator_project_id")
         if (workspaceId) headers["X-Workspace-Id"] = workspaceId
 
         const playbooksRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/eval/playbooks`, { headers })
@@ -281,12 +275,13 @@ function EvalContent({ getToken }: { getToken: (() => Promise<string | null>) | 
 
 function EvalWithAuth() {
   const { getToken, isLoaded } = useAuth()
+  const { activeWorkspace } = useWorkspace()
   if (!isLoaded) return null
-  return <EvalContent getToken={getToken} />
+  return <EvalContent getToken={getToken} workspaceId={activeWorkspace?.id ?? null} />
 }
 
 export default function EvalPage() {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   if (clerkEnabled) return <EvalWithAuth />
-  return <EvalContent getToken={null} />
+  return <EvalContent getToken={null} workspaceId={null} />
 }

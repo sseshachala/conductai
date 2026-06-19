@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
 import {
@@ -52,12 +53,6 @@ interface EditionManifest {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function getCookie(name: string): string | null {
-  if (typeof document === "undefined") return null
-  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
-  return m ? decodeURIComponent(m[1]) : null
-}
 
 const GRADE_ORDER = ["A", "B", "C", "D", "F"] as const
 const GRADE_C: Record<string, string> = { A: "#059669", B: "#2563eb", C: "#d97706", D: "#ea580c", F: "#dc2626" }
@@ -139,9 +134,11 @@ function ShareButton() {
 function BenchmarkContent({
   editionSlug,
   getToken,
+  workspaceId,
 }: {
   editionSlug: string
   getToken: (() => Promise<string | null>) | null
+  workspaceId?: string | null
 }) {
   const edition = getEdition(editionSlug)
 
@@ -165,7 +162,6 @@ function BenchmarkContent({
           const token = await getToken()
           if (token) headers["Authorization"] = `Bearer ${token}`
         }
-        const workspaceId = getCookie("delegator_project_id")
         if (workspaceId) headers["X-Workspace-Id"] = workspaceId
 
         if (ed.apiEditionSlug) {
@@ -390,8 +386,9 @@ function BenchmarkContent({
 
 function BenchmarkWithAuth({ editionSlug }: { editionSlug: string }) {
   const { getToken, isLoaded } = useAuth()
+  const { activeWorkspace } = useWorkspace()
   if (!isLoaded) return null
-  return <BenchmarkContent editionSlug={editionSlug} getToken={getToken} />
+  return <BenchmarkContent editionSlug={editionSlug} getToken={getToken} workspaceId={activeWorkspace?.id ?? null} />
 }
 
 export default function BenchmarkEditionPage() {
@@ -399,5 +396,5 @@ export default function BenchmarkEditionPage() {
   const edition = Array.isArray(params.edition) ? params.edition[0] : (params.edition as string)
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   if (clerkEnabled) return <BenchmarkWithAuth editionSlug={edition} />
-  return <BenchmarkContent editionSlug={edition} getToken={null} />
+  return <BenchmarkContent editionSlug={edition} getToken={null} workspaceId={null} />
 }

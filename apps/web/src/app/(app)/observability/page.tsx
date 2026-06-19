@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { timeAgo } from "@/lib/runUtils"
-import { getCookie, buildWorkspaceHeaders } from "@/lib/workspaceHeaders"
+import { buildWorkspaceHeaders } from "@/lib/workspaceHeaders"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface HealthSummary {
   active_runs: number
@@ -127,6 +128,7 @@ function fmt(n: number, decimals = 0): string {
 
 export default function ObservabilityPage() {
   const { getToken } = useAuth()
+  const { activeWorkspace } = useWorkspace()
   const router = useRouter()
   const [summary, setSummary] = useState<ObservabilitySummary | null>(null)
   const [agents, setAgents] = useState<AgentStatus[]>([])
@@ -144,7 +146,7 @@ export default function ObservabilityPage() {
 
   const loadAgents = useCallback(async () => {
     const token = await getToken()
-    const headers = buildWorkspaceHeaders(token)
+    const headers = buildWorkspaceHeaders(token, activeWorkspace?.id)
     const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     try {
       const res = await fetch(`${base}/observability/agents`, { headers })
@@ -155,11 +157,11 @@ export default function ObservabilityPage() {
     } catch {
       setAgentError(true)
     }
-  }, [getToken])
+  }, [getToken, activeWorkspace])
 
   const loadAnalytics = useCallback(async () => {
     const token = await getToken()
-    const headers = buildWorkspaceHeaders(token)
+    const headers = buildWorkspaceHeaders(token, activeWorkspace?.id)
     const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     try {
       const res = await fetch(`${base}/analytics/summary?days=30`, { headers })
@@ -167,21 +169,21 @@ export default function ObservabilityPage() {
     } catch {
       // non-fatal — keep last known state
     }
-  }, [getToken])
+  }, [getToken, activeWorkspace])
 
   const loadDora = useCallback(async () => {
     const token = await getToken()
-    const headers = buildWorkspaceHeaders(token)
+    const headers = buildWorkspaceHeaders(token, activeWorkspace?.id)
     const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     try {
       const res = await fetch(`${base}/analytics/dora?days=30`, { headers })
       if (res.ok) setDora(await res.json())
     } catch { }
-  }, [getToken])
+  }, [getToken, activeWorkspace])
 
   const loadScorecards = useCallback(async () => {
     const token = await getToken()
-    const headers = buildWorkspaceHeaders(token)
+    const headers = buildWorkspaceHeaders(token, activeWorkspace?.id)
     const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     try {
       const res = await fetch(`${base}/analytics/scorecards?days=30`, { headers })
@@ -190,11 +192,11 @@ export default function ObservabilityPage() {
         setScorecards(new Map(list.map(s => [s.playbook_slug, s])))
       }
     } catch { }
-  }, [getToken])
+  }, [getToken, activeWorkspace])
 
   const connectSSE = useCallback(async () => {
     const token = await getToken()
-    const workspaceId = getCookie("delegator_project_id") ?? ""
+    const workspaceId = activeWorkspace?.id ?? ""
     const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params = new URLSearchParams()
     if (token) params.set("token", token)
@@ -219,7 +221,7 @@ export default function ObservabilityPage() {
         // malformed frame — ignore
       }
     }
-  }, [getToken])
+  }, [getToken, activeWorkspace])
 
   useEffect(() => {
     const init = async () => {
