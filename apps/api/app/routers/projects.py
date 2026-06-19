@@ -511,7 +511,7 @@ def add_member(
     body: MemberAdd,
     user_id: Annotated[str, Depends(get_user_id)],
     workspace_id: Annotated[str, Depends(get_workspace_id)],
-    _: Annotated[str, Depends(require_permission("platform.members.manage"))],
+    actor_role: Annotated[str, Depends(require_permission("platform.members.manage"))],
     db: Session = Depends(get_db),
 ):
     if project_id != workspace_id:
@@ -554,7 +554,7 @@ def add_member(
                "invited_by": user_id, "now": now}).fetchone()[0]
         inviter_email = get_clerk_user_email(user_id)
         _audit(db, workspace_id=workspace_id, actor_id=user_id,
-               actor_email=inviter_email, actor_role=_role,
+               actor_email=inviter_email, actor_role=actor_role,
                action="member.invited", resource_type="invite",
                resource_id=email, meta={"role": body.role, "invite_id": str(invite_id)})
         db.commit()
@@ -606,7 +606,7 @@ def add_member(
     """), {"ws": workspace_id, "uid": body.clerk_user_id,
            "role": body.role, "invited_by": user_id, "now": now})
     _audit(db, workspace_id=workspace_id, actor_id=user_id,
-           actor_email=None, actor_role=_role,
+           actor_email=None, actor_role=actor_role,
            action="member.added", resource_type="member",
            resource_id=body.clerk_user_id, meta={"role": body.role})
     # Provision Guard membership if Guard is installed for this workspace
@@ -653,7 +653,7 @@ def cancel_invite(
     invite_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
     workspace_id: Annotated[str, Depends(get_workspace_id)],
-    _: Annotated[str, Depends(require_permission("platform.members.manage"))],
+    actor_role: Annotated[str, Depends(require_permission("platform.members.manage"))],
     db: Session = Depends(get_db),
 ):
     if project_id != workspace_id:
@@ -667,7 +667,7 @@ def cancel_invite(
     if not row:
         raise HTTPException(status_code=404, detail="Invite not found or already accepted")
     _audit(db, workspace_id=workspace_id, actor_id=user_id,
-           actor_email=None, actor_role=_role,
+           actor_email=None, actor_role=actor_role,
            action="invite.cancelled", resource_type="invite",
            resource_id=invite_id, meta={"invited_email": row.invited_email, "role": row.role})
     db.commit()
@@ -680,7 +680,7 @@ def update_member_role(
     body: dict,
     user_id: Annotated[str, Depends(get_user_id)],
     workspace_id: Annotated[str, Depends(get_workspace_id)],
-    _: Annotated[str, Depends(require_permission("platform.members.manage"))],
+    actor_role: Annotated[str, Depends(require_permission("platform.members.manage"))],
     db: Session = Depends(get_db),
 ):
     if project_id != workspace_id:
@@ -702,7 +702,7 @@ def update_member_role(
         WHERE workspace_id = :ws AND clerk_user_id = :uid
     """), {"role": new_role, "ws": workspace_id, "uid": clerk_user_id})
     _audit(db, workspace_id=workspace_id, actor_id=user_id,
-           actor_email=None, actor_role=_role,
+           actor_email=None, actor_role=actor_role,
            action="member.role_changed", resource_type="member",
            resource_id=clerk_user_id, meta={"from_role": old_role, "to_role": new_role})
     db.commit()
@@ -715,7 +715,7 @@ def remove_member(
     clerk_user_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
     workspace_id: Annotated[str, Depends(get_workspace_id)],
-    _: Annotated[str, Depends(require_permission("platform.members.manage"))],
+    actor_role: Annotated[str, Depends(require_permission("platform.members.manage"))],
     db: Session = Depends(get_db),
 ):
     if project_id != workspace_id:
@@ -729,7 +729,7 @@ def remove_member(
     if not removed:
         raise HTTPException(status_code=404, detail="Member not found")
     _audit(db, workspace_id=workspace_id, actor_id=user_id,
-           actor_email=None, actor_role=_role,
+           actor_email=None, actor_role=actor_role,
            action="member.removed", resource_type="member",
            resource_id=clerk_user_id, meta={"role": removed.role})
     db.commit()

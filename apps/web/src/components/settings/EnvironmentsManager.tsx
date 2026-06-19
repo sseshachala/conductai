@@ -147,6 +147,7 @@ function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Prom
   const [showNewEnv, setShowNewEnv] = useState(false)
   const [newEnvName, setNewEnvName] = useState("")
   const [creatingEnv, setCreatingEnv] = useState(false)
+  const [createError, setCreateError] = useState("")
   const [viewingDetail, setViewingDetail] = useState(false)
   const loadingRef = useRef(false)
 
@@ -211,6 +212,7 @@ function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Prom
     const name = newEnvName.trim()
     if (!name) return
     setCreatingEnv(true)
+    setCreateError("")
     try {
       const headers = await buildHeaders(true)
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments`, {
@@ -219,9 +221,13 @@ function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Prom
       if (res.ok) {
         setNewEnvName("")
         setShowNewEnv(false)
+        setCreateError("")
         await loadEnvironments()
+      } else {
+        const body = await res.json().catch(() => ({}))
+        setCreateError(body?.detail ?? `Create failed (${res.status})`)
       }
-    } catch { /* silent */ }
+    } catch { setCreateError("Network error — could not create environment.") }
     finally { setCreatingEnv(false) }
   }
 
@@ -288,16 +294,19 @@ function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Prom
       <div style={{ display: "flex", flexDirection: "column", gap: 14, alignItems: "center", padding: "40px 0", textAlign: "center" }}>
         <p style={{ fontSize: 13, color: "var(--text-muted)" }}>No environments yet.</p>
         {showNewEnv ? (
-          <div style={{ display: "flex", gap: 8, maxWidth: 380 }}>
-            <input autoFocus value={newEnvName} onChange={e => setNewEnvName(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") addEnv(); if (e.key === "Escape") { setShowNewEnv(false); setNewEnvName("") } }}
-              placeholder="e.g. Production"
-              style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 9, padding: "8px 12px", fontSize: 13.5, color: "var(--text)", background: "var(--surface)", outline: "none" }} />
-            <button onClick={addEnv} disabled={creatingEnv || !newEnvName.trim()} className="btn btn-primary btn-sm" style={{ opacity: (creatingEnv || !newEnvName.trim()) ? 0.4 : 1 }}>
-              {creatingEnv ? "Creating…" : "Create"}
-            </button>
-            <button onClick={() => { setShowNewEnv(false); setNewEnvName("") }} className="btn btn-ghost btn-sm">Cancel</button>
-          </div>
+          <>
+            <div style={{ display: "flex", gap: 8, maxWidth: 380 }}>
+              <input autoFocus value={newEnvName} onChange={e => setNewEnvName(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") addEnv(); if (e.key === "Escape") { setShowNewEnv(false); setNewEnvName("") } }}
+                placeholder="e.g. Production"
+                style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 9, padding: "8px 12px", fontSize: 13.5, color: "var(--text)", background: "var(--surface)", outline: "none" }} />
+              <button onClick={addEnv} disabled={creatingEnv || !newEnvName.trim()} className="btn btn-primary btn-sm" style={{ opacity: (creatingEnv || !newEnvName.trim()) ? 0.4 : 1 }}>
+                {creatingEnv ? "Creating…" : "Create"}
+              </button>
+              <button onClick={() => { setShowNewEnv(false); setNewEnvName(""); setCreateError("") }} className="btn btn-ghost btn-sm">Cancel</button>
+            </div>
+            {createError && <p style={{ fontSize: 12, color: "var(--err)", marginTop: 4 }}>{createError}</p>}
+          </>
         ) : (
           <button className="btn btn-primary btn-sm" onClick={() => setShowNewEnv(true)}>+ New environment</button>
         )}
@@ -320,16 +329,19 @@ function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Prom
           )
         })}
         {showNewEnv ? (
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <input autoFocus value={newEnvName} onChange={e => setNewEnvName(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") addEnv(); if (e.key === "Escape") { setShowNewEnv(false); setNewEnvName("") } }}
-              placeholder="Environment name"
-              style={{ height: 32, border: "1px solid var(--border)", borderRadius: 8, padding: "0 10px", fontSize: 13, color: "var(--text)", background: "var(--surface)", outline: "none" }} />
-            <button onClick={addEnv} disabled={creatingEnv || !newEnvName.trim()} className="btn btn-primary btn-sm" style={{ height: 32, opacity: (creatingEnv || !newEnvName.trim()) ? 0.4 : 1 }}>
-              {creatingEnv ? "…" : "Create"}
-            </button>
-            <button onClick={() => { setShowNewEnv(false); setNewEnvName("") }} className="btn btn-ghost btn-sm" style={{ height: 32 }}>✕</button>
-          </div>
+          <>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <input autoFocus value={newEnvName} onChange={e => setNewEnvName(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") addEnv(); if (e.key === "Escape") { setShowNewEnv(false); setNewEnvName("") } }}
+                placeholder="Environment name"
+                style={{ height: 32, border: "1px solid var(--border)", borderRadius: 8, padding: "0 10px", fontSize: 13, color: "var(--text)", background: "var(--surface)", outline: "none" }} />
+              <button onClick={addEnv} disabled={creatingEnv || !newEnvName.trim()} className="btn btn-primary btn-sm" style={{ height: 32, opacity: (creatingEnv || !newEnvName.trim()) ? 0.4 : 1 }}>
+                {creatingEnv ? "…" : "Create"}
+              </button>
+              <button onClick={() => { setShowNewEnv(false); setNewEnvName(""); setCreateError("") }} className="btn btn-ghost btn-sm" style={{ height: 32 }}>✕</button>
+            </div>
+            {createError && <p style={{ fontSize: 12, color: "var(--err)", margin: "4px 0 0" }}>{createError}</p>}
+          </>
         ) : (
           <button onClick={() => setShowNewEnv(true)} className="btn btn-ghost btn-sm" style={{ height: 32 }}>+ New environment</button>
         )}
@@ -602,7 +614,7 @@ function EnvironmentDetail({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
   const [saved, setSaved] = useState(false)
-  const [showValues, setShowValues] = useState<Record<number, boolean>>({})
+  const [showValues, setShowValues] = useState<Record<string, boolean>>({})
   const [newKey, setNewKey] = useState("")
   const [newValue, setNewValue] = useState("")
   const [showNew, setShowNew] = useState(false)
@@ -610,6 +622,7 @@ function EnvironmentDetail({
   const [pasteText, setPasteText] = useState("")
   const [testTrigger, setTestTrigger] = useState<{ services: string[]; at: number } | null>(null)
   const [confirmVarIndex, setConfirmVarIndex] = useState<number | null>(null)
+  const [pendingImport, setPendingImport] = useState<{ vars: EnvVar[]; newCount: number; updateCount: number } | null>(null)
   const [confirmVarValue, setConfirmVarValue] = useState("")
   const [confirmHost, setConfirmHost] = useState<string | null>(null)
   const [confirmHostValue, setConfirmHostValue] = useState("")
@@ -715,14 +728,21 @@ function EnvironmentDetail({
     const parsed = parseEnvText(pasteText)
     if (parsed.length === 0) { setError("No KEY=value pairs found — check the format."); return }
     const merged = [...vars]
+    let newCount = 0, updateCount = 0
     for (const p of parsed) {
       const existing = merged.findIndex(v => v.key === p.key)
-      if (existing >= 0) merged[existing] = p
-      else merged.push(p)
+      if (existing >= 0) { merged[existing] = p; updateCount++ }
+      else { merged.push(p); newCount++ }
     }
-    setVars(merged)
-    saveAll(merged)
-    triggerTestsForKeys(parsed.map(p => p.key))
+    setPendingImport({ vars: merged, newCount, updateCount })
+  }
+
+  function confirmImport() {
+    if (!pendingImport) return
+    setVars(pendingImport.vars)
+    saveAll(pendingImport.vars)
+    triggerTestsForKeys(pendingImport.vars.map(p => p.key))
+    setPendingImport(null)
     setPasteText("")
     setShowPaste(false)
   }
@@ -758,10 +778,22 @@ function EnvironmentDetail({
             className="mono"
             style={{ width: "100%", fontSize: 12, color: "var(--text)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", background: "var(--surface)", outline: "none", resize: "vertical", boxSizing: "border-box" }}
           />
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={handlePasteImport} className="btn btn-primary btn-sm">Import</button>
-            <button onClick={() => { setShowPaste(false); setPasteText(""); setError("") }} className="btn btn-ghost btn-sm">Cancel</button>
-          </div>
+          {pendingImport ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 12, color: "var(--text-3)" }}>
+                {pendingImport.newCount} new · {pendingImport.updateCount} update — confirm?
+              </span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={confirmImport} className="btn btn-primary btn-sm">Confirm import</button>
+                <button onClick={() => setPendingImport(null)} className="btn btn-ghost btn-sm">Back</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={handlePasteImport} className="btn btn-primary btn-sm">Preview</button>
+              <button onClick={() => { setShowPaste(false); setPasteText(""); setError("") }} className="btn btn-ghost btn-sm">Cancel</button>
+            </div>
+          )}
         </div>
       )}
 
@@ -780,27 +812,25 @@ function EnvironmentDetail({
           <p style={{ fontSize: 13, color: "var(--text-muted)", padding: "20px 16px" }}>No variables yet — add one or import a .env file.</p>
         ) : (
           vars.map((v, i) => (
-            <div key={i} style={{ borderBottom: i < vars.length - 1 ? "1px solid var(--border)" : "none" }}>
+            <div key={v.key || i} style={{ borderBottom: i < vars.length - 1 ? "1px solid var(--border)" : "none" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", padding: "8px 16px", alignItems: "center" }}>
                 <input
                   value={v.key}
                   onChange={e => updateVar(i, "key", e.target.value)}
-                  onBlur={() => saveAll(vars, [v.key])}
                   className="mono"
                   style={{ fontSize: 12, color: "var(--text)", background: "transparent", border: "none", outline: "none", width: "100%", paddingRight: 16 }}
                 />
                 <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
                   <input
-                    type={showValues[i] ? "text" : "password"}
+                    type={showValues[v.key] ? "text" : "password"}
                     value={v.value}
                     onChange={e => updateVar(i, "value", e.target.value)}
-                    onBlur={() => saveAll(vars, [v.key])}
                     className="mono"
                     style={{ fontSize: 12, color: "var(--text-2)", background: "transparent", border: "none", outline: "none", width: "100%", paddingRight: 28 }}
                   />
-                  <button type="button" onClick={() => setShowValues(prev => ({ ...prev, [i]: !prev[i] }))}
+                  <button type="button" onClick={() => setShowValues(prev => ({ ...prev, [v.key]: !prev[v.key] }))}
                     style={{ position: "absolute", right: 4, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center" }}>
-                    <EyeIcon open={!!showValues[i]} />
+                    <EyeIcon open={!!showValues[v.key]} />
                   </button>
                 </div>
                 <button

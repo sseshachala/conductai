@@ -150,8 +150,9 @@ export default function PreferencesPanel() {
         ].map(o => {
           const sel = look === o.k
           return (
-            <div key={o.k} onClick={() => setLook(o.k)} className="card"
-              style={{ padding: 14, cursor: "pointer", borderColor: sel ? "var(--accent-ring)" : "var(--border)", boxShadow: sel ? "var(--shadow-md)" : "none" }}>
+            <button key={o.k} onClick={() => setLook(o.k)} className="card"
+              aria-pressed={sel}
+              style={{ padding: 14, cursor: "pointer", borderColor: sel ? "var(--accent-ring)" : "var(--border)", boxShadow: sel ? "var(--shadow-md)" : "none", background: "var(--surface)", textAlign: "left", width: "100%", border: "1px solid " + (sel ? "var(--accent-ring)" : "var(--border)") }}>
               <ThemePreview dark={o.k === "dark"} />
               <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 13 }}>
                 <span style={{ width: 17, height: 17, borderRadius: "50%", border: "2px solid " + (sel ? "var(--accent)" : "var(--border-2)"), display: "grid", placeItems: "center", flexShrink: 0 }}>
@@ -162,7 +163,7 @@ export default function PreferencesPanel() {
                   <div style={{ fontSize: 12, color: "var(--text-3)" }}>{o.sub}</div>
                 </div>
               </div>
-            </div>
+            </button>
           )
         })}
       </div>
