@@ -723,6 +723,11 @@ function GuardDashboard() {
     [events]
   )
 
+  const toolsInData = useMemo(
+    () => Array.from(new Set(events.map(e => canonicalTool(e.ai_tool)).filter(Boolean))).sort(),
+    [events]
+  )
+
   const derivedStats = useMemo(() => {
     const localToday = (d: Date) =>
       `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
@@ -1109,7 +1114,7 @@ function GuardDashboard() {
           style={selectStyle}
         >
           <option value="all">All tools</option>
-          {ALL_TOOLS.map(t => (
+          {toolsInData.map(t => (
             <option key={t} value={t}>{AI_TOOL_BADGES[t]?.label ?? t}</option>
           ))}
         </select>

@@ -500,6 +500,34 @@ def get_my_role(
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
     return {"role": row.role}
 
+@router.post("/{project_id}/guard/install", status_code=200)
+def install_guard(
+    project_id: str,
+    user_id: Annotated[str, Depends(get_user_id)],
+    workspace_id: Annotated[str, Depends(get_workspace_id)],
+    db: Session = Depends(get_db),
+):
+    """Idempotent Guard install — creates guard_config + caller's guard_member_config if absent."""
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    import secrets as _secrets
+    now = datetime.now(timezone.utc)
+    invite_code = _secrets.token_urlsafe(16)
+    db.execute(text("""
+        INSERT INTO guard_config (workspace_id, invite_code, created_at)
+        VALUES (:ws, :invite_code, :now)
+        ON CONFLICT (workspace_id) DO NOTHING
+    """), {"ws": workspace_id, "invite_code": invite_code, "now": now})
+    _seed_starter_policies(db, uuid.UUID(workspace_id), now)
+    db.execute(text("""
+        INSERT INTO guard_member_config (workspace_id, clerk_user_id, member_token, active, joined_at)
+        VALUES (:ws, :uid, :token, true, :now)
+        ON CONFLICT (workspace_id, clerk_user_id) DO NOTHING
+    """), {"ws": workspace_id, "uid": user_id, "token": _secrets.token_urlsafe(24), "now": now})
+    db.commit()
+    return {"installed": True}
+
+
 @router.get("/{project_id}/members/{clerk_user_id}/workspaces", response_model=list[MemberWorkspaceOut])
 def get_member_workspaces(
     project_id: str,

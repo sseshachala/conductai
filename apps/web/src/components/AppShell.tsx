@@ -5,6 +5,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth, useUser, useClerk } from "@clerk/nextjs"
 import { WorkspaceProvider, useWorkspace } from "@/lib/WorkspaceContext"
+import { GuardRoleClerkProvider, GuardRoleAdminProvider } from "@/lib/GuardRoleContext"
 import { setActiveGuardWorkspace } from "@/lib/guardStorage"
 import { PreferencesProvider } from "@/lib/PreferencesContext"
 import Toast, { type ToastData } from "@/components/ui/Toast"
@@ -149,12 +150,20 @@ export default function AppShell({ children, noPadding }: { children: React.Reac
 function AppShellInner({ children, noPadding }: { children: React.ReactNode; noPadding?: boolean }) {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   if (clerkEnabled) return <AppShellInnerWithAuth noPadding={noPadding}>{children}</AppShellInnerWithAuth>
-  return <AppShellInnerContent noPadding={noPadding} getToken={null} userId={null}>{children}</AppShellInnerContent>
+  return (
+    <GuardRoleAdminProvider>
+      <AppShellInnerContent noPadding={noPadding} getToken={null} userId={null}>{children}</AppShellInnerContent>
+    </GuardRoleAdminProvider>
+  )
 }
 
 function AppShellInnerWithAuth({ children, noPadding }: { children: React.ReactNode; noPadding?: boolean }) {
   const { getToken, userId } = useAuth()
-  return <AppShellInnerContent noPadding={noPadding} getToken={getToken} userId={userId ?? null}>{children}</AppShellInnerContent>
+  return (
+    <GuardRoleClerkProvider>
+      <AppShellInnerContent noPadding={noPadding} getToken={getToken} userId={userId ?? null}>{children}</AppShellInnerContent>
+    </GuardRoleClerkProvider>
+  )
 }
 
 function AppShellInnerContent({

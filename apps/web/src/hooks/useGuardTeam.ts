@@ -31,14 +31,25 @@ export function useGuardTeam(): GuardTeamResult {
         const headers: Record<string, string> = {}
         if (token) headers["Authorization"] = `Bearer ${token}`
         const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-        const res = await fetch(`${base}/guard/config?workspace_id=${activeWorkspace.id}`, { headers })
+        const wsId = activeWorkspace.id
+        let res = await fetch(`${base}/guard/config?workspace_id=${wsId}`, { headers })
+
+        // Auto-install Guard if not yet configured
+        if (res.status === 404) {
+          await fetch(`${base}/projects/${wsId}/guard/install`, {
+            method: "POST",
+            headers: { ...headers, "Content-Type": "application/json", "X-Workspace-ID": wsId },
+          })
+          res = await fetch(`${base}/guard/config?workspace_id=${wsId}`, { headers })
+        }
+
         if (!res.ok) {
           if (!cancelled) { setLoading(false); setError(`Guard not installed (${res.status})`) }
           return
         }
         const data = await res.json()
         if (!cancelled) { setTeamId(data.workspace_id); setLoading(false) }
-      } catch (e) {
+      } catch {
         if (!cancelled) { setLoading(false); setError("Failed to load Guard team") }
       }
     }
