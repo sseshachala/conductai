@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { statusStyle as _statusStyle, formatTrigger, timeAgo } from "@/lib/runUtils"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 // #10 #15: statusStyle imported with alias to suppress unused-var; timeAgo from runUtils (removed local duplicate)
 void _statusStyle
@@ -107,11 +108,6 @@ interface DashboardData {
 // #15: removed fmtTokens (never called)
 // #15: removed local timeAgo (duplicated runUtils export — using runUtils version above)
 
-function getCookie(name: string): string | null {
-  if (typeof document === "undefined") return null
-  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
-  return m ? decodeURIComponent(m[1]) : null
-}
 
 /* ── SpendArc donut ── */
 
@@ -247,6 +243,7 @@ function PriorityItem({
   run: AttentionRun
   getToken: (() => Promise<string | null>) | null
 }) {
+  const { activeWorkspace } = useWorkspace()
   const [acted, setAct] = useState<string | null>(null)
   const [approveError, setApproveError] = useState<string | null>(null)
 
@@ -281,7 +278,7 @@ function PriorityItem({
       const token = await getToken()
       if (token) headers["Authorization"] = `Bearer ${token}`
     }
-    const workspaceId = getCookie("delegator_project_id")
+    const workspaceId = activeWorkspace?.id ?? null
     if (workspaceId) headers["X-Workspace-Id"] = workspaceId
     try {
       const res = await fetch(
@@ -755,6 +752,7 @@ function EmptyChecklist() {
 /* ── Main content ── */
 
 function DashboardContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
+  const { activeWorkspace } = useWorkspace()
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -777,7 +775,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
       const token = await getToken()
       if (token) headers["Authorization"] = `Bearer ${token}`
     }
-    const workspaceId = getCookie("delegator_project_id")
+    const workspaceId = activeWorkspace?.id ?? null
     if (workspaceId) headers["X-Workspace-Id"] = workspaceId
     try {
       setError(null)

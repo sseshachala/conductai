@@ -60,11 +60,6 @@ function getGuardAccess(role: string): string {
   return "Own activity"
 }
 
-function getCookie(name: string): string | null {
-  if (typeof document === "undefined") return null
-  return document.cookie.split("; ").find(r => r.startsWith(`${name}=`))?.split("=")[1] ?? null
-}
-
 export default function MembersManager() {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   if (clerkEnabled) return <MembersManagerWithAuth />
@@ -104,7 +99,7 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
       const token = await getToken()
       if (token) headers["Authorization"] = `Bearer ${token}`
     }
-    const ws = getCookie("delegator_project_id")
+    const ws = activeWorkspace?.id ?? null
     if (ws) headers["X-Workspace-Id"] = ws
     return headers
   }

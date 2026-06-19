@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface TraceRow {
   id: string
@@ -22,20 +23,13 @@ interface Props {
   getToken?: (() => Promise<string | null>) | null
 }
 
-function getCookie(name: string): string | null {
-  if (typeof document === "undefined") return null
-  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
-  return m ? decodeURIComponent(m[1]) : null
-}
-
-async function buildHeaders(getToken?: (() => Promise<string | null>) | null): Promise<Record<string, string>> {
+async function buildHeaders(getToken?: (() => Promise<string | null>) | null, workspaceId?: string | null): Promise<Record<string, string>> {
   const h: Record<string, string> = {}
   if (getToken) {
     const token = await getToken()
     if (token) h["Authorization"] = `Bearer ${token}`
   }
-  const ws = getCookie("delegator_project_id")
-  if (ws) h["X-Workspace-Id"] = ws
+  if (workspaceId) h["X-Workspace-Id"] = workspaceId
   return h
 }
 
@@ -89,6 +83,7 @@ function TraceRow({ row }: { row: TraceRow }) {
 }
 
 export default function ConversationTrace({ workflowId, runId, getToken }: Props) {
+  const { activeWorkspace } = useWorkspace()
   const [rows, setRows] = useState<TraceRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -96,7 +91,7 @@ export default function ConversationTrace({ workflowId, runId, getToken }: Props
   useEffect(() => {
     async function load() {
       try {
-        const headers = await buildHeaders(getToken)
+        const headers = await buildHeaders(getToken, activeWorkspace?.id)
         const res = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}/trace`,
           { headers }

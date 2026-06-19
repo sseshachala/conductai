@@ -6,12 +6,7 @@ import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import StatusBadge from "@/components/runs/StatusBadge"
 import { isActive, duration, timeAgo } from "@/lib/runUtils"
-
-function getCookie(name: string): string | null {
-  if (typeof document === "undefined") return null
-  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
-  return m ? decodeURIComponent(m[1]) : null
-}
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface Run {
   id: string
@@ -27,6 +22,7 @@ interface Run {
 export default function RunsPage() {
   const { id: workflowId } = useParams<{ id: string }>()
   const { getToken } = useAuth()
+  const { activeWorkspace } = useWorkspace()
 
   const [runs, setRuns] = useState<Run[]>([])
   const [workflowName, setWorkflowName] = useState<string | null>(null)
@@ -39,7 +35,7 @@ export default function RunsPage() {
     setError(null)
     try {
       const token = await getToken()
-      const workspaceId = getCookie("delegator_project_id")
+      const workspaceId = activeWorkspace?.id ?? null
       const headers: Record<string, string> = {}
       if (token) headers["Authorization"] = `Bearer ${token}`
       if (workspaceId) headers["X-Workspace-Id"] = workspaceId

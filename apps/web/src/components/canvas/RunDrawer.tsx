@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 type BlockStatus = "running" | "completed" | "failed" | "skipped"
 
@@ -34,12 +35,6 @@ interface RunDrawerProps {
   onRunDone?: () => void
 }
 
-function getCookie(name: string): string | null {
-  if (typeof document === "undefined") return null
-  const m = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`))
-  return m ? m[1] : null
-}
-
 function statusIcon(status: BlockStatus) {
   if (status === "running")   return <span className="inline-block w-3 h-3 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
   if (status === "completed") return <span className="text-emerald-500 font-bold text-xs">✓</span>
@@ -55,6 +50,7 @@ function statusColor(status: BlockStatus) {
 }
 
 export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, onBlockTurns, onClose, onRunDone }: RunDrawerProps) {
+  const { activeWorkspace } = useWorkspace()
   const [rows, setRows] = useState<BlockRow[]>([])
   const [done, setDone] = useState(false)
   const [runStatus, setRunStatus] = useState<"running" | "succeeded" | "failed" | "cancelled">("running")
@@ -64,7 +60,7 @@ export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, 
     if (!window.confirm("Stop this run? This cannot be undone.")) return
     setKilling(true)
     const params = new URLSearchParams()
-    const wsId = getCookie("delegator_project_id")
+    const wsId = activeWorkspace?.id ?? null
     if (wsId) params.set("workspace_id", wsId)
     const qs = params.toString() ? `?${params.toString()}` : ""
     try {
@@ -92,7 +88,7 @@ export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, 
     let cancelled = false
 
     async function connect() {
-      const wsId = getCookie("delegator_project_id")
+      const wsId = activeWorkspace?.id ?? null
       const params = new URLSearchParams()
       if (wsId) params.set("workspace_id", wsId)
 

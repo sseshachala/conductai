@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { duration as formatDuration } from "@/lib/runUtils"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface RunEvent {
   id: string
@@ -634,24 +635,18 @@ function RunTerminalRow({ runFailed, runCompleted }: {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-function getCookie(name: string): string | null {
-  if (typeof document === "undefined") return null
-  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
-  return m ? decodeURIComponent(m[1]) : null
-}
-
-async function buildHeaders(getToken?: (() => Promise<string | null>) | null): Promise<Record<string, string>> {
+async function buildHeaders(getToken?: (() => Promise<string | null>) | null, workspaceId?: string | null): Promise<Record<string, string>> {
   const h: Record<string, string> = {}
   if (getToken) {
     const token = await getToken()
     if (token) h["Authorization"] = `Bearer ${token}`
   }
-  const ws = getCookie("delegator_project_id")
-  if (ws) h["X-Workspace-Id"] = ws
+  if (workspaceId) h["X-Workspace-Id"] = workspaceId
   return h
 }
 
 export default function RunTrace({ workflowId, runId, initialStatus, initialMeta, maxTurns, getToken, onSseConnected, onSseEnded }: Props) {
+  const { activeWorkspace } = useWorkspace()
   const [events, setEvents] = useState<RunEvent[]>([])
   const [status, setStatus] = useState(initialStatus)
   const [meta, setMeta] = useState<RunMeta>(initialMeta)
@@ -666,7 +661,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
 
   const refreshMeta = async () => {
     try {
-      const headers = await buildHeaders(getToken)
+      const headers = await buildHeaders(getToken, activeWorkspace?.id)
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}`, { headers })
       if (res.ok) {
         const run = await res.json()
@@ -688,7 +683,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
 
   useEffect(() => {
     if (!done) return
-    buildHeaders(getToken).then(headers =>
+    buildHeaders(getToken, activeWorkspace?.id).then(headers =>
       fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}`, { headers })
         .then(r => r.ok ? r.json() : null)
         .then(run => {
@@ -714,9 +709,9 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
     let es: EventSource | null = null
     let cancelled = false
 
-    buildHeaders(getToken).then(headers => {
+    buildHeaders(getToken, activeWorkspace?.id).then(headers => {
       if (cancelled) return
-      const wsId = getCookie("delegator_project_id")
+      const wsId = activeWorkspace?.id ?? null
       const token = headers["Authorization"]?.replace("Bearer ", "") ?? ""
       const params = new URLSearchParams()
       if (token) params.set("token", token)
@@ -841,7 +836,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
   const handleApproval = async (decision: "approved" | "rejected") => {
     setApprovalSubmitting(true)
     try {
-      const headers = await buildHeaders(getToken)
+      const headers = await buildHeaders(getToken, activeWorkspace?.id)
       headers["Content-Type"] = "application/json"
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}/approve`, {
         method: "POST", headers,

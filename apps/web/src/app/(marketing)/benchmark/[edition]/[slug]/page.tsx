@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
 import {
   getEdition,
@@ -72,12 +73,6 @@ interface PlaybookLiveDetail {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function getCookie(name: string): string | null {
-  if (typeof document === "undefined") return null
-  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
-  return m ? decodeURIComponent(m[1]) : null
-}
 
 const GRADE_BG: Record<string, string> = {
   A: "var(--ok-bg)",
@@ -555,10 +550,12 @@ function DeepDiveContent({
   editionSlug,
   playbookSlug,
   getToken,
+  workspaceId,
 }: {
   editionSlug: string
   playbookSlug: string
   getToken: (() => Promise<string | null>) | null
+  workspaceId?: string | null
 }) {
   const edition = getEdition(editionSlug)
 
@@ -586,7 +583,6 @@ function DeepDiveContent({
           const token = await getToken()
           if (token) headers["Authorization"] = `Bearer ${token}`
         }
-        const workspaceId = getCookie("delegator_project_id")
         if (workspaceId) headers["X-Workspace-Id"] = workspaceId
 
         // Fetch all three in parallel: edition manifest, scenarios, current detail
@@ -790,8 +786,9 @@ function DeepDiveWithAuth({
   playbookSlug: string
 }) {
   const { getToken, isLoaded } = useAuth()
+  const { activeWorkspace } = useWorkspace()
   if (!isLoaded) return null
-  return <DeepDiveContent editionSlug={editionSlug} playbookSlug={playbookSlug} getToken={getToken} />
+  return <DeepDiveContent editionSlug={editionSlug} playbookSlug={playbookSlug} getToken={getToken} workspaceId={activeWorkspace?.id ?? null} />
 }
 
 export default function BenchmarkDeepDivePage() {
@@ -800,5 +797,5 @@ export default function BenchmarkDeepDivePage() {
   const playbookSlug = Array.isArray(params.slug)    ? params.slug[0]    : (params.slug    as string)
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   if (clerkEnabled) return <DeepDiveWithAuth editionSlug={editionSlug} playbookSlug={playbookSlug} />
-  return <DeepDiveContent editionSlug={editionSlug} playbookSlug={playbookSlug} getToken={null} />
+  return <DeepDiveContent editionSlug={editionSlug} playbookSlug={playbookSlug} getToken={null} workspaceId={null} />
 }

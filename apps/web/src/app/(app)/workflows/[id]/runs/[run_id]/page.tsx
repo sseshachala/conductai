@@ -8,6 +8,7 @@ import RunTrace from "@/components/runs/RunTrace"
 import ConversationTrace from "@/components/runs/ConversationTrace"
 import AppShell from "@/components/AppShell"
 import { statusStyle, formatTrigger, duration, isTerminal, isActive, isAwaiting } from "@/lib/runUtils"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 // ── Tab error boundary ────────────────────────────────────────────────────────
 class TabErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean }> {
@@ -27,12 +28,6 @@ class TabErrorBoundary extends Component<{ children: React.ReactNode }, { hasErr
     }
     return this.props.children
   }
-}
-
-function getCookie(name: string): string | null {
-  if (typeof document === "undefined") return null
-  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
-  return m ? decodeURIComponent(m[1]) : null
 }
 
 interface RunMeta {
@@ -67,6 +62,7 @@ function Pill({ children, color = "stone" }: { children: React.ReactNode; color?
 export default function RunDetailPage() {
   const { id: workflowId, run_id: runId } = useParams<{ id: string; run_id: string }>()
   const { getToken, isLoaded } = useAuth()
+  const { activeWorkspace } = useWorkspace()
 
   const [run, setRun] = useState<RunMeta | null>(null)
   const [workflowName, setWorkflowName] = useState<string | null>(null)
@@ -85,7 +81,7 @@ export default function RunDetailPage() {
 
   async function buildHeaders() {
     const token = await getToken()
-    const workspaceId = getCookie("delegator_project_id")
+    const workspaceId = activeWorkspace?.id ?? null
     const headers: Record<string, string> = {}
     if (token) headers["Authorization"] = `Bearer ${token}`
     if (workspaceId) headers["X-Workspace-Id"] = workspaceId

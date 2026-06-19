@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 // ─── Data shapes ─────────────────────────────────────────────────────────────
 
@@ -41,12 +42,6 @@ interface PlaybookEvalDetail {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function getCookie(name: string): string | null {
-  if (typeof document === "undefined") return null
-  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
-  return m ? decodeURIComponent(m[1]) : null
-}
 
 const GRADE_BG: Record<string, string> = {
   A: "var(--ok-bg)",
@@ -453,9 +448,11 @@ function FixtureSection({ fixture }: { fixture: EvalFixture }) {
 function EvalDetailContent({
   slug,
   getToken,
+  workspaceId,
 }: {
   slug: string
   getToken: (() => Promise<string | null>) | null
+  workspaceId?: string | null
 }) {
   const [detail, setDetail] = useState<PlaybookEvalDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -474,7 +471,6 @@ function EvalDetailContent({
           const token = await getToken()
           if (token) headers["Authorization"] = `Bearer ${token}`
         }
-        const workspaceId = getCookie("delegator_project_id")
         if (workspaceId) headers["X-Workspace-Id"] = workspaceId
 
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/eval/playbooks/${encodeURIComponent(slug)}`, { headers })
@@ -631,8 +627,9 @@ function EvalDetailContent({
 
 function EvalDetailWithAuth({ slug }: { slug: string }) {
   const { getToken, isLoaded } = useAuth()
+  const { activeWorkspace } = useWorkspace()
   if (!isLoaded) return null
-  return <EvalDetailContent slug={slug} getToken={getToken} />
+  return <EvalDetailContent slug={slug} getToken={getToken} workspaceId={activeWorkspace?.id ?? null} />
 }
 
 export default function EvalDetailPage() {
@@ -640,5 +637,5 @@ export default function EvalDetailPage() {
   const slug = Array.isArray(params.slug) ? params.slug[0] : (params.slug as string)
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   if (clerkEnabled) return <EvalDetailWithAuth slug={slug} />
-  return <EvalDetailContent slug={slug} getToken={null} />
+  return <EvalDetailContent slug={slug} getToken={null} workspaceId={null} />
 }
