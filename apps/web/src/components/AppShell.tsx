@@ -135,6 +135,7 @@ const PALETTE_COMMANDS = [
   { group: "GOVERN", label: "Guard · Spend", href: "/guard/spend", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Policies", href: "/guard/policies", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Activity", href: "/guard/activity", icon: "Shield" as const },
+  { group: "WORKSPACE", label: "Integrations", href: "/integrations", icon: "Gear" as const },
   { group: "WORKSPACE", label: "Settings · Environments", href: "/settings", icon: "Gear" as const },
 ]
 
