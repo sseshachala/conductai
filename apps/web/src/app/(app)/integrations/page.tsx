@@ -298,7 +298,7 @@ function IntegrationsPageInner({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wsId])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { if (wsId) load() }, [load, wsId])
 
   function envName(envId: string | null): string {
     if (!envId) return "All environments"
