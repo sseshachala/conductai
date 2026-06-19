@@ -981,15 +981,18 @@ function MCPBlockPanel({
   blockData,
   onChange,
   isViewer = false,
+  environmentId,
 }: {
   getToken?: (() => Promise<string | null>) | null
   blockData: Record<string, unknown>
   onChange: (key: string, value: unknown) => void
   isViewer?: boolean
+  environmentId?: string
 }) {
   const [tools, setTools] = useState<MCPTool[]>([])
   const [discovering, setDiscovering] = useState(false)
   const [discoverErr, setDiscoverErr] = useState<string | null>(null)
+  const [integrationServers, setIntegrationServers] = useState<{ id: string; name: string; url: string; transport: string }[]>([])
 
   const provider      = (getNestedValue(blockData, "config.provider")      as string) || "custom"
   const credentialKey = (getNestedValue(blockData, "config.credential_key") as string) || ""
@@ -997,12 +1000,38 @@ function MCPBlockPanel({
   const transport     = (getNestedValue(blockData, "config.transport")      as string) || "auto"
   const toolName      = (getNestedValue(blockData, "config.tool_name")      as string) || ""
 
+  // Fetch workspace MCP servers from Integrations
+  useEffect(() => {
+    const wsId = typeof document !== "undefined"
+      ? document.cookie.split("; ").find(r => r.startsWith("delegator_project_id="))?.split("=")[1] : null
+    if (!wsId) return
+    authHeaders().then(h =>
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/mcp-servers?workspace_id=${wsId}${environmentId ? `&environment_id=${environmentId}` : ""}`, { headers: h })
+        .then(r => r.ok ? r.json() : [])
+        .then(d => { if (Array.isArray(d)) setIntegrationServers(d) })
+        .catch(() => {})
+    )
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [environmentId])
+
   const isCustom = provider === "custom"
   const selectedTool = tools.find(t => t.name === toolName) ?? null
   const paramProps   = selectedTool?.inputSchema?.properties ?? {}
   const requiredParams = new Set(selectedTool?.inputSchema?.required ?? [])
 
   function handleProviderChange(val: string) {
+    // Check workspace MCP servers first
+    const ws = integrationServers.find(s => s.id === val)
+    if (ws) {
+      onChange("config.provider",       ws.id)
+      onChange("config.server_url",     ws.url)
+      onChange("config.credential_key", "")
+      onChange("config.transport",      ws.transport)
+      onChange("config.tool_name",      "")
+      setTools([])
+      setDiscoverErr(null)
+      return
+    }
     const p = MCP_PROVIDERS.find(x => x.value === val)
     if (!p) return
     onChange("config.provider",       p.value)
@@ -1060,9 +1089,18 @@ function MCPBlockPanel({
           disabled={isViewer}
           className={inputBase}
         >
-          {MCP_PROVIDERS.map(p => (
-            <option key={p.value} value={p.value}>{p.label}</option>
-          ))}
+          {integrationServers.length > 0 && (
+            <optgroup label="Workspace MCPs">
+              {integrationServers.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </optgroup>
+          )}
+          <optgroup label="Providers">
+            {MCP_PROVIDERS.map(p => (
+              <option key={p.value} value={p.value}>{p.label}</option>
+            ))}
+          </optgroup>
         </select>
       </div>
 
@@ -2228,6 +2266,7 @@ export default function BlockEditor({
           blockData={blockData}
           onChange={handleFieldChange}
           isViewer={isViewer}
+          environmentId={selectedEnvId}
         />
       )}
 
