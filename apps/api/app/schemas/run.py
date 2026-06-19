@@ -15,8 +15,15 @@ def _extract_repo(state: dict | None) -> str | None:
     trigger = state.get("_trigger") or {}
     if repo := (trigger.get("repository") or {}).get("full_name"):
         return repo
-    # Manual/CLI runs: inputs may carry upstream_owner+upstream_repo or repo_full_name
-    inputs = state.get("inputs") or {}
+    # Top-level keys (manual/CLI runs pass inputs directly as initial_state)
+    if state.get("upstream_owner") and state.get("upstream_repo"):
+        return f"{state['upstream_owner']}/{state['upstream_repo']}"
+    if repo := state.get("repo_full_name") or state.get("target_repo"):
+        return repo
+    if state.get("owner") and state.get("repo"):
+        return f"{state['owner']}/{state['repo']}"
+    # _inputs namespace (enriched runs)
+    inputs = state.get("_inputs") or state.get("inputs") or {}
     if inputs.get("upstream_owner") and inputs.get("upstream_repo"):
         return f"{inputs['upstream_owner']}/{inputs['upstream_repo']}"
     if inputs.get("repo_full_name"):

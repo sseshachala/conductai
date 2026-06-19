@@ -47,6 +47,7 @@ interface RunMeta {
   workflow_version_id: string
   state?: Record<string, unknown> | null
   max_turns?: number | null
+  actual_turns?: number | null
   repo?: string | null
 }
 
@@ -286,7 +287,7 @@ export default function RunDetailPage() {
         <div className="card" style={{ display: "flex", padding: 0, overflow: "hidden", marginBottom: 22 }}>
           {([
             ["Duration",     duration(run.started_at, run.completed_at), false],
-            ["Turns",        run.max_turns ? `— / ${run.max_turns} est.` : "—", false],
+            ["Turns",        run.actual_turns ? `${run.actual_turns}${run.max_turns ? ` / ${run.max_turns} est.` : ""}` : run.max_turns ? `— / ${run.max_turns} est.` : "—", false],
             ["Tokens",       statTokensDisplay, false],
             ["Est. cost",    statCostDisplay, false],
             ["Triggered by", formatTrigger(run.triggered_by), true],
@@ -424,18 +425,18 @@ export default function RunDetailPage() {
           {activeTab === "files" && <TabErrorBoundary>{(() => {
             const state = (run.state ?? {}) as Record<string, unknown>
             const blocks = Object.entries(state).filter(([k]) => !k.startsWith("__") && !k.startsWith("_"))
-            const allPrUrls: {url: string; num?: number; block: string}[] = []
+            const allPrUrls: {url: string; num?: number; block: string; prState?: string | null}[] = []
             const allFiles: {file: string; block: string}[] = []
             let diffStat = ""
             for (const [blockId, val] of blocks) {
               const v = val as Record<string, unknown>
-              if (v?.pr_url) allPrUrls.push({ url: v.pr_url as string, num: v.pr_number as number | undefined, block: blockId })
+              if (v?.pr_url) allPrUrls.push({ url: v.pr_url as string, num: v.pr_number as number | undefined, block: blockId, prState: (v?.pr_state as string) || (v?.pr_merged ? "merged" : v?.pr_closed ? "closed" : null) })
               if (Array.isArray(v?.files_changed)) {
                 for (const f of v.files_changed as string[]) allFiles.push({ file: f, block: blockId })
               }
               if (v?.diff_stat && !diffStat) diffStat = v.diff_stat as string
             }
-            if (prUrl && !allPrUrls.find(p => p.url === prUrl)) allPrUrls.push({ url: prUrl, num: prNum, block: "trigger" })
+            if (prUrl && !allPrUrls.find(p => p.url === prUrl)) allPrUrls.push({ url: prUrl, num: prNum, block: "trigger", prState: null })
 
             if (allPrUrls.length === 0 && allFiles.length === 0 && !diffStat) return (
               <div style={{ textAlign: "center", padding: "48px 0" }}>
@@ -455,7 +456,7 @@ export default function RunDetailPage() {
                         </span>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: 650, fontSize: 14 }}>{pr.num ? `#${pr.num} · Pull Request` : "Pull Request"}</div>
-                          <div className="mono" style={{ fontSize: 12, color: "var(--text-muted)" }}>draft</div>
+                          <div className="mono" style={{ fontSize: 12, color: "var(--text-muted)" }}>{pr.prState ?? "open"}</div>
                         </div>
                         <a href={pr.url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm" style={{ color: "var(--accent-text)", borderColor: "var(--accent-ring, var(--border))", textDecoration: "none" }}>Open →</a>
                       </div>

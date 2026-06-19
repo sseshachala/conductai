@@ -105,6 +105,25 @@ function FilterPanel({
   onTimeRangeChange,
   onReset,
 }: FilterPanelProps) {
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!isOpen) return
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose()
+    }
+    document.addEventListener("keydown", handleKeyDown)
+    return () => document.removeEventListener("keydown", handleKeyDown)
+  }, [isOpen, onClose])
+
+  useEffect(() => {
+    if (!isOpen) return
+    const el = panelRef.current?.querySelector<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    )
+    el?.focus()
+  }, [isOpen])
+
   if (!isOpen) return null
 
   return (
@@ -118,6 +137,10 @@ function FilterPanel({
       onClick={onClose}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Filter runs"
         style={{
           position: "fixed",
           top: 60,
