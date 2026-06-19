@@ -34,7 +34,7 @@ interface Policy {
 }
 
 const PACK_LABELS: { id: string; name: string }[] = [
-  { id: "conduct-owasp",   name: "OWASP Top 10" },
+  { id: "owasp_top10",   name: "OWASP Top 10" },
   { id: "conduct-soc2",    name: "SOC 2" },
   { id: "conduct-hipaa",   name: "HIPAA" },
   { id: "conduct-pci-dss", name: "PCI-DSS" },
