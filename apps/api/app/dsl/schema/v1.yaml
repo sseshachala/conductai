@@ -393,16 +393,54 @@ properties:
           - type: 'null'
           default: null
           title: Max Turns
+        complexity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Complexity
         is_readonly:
           default: false
           title: Is Readonly
           type: boolean
         retry:
           anyOf:
-          - type: object
+          - properties:
+              max:
+                default: 1
+                maximum: 10
+                minimum: 1
+                title: Max
+                type: integer
+              backoff:
+                default: fixed
+                enum:
+                - fixed
+                - exponential
+                title: Backoff
+                type: string
+              'on':
+                default:
+                - tool_error
+                - timeout
+                items:
+                  enum:
+                  - tool_error
+                  - timeout
+                  - llm_parse_error
+                  type: string
+                title: 'On'
+                type: array
+            title: RetryPolicy
+            type: object
           - type: 'null'
           default: null
-          title: Retry
+        fallback_block:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Fallback Block
         next:
           anyOf:
           - type: string
@@ -717,16 +755,54 @@ properties:
           - type: 'null'
           default: null
           title: Max Turns
+        complexity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Complexity
         is_readonly:
           default: false
           title: Is Readonly
           type: boolean
         retry:
           anyOf:
-          - type: object
+          - properties:
+              max:
+                default: 1
+                maximum: 10
+                minimum: 1
+                title: Max
+                type: integer
+              backoff:
+                default: fixed
+                enum:
+                - fixed
+                - exponential
+                title: Backoff
+                type: string
+              'on':
+                default:
+                - tool_error
+                - timeout
+                items:
+                  enum:
+                  - tool_error
+                  - timeout
+                  - llm_parse_error
+                  type: string
+                title: 'On'
+                type: array
+            title: RetryPolicy
+            type: object
           - type: 'null'
           default: null
-          title: Retry
+        fallback_block:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Fallback Block
         next:
           default: null
           title: Next
