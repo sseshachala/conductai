@@ -1625,32 +1625,7 @@ export default function BlockEditor({
                 )
               })()}
 
-              <div className={section}>
-                <div className="flex items-center justify-between">
-                  <span className={sectionLabel}>System prompt</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded mb-2">read-only</span>
-                </div>
-                <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 text-xs text-stone-600 leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto">
-                  <SystemPromptWithChips text={description} />
-                </div>
-              </div>
-
-              <div className={section}>
-                <span className={sectionLabel}>Prompt file</span>
-                <input
-                  type="text"
-                  value={((blockData.config as Record<string, unknown>)?.prompt_file as string) || ""}
-                  onChange={e => onChange(blockId, { ...blockData, config: { ...(blockData.config as object || {}), prompt_file: e.target.value } })}
-                  placeholder="prompts/fetch_issue.txt"
-                  className={inputBase}
-                  disabled={isViewer}
-                />
-                <p className="text-[10px] text-stone-400 mt-1">
-                  Path relative to repo root. Overrides system prompt when set.
-                </p>
-              </div>
+              {/* System prompt + Prompt file hidden — read-only, not editable from canvas */}
 
             </>
           )}
