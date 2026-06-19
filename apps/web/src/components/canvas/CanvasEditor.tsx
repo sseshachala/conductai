@@ -1008,22 +1008,6 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
           </span>
           <CostEstimate workflowId={workflowId} nodes={nodes} getToken={getToken} />
 
-          <div className="flex items-center bg-stone-100 rounded-lg p-0.5 gap-0.5">
-            {(["engineer", "liverun", "reviewer"] as const).map(m => (
-              <button
-                key={m}
-                onClick={() => handleModeChange(m)}
-                className={cn(
-                  "px-3 py-1 rounded-md text-xs font-medium transition-all",
-                  canvasMode === m
-                    ? "bg-white text-stone-900 shadow-sm"
-                    : "text-stone-500 hover:text-stone-700"
-                )}
-              >
-                {m === "engineer" ? "Engineer" : m === "liverun" ? "▶ Live Run" : "👁 Reviewer"}
-              </button>
-            ))}
-          </div>
           {!isViewer && (
             <>
               {prefs.show_test_trigger && playbookSlug && (
@@ -1064,19 +1048,6 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
         </div>
       </header>
 
-      {/* Reviewer mode banner */}
-      {canvasMode === "reviewer" && (
-        <div className="shrink-0 flex items-center gap-3 px-4 py-2 bg-amber-50 border-b border-amber-200 text-xs">
-          <span className="text-amber-700 font-semibold">👁 Reviewer mode</span>
-          <span className="text-amber-600">Only decision points shown. Everything else runs automatically.</span>
-          <button
-            onClick={() => handleModeChange("engineer")}
-            className="ml-auto text-amber-700 font-medium hover:text-amber-900"
-          >
-            Exit →
-          </button>
-        </div>
-      )}
 
       {/* Three-panel layout (or YAML view) */}
       <div className="flex flex-1 overflow-hidden">
