@@ -1066,20 +1066,26 @@ function PoliciesContent() {
                       <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                         Last hit: <strong style={{ color: "var(--text-2)" }}>{formatLastTriggered(p.last_triggered)}</strong>
                       </span>
-                      {(p.persona_affinity ?? []).length > 0 && (p.persona_affinity ?? []).length < 3 && (
-                        <span style={{ display: "flex", gap: 3, marginLeft: 8, alignItems: "center" }}>
-                          {(p.persona_affinity ?? []).map(pa => (
-                            <span key={pa} title={pa} style={{
-                              fontSize: 10, borderRadius: 99,
-                              padding: "1px 6px", fontWeight: 600,
-                              background: pa === "conservative" ? "var(--err-bg)" : pa === "standard" ? "var(--warn-bg)" : "var(--ok-bg)",
-                              color: pa === "conservative" ? "var(--err)" : pa === "standard" ? "var(--warn)" : "var(--ok)",
-                              border: `1px solid ${pa === "conservative" ? "var(--err-bd)" : pa === "standard" ? "var(--warn-bd)" : "var(--ok-bd)"}`,
-                            }}>
-                              {pa}
-                            </span>
-                          ))}
-                        </span>
+                      {(p.persona_affinity ?? []).length > 0 && (
+                        (p.persona_affinity ?? []).length < 3 ? (
+                          <span style={{ display: "flex", gap: 3, marginLeft: 8, alignItems: "center" }}>
+                            {(p.persona_affinity ?? []).map(pa => (
+                              <span key={pa} title={pa} style={{
+                                fontSize: 10, borderRadius: 99,
+                                padding: "1px 6px", fontWeight: 600,
+                                background: pa === "conservative" ? "var(--err-bg)" : pa === "standard" ? "var(--warn-bg)" : "var(--ok-bg)",
+                                color: pa === "conservative" ? "var(--err)" : pa === "standard" ? "var(--warn)" : "var(--ok)",
+                                border: `1px solid ${pa === "conservative" ? "var(--err-bd)" : pa === "standard" ? "var(--warn-bd)" : "var(--ok-bd)"}`,
+                              }}>
+                                {pa}
+                              </span>
+                            ))}
+                          </span>
+                        ) : (
+                          <span style={{ marginLeft: 8, fontSize: 10, borderRadius: 99, padding: "1px 6px", fontWeight: 600, background: "var(--surface-2)", color: "var(--text-muted)", border: "1px solid var(--border)" }}>
+                            all personas
+                          </span>
+                        )
                       )}
                       {hasDetails && (
                         <button
