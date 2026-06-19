@@ -5,6 +5,9 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
+import AgentStatusPill from "@/components/workflows/AgentStatusPill"
+import Toggle from "@/components/workflows/Toggle"
+import WorkflowMenu from "@/components/workflows/WorkflowMenu"
 
 interface Workflow {
   id: string
@@ -51,79 +54,6 @@ function statusKey(label: string): string {
 
 // Explicit status sort order (#20)
 const STATUS_SORT_ORDER = ["run", "wait", "err", "idle", "ok"]
-
-function AgentStatusPill({ s }: { s: string }) {
-  const map: Record<string, { label: string; bg: string; color: string }> = {
-    run: { label: "Running", bg: "var(--info-weak, #eff6ff)", color: "var(--info, #2563eb)" },
-    wait: { label: "Awaiting", bg: "var(--warn-weak, #fffbeb)", color: "var(--warn, #d97706)" },
-    ok: { label: "Succeeded", bg: "var(--ok-weak, #f0fdf4)", color: "var(--ok, #16a34a)" },
-    err: { label: "Failed", bg: "var(--err-weak, #fff5f5)", color: "var(--err, #dc2626)" },
-    idle: { label: "Never run", bg: "var(--surface-2)", color: "var(--text-muted)" },
-  }
-  const { label, bg, color } = map[s] ?? map.idle
-  return <span style={{ fontSize: 11, fontWeight: 650, padding: "2px 8px", borderRadius: 20, background: bg, color }}>{label}</span>
-}
-
-// #1: Toggle component kept but grid toggle wired or removed per #4 — kept for list use only
-const Toggle = ({ on, onClick }: { on: boolean; onClick: () => void }) => (
-  <span
-    onClick={(e) => { e.stopPropagation(); onClick() }}
-    style={{ width: 36, height: 21, borderRadius: 20, background: on ? "var(--accent)" : "var(--border-2)", position: "relative", cursor: "pointer", flexShrink: 0, transition: "background .15s", display: "inline-block" }}
-  >
-    <span style={{ position: "absolute", top: 2.5, left: on ? 17.5 : 2.5, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left .15s", boxShadow: "var(--shadow-sm)" }} />
-  </span>
-)
-
-// #18: Extracted WorkflowMenu component used in both list and grid views
-function WorkflowMenu({
-  wfId,
-  wfName,
-  menuOpen,
-  onToggleMenu,
-  onRename,
-  onDelete,
-}: {
-  wfId: string
-  wfName: string
-  menuOpen: string | null
-  onToggleMenu: (id: string) => void
-  onRename: (id: string, name: string) => void
-  onDelete: (id: string) => void
-}) {
-  const isOpen = menuOpen === wfId
-  return (
-    <div style={{ position: "relative" }}>
-      <button
-        className="btn btn-ghost btn-icon btn-sm"
-        title="More"
-        aria-label="Workflow options"  // #17
-        onClick={e => { e.stopPropagation(); onToggleMenu(wfId) }}
-      >⋯</button>
-      {isOpen && (
-        <div
-          role="menu"  // #17
-          onMouseDown={e => e.stopPropagation()}
-          style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, zIndex: 20, minWidth: 130, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, boxShadow: "var(--shadow-md)", padding: "4px 0" }}
-        >
-          <button
-            role="menuitem"  // #17
-            onClick={e => { e.stopPropagation(); onToggleMenu(wfId); onRename(wfId, wfName) }}
-            style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--text)", background: "none", border: "none", cursor: "pointer" }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}
-          >Rename</button>
-          <button
-            role="menuitem"  // #17
-            onMouseDown={e => { e.stopPropagation(); onToggleMenu(wfId); onDelete(wfId) }}
-            style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--err, #dc2626)", background: "none", border: "none", cursor: "pointer" }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}
-          >Delete</button>
-        </div>
-      )}
-    </div>
-  )
-}
 
 export default function WorkflowsPage() {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
@@ -253,14 +183,13 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
   }, [menuOpen])
 
   async function loadRole(projectId: string) {
-    // TODO: replace with /projects/{id}/my-role endpoint (#6)
     try {
       const h = await authHeaders()
       h["X-Workspace-Id"] = projectId
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${projectId}/members`, { headers: h })
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${projectId}/my-role`, { headers: h })
       if (!res.ok) return
-      const members: { clerk_user_id: string; role: string }[] = await res.json()
-      setIsAdmin(members.find(m => m.clerk_user_id === currentUserId)?.role === "admin")
+      const data: { role: string } = await res.json()
+      setIsAdmin(data.role === "admin")
     } catch { }
   }
 
