@@ -27,7 +27,7 @@ export default function SettingsPage() {
 function SettingsPageWithAuth() {
   const { getToken, userId } = useAuth()
   const { activeWorkspace } = useWorkspace()
-  const [isAdmin, setIsAdmin] = useState(true)
+  const [isAdmin, setIsAdmin] = useState(false)
   const workspaceId = activeWorkspace?.id ?? ""
 
   useEffect(() => {
@@ -39,11 +39,10 @@ function SettingsPageWithAuth() {
         const ws = document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1]
         if (ws) headers["X-Workspace-Id"] = ws
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${activeWorkspace!.id}/members`, { headers })
-        if (!res.ok) { setIsAdmin(true); return }
+        if (!res.ok) { setIsAdmin(false); return }
         const members: { clerk_user_id: string; role: string }[] = await res.json()
-        if (members.length === 0) { setIsAdmin(true); return }
         setIsAdmin(members.find(m => m.clerk_user_id === userId)?.role === "admin")
-      } catch { setIsAdmin(true) }
+      } catch { setIsAdmin(false) }
     }
     check()
   }, [activeWorkspace?.id, userId])
