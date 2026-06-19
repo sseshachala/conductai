@@ -91,6 +91,7 @@ const Icons = {
   Play: () => <Icon><polygon points="5 3 19 12 5 21 5 3" /></Icon>,
   Arrow: () => <Icon><path d="M5 12h14M12 5l7 7-7 7" /></Icon>,
   Lock: () => <Icon><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></Icon>,
+  Plug: () => <Icon><path d="M18 6L6 18M7 17l-4 4M17 7l4-4M9 3v4M15 3v4M9 7h6M9 7a3 3 0 000 6h6a3 3 0 000-6" /></Icon>,
 }
 
 // ── Breadcrumb logic ──────────────────────────────────────────────────────────
@@ -1010,7 +1011,7 @@ function AppShellInnerContent({
           <SideNavItem
             href="/integrations"
             label="Integrations"
-            icon={<Icons.Gear />}
+            icon={<Icons.Plug />}
             active={pathname.startsWith("/integrations")}
             collapsed={collapsed}
           />
