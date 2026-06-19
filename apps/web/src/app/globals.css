@@ -328,3 +328,13 @@ body {
   padding: 5px 7px;
   min-width: 0;
 }
+
+/* Breadcrumb links */
+.breadcrumb-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color .15s;
+}
+.breadcrumb-link:hover {
+  color: var(--text-2);
+}
