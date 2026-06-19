@@ -10,15 +10,15 @@
 import dagre from "@dagrejs/dagre"
 import type { Edge, Node } from "@xyflow/react"
 
-const NODE_WIDTH = 220
-const NODE_HEIGHT = 96
+const NODE_WIDTH = 240
+const NODE_HEIGHT = 110
 
 export type LayoutDirection = "LR" | "TB"
 
 export function autoLayout(
   nodes: Node[],
   edges: Edge[],
-  direction: LayoutDirection = "LR",
+  direction: LayoutDirection = "TB",
 ): { nodes: Node[]; edges: Edge[] } {
   if (nodes.length === 0) return { nodes, edges }
 
@@ -26,8 +26,8 @@ export function autoLayout(
   g.setDefaultEdgeLabel(() => ({}))
   g.setGraph({
     rankdir: direction,
-    nodesep: 80,        // horizontal gap between siblings in TB mode
-    ranksep: 100,       // vertical gap between ranks
+    nodesep: 60,        // horizontal gap between siblings in TB mode
+    ranksep: 70,        // vertical gap between ranks
     marginx: 60,
     marginy: 60,
   })
