@@ -256,11 +256,21 @@ def list_projects(
         _seed_starter_policies(db, project_id, now)
 
         # 5. Add creator to guard_member_config
+        member_token = _secrets.token_urlsafe(24)
         db.execute(text("""
             INSERT INTO guard_member_config (workspace_id, clerk_user_id, member_token, active, joined_at)
             VALUES (:ws, :uid, :token, true, :now)
             ON CONFLICT (workspace_id, clerk_user_id) DO NOTHING
-        """), {"ws": str(project_id), "uid": user_id, "token": _secrets.token_urlsafe(24), "now": now})
+        """), {"ws": str(project_id), "uid": user_id, "token": member_token, "now": now})
+
+        # 6. Pre-seed Conduct AI Guard MCP server
+        db.execute(text("""
+            INSERT INTO mcp_servers (id, workspace_id, environment_id, name, url, transport, created_at)
+            VALUES (gen_random_uuid(), :ws, NULL, 'Conduct AI Guard',
+                    'https://api.conductai.ai/guard/mcp?workspace_id=' || :ws || '&token=' || :token,
+                    'sse', :now)
+            ON CONFLICT DO NOTHING
+        """), {"ws": str(project_id), "token": member_token, "now": now})
 
         db.commit()
         return [ProjectOut(id=str(project_id), name="Engineering", owner_id=user_id,
