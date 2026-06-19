@@ -1104,17 +1104,18 @@ function MCPBlockPanel({
         </select>
       </div>
 
-      {/* Custom server URL */}
-      {isCustom && (
+      {/* Server URL — editable for custom, read-only for workspace/known providers */}
+      {(isCustom || serverUrl) && (
         <div>
           <span className={sectionLabel}>MCP Server URL <span className="text-red-500">*</span></span>
           <input
             type="text"
             value={serverUrl}
-            onChange={e => !isViewer && onChange("config.server_url", e.target.value)}
-            disabled={isViewer}
+            onChange={e => !isViewer && isCustom && onChange("config.server_url", e.target.value)}
+            disabled={isViewer || !isCustom}
             placeholder="https://my-mcp-server.com/mcp"
             className={inputBase}
+            style={{ opacity: isCustom ? 1 : 0.7 }}
           />
         </div>
       )}
