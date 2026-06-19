@@ -36,12 +36,12 @@ function SettingsPageWithAuth() {
       try {
         const headers: Record<string, string> = {}
         if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
-        const ws = document.cookie.match(/(?:^|;\s*)delegator_project_id=([^;]+)/)?.[1]
-        if (ws) headers["X-Workspace-Id"] = ws
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${activeWorkspace!.id}/members`, { headers })
+        const wsId = activeWorkspace!.id
+        headers["X-Workspace-ID"] = wsId
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${wsId}/my-role`, { headers })
         if (!res.ok) { setIsAdmin(false); return }
-        const members: { clerk_user_id: string; role: string }[] = await res.json()
-        setIsAdmin(members.find(m => m.clerk_user_id === userId)?.role === "admin")
+        const data: { role: string } = await res.json()
+        setIsAdmin(data.role === "admin")
       } catch { setIsAdmin(false) }
     }
     check()
