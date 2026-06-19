@@ -28,7 +28,8 @@ import BlockEditor from "./BlockEditor"
 import BlockPalette from "./BlockPalette"
 import RunDrawer from "./RunDrawer"
 import CostEstimate from "./CostEstimate"
-import YamlPanel from "./YamlPanel"
+import DefinitionPanel from "./DefinitionPanel"
+import WorkflowSettingsPanel from "./WorkflowSettingsPanel"
 import { autoLayout } from "@/lib/auto-layout"
 import { type BlockType } from "@/lib/block-types"
 import { usePreferences } from "@/lib/PreferencesContext"
@@ -158,7 +159,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
   const [rightOpen, setRightOpen] = useState(true)
   const [focusMode, setFocusMode] = useState(false)
   const [canvasMode, setCanvasMode] = useState<"engineer" | "liverun" | "reviewer">("engineer")
-  const [activeView, setActiveView] = useState<"canvas" | "yaml" | "runs">("canvas")
+  const [activeView, setActiveView] = useState<"canvas" | "definition" | "runs" | "settings">("canvas")
   const [runs, setRuns] = useState<{id:string;status:string;triggered_by:string|null;created_at:string}[]>([])
   const [runsLoading, setRunsLoading] = useState(false)
   const [environments, setEnvironments] = useState<Array<{ id: string; name: string }>>([])
@@ -369,19 +370,6 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     ).catch(() => { isFirstLoad.current = false; setCanvasLoading(false) })
     return () => abort.abort()
   }, [workflowId, getToken, setNodes, setEdges])
-
-  const handleYamlLoaded = useCallback(
-    (next: { name?: string; nodes: Node[]; edges: Edge[] }) => {
-      if (next.name) setWorkflowName(next.name)
-      setNodes(next.nodes)
-      setEdges(next.edges)
-      setSelectedNode(null)
-      // Bypass the autosave debounce — the YAML save already persisted.
-      isFirstLoad.current = true
-      setTimeout(() => { isFirstLoad.current = false }, 100)
-    },
-    [setNodes, setEdges],
-  )
 
   const handleEnvChange = useCallback(async (envId: string) => {
     setSelectedEnvId(envId)
@@ -962,37 +950,19 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
             onChange={id => !isViewer && handleEnvChange(id)}
           />
           <div className="ml-3 flex bg-stone-100 rounded-md p-0.5 text-xs">
-            <button
-              onClick={() => setActiveView("canvas")}
-              className={`px-2.5 py-1 rounded ${
-                activeView === "canvas"
-                  ? "bg-white text-stone-900 shadow-sm font-medium"
-                  : "text-stone-500 hover:text-stone-800"
-              }`}
-            >
-              Canvas
-            </button>
-            <button
-              onClick={() => setActiveView("yaml")}
-              title="View-only — use Import / Export to make changes"
-              className={`px-2.5 py-1 rounded ${
-                activeView === "yaml"
-                  ? "bg-white text-stone-900 shadow-sm font-medium"
-                  : "text-stone-500 hover:text-stone-800"
-              }`}
-            >
-              YAML
-            </button>
-            <button
-              onClick={() => setActiveView("runs")}
-              className={`px-2.5 py-1 rounded ${
-                activeView === "runs"
-                  ? "bg-white text-stone-900 shadow-sm font-medium"
-                  : "text-stone-500 hover:text-stone-800"
-              }`}
-            >
-              Runs
-            </button>
+            {(["canvas", "definition", "runs", "settings"] as const).map(v => (
+              <button
+                key={v}
+                onClick={() => setActiveView(v)}
+                className={`px-2.5 py-1 rounded capitalize ${
+                  activeView === v
+                    ? "bg-white text-stone-900 shadow-sm font-medium"
+                    : "text-stone-500 hover:text-stone-800"
+                }`}
+              >
+                {v === "canvas" ? "Canvas" : v === "definition" ? "Definition" : v === "runs" ? "Runs" : "Settings"}
+              </button>
+            ))}
           </div>
         </div>
         </div>
@@ -1303,17 +1273,9 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
               )}
             </div>
           </>
-        ) : activeView === "yaml" ? (
-          <div className="flex-1 flex">
-            <YamlPanel
-              workflowId={workflowId}
-              workflowName={workflowName}
-              nodes={nodes}
-              edges={edges}
-              onLoaded={handleYamlLoaded}
-            />
-          </div>
-        ) : (
+        ) : activeView === "definition" ? (
+          <DefinitionPanel nodes={nodes} edges={edges} workflowName={workflowName} getToken={getToken} workflowId={workflowId} />
+        ) : activeView === "runs" ? (
           <div className="flex-1 overflow-auto px-6 py-8">
             <div className="mx-auto max-w-3xl flex items-center justify-between mb-4">
               <p className="text-sm font-semibold text-stone-700">{workflowName}</p>
@@ -1355,7 +1317,9 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
               </div>
             )}
           </div>
-        )}
+        ) : activeView === "settings" ? (
+          <WorkflowSettingsPanel workflowId={workflowId} getToken={getToken} onDelete={() => router.push("/workflows")} />
+        ) : null}
       </div>
 
       {/* No-environment warning banner — only shown when no higher-priority banner is active */}
