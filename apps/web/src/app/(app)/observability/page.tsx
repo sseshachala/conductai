@@ -324,6 +324,30 @@ export default function ObservabilityPage() {
           ))}
         </div>
 
+        {/* Cost summary */}
+        <div className="eyebrow" style={{ marginBottom: 11 }}>
+          Cost summary <span style={{ textTransform: "none", letterSpacing: 0, color: "var(--text-muted)", fontWeight: 500 }}>· last 30 days</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 24 }}>
+          {(analytics ? [
+            [`$${analytics.total_cost_usd.toFixed(4)}`, "Total cost", null],
+            [analytics.total_runs, "Total runs", `${analytics.succeeded} ok · ${analytics.failed} failed`],
+            [fmt(analytics.total_input_tokens), "Input tokens", null],
+            [fmt(analytics.total_output_tokens), "Output tokens", null],
+          ] as [string | number, string, string | null][] : [
+            ["—", "Total cost", null],
+            ["—", "Total runs", null],
+            ["—", "Input tokens", null],
+            ["—", "Output tokens", null],
+          ] as [string, string, null][]).map(([v, k, sub], i) => (
+            <div key={i} className="card" style={{ padding: "16px 18px" }}>
+              <div style={{ fontSize: 23, fontWeight: 700, letterSpacing: "-.02em" }}>{String(v)}</div>
+              <div className="eyebrow" style={{ marginTop: 7, fontSize: 9.5 }}>{k}</div>
+              {sub && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>{sub}</div>}
+            </div>
+          ))}
+        </div>
+
         {/* Agent status */}
         <div className="eyebrow" style={{ marginBottom: 11 }}>Agent status</div>
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, marginBottom: 12 }}>
@@ -464,30 +488,6 @@ export default function ObservabilityPage() {
           ))}
         </div>
 
-        {/* Cost summary */}
-        <div className="eyebrow" style={{ marginBottom: 11 }}>
-          Cost summary <span style={{ textTransform: "none", letterSpacing: 0, color: "var(--text-muted)", fontWeight: 500 }}>· last 30 days</span>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 14 }}>
-          {(analytics ? [
-            [`$${analytics.total_cost_usd.toFixed(4)}`, "Total cost", null],
-            [analytics.total_runs, "Total runs", `${analytics.succeeded} ok · ${analytics.failed} failed`],
-            [fmt(analytics.total_input_tokens), "Input tokens", null],
-            [fmt(analytics.total_output_tokens), "Output tokens", null],
-          ] as [string | number, string, string | null][] : [
-            ["—", "Total cost", null],
-            ["—", "Total runs", null],
-            ["—", "Input tokens", null],
-            ["—", "Output tokens", null],
-          ] as [string, string, null][]).map(([v, k, sub], i) => (
-            <div key={i} className="card" style={{ padding: "16px 18px" }}>
-              <div style={{ fontSize: 23, fontWeight: 700, letterSpacing: "-.02em" }}>{String(v)}</div>
-              <div className="eyebrow" style={{ marginTop: 7, fontSize: 9.5 }}>{k}</div>
-              {sub && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>{sub}</div>}
-            </div>
-          ))}
-        </div>
-
         {/* By-agent + events */}
         <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 16 }}>
           {/* By agent */}
@@ -532,7 +532,7 @@ export default function ObservabilityPage() {
             {(summary?.recent_events ?? []).length === 0 ? (
               <div style={{ padding: "20px 18px", fontSize: 12, color: "var(--text-muted)" }}>No recent events.</div>
             ) : (
-              (summary?.recent_events ?? []).map((ev, i, arr) => (
+              (summary?.recent_events ?? []).slice(0, 5).map((ev, i, arr) => (
                 <div key={ev.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 18px", borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none" }}>
                   <span className={`sbadge ${ev.severity === "error" ? "err" : ev.severity === "warning" ? "warn" : "run"}`} style={{ height: 18, fontSize: 9.5, textTransform: "capitalize", marginTop: 1 }}>{ev.severity}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
