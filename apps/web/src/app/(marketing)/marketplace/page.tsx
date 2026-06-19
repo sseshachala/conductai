@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
 import ModulesManager from "@/components/settings/ModulesManager"
 
@@ -120,10 +121,6 @@ const CAT_BLOCK: Record<string, string> = {
   "Testing":           "cleanup",
 }
 
-function getWorkspaceId(): string | null {
-  if (typeof document === "undefined") return null
-  return document.cookie.split("; ").find(r => r.startsWith("delegator_project_id="))?.split("=")[1] ?? null
-}
 
 const FRIENDLY_NAMES: Record<string, string> = {
   autopilot_quick:      "Autopilot Quick",
@@ -210,6 +207,7 @@ function MarketplaceWithAuth() {
 }
 
 function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
+  const { activeWorkspace } = useWorkspace()
   const router = useRouter()
   const searchParams = useSearchParams()
   const [marketTab, setMarketTab] = useState<"templates" | "modules" | "compliance">(
@@ -227,7 +225,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   const [uninstalling, setUninstalling] = useState<string | null>(null)
   const [scores, setScores] = useState<Map<string, PlaybookScore>>(new Map())
   useEffect(() => {
-    const wsId = getWorkspaceId()
+    const wsId = activeWorkspace?.id ?? null
     if (!wsId) return
     authHeaders().then(h =>
       fetch(`${process.env.NEXT_PUBLIC_API_URL}/compliance/packs/installed?workspace_id=${wsId}`, { headers: h })
@@ -288,7 +286,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   async function uninstallPlaybook(slug: string) {
     const wfId = installedWorkflowId.get(slug)
     if (!wfId) return
-    const wsId = getWorkspaceId()
+    const wsId = activeWorkspace?.id ?? null
     if (!wsId) return
     setUninstalling(slug)
     try {
@@ -308,7 +306,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   useEffect(() => {
     async function load() {
       const headers = await authHeaders()
-      const workspaceId = getWorkspaceId()
+      const workspaceId = activeWorkspace?.id ?? null
       if (workspaceId) headers["X-Workspace-Id"] = workspaceId
 
       const [pbRes, wfRes] = await Promise.all([
@@ -367,7 +365,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
     setProjectsLoading(true)
     try {
       const headers = await authHeaders()
-      const workspaceId = getWorkspaceId()
+      const workspaceId = activeWorkspace?.id ?? null
       if (workspaceId) headers["X-Workspace-Id"] = workspaceId
 
       const promises: Promise<void>[] = [
@@ -444,7 +442,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
     try {
       const headers = await authHeaders()
       headers["Content-Type"] = "application/json"
-      const workspaceId = getWorkspaceId()
+      const workspaceId = activeWorkspace?.id ?? null
       if (workspaceId) headers["X-Workspace-Id"] = workspaceId
 
       const needsRepo = GITHUB_WEBHOOK_SLUGS.has(pendingSlug)
@@ -505,7 +503,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   const showFeatured = activeCategory === "All" && !searchActive && featuredPlaybooks.length > 0
 
   async function installPack(packId: string) {
-    const wsId = getWorkspaceId()
+    const wsId = activeWorkspace?.id ?? null
     if (!wsId || packInstalling) return
     setPackInstalling(packId)
     try {
@@ -519,7 +517,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   }
 
   async function uninstallPack(packId: string) {
-    const wsId = getWorkspaceId()
+    const wsId = activeWorkspace?.id ?? null
     if (!wsId || packInstalling) return
     setPackInstalling(packId)
     try {
