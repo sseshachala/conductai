@@ -1620,7 +1620,6 @@ export default function BlockEditor({
                   : []
                 return (
                   <>
-                    <span className={sectionLabel}>Parameters</span>
                     {basicActionFields.map(field => {
                       const rendered = renderField(field)
                       if (rendered === null) return null
@@ -1671,9 +1670,6 @@ export default function BlockEditor({
                   </>
                 )
               })()}
-              <p className="text-[10px] text-stone-400 pt-1">
-                Use <code className="bg-stone-100 px-1 rounded">{"{{block_id.field}}"}</code> to reference earlier outputs.
-              </p>
             </div>
           )}
 

@@ -4,11 +4,12 @@ import PlaybookDetailClient from "./PlaybookDetailClient"
 export async function generateMetadata({
   params,
 }: {
-  params: { slug: string }
+  params: Promise<{ slug: string }>
 }): Promise<Metadata> {
+  const { slug } = await params
   return {
-    title: `${params.slug.replace(/-/g, " ")} — Conduct Playbooks`,
-    description: `Install the ${params.slug} playbook for your team.`,
+    title: `${slug.replace(/-/g, " ")} — Conduct Playbooks`,
+    description: `Install the ${slug} playbook for your team.`,
   }
 }
 
