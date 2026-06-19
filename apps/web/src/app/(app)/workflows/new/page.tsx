@@ -294,7 +294,7 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
 
         {/* mode toggle */}
         <div style={{ display: "flex", background: "var(--surface-3)", borderRadius: 10, padding: 3, marginBottom: 24, width: "fit-content" }}>
-          {([["playbook", "Start from playbook"]] as const).map(([v, l]) => (
+          {([["playbook", "Start from playbook"], ["describe", "Describe"]] as const).map(([v, l]) => (
             <button key={v} onClick={() => setMode(v)} style={{ border: "none", background: mode === v ? "var(--surface)" : "transparent", color: mode === v ? "var(--text)" : "var(--text-3)", fontSize: 13, fontWeight: 600, padding: "7px 16px", borderRadius: 8, cursor: "pointer", boxShadow: mode === v ? "var(--shadow-sm)" : "none", display: "flex", alignItems: "center", gap: 7 }}>
               {l}
             </button>
