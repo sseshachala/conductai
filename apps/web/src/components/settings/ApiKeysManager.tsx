@@ -133,9 +133,12 @@ export default function ApiKeysManager() {
             Use this key with <code className="mono" style={{ background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4 }}>X-Api-Key</code> header or{" "}
             <code className="mono" style={{ background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4 }}>conduct login --api-key</code>.
           </p>
-          <button onClick={() => setNewKey(null)} style={{ fontSize: 12, color: "var(--warn)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", textAlign: "left", padding: 0 }}>
-            I&apos;ve saved it, dismiss
-          </button>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <button onClick={() => setNewKey(null)} style={{ fontSize: 12, color: "var(--warn)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", textAlign: "left", padding: 0 }}>
+              I&apos;ve saved it, dismiss
+            </button>
+            <button onClick={() => setNewKey(null)} aria-label="Dismiss" className="btn btn-ghost btn-sm btn-icon" style={{ color: "var(--warn)" }}>✕</button>
+          </div>
         </div>
       )}
 

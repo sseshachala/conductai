@@ -57,6 +57,7 @@ function OrgNameEditor({ getToken }: { getToken: (() => Promise<string | null>) 
   const [orgId, setOrgId] = useState<string | null>(null)
   const [orgName, setOrgName] = useState("")
   const [inputValue, setInputValue] = useState("")
+  const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle")
   const [errorMsg, setErrorMsg] = useState("")
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -77,6 +78,8 @@ function OrgNameEditor({ getToken }: { getToken: (() => Promise<string | null>) 
         setInputValue(org.name)
       } catch {
         // Non-fatal: leave empty
+      } finally {
+        if (!cancelled) setLoading(false)
       }
     }
     load()
@@ -133,8 +136,9 @@ function OrgNameEditor({ getToken }: { getToken: (() => Promise<string | null>) 
             value={inputValue}
             onChange={e => { setInputValue(e.target.value); setStatus("idle"); setErrorMsg("") }}
             onKeyDown={e => { if (e.key === "Enter" && isDirty) handleSave() }}
-            style={{ height: 36, border: "1px solid var(--border)", borderRadius: 8, padding: "0 12px", fontSize: 13, background: "var(--surface)", color: "var(--text)", outline: "none", width: "100%" }}
-            placeholder="Your organisation name"
+            disabled={loading}
+            style={{ height: 36, border: "1px solid var(--border)", borderRadius: 8, padding: "0 12px", fontSize: 13, background: "var(--surface)", color: "var(--text)", outline: "none", width: "100%", opacity: loading ? 0.5 : 1 }}
+            placeholder={loading ? "Loading…" : "Your organisation name"}
           />
           <span style={{ fontSize: 12, color: "var(--text-3)" }}>
             This name appears across your workspace and shared playbooks.
@@ -211,10 +215,14 @@ function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolea
 
         {isAdmin && <OrgNameEditor getToken={getToken} />}
 
-        <div style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border)", marginBottom: 24 }}>
+        <div role="tablist" style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border)", marginBottom: 24 }}>
           {tabs.map(tab => (
             <button
               key={tab}
+              role="tab"
+              aria-selected={activeTab === tab}
+              aria-controls={`tabpanel-${tab}`}
+              id={`tab-${tab}`}
               onClick={() => setActiveTab(tab)}
               style={{
                 background: "none",
@@ -233,10 +241,22 @@ function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolea
           ))}
         </div>
 
-        {activeTab === "credentials" && <EnvironmentsManager isAdmin={isAdmin} />}
-        {activeTab === "preferences" && <PreferencesPanel />}
-        {activeTab === "members" && isAdmin && <MembersManager />}
-        {activeTab === "api-keys" && isAdmin && <ApiKeysManager />}
+        <div role="tabpanel" id="tabpanel-credentials" aria-labelledby="tab-credentials" hidden={activeTab !== "credentials"}>
+          <EnvironmentsManager isAdmin={isAdmin} />
+        </div>
+        <div role="tabpanel" id="tabpanel-preferences" aria-labelledby="tab-preferences" hidden={activeTab !== "preferences"}>
+          <PreferencesPanel />
+        </div>
+        {isAdmin && (
+          <div role="tabpanel" id="tabpanel-members" aria-labelledby="tab-members" hidden={activeTab !== "members"}>
+            <MembersManager />
+          </div>
+        )}
+        {isAdmin && (
+          <div role="tabpanel" id="tabpanel-api-keys" aria-labelledby="tab-api-keys" hidden={activeTab !== "api-keys"}>
+            <ApiKeysManager />
+          </div>
+        )}
       </div>
     </AppShell>
   )

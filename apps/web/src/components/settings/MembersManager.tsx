@@ -432,7 +432,7 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
                   <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>{getGuardAccess(m.role)}</div>
                   <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                     {isAdmin && (
-                      <button className="btn btn-ghost btn-sm btn-icon" onClick={() => toggleMemberWorkspaces(m.clerk_user_id)}>⚙</button>
+                      <button className="btn btn-ghost btn-sm btn-icon" aria-label="Member workspace settings" onClick={() => toggleMemberWorkspaces(m.clerk_user_id)}>⚙</button>
                     )}
                     {isAdmin && m.clerk_user_id !== currentClerkId && (
                       <button
@@ -446,6 +446,7 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
                           }
                         }}
                         disabled={removing === m.clerk_user_id}
+                        aria-label={`Remove ${m.email || m.name || "member"}`}
                         style={{ fontSize: 13, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", opacity: removing === m.clerk_user_id ? 0.4 : 1 }}
                       >
                         {removing === m.clerk_user_id ? "…" : "×"}
@@ -515,6 +516,7 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
       <div className="card" style={{ padding: "12px 16px", background: "var(--surface-2)", display: "flex", flexDirection: "column", gap: 5 }}>
         <p style={{ fontSize: 12, color: "var(--text-2)" }}><span style={{ fontWeight: 600, color: "var(--text)" }}>Admin</span> — full access: manage members, credentials, environments, workflows, and runs</p>
         <p style={{ fontSize: 12, color: "var(--text-2)" }}><span style={{ fontWeight: 600, color: "var(--text)" }}>Developer</span> — run agents, edit workflows, manage credentials and environments; cannot manage members</p>
+        <p style={{ fontSize: 12, color: "var(--text-2)" }}><span style={{ fontWeight: 600, color: "var(--text)" }}>Security</span> — read-only access plus Guard policy management and all-member activity review</p>
         <p style={{ fontSize: 12, color: "var(--text-2)" }}><span style={{ fontWeight: 600, color: "var(--text)" }}>Viewer</span> — read-only across all screens: view runs, workflows, credentials, and settings</p>
       </div>
     </div>
