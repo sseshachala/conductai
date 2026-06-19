@@ -4,7 +4,6 @@ import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
-import AppShell from "@/components/AppShell"
 import StatusBadge from "@/components/runs/StatusBadge"
 import { isActive, duration, timeAgo } from "@/lib/runUtils"
 
@@ -75,8 +74,7 @@ export default function RunsPage() {
   void workflowName
 
   return (
-    <AppShell noPadding>
-      <div style={{ flex: 1, overflow: "auto" }}>
+    <div style={{ flex: 1, overflow: "auto" }}>
         <div style={{ maxWidth: 672, margin: "0 auto", padding: "40px 24px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -223,7 +221,6 @@ export default function RunsPage() {
             </p>
           )}
         </div>
-      </div>
-    </AppShell>
+    </div>
   )
 }

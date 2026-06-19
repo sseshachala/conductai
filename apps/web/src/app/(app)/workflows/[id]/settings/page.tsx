@@ -4,7 +4,6 @@ import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
-import AppShell from "@/components/AppShell"
 
 interface WorkflowDetail {
   id: string
@@ -125,8 +124,7 @@ export default function AgentSettingsPage() {
   }
 
   return (
-    <AppShell noPadding>
-      <div style={{ flex: 1, overflow: "auto" }}>
+    <div style={{ flex: 1, overflow: "auto" }}>
         <div style={{ maxWidth: 672, margin: "0 auto", padding: "40px 24px" }}>
           <h2 style={{ fontSize: 20, fontWeight: 600, color: "var(--text)", marginBottom: 24 }}>Workflow Settings</h2>
 
@@ -336,7 +334,6 @@ export default function AgentSettingsPage() {
             </div>
           )}
         </div>
-      </div>
-    </AppShell>
+    </div>
   )
 }
