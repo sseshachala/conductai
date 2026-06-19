@@ -276,25 +276,21 @@ function IntegrationsPageInner({
   const load = useCallback(async () => {
     setLoading(true)
     setGlobalError("")
-    try {
-      const headers = await buildHeaders()
-      const [serversRes, envsRes] = await Promise.all([
-        fetch(`${base}/mcp-servers${wsId ? `?workspace_id=${wsId}` : ""}`, { headers }),
-        fetch(`${base}/environments${wsId ? `?workspace_id=${wsId}` : ""}`, { headers }),
-      ])
-      if (serversRes.ok) {
-        const data = await serversRes.json()
-        if (Array.isArray(data)) setServers(data)
-      }
-      if (envsRes.ok) {
-        const data = await envsRes.json()
-        if (Array.isArray(data)) setEnvironments(data)
-      }
-    } catch {
-      setGlobalError("Could not load integrations — check your connection.")
-    } finally {
-      setLoading(false)
+    const headers = await buildHeaders()
+    // Fetch independently so environments always loads even if mcp-servers table is pending migration
+    const [serversRes, envsRes] = await Promise.allSettled([
+      fetch(`${base}/mcp-servers${wsId ? `?workspace_id=${wsId}` : ""}`, { headers }),
+      fetch(`${base}/environments${wsId ? `?workspace_id=${wsId}` : ""}`, { headers }),
+    ])
+    if (serversRes.status === "fulfilled" && serversRes.value.ok) {
+      const data = await serversRes.value.json().catch(() => [])
+      if (Array.isArray(data)) setServers(data)
     }
+    if (envsRes.status === "fulfilled" && envsRes.value.ok) {
+      const data = await envsRes.value.json().catch(() => [])
+      if (Array.isArray(data)) setEnvironments(data)
+    }
+    setLoading(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wsId])
 
