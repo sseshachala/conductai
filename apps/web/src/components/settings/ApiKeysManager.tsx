@@ -16,7 +16,17 @@ interface ApiKey {
 }
 
 export default function ApiKeysManager() {
+  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  if (clerkEnabled) return <ApiKeysManagerWithAuth />
+  return <ApiKeysManagerInner getToken={null} />
+}
+
+function ApiKeysManagerWithAuth() {
   const { getToken } = useAuth()
+  return <ApiKeysManagerInner getToken={getToken} />
+}
+
+function ApiKeysManagerInner({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
   const { activeWorkspace } = useWorkspace()
   const workspaceId = activeWorkspace?.id ?? ""
   const apiUrl = process.env.NEXT_PUBLIC_API_URL

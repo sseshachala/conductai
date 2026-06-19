@@ -26,6 +26,16 @@ const VIEWER_PERMISSIONS: GuardPermissions = {
   canExportActivity:  false,
 }
 
+const ADMIN_PERMISSIONS: GuardPermissions = {
+  canEditPolicies:    true,
+  canEditSettings:    true,
+  canEditBudgets:     true,
+  canViewAllActivity: true,
+  canViewAllSpend:    true,
+  canViewOwnSpend:    true,
+  canExportActivity:  true,
+}
+
 function permissionsFromList(perms: string[]): GuardPermissions {
   const has = (p: string) => perms.includes(p)
   return {
@@ -42,6 +52,17 @@ function permissionsFromList(perms: string[]): GuardPermissions {
 
 export function useGuardRole(
   _teamId: string | null,
+  workspaceId: string | null,
+): { role: GuardRole | null; permissions: GuardPermissions; loading: boolean } {
+  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  if (!clerkEnabled) {
+    return { role: "admin", permissions: ADMIN_PERMISSIONS, loading: false }
+  }
+
+  return useGuardRoleWithClerk(workspaceId)
+}
+
+function useGuardRoleWithClerk(
   workspaceId: string | null,
 ): { role: GuardRole | null; permissions: GuardPermissions; loading: boolean } {
   const { getToken, isLoaded, isSignedIn } = useAuth()
