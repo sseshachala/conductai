@@ -4,8 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth, useUser, useClerk } from "@clerk/nextjs"
-import { WorkspaceProvider, useWorkspace } from "@/lib/WorkspaceContext"
-import { GuardRoleClerkProvider, GuardRoleAdminProvider } from "@/lib/GuardRoleContext"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 import { setActiveGuardWorkspace } from "@/lib/guardStorage"
 import { PreferencesProvider } from "@/lib/PreferencesContext"
 import Toast, { type ToastData } from "@/components/ui/Toast"
@@ -141,31 +140,18 @@ const PALETTE_COMMANDS = [
 ]
 
 export default function AppShell({ children, noPadding }: { children: React.ReactNode; noPadding?: boolean }) {
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-  return (
-    <WorkspaceProvider clerkEnabled={clerkEnabled}>
-      <AppShellInner noPadding={noPadding}>{children}</AppShellInner>
-    </WorkspaceProvider>
-  )
+  return <AppShellInner noPadding={noPadding}>{children}</AppShellInner>
 }
 
 function AppShellInner({ children, noPadding }: { children: React.ReactNode; noPadding?: boolean }) {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   if (clerkEnabled) return <AppShellInnerWithAuth noPadding={noPadding}>{children}</AppShellInnerWithAuth>
-  return (
-    <GuardRoleAdminProvider>
-      <AppShellInnerContent noPadding={noPadding} getToken={null} userId={null}>{children}</AppShellInnerContent>
-    </GuardRoleAdminProvider>
-  )
+  return <AppShellInnerContent noPadding={noPadding} getToken={null} userId={null}>{children}</AppShellInnerContent>
 }
 
 function AppShellInnerWithAuth({ children, noPadding }: { children: React.ReactNode; noPadding?: boolean }) {
   const { getToken, userId } = useAuth()
-  return (
-    <GuardRoleClerkProvider>
-      <AppShellInnerContent noPadding={noPadding} getToken={getToken} userId={userId ?? null}>{children}</AppShellInnerContent>
-    </GuardRoleClerkProvider>
-  )
+  return <AppShellInnerContent noPadding={noPadding} getToken={getToken} userId={userId ?? null}>{children}</AppShellInnerContent>
 }
 
 function AppShellInnerContent({

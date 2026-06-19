@@ -70,11 +70,8 @@ export default function IntegrationsPage() {
 
 function IntegrationsPageWithAuth() {
   const { getToken } = useAuth()
-  // Read wsId from cookie — same pattern as EnvironmentsManager
-  // useWorkspace() won't work here because WorkspaceProvider lives inside AppShell (a child)
-  const wsId = typeof document !== "undefined"
-    ? document.cookie.split("; ").find(r => r.startsWith("delegator_project_id="))?.split("=")[1] ?? ""
-    : ""
+  const { activeWorkspace } = useWorkspace()
+  const wsId = activeWorkspace?.id ?? ""
   return <IntegrationsPageInner getToken={getToken} wsId={wsId} />
 }
 
