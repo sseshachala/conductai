@@ -20,7 +20,6 @@ interface PlaybookDetail {
   description: string
   tags: string[]
   category: string
-  featured: boolean
   blocks: Block[]
   yaml_source: string
 }
@@ -37,10 +36,8 @@ const BLOCK_STYLES: Record<string, { bg: string; border: string; badge: string; 
 }
 
 const MODEL_SHORT: Record<string, string> = {
-  "{{inputs.spec_model}}":  "Opus",
-  "{{inputs.impl_model}}":  "Sonnet",
-  "claude-opus-4-7":        "Opus",
-  "claude-sonnet-4-6":      "Sonnet",
+  "claude-opus-4-7":           "Opus",
+  "claude-sonnet-4-6":         "Sonnet",
   "claude-haiku-4-5-20251001": "Haiku",
 }
 
@@ -255,12 +252,17 @@ export default function PublicPlaybookPage() {
         </div>
 
         {/* Stats strip */}
-        <div className="flex items-center gap-6 py-4 border-y border-stone-200 mb-10 text-xs text-stone-500">
-          <span><span className="font-semibold text-stone-700">{playbook.blocks.length}</span> blocks</span>
-          <span><span className="font-semibold text-stone-700">{playbook.blocks.filter(b => b.type === "brain").length}</span> agent steps</span>
-          <span><span className="font-semibold text-stone-700">{playbook.blocks.filter(b => b.type === "approval").length}</span> human gate{playbook.blocks.filter(b => b.type === "approval").length !== 1 ? "s" : ""}</span>
-          <span><span className="font-semibold text-stone-700">{playbook.blocks.filter(b => b.type === "memory").length}</span> memory ops</span>
-        </div>
+        {(() => {
+          const gateCount = mainBlocks.filter(b => b.type === "approval").length
+          return (
+            <div className="flex items-center gap-6 py-4 border-y border-stone-200 mb-10 text-xs text-stone-500">
+              <span><span className="font-semibold text-stone-700">{playbook.blocks.length}</span> blocks</span>
+              <span><span className="font-semibold text-stone-700">{mainBlocks.filter(b => b.type === "brain").length}</span> agent steps</span>
+              <span><span className="font-semibold text-stone-700">{gateCount}</span> human gate{gateCount !== 1 ? "s" : ""}</span>
+              <span><span className="font-semibold text-stone-700">{mainBlocks.filter(b => b.type === "memory").length}</span> memory ops</span>
+            </div>
+          )
+        })()}
 
         {/* CTA */}
         <div className="flex items-center gap-3 mb-10">
