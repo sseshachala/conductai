@@ -481,6 +481,23 @@ def list_members(
     return out
 
 
+@router.get("/{project_id}/my-role")
+def get_my_role(
+    project_id: str,
+    user_id: Annotated[str, Depends(get_user_id)],
+    workspace_id: Annotated[str, Depends(get_workspace_id)],
+    db: Session = Depends(get_db),
+):
+    if project_id != workspace_id:
+        raise HTTPException(status_code=404, detail="Project not found")
+    row = db.execute(text("""
+        SELECT role FROM workspace_users
+        WHERE workspace_id = :ws AND clerk_user_id = :uid
+    """), {"ws": workspace_id, "uid": user_id}).fetchone()
+    if not row:
+        raise HTTPException(status_code=403, detail="Not a member of this workspace")
+    return {"role": row.role}
+
 @router.get("/{project_id}/members/{clerk_user_id}/workspaces", response_model=list[MemberWorkspaceOut])
 def get_member_workspaces(
     project_id: str,
