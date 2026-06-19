@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth, useUser } from "@clerk/nextjs"
+import Link from "next/link"
 import AppShell from "@/components/AppShell"
 
 interface Submission {
@@ -18,6 +19,7 @@ const GRADE_STYLES: Record<string, string> = {
   B: "bg-blue-100  text-blue-700",
   C: "bg-amber-100  text-amber-700",
   D: "bg-orange-100 text-orange-700",
+  E: "bg-orange-100 text-orange-700",
   F: "bg-red-100    text-red-700",
 }
 
@@ -29,21 +31,61 @@ function getWorkspaceId(): string | null {
 export default function PlaybookQueuePage() {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   if (clerkEnabled) return <PlaybookQueueWithAuth />
-  return <PlaybookQueueContent getToken={null} />
+  return <PlaybookQueueContent getToken={null} userRole={null} />
 }
 
 function PlaybookQueueWithAuth() {
   const { getToken } = useAuth()
-  return <PlaybookQueueContent getToken={getToken} />
+  const { user, isLoaded } = useUser()
+
+  if (!isLoaded) {
+    return (
+      <AppShell>
+        <div className="flex items-center justify-center min-h-[50vh]">
+          <div className="w-5 h-5 border-2 border-stone-300 border-t-stone-600 rounded-full animate-spin" />
+        </div>
+      </AppShell>
+    )
+  }
+
+  const role = (user?.publicMetadata?.role as string | undefined) ?? null
+  const allowed = role === "admin" || role === "security"
+
+  if (!allowed) {
+    return (
+      <AppShell>
+        <div className="mx-auto max-w-3xl px-6 py-20 text-center">
+          <p className="text-sm font-medium text-stone-900 mb-1">Access denied</p>
+          <p className="text-xs text-stone-400 mb-4">
+            You need the <strong>admin</strong> or <strong>security</strong> role to review the playbook queue.
+          </p>
+          <Link
+            href="/playbooks"
+            className="text-xs text-stone-500 hover:text-stone-700 underline"
+          >
+            ← Back to Playbooks
+          </Link>
+        </div>
+      </AppShell>
+    )
+  }
+
+  return <PlaybookQueueContent getToken={getToken} userRole={role} />
 }
 
-function PlaybookQueueContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
+function PlaybookQueueContent({
+  getToken,
+  userRole,
+}: {
+  getToken: (() => Promise<string | null>) | null
+  userRole: string | null
+}) {
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [loading, setLoading] = useState(true)
-  const [actionInFlight, setActionInFlight] = useState<string | null>(null)
+  const [actionInFlight, setActionInFlight] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
 
-  async function authHeaders(): Promise<Record<string, string>> {
+  const buildAuthHeaders = useCallback(async (): Promise<Record<string, string>> => {
     const headers: Record<string, string> = { "Content-Type": "application/json" }
     if (getToken) {
       const token = await getToken()
@@ -52,13 +94,13 @@ function PlaybookQueueContent({ getToken }: { getToken: (() => Promise<string | 
     const workspaceId = getWorkspaceId()
     if (workspaceId) headers["X-Workspace-Id"] = workspaceId
     return headers
-  }
+  }, [getToken])
 
   const loadSubmissions = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const headers = await authHeaders()
+      const headers = await buildAuthHeaders()
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/playbooks/submissions?status=pending`,
         { headers }
@@ -74,15 +116,21 @@ function PlaybookQueueContent({ getToken }: { getToken: (() => Promise<string | 
     } finally {
       setLoading(false)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [buildAuthHeaders])
 
   useEffect(() => { loadSubmissions() }, [loadSubmissions])
 
   async function updateStatus(slug: string, status: "promoted" | "needs_work") {
-    setActionInFlight(slug)
+    const confirmMsg =
+      status === "promoted"
+        ? "Promote this playbook?"
+        : "Mark as needs work?"
+    if (!window.confirm(confirmMsg)) return
+
+    setError(null)
+    setActionInFlight(prev => new Set(prev).add(slug))
     try {
-      const headers = await authHeaders()
+      const headers = await buildAuthHeaders()
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/playbooks/${slug}/submission`,
         {
@@ -101,11 +149,18 @@ function PlaybookQueueContent({ getToken }: { getToken: (() => Promise<string | 
     } catch {
       setError("Network error. Please try again.")
     } finally {
-      setActionInFlight(null)
+      setActionInFlight(prev => {
+        const next = new Set(prev)
+        next.delete(slug)
+        return next
+      })
     }
   }
 
   const pending = submissions.filter(s => s.status === "pending")
+
+  // Suppress unused-variable warning for userRole — reserved for future UI
+  void userRole
 
   return (
     <AppShell>
@@ -148,7 +203,7 @@ function PlaybookQueueContent({ getToken }: { getToken: (() => Promise<string | 
               <SubmissionRow
                 key={sub.slug}
                 submission={sub}
-                inFlight={actionInFlight === sub.slug}
+                inFlight={actionInFlight.has(sub.slug)}
                 onApprove={() => updateStatus(sub.slug, "promoted")}
                 onReject={() => updateStatus(sub.slug, "needs_work")}
               />
