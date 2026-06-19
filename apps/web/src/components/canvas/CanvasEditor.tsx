@@ -14,6 +14,7 @@ import {
   ConnectionMode,
   ConnectionLineType,
   MarkerType,
+  PanOnScrollMode,
   type Connection,
   type Node,
   type Edge,
@@ -362,7 +363,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
         }
         setTimeout(() => { isFirstLoad.current = false }, 100)
         setCanvasLoading(false)
-        setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 50)
+        setTimeout(() => fitView({ padding: 0.15, duration: 400 }), 150)
       })
       .catch(() => { if (!abort.signal.aborted) { isFirstLoad.current = false; setCanvasLoading(false) } })
     ).catch(() => { isFirstLoad.current = false; setCanvasLoading(false) })
@@ -1198,6 +1199,9 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                 defaultViewport={{ x: 80, y: 80, zoom: 1 }}
                 minZoom={0.3}
                 maxZoom={2}
+                panOnScroll
+                panOnScrollMode={PanOnScrollMode.Free}
+                zoomOnScroll={false}
                 deleteKeyCode="Backspace"
                 proOptions={{ hideAttribution: true }}
                 connectionMode={ConnectionMode.Loose}

@@ -1913,8 +1913,8 @@ export default function BlockEditor({
                 </div>
               )}
 
-              {/* ── Signing secret (advanced) ── */}
-              {triggerEventType && triggerEventType !== "manual" && (() => {
+              {/* ── Signing secret — inbound webhook only ── */}
+              {triggerEventType === "webhook" && (() => {
                 const secret = (getNestedValue(blockData, "config.webhook_secret") as string) || ""
                 return (
                   <div>
@@ -1952,12 +1952,8 @@ export default function BlockEditor({
           <span className={sectionLabel}>Configuration</span>
           <div className="space-y-3">
             {(() => {
-              const hasSections = staticFields.some(f => f.section)
-              const basicStaticFields = hasSections
-                ? staticFields.filter(f => !f.section || f.section === "basic")
-                : (staticFields.filter(f => f.required).length > 0 ? staticFields.filter(f => f.required) : staticFields)
-              const visibleStaticFields = showAdvanced ? staticFields : basicStaticFields
-              const hasAdvanced = staticFields.length > basicStaticFields.length
+              const visibleStaticFields = staticFields
+              const hasAdvanced = false
 
               return (
                 <>
@@ -1973,45 +1969,6 @@ export default function BlockEditor({
                         </div>
                         {rendered}
                         {/* Logic block — available variables hint */}
-                        {blockType === "logic" && field.key === "config.condition" && (
-                          <div className="mt-1.5">
-                            <button
-                              type="button"
-                              onClick={() => setShowVarsHint(v => !v)}
-                              className="flex items-center gap-1 text-[10px] text-stone-400 hover:text-stone-600 transition-colors"
-                            >
-                              <span style={{ display: "inline-block", transform: showVarsHint ? "rotate(90deg)" : "none", transition: "transform 0.14s", fontSize: 10 }}>›</span>
-                              Available variables
-                            </button>
-                            {showVarsHint && (
-                              <div className="mt-1.5 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 text-[10px] text-stone-600 space-y-1.5">
-                                <p className="font-semibold text-stone-500 uppercase tracking-wide text-[9px]">Reference syntax</p>
-                                <p className="font-mono text-stone-700">{"{{block_id.field}}"}</p>
-                                {previousBlockId && (
-                                  <p className="text-stone-500">Previous block: <span className="font-mono text-stone-700">{previousBlockId}</span></p>
-                                )}
-                                <div className="border-t border-stone-200 pt-1.5 space-y-1">
-                                  <p className="font-semibold text-stone-500 uppercase tracking-wide text-[9px]">Common fields</p>
-                                  {[
-                                    ["exit_code", "0 (success) or 1 (failure) from shell steps"],
-                                    ["status",    '"success" | "failed" | "skipped"'],
-                                    ["output",    "raw text output from the previous step"],
-                                  ].map(([k, v]) => (
-                                    <div key={k} className="flex gap-2">
-                                      <span className="font-mono text-stone-700 shrink-0">{k}</span>
-                                      <span className="text-stone-400">{v}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                                {previousBlockId && (
-                                  <p className="text-[9px] text-stone-400 border-t border-stone-200 pt-1.5">
-                                    e.g. <span className="font-mono text-stone-600">{"{{" + previousBlockId + ".exit_code}} == 0"}</span>
-                                  </p>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
                         {/* GitHub issue-labeled — webhook URL card + compact register panel */}
                         {blockType === "trigger" && field.key === "config.event_type" && triggerEventType === "github_issue_labeled" && (() => {
                           const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
@@ -2144,7 +2101,7 @@ export default function BlockEditor({
                       >
                         <span style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.14s", display: "inline-block", fontSize: 12, color: "var(--text-3)" }}>›</span>
                         <span className="eyebrow" style={{ fontSize: 10 }}>Advanced</span>
-                        <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>{staticFields.length - basicStaticFields.length} settings</span>
+                        <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>{staticFields.length} settings</span>
                         <div style={{ flex: 1, height: 1, background: "var(--border)", marginLeft: 2 }} />
                       </button>
                     </>
@@ -2210,23 +2167,7 @@ export default function BlockEditor({
               </select>
             </div>
 
-            <button
-              type="button"
-              className="w-full flex items-center gap-2 px-4 py-2 bg-transparent border-none cursor-pointer text-stone-500 hover:text-stone-700 transition-colors mt-2"
-              onClick={() => setShowAdvanced(v => !v)}
-              disabled={isViewer}
-            >
-              <span style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.14s", display: "inline-block", fontSize: 12 }} className="text-stone-400">›</span>
-              <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Advanced</span>
-              <span className="text-[11px] text-stone-400 font-normal">3 settings</span>
-              <div className="flex-1 h-px bg-stone-100 ml-1" />
-            </button>
-            {!showAdvanced && (
-              <p className="text-[11px] text-stone-400 px-4 pb-2">Power-user options — sensible defaults applied.</p>
-            )}
-
-            {showAdvanced && (
-              <>
+            <>
                 <div className={section}>
                   <span className={sectionLabel}>Key</span>
                   <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-stone-50 border border-stone-200 rounded-lg">
@@ -2274,8 +2215,7 @@ export default function BlockEditor({
                     </p>
                   </div>
                 )}
-              </>
-            )}
+            </>
           </>
         )
       })()}
