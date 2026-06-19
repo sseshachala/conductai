@@ -61,6 +61,8 @@ export default function AlertsPage() {
   const [offset, setOffset] = useState(0)
   const [eventType, setEventType] = useState("")
   const [resolving, setResolving] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [resolveError, setResolveError] = useState<string | null>(null)
 
   const load = useCallback(async (off: number, type: string, replace: boolean) => {
     const token = await getToken()
@@ -74,10 +76,13 @@ export default function AlertsPage() {
 
     try {
       const res = await fetch(`${base}/observability/alerts?${params}`, { headers })
-      if (!res.ok) return
+      if (!res.ok) { setError(`Failed to load alerts (${res.status})`); return }
       const data: Alert[] = await res.json()
       setAlerts(prev => replace ? data : [...prev, ...data])
       setHasMore(data.length === PAGE_SIZE)
+      setError(null)
+    } catch {
+      setError("Network error loading alerts.")
     } finally {
       setLoading(false)
     }
@@ -91,6 +96,7 @@ export default function AlertsPage() {
 
   async function resolve(id: string) {
     setResolving(id)
+    setResolveError(null)
     const token = await getToken()
     const workspaceId = getCookie("delegator_project_id") ?? ""
     const headers: Record<string, string> = { "Content-Type": "application/json" }
@@ -102,7 +108,11 @@ export default function AlertsPage() {
       if (res.ok) {
         const updated: Alert = await res.json()
         setAlerts(prev => prev.map(a => a.id === id ? updated : a))
+      } else {
+        setResolveError(`Failed to resolve alert (${res.status})`)
       }
+    } catch {
+      setResolveError("Network error — could not resolve alert.")
     } finally {
       setResolving(null)
     }
@@ -153,6 +163,19 @@ export default function AlertsPage() {
           </select>
         </div>
 
+        {/* Error banners */}
+        {error && (
+          <div style={{ borderRadius: 10, border: "1px solid var(--err-bd)", background: "var(--err-bg)", padding: "10px 16px", fontSize: 13, color: "var(--err)" }}>
+            {error}
+          </div>
+        )}
+        {resolveError && (
+          <div style={{ borderRadius: 10, border: "1px solid var(--err-bd)", background: "var(--err-bg)", padding: "10px 16px", fontSize: 13, color: "var(--err)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span>{resolveError}</span>
+            <button onClick={() => setResolveError(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--err)", fontSize: 14, padding: 0 }}>✕</button>
+          </div>
+        )}
+
         {/* Table */}
         {loading ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -168,7 +191,7 @@ export default function AlertsPage() {
               />
             ))}
           </div>
-        ) : alerts.length === 0 ? (
+        ) : error && alerts.length === 0 ? null : alerts.length === 0 ? (
           <div
             className="card"
             style={{
@@ -192,6 +215,7 @@ export default function AlertsPage() {
                   {["Type", "Agent", "Detail", "When", "Status", ""].map((heading, i) => (
                     <th
                       key={i}
+                      scope="col"
                       className="eyebrow"
                       style={{
                         padding: "10px 16px",
@@ -252,6 +276,7 @@ export default function AlertsPage() {
                         )}
                       </td>
                       <td
+                        title={detail || undefined}
                         style={{
                           padding: "10px 16px",
                           color: "var(--text-3)",
@@ -269,7 +294,7 @@ export default function AlertsPage() {
                       </td>
                       <td style={{ padding: "10px 16px" }}>
                         {a.resolved_at ? (
-                          <span style={{ fontSize: 12, color: "var(--ok)" }}>
+                          <span title={new Date(a.resolved_at).toLocaleString()} style={{ fontSize: 12, color: "var(--ok)" }}>
                             Resolved {timeAgo(a.resolved_at)}
                           </span>
                         ) : (
@@ -298,21 +323,8 @@ export default function AlertsPage() {
 
             {hasMore && (
               <div style={{ padding: "10px 16px", borderTop: "1px solid var(--border)" }}>
-                <button
-                  onClick={loadMore}
-                  style={{
-                    fontSize: 12,
-                    color: "var(--accent)",
-                    fontWeight: 500,
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: 0,
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.color = "var(--accent-text)")}
-                  onMouseLeave={e => (e.currentTarget.style.color = "var(--accent)")}
-                >
-                  Load more
+                <button className="btn btn-ghost btn-sm" onClick={loadMore}>
+                  Load more ({PAGE_SIZE} more)
                 </button>
               </div>
             )}
