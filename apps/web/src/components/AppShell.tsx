@@ -1008,6 +1008,13 @@ function AppShellInnerContent({
             </button>
           )}
           <SideNavItem
+            href="/integrations"
+            label="Integrations"
+            icon={<Icons.Gear />}
+            active={pathname.startsWith("/integrations")}
+            collapsed={collapsed}
+          />
+          <SideNavItem
             href="/settings"
             label="Settings"
             icon={<Icons.Gear />}
