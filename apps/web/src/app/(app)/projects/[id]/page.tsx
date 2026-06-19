@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
+import AgentStatusPill from "@/components/workflows/AgentStatusPill"
 import { formatTrigger, timeAgo, duration } from "@/lib/runUtils"
 
 interface Workflow {
@@ -45,22 +46,6 @@ function mapStatus(s: string | null): string {
   if (l === "failed" || l === "error") return "err"
   if (l === "warn" || l === "degraded") return "warn"
   return "idle"
-}
-
-// P2-Cross: AgentStatusPill and RunStatusBadge kept local (no shared StatusBadge import needed)
-function AgentStatusPill({ s }: { s: string }) {
-  const m = ({
-    ok: ["ok", "Succeeded"], wait: ["warn", "Awaiting"], run: ["run", "Running"],
-    err: ["err", "Failed"], idle: ["idle", "Never run"], warn: ["warn", "Degraded"],
-  } as Record<string, [string, string]>)[s] || ["idle", "Never run"]
-  return (
-    <span className={"sbadge " + m[0]}>
-      {(s === "run" || s === "wait") && (
-        <span className="dot pulse" style={{ background: m[0] === "warn" ? "var(--warn)" : "var(--info)" }} />
-      )}
-      {m[1]}
-    </span>
-  )
 }
 
 function RunStatusBadge({ status }: { status: string }) {
