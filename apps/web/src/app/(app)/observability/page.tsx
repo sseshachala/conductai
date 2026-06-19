@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { timeAgo } from "@/lib/runUtils"
@@ -131,8 +132,10 @@ function fmt(n: number, decimals = 0): string {
 
 export default function ObservabilityPage() {
   const { getToken } = useAuth()
+  const router = useRouter()
   const [summary, setSummary] = useState<ObservabilitySummary | null>(null)
   const [agents, setAgents] = useState<AgentStatus[]>([])
+  const [agentError, setAgentError] = useState(false)
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null)
   const [dora, setDora] = useState<DoraMetrics | null>(null)
   const [scorecards, setScorecards] = useState<Map<string, PlaybookScorecard>>(new Map())
@@ -155,9 +158,10 @@ export default function ObservabilityPage() {
       const res = await fetch(`${base}/observability/agents`, { headers })
       if (!res.ok) throw new Error("Failed to load agent data")
       setAgents(await res.json())
+      setAgentError(false)
       setVisibleCount(PAGE_SIZE)
     } catch {
-      // non-fatal — agents grid keeps last known state
+      setAgentError(true)
     }
   }, [getToken])
 
@@ -293,9 +297,9 @@ export default function ObservabilityPage() {
   const h = summary?.health
 
   const healthCards = [
-    { k: "Active runs",     v: h?.active_runs ?? 0,   tone: (h?.active_runs ?? 0) > 0 ? "var(--info)" : "var(--text)", sub: null },
-    { k: "Pending approval",v: h?.pending_approvals ?? 0, tone: (h?.pending_approvals ?? 0) > 0 ? "var(--warn)" : "var(--text)", sub: null },
-    { k: "Stale workers",   v: h?.stale_workers ?? 0, tone: (h?.stale_workers ?? 0) > 0 ? "var(--err)" : "var(--text)", sub: "Running >15 min without heartbeat" },
+    { k: "Active runs",     v: h ? h.active_runs : "—",   tone: h && h.active_runs > 0 ? "var(--info)" : "var(--text)", sub: null },
+    { k: "Pending approval",v: h ? h.pending_approvals : "—", tone: h && h.pending_approvals > 0 ? "var(--warn)" : "var(--text)", sub: null },
+    { k: "Stale workers",   v: h ? h.stale_workers : "—", tone: h && h.stale_workers > 0 ? "var(--err)" : "var(--text)", sub: "Running >15 min without heartbeat" },
     { k: "Error rate 24h",  v: h ? `${Math.round(h.error_rate_24h * 100)}%` : "—", tone: h && h.error_rate_24h > 0.2 ? "var(--err)" : h && h.error_rate_24h > 0.1 ? "var(--warn)" : "var(--text)", sub: h ? `${h.failed_last_24h} failed · ${h.total_last_24h} total` : null },
   ]
 
@@ -375,10 +379,20 @@ export default function ObservabilityPage() {
           </div>
           {loading ? (
             <div style={{ padding: "20px", color: "var(--text-muted)", fontSize: 13 }}>Loading…</div>
+          ) : agentError ? (
+            <div style={{ padding: "32px 20px", textAlign: "center", fontSize: 13, color: "var(--err)" }}>
+              Failed to load agent data.{" "}
+              <button onClick={loadAgents} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontSize: 13, padding: 0 }}>Retry</button>
+            </div>
           ) : agents.length === 0 ? (
             <div style={{ padding: "32px 20px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
               No agents configured yet.{" "}
               <Link href="/workflows" style={{ color: "var(--accent)" }}>Create a workflow</Link> to get started.
+            </div>
+          ) : visibleAgents.length === 0 ? (
+            <div style={{ padding: "32px 20px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
+              No agents match this filter.{" "}
+              <button onClick={() => { setFilterSearch(""); setFilterHealth("all") }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontSize: 13, padding: 0 }}>Clear filters</button>
             </div>
           ) : (
             visibleAgents.map((a) => {
@@ -386,7 +400,7 @@ export default function ObservabilityPage() {
               return (
                 <div
                   key={a.workflow_id}
-                  onClick={() => window.location.href = `/workflows/${a.workflow_id}`}
+                  onClick={() => router.push(`/workflows/${a.workflow_id}`)}
                   style={{ display: "grid", gridTemplateColumns: "1.8fr 1fr 0.7fr 0.9fr 1.1fr 1fr", gap: 14, padding: "12px 20px", borderBottom: "1px solid var(--border)", alignItems: "center", cursor: "pointer" }}
                   onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
                   onMouseLeave={e => (e.currentTarget.style.background = "")}
@@ -446,12 +460,12 @@ export default function ObservabilityPage() {
             },
             {
               v: dora?.avg_duration_ms ? fmt_duration(dora.avg_duration_ms) : "—",
-              k: "Avg lead time",
+              k: "Avg run time",
               tone: "var(--text)",
             },
             {
               v: dora ? dora.total_runs : "—",
-              k: "Total runs",
+              k: "Deployments",
               tone: "var(--text)",
             },
           ].map((s, i) => (
@@ -522,7 +536,11 @@ export default function ObservabilityPage() {
 
           {/* Recent events */}
           <div className="card" style={{ overflow: "hidden" }}>
-            <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--border)", fontWeight: 650, fontSize: 13.5 }}>Recent events</div>
+            <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--border)", fontWeight: 650, fontSize: 13.5, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span>Recent events</span>
+              <Link href="/observability/alerts" style={{ fontSize: 12, color: "var(--accent)", fontWeight: 400 }}>View all</Link>
+            </div>
+            <div style={{ maxHeight: 360, overflowY: "auto" }}>
             {(summary?.recent_events ?? []).length === 0 ? (
               <div style={{ padding: "20px 18px", fontSize: 12, color: "var(--text-muted)" }}>No recent events.</div>
             ) : (
@@ -537,6 +555,7 @@ export default function ObservabilityPage() {
                 </div>
               ))
             )}
+            </div>
           </div>
         </div>
       </div>
