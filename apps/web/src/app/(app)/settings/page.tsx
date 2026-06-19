@@ -7,7 +7,6 @@ import EnvironmentsManager from "@/components/settings/EnvironmentsManager"
 import MembersManager from "@/components/settings/MembersManager"
 import PreferencesPanel from "@/components/settings/PreferencesPanel"
 import ApiKeysManager from "@/components/settings/ApiKeysManager"
-import { useWorkspace } from "@/lib/WorkspaceContext"
 
 type Tab = "credentials" | "members" | "preferences" | "api-keys"
 
@@ -26,26 +25,26 @@ export default function SettingsPage() {
 
 function SettingsPageWithAuth() {
   const { getToken, userId } = useAuth()
-  const { activeWorkspace } = useWorkspace()
   const [isAdmin, setIsAdmin] = useState(false)
-  const workspaceId = activeWorkspace?.id ?? ""
+  const workspaceId = typeof document !== "undefined"
+    ? document.cookie.split("; ").find(r => r.startsWith("delegator_project_id="))?.split("=")[1] ?? ""
+    : ""
 
   useEffect(() => {
-    if (!activeWorkspace || !userId) return
+    if (!workspaceId || !userId) return
     async function check() {
       try {
         const headers: Record<string, string> = {}
         if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
-        const wsId = activeWorkspace!.id
-        headers["X-Workspace-ID"] = wsId
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${wsId}/my-role`, { headers })
+        headers["X-Workspace-ID"] = workspaceId
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${workspaceId}/my-role`, { headers })
         if (!res.ok) { setIsAdmin(false); return }
         const data: { role: string } = await res.json()
         setIsAdmin(data.role === "admin")
       } catch { setIsAdmin(false) }
     }
     check()
-  }, [activeWorkspace?.id, userId])
+  }, [workspaceId, userId])
 
   return <SettingsPageInner isAdmin={isAdmin} workspaceId={workspaceId} getToken={getToken} />
 }
@@ -252,11 +251,9 @@ function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolea
             <MembersManager />
           </div>
         )}
-        {isAdmin && (
-          <div role="tabpanel" id="tabpanel-api-keys" aria-labelledby="tab-api-keys" hidden={activeTab !== "api-keys"}>
-            <ApiKeysManager />
-          </div>
-        )}
+        <div role="tabpanel" id="tabpanel-api-keys" aria-labelledby="tab-api-keys" hidden={activeTab !== "api-keys"}>
+          <ApiKeysManager />
+        </div>
       </div>
     </AppShell>
   )
