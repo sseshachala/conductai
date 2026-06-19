@@ -147,9 +147,29 @@ export default function AppShell({ children, noPadding }: { children: React.Reac
 }
 
 function AppShellInner({ children, noPadding }: { children: React.ReactNode; noPadding?: boolean }) {
+  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  if (clerkEnabled) return <AppShellInnerWithAuth noPadding={noPadding}>{children}</AppShellInnerWithAuth>
+  return <AppShellInnerContent noPadding={noPadding} getToken={null} userId={null}>{children}</AppShellInnerContent>
+}
+
+function AppShellInnerWithAuth({ children, noPadding }: { children: React.ReactNode; noPadding?: boolean }) {
+  const { getToken, userId } = useAuth()
+  return <AppShellInnerContent noPadding={noPadding} getToken={getToken} userId={userId ?? null}>{children}</AppShellInnerContent>
+}
+
+function AppShellInnerContent({
+  children,
+  noPadding,
+  getToken,
+  userId,
+}: {
+  children: React.ReactNode
+  noPadding?: boolean
+  getToken: (() => Promise<string | null>) | null
+  userId: string | null
+}) {
   const pathname = usePathname()
   const router = useRouter()
-  const { getToken, userId } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   const [toast, setToast] = useState<ToastData | null>(null)
   function showError(message: string) { setToast({ message, type: "error" }) }
