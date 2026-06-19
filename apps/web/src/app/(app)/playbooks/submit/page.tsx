@@ -148,7 +148,7 @@ export default function SubmitPlaybookPage() {
             >
               Submit another
             </button>
-            <Link href="/playbooks" className="text-sm text-indigo-600 border border-indigo-200 rounded-lg px-4 py-2 hover:bg-indigo-50 transition-colors">
+            <Link href="/playbooks" className="text-sm text-stone-900 border border-stone-200 rounded-lg px-4 py-2 hover:bg-stone-50 transition-colors">
               Browse playbooks
             </Link>
           </div>
@@ -236,7 +236,7 @@ export default function SubmitPlaybookPage() {
             <button
               type="submit"
               disabled={submitBlocked}
-              className="bg-indigo-600 text-white text-sm font-medium px-5 py-2 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="bg-stone-900 text-white text-sm font-medium px-5 py-2 rounded-lg hover:bg-stone-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {submitLabel}
             </button>
