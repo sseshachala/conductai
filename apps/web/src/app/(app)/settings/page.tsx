@@ -166,7 +166,7 @@ function OrgNameEditor({ getToken }: { getToken: (() => Promise<string | null>) 
 // ── Main settings page ────────────────────────────────────────────────────────
 
 function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolean; workspaceId: string; getToken: (() => Promise<string | null>) | null }) {
-  const tabs = (["credentials", "preferences", ...(isAdmin ? ["members", "api-keys"] : [])] as Tab[])
+  const tabs = (["credentials", "preferences", "api-keys", ...(isAdmin ? ["members"] : [])] as Tab[])
   const [activeTab, setActiveTab] = useState<Tab>("credentials")
   const [showTip, setShowTip] = useState(false)
 
