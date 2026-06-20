@@ -987,7 +987,9 @@ function MCPBlockPanel({
   const [discoverErr, setDiscoverErr] = useState<string | null>(null)
   const [integrationServers, setIntegrationServers] = useState<{ id: string; name: string; url: string; transport: string }[]>([])
 
-  const provider  = (getNestedValue(blockData, "config.provider")  as string) || ""
+  const savedProvider = (getNestedValue(blockData, "config.provider") as string) || ""
+  const [provider, setProvider] = useState(savedProvider)
+  useEffect(() => { if (savedProvider && savedProvider !== provider) setProvider(savedProvider) }, [savedProvider])
   const transport = (getNestedValue(blockData, "config.transport") as string) || "auto"
   const toolName  = (getNestedValue(blockData, "config.tool_name") as string) || ""
 
@@ -1008,14 +1010,36 @@ function MCPBlockPanel({
   const paramProps   = selectedTool?.inputSchema?.properties ?? {}
   const requiredParams = new Set(selectedTool?.inputSchema?.required ?? [])
 
-  function handleProviderChange(val: string) {
+  async function handleProviderChange(val: string) {
     const ws = integrationServers.find(s => s.id === val)
     if (!ws) return
+    setProvider(val)
     onChange("config.provider",  ws.id)
     onChange("config.transport", ws.transport)
     onChange("config.tool_name", "")
     setTools([])
     setDiscoverErr(null)
+    // Auto-discover tools on select
+    setDiscovering(true)
+    try {
+      const h = await authHeaders()
+      const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/mcp/tools`, {
+        method: "POST", headers: h,
+        body: JSON.stringify({ server_id: ws.id }),
+      })
+      const data = await r.json()
+      if (r.ok) {
+        const list: MCPTool[] = Array.isArray(data) ? data : (data.tools ?? [])
+        setTools(list)
+        if (list.length > 0) onChange("config.tool_name", list[0].name)
+      } else {
+        setDiscoverErr(data.detail || `HTTP ${r.status}`)
+      }
+    } catch (e) {
+      setDiscoverErr(e instanceof Error ? e.message : "Network error")
+    } finally {
+      setDiscovering(false)
+    }
   }
 
   async function authHeaders() {
