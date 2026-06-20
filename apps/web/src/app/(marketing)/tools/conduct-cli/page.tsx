@@ -7,12 +7,13 @@ export default function ConductCliPage() {
     <div className="min-h-screen bg-white flex flex-col">
       <Nav />
       <main>
+        <PageHook />
         <DiagnosticHero />
         <WhatItCoversSection />
         <QuickstartSection />
         <WorksWithSection />
-        <UseCasesSection />
         <GuardInsightsCallout />
+        <UseCasesSection />
         <WhatsNewSection />
         <FaqSection />
         <FooterCTASection />
@@ -157,6 +158,32 @@ const SCRIPT: Segment[] = [
   { text: "On a medium repo that's roughly 300–600k tokens saved per session.\n", style: "answer", speed: 20, pause: 260 },
   { text: "Run booster gain after your first session to see the real number.", style: "answer", speed: 20, pause: 0 },
 ]
+
+/* ─── Page Hook ────────────────────────────────────────────────────────── */
+
+function PageHook() {
+  return (
+    <section className="max-w-3xl mx-auto px-6 pt-16 pb-4 text-center">
+      <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500 mb-4">Conduct CLI + Agent Booster</p>
+      <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-stone-900 leading-tight mb-4">
+        Your AI tools are running.<br />
+        <span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
+          This is how you govern them from the terminal.
+        </span>
+      </h1>
+      <p className="text-stone-500 leading-relaxed text-lg mb-2">
+        One install ships the platform CLI, AI policy enforcement, and a context engine that cuts token usage by 60–90%.
+      </p>
+      <p className="text-sm text-stone-400">
+        <code className="font-mono bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded text-xs">conduct-cli</code> and{" "}
+        <code className="font-mono bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded text-xs">agent-booster</code> are the same package —{" "}
+        <code className="font-mono bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded text-xs">pip install agent-booster[full]</code> installs both.
+      </p>
+    </section>
+  )
+}
+
+/* ─── Diagnostic Hero ──────────────────────────────────────────────────── */
 
 function DiagnosticHero() {
   const [revealed, setRevealed] = useState("")
