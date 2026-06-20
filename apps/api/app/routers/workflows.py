@@ -464,16 +464,8 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
             workflow.github_hook_label = label
     db.commit()
 
-    # Auto-register webhook on install. Soft fail: set webhook_error on response, don't abort.
-    if workflow.github_hook_repo and workflow.playbook_slug in _GITHUB_WEBHOOK_EVENTS:
-        try:
-            err = _do_register_workflow_webhook(workflow, str(workspace_id), db)
-            if err:
-                workflow.webhook_error = err  # type: ignore[attr-defined]
-        except Exception as e:
-            log.error("workflow.webhook_auto_register_failed", workflow_id=str(workflow.id), error=str(e))
-            workflow.webhook_error = f"Webhook setup failed: {e}"  # type: ignore[attr-defined]
-
+    # Webhook registration is now explicit — user clicks "Activate" on the trigger block.
+    # POST /workflows/{id}/webhook does the registration when the user is ready.
     db.refresh(workflow)
     _stamp(workflow)
     return workflow
