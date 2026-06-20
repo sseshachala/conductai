@@ -170,7 +170,7 @@ function ToolsSection() {
                 Learn more →
               </a>
               <a
-                href="https://github.com/sseshachala/conductai"
+                href="https://github.com/sseshachala/agent-booster"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 rounded-lg border border-stone-200 px-4 py-2 text-sm font-medium text-stone-600 hover:border-stone-300 transition-colors"
@@ -236,7 +236,7 @@ function ToolsSection() {
                 Learn more →
               </a>
               <a
-                href="https://github.com/sseshachala/conductai"
+                href="https://github.com/sseshachala/conduct-cli"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 rounded-lg border border-stone-200 px-4 py-2 text-sm font-medium text-stone-600 hover:border-stone-300 transition-colors"
