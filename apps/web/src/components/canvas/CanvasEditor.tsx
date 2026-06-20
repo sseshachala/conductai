@@ -27,6 +27,7 @@ import BlockNode, { type BlockNodeData } from "./BlockNode"
 import StatusBadge from "@/components/runs/StatusBadge"
 import BlockEditor from "./BlockEditor"
 import BlockPalette from "./BlockPalette"
+import RunInputsModal from "./RunInputsModal"
 import RunDrawer from "./RunDrawer"
 import CostEstimate from "./CostEstimate"
 import DefinitionPanel from "./DefinitionPanel"
@@ -165,6 +166,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
   const [webhookPrNumber, setWebhookPrNumber] = useState("")
   const [testTriggerModal, setTestTriggerModal] = useState(false)
   const [testRunning, setTestRunning] = useState(false)
+  // #734 pre-run modal — opens when /trigger returns 422 missing_required_inputs
+  const [inputsModalPayload, setInputsModalPayload] = useState<Record<string, unknown> | null>(null)
   const [testRunId, setTestRunId] = useState<string | null>(null)
   const [testRunStatus, setTestRunStatus] = useState<string | null>(null)
   const [lastRunState, setLastRunState] = useState<Record<string, Record<string, unknown>> | undefined>(undefined)
@@ -882,6 +885,27 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     }
   }, [workflowId, router, STORAGE_KEY])
 
+  const performTestTrigger = useCallback(async (payload: Record<string, unknown>, headers: Record<string, string>) => {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/trigger`,
+      { method: "POST", headers, body: JSON.stringify(payload) }
+    )
+    if (res.status === 422) {
+      const errBody = await res.json().catch(() => null)
+      if (errBody?.detail?.error === "missing_required_inputs") {
+        setInputsModalPayload(payload)
+        return
+      }
+    }
+    if (!res.ok) throw new Error("Failed to start test run")
+    const data = await res.json()
+    localStorage.setItem(TEST_RUN_KEY, JSON.stringify({ runId: data.run_id, startedAt: Date.now() }))
+    setTestRunId(data.run_id)
+    setTestRunStatus("pending")
+    setLastRunSummary({ status: "pending", created_at: new Date().toISOString(), run_id: data.run_id })
+    setActiveView("definition")
+  }, [workflowId, TEST_RUN_KEY])
+
   const startTestTrigger = useCallback(async () => {
     setTestTriggerModal(false)
     setTestRunning(true)
@@ -906,17 +930,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
       const turns = parseInt(testMaxTurns.trim(), 10)
       if (!isNaN(turns) && turns > 0) payload.__max_turns_override = turns
       payload.__guard_enabled = guardEnabled
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/trigger`,
-        { method: "POST", headers, body: JSON.stringify(payload) }
-      )
-      if (!res.ok) throw new Error("Failed to start test run")
-      const data = await res.json()
-      localStorage.setItem(TEST_RUN_KEY, JSON.stringify({ runId: data.run_id, startedAt: Date.now() }))
-      setTestRunId(data.run_id)
-      setTestRunStatus("pending")
-      setLastRunSummary({ status: "pending", created_at: new Date().toISOString(), run_id: data.run_id })
-      setActiveView("definition")
+      await performTestTrigger(payload, headers)
     } catch {
       // test run failed to start — setTestRunning resets below
     } finally {
@@ -964,6 +978,26 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
 
   return (
     <div className="flex flex-col h-full bg-stone-50">
+      {/* #734 pre-run inputs modal — opens when /trigger returns 422 missing_required_inputs */}
+      {inputsModalPayload && (
+        <RunInputsModal
+          open
+          workflowId={workflowId}
+          getToken={getToken ?? null}
+          workspaceId={wsId ?? ""}
+          initialInputs={(inputsModalPayload.inputs as Record<string, unknown>) ?? {}}
+          onCancel={() => { setInputsModalPayload(null); setTestRunning(false) }}
+          onConfirm={async (newInputs) => {
+            const payload = { ...inputsModalPayload, inputs: newInputs }
+            setInputsModalPayload(null)
+            try {
+              const headers = await authHeaders(getToken, wsId)
+              await performTestTrigger(payload, headers)
+            } catch { /* surfaced via existing state */ }
+            finally { setTestRunning(false) }
+          }}
+        />
+      )}
       {/* Top bar */}
       <header className="flex items-center justify-between px-5 py-3 bg-white border-b border-stone-200 shrink-0">
         <div className="flex flex-col gap-0.5">

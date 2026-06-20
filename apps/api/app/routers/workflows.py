@@ -32,7 +32,7 @@ from app.compiler.compiler import compile_workflow
 from app.compiler.stream import stream_compile_block
 from app.runtime.model_router import resolve as resolve_model
 from app.runtime.pricing import freeze_pricing_snapshot, get_model_rates, pricing_note
-from app.runtime.input_contract import InputContractError, validate_run_start_inputs
+from app.runtime.input_contract import InputContractError, validate_run_start_inputs, validate_required_inputs
 from app.runtime.run_contract import enrich_run_state_contract
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
@@ -1653,6 +1653,31 @@ def update_workflow_source(
     return workflow
 
 
+@router.post("/{workflow_id}/validate-inputs")
+def validate_workflow_inputs(
+    workflow_id: UUID,
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("platform.workflows.run")),
+):
+    """Dry-run input validation for pre-run modal (#713/#734).
+    Returns {inputs_spec, missing} so the client can prompt only for missing required-at-run inputs.
+    """
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, workspace_id)
+    workflow = db.query(Workflow).filter(
+        Workflow.id == workflow_id,
+        Workflow.workspace_id == workspace_id,
+    ).first()
+    if not workflow or not workflow.current_version:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    inputs_spec = (workflow.current_version.graph or {}).get("inputs_spec") or {}
+    inputs = payload.get("inputs") or {}
+    missing = validate_required_inputs(inputs_spec, inputs, phase=payload.get("phase", "run"))
+    return {"inputs_spec": inputs_spec, "missing": missing}
+
+
 @router.post("/{workflow_id}/trigger")
 def test_trigger(
     workflow_id: UUID,
@@ -1792,6 +1817,21 @@ def test_trigger(
         _initial_state = validate_run_start_inputs(_initial_state)
     except InputContractError as err:
         raise HTTPException(status_code=422, detail=str(err))
+
+    # Generic per-playbook required inputs check (#734).
+    # Reads workflow's inputs_spec, checks each input with required_at == "run".
+    _inputs_spec = (workflow.current_version.graph or {}).get("inputs_spec") or {}
+    _missing = validate_required_inputs(_inputs_spec, _initial_state.get("inputs"), phase="run")
+    if _missing:
+        labels = ", ".join(m["label"] for m in _missing)
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "missing_required_inputs",
+                "message": f"Required inputs missing: {labels}",
+                "missing": _missing,
+            },
+        )
 
     run = Run(
         workflow_version_id=version.id,
