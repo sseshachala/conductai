@@ -217,7 +217,18 @@ def _register_github_webhook(token: str, repo: str, webhook_url: str, events: li
             timeout=10,
         )
         if r.status_code == 201:
-            return str(r.json()["id"]), None
+            hook_id = str(r.json()["id"])
+            # Post-registration verification — GET hooks back and confirm ours is visible.
+            try:
+                verify = httpx.get(f"https://api.github.com/repos/{owner}/{repo_name}/hooks", headers=headers, timeout=10)
+                if verify.status_code == 200:
+                    if not any(str(h.get("id")) == hook_id for h in verify.json() if isinstance(h, dict)):
+                        log.warning("github_webhook.verify_missing", hook_id=hook_id, repo=repo)
+                        return None, "Registered but hook not visible on GitHub — try again"
+                    log.info("github_webhook.verified", hook_id=hook_id, repo=repo, url=webhook_url)
+            except Exception as e:
+                log.info("github_webhook.verify_error", hook_id=hook_id, error=str(e))
+            return hook_id, None
         log.warning("github_webhook.registration_failed", status_code=r.status_code, response=r.text[:300])
         if r.status_code == 403:
             err = "GitHub rejected the request — your token needs the Administration (read & write) permission. Update your GitHub token in Settings → Environments, then click Register again."
@@ -435,10 +446,18 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
     trigger_node = next((n for n in nodes if n.get("data", {}).get("type") == "trigger"), None)
     if trigger_node:
         cfg = trigger_node.get("data", {}).get("config", {}) or {}
-        allowlist_raw = cfg.get("repo_allowlist") or ""
+        # Primary: substituted graph. Defensive fallback: body.inputs.repo, then legacy body.repo.
+        allowlist_raw = cfg.get("repo_allowlist") or (body.inputs or {}).get("repo") or getattr(body, "repo", None) or ""
         first_repo = next((r.strip() for r in str(allowlist_raw).split(",") if r.strip()), None)
         if first_repo:
             workflow.github_hook_repo = first_repo
+            # Reflect back into graph so canvas + webhook stay in sync if substitution didn't fire.
+            if not cfg.get("repo_allowlist"):
+                cfg["repo_allowlist"] = first_repo
+                trigger_node["data"]["config"] = cfg
+                from sqlalchemy.orm.attributes import flag_modified as _flag_repo
+                version.graph = graph_data
+                _flag_repo(version, "graph")
         labels_raw = cfg.get("labels") or []
         label = labels_raw[0].strip() if labels_raw else None
         if label:
