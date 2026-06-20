@@ -5,7 +5,7 @@ export default function HomePage() {
     <div className="min-h-screen bg-white flex flex-col">
       <Nav />
       <main className="flex-1">
-        <AcquisitionBanner />
+
         <HeroSection />
         <TrustBarSection />
         <ProofStripSection />
@@ -83,20 +83,6 @@ function ProductsDropdown() {
           </a>
         </div>
       </div>
-    </div>
-  )
-}
-
-/* ─── Acquisition Banner ───────────────────────────────────────────────── */
-
-function AcquisitionBanner() {
-  return (
-    <div className="bg-stone-900 text-white text-center px-4 py-2.5 text-sm flex items-center justify-center gap-3 flex-wrap">
-      <span className="font-semibold">Cursor was just acquired for $60B.</span>
-      <span className="text-stone-300">Your codebase governance should stay independent.</span>
-      <a href="/compare" className="underline underline-offset-2 text-indigo-300 hover:text-indigo-200 font-medium whitespace-nowrap">
-        See how Conduct stays neutral →
-      </a>
     </div>
   )
 }
