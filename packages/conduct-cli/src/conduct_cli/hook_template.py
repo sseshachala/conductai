@@ -2,6 +2,7 @@
 """ConductGuard PreToolUse hook — enforces team policies, tracks all tool calls."""
 import json
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -127,6 +128,35 @@ def _fetch_budget_status():
 try:
     from conduct_cli.guard import _check_policy
 except Exception:
+    def _bash_operator_signature(command):
+        """Extract argv[0] + subcommand + flag tokens per shell segment.
+        Skips quoted argument values so patterns don't match content inside --body/-m strings.
+        Returns space-joined signature across segments.
+        """
+        if not command:
+            return ""
+        segments = re.split(r'&&|\|\||\|(?!\|)|;', command)
+        parts = []
+        for seg in segments:
+            try:
+                tokens = shlex.split(seg.strip())
+            except ValueError:
+                continue
+            if not tokens:
+                continue
+            sig = [tokens[0]]
+            i = 1
+            # Subcommand: only barewords (no whitespace means wasn't a quoted multi-word value)
+            if i < len(tokens) and not tokens[i].startswith("-") and " " not in tokens[i]:
+                sig.append(tokens[i])
+                i += 1
+            # Flags: only real flag tokens, not flag-like strings inside quoted content
+            for t in tokens[i:]:
+                if t.startswith("-") and " " not in t:
+                    sig.append(t)
+            parts.append(" ".join(sig))
+        return " ; ".join(parts)
+
     def _check_policy(tool_name, tool_input, tokens_before=0):
         """Return (matched_rule, action, rule_id, message) or (None, 'allow', None, None)."""
         if not POLICY_PATH.exists():
@@ -137,7 +167,13 @@ except Exception:
             return None, "allow", None, None
 
         rules      = policy.get("rules", [])
-        input_text = json.dumps(tool_input)
+        # For Bash, match against operator signature (argv[0] + subcommand + flags) — not raw JSON.
+        # Prevents false positives where dangerous patterns appear inside quoted argument values
+        # (e.g. `gh issue create --body "...rm -rf..."` should not match no-rm-rf).
+        if tool_name == "Bash" and tool_input.get("command"):
+            input_text = _bash_operator_signature(tool_input["command"])
+        else:
+            input_text = json.dumps(tool_input)
         path_fields = [str(tool_input.get(f, "")) for f in ["file_path", "path", "command"]]
 
         for rule in rules:
