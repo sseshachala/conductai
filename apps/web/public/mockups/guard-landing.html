@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ConductGuard — AI Governance that compounds</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --indigo: #4f46e5;
+      --indigo-light: #6366f1;
+      --indigo-50: #eef2ff;
+      --violet-400: #a78bfa;
+      --stone-950: #0a0a0a;
+      --stone-900: #1c1917;
+      --stone-600: #57534e;
+      --stone-500: #78716c;
+      --stone-400: #a8a29e;
+      --stone-50: #fafaf9;
+      --slate-400: #94a3b8;
+      --card-border: #f0eef8;
+      --chip-bg: #faf9ff;
+      --chip-border: #ede9fe;
+      --red-500: #ef4444;
+      --amber-500: #f59e0b;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #fff;
+      color: var(--stone-900);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ─── NAV ─────────────────────────────────────────────────── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(255,255,255,0.95);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid #f4f4f5;
+      padding: 0 2rem;
+    }
+
+    .nav-inner {
+      max-width: 1180px;
+      margin: 0 auto;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 2rem;
+    }
+
+    .nav-logo {
+      font-size: 1rem;
+      font-weight: 800;
+      color: var(--stone-900);
+      letter-spacing: -0.02em;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+      list-style: none;
+    }
+
+    .nav-links a {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--stone-600);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+
+    .nav-links a:hover { color: var(--stone-900); }
+
+    .btn-nav {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.5rem 1.125rem;
+      background: var(--stone-900);
+      color: #fff;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      border-radius: 999px;
+      text-decoration: none;
+      transition: opacity 0.15s;
+      white-space: nowrap;
+    }
+
+    .btn-nav:hover { opacity: 0.85; }
+
+    /* ─── SHARED ─────────────────────────────────────────────── */
+    .section { padding: 100px 2rem; }
+    .section-inner { max-width: 1180px; margin: 0 auto; }
+
+    .eyebrow {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: var(--slate-400);
+      margin-bottom: 1rem;
+    }
+
+    .eyebrow.violet { color: #7c3aed; }
+
+    h1, h2, h3, h4 { color: var(--stone-900); letter-spacing: -0.02em; line-height: 1.15; }
+
+    h1 { font-size: clamp(2.25rem, 5vw, 3.5rem); font-weight: 900; }
+    h2 { font-size: clamp(1.75rem, 3.5vw, 2.5rem); font-weight: 800; }
+    h3 { font-size: 1.125rem; font-weight: 700; }
+
+    .body-lg { font-size: 1.125rem; color: var(--stone-500); line-height: 1.7; max-width: 600px; }
+    .body-md { font-size: 0.9375rem; color: var(--stone-600); line-height: 1.65; }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.75rem 1.5rem;
+      background: var(--stone-900);
+      color: #fff;
+      font-size: 0.9375rem;
+      font-weight: 600;
+      border-radius: 999px;
+      text-decoration: none;
+      border: 2px solid transparent;
+      transition: opacity 0.15s;
+      cursor: pointer;
+    }
+
+    .btn-primary:hover { opacity: 0.85; }
+
+    .btn-outline {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.75rem 1.5rem;
+      background: transparent;
+      color: var(--stone-900);
+      font-size: 0.9375rem;
+      font-weight: 600;
+      border-radius: 999px;
+      text-decoration: none;
+      border: 2px solid #d4d4d4;
+      transition: border-color 0.15s, color 0.15s;
+      cursor: pointer;
+    }
+
+    .btn-outline:hover { border-color: var(--stone-900); }
+
+    .btn-white {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.75rem 1.5rem;
+      background: #fff;
+      color: var(--indigo);
+      font-size: 0.9375rem;
+      font-weight: 700;
+      border-radius: 999px;
+      text-decoration: none;
+      border: 2px solid transparent;
+      transition: opacity 0.15s;
+      cursor: pointer;
+    }
+
+    .btn-white:hover { opacity: 0.9; }
+
+    .btn-outline-white {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.75rem 1.5rem;
+      background: transparent;
+      color: #fff;
+      font-size: 0.9375rem;
+      font-weight: 600;
+      border-radius: 999px;
+      text-decoration: none;
+      border: 2px solid rgba(255,255,255,0.4);
+      transition: border-color 0.15s;
+      cursor: pointer;
+    }
+
+    .btn-outline-white:hover { border-color: rgba(255,255,255,0.8); }
+
+    .cta-group {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.875rem;
+      margin-top: 2rem;
+    }
+
+    .sub-note {
+      margin-top: 0.875rem;
+      font-size: 0.8125rem;
+      color: var(--stone-400);
+    }
+
+    .card {
+      background: #fff;
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 1.75rem;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.25rem;
+    }
+
+    @media (max-width: 900px) {
+      .grid-3 { grid-template-columns: 1fr; }
+      .grid-2 { grid-template-columns: 1fr; }
+      .nav-links { display: none; }
+    }
+
+    @media (max-width: 640px) {
+      .section { padding: 72px 1.25rem; }
+      h1 { font-size: 2rem; }
+      h2 { font-size: 1.625rem; }
+    }
+
+    /* ─── HERO ───────────────────────────────────────────────── */
+    .hero {
+      padding: 120px 2rem 100px;
+      background: #fff;
+    }
+
+    .hero-inner {
+      max-width: 780px;
+      margin: 0 auto;
+      text-align: center;
+    }
+
+    .hero h1 {
+      margin-bottom: 1.25rem;
+      white-space: pre-line;
+    }
+
+    .hero .body-lg {
+      max-width: 560px;
+      margin: 0 auto;
+    }
+
+    .hero .cta-group {
+      justify-content: center;
+    }
+
+    /* ─── PROOF STRIP ────────────────────────────────────────── */
+    .proof-strip {
+      background: var(--stone-950);
+      padding: 64px 2rem;
+    }
+
+    .proof-strip-inner {
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+
+    .proof-strip-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: #4b5563;
+      margin-bottom: 2rem;
+      text-align: center;
+    }
+
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+    }
+
+    @media (max-width: 900px) {
+      .stats-row { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    @media (max-width: 480px) {
+      .stats-row { grid-template-columns: 1fr; }
+    }
+
+    .stat-chip {
+      background: var(--chip-bg);
+      border: 1px solid var(--chip-border);
+      border-radius: 14px;
+      padding: 1.375rem 1.25rem;
+      text-align: center;
+    }
+
+    .stat-chip.danger {
+      border-color: rgba(239,68,68,0.35);
+      background: rgba(239,68,68,0.04);
+    }
+
+    .stat-value {
+      font-size: 1.75rem;
+      font-weight: 900;
+      color: #fff;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+    }
+
+    .stat-chip.danger .stat-value { color: #fca5a5; }
+
+    .stat-desc {
+      margin-top: 0.375rem;
+      font-size: 0.8125rem;
+      color: #6b7280;
+      line-height: 1.45;
+    }
+
+    .stat-chip.danger .stat-desc { color: #f87171; opacity: 0.75; }
+
+    /* ─── PHASE SECTIONS ─────────────────────────────────────── */
+    .phase-header { margin-bottom: 3.5rem; }
+    .phase-header .eyebrow { margin-bottom: 0.5rem; }
+    .phase-header h2 { margin-bottom: 1rem; }
+
+    .card-icon {
+      font-size: 1.375rem;
+      margin-bottom: 0.75rem;
+      display: block;
+    }
+
+    .card h3 { margin-bottom: 0.5rem; color: var(--stone-900); }
+    .card .body-md { color: var(--stone-500); }
+
+    /* ─── PHASE 2 — INCIDENTS ────────────────────────────────── */
+    .incident-card {
+      background: #fff;
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 1.75rem;
+    }
+
+    .incident-header {
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      margin-bottom: 1rem;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.2rem 0.625rem;
+      border-radius: 6px;
+      font-size: 0.6875rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .badge.blocked {
+      background: rgba(239,68,68,0.1);
+      color: #dc2626;
+    }
+
+    .badge.warned {
+      background: rgba(245,158,11,0.1);
+      color: #d97706;
+    }
+
+    .rule-label {
+      font-size: 0.75rem;
+      font-family: 'Courier New', monospace;
+      color: var(--stone-400);
+      background: #f9f9fb;
+      padding: 0.15rem 0.5rem;
+      border-radius: 5px;
+      border: 1px solid #ebebf0;
+    }
+
+    .incident-card h3 { margin-bottom: 0.5rem; font-size: 1.0625rem; }
+    .incident-card .body-md { font-size: 0.875rem; }
+
+    .callout-box {
+      background: var(--indigo-50);
+      border: 1px solid #c7d2fe;
+      border-radius: 20px;
+      padding: 2.25rem;
+      margin-top: 1.5rem;
+    }
+
+    .callout-box p {
+      font-size: 1rem;
+      color: #3730a3;
+      line-height: 1.65;
+      margin-bottom: 1.5rem;
+    }
+
+    /* ─── PHASE 3 — MEMORY CARDS ─────────────────────────────── */
+    .memory-card-light {
+      background: #faf9ff;
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 2rem;
+    }
+
+    .memory-card-dark {
+      background: linear-gradient(135deg, #0a0815, #1f1048);
+      border-radius: 20px;
+      padding: 2rem;
+    }
+
+    .memory-card-header {
+      display: flex;
+      flex-direction: column;
+      gap: 0.375rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .memory-icon { font-size: 1.5rem; }
+
+    .memory-eyebrow {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: #7c3aed;
+      margin-top: 0.5rem;
+    }
+
+    .memory-card-light .memory-title {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: var(--stone-900);
+    }
+
+    .memory-card-dark .memory-title {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: #fff;
+    }
+
+    .memory-card-light .memory-body {
+      font-size: 0.9375rem;
+      color: var(--stone-600);
+      line-height: 1.65;
+      margin-bottom: 1.25rem;
+    }
+
+    .memory-card-dark .memory-body {
+      font-size: 0.9375rem;
+      color: rgba(255,255,255,0.55);
+      line-height: 1.65;
+      margin-bottom: 1.25rem;
+    }
+
+    .bullet-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.875rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .bullet-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.625rem;
+    }
+
+    .bullet-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #7c3aed;
+      flex-shrink: 0;
+      margin-top: 0.425rem;
+    }
+
+    .bullet-dot.light { background: var(--violet-400); }
+
+    .bullet-strong {
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+
+    .memory-card-light .bullet-strong { color: var(--stone-900); }
+    .memory-card-dark .bullet-strong { color: #fff; }
+
+    .bullet-sub {
+      font-size: 0.8125rem;
+    }
+
+    .memory-card-light .bullet-sub { color: var(--stone-500); }
+    .memory-card-dark .bullet-sub { color: rgba(255,255,255,0.45); }
+
+    .how-it-works-light {
+      background: #f4f0ff;
+      border: 1px solid var(--chip-border);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+    }
+
+    .how-it-works-dark {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+    }
+
+    .how-label {
+      font-size: 0.6875rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 0.5rem;
+    }
+
+    .memory-card-light .how-label { color: #7c3aed; }
+    .memory-card-dark .how-label { color: var(--violet-400); }
+
+    .how-text {
+      font-size: 0.8125rem;
+      line-height: 1.55;
+    }
+
+    .memory-card-light .how-text { color: var(--stone-600); }
+    .memory-card-dark .how-text { color: rgba(255,255,255,0.5); }
+
+    .gradient-callout {
+      background: linear-gradient(135deg, #7c3aed, #4c1d95);
+      border-radius: 20px;
+      padding: 2.5rem;
+      margin-top: 1.5rem;
+      text-align: center;
+    }
+
+    .gradient-callout h3 {
+      color: #fff;
+      font-size: 1.375rem;
+      font-weight: 800;
+      margin-bottom: 0.75rem;
+    }
+
+    .gradient-callout p {
+      color: rgba(255,255,255,0.7);
+      font-size: 0.9375rem;
+      margin-bottom: 1.5rem;
+      max-width: 480px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    /* ─── FINAL CTA ──────────────────────────────────────────── */
+    .final-cta {
+      background: linear-gradient(135deg, #312e81, #1e1b4b);
+      padding: 100px 2rem;
+      text-align: center;
+    }
+
+    .final-cta h2 {
+      color: #fff;
+      max-width: 620px;
+      margin: 0 auto 1rem;
+      white-space: pre-line;
+    }
+
+    .final-cta .body-lg {
+      color: rgba(255,255,255,0.65);
+      margin: 0 auto;
+    }
+
+    .final-cta .cta-group { justify-content: center; }
+    .final-cta .sub-note { color: rgba(255,255,255,0.35); text-align: center; }
+
+    /* ─── FOOTER ─────────────────────────────────────────────── */
+    footer {
+      background: #fff;
+      border-top: 1px solid #f4f4f5;
+      padding: 2rem;
+    }
+
+    .footer-inner {
+      max-width: 1180px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .footer-brand {
+      font-size: 0.875rem;
+      font-weight: 800;
+      color: var(--stone-900);
+    }
+
+    .footer-copy {
+      font-size: 0.8125rem;
+      color: var(--stone-400);
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 1.5rem;
+    }
+
+    .footer-links a {
+      font-size: 0.8125rem;
+      color: var(--stone-400);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+
+    .footer-links a:hover { color: var(--stone-600); }
+
+    /* ─── ALT BG RHYTHM ──────────────────────────────────────── */
+    .bg-stone-50 { background: var(--stone-50); }
+    .bg-white { background: #fff; }
+
+    /* ─── DIVIDER ────────────────────────────────────────────── */
+    .divider-line {
+      max-width: 1180px;
+      margin: 0 auto;
+      height: 1px;
+      background: #f0f0f0;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── NAV ── -->
+  <nav>
+    <div class="nav-inner">
+      <a href="#" class="nav-logo">Conduct AI</a>
+      <ul class="nav-links">
+        <li><a href="#">Product</a></li>
+        <li><a href="#">Guard</a></li>
+        <li><a href="#">Docs</a></li>
+      </ul>
+      <a href="#" class="btn-nav">Start Free</a>
+    </div>
+  </nav>
+
+  <!-- ── HERO ── -->
+  <section class="hero">
+    <div class="hero-inner">
+      <p class="eyebrow">AI Governance that compounds</p>
+      <h1>Your team is already using AI agents.
+Guard is how you govern them.</h1>
+      <p class="body-lg" style="margin-top:1.25rem;">
+        Most governance stops at day one. Guard gets smarter every session — learning your codebase, your team's patterns, and your risk profile over time.
+      </p>
+      <div class="cta-group">
+        <a href="#" class="btn-primary">Start Free — See It Yourself</a>
+        <a href="#" class="btn-outline">Book a Discovery Call</a>
+      </div>
+      <p class="sub-note">Free tier &middot; No infrastructure changes &middot; Works in minutes</p>
+    </div>
+  </section>
+
+  <!-- ── PROOF STRIP ── -->
+  <section class="proof-strip">
+    <div class="proof-strip-inner">
+      <p class="proof-strip-label">Real data &middot; 1 developer &middot; 18 days &middot; annualised</p>
+      <div class="stats-row">
+
+        <div class="stat-chip">
+          <div class="stat-value">$84K/yr</div>
+          <div class="stat-desc">Projected AI spend — from $4,170 in 18 days</div>
+        </div>
+
+        <div class="stat-chip danger">
+          <div class="stat-value">$50K+</div>
+          <div class="stat-desc">Potential cost per unreviewed deploy — 6 intercepted in 18 days</div>
+        </div>
+
+        <div class="stat-chip">
+          <div class="stat-value">12,000/yr</div>
+          <div class="stat-desc">PII events screened — from 589 in 18 days</div>
+        </div>
+
+        <div class="stat-chip">
+          <div class="stat-value">$4,700/yr</div>
+          <div class="stat-desc">Tooling savings — from $235 in 18 days</div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ── PHASE 1: MONTH 1 ── -->
+  <section class="section bg-white">
+    <div class="section-inner">
+      <div class="phase-header">
+        <p class="eyebrow">Month 1</p>
+        <h2>You didn't know what AI was doing. Now you do.</h2>
+        <p class="body-lg" style="margin-top:1rem;">
+          Within 10 minutes of install, you see every AI tool your team is running, what it's spending, and what it's doing. No manual registration. No config changes.
+        </p>
+      </div>
+
+      <div class="grid-3">
+
+        <div class="card">
+          <span class="card-icon">🔍</span>
+          <h3>Every tool detected automatically</h3>
+          <p class="body-md" style="margin-top:0.5rem;">
+            Claude Code, Cursor, Copilot, Codex. Guard detects them from the CLI hook. Zero manual registration.
+          </p>
+        </div>
+
+        <div class="card">
+          <span class="card-icon">💸</span>
+          <h3>Spend by developer, by day, by tool</h3>
+          <p class="body-md" style="margin-top:0.5rem;">
+            No more waiting for the invoice. See exactly where AI budget is going in real time.
+          </p>
+        </div>
+
+        <div class="card">
+          <span class="card-icon">📋</span>
+          <h3>Full audit trail from day one</h3>
+          <p class="body-md" style="margin-top:0.5rem;">
+            Every tool call logged with decision, developer identity, and timestamp. One place, always current.
+          </p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ── PHASE 2: MONTH 3 ── -->
+  <section class="section bg-stone-50">
+    <div class="section-inner">
+      <div class="phase-header">
+        <p class="eyebrow">Month 3</p>
+        <h2>It caught things your team would never have seen.</h2>
+        <p class="body-lg" style="margin-top:1rem;">
+          Policies enforced at the tool layer, not in a doc. At the moment the agent runs, not the morning after.
+        </p>
+      </div>
+
+      <div class="grid-3">
+
+        <div class="incident-card">
+          <div class="incident-header">
+            <span class="badge blocked">Blocked</span>
+            <span class="rule-label">approve-prod-deploy</span>
+          </div>
+          <h3>Force-deploy to production — intercepted</h3>
+          <p class="body-md" style="margin-top:0.5rem;">
+            AI attempted <code style="font-size:0.8125rem;background:#f5f5f7;padding:0.1rem 0.35rem;border-radius:4px;">vercel deploy --prod --force</code> at 3:11pm on a Friday. Guard blocked it before it executed.
+          </p>
+        </div>
+
+        <div class="incident-card">
+          <div class="incident-header">
+            <span class="badge blocked">Blocked</span>
+            <span class="rule-label">no-secret-in-commit-msg</span>
+          </div>
+          <h3>Secret embedded in git commit — caught</h3>
+          <p class="body-md" style="margin-top:0.5rem;">
+            AI tried to commit code with a credential token in the commit message. Fired twice in the same session.
+          </p>
+        </div>
+
+        <div class="incident-card">
+          <div class="incident-header">
+            <span class="badge warned">Warned</span>
+            <span class="rule-label">pii-redact</span>
+          </div>
+          <h3>971 PII events in a single day</h3>
+          <p class="body-md" style="margin-top:0.5rem;">
+            Jun 19 spiked 30x the 32/day baseline. Without Guard, every one of those calls would have sent raw credentials to an LLM.
+          </p>
+        </div>
+
+      </div>
+
+      <div class="callout-box">
+        <p>
+          The production deploy would have executed. Average cost of a prod incident at a mid-market company: $15K–$50K. $235 saved on tooling is nice. $50K in a prevented outage is a different conversation.
+        </p>
+        <a href="#" class="btn-primary">Start Free</a>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── PHASE 3: MONTH 6–12 ── -->
+  <section class="section bg-white">
+    <div class="section-inner">
+      <div class="phase-header">
+        <p class="eyebrow">Month 6–12</p>
+        <h2>Guard learns as it runs. Every session makes the next one more accurate for your team.</h2>
+        <p class="body-lg" style="margin-top:1rem;">
+          Two memory systems work together. One knows your codebase. One knows your team. No other governance tool has either.
+        </p>
+      </div>
+
+      <div class="grid-2">
+
+        <!-- LEFT: Playbook Layer -->
+        <div class="memory-card-light">
+          <div class="memory-card-header">
+            <span class="memory-icon">🧠</span>
+            <span class="memory-eyebrow">Playbook Layer</span>
+            <span class="memory-title">Contextual Memory</span>
+          </div>
+          <p class="memory-body">
+            Per-workflow, per-repo. Every agent template reads what worked before it acts, then writes what it learned when it finishes.
+          </p>
+          <ul class="bullet-list">
+            <li>
+              <span class="bullet-dot"></span>
+              <span>
+                <span class="bullet-strong">Knows which files are fragile</span>
+                <span class="bullet-sub"> — Run 1 explores. Run 10 goes straight to the right file.</span>
+              </span>
+            </li>
+            <li>
+              <span class="bullet-dot"></span>
+              <span>
+                <span class="bullet-strong">Avoids repeating past mistakes</span>
+                <span class="bullet-sub"> — If a fix caused a regression last time, the agent knows.</span>
+              </span>
+            </li>
+            <li>
+              <span class="bullet-dot"></span>
+              <span>
+                <span class="bullet-strong">Compounds across every run</span>
+                <span class="bullet-sub"> — A workflow that has run 50 times on your repo is more valuable than a fresh install anywhere else.</span>
+              </span>
+            </li>
+          </ul>
+          <div class="how-it-works-light">
+            <p class="how-label">How it works</p>
+            <p class="how-text">Before every run &rarr; reads prior outcomes. After every run &rarr; writes what happened.</p>
+          </div>
+        </div>
+
+        <!-- RIGHT: CLI Layer -->
+        <div class="memory-card-dark">
+          <div class="memory-card-header">
+            <span class="memory-icon">👥</span>
+            <span class="memory-eyebrow">CLI Layer</span>
+            <span class="memory-title">Team Session Memory</span>
+          </div>
+          <p class="memory-body">
+            Per-developer, across every AI tool. The CLI hook captures sessions passively. Zero extra effort from your team.
+          </p>
+          <ul class="bullet-list">
+            <li>
+              <span class="bullet-dot light"></span>
+              <span>
+                <span class="bullet-strong">Knows how each developer works</span>
+                <span class="bullet-sub"> — Sarah always requires tests. The security lead flags credential exposure.</span>
+              </span>
+            </li>
+            <li>
+              <span class="bullet-dot light"></span>
+              <span>
+                <span class="bullet-strong">Captured across all AI tools</span>
+                <span class="bullet-sub"> — One CLI hook. Every session adds to the team's shared context.</span>
+              </span>
+            </li>
+            <li>
+              <span class="bullet-dot light"></span>
+              <span>
+                <span class="bullet-strong">The agent behaves like a team member</span>
+                <span class="bullet-sub"> — Not a contractor who just showed up. An engineer who's been here for months.</span>
+              </span>
+            </li>
+          </ul>
+          <div class="how-it-works-dark">
+            <p class="how-label">How it works</p>
+            <p class="how-text"><code style="font-size:0.8125rem;opacity:0.7;">conduct login</code> installs a hook. Each session is captured silently. Patterns accumulate. Templates draw on this automatically.</p>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="gradient-callout">
+        <h3>An agent that knows your codebase and your team.</h3>
+        <p>
+          No other automation tool has either. GitHub Actions has zero memory. Copilot has no team context. Conduct compounds both — silently, continuously, from day one.
+        </p>
+        <a href="#" class="btn-white">Start Free — See It Yourself</a>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── FINAL CTA ── -->
+  <section class="final-cta">
+    <div class="section-inner" style="text-align:center;">
+      <h2>Your team is already using AI agents.
+Conduct is how you run them and govern them.</h2>
+      <p class="body-lg" style="margin-top:1rem;color:rgba(255,255,255,0.65);max-width:400px;">
+        One platform. Two problems solved.
+      </p>
+      <div class="cta-group" style="justify-content:center;margin-top:2rem;">
+        <a href="#" class="btn-white">Start Free — See It Yourself</a>
+        <a href="#" class="btn-outline-white">Book a Discovery Call</a>
+      </div>
+      <p class="sub-note" style="color:rgba(255,255,255,0.35);text-align:center;">
+        Free tier &middot; No infrastructure changes &middot; Works in minutes
+      </p>
+    </div>
+  </section>
+
+  <!-- ── FOOTER ── -->
+  <footer>
+    <div class="footer-inner">
+      <span class="footer-brand">Conduct AI</span>
+      <span class="footer-copy">&copy; 2026 Conduct AI. All rights reserved.</span>
+      <nav class="footer-links">
+        <a href="#">Privacy</a>
+        <a href="#">Terms</a>
+        <a href="#">Docs</a>
+      </nav>
+    </div>
+  </footer>
+
+</body>
+</html>
