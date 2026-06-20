@@ -447,21 +447,25 @@ function QuickstartSection() {
       <div className="max-w-2xl mx-auto">
         <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">Quickstart</p>
         <h2 className="text-3xl font-bold text-stone-900 text-center mb-12">
-          Up and running in two commands.
+          Up and running in three commands.
         </h2>
 
         <div className="flex flex-col gap-5">
           <div>
-            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 1 — Install</p>
-            <InlineCodeBlock comment="includes embeddings + file watcher">pip install agent-booster[full]</InlineCodeBlock>
+            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 1 — Install Conduct CLI</p>
+            <InlineCodeBlock comment="platform CLI — run agents, manage workspaces, enforce policies">pip install conduct-cli</InlineCodeBlock>
           </div>
           <div>
-            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 2 — Start</p>
+            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 2 — Install Agent Booster</p>
+            <InlineCodeBlock comment="token savings companion — includes embeddings + file watcher">pip install agent-booster[full]</InlineCodeBlock>
+          </div>
+          <div>
+            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 3 — Start</p>
             <InlineCodeBlock comment="detects Claude/Cursor/Codex, wires hooks, indexes, starts daemon">booster start</InlineCodeBlock>
-            <p className="mt-2 text-xs text-stone-400">Detects which AI tools are present (Claude Code, Cursor, Windsurf, Codex), wires each one automatically, indexes the project, and starts a background daemon that keeps the model warm and auto-re-indexes on every file save. Fully reversible with <code className="font-mono bg-stone-100 px-1 rounded text-stone-600">booster remove claude</code>.</p>
+            <p className="mt-2 text-xs text-stone-400">Detects which AI tools are present (Claude Code, Cursor, Windsurf, Codex), wires each one automatically, indexes the project, and starts a background daemon. Fully reversible with <code className="font-mono bg-stone-100 px-1 rounded text-stone-600">booster remove claude</code>.</p>
           </div>
           <div>
-            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">That&apos;s it — then track savings</p>
+            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Then track savings</p>
             <InlineCodeBlock>booster gain</InlineCodeBlock>
           </div>
         </div>
