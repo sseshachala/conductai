@@ -112,3 +112,44 @@ def validate_run_start_inputs(initial_state: dict[str, Any] | None) -> dict[str,
         "shape": shape,
     }
     return state
+
+
+# ---------------------------------------------------------------------------
+# Generic required-inputs validator (#734) — reads workflow.inputs_spec and
+# checks that all inputs with `required_at == phase` are present in state["inputs"].
+# Works for every playbook because the spec is per-playbook.
+# ---------------------------------------------------------------------------
+def validate_required_inputs(
+    inputs_spec: dict[str, Any] | None,
+    inputs: dict[str, Any] | None,
+    phase: str = "run",
+) -> list[dict[str, str]]:
+    """
+    Returns list of missing required inputs as [{key, label, type}].
+    Empty list = all required inputs present.
+
+    `inputs_spec` is the serialized form from yaml_to_graph (plain dicts per WorkflowParam).
+    `phase` is "install", "run", or "dry_run".
+    """
+    if not inputs_spec:
+        return []
+    inputs = inputs or {}
+    missing: list[dict[str, str]] = []
+    for key, field in inputs_spec.items():
+        if not isinstance(field, dict):
+            continue
+        required_at = field.get("required_at")
+        legacy_required = field.get("required") is True
+        is_required = required_at == phase or (legacy_required and phase == "run")
+        if not is_required:
+            continue
+        value = inputs.get(key)
+        has_value = value not in (None, "")
+        has_default = field.get("default") is not None
+        if not has_value and not has_default:
+            missing.append({
+                "key": key,
+                "label": field.get("label") or key,
+                "type": field.get("type") or "string",
+            })
+    return missing

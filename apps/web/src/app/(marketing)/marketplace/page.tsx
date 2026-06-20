@@ -431,10 +431,26 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
     setWebhookError(null)
   }
 
+  // #735: refresh GitHub repos when selected environment changes.
+  // Without this, the dropdown shows stale repos from a previous env's credential.
   useEffect(() => {
-    if (!pendingSlug || !selectedRepo) { return }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRepo, pendingSlug, inputValues["trigger_label"]])
+    if (!pendingSlug || !selectedEnvId) return
+    if (!GITHUB_WEBHOOK_SLUGS.has(pendingSlug)) return
+    let cancelled = false
+    setReposLoading(true)
+    authHeaders().then(h =>
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/github/repos`, { headers: h })
+        .then(res => res.ok ? res.json() : [])
+        .then((data: Repo[]) => {
+          if (cancelled) return
+          setRepos(data)
+          setSelectedRepo(data[0]?.full_name ?? "")
+        })
+        .catch(() => { if (!cancelled) { setRepos([]); setSelectedRepo("") } })
+        .finally(() => { if (!cancelled) setReposLoading(false) })
+    )
+    return () => { cancelled = true }
+  }, [selectedEnvId, pendingSlug])
 
   async function confirmInstall() {
     if (!pendingSlug) return
