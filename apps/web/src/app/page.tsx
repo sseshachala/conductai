@@ -297,7 +297,7 @@ function TwoLanesSection() {
             <div>
               <h3 className="text-2xl font-bold text-stone-900 tracking-tight mb-2">Ship faster with agent templates</h3>
               <p className="text-stone-600 leading-relaxed text-sm">
-                22 agent templates cover every engineering workflow: PR review, security scanning, release notes, incident response. Install one in under a minute.
+                The PR review that used to wait for a senior engineer now runs in 90 seconds. The security scan that lived in one person&apos;s terminal now runs on every push. 22 templates, ready to install.
               </p>
             </div>
             <ul className="space-y-2.5 flex-1">
@@ -327,7 +327,7 @@ function TwoLanesSection() {
             <div>
               <h3 className="text-2xl font-bold text-white tracking-tight mb-2">Govern every agent at runtime</h3>
               <p className="text-stone-400 leading-relaxed text-sm">
-                Real-time policy enforcement, per-developer spend limits, and a full audit trail applied at the moment the agent runs, not after.
+                The Friday deploy that would have gone through unreviewed — blocked. The secret that would have landed in a commit message — caught. At the moment the agent acts, not the morning after.
               </p>
             </div>
             <ul className="space-y-2.5 flex-1">
@@ -488,8 +488,8 @@ function GovernanceNarrativeSection() {
 const personas = [
   {
     role: "Engineering Leaders",
-    title: "Visibility and control — without slowing your team down.",
-    desc: "You're responsible for how AI gets used across your engineering organisation. Right now you have no visibility and no controls. Conduct changes that without adding process overhead.",
+    title: "Your team is using 4 AI tools. You don't know which ones, what they cost, or what they did.",
+    desc: "Conduct gives you a single view across every tool, every developer, every session — without adding any process to your team's workflow.",
     outcomes: [
       "See every AI tool your team uses — in one dashboard",
       "Know what AI is costing you, by person and by project",
@@ -498,9 +498,9 @@ const personas = [
     ],
   },
   {
-    role: "IT Managers & Directors",
-    title: "Policy enforcement that works without blocking productivity.",
-    desc: "You need governance that actually runs — not documentation that developers ignore. Conduct deploys in minutes, works with every AI tool already in use, and gives you one audit trail.",
+    role: "IT & Security Leaders",
+    title: "Your AI usage policy exists in a doc. It has never once stopped an agent.",
+    desc: "Conduct enforces policy at the layer where agents actually run — not in a review meeting, not in a Notion page. At the moment the tool call happens.",
     outcomes: [
       "One policy layer across Claude Code, Cursor, Copilot, and more",
       "No infrastructure changes — works with your existing stack",
@@ -509,9 +509,9 @@ const personas = [
     ],
   },
   {
-    role: "Security Analysts",
-    title: "Governance at the layer where AI actually operates.",
-    desc: "You need AI sessions audited, credentials protected, vulnerabilities caught before production, and compliance evidence on demand. Conduct makes all of this the default — not the exception.",
+    role: "Security & Compliance",
+    title: "Compliance asked for an AI audit trail. You had nothing to show them.",
+    desc: "Every tool call, every decision, every developer — logged from day one. Export the audit trail in 30 seconds. Answer any question on demand.",
     outcomes: [
       "Credentials and PII blocked before they reach any LLM",
       "Every tool call logged with decision, rule, and developer identity",
