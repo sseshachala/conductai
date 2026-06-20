@@ -36,29 +36,55 @@ export default function BlogIndex() {
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
-      <header className="px-6 py-5 flex items-center justify-between max-w-6xl mx-auto w-full">
-        <a href="/">
-          <img src="/logo.png" alt="Conduct AI" className="h-10 w-auto" />
-        </a>
-        <div className="flex items-center gap-4">
-          <div className="relative group">
-            <a href="/tools" className="flex items-center gap-1 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
-              Tools
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="opacity-40 mt-0.5"><path d="M2 4l4 4 4-4"/></svg>
-            </a>
-            <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50">
-              <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-1.5 min-w-[160px]">
-                <a href="/tools/agent-booster" className="flex items-center gap-2 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-                  <span className="text-indigo-600 font-bold">◈</span> Agent Booster
-                </a>
-                <a href="/tools/conduct-cli" className="flex items-center gap-2 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-                  <span className="text-violet-600 font-bold">⬡</span> Conduct CLI
-                </a>
+      <header className="sticky top-0 bg-white/95 backdrop-blur-sm z-50 border-b border-stone-100">
+        <div className="px-6 py-4 flex items-center justify-between max-w-6xl mx-auto w-full">
+          <a href="/">
+            <img src="/logo.png" alt="Conduct AI" className="h-10 w-auto" />
+          </a>
+          <nav className="hidden md:flex items-center gap-6">
+            <div className="relative group">
+              <a href="/sign-up" className="flex items-center gap-1 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
+                Products
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="opacity-40 mt-0.5"><path d="M2 4l4 4 4-4"/></svg>
+              </a>
+              <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[220px]">
+                <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-2">
+                  <a href="/guard-landing" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+                    <span>🛡️</span>
+                    <div>
+                      <p className="font-semibold">Conduct Guard</p>
+                      <p className="text-xs text-stone-400">AI session governance</p>
+                    </div>
+                  </a>
+                  <a href="/playbooks" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+                    <span>⚡</span>
+                    <div>
+                      <p className="font-semibold">Agent Templates</p>
+                      <p className="text-xs text-stone-400">Pre-built AI automations</p>
+                    </div>
+                  </a>
+                  <a href="/tools/conduct-cli" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+                    <span className="text-indigo-600 font-bold text-base">◈</span>
+                    <div>
+                      <p className="font-semibold">Conduct CLI</p>
+                      <p className="text-xs text-stone-400">Terminal governance + token savings</p>
+                    </div>
+                  </a>
+                </div>
               </div>
             </div>
+            <a href="/playbooks" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Agent Templates</a>
+            <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
+            <a href="/docs" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
+            <a href="https://pypi.org/project/conduct-cli/" target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">PyPI</a>
+            <a href="https://github.com/sseshachala/conduct-cli" target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">GitHub</a>
+          </nav>
+          <div className="flex items-center gap-3">
+            <a href="mailto:hello@conductai.ai" className="text-sm font-medium text-stone-600 hover:text-stone-900 transition-colors hidden sm:block">Talk to Us</a>
+            <a href="/sign-up" className="rounded-lg bg-stone-900 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-700 transition-colors">
+              Start Free
+            </a>
           </div>
-          <a href="/marketplace" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Agent Templates</a>
-          <a href="/docs" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
         </div>
       </header>
 
