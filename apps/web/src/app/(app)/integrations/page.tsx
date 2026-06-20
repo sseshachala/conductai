@@ -175,26 +175,25 @@ function McpModal({
         </h2>
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {/* Provider — only shown in add mode for non-system servers */}
-          {mode === "add" && !readOnly && (
-            <div>
-              <label style={labelStyle}>Provider</label>
-              <select
-                value={form.provider}
-                onChange={e => handleProviderSelect(e.target.value)}
-                style={inputStyle}
-              >
-                {MCP_PROVIDERS.map(p => (
-                  <option key={p.value} value={p.value}>{p.label}</option>
-                ))}
-              </select>
-              {getProvider(form.provider)?.description && (
-                <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "4px 0 0" }}>
-                  {getProvider(form.provider)?.description}
-                </p>
-              )}
-            </div>
-          )}
+          {/* Provider dropdown — shown in both add and edit; disabled for system servers */}
+          <div>
+            <label style={labelStyle}>Provider</label>
+            <select
+              value={form.provider}
+              onChange={e => handleProviderSelect(e.target.value)}
+              disabled={readOnly}
+              style={{ ...inputStyle, opacity: readOnly ? 0.6 : 1 }}
+            >
+              {MCP_PROVIDERS.map(p => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
+            </select>
+            {getProvider(form.provider)?.description && (
+              <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "4px 0 0" }}>
+                {getProvider(form.provider)?.description}
+              </p>
+            )}
+          </div>
 
           {/* Name */}
           <div>
@@ -251,6 +250,14 @@ function McpModal({
               readOnly={readOnly}
               style={{ ...inputStyle, opacity: readOnly ? 0.6 : 1 }}
             />
+            {(() => {
+              const cred = getProvider(form.provider)?.credentialKey
+              return cred ? (
+                <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "4px 0 0" }}>
+                  Use your <code style={{ fontFamily: "monospace", background: "var(--surface-2)", padding: "1px 4px", borderRadius: 3 }}>{cred}</code> from environment variables
+                </p>
+              ) : null
+            })()}
           </div>
 
           {/* Environment */}
@@ -402,14 +409,20 @@ function IntegrationsPageInner({
   }
 
   const initialForm: FormState = editTarget
-    ? {
-        provider: "custom",
-        name: editTarget.name,
-        url: editTarget.url,
-        transport: editTarget.transport,
-        auth_token: "",
-        environment_id: editTarget.environment_id ?? "",
-      }
+    ? (() => {
+        // Try to match a known provider by URL first, then by name
+        const matched =
+          MCP_PROVIDERS.find(p => p.serverUrl && p.serverUrl === editTarget.url) ??
+          MCP_PROVIDERS.find(p => p.value !== "custom" && editTarget.name.toLowerCase().includes(p.label.toLowerCase()))
+        return {
+          provider: matched?.value ?? "custom",
+          name: editTarget.name,
+          url: editTarget.url,
+          transport: editTarget.transport,
+          auth_token: "",
+          environment_id: editTarget.environment_id ?? "",
+        }
+      })()
     : EMPTY_FORM
 
   return (
