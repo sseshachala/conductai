@@ -268,7 +268,7 @@ def list_projects(
             INSERT INTO mcp_servers (id, workspace_id, environment_id, name, url, transport, created_at)
             VALUES (gen_random_uuid(), :ws, NULL, 'Conduct AI Guard',
                     'https://api.conductai.ai/guard/mcp?workspace_id=' || :ws || '&token=' || :token,
-                    'sse', :now)
+                    'http', :now)
             ON CONFLICT DO NOTHING
         """), {"ws": str(project_id), "token": member_token, "now": now})
 
