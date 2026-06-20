@@ -2431,6 +2431,22 @@ def cmd_run(args):
             hint = "export GITHUB_TOKEN=<token>" if not gh_token else "workflow has no github_hook_repo"
             print(f"  {GRAY}No GitHub token — using test payload. ({hint}){RESET}\n")
 
+    # #734: validate required inputs locally before POST — fail fast with clear error.
+    try:
+        vres = api.req("POST", f"{server}/workflows/{workflow_id}/validate-inputs", json_h,
+                       {"inputs": body.get("inputs") or {}, "phase": "run"})
+        missing = (vres or {}).get("missing") or []
+        if missing:
+            print(f"{RED}✗ Missing required inputs:{RESET}")
+            for m in missing:
+                print(f"  - {m['label']} ({m['key']})")
+            print(f"\n{GRAY}Provide with --input {missing[0]['key']}=<value>{RESET}")
+            sys.exit(2)
+    except SystemExit:
+        raise
+    except Exception:
+        pass  # validate endpoint is best-effort; backend will re-check on /trigger
+
     # Fix 3: /trigger returns run_id, not id.
     if getattr(args, "max_turns", None):
         body["__max_turns"] = args.max_turns
