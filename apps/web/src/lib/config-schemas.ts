@@ -497,12 +497,19 @@ export const BLOCK_CONFIG_SCHEMAS: Partial<Record<BlockType, ConfigField[]>> = {
   ],
   mcp: [
     {
+      key: "config.provider",
+      label: "MCP Server",
+      type: "text",
+      required: false,
+      section: "basic",
+    },
+    {
       key: "config.credential_key",
       label: "MCP Credential Handle",
       type: "text",
-      required: true,
+      required: false,
       placeholder: "mcp-vercel",
-      hint: "Handle saved in Settings → Credentials",
+      hint: "Handle saved in Settings → Credentials (legacy; use MCP Server instead)",
       section: "basic",
     },
     {

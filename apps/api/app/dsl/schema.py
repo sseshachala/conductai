@@ -244,8 +244,11 @@ class Block(BaseModel):
                     "output blocks require an `output:` section, or `channels` + `template`"
                 )
         elif t == "mcp":
-            if not self.credential_key:
-                raise ValueError("mcp blocks require `credential_key`")
+            has_provider = bool((self.config or {}).get("provider"))
+            if not self.credential_key and not has_provider:
+                raise ValueError(
+                    "mcp blocks require `credential_key` or a configured MCP server (provider)"
+                )
             if not self.tool_name:
                 raise ValueError("mcp blocks require `tool_name`")
         return self

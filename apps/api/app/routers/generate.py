@@ -166,6 +166,9 @@ async def generate_workflow(
                         block["credential_key"] = cfg["credential_key"]
                     if not block.get("tool_name") and cfg.get("tool_name"):
                         block["tool_name"] = cfg["tool_name"]
+                    # hoist provider (server UUID from mcp_servers) set by canvas MCP block
+                    if not block.get("provider") and cfg.get("provider"):
+                        block["provider"] = cfg["provider"]
                 blocks_dict[block_id] = block
             parsed["blocks"] = blocks_dict
 
