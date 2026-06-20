@@ -350,6 +350,13 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
 
     graph_data = body.graph.model_dump()
 
+    # Backward-compat shim: legacy clients send body.repo as a top-level field.
+    # New flow treats `repo` as a normal input declared in the playbook YAML.
+    if getattr(body, "repo", None) and "repo" not in (body.inputs or {}):
+        if body.inputs is None:
+            body.inputs = {}
+        body.inputs["repo"] = body.repo
+
     if body.template and body.template in _TEMPLATE_PLAYBOOKS:
         playbook_file = _TEMPLATE_PLAYBOOKS[body.template]
         playbook_path = pathlib.Path(__file__).parent.parent.parent / "playbooks" / playbook_file
@@ -422,14 +429,13 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
     workflow.current_version_id = version.id
     db.commit()
 
-    # Sync github_hook_repo + github_hook_label from trigger node config (covers
-    # both explicit body.repo and YAML-installed workflows where repo comes from
-    # the trigger block's repo_allowlist field).
+    # Derive denormalized columns from trigger node config — single source of truth is the graph.
+    # Template substitution (above) has already resolved {{inputs.repo}} → trigger.config.repo_allowlist.
     nodes = graph_data.get("nodes", [])
     trigger_node = next((n for n in nodes if n.get("data", {}).get("type") == "trigger"), None)
     if trigger_node:
-        cfg = trigger_node.get("data", {}).get("config", {})
-        allowlist_raw = cfg.get("repo_allowlist") or body.repo or ""
+        cfg = trigger_node.get("data", {}).get("config", {}) or {}
+        allowlist_raw = cfg.get("repo_allowlist") or ""
         first_repo = next((r.strip() for r in str(allowlist_raw).split(",") if r.strip()), None)
         if first_repo:
             workflow.github_hook_repo = first_repo
@@ -437,8 +443,6 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
         label = labels_raw[0].strip() if labels_raw else None
         if label:
             workflow.github_hook_label = label
-    elif body.repo:
-        workflow.github_hook_repo = body.repo
     db.commit()
 
     # Auto-register webhook on install. Soft fail: set webhook_error on response, don't abort.
