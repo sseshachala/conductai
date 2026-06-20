@@ -441,6 +441,16 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
         workflow.github_hook_repo = body.repo
     db.commit()
 
+    # Auto-register webhook on install. Soft fail: set webhook_error on response, don't abort.
+    if workflow.github_hook_repo and workflow.playbook_slug in _GITHUB_WEBHOOK_EVENTS:
+        try:
+            err = _do_register_workflow_webhook(workflow, str(workspace_id), db)
+            if err:
+                workflow.webhook_error = err  # type: ignore[attr-defined]
+        except Exception as e:
+            log.error("workflow.webhook_auto_register_failed", workflow_id=str(workflow.id), error=str(e))
+            workflow.webhook_error = f"Webhook setup failed: {e}"  # type: ignore[attr-defined]
+
     db.refresh(workflow)
     _stamp(workflow)
     return workflow
@@ -571,6 +581,91 @@ def delete_workflow(
 
 
 # ── Manual webhook registration ───────────────────────────────────────────────
+
+def _do_register_workflow_webhook(workflow, workspace_id: str, db: Session) -> str | None:
+    """Core webhook registration logic. Returns None on success, error message string on failure.
+    Used by both POST /{id}/webhook (raises on error) and create_workflow (soft fail).
+    """
+    if not workflow.github_hook_repo:
+        return "No repository configured"
+    if not workflow.current_version_id:
+        return "Workflow has no version"
+    playbook_slug = workflow.playbook_slug or ""
+    if playbook_slug not in _GITHUB_WEBHOOK_EVENTS:
+        return None  # Not a webhook-using playbook — silently skip
+
+    import secrets as _secrets
+    from app.routers.credentials import _git_token
+    from app.core.crypto import encrypt as _encrypt
+    from sqlalchemy.orm.attributes import flag_modified
+    from app.core.config import settings as _settings
+
+    try:
+        token, provider = _git_token(str(workspace_id), db, str(workflow.environment_id) if workflow.environment_id else None)
+    except HTTPException as e:
+        return f"Credential error: {e.detail}"
+    except Exception as e:
+        return f"Token fetch failed: {e}"
+
+    repo = workflow.github_hook_repo
+
+    # Reuse existing hook if another workflow in this workspace already registered one for this repo.
+    existing = db.query(Workflow).filter(
+        Workflow.workspace_id == workspace_id,
+        Workflow.github_hook_repo == repo,
+        Workflow.github_hook_id.isnot(None),
+        Workflow.id != workflow.id,
+    ).first()
+    if existing:
+        workflow.github_hook_id = existing.github_hook_id
+        db.commit()
+        return None
+
+    if workflow.github_hook_id:
+        try:
+            _deregister_git_webhook(token, repo, workflow.github_hook_id, provider=provider)
+        except Exception as e:
+            log.warning("webhook.stale_deregistration_skipped", workflow_id=str(workflow.id), error=str(e))
+        workflow.github_hook_id = None
+        db.commit()
+
+    project_slug: str | None = None
+    if workflow.project_id:
+        from app.models.project import Project as _Project
+        proj = db.query(_Project).filter(_Project.id == workflow.project_id).first()
+        if proj:
+            project_slug = proj.slug
+
+    webhook_secret = _settings.github_webhook_secret or _secrets.token_hex(32)
+    hook_id, error = _register_git_webhook(
+        token, repo, str(workflow.id),
+        _ALL_GITHUB_EVENTS if provider == "github" else _GITHUB_WEBHOOK_EVENTS[playbook_slug],
+        provider=provider,
+        project_slug=project_slug,
+        secret=webhook_secret,
+        workspace_id=str(workspace_id),
+    )
+    if not hook_id:
+        return error or "Webhook registration failed"
+
+    workflow.github_hook_id = hook_id
+    version = db.query(WorkflowVersion).filter(WorkflowVersion.id == workflow.current_version_id).first()
+    if version:
+        encrypted_secret = _encrypt({"secret": webhook_secret})
+        graph = version.graph
+        for node in graph.get("nodes", []):
+            if node.get("data", {}).get("type") == "trigger":
+                node["data"].setdefault("config", {})["webhook_secret"] = encrypted_secret
+                node["data"]["config"]["git_provider"] = provider
+                node["data"]["config"]["repo_allowlist"] = repo
+        version.graph = graph
+        flag_modified(version, "graph")
+    db.commit()
+    audit(db, workspace_id, "workflow.webhook_registered",
+          resource_type="workflow", resource_id=str(workflow.id),
+          metadata={"repo": repo})
+    return None
+
 
 @router.post("/{workflow_id}/webhook", response_model=WorkflowDetailOut)
 def register_workflow_webhook(
