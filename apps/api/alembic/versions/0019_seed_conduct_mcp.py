@@ -35,7 +35,7 @@ def upgrade() -> None:
         url = f"{MCP_BASE}?workspace_id={ws_id}&token={row.member_token}"
         conn.execute(sa.text("""
             INSERT INTO mcp_servers (id, workspace_id, environment_id, name, url, transport, created_at)
-            VALUES (gen_random_uuid(), :ws, NULL, 'Conduct AI Guard', :url, 'sse', now())
+            VALUES (gen_random_uuid(), :ws, NULL, 'Conduct AI Guard', :url, 'http', now())
             ON CONFLICT DO NOTHING
         """), {"ws": ws_id, "url": url})
 
