@@ -270,6 +270,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
   const [repos, setRepos] = useState<Repo[]>([])
   const [selectedRepo, setSelectedRepo] = useState<string>("")
   const [reposLoading, setReposLoading] = useState(false)
+  const [reposError, setReposError] = useState<string | null>(null)
   const [webhookError, setWebhookError] = useState<string | null>(null)
   const [lastInstalledId, setLastInstalledId] = useState<string | null>(null)
   const [agentName, setAgentName] = useState<string>("")
@@ -399,18 +400,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
         }),
       ]
 
-      if (GITHUB_WEBHOOK_SLUGS.has(slug)) {
-        setReposLoading(true)
-        promises.push(
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/github/repos`, { headers }).then(async res => {
-            if (res.ok) {
-              const data: Repo[] = await res.json()
-              setRepos(data)
-              setSelectedRepo(data[0]?.full_name ?? "")
-            }
-          }).finally(() => setReposLoading(false))
-        )
-      }
+      // GitHub repo fetch is handled by the env-scoped useEffect below once selectedEnvId resolves.
 
       await Promise.all(promises)
     } finally {
@@ -438,15 +428,25 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
     if (!GITHUB_WEBHOOK_SLUGS.has(pendingSlug)) return
     let cancelled = false
     setReposLoading(true)
+    setReposError(null)
     authHeaders().then(h =>
-      fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/github/repos`, { headers: h })
-        .then(res => res.ok ? res.json() : [])
-        .then((data: Repo[]) => {
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/github/repos?environment_id=${encodeURIComponent(selectedEnvId)}`, { headers: h })
+        .then(async res => {
           if (cancelled) return
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}))
+            const msg = body?.detail || `HTTP ${res.status}`
+            setReposError(typeof msg === "string" ? msg : JSON.stringify(msg))
+            setRepos([])
+            setSelectedRepo("")
+            return
+          }
+          const data: Repo[] = await res.json()
           setRepos(data)
           setSelectedRepo(data[0]?.full_name ?? "")
+          if (data.length === 0) setReposError("Token is valid but no accessible repos returned. If you use a fine-grained PAT scoped to a single repo, GitHub's /user/repos may not list it — type the repo manually below.")
         })
-        .catch(() => { if (!cancelled) { setRepos([]); setSelectedRepo("") } })
+        .catch((e) => { if (!cancelled) { setReposError(String(e)); setRepos([]); setSelectedRepo("") } })
         .finally(() => { if (!cancelled) setReposLoading(false) })
     )
     return () => { cancelled = true }
@@ -926,22 +926,33 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                 </label>
                 {reposLoading ? (
                   <div className="h-9 rounded-lg bg-stone-100 animate-pulse" />
-                ) : repos.length === 0 ? (
-                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                    No repos found. Connect GitHub in{" "}
-                    <a href="/settings/integrations" className="underline font-medium">Settings → Integrations</a>{" "}
-                    then re-open this modal.
-                  </div>
                 ) : (
-                  <select
-                    value={selectedRepo}
-                    onChange={e => setSelectedRepo(e.target.value)}
-                    className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
-                  >
-                    {repos.map(r => (
-                      <option key={r.full_name} value={r.full_name}>{r.full_name}</option>
-                    ))}
-                  </select>
+                  <>
+                    {reposError && (
+                      <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-2">
+                        {reposError}
+                      </div>
+                    )}
+                    {repos.length > 0 ? (
+                      <select
+                        value={selectedRepo}
+                        onChange={e => setSelectedRepo(e.target.value)}
+                        className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
+                      >
+                        {repos.map(r => (
+                          <option key={r.full_name} value={r.full_name}>{r.full_name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={selectedRepo}
+                        onChange={e => setSelectedRepo(e.target.value)}
+                        placeholder="owner/repo"
+                        className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
+                      />
+                    )}
+                  </>
                 )}
               </div>
             )}
