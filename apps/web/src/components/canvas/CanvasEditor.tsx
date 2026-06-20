@@ -238,12 +238,15 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
         if (!r.ok) return
         const run = await r.json()
         setTestRunStatus(run.status)
+        // Feed live state into Definition panel as blocks complete
+        if (run.state) setLastRunState(run.state)
+        setLastRunSummary({ status: run.status, created_at: run.created_at, run_id: run.id })
         if (terminal.has(run.status)) localStorage.removeItem(TEST_RUN_KEY)
       } catch {}
     }
 
     poll()
-    const interval = setInterval(poll, 4000)
+    const interval = setInterval(poll, 2000)
     return () => clearInterval(interval)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [testRunId, testRunStatus])
@@ -885,6 +888,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
       localStorage.setItem(TEST_RUN_KEY, JSON.stringify({ runId: data.run_id, startedAt: Date.now() }))
       setTestRunId(data.run_id)
       setTestRunStatus("pending")
+      setLastRunSummary({ status: "pending", created_at: new Date().toISOString(), run_id: data.run_id })
+      setActiveView("definition")
     } catch {
       // test run failed to start — setTestRunning resets below
     } finally {
