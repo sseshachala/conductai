@@ -172,12 +172,6 @@ function TrustBarSection() {
 /* ─── Proof Strip ──────────────────────────────────────────────────────── */
 
 function ProofStripSection() {
-  const stats = [
-    { value: "$84K/year", label: "projected AI spend", source: "from $4,170 in 18 days" },
-    { value: "120/year", label: "prod deploy gates", source: "6 intercepted in 18 days" },
-    { value: "12,000/year", label: "PII events screened", source: "from 589 in 18 days" },
-    { value: "$4,700/year", label: "tooling savings", source: "from $235 in 18 days" },
-  ]
   return (
     <section className="bg-stone-950 border-y border-stone-800 py-6 px-6">
       <div className="max-w-5xl mx-auto">
@@ -185,13 +179,36 @@ function ProofStripSection() {
           Real data · 1 developer · 18 days · annualized
         </p>
         <div className="flex flex-wrap items-start justify-center gap-x-12 gap-y-5">
-          {stats.map(s => (
-            <div key={s.label} className="flex flex-col items-center gap-1">
-              <span className="text-2xl font-black text-white tracking-tight">{s.value}</span>
-              <span className="text-xs text-stone-400">{s.label}</span>
-              <span className="text-[10px] text-stone-600">{s.source}</span>
-            </div>
-          ))}
+
+          {/* AI Spend */}
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-2xl font-black text-white tracking-tight">$84K/year</span>
+            <span className="text-xs text-stone-400">projected AI spend</span>
+            <span className="text-[10px] text-stone-600">from $4,170 in 18 days</span>
+          </div>
+
+          {/* Prod deploy gates — expanded treatment */}
+          <div className="flex flex-col items-center gap-1 border border-stone-700 rounded-xl px-5 py-3 bg-stone-900">
+            <span className="text-2xl font-black text-red-400 tracking-tight">$50K+</span>
+            <span className="text-xs text-stone-300 font-semibold">potential cost per unreviewed deploy</span>
+            <span className="text-[10px] text-stone-500 mt-1">6 intercepted · 18 days · 1 developer</span>
+            <span className="text-[10px] text-indigo-400 mt-1">→ 1,200/year across a 10-person team</span>
+          </div>
+
+          {/* PII */}
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-2xl font-black text-white tracking-tight">12,000/year</span>
+            <span className="text-xs text-stone-400">PII events screened</span>
+            <span className="text-[10px] text-stone-600">from 589 in 18 days</span>
+          </div>
+
+          {/* Savings */}
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-2xl font-black text-white tracking-tight">$4,700/year</span>
+            <span className="text-xs text-stone-400">tooling savings</span>
+            <span className="text-[10px] text-stone-600">from $235 in 18 days</span>
+          </div>
+
         </div>
       </div>
     </section>
