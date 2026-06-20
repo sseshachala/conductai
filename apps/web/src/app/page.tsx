@@ -392,49 +392,62 @@ function GovernanceNarrativeSection() {
   return (
     <section className="py-24 px-6 bg-white border-b border-stone-100">
       <div className="max-w-5xl mx-auto">
-        <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500 mb-4">What governance actually tells you</p>
-        <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight leading-tight mb-4 max-w-2xl">
-          Every AI session, explained in plain English.
-        </h2>
-        <p className="text-stone-500 leading-relaxed mb-12 max-w-2xl">
-          Guard watches every tool call across every AI session. At the end of each day, it surfaces one sentence that tells your team what happened, what was blocked, and what it cost.
-        </p>
 
-        {/* AI Narrative Card */}
-        <div className="rounded-2xl border border-stone-200 bg-white p-6 mb-8 shadow-sm">
-          {/* Card header */}
-          <div className="flex items-center justify-between mb-4 pb-4 border-b border-stone-100">
-            <div className="flex items-center gap-2">
-              <span className="text-indigo-600 font-bold">✦</span>
-              <span className="text-xs font-semibold text-stone-500">Guard · AI Narrative</span>
-              <span className="text-xs text-stone-400">dev@yourteam.com</span>
+        {/* Two-column: left = text + chips, right = narrative card */}
+        <div className="grid md:grid-cols-2 gap-12 items-center mb-16">
+
+          {/* Left */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500 mb-4">What governance actually tells you</p>
+            <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight leading-tight mb-4">
+              Every AI session, explained in plain English.
+            </h2>
+            <p className="text-stone-500 leading-relaxed mb-8">
+              Guard watches every tool call across every AI session — Claude, Codex, Cursor, Copilot. At the end of each day, it surfaces one sentence that tells your team what happened, what was blocked, and what it cost.
+            </p>
+            <div className="flex flex-wrap gap-2 mb-6">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 border border-red-100 text-xs font-semibold text-red-600">🚫 6 deploys intercepted</span>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-100 text-xs font-semibold text-amber-600">⚠ 2 destructive commands warned</span>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-indigo-50 border border-indigo-100 text-xs font-semibold text-indigo-600">🔒 589 PII events screened</span>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-100 text-xs font-semibold text-emerald-600">⚡ $235 saved by tooling</span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
-              <span className="text-xs font-semibold text-emerald-600">Live</span>
-            </div>
+            <a href="/guard" className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 transition-colors">
+              See the full Insights tab →
+            </a>
           </div>
 
-          {/* Narrative text */}
-          <p className="text-sm text-stone-700 leading-relaxed mb-6">
-            You spent $245/day on AI this period across claude-code, codex, and cursor. Guard intercepted 6 production deploys before they ran unreviewed, warned on 2 destructive commands, and screened 589 events for PII before they reached any LLM. Claude Code dominates at 96% of total spend. RTK and Booster offset $235 — 5.6% back.
-          </p>
-
-          {/* KPIs */}
-          <div className="grid grid-cols-4 gap-4 mb-4">
-            {kpis.map(k => (
-              <div key={k.label} className="text-center">
-                <p className={`text-2xl font-black tracking-tight ${k.color}`}>{k.value}</p>
-                <p className="text-xs text-stone-400 mt-0.5">{k.label}</p>
+          {/* Right — narrative card */}
+          <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-4 pb-4 border-b border-stone-100">
+              <div className="flex items-center gap-2">
+                <span className="text-indigo-600 font-bold">✦</span>
+                <div>
+                  <p className="text-xs font-semibold text-stone-500">Guard · AI Narrative</p>
+                  <p className="text-[10px] text-stone-400">dev@yourteam.com</p>
+                </div>
               </div>
-            ))}
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
+                <span className="text-xs font-semibold text-emerald-600">Live</span>
+              </div>
+            </div>
+            <p className="text-sm text-stone-700 leading-relaxed mb-6">
+              You spent <strong>$245/day</strong> on AI this period across <span className="text-indigo-600 font-medium">claude-code</span>, <span className="text-indigo-600 font-medium">codex</span>, and <span className="text-indigo-600 font-medium">cursor</span>. Guard intercepted <strong>6 production deploys</strong> before they ran unreviewed, warned on <strong>2 destructive commands</strong>, and screened <strong>589 events for PII</strong> before they reached any LLM. Claude Code dominates at <strong>96% of total spend</strong>. RTK and Booster offset <strong>$235</strong> — 5.6% back.
+            </p>
+            <div className="grid grid-cols-4 gap-3 mb-4">
+              {kpis.map(k => (
+                <div key={k.label} className="text-center">
+                  <p className={`text-xl font-black tracking-tight ${k.color}`}>{k.value}</p>
+                  <p className="text-[10px] text-stone-400 mt-0.5">{k.label}</p>
+                </div>
+              ))}
+            </div>
+            <div className="pt-4 border-t border-stone-100 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+              <span className="text-[10px] text-stone-400">Generated Jun 19, 2026 · 5,985 events · 25 sessions</span>
+            </div>
           </div>
 
-          {/* Card footer */}
-          <div className="pt-4 border-t border-stone-100 flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-            <span className="text-[10px] text-stone-400">Generated Jun 19, 2026 · 5,985 events · 25 sessions</span>
-          </div>
         </div>
 
         {/* Incident cards */}
@@ -455,21 +468,16 @@ function GovernanceNarrativeSection() {
 
         <div className="rounded-2xl bg-indigo-50 border border-indigo-100 px-8 py-6 flex flex-col sm:flex-row items-start sm:items-center gap-4">
           <div className="flex-1">
-            <p className="text-sm font-semibold text-stone-900 mb-1">
-              What would have happened without Guard?
-            </p>
+            <p className="text-sm font-semibold text-stone-900 mb-1">What would have happened without Guard?</p>
             <p className="text-sm text-stone-500 leading-relaxed">
-              The production deploy would have executed. Average cost of a prod incident at a mid-market company: $15K–$50K.
-              $235 saved on tooling is nice. $50K in a prevented outage is a different conversation.
+              The production deploy would have executed. Average cost of a prod incident at a mid-market company: $15K–$50K. $235 saved on tooling is nice. $50K in a prevented outage is a different conversation.
             </p>
           </div>
-          <a
-            href="/sign-up"
-            className="flex-shrink-0 rounded-xl bg-indigo-600 text-white px-6 py-3 text-sm font-bold hover:bg-indigo-700 transition-colors whitespace-nowrap"
-          >
+          <a href="/sign-up" className="flex-shrink-0 rounded-xl bg-indigo-600 text-white px-6 py-3 text-sm font-bold hover:bg-indigo-700 transition-colors whitespace-nowrap">
             Start Free
           </a>
         </div>
+
       </div>
     </section>
   )
