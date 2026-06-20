@@ -31,7 +31,7 @@ function Nav() {
       </a>
       <nav className="hidden md:flex items-center gap-6">
         <ProductsDropdown />
-        <a href="/playbooks" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Playbooks</a>
+        <a href="/playbooks" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Agent Templates</a>
         <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
         <a href="/docs" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
         <a href="https://pypi.org/project/conduct-cli/" target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">PyPI</a>
@@ -68,7 +68,7 @@ function ProductsDropdown() {
           <a href="/playbooks" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
             <span>⚡</span>
             <div>
-              <p className="font-semibold">Playbooks</p>
+              <p className="font-semibold">Agent Templates</p>
               <p className="text-xs text-stone-400">Pre-built AI automations</p>
             </div>
           </a>
@@ -103,7 +103,7 @@ function AcquisitionBanner() {
 
 function HeroSection() {
   const chips = [
-    "22 built-in playbooks",
+    "22 agent templates",
     "4 AI providers",
     "Real-time spend limits",
     "Full audit trail",
@@ -120,7 +120,7 @@ function HeroSection() {
         <span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">Govern the risk.</span>
       </h1>
       <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed mb-8">
-        22 built-in playbooks that automate your engineering workflows, with real-time spend limits, policy enforcement, and a full audit trail.
+        22 agent templates that automate your engineering workflows, with real-time spend limits, policy enforcement, and a full audit trail.
       </p>
       <div className="flex flex-wrap items-center justify-center gap-2 mb-10">
         {chips.map(chip => (
@@ -294,9 +294,9 @@ function TwoLanesSection() {
               ⚡ Automate
             </span>
             <div>
-              <h3 className="text-2xl font-bold text-stone-900 tracking-tight mb-2">Ship faster with agent playbooks</h3>
+              <h3 className="text-2xl font-bold text-stone-900 tracking-tight mb-2">Ship faster with agent templates</h3>
               <p className="text-stone-600 leading-relaxed text-sm">
-                22 built-in playbooks cover every engineering workflow: PR review, security scanning, release notes, incident response. Install one in under a minute.
+                22 agent templates cover every engineering workflow: PR review, security scanning, release notes, incident response. Install one in under a minute.
               </p>
             </div>
             <ul className="space-y-2.5 flex-1">
@@ -314,7 +314,7 @@ function TwoLanesSection() {
               ))}
             </ul>
             <a href="/marketplace" className="mt-auto rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors text-center">
-              Browse playbooks →
+              Browse templates →
             </a>
           </div>
 
@@ -586,7 +586,7 @@ function PageFooter() {
             {[
               { heading: "Solutions", links: [["Conduct Guard", "/solutions#guard"], ["Secure", "/solutions#secure"], ["Agentic Workflows", "/solutions#workflows"]] as [string, string][] },
               { heading: "Company", links: [["About", "/about"], ["Partners", "/partners"], ["Blog", "/blog"]] as [string, string][] },
-              { heading: "Resources", links: [["Docs", "/docs"], ["Playbooks", "/marketplace"], ["GitHub", "https://github.com/sseshachala/conductai"]] as [string, string][] },
+              { heading: "Resources", links: [["Docs", "/docs"], ["Agent Templates", "/marketplace"], ["GitHub", "https://github.com/sseshachala/conductai"]] as [string, string][] },
               { heading: "Legal", links: [["Privacy", "/privacy"], ["Terms", "/terms"]] as [string, string][] },
             ].map(col => (
               <div key={col.heading}>
