@@ -170,9 +170,10 @@ export default function DefinitionPanel({ nodes, workflowName, runState, runSumm
 
         <style>{`
           @keyframes pulse-def { 0%,100%{opacity:1} 50%{opacity:0.35} }
-          .def-block { transition: box-shadow 0.15s; cursor: default; }
+          @keyframes pop-in { 0%{opacity:0;transform:translateY(4px)} 100%{opacity:1;transform:translateY(0)} }
+          .def-block { transition: box-shadow 0.15s, background 0.3s; cursor: default; }
           .def-block:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
-          .def-block.has-run { cursor: pointer; }
+          .def-block.has-run { cursor: pointer; animation: pop-in 0.25s ease; }
         `}</style>
 
         {/* Block list */}
