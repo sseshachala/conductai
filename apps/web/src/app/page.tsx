@@ -223,26 +223,26 @@ function ProblemSection() {
     {
       num: "01",
       icon: "🕳️",
-      headline: "No visibility into what agents ran",
-      detail: "Agent activity is trapped inside individual tools. You can't see what Copilot reviewed, what Claude generated, or how many tokens your team burned.",
+      headline: "Your team shipped a Friday deploy that an AI forced through unreviewed.",
+      detail: "You found out on Monday. The AI ran the command at 3pm. Nobody saw it.",
     },
     {
       num: "02",
       icon: "💸",
-      headline: "Spend is invisible until the invoice arrives",
-      detail: "Per-user token costs accumulate silently. By the time the bill lands, the sprint is over and the budget conversation is already awkward.",
+      headline: "Finance asked what AI cost last quarter. Engineering had no answer.",
+      detail: "The bill arrived. The sprint was over. The conversation was already awkward.",
     },
     {
       num: "03",
       icon: "📄",
-      headline: "Policies live in Notion, not at runtime",
-      detail: "You have an AI usage policy. It exists in a doc. It is not enforced at the moment an agent actually runs. That is the only moment that matters.",
+      headline: "You have an AI usage policy. It didn't stop anything.",
+      detail: "It exists in a doc. It wasn't running at the moment the agent acted. That's the only moment that matters.",
     },
     {
       num: "04",
       icon: "🔁",
-      headline: "Every automation is a one-off",
-      detail: "PR review prompts, security scans, release notes. Each lives as a private script in someone's terminal. They drift, they break, and they leave when that person does.",
+      headline: "The PR review script broke when the engineer who wrote it left.",
+      detail: "It lived in their terminal. It drifted. It broke. It left with them.",
     },
   ]
   return (
