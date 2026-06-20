@@ -7,11 +7,10 @@ export default function HomePage() {
       <main className="flex-1">
         <AcquisitionBanner />
         <HeroSection />
-        <ToolsStripSection />
+        <TrustBarSection />
         <ProofStripSection />
         <ProblemSection />
-        <SolutionsSection />
-        <TwoTracksSection />
+        <TwoLanesSection />
         <GovernanceNarrativeSection />
         <PersonasSection />
         <FinalCTASection />
@@ -91,8 +90,6 @@ function ProductsDropdown() {
   )
 }
 
-/* ─── Hero ─────────────────────────────────────────────────────────────── */
-
 /* ─── Acquisition Banner ───────────────────────────────────────────────── */
 
 function AcquisitionBanner() {
@@ -110,59 +107,59 @@ function AcquisitionBanner() {
 /* ─── Hero ─────────────────────────────────────────────────────────────── */
 
 function HeroSection() {
+  const chips = [
+    "22 built-in playbooks",
+    "4 AI providers",
+    "Real-time spend limits",
+    "Full audit trail",
+    "Zero infrastructure changes",
+  ]
   return (
     <section className="max-w-5xl mx-auto px-6 pt-20 pb-16 text-center">
       <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-widest mb-8">
         <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block" />
-        Provider-agnostic AI Governance
+        AI Operating Layer for Engineering Teams
       </div>
       <h1 className="text-5xl sm:text-6xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
-        Your team already<br />
-        runs on AI.<br />
-        <span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">Now govern it.</span>
+        Run AI agents.<br />
+        <span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">Govern the risk.</span>
       </h1>
-      <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed mb-10">
-        Conduct AI is the independent governance layer between your engineering team and their AI tools —
-        not owned by Anthropic, Microsoft, or any AI lab. Protect sessions, enforce security, and run the workflows that used to take human hours.
+      <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed mb-8">
+        22 built-in playbooks that automate your engineering workflows, with real-time spend limits, policy enforcement, and a full audit trail.
       </p>
+      <div className="flex flex-wrap items-center justify-center gap-2 mb-10">
+        {chips.map(chip => (
+          <span key={chip} className="bg-stone-100 text-stone-700 rounded-full px-3 py-1 text-xs font-semibold">
+            {chip}
+          </span>
+        ))}
+      </div>
       <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
         <a href="/sign-up" className="rounded-xl bg-stone-900 text-white px-7 py-3.5 text-base font-semibold hover:bg-stone-700 transition-colors w-full sm:w-auto text-center">
-          Start Free — Deploy in Minutes
+          Start Free — See It Yourself
         </a>
         <a href="mailto:hello@conductai.ai" className="rounded-xl border border-stone-300 bg-white text-stone-700 px-7 py-3.5 text-base font-semibold hover:border-stone-400 hover:shadow-sm transition-all w-full sm:w-auto text-center">
-          Talk to Us — We'll Run It For You
+          Book a Discovery Call
         </a>
       </div>
-      <p className="text-xs text-stone-400 mt-4">No credit card required · Free tier for up to 5 developers · Works with tools your team already uses</p>
+      <p className="text-xs text-stone-400 mt-4">Free tier · No infrastructure changes · Works in minutes</p>
     </section>
   )
 }
 
-/* ─── Tools Strip ──────────────────────────────────────────────────────── */
+/* ─── Trust Bar ────────────────────────────────────────────────────────── */
 
-function ToolsStripSection() {
-  const tools = [
-    { label: "Claude Code", note: null },
-    { label: "Cursor", note: "works post-acquisition" },
-    { label: "GitHub Copilot", note: null },
-    { label: "Claude.ai", note: null },
-    { label: "Codex", note: null },
-    { label: "Any MCP Client", note: null },
-  ]
+function TrustBarSection() {
+  const integrations = ["GitHub", "Slack", "Linear", "Jira", "Claude", "GPT-4.1", "Gemini", "VS Code"]
   return (
     <div className="border-y border-stone-100 bg-stone-50 py-5 px-6">
       <div className="max-w-5xl mx-auto text-center">
         <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-4">
-          Independent governance — works with the tools your team already uses
+          Works with
         </p>
         <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3">
-          {tools.map(t => (
-            <div key={t.label} className="flex flex-col items-center gap-0.5">
-              <span className="text-sm font-semibold text-stone-400">{t.label}</span>
-              {t.note && (
-                <span className="text-[10px] font-medium text-indigo-400 uppercase tracking-wider">{t.note}</span>
-              )}
-            </div>
+          {integrations.map(name => (
+            <span key={name} className="text-sm font-semibold text-stone-400">{name}</span>
           ))}
         </div>
       </div>
@@ -199,6 +196,152 @@ function ProofStripSection() {
   )
 }
 
+/* ─── Problem ──────────────────────────────────────────────────────────── */
+
+interface ProblemCard {
+  num: string
+  icon: string
+  headline: string
+  detail: string
+}
+
+function ProblemSection() {
+  const problems: ProblemCard[] = [
+    {
+      num: "01",
+      icon: "🕳️",
+      headline: "No visibility into what agents ran",
+      detail: "Agent activity is trapped inside individual tools. You can't see what Copilot reviewed, what Claude generated, or how many tokens your team burned.",
+    },
+    {
+      num: "02",
+      icon: "💸",
+      headline: "Spend is invisible until the invoice arrives",
+      detail: "Per-user token costs accumulate silently. By the time the bill lands, the sprint is over and the budget conversation is already awkward.",
+    },
+    {
+      num: "03",
+      icon: "📄",
+      headline: "Policies live in Notion, not at runtime",
+      detail: "You have an AI usage policy. It exists in a doc. It is not enforced at the moment an agent actually runs. That is the only moment that matters.",
+    },
+    {
+      num: "04",
+      icon: "🔁",
+      headline: "Every automation is a one-off",
+      detail: "PR review prompts, security scans, release notes. Each lives as a private script in someone's terminal. They drift, they break, and they leave when that person does.",
+    },
+  ]
+  return (
+    <section className="bg-stone-900 py-24 px-6">
+      <div className="max-w-5xl mx-auto">
+        <p className="text-xs font-semibold uppercase tracking-widest text-indigo-400 mb-4">The Problem</p>
+        <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tight leading-tight mb-4 max-w-3xl">
+          AI agents ship code. Nobody sees what they actually did.
+        </h2>
+        <p className="text-stone-400 leading-relaxed mb-12 max-w-2xl">
+          Your team is already using Copilot, Claude, Cursor, and Codex. But when something breaks, there&apos;s no trail, no policy, no audit log, no budget control.
+        </p>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {problems.map(p => (
+            <div key={p.num} className="bg-white/5 border border-white/8 rounded-2xl p-5 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <span className="text-2xl">{p.icon}</span>
+                <span className="text-xs font-mono font-bold text-stone-600">{p.num}</span>
+              </div>
+              <h3 className="text-sm font-bold text-white leading-snug">{p.headline}</h3>
+              <p className="text-xs text-stone-400 leading-relaxed">{p.detail}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── Two Lanes ────────────────────────────────────────────────────────── */
+
+function TwoLanesSection() {
+  return (
+    <section className="py-24 px-6 bg-white">
+      <div className="max-w-5xl mx-auto">
+        <div className="text-center mb-14">
+          <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500 mb-3">The solution</p>
+          <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight mb-4">
+            Two problems. One platform.
+          </h2>
+          <p className="text-stone-500 max-w-xl mx-auto leading-relaxed">
+            Conduct ships both layers: automate the work, govern the risk. Your team moves fast with a safety net under every agent.
+          </p>
+        </div>
+        <div className="grid md:grid-cols-2 gap-5">
+
+          {/* Automate — indigo/light */}
+          <div className="rounded-2xl bg-indigo-50 border border-indigo-100 p-8 flex flex-col gap-5">
+            <span className="inline-flex px-3 py-1 rounded-full bg-indigo-600 text-white text-xs font-bold uppercase tracking-wider w-fit">
+              ⚡ Automate
+            </span>
+            <div>
+              <h3 className="text-2xl font-bold text-stone-900 tracking-tight mb-2">Ship faster with agent playbooks</h3>
+              <p className="text-stone-600 leading-relaxed text-sm">
+                22 built-in playbooks cover every engineering workflow: PR review, security scanning, release notes, incident response. Install one in under a minute.
+              </p>
+            </div>
+            <ul className="space-y-2.5 flex-1">
+              {[
+                "PR review · autopilot fix · security scan",
+                "CI failure triage · flaky test detection",
+                "Release notes · postmortem drafter · docs drift",
+                "YAML you own, no vendor lock-in",
+                "Runs on Claude, GPT-4.1, or Gemini",
+              ].map(f => (
+                <li key={f} className="flex items-center gap-2.5 text-sm text-stone-700">
+                  <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">✓</span>
+                  {f}
+                </li>
+              ))}
+            </ul>
+            <a href="/marketplace" className="mt-auto rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors text-center">
+              Browse playbooks →
+            </a>
+          </div>
+
+          {/* Guard — dark */}
+          <div className="rounded-2xl bg-stone-900 border border-stone-800 p-8 flex flex-col gap-5">
+            <span className="inline-flex px-3 py-1 rounded-full bg-white/10 text-stone-300 text-xs font-bold uppercase tracking-wider w-fit">
+              🛡️ Guard
+            </span>
+            <div>
+              <h3 className="text-2xl font-bold text-white tracking-tight mb-2">Govern every agent at runtime</h3>
+              <p className="text-stone-400 leading-relaxed text-sm">
+                Real-time policy enforcement, per-developer spend limits, and a full audit trail applied at the moment the agent runs, not after.
+              </p>
+            </div>
+            <ul className="space-y-2.5 flex-1">
+              {[
+                "Per-user monthly spend limits with auto-block",
+                "OWASP Top 10 policy pack, enabled by default",
+                "Full audit log: who ran what, when, and why",
+                "Slack alerts on policy violations or budget spikes",
+                "DORA metrics · cost analytics · agent scorecards",
+              ].map(f => (
+                <li key={f} className="flex items-center gap-2.5 text-sm text-stone-300">
+                  <span className="w-5 h-5 rounded-full bg-white/15 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">✓</span>
+                  {f}
+                </li>
+              ))}
+            </ul>
+            <a href="/guard" className="mt-auto rounded-xl border border-white/20 text-white px-6 py-3 text-sm font-semibold hover:bg-white/10 transition-colors text-center">
+              Explore Guard →
+            </a>
+          </div>
+
+        </div>
+      </div>
+    </section>
+  )
+}
+
 /* ─── Governance Narrative ─────────────────────────────────────────────── */
 
 function GovernanceNarrativeSection() {
@@ -225,16 +368,63 @@ function GovernanceNarrativeSection() {
       badgeColor: "bg-amber-500",
     },
   ]
+
+  const kpis = [
+    { value: "$4,170", label: "AI spend", color: "text-indigo-600" },
+    { value: "6", label: "Deploys", color: "text-violet-600" },
+    { value: "589", label: "PII events", color: "text-red-500" },
+    { value: "$235", label: "Saved", color: "text-emerald-600" },
+  ]
+
   return (
     <section className="py-24 px-6 bg-white border-b border-stone-100">
       <div className="max-w-5xl mx-auto">
-        <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500 mb-4">18 days of real production data</p>
+        <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500 mb-4">What governance actually tells you</p>
         <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight leading-tight mb-4 max-w-2xl">
-          In 18 days of normal development, AI made 6 attempts to touch production and exposed credentials 971 times in a single day.
+          Every AI session, explained in plain English.
         </h2>
         <p className="text-stone-500 leading-relaxed mb-12 max-w-2xl">
-          The developer didn&apos;t notice any of it. Guard did.
+          Guard watches every tool call across every AI session. At the end of each day, it surfaces one sentence that tells your team what happened, what was blocked, and what it cost.
         </p>
+
+        {/* AI Narrative Card */}
+        <div className="rounded-2xl border border-stone-200 bg-white p-6 mb-8 shadow-sm">
+          {/* Card header */}
+          <div className="flex items-center justify-between mb-4 pb-4 border-b border-stone-100">
+            <div className="flex items-center gap-2">
+              <span className="text-indigo-600 font-bold">✦</span>
+              <span className="text-xs font-semibold text-stone-500">Guard · AI Narrative</span>
+              <span className="text-xs text-stone-400">sudhi@b2bsphere.com</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+              <span className="text-xs font-semibold text-emerald-600">Live</span>
+            </div>
+          </div>
+
+          {/* Narrative text */}
+          <p className="text-sm text-stone-700 leading-relaxed mb-6">
+            You spent $245/day on AI this period across claude-code, codex, and cursor. Guard intercepted 6 production deploys before they ran unreviewed, warned on 2 destructive commands, and screened 589 events for PII before they reached any LLM. Claude Code dominates at 96% of total spend. RTK and Booster offset $235 — 5.6% back.
+          </p>
+
+          {/* KPIs */}
+          <div className="grid grid-cols-4 gap-4 mb-4">
+            {kpis.map(k => (
+              <div key={k.label} className="text-center">
+                <p className={`text-2xl font-black tracking-tight ${k.color}`}>{k.value}</p>
+                <p className="text-xs text-stone-400 mt-0.5">{k.label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Card footer */}
+          <div className="pt-4 border-t border-stone-100 flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+            <span className="text-[10px] text-stone-400">Generated Jun 19, 2026 · 5,985 events · 25 sessions</span>
+          </div>
+        </div>
+
+        {/* Incident cards */}
         <div className="grid md:grid-cols-3 gap-5 mb-12">
           {incidents.map(inc => (
             <div key={inc.rule} className="rounded-2xl border border-stone-200 p-6 flex flex-col gap-3 hover:border-stone-300 hover:shadow-sm transition-all">
@@ -249,6 +439,7 @@ function GovernanceNarrativeSection() {
             </div>
           ))}
         </div>
+
         <div className="rounded-2xl bg-indigo-50 border border-indigo-100 px-8 py-6 flex flex-col sm:flex-row items-start sm:items-center gap-4">
           <div className="flex-1">
             <p className="text-sm font-semibold text-stone-900 mb-1">
@@ -271,222 +462,13 @@ function GovernanceNarrativeSection() {
   )
 }
 
-/* ─── Problem ──────────────────────────────────────────────────────────── */
-
-function ProblemSection() {
-  const symptoms = [
-    { icon: "🔑", text: "Developers paste API keys and credentials into AI prompts — nobody knows until an incident." },
-    { icon: "📊", text: "Finance asks what AI is costing the team. Engineering leadership has no answer." },
-    { icon: "🔍", text: "Security can't audit AI sessions. Compliance asks questions nobody can answer." },
-    { icon: "🤖", text: "AI agents run workflows without policy enforcement. No audit trail. No controls." },
-    { icon: "🛡️", text: "Vulnerabilities ship in AI-generated code because security review happens too late." },
-  ]
-  return (
-    <section className="bg-stone-900 py-24 px-6">
-      <div className="max-w-5xl mx-auto">
-        <p className="text-xs font-semibold uppercase tracking-widest text-indigo-400 mb-4">The Problem</p>
-        <div className="grid md:grid-cols-2 gap-12 items-start">
-          <div>
-            <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tight leading-tight mb-6">
-              AI tools are everywhere in engineering.<br />Nobody owns what they do.
-            </h2>
-            <p className="text-stone-400 leading-relaxed mb-4">
-              Claude Code. Cursor. Copilot. Codex. Your team is using all of them — every day — without controls, visibility, or an audit trail.
-            </p>
-            <p className="text-stone-400 leading-relaxed mb-4">
-              <span className="text-white font-semibold">Governance was supposed to solve this.</span> Instead it became documentation — policies nobody reads and reviews nobody enforces.
-            </p>
-            <p className="text-stone-400 leading-relaxed">
-              Conduct makes governance infrastructure. Enforcement that runs at the same layer as your AI tools, not above them.
-            </p>
-          </div>
-          <div className="flex flex-col gap-3">
-            {symptoms.map((s, i) => (
-              <div key={i} className="flex items-start gap-3 bg-white/5 border border-white/8 rounded-xl px-4 py-3.5">
-                <span className="text-lg flex-shrink-0 mt-0.5">{s.icon}</span>
-                <span className="text-sm text-stone-300 leading-relaxed">{s.text}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </section>
-  )
-}
-
-/* ─── Solutions ────────────────────────────────────────────────────────── */
-
-const solutions = [
-  {
-    icon: "🛡️",
-    iconBg: "bg-indigo-50",
-    label: "Conduct Guard",
-    title: "Protect Every Developer Session",
-    desc: "Real-time policy enforcement on every AI session. Blocks risky actions before they execute. Logs every tool call. Tracks spend across your entire team.",
-    pain: "A developer pasted a production API key into Claude. It reached the model, the log, and the audit trail.",
-    outcome: "Blocked before it hit the LLM. Redacted from the audit log. Security notified automatically.",
-    href: "/solutions#guard",
-    cta: "See how Guard works",
-  },
-  {
-    icon: "🔒",
-    iconBg: "bg-emerald-50",
-    label: "Secure",
-    title: "Security That Runs Itself",
-    desc: "Every PR scanned. Every vulnerability flagged before it merges. Security policies enforced continuously — not as a gate, but as a layer built into how code gets reviewed.",
-    pain: "A hardcoded password sat in the repo for 14 months. Three security reviews missed it.",
-    outcome: "Caught on the next commit. Flagged with file, line, and remediation. No human review needed.",
-    href: "/solutions#secure",
-    cta: "See how Secure works",
-  },
-  {
-    icon: "⚡",
-    iconBg: "bg-amber-50",
-    label: "Agentic Workflows",
-    title: "Workflows That Inherit Your Governance",
-    desc: "AI agents built as YAML playbooks — triggered by the events that matter, with Guard and security policies enforced on every action. No workflow escapes governance.",
-    pain: "A GitHub issue was filed at 2am. The fix needed to ship before market open. Nobody was on call.",
-    outcome: "PR open by 9am. Engineer woke up to a fix ready for review — no pages, no lost sleep.",
-    href: "/solutions#workflows",
-    cta: "See how Workflows work",
-  },
-]
-
-function SolutionsSection() {
-  return (
-    <section className="py-24 px-6 bg-stone-50">
-      <div className="max-w-5xl mx-auto">
-        <div className="text-center mb-14">
-          <p className="text-xs font-semibold uppercase tracking-widest text-stone-400 mb-3">How It Works</p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight mb-4">Three solutions. One governance platform.</h2>
-          <p className="text-stone-500 max-w-xl mx-auto leading-relaxed">
-            Guard protects your developer sessions. Secure enforces policy in your code.
-            Workflows automate your engineering processes — with governance baked into every run.
-          </p>
-        </div>
-        <div className="grid md:grid-cols-3 gap-5">
-          {solutions.map((s) => (
-            <div key={s.label} className="bg-white rounded-2xl border border-stone-200 p-6 flex flex-col gap-4 hover:border-stone-300 hover:shadow-md transition-all">
-              <div className={`w-11 h-11 rounded-xl ${s.iconBg} flex items-center justify-center text-xl`}>
-                {s.icon}
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-1">{s.label}</p>
-                <h3 className="text-lg font-bold text-stone-900 tracking-tight leading-snug">{s.title}</h3>
-              </div>
-              <p className="text-sm text-stone-500 leading-relaxed">{s.desc}</p>
-              <div className="bg-stone-50 rounded-xl border border-stone-100 p-4 flex flex-col gap-2 mt-auto">
-                <p className="text-xs text-stone-400 leading-relaxed">
-                  <span className="font-semibold text-stone-500">⚠ Pain: </span>{s.pain}
-                </p>
-                <p className="text-xs text-emerald-700 font-medium leading-relaxed">
-                  <span className="font-semibold">✓ Outcome: </span>{s.outcome}
-                </p>
-              </div>
-              <a href={s.href} className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">
-                {s.cta} →
-              </a>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
-
-/* ─── Two Tracks ───────────────────────────────────────────────────────── */
-
-function TwoTracksSection() {
-  return (
-    <section className="py-24 px-6 bg-white">
-      <div className="max-w-5xl mx-auto">
-        <div className="text-center mb-14">
-          <p className="text-xs font-semibold uppercase tracking-widest text-stone-400 mb-3">Two Ways to Work With Us</p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight mb-4">
-            Platform or partnership.<br />You choose how.
-          </h2>
-          <p className="text-stone-500 max-w-xl mx-auto leading-relaxed">
-            In the AI era, software alone is not enough. We offer the platform for teams that move fast —
-            and the expertise for organizations that need governance done right.
-          </p>
-        </div>
-        <div className="grid md:grid-cols-2 gap-5">
-
-          {/* Platform */}
-          <div className="rounded-2xl bg-indigo-50 border border-indigo-100 p-8 flex flex-col gap-5">
-            <span className="inline-flex px-3 py-1 rounded-full bg-indigo-600 text-white text-xs font-bold uppercase tracking-wider w-fit">
-              Platform
-            </span>
-            <div>
-              <h3 className="text-2xl font-bold text-stone-900 tracking-tight mb-2">Use the platform yourself.</h3>
-              <p className="text-stone-600 leading-relaxed text-sm">
-                Install in minutes. Connect your team's AI tools. Policies live immediately.
-                Start with the free tier — no infrastructure changes required.
-              </p>
-            </div>
-            <ul className="space-y-2.5">
-              {[
-                "Deploy Guard policies in one command",
-                "22+ production-ready workflow playbooks",
-                "Security scanning on every PR — automatic",
-                "Full audit log from day one",
-                "Free tier for up to 5 developers",
-              ].map(f => (
-                <li key={f} className="flex items-center gap-2.5 text-sm text-stone-700">
-                  <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">✓</span>
-                  {f}
-                </li>
-              ))}
-            </ul>
-            <a href="/sign-up" className="mt-auto rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors text-center">
-              Start Free — No Credit Card
-            </a>
-          </div>
-
-          {/* Solutions */}
-          <div className="rounded-2xl bg-stone-900 border border-stone-800 p-8 flex flex-col gap-5">
-            <span className="inline-flex px-3 py-1 rounded-full bg-white/10 text-stone-300 text-xs font-bold uppercase tracking-wider w-fit">
-              Solutions
-            </span>
-            <div>
-              <h3 className="text-2xl font-bold text-white tracking-tight mb-2">Let us run it for you.</h3>
-              <p className="text-stone-400 leading-relaxed text-sm">
-                We scope your AI governance posture, implement policies, build custom workflows for your
-                engineering processes, and operate the governance layer for you.
-              </p>
-            </div>
-            <ul className="space-y-2.5">
-              {[
-                "AI governance audit and policy design",
-                "Guard deployment across your team",
-                "Custom workflow builds for your processes",
-                "Ongoing monitoring and tuning",
-                "Dedicated engineering point of contact",
-              ].map(f => (
-                <li key={f} className="flex items-center gap-2.5 text-sm text-stone-300">
-                  <span className="w-5 h-5 rounded-full bg-white/15 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">✓</span>
-                  {f}
-                </li>
-              ))}
-            </ul>
-            <a href="mailto:hello@conductai.ai" className="mt-auto rounded-xl border border-white/20 text-white px-6 py-3 text-sm font-semibold hover:bg-white/10 transition-colors text-center">
-              Book a Discovery Call
-            </a>
-          </div>
-
-        </div>
-      </div>
-    </section>
-  )
-}
-
 /* ─── Personas ─────────────────────────────────────────────────────────── */
 
 const personas = [
   {
     role: "Engineering Leaders",
     title: "Visibility and control — without slowing your team down.",
-    desc: "You're responsible for how AI gets used across your engineering organization. Right now you have no visibility and no controls. Conduct changes that without adding process overhead.",
+    desc: "You're responsible for how AI gets used across your engineering organisation. Right now you have no visibility and no controls. Conduct changes that without adding process overhead.",
     outcomes: [
       "See every AI tool your team uses — in one dashboard",
       "Know what AI is costing you, by person and by project",
@@ -523,7 +505,7 @@ function PersonasSection() {
     <section className="py-24 px-6 bg-stone-50">
       <div className="max-w-5xl mx-auto">
         <div className="text-center mb-14">
-          <p className="text-xs font-semibold uppercase tracking-widest text-stone-400 mb-3">Who It's For</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-stone-400 mb-3">Built for the people responsible for how AI gets used.</p>
           <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight">
             Built for the people responsible<br />for how AI gets used.
           </h2>
@@ -565,7 +547,7 @@ function FinalCTASection() {
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <a href="/sign-up" className="rounded-xl bg-white text-indigo-600 px-7 py-3.5 text-base font-bold hover:bg-indigo-50 transition-colors w-full sm:w-auto text-center">
-            Start Free — No Credit Card
+            Start Free — See It Yourself
           </a>
           <a href="mailto:hello@conductai.ai" className="rounded-xl border border-white/40 text-white px-7 py-3.5 text-base font-semibold hover:bg-white/10 transition-colors w-full sm:w-auto text-center">
             Book a Discovery Call
@@ -590,10 +572,10 @@ function PageFooter() {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
             {[
-              { heading: "Solutions", links: [["Conduct Guard", "/solutions#guard"], ["Secure", "/solutions#secure"], ["Agentic Workflows", "/solutions#workflows"]] },
-              { heading: "Company", links: [["About", "/about"], ["Partners", "/partners"], ["Blog", "/blog"]] },
-              { heading: "Resources", links: [["Docs", "/docs"], ["Playbooks", "/marketplace"], ["GitHub", "https://github.com/sseshachala/conductai"]] },
-              { heading: "Legal", links: [["Privacy", "/privacy"], ["Terms", "/terms"]] },
+              { heading: "Solutions", links: [["Conduct Guard", "/solutions#guard"], ["Secure", "/solutions#secure"], ["Agentic Workflows", "/solutions#workflows"]] as [string, string][] },
+              { heading: "Company", links: [["About", "/about"], ["Partners", "/partners"], ["Blog", "/blog"]] as [string, string][] },
+              { heading: "Resources", links: [["Docs", "/docs"], ["Playbooks", "/marketplace"], ["GitHub", "https://github.com/sseshachala/conductai"]] as [string, string][] },
+              { heading: "Legal", links: [["Privacy", "/privacy"], ["Terms", "/terms"]] as [string, string][] },
             ].map(col => (
               <div key={col.heading}>
                 <p className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-3">{col.heading}</p>
