@@ -307,6 +307,29 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView, runs])
 
+  // Poll live run state for the active (non-dry) run — feeds Definition panel
+  useEffect(() => {
+    if (!activeRunId) return
+    const terminal = new Set(["succeeded", "failed", "cancelled"])
+    let stopped = false
+    const poll = async () => {
+      if (stopped) return
+      try {
+        const headers = await authHeaders(getToken, wsId)
+        const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${activeRunId}`, { headers })
+        if (!r.ok || stopped) return
+        const run = await r.json()
+        setLastRunState(run.state ?? {})
+        setLastRunSummary({ status: run.status, created_at: run.created_at, run_id: run.id })
+        if (terminal.has(run.status)) stopped = true
+      } catch {}
+    }
+    poll()
+    const interval = setInterval(poll, 2000)
+    return () => { stopped = true; clearInterval(interval) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRunId])
+
   // Fetch last run state when Definition tab is active
   useEffect(() => {
     if (activeView !== "definition" || !workflowId) return
@@ -813,6 +836,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
       setActiveRunId(run.id)
       setDrawerVisible(true)
       setRunning("idle")
+      setLastRunSummary({ status: "pending", created_at: new Date().toISOString(), run_id: run.id })
+      setActiveView("definition")
     } catch (e) {
       if (isMountedRef.current) {
         setRunning("idle")
@@ -852,6 +877,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
       setActiveRunId(run.id)
       setDrawerVisible(true)
       setRunning("idle")
+      setLastRunSummary({ status: "pending", created_at: new Date().toISOString(), run_id: run.id })
+      setActiveView("definition")
     }
   }, [workflowId, router, STORAGE_KEY])
 
