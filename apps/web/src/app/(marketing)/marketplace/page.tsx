@@ -470,8 +470,11 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
       }
       if (selectedProjectId) body.project_id = selectedProjectId
       if (selectedEnvId) body.environment_id = selectedEnvId
-      if (needsRepo && selectedRepo) body.repo = selectedRepo
-      if (Object.keys(inputValues).length > 0) body.inputs = inputValues
+      // New flow: repo is a normal input — declared in playbook YAML, substituted into the trigger.
+      // Backend keeps body.repo as a backward-compat alias for old clients.
+      const mergedInputs: Record<string, unknown> = { ...inputValues }
+      if (needsRepo && selectedRepo) mergedInputs.repo = selectedRepo
+      if (Object.keys(mergedInputs).length > 0) body.inputs = mergedInputs
 
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, {
         method: "POST",
@@ -935,7 +938,11 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                         {reposError}
                       </div>
                     )}
-                    {repos.length > 0 ? (
+                    {repos.length === 1 ? (
+                      <div className="text-xs text-stone-700 bg-stone-50 border border-stone-200 rounded-lg px-3 py-2">
+                        Selected <span className="font-medium">{repos[0].full_name}</span> — the only repo your GitHub token can access.
+                      </div>
+                    ) : repos.length > 1 ? (
                       <select
                         value={selectedRepo}
                         onChange={e => setSelectedRepo(e.target.value)}

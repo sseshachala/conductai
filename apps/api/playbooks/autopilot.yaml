@@ -16,6 +16,12 @@ description: >
   inline retry, and opens the PR automatically.
 
 inputs:
+  repo:
+    label: GitHub repository
+    type: string
+    required_at: run
+    placeholder: owner/repo
+    hint: Auto-detected from your GitHub access
   trigger_label:
     label: Trigger label
     default: autopilot ready
@@ -54,6 +60,7 @@ inputs:
 on:
   github.issue_labeled:
     integration: github
+    repo_allowlist: "{{inputs.repo}}"
     labels:
       - "{{inputs.trigger_label}}"
     label_mode: one_of
