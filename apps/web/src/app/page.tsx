@@ -406,7 +406,7 @@ function GovernanceNarrativeSection() {
             <div className="flex items-center gap-2">
               <span className="text-indigo-600 font-bold">✦</span>
               <span className="text-xs font-semibold text-stone-500">Guard · AI Narrative</span>
-              <span className="text-xs text-stone-400">sudhi@b2bsphere.com</span>
+              <span className="text-xs text-stone-400">dev@yourteam.com</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
