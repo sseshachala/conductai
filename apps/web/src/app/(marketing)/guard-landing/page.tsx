@@ -28,8 +28,11 @@ function HeroSection() {
         Your team is already using AI agents.<br />
         <span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">Guard is how you govern them.</span>
       </h1>
-      <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed mb-8">
+      <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed mb-4">
         Most governance stops at day one. Guard gets smarter every session — learning your codebase, your team&apos;s patterns, and your risk profile over time.
+      </p>
+      <p className="text-base text-indigo-600 italic max-w-2xl mx-auto leading-relaxed mb-8">
+        GitHub gives the CISO a setting. ConductGuard gives them enforcement.
       </p>
       <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
         <a href="/sign-up" className="rounded-xl bg-stone-900 text-white px-7 py-3.5 text-base font-semibold hover:bg-stone-700 transition-colors w-full sm:w-auto text-center">

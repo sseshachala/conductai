@@ -81,13 +81,6 @@ function ProductsDropdown() {
               <p className="text-xs text-stone-400">Terminal governance + token savings</p>
             </div>
           </a>
-          <a href="/sdd" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span>📐</span>
-            <div>
-              <p className="font-semibold">Spec-Driven Dev</p>
-              <p className="text-xs text-stone-400">Ship from a spec, not a vibe</p>
-            </div>
-          </a>
         </div>
       </div>
     </div>
@@ -288,6 +281,9 @@ function TwoLanesSection() {
             <span className="inline-flex px-3 py-1 rounded-full bg-indigo-600 text-white text-xs font-bold uppercase tracking-wider w-fit">
               ⚡ Automate
             </span>
+            <a href="/sdd" className="flex items-center gap-2 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">
+              <span>📐</span> Start with a spec →
+            </a>
             <div>
               <h3 className="text-2xl font-bold text-stone-900 tracking-tight mb-2">Ship faster with agent templates</h3>
               <p className="text-stone-600 leading-relaxed text-sm">
@@ -577,7 +573,7 @@ function FinalCTASection() {
           Your team is already<br />using AI agents.<br />Conduct is how you<br />run them and govern them.
         </h2>
         <p className="text-indigo-200 text-lg leading-relaxed mb-10 max-w-xl mx-auto">
-          One platform. Two problems solved.
+          GitHub gives the CISO a setting. ConductGuard gives them enforcement.
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <a href="/sign-up" className="rounded-xl bg-white text-indigo-600 px-7 py-3.5 text-base font-bold hover:bg-indigo-50 transition-colors w-full sm:w-auto text-center">

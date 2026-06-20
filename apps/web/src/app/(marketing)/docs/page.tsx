@@ -717,6 +717,14 @@ function TabGuard() {
     <div className="space-y-16">
       <section id="guard">
         <SectionHeading id="guard">ConductGuard — Overview</SectionHeading>
+        <div className="rounded-lg border-l-4 border-indigo-500 bg-indigo-50 px-4 py-3 mb-6">
+          <p className="text-sm font-semibold text-indigo-900 leading-snug">
+            GitHub gives the CISO a setting. ConductGuard gives them enforcement.
+          </p>
+          <p className="text-xs text-indigo-700 mt-1 leading-relaxed">
+            Most AI tool governance is a toggle the user can flip off. Guard enforces policy at every tool call, across every AI client, with admin-locked rules the developer cannot override.
+          </p>
+        </div>
         <p className="text-stone-500 text-sm mb-6 leading-relaxed">
           ConductGuard is the team policy layer for AI tools. It has two enforcement surfaces:
         </p>
