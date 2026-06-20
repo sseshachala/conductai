@@ -206,7 +206,7 @@ function GitHubWebhookStatusPanel({
       <div className={`rounded-md border px-2.5 py-2 text-xs mt-1.5 flex items-center justify-between gap-3 ${registered ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
         <div>
           <p className={`font-semibold ${registered ? "text-emerald-700" : "text-amber-700"}`}>
-            {registered ? `✓ Registered on ${hookRepo}` : "Not registered — GitHub won't send events"}
+            {registered ? `✓ Active on ${hookRepo}` : "Not active — click Activate to start receiving events"}
           </p>
           {sharedWith && <p className="text-stone-500 mt-0.5">Shared with &ldquo;{sharedWith}&rdquo;</p>}
           {err && <p className="text-red-600 mt-0.5">{err}</p>}
@@ -215,13 +215,13 @@ function GitHubWebhookStatusPanel({
           {!registered && (
             <button onClick={register} disabled={busy}
               className="rounded bg-amber-600 text-white px-2.5 py-1 font-medium hover:bg-amber-700 disabled:opacity-50 transition-colors text-[10px]">
-              {busy ? "Registering…" : "Register"}
+              {busy ? "Activating…" : "Activate"}
             </button>
           )}
           {registered && (
             <button onClick={register} disabled={busy}
               className="rounded bg-emerald-600 text-white px-2.5 py-1 font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors text-[10px]">
-              {busy ? "Updating…" : "Update"}
+              {busy ? "Updating…" : "Re-activate"}
             </button>
           )}
         </div>
@@ -234,13 +234,13 @@ function GitHubWebhookStatusPanel({
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className={`font-semibold ${registered ? "text-emerald-800" : "text-amber-800"}`}>
-            {registered ? `✓ Webhook registered` : "Webhook not registered"}
+            {registered ? `✓ Active` : "Not active"}
           </p>
           <p className={`mt-0.5 ${registered ? "text-emerald-700" : "text-amber-700"}`}>
             {registered
               ? <span>on <span className="font-mono">{hookRepo}</span> — GitHub sends events here automatically</span>
               : hookRepo
-              ? <span>Configure once you're ready — real GitHub events won't arrive until registered</span>
+              ? <span>Click Activate when ready — real GitHub events won't arrive until you do</span>
               : <span>Set a repository in the trigger config first</span>
             }
           </p>
@@ -251,7 +251,7 @@ function GitHubWebhookStatusPanel({
           {!registered && hookRepo && (
             <button onClick={register} disabled={busy}
               className="rounded-md bg-amber-600 text-white px-3 py-1.5 font-medium hover:bg-amber-700 disabled:opacity-50 transition-colors text-xs">
-              {busy ? "Registering…" : "Register Webhook"}
+              {busy ? "Activating…" : "Activate"}
             </button>
           )}
           {registered && (
