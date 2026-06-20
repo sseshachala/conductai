@@ -50,14 +50,36 @@ class WorkflowValidationError(ValueError):
 # inside blocks via ``{{params.<name>}}``.
 # ---------------------------------------------------------------------------
 class WorkflowParam(BaseModel):
-    """A typed input the user supplies at run time (or via webhook payload)."""
+    """A typed input the user supplies at install or run time.
 
-    type: Literal["string", "number", "boolean"] = "string"
-    required: bool = False
+    Harness v1 contract: every playbook declares its inputs here. `required_at` controls
+    when the input must be present: "install" gates the install modal, "run" gates the
+    trigger endpoint + pre-run modal. None = optional (use default if missing).
+    """
+
+    type: Literal["string", "number", "boolean", "select", "text"] = "string"
+    label: str | None = None
     default: Any | None = None
     description: str | None = None
+    hint: str | None = None
+    placeholder: str | None = None
+    options: list[Any] | None = None  # for type: select
+
+    # Validation gating
+    required_at: Literal["install", "run", "dry_run"] | None = None
+    # Legacy field — true ⇔ required_at="run". Kept for backward compatibility.
+    required: bool = False
 
     model_config = ConfigDict(extra="forbid")
+
+    def is_required_at(self, phase: str) -> bool:
+        """True if this input must be present at the given phase."""
+        if self.required_at == phase:
+            return True
+        # Legacy boolean: required=true means required at run
+        if self.required and phase == "run":
+            return True
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -300,8 +322,8 @@ class Workflow(BaseModel):
     schema_version: str | None = None  # opt-in JSON Schema validation (#565)
     description: str | None = None
 
-    params: dict[str, WorkflowParam] = Field(default_factory=dict)
-    inputs: dict[str, Any] = Field(default_factory=dict)  # install-time config — declared here so extra="forbid" doesn't reject it
+    params: dict[str, WorkflowParam] = Field(default_factory=dict)  # legacy alias for `inputs`
+    inputs: dict[str, WorkflowParam] = Field(default_factory=dict)  # typed input contract (#741)
 
     # YAML key is the event name, e.g. ``github.issue_labeled``. We use an
     # alias so authors can write ``on:`` even though ``on`` is a Python keyword.

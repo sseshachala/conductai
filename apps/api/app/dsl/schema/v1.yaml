@@ -39,7 +39,16 @@ properties:
   params:
     additionalProperties:
       additionalProperties: false
-      description: A typed input the user supplies at run time (or via webhook payload).
+      description: 'A typed input the user supplies at install or run time.
+
+
+        Harness v1 contract: every playbook declares its inputs here. `required_at`
+        controls
+
+        when the input must be present: "install" gates the install modal, "run" gates
+        the
+
+        trigger endpoint + pre-run modal. None = optional (use default if missing).'
       properties:
         type:
           default: string
@@ -47,12 +56,16 @@ properties:
           - string
           - number
           - boolean
+          - select
+          - text
           title: Type
           type: string
-        required:
-          default: false
-          title: Required
-          type: boolean
+        label:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Label
         default:
           anyOf:
           - {}
@@ -65,11 +78,120 @@ properties:
           - type: 'null'
           default: null
           title: Description
+        hint:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Hint
+        placeholder:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Placeholder
+        options:
+          anyOf:
+          - items: {}
+            type: array
+          - type: 'null'
+          default: null
+          title: Options
+        required_at:
+          anyOf:
+          - enum:
+            - install
+            - run
+            - dry_run
+            type: string
+          - type: 'null'
+          default: null
+          title: Required At
+        required:
+          default: false
+          title: Required
+          type: boolean
       title: WorkflowParam
       type: object
     title: Params
     type: object
   inputs:
+    additionalProperties:
+      additionalProperties: false
+      description: 'A typed input the user supplies at install or run time.
+
+
+        Harness v1 contract: every playbook declares its inputs here. `required_at`
+        controls
+
+        when the input must be present: "install" gates the install modal, "run" gates
+        the
+
+        trigger endpoint + pre-run modal. None = optional (use default if missing).'
+      properties:
+        type:
+          default: string
+          enum:
+          - string
+          - number
+          - boolean
+          - select
+          - text
+          title: Type
+          type: string
+        label:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Label
+        default:
+          anyOf:
+          - {}
+          - type: 'null'
+          default: null
+          title: Default
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Description
+        hint:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Hint
+        placeholder:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Placeholder
+        options:
+          anyOf:
+          - items: {}
+            type: array
+          - type: 'null'
+          default: null
+          title: Options
+        required_at:
+          anyOf:
+          - enum:
+            - install
+            - run
+            - dry_run
+            type: string
+          - type: 'null'
+          default: null
+          title: Required At
+        required:
+          default: false
+          title: Required
+          type: boolean
+      title: WorkflowParam
+      type: object
     title: Inputs
     type: object
   'on':

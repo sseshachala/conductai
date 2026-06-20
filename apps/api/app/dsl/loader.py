@@ -492,7 +492,9 @@ def yaml_to_graph(workflow: Workflow) -> dict[str, Any]:
 
     result: dict[str, Any] = {"nodes": nodes, "edges": edges}
     if workflow.inputs:
-        result["inputs_spec"] = workflow.inputs
+        # Serialize WorkflowParam → plain dict so downstream consumers (executor, frontend)
+        # can read fields as JSON without Pydantic semantics.
+        result["inputs_spec"] = {k: v.model_dump(exclude_none=True) for k, v in workflow.inputs.items()}
     return result
 
 
