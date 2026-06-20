@@ -14,7 +14,7 @@ interface McpServer {
   environment_id: string | null
   name: string
   url: string
-  transport: "sse" | "http" | "stdio"
+  transport: "sse" | "http" | "stdio" | "auto"
   has_auth: boolean
   is_system: boolean
   created_at: string
@@ -29,7 +29,7 @@ interface FormState {
   provider: string
   name: string
   url: string
-  transport: "sse" | "http" | "stdio"
+  transport: "sse" | "http" | "stdio" | "auto"
   auth_token: string
   environment_id: string
 }
@@ -38,12 +38,13 @@ const EMPTY_FORM: FormState = {
   provider: "custom",
   name: "",
   url: "",
-  transport: "sse",
+  transport: "auto",
   auth_token: "",
   environment_id: "",
 }
 
 const TRANSPORT_LABELS: Record<string, string> = {
+  auto: "Auto",
   sse: "SSE",
   http: "HTTP",
   stdio: "stdio",
@@ -111,7 +112,7 @@ function McpModal({
       ...prev,
       provider: p.value,
       url: p.serverUrl,
-      transport: p.transport === "auto" ? "sse" : p.transport,
+      transport: "auto",
       name: prev.name || p.label,
     }))
   }
@@ -222,19 +223,7 @@ function McpModal({
             />
           </div>
 
-          {/* Transport */}
-          <div>
-            <label style={labelStyle}>Transport</label>
-            <select
-              value={form.transport}
-              onChange={e => set("transport", e.target.value as FormState["transport"])}
-              style={inputStyle}
-            >
-              <option value="sse">SSE</option>
-              <option value="http">HTTP</option>
-              <option value="stdio">stdio</option>
-            </select>
-          </div>
+          {/* Transport — auto-detected (HTTP → SSE fallback). Hidden to avoid user error. */}
 
           {/* Auth token */}
           <div>

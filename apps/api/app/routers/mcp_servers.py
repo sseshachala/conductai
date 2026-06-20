@@ -23,7 +23,7 @@ router = APIRouter(prefix="/mcp-servers", tags=["mcp-servers"])
 class McpServerIn(BaseModel):
     name: str
     url: str
-    transport: str = "sse"  # sse | http | stdio
+    transport: str = "auto"  # auto | sse | http | stdio
     auth_token: Optional[str] = None
     environment_id: Optional[str] = None
 
