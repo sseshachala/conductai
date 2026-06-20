@@ -966,15 +966,7 @@ interface MCPTool {
   }
 }
 
-const MCP_PROVIDERS: { value: string; label: string; serverUrl: string; credentialKey: string; transport: string }[] = [
-  { value: "vercel",   label: "Vercel",   serverUrl: "https://mcp.vercel.com",          credentialKey: "VERCEL_TOKEN",    transport: "http" },
-  { value: "linear",   label: "Linear",   serverUrl: "https://mcp.linear.app/mcp",      credentialKey: "LINEAR_API_KEY",  transport: "http" },
-  { value: "railway",  label: "Railway",  serverUrl: "https://mcp.railway.com",         credentialKey: "RAILWAY_TOKEN",   transport: "http" },
-  { value: "jira",     label: "Jira",     serverUrl: "https://mcp.atlassian.com/mcp",   credentialKey: "JIRA_TOKEN",      transport: "http" },
-  { value: "github",   label: "GitHub",   serverUrl: "https://api.githubcopilot.com/mcp", credentialKey: "GITHUB_TOKEN",  transport: "http" },
-  { value: "slack",    label: "Slack",    serverUrl: "https://mcp.slack.com",           credentialKey: "SLACK_TOKEN",     transport: "sse"  },
-  { value: "custom",   label: "Custom",   serverUrl: "",                                credentialKey: "",                transport: "auto" },
-]
+// MCP_PROVIDERS sourced from shared registry — see lib/mcpProviders.ts
 
 function MCPBlockPanel({
   getToken,
@@ -995,11 +987,9 @@ function MCPBlockPanel({
   const [discoverErr, setDiscoverErr] = useState<string | null>(null)
   const [integrationServers, setIntegrationServers] = useState<{ id: string; name: string; url: string; transport: string }[]>([])
 
-  const provider      = (getNestedValue(blockData, "config.provider")      as string) || "custom"
-  const credentialKey = (getNestedValue(blockData, "config.credential_key") as string) || ""
-  const serverUrl     = (getNestedValue(blockData, "config.server_url")     as string) || ""
-  const transport     = (getNestedValue(blockData, "config.transport")      as string) || "auto"
-  const toolName      = (getNestedValue(blockData, "config.tool_name")      as string) || ""
+  const provider  = (getNestedValue(blockData, "config.provider")  as string) || ""
+  const transport = (getNestedValue(blockData, "config.transport") as string) || "auto"
+  const toolName  = (getNestedValue(blockData, "config.tool_name") as string) || ""
 
   // Fetch workspace MCP servers from Integrations
   useEffect(() => {
@@ -1014,31 +1004,16 @@ function MCPBlockPanel({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [environmentId])
 
-  const isCustom = provider === "custom"
   const selectedTool = tools.find(t => t.name === toolName) ?? null
   const paramProps   = selectedTool?.inputSchema?.properties ?? {}
   const requiredParams = new Set(selectedTool?.inputSchema?.required ?? [])
 
   function handleProviderChange(val: string) {
-    // Check workspace MCP servers first
     const ws = integrationServers.find(s => s.id === val)
-    if (ws) {
-      onChange("config.provider",       ws.id)
-      onChange("config.server_url",     ws.url)
-      onChange("config.credential_key", "")
-      onChange("config.transport",      ws.transport)
-      onChange("config.tool_name",      "")
-      setTools([])
-      setDiscoverErr(null)
-      return
-    }
-    const p = MCP_PROVIDERS.find(x => x.value === val)
-    if (!p) return
-    onChange("config.provider",       p.value)
-    onChange("config.server_url",     p.serverUrl)
-    onChange("config.credential_key", p.credentialKey)
-    onChange("config.transport",      p.transport)
-    onChange("config.tool_name",      "")
+    if (!ws) return
+    onChange("config.provider",  ws.id)
+    onChange("config.transport", ws.transport)
+    onChange("config.tool_name", "")
     setTools([])
     setDiscoverErr(null)
   }
@@ -1052,14 +1027,13 @@ function MCPBlockPanel({
   }
 
   async function discoverTools() {
-    const key = credentialKey.trim()
-    if (!key) { setDiscoverErr("Enter a credential key first."); return }
+    if (!provider) { setDiscoverErr("Select an MCP server first."); return }
     setDiscovering(true); setDiscoverErr(null)
     try {
       const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/mcp/tools`, {
         method: "POST",
         headers: await authHeaders(),
-        body: JSON.stringify({ credential_key: key, transport }),
+        body: JSON.stringify({ server_id: provider }),
       })
       const data = await r.json()
       if (!r.ok) { setDiscoverErr(data.detail || `HTTP ${r.status}`); return }
@@ -1081,58 +1055,25 @@ function MCPBlockPanel({
 
       {/* Provider */}
       <div>
-        <span className={sectionLabel}>Provider <span className="text-red-500">*</span></span>
-        <select
-          value={provider}
-          onChange={e => !isViewer && handleProviderChange(e.target.value)}
-          disabled={isViewer}
-          className={inputBase}
-        >
-          {integrationServers.length > 0 && (
-            <optgroup label="Workspace MCPs">
-              {integrationServers.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </optgroup>
-          )}
-          <optgroup label="Providers">
-            {MCP_PROVIDERS.map(p => (
-              <option key={p.value} value={p.value}>{p.label}</option>
-            ))}
-          </optgroup>
-        </select>
-      </div>
-
-      {/* Server URL — editable for custom, read-only for workspace/known providers */}
-      {(isCustom || serverUrl) && (
-        <div>
-          <span className={sectionLabel}>MCP Server URL <span className="text-red-500">*</span></span>
-          <input
-            type="text"
-            value={serverUrl}
-            onChange={e => !isViewer && isCustom && onChange("config.server_url", e.target.value)}
-            disabled={isViewer || !isCustom}
-            placeholder="https://my-mcp-server.com/mcp"
+        <span className={sectionLabel}>MCP Server <span className="text-red-500">*</span></span>
+        {integrationServers.length === 0 ? (
+          <div style={{ padding: "12px 16px", background: "var(--surface-2)", borderRadius: 8, fontSize: 13, color: "var(--text-3)" }}>
+            No MCP servers configured.{" "}
+            <a href="/integrations" style={{ color: "var(--accent)" }}>Add one in Integrations →</a>
+          </div>
+        ) : (
+          <select
+            value={provider}
+            onChange={e => !isViewer && handleProviderChange(e.target.value)}
+            disabled={isViewer}
             className={inputBase}
-            style={{ opacity: isCustom ? 1 : 0.7 }}
-          />
-        </div>
-      )}
-
-      {/* Credential key — always shown, pre-filled for known providers */}
-      <div>
-        <span className={sectionLabel}>Credential Key <span className="text-red-500">*</span></span>
-        <input
-          type="text"
-          value={credentialKey}
-          onChange={e => !isViewer && onChange("config.credential_key", e.target.value)}
-          disabled={isViewer}
-          placeholder={isCustom ? "MY_SERVICE_TOKEN" : credentialKey}
-          className={inputBase}
-        />
-        <p className="text-[10px] text-stone-400 mt-1">
-          Env var name from <a href="/settings/environments" className="underline hover:text-stone-600">Settings → Environments</a>
-        </p>
+          >
+            <option value="" disabled>Select a workspace MCP…</option>
+            {integrationServers.map(s => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* Discover */}
@@ -1140,7 +1081,7 @@ function MCPBlockPanel({
         <button
           type="button"
           onClick={discoverTools}
-          disabled={isViewer || discovering || !credentialKey}
+          disabled={isViewer || discovering || !provider}
           className="w-full rounded-lg border border-cyan-200 bg-cyan-50 text-cyan-700 text-xs font-semibold px-3 py-2 hover:bg-cyan-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {discovering ? "Discovering…" : "Discover tools"}
