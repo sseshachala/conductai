@@ -175,9 +175,8 @@ function PageHook() {
         One install ships the platform CLI, AI policy enforcement, and a context engine that cuts token usage by 60–90%.
       </p>
       <p className="text-sm text-stone-400">
-        <code className="font-mono bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded text-xs">conduct-cli</code> and{" "}
-        <code className="font-mono bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded text-xs">agent-booster</code> are the same package —{" "}
-        <code className="font-mono bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded text-xs">pip install agent-booster[full]</code> installs both.
+        <code className="font-mono bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded text-xs">conduct-cli</code> is the platform CLI.{" "}
+        <code className="font-mono bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded text-xs">agent-booster</code> is a companion that cuts token usage — install both, they work together.
       </p>
     </section>
   )
