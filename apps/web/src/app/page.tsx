@@ -174,21 +174,26 @@ function ToolsStripSection() {
 
 function ProofStripSection() {
   const stats = [
-    { value: "$4,170", label: "AI spend tracked in 18 days" },
-    { value: "6", label: "production deploys intercepted" },
-    { value: "589", label: "PII events screened" },
-    { value: "$235", label: "saved via RTK + Booster" },
+    { value: "$84K/year", label: "projected AI spend", source: "from $4,170 in 18 days" },
+    { value: "120/year", label: "prod deploy gates", source: "6 intercepted in 18 days" },
+    { value: "12,000/year", label: "PII events screened", source: "from 589 in 18 days" },
+    { value: "$4,700/year", label: "tooling savings", source: "from $235 in 18 days" },
   ]
   return (
-    <section className="bg-stone-950 border-y border-stone-800 py-5 px-6">
-      <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-center gap-x-12 gap-y-4">
-        <span className="text-xs font-semibold uppercase tracking-widest text-stone-500 mr-2">Real data · 18 days · 1 developer</span>
-        {stats.map(s => (
-          <div key={s.label} className="flex items-baseline gap-2">
-            <span className="text-xl font-black text-white tracking-tight">{s.value}</span>
-            <span className="text-xs text-stone-400">{s.label}</span>
-          </div>
-        ))}
+    <section className="bg-stone-950 border-y border-stone-800 py-6 px-6">
+      <div className="max-w-5xl mx-auto">
+        <p className="text-center text-[10px] font-semibold uppercase tracking-widest text-stone-500 mb-5">
+          Real data · 1 developer · 18 days · annualized
+        </p>
+        <div className="flex flex-wrap items-start justify-center gap-x-12 gap-y-5">
+          {stats.map(s => (
+            <div key={s.label} className="flex flex-col items-center gap-1">
+              <span className="text-2xl font-black text-white tracking-tight">{s.value}</span>
+              <span className="text-xs text-stone-400">{s.label}</span>
+              <span className="text-[10px] text-stone-600">{s.source}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   )
