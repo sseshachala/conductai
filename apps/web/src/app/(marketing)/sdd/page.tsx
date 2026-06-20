@@ -4,93 +4,23 @@ import { useState } from "react"
 
 export default function SDDPage() {
   return (
-    <div className="min-h-screen bg-white flex flex-col">
-      <Nav />
-      <main>
-        <HeroSection />
-        <ProblemSection />
-        <PrincipleSection />
-        <WorkflowSection />
-        <SpecGenSection />
-        <EnforcementSection />
-        <SyncSection />
-        <WhyNotChatGPTSection />
-        <ComparisonSection />
-        <FooterCTASection />
-      </main>
-      <PageFooter />
-    </div>
+    <>
+      <HeroSection />
+      <ProblemSection />
+      <PrincipleSection />
+      <WorkflowSection />
+      <SpecGenSection />
+      <EnforcementSection />
+      <SyncSection />
+      <WhyNotChatGPTSection />
+      <ComparisonSection />
+      <FooterCTASection />
+    </>
   )
 }
 
-/* ─── Nav ──────────────────────────────────────────────────────────────── */
 
-function GitHubIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
-    </svg>
-  )
-}
 
-function ProductsDropdown() {
-  return (
-    <div className="relative group">
-      <a href="/sign-up" className="flex items-center gap-1 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
-        Products
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="opacity-40 mt-0.5"><path d="M2 4l4 4 4-4"/></svg>
-      </a>
-      <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[220px]">
-        <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-2">
-          <a href="/guard-landing" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span>🛡️</span>
-            <div>
-              <p className="font-semibold">Conduct Guard</p>
-              <p className="text-xs text-stone-400">AI session governance</p>
-            </div>
-          </a>
-          <a href="/playbooks" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span>⚡</span>
-            <div>
-              <p className="font-semibold">Playbooks</p>
-              <p className="text-xs text-stone-400">Pre-built AI automations</p>
-            </div>
-          </a>
-          <a href="/tools/conduct-cli" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span className="text-indigo-600 font-bold text-base">◈</span>
-            <div>
-              <p className="font-semibold">Conduct CLI</p>
-              <p className="text-xs text-stone-400">Terminal governance + token savings</p>
-            </div>
-          </a>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function Nav() {
-  return (
-    <header className="px-6 py-4 flex items-center justify-between max-w-6xl mx-auto w-full sticky top-0 bg-white/95 backdrop-blur-sm z-50 border-b border-stone-100">
-      <a href="/">
-        <img src="/logo.png" alt="Conduct AI" className="h-10 w-auto" />
-      </a>
-      <nav className="hidden md:flex items-center gap-6">
-        <ProductsDropdown />
-        <a href="/playbooks" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Playbooks</a>
-        <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
-        <a href="/docs" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
-        <a href="https://pypi.org/project/conduct-cli/" target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">PyPI</a>
-      </nav>
-      <div className="flex items-center gap-3">
-        <a href="mailto:hello@conductai.ai" className="text-sm font-medium text-stone-600 hover:text-stone-900 transition-colors hidden sm:block">Talk to Us</a>
-        <a href="/sign-up" className="rounded-lg bg-stone-900 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-700 transition-colors">
-          Start Free
-        </a>
-      </div>
-    </header>
-  )
-}
 
 /* ─── Hero ─────────────────────────────────────────────────────────────── */
 
@@ -1093,29 +1023,3 @@ function FooterCTASection() {
 
 /* ─── Page footer ──────────────────────────────────────────────────────── */
 
-function PageFooter() {
-  return (
-    <footer className="border-t border-stone-100 py-8 text-center text-xs text-stone-400 space-y-2">
-      <div className="flex items-center justify-center gap-3 flex-wrap">
-        <span>© {new Date().getFullYear()} Conduct</span>
-        <span>·</span>
-        <a href="https://github.com/sseshachala/conductai" target="_blank" rel="noopener noreferrer" className="hover:text-stone-600 transition-colors">GitHub</a>
-        <span>·</span>
-        <a href="/" className="hover:text-stone-600 transition-colors">Conduct AI</a>
-        <span>·</span>
-        <a href="/marketplace" className="hover:text-stone-600 transition-colors">Agent Templates</a>
-        <span>·</span>
-        <a href="/tools" className="hover:text-stone-600 transition-colors">Tools</a>
-        <span>·</span>
-        <a href="/docs" className="hover:text-stone-600 transition-colors">Docs</a>
-        <span>·</span>
-        <a href="/about" className="hover:text-stone-600 transition-colors">About</a>
-        <span>·</span>
-        <a href="/privacy" className="hover:text-stone-600 transition-colors">Privacy</a>
-        <span>·</span>
-        <a href="/terms" className="hover:text-stone-600 transition-colors">Terms</a>
-      </div>
-      <p className="text-stone-300">Envisioned, designed and developed with love from Houston</p>
-    </footer>
-  )
-}
