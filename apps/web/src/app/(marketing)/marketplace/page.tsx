@@ -887,8 +887,8 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
               )}
             </div>
 
-            {/* Playbook inputs */}
-            {Object.entries(playbookInputs).map(([key, input]) => (
+            {/* Playbook inputs — `repo` is rendered by the GitHub repo picker section above, so skip it here to avoid duplication */}
+            {Object.entries(playbookInputs).filter(([key]) => key !== "repo").map(([key, input]) => (
               <div key={key} className="flex flex-col gap-1.5">
                 <label className="text-xs font-medium text-stone-500">
                   {input.label ?? key}
