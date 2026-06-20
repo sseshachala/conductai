@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { MCP_PROVIDERS, getProvider } from "@/lib/mcpProviders"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -25,6 +26,7 @@ interface Environment {
 }
 
 interface FormState {
+  provider: string
   name: string
   url: string
   transport: "sse" | "http" | "stdio"
@@ -33,6 +35,7 @@ interface FormState {
 }
 
 const EMPTY_FORM: FormState = {
+  provider: "custom",
   name: "",
   url: "",
   transport: "sse",
@@ -101,6 +104,18 @@ function McpModal({
     setForm(prev => ({ ...prev, [key]: value }))
   }
 
+  function handleProviderSelect(providerValue: string) {
+    const p = getProvider(providerValue)
+    if (!p) return
+    setForm(prev => ({
+      ...prev,
+      provider: p.value,
+      url: p.serverUrl,
+      transport: p.transport === "auto" ? "sse" : p.transport,
+      name: prev.name || p.label,
+    }))
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.name.trim()) { setError("Name is required."); return }
@@ -160,6 +175,27 @@ function McpModal({
         </h2>
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* Provider — only shown in add mode for non-system servers */}
+          {mode === "add" && !readOnly && (
+            <div>
+              <label style={labelStyle}>Provider</label>
+              <select
+                value={form.provider}
+                onChange={e => handleProviderSelect(e.target.value)}
+                style={inputStyle}
+              >
+                {MCP_PROVIDERS.map(p => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </select>
+              {getProvider(form.provider)?.description && (
+                <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "4px 0 0" }}>
+                  {getProvider(form.provider)?.description}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Name */}
           <div>
             <label style={labelStyle}>Name</label>
@@ -367,6 +403,7 @@ function IntegrationsPageInner({
 
   const initialForm: FormState = editTarget
     ? {
+        provider: "custom",
         name: editTarget.name,
         url: editTarget.url,
         transport: editTarget.transport,

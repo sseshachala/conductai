@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Guard — Insights</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Inter, system-ui, sans-serif; background: #f8f7ff; color: #1e293b; min-height: 100vh; }
+
+  /* ── Shell ── */
+  .shell { display: flex; min-height: 100vh; }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 220px; flex-shrink: 0;
+    background: #fff; border-right: 1px solid #f0eef8;
+    display: flex; flex-direction: column; padding: 20px 0;
+    position: sticky; top: 0; height: 100vh;
+  }
+  .sidebar-logo {
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 20px 20px; border-bottom: 1px solid #f0eef8;
+  }
+  .logo-mark {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: linear-gradient(135deg, #7c3aed, #6d28d9);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 13px; font-weight: 800;
+  }
+  .logo-text { font-size: 14px; font-weight: 700; color: #1e293b; }
+  .logo-badge {
+    font-size: 9px; font-weight: 700; letter-spacing: 0.1em;
+    text-transform: uppercase; color: #7c3aed;
+    background: #ede9fe; border-radius: 4px; padding: 1px 5px;
+  }
+  .nav-section { padding: 16px 12px 8px; }
+  .nav-label {
+    font-size: 9px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.14em; color: #94a3b8; padding: 0 8px 6px;
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 8px; border-radius: 8px; font-size: 13px;
+    font-weight: 500; color: #64748b; cursor: pointer;
+    transition: all 0.15s; text-decoration: none;
+  }
+  .nav-item:hover { background: #f8f7ff; color: #7c3aed; }
+  .nav-item.active { background: #ede9fe; color: #7c3aed; font-weight: 600; }
+  .nav-icon { width: 16px; text-align: center; font-size: 14px; flex-shrink: 0; }
+
+  /* ── Main ── */
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+  /* ── Top bar ── */
+  .topbar {
+    background: #fff; border-bottom: 1px solid #f0eef8;
+    padding: 12px 28px; display: flex; align-items: center;
+    justify-content: space-between; position: sticky; top: 0; z-index: 10;
+  }
+  .topbar-left { display: flex; flex-direction: column; gap: 2px; }
+  .topbar-title { font-size: 15px; font-weight: 700; color: #1e293b; }
+  .topbar-sub { font-size: 12px; color: #94a3b8; }
+  .topbar-right { display: flex; align-items: center; gap: 10px; }
+  .period-chip {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 10px; border-radius: 8px;
+    border: 1px solid #e2e8f0; background: #f8f7ff;
+    font-size: 12px; color: #64748b; cursor: pointer;
+  }
+  .refresh-btn {
+    display: flex; align-items: center; gap: 5px;
+    padding: 5px 10px; border-radius: 8px;
+    border: 1px solid #ede9fe; background: #fff;
+    font-size: 12px; color: #7c3aed; cursor: pointer;
+    font-weight: 500;
+  }
+  .last-updated { font-size: 11px; color: #94a3b8; }
+
+  /* ── Guard tabs ── */
+  .guard-tabs {
+    background: #fff; border-bottom: 1px solid #f0eef8;
+    padding: 0 28px; display: flex; gap: 4px;
+  }
+  .tab {
+    padding: 10px 14px; font-size: 13px; font-weight: 500;
+    color: #94a3b8; border-bottom: 2px solid transparent;
+    cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  }
+  .tab:hover { color: #64748b; }
+  .tab.active { color: #7c3aed; border-bottom-color: #7c3aed; font-weight: 600; }
+
+  /* ── Content ── */
+  .content { padding: 24px 28px; display: flex; flex-direction: column; gap: 20px; }
+
+  /* ── AI Summary Strip ── */
+  .summary-strip {
+    background: linear-gradient(135deg, #7c3aed, #6d28d9);
+    border-radius: 20px; padding: 20px 24px;
+    display: flex; align-items: flex-start; gap: 16px;
+    position: relative; overflow: hidden;
+  }
+  .summary-strip::before {
+    content: '';
+    position: absolute; top: -30px; right: -30px;
+    width: 120px; height: 120px; border-radius: 50%;
+    background: rgba(255,255,255,0.06);
+  }
+  .strip-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: rgba(255,255,255,0.15);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0; margin-top: 2px;
+  }
+  .strip-body { flex: 1; }
+  .strip-eyebrow {
+    font-size: 9px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.16em; color: rgba(255,255,255,0.6); margin-bottom: 6px;
+  }
+  .strip-text { font-size: 14px; color: #fff; line-height: 1.6; font-weight: 400; }
+  .strip-text strong { font-weight: 700; }
+  .strip-meta { margin-top: 10px; font-size: 11px; color: rgba(255,255,255,0.5); }
+
+  /* ── Section header ── */
+  .section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .section-title {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.14em; color: #94a3b8;
+  }
+  .section-link { font-size: 12px; color: #7c3aed; font-weight: 500; cursor: pointer; }
+
+  /* ── KPI grid ── */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .kpi-card {
+    background: #fff; border: 1px solid #f0eef8; border-radius: 20px;
+    padding: 18px 20px;
+  }
+  .kpi-eyebrow {
+    font-size: 9px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.16em; color: #94a3b8; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .kpi-icon { font-size: 12px; }
+  .kpi-value { font-size: 28px; font-weight: 800; color: #1e293b; line-height: 1; margin-bottom: 4px; }
+  .kpi-value.violet { color: #7c3aed; }
+  .kpi-value.emerald { color: #059669; }
+  .kpi-value.amber { color: #d97706; }
+  .kpi-value.red { color: #dc2626; }
+  .kpi-sub { font-size: 12px; color: #64748b; }
+  .kpi-delta {
+    margin-top: 10px; font-size: 11px; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 7px; border-radius: 20px;
+  }
+  .kpi-delta.up { background: #fef3c7; color: #92400e; }
+  .kpi-delta.good { background: #d1fae5; color: #065f46; }
+  .kpi-delta.neutral { background: #f1f5f9; color: #64748b; }
+
+  /* ── Spend chart section ── */
+  .chart-card {
+    background: #fff; border: 1px solid #f0eef8; border-radius: 20px;
+    padding: 20px 24px;
+  }
+  .chart-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; }
+  .chart-title-block {}
+  .chart-title { font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 2px; }
+  .chart-subtitle { font-size: 12px; color: #94a3b8; }
+  .chart-legend { display: flex; gap: 14px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #64748b; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 2px; }
+
+  /* SVG chart */
+  .chart-wrap { position: relative; }
+  .chart-wrap svg { display: block; width: 100%; }
+  .chart-y-labels {
+    position: absolute; left: 0; top: 0; bottom: 24px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    pointer-events: none;
+  }
+  .chart-y-label { font-size: 10px; color: #cbd5e1; }
+
+  /* ── Two-col layout ── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+  /* ── Policy table ── */
+  .policy-table { width: 100%; border-collapse: collapse; }
+  .policy-table th {
+    font-size: 9px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.12em; color: #94a3b8; text-align: left;
+    padding: 0 0 10px; border-bottom: 1px solid #f0eef8;
+  }
+  .policy-table td {
+    padding: 11px 0; border-bottom: 1px solid #f8f7ff;
+    font-size: 13px; vertical-align: middle;
+  }
+  .policy-table tr:last-child td { border-bottom: none; }
+  .policy-name { font-weight: 600; color: #1e293b; margin-bottom: 2px; }
+  .policy-desc { font-size: 11px; color: #94a3b8; }
+  .decision-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 8px; border-radius: 20px; font-size: 11px; font-weight: 600;
+  }
+  .chip-blocked { background: #fee2e2; color: #991b1b; }
+  .chip-warned { background: #fef3c7; color: #92400e; }
+  .chip-pii { background: #ede9fe; color: #5b21b6; }
+  .count-badge {
+    font-size: 13px; font-weight: 700; color: #1e293b;
+  }
+  .policy-bar-wrap { width: 80px; }
+  .policy-bar-bg { height: 4px; background: #f1f5f9; border-radius: 2px; }
+  .policy-bar-fill { height: 4px; border-radius: 2px; }
+
+  /* ── Tool breakdown ── */
+  .tool-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 0; border-bottom: 1px solid #f8f7ff;
+  }
+  .tool-row:last-child { border-bottom: none; }
+  .tool-name-block { min-width: 110px; }
+  .tool-name { font-size: 13px; font-weight: 600; color: #1e293b; }
+  .tool-meta { font-size: 11px; color: #94a3b8; margin-top: 1px; }
+  .tool-bar-track { flex: 1; height: 6px; background: #f1f5f9; border-radius: 3px; overflow: hidden; }
+  .tool-bar { height: 100%; border-radius: 3px; }
+  .tool-pct { font-size: 12px; font-weight: 700; color: #1e293b; min-width: 38px; text-align: right; }
+  .tool-cost { font-size: 12px; color: #64748b; min-width: 60px; text-align: right; }
+
+  /* ── Activity heatmap ── */
+  .heatmap-grid { display: flex; gap: 3px; flex-wrap: wrap; }
+  .heatmap-day {
+    width: 18px; height: 18px; border-radius: 4px;
+    background: #f1f5f9; position: relative;
+  }
+  .heatmap-day[data-level="1"] { background: #ede9fe; }
+  .heatmap-day[data-level="2"] { background: #c4b5fd; }
+  .heatmap-day[data-level="3"] { background: #8b5cf6; }
+  .heatmap-day[data-level="4"] { background: #6d28d9; }
+  .heatmap-labels { display: flex; gap: 3px; margin-top: 6px; }
+  .heatmap-label { width: 18px; font-size: 8px; color: #cbd5e1; text-align: center; }
+
+  /* ── Call type breakdown ── */
+  .call-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 0; border-bottom: 1px solid #f8f7ff;
+  }
+  .call-item:last-child { border-bottom: none; }
+  .call-label-wrap { display: flex; align-items: center; gap: 8px; }
+  .call-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+  .call-label { font-size: 13px; color: #1e293b; font-weight: 500; }
+  .call-sublabel { font-size: 11px; color: #94a3b8; }
+  .call-right { text-align: right; }
+  .call-count { font-size: 13px; font-weight: 700; color: #1e293b; }
+  .call-pct { font-size: 11px; color: #94a3b8; }
+
+  /* ── Savings card ── */
+  .savings-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 0; border-bottom: 1px solid #f8f7ff;
+  }
+  .savings-row:last-child { border-bottom: none; }
+  .savings-tool { font-size: 13px; font-weight: 600; color: #1e293b; }
+  .savings-desc { font-size: 11px; color: #94a3b8; margin-top: 1px; }
+  .savings-amount { text-align: right; }
+  .savings-usd { font-size: 14px; font-weight: 700; color: #059669; }
+  .savings-tokens { font-size: 11px; color: #94a3b8; }
+  .savings-total-row {
+    margin-top: 12px; padding: 12px 14px;
+    background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .savings-total-label { font-size: 12px; font-weight: 600; color: #065f46; }
+  .savings-total-value { font-size: 16px; font-weight: 800; color: #059669; }
+
+  /* ── Session list ── */
+  .session-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 0; border-bottom: 1px solid #f8f7ff;
+  }
+  .session-item:last-child { border-bottom: none; }
+  .session-tool-dot {
+    width: 28px; height: 28px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; flex-shrink: 0;
+  }
+  .dot-claude { background: #ede9fe; }
+  .dot-codex { background: #dbeafe; }
+  .dot-cursor { background: #d1fae5; }
+  .session-meta { flex: 1; }
+  .session-tool { font-size: 12px; font-weight: 600; color: #1e293b; }
+  .session-time { font-size: 11px; color: #94a3b8; }
+  .session-events { font-size: 12px; color: #64748b; text-align: right; }
+  .session-violations { font-size: 11px; color: #dc2626; font-weight: 600; }
+
+  /* misc */
+  .tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 20px; font-size: 10px; font-weight: 600; }
+  .tag-live { background: #d1fae5; color: #065f46; }
+  .pulse { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #10b981; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  @media (max-width: 900px) {
+    .kpi-grid { grid-template-columns: 1fr 1fr; }
+    .two-col, .three-col { grid-template-columns: 1fr; }
+    .sidebar { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark">C</div>
+      <div>
+        <div class="logo-text">Conductai</div>
+      </div>
+      <span class="logo-badge">Guard</span>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Workspace</div>
+      <a class="nav-item" href="#">
+        <span class="nav-icon">⬡</span> Overview
+      </a>
+      <a class="nav-item" href="#">
+        <span class="nav-icon">⚡</span> Activity
+      </a>
+      <a class="nav-item active" href="#">
+        <span class="nav-icon">◈</span> Insights
+      </a>
+      <a class="nav-item" href="#">
+        <span class="nav-icon">⊙</span> Policies
+      </a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Team</div>
+      <a class="nav-item" href="#">
+        <span class="nav-icon">⊞</span> Members
+      </a>
+      <a class="nav-item" href="#">
+        <span class="nav-icon">⊟</span> Spend
+      </a>
+      <a class="nav-item" href="#">
+        <span class="nav-icon">⊕</span> Sessions
+      </a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Config</div>
+      <a class="nav-item" href="#">
+        <span class="nav-icon">◎</span> Settings
+      </a>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <div class="main">
+
+    <!-- Topbar -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="topbar-title">Insights</div>
+        <div class="topbar-sub">Jun 2 – Jun 19, 2026 &nbsp;·&nbsp; 1 developer &nbsp;·&nbsp; 3 AI tools</div>
+      </div>
+      <div class="topbar-right">
+        <span class="last-updated"><span class="pulse"></span> Updated 2 min ago</span>
+        <div class="period-chip">📅 Jun 2026 ▾</div>
+        <div class="refresh-btn">↻ Refresh</div>
+      </div>
+    </div>
+
+    <!-- Guard tabs -->
+    <div class="guard-tabs">
+      <div class="tab">Overview</div>
+      <div class="tab">Activity</div>
+      <div class="tab active">Insights</div>
+      <div class="tab">Policies</div>
+      <div class="tab">Members</div>
+      <div class="tab">Spend</div>
+      <div class="tab">Sessions</div>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+
+      <!-- AI-generated summary strip -->
+      <div class="summary-strip">
+        <div class="strip-icon">✦</div>
+        <div class="strip-body">
+          <div class="strip-eyebrow">AI Narrative &nbsp;·&nbsp; Generated daily</div>
+          <div class="strip-text">
+            You spent <strong>$245/day</strong> on AI this period across claude-code, codex, and cursor.
+            Guard intercepted <strong>6 production deploys</strong> before they ran unreviewed, warned on
+            <strong>2 destructive commands</strong>, and screened <strong>589 events for PII</strong> before
+            they reached any LLM. Claude Code dominates at <strong>96% of total spend</strong>.
+            RTK and Booster offset <strong>$235</strong> of that cost through token compression — 5.6% back.
+            Peak spend day was <strong>Jun 6 at $381</strong>.
+          </div>
+          <div class="strip-meta">Generated Jun 19, 2026 at 11:43 PM UTC &nbsp;·&nbsp; Based on 5,985 events across 25 sessions</div>
+        </div>
+      </div>
+
+      <!-- KPI row -->
+      <div>
+        <div class="section-header">
+          <div class="section-title">Month to date</div>
+          <div class="section-link">View full spend →</div>
+        </div>
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-eyebrow"><span class="kpi-icon">💸</span> Total AI Spend</div>
+            <div class="kpi-value">$4,170</div>
+            <div class="kpi-sub">Jun 2 – Jun 19 &nbsp;·&nbsp; 17 active days</div>
+            <div class="kpi-delta up">↑ $5,397/mo projected</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-eyebrow"><span class="kpi-icon">🛡</span> Deploys Intercepted</div>
+            <div class="kpi-value red">6</div>
+            <div class="kpi-sub">All via <code style="font-size:11px;background:#fef2f2;padding:1px 4px;border-radius:4px;">approve-prod-deploy</code></div>
+            <div class="kpi-delta neutral">0 bypassed</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-eyebrow"><span class="kpi-icon">🔒</span> PII Screened</div>
+            <div class="kpi-value violet">589</div>
+            <div class="kpi-sub">Events redacted before LLM</div>
+            <div class="kpi-delta good">0 leaked</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-eyebrow"><span class="kpi-icon">⚡</span> Tooling Savings</div>
+            <div class="kpi-value emerald">$235</div>
+            <div class="kpi-sub">RTK $201 &nbsp;+&nbsp; Booster $34</div>
+            <div class="kpi-delta good">5.6% offset on spend</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Daily spend chart + tool mix -->
+      <div class="two-col">
+        <div class="chart-card" style="grid-column: span 2;">
+          <div class="chart-header">
+            <div class="chart-title-block">
+              <div class="chart-title">Daily AI spend</div>
+              <div class="chart-subtitle">Stacked by tool &nbsp;·&nbsp; Jun 2 – Jun 19</div>
+            </div>
+            <div class="chart-legend">
+              <div class="legend-item"><div class="legend-dot" style="background:#7c3aed"></div> Claude Code</div>
+              <div class="legend-item"><div class="legend-dot" style="background:#60a5fa"></div> Codex</div>
+              <div class="legend-item"><div class="legend-dot" style="background:#34d399"></div> Cursor</div>
+            </div>
+          </div>
+
+          <!-- SVG bar chart -->
+          <svg viewBox="0 0 760 160" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:160px;">
+            <!-- grid lines -->
+            <line x1="40" y1="10" x2="760" y2="10" stroke="#f1f5f9" stroke-width="1"/>
+            <line x1="40" y1="45" x2="760" y2="45" stroke="#f1f5f9" stroke-width="1"/>
+            <line x1="40" y1="80" x2="760" y2="80" stroke="#f1f5f9" stroke-width="1"/>
+            <line x1="40" y1="115" x2="760" y2="115" stroke="#f1f5f9" stroke-width="1"/>
+            <!-- y labels -->
+            <text x="30" y="14" text-anchor="end" font-size="9" fill="#cbd5e1">$400</text>
+            <text x="30" y="49" text-anchor="end" font-size="9" fill="#cbd5e1">$300</text>
+            <text x="30" y="84" text-anchor="end" font-size="9" fill="#cbd5e1">$200</text>
+            <text x="30" y="119" text-anchor="end" font-size="9" fill="#cbd5e1">$100</text>
+
+            <!-- bars: each bar width=32, gap=8, start x=42 -->
+            <!-- Jun 2: $15.73 — scale: 400max → 130px height, so $1 = 0.325px -->
+            <!-- Bars stacked: Claude on top of Codex -->
+
+            <!-- Jun 2: claude=12.86, codex=2.87 -->
+            <rect x="42" y="145" width="30" height="1" fill="#7c3aed" rx="2"/><!-- placeholder -->
+            <rect x="42" y="111" width="30" height="34" fill="#60a5fa" rx="2" opacity="0.7"/><!-- codex: 2.87*0.325=0.93→rnd -->
+
+            <!-- Let me just hardcode visually reasonable bars based on the data -->
+            <!-- Scale: max $381 → 120px. $1 = 0.315px, base y=140 -->
+
+            <!-- Jun 2: $15.73 → 5px claude, 1px codex -->
+            <rect x="42" y="135" width="30" height="4" fill="#7c3aed" rx="1"/>
+            <rect x="42" y="139" width="30" height="1" fill="#60a5fa" rx="1"/>
+            <text x="57" y="152" text-anchor="middle" font-size="7" fill="#94a3b8">6/2</text>
+
+            <!-- Jun 3: $224.45 → 67px claude, 4px codex -->
+            <rect x="80" y="73" width="30" height="63" fill="#7c3aed" rx="2"/>
+            <rect x="80" y="136" width="30" height="4" fill="#60a5fa" rx="1"/>
+            <text x="95" y="152" text-anchor="middle" font-size="7" fill="#94a3b8">6/3</text>
+
+            <!-- Jun 4: $173.74 → 49px claude, 5px codex -->
+            <rect x="118" y="91" width="30" height="49" fill="#7c3aed" rx="2"/>
+            <rect x="118" y="135" width="30" height="5" fill="#60a5fa" rx="1"/>
+            <text x="133" y="152" text-anchor="middle" font-size="7" fill="#94a3b8">6/4</text>
+
+            <!-- Jun 5: $287.52 → 64px claude, 27px codex -->
+            <rect x="156" y="49" width="30" height="64" fill="#7c3aed" rx="2"/>
+            <rect x="156" y="113" width="30" height="27" fill="#60a5fa" rx="1"/>
+            <text x="171" y="152" text-anchor="middle" font-size="7" fill="#94a3b8">6/5</text>
+
+            <!-- Jun 6: $381.01 → 104px claude, 16px codex (PEAK) -->
+            <rect x="194" y="20" width="30" height="104" fill="#7c3aed" rx="2"/>
+            <rect x="194" y="124" width="30" height="16" fill="#60a5fa" rx="1"/>
+            <text x="209" y="152" text-anchor="middle" font-size="7" fill="#94a3b8">6/6</text>
+            <!-- Peak marker -->
+            <text x="209" y="17" text-anchor="middle" font-size="8" fill="#7c3aed" font-weight="700">$381</text>
+
+            <!-- Jun 7: $213.73 → 65px claude, 2px codex -->
+            <rect x="232" y="75" width="30" height="65" fill="#7c3aed" rx="2"/>
+            <rect x="232" y="138" width="30" height="2" fill="#60a5fa" rx="1"/>
+            <text x="247" y="152" text-anchor="middle" font-size="7" fill="#94a3b8">6/7</text>
+
+            <!-- Jun 8: $279.08 → 88px claude -->
+            <rect x="270" y="52" width="30" height="88" fill="#7c3aed" rx="2"/>
+            <text x="285" y="152" text-anchor="middle" font-size="7" fill="#94a3b8">6/8</text>
+
+            <!-- Jun 9: $221.14 → 70px claude -->
+            <rect x="308" y="70" width="30" height="70" fill="#7c3aed" rx="2"/>
+            <text x="323" y="152" text-anchor="middle" font-size="7" fill="#94a3b8">6/9</text>
+
+            <!-- Jun 10: $324.72 → 102px claude -->
+            <rect x="346" y="38" width="30" height="102" fill="#7c3aed" rx="2"/>
+            <text x="361" y="152" text-anchor="middle" font-size="7" fill="#94a3b8">6/10</text>
+
+            <!-- Jun 11: $377.21 → 119px claude -->
+            <rect x="384" y="21" width="30" height="119" fill="#7c3aed" rx="2"/>
+            <text x="399" y="152" text-anchor="middle" font-size="7" fill="#94a3b8">6/11</text>
+
+            <!-- Jun 12: $268.05 → 84px claude -->
+            <rect x="422" y="56" width="30" height="84" fill="#7c3aed" rx="2"/>
+            <text x="437" y="152" text-anchor="middle" font-size="7" fill="#94a3b8">6/12</text>
+
+            <!-- Jun 13: $313.60 → 99px claude -->
+            <rect x="460" y="41" width="30" height="99" fill="#7c3aed" rx="2"/>
+            <text x="475" y="152" text-anchor="middle" font-size="7" fill="#94a3b8">6/13</text>
+
+            <!-- Jun 14: $194.31 → 61px claude -->
+            <rect x="498" y="79" width="30" height="61" fill="#7c3aed" rx="2"/>
+            <text x="513" y="152" text-anchor="middle" font-size="7" fill="#94a3b8">6/14</text>
+
+            <!-- Jun 15: $0.14 → minimal -->
+            <rect x="536" y="139" width="30" height="1" fill="#7c3aed" rx="1"/>
+            <text x="551" y="152" text-anchor="middle" font-size="7" fill="#94a3b8">6/15</text>
+
+            <!-- Jun 16: $140.55 → 44px claude -->
+            <rect x="574" y="96" width="30" height="44" fill="#7c3aed" rx="2"/>
+            <text x="589" y="152" text-anchor="middle" font-size="7" fill="#94a3b8">6/16</text>
+
+            <!-- Jun 17: $156.16 → 49px claude -->
+            <rect x="612" y="91" width="30" height="49" fill="#7c3aed" rx="2"/>
+            <text x="627" y="152" text-anchor="middle" font-size="7" fill="#94a3b8">6/17</text>
+
+            <!-- Jun 18: $295.09 → 93px claude -->
+            <rect x="650" y="47" width="30" height="93" fill="#7c3aed" rx="2"/>
+            <text x="665" y="152" text-anchor="middle" font-size="7" fill="#94a3b8">6/18</text>
+
+            <!-- Jun 19: $304.10 → 96px claude -->
+            <rect x="688" y="44" width="30" height="96" fill="#7c3aed" rx="2"/>
+            <text x="703" y="152" text-anchor="middle" font-size="7" fill="#94a3b8">6/19</text>
+
+            <!-- Avg line -->
+            <line x1="42" y1="63" x2="718" y2="63" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="4 3"/>
+            <text x="724" y="66" font-size="8" fill="#94a3b8">avg</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Governance + Tool breakdown -->
+      <div class="two-col">
+
+        <!-- Governance effectiveness -->
+        <div class="chart-card">
+          <div class="chart-header" style="margin-bottom:16px;">
+            <div class="chart-title-block">
+              <div class="chart-title">Policy enforcement</div>
+              <div class="chart-subtitle">What Guard actually blocked, warned, or screened</div>
+            </div>
+          </div>
+          <table class="policy-table">
+            <thead>
+              <tr>
+                <th>Policy</th>
+                <th>Type</th>
+                <th style="text-align:right">Fired</th>
+                <th>Frequency</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <div class="policy-name">pii-redact</div>
+                  <div class="policy-desc">Credentials, emails, IPs stripped before LLM</div>
+                </td>
+                <td><span class="decision-chip chip-pii">PII</span></td>
+                <td style="text-align:right"><span class="count-badge">589</span></td>
+                <td>
+                  <div class="policy-bar-wrap">
+                    <div class="policy-bar-bg">
+                      <div class="policy-bar-fill" style="width:100%;background:linear-gradient(90deg,#7c3aed,#a78bfa)"></div>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="policy-name">approve-prod-deploy</div>
+                  <div class="policy-desc">Production deploy gate — requires approval</div>
+                </td>
+                <td><span class="decision-chip chip-blocked">Blocked</span></td>
+                <td style="text-align:right"><span class="count-badge">6</span></td>
+                <td>
+                  <div class="policy-bar-wrap">
+                    <div class="policy-bar-bg">
+                      <div class="policy-bar-fill" style="width:1%;background:#dc2626"></div>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="policy-name">no-rm</div>
+                  <div class="policy-desc">Recursive delete intercepted</div>
+                </td>
+                <td><span class="decision-chip chip-warned">Warned</span></td>
+                <td style="text-align:right"><span class="count-badge">2</span></td>
+                <td>
+                  <div class="policy-bar-wrap">
+                    <div class="policy-bar-bg">
+                      <div class="policy-bar-fill" style="width:0.3%;background:#d97706"></div>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="policy-name">no-secret-in-commit-msg</div>
+                  <div class="policy-desc">Secret detected in commit message</div>
+                </td>
+                <td><span class="decision-chip chip-warned">Warned</span></td>
+                <td style="text-align:right"><span class="count-badge">1</span></td>
+                <td>
+                  <div class="policy-bar-wrap">
+                    <div class="policy-bar-bg">
+                      <div class="policy-bar-fill" style="width:0.2%;background:#d97706"></div>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- AI tool breakdown -->
+        <div class="chart-card">
+          <div class="chart-header" style="margin-bottom:16px;">
+            <div class="chart-title-block">
+              <div class="chart-title">AI tool mix</div>
+              <div class="chart-subtitle">By spend and session share — Jun 2026</div>
+            </div>
+          </div>
+          <div>
+            <div class="tool-row">
+              <div class="tool-name-block">
+                <div class="tool-name">claude-code</div>
+                <div class="tool-meta">13 sessions · 5,695 events</div>
+              </div>
+              <div class="tool-bar-track">
+                <div class="tool-bar" style="width:96%;background:linear-gradient(90deg,#7c3aed,#a78bfa)"></div>
+              </div>
+              <div class="tool-pct">96%</div>
+              <div class="tool-cost">$3,994</div>
+            </div>
+            <div class="tool-row">
+              <div class="tool-name-block">
+                <div class="tool-name">codex</div>
+                <div class="tool-meta">11 sessions · 285 events</div>
+              </div>
+              <div class="tool-bar-track">
+                <div class="tool-bar" style="width:4%;background:#60a5fa"></div>
+              </div>
+              <div class="tool-pct">4%</div>
+              <div class="tool-cost">$176</div>
+            </div>
+            <div class="tool-row">
+              <div class="tool-name-block">
+                <div class="tool-name">cursor</div>
+                <div class="tool-meta">1 session · 5 events</div>
+              </div>
+              <div class="tool-bar-track">
+                <div class="tool-bar" style="width:0.3%;background:#34d399"></div>
+              </div>
+              <div class="tool-pct">&lt;1%</div>
+              <div class="tool-cost">—</div>
+            </div>
+          </div>
+
+          <div style="margin-top:20px;">
+            <div class="chart-title" style="font-size:12px;margin-bottom:10px;">What AI is actually doing</div>
+            <div class="call-item">
+              <div class="call-label-wrap">
+                <div class="call-dot" style="background:#7c3aed"></div>
+                <div>
+                  <div class="call-label">bash</div>
+                  <div class="call-sublabel">Shell commands, builds, deploys</div>
+                </div>
+              </div>
+              <div class="call-right">
+                <div class="call-count">343</div>
+                <div class="call-pct">57%</div>
+              </div>
+            </div>
+            <div class="call-item">
+              <div class="call-label-wrap">
+                <div class="call-dot" style="background:#8b5cf6"></div>
+                <div>
+                  <div class="call-label">edit</div>
+                  <div class="call-sublabel">File modifications</div>
+                </div>
+              </div>
+              <div class="call-right">
+                <div class="call-count">126</div>
+                <div class="call-pct">21%</div>
+              </div>
+            </div>
+            <div class="call-item">
+              <div class="call-label-wrap">
+                <div class="call-dot" style="background:#a78bfa"></div>
+                <div>
+                  <div class="call-label">read / grep / glob</div>
+                  <div class="call-sublabel">Codebase exploration</div>
+                </div>
+              </div>
+              <div class="call-right">
+                <div class="call-count">75</div>
+                <div class="call-pct">13%</div>
+              </div>
+            </div>
+            <div class="call-item">
+              <div class="call-label-wrap">
+                <div class="call-dot" style="background:#c4b5fd"></div>
+                <div>
+                  <div class="call-label">mcp tools</div>
+                  <div class="call-sublabel">Booster, Conduct, external</div>
+                </div>
+              </div>
+              <div class="call-right">
+                <div class="call-count">40</div>
+                <div class="call-pct">7%</div>
+              </div>
+            </div>
+            <div class="call-item">
+              <div class="call-label-wrap">
+                <div class="call-dot" style="background:#e2e8f0"></div>
+                <div>
+                  <div class="call-label">other</div>
+                  <div class="call-sublabel">write, agent, update_plan</div>
+                </div>
+              </div>
+              <div class="call-right">
+                <div class="call-count">16</div>
+                <div class="call-pct">2%</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tooling ROI + Session cadence -->
+      <div class="two-col">
+
+        <!-- Tooling savings -->
+        <div class="chart-card">
+          <div class="chart-header" style="margin-bottom:16px;">
+            <div class="chart-title-block">
+              <div class="chart-title">Tooling ROI</div>
+              <div class="chart-subtitle">RTK + Booster token compression savings</div>
+            </div>
+          </div>
+
+          <div class="savings-row">
+            <div>
+              <div class="savings-tool">RTK (Rust Token Killer)</div>
+              <div class="savings-desc">7,555 commands compressed &nbsp;·&nbsp; 97.1% avg savings</div>
+            </div>
+            <div class="savings-amount">
+              <div class="savings-usd">$201.18</div>
+              <div class="savings-tokens">37.3M tokens saved</div>
+            </div>
+          </div>
+          <div class="savings-row">
+            <div>
+              <div class="savings-tool">Agent Booster</div>
+              <div class="savings-desc">942 smart reads &nbsp;·&nbsp; 83.5% avg savings</div>
+            </div>
+            <div class="savings-amount">
+              <div class="savings-usd">$34.01</div>
+              <div class="savings-tokens">6.3M tokens saved</div>
+            </div>
+          </div>
+
+          <div class="savings-total-row">
+            <div class="savings-total-label">Total tooling savings — Jun 2026</div>
+            <div class="savings-total-value">$235.19</div>
+          </div>
+
+          <div style="margin-top:14px;padding:12px 14px;background:#faf9ff;border:1px solid #ede9fe;border-radius:12px;">
+            <div style="font-size:11px;color:#64748b;line-height:1.6;">
+              At this rate, tooling saves <strong style="color:#7c3aed;">$394/month</strong>. That's 7.3% of projected monthly spend — enough to pay for the Guard subscription twice over.
+            </div>
+          </div>
+        </div>
+
+        <!-- Session cadence -->
+        <div class="chart-card">
+          <div class="chart-header" style="margin-bottom:16px;">
+            <div class="chart-title-block">
+              <div class="chart-title">Session patterns</div>
+              <div class="chart-subtitle">When and how AI is used across the team</div>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+            <div style="background:#faf9ff;border:1px solid #ede9fe;border-radius:14px;padding:14px 16px;">
+              <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;color:#94a3b8;margin-bottom:6px;">Sessions / Day</div>
+              <div style="font-size:22px;font-weight:800;color:#1e293b;">1.5</div>
+              <div style="font-size:11px;color:#64748b;">25 sessions over 17 active days</div>
+            </div>
+            <div style="background:#faf9ff;border:1px solid #ede9fe;border-radius:14px;padding:14px 16px;">
+              <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;color:#94a3b8;margin-bottom:6px;">Events / Session</div>
+              <div style="font-size:22px;font-weight:800;color:#1e293b;">239</div>
+              <div style="font-size:11px;color:#64748b;">Range: 5 – 730 per session</div>
+            </div>
+            <div style="background:#faf9ff;border:1px solid #ede9fe;border-radius:14px;padding:14px 16px;">
+              <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;color:#94a3b8;margin-bottom:6px;">Violation Rate</div>
+              <div style="font-size:22px;font-weight:800;color:#1e293b;">0.5%</div>
+              <div style="font-size:11px;color:#64748b;">31 violations / 5,985 events</div>
+            </div>
+            <div style="background:#faf9ff;border:1px solid #ede9fe;border-radius:14px;padding:14px 16px;">
+              <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;color:#94a3b8;margin-bottom:6px;">Tools Used</div>
+              <div style="font-size:22px;font-weight:800;color:#1e293b;">3</div>
+              <div style="font-size:11px;color:#64748b;">claude-code, codex, cursor</div>
+            </div>
+          </div>
+
+          <div style="margin-bottom:6px;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.12em;">Recent sessions</div>
+          <div class="session-item">
+            <div class="session-tool-dot dot-claude">🤖</div>
+            <div class="session-meta">
+              <div class="session-tool">claude-code</div>
+              <div class="session-time">Jun 19 · 11:42 PM · Sudhis-Air.lan</div>
+            </div>
+            <div class="session-events">
+              <div class="session-events">73 events</div>
+              <div class="session-violations">1 violation</div>
+            </div>
+          </div>
+          <div class="session-item">
+            <div class="session-tool-dot dot-codex">⚡</div>
+            <div class="session-meta">
+              <div class="session-tool">codex</div>
+              <div class="session-time">Jun 19 · 8:07 PM · Sudhis-Air.lan</div>
+            </div>
+            <div class="session-events">
+              <div class="session-events">9 events</div>
+              <div class="session-violations" style="color:#94a3b8;">0 violations</div>
+            </div>
+          </div>
+          <div class="session-item">
+            <div class="session-tool-dot dot-claude">🤖</div>
+            <div class="session-meta">
+              <div class="session-tool">claude-code</div>
+              <div class="session-time">Jun 19 · 3:52 PM · Sudhis-MacBook-Air.local</div>
+            </div>
+            <div class="session-events">
+              <div class="session-events">730 events</div>
+              <div class="session-violations">12 violations</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /shell -->
+
+</body>
+</html>
