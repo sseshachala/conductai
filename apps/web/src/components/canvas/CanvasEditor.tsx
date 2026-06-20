@@ -167,6 +167,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
   const [testRunning, setTestRunning] = useState(false)
   const [testRunId, setTestRunId] = useState<string | null>(null)
   const [testRunStatus, setTestRunStatus] = useState<string | null>(null)
+  const [lastRunState, setLastRunState] = useState<Record<string, Record<string, unknown>> | undefined>(undefined)
+  const [lastRunSummary, setLastRunSummary] = useState<{ status: string; created_at?: string; run_id?: string } | undefined>(undefined)
   const [testPrNumber, setTestPrNumber] = useState("")
   const [testMaxTurns, setTestMaxTurns] = useState("")
   const [guardEnabled, setGuardEnabled] = useState(true)
@@ -301,6 +303,29 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     return () => clearInterval(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView, runs])
+
+  // Fetch last run state when Definition tab is active
+  useEffect(() => {
+    if (activeView !== "definition" || !workflowId) return
+    const abort = new AbortController()
+    ;(async () => {
+      try {
+        const headers = await authHeaders(getToken, wsId)
+        if (abort.signal.aborted) return
+        const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs?limit=1`, { headers, signal: abort.signal })
+        if (!r.ok || abort.signal.aborted) return
+        const [latest] = await r.json()
+        if (!latest || abort.signal.aborted) return
+        const r2 = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${latest.id}`, { headers, signal: abort.signal })
+        if (!r2.ok || abort.signal.aborted) return
+        const full = await r2.json()
+        setLastRunSummary({ status: full.status, created_at: full.created_at, run_id: full.id })
+        setLastRunState(full.state ?? {})
+      } catch { /* silent */ }
+    })()
+    return () => abort.abort()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView, workflowId])
 
   // Load workflow on mount. When a graph arrives without meaningful positions
   // (the YAML loader writes placeholder coords), run dagre so it doesn't open
@@ -1268,7 +1293,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
             </div>
           </>
         ) : activeView === "definition" ? (
-          <DefinitionPanel nodes={nodes} edges={edges} workflowName={workflowName} getToken={getToken} workflowId={workflowId} />
+          <DefinitionPanel nodes={nodes} edges={edges} workflowName={workflowName} getToken={getToken} workflowId={workflowId} runState={lastRunState} runSummary={lastRunSummary} />
         ) : activeView === "runs" ? (
           <div className="flex-1 overflow-auto px-6 py-8">
             <div className="mx-auto max-w-3xl flex items-center justify-between mb-4">
