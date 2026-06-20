@@ -12,7 +12,7 @@ export default function HomePage() {
         <ProblemSection />
         <TwoLanesSection />
         <GovernanceNarrativeSection />
-        <HowConductLearnsSection />
+        <GuardLearnsTeaser />
         <PersonasSection />
         <FinalCTASection />
       </main>
@@ -521,115 +521,21 @@ const personas = [
   },
 ]
 
-/* ─── How Conduct Learns ───────────────────────────────────────────────── */
+/* ─── Guard Learns Teaser ──────────────────────────────────────────────── */
 
-function HowConductLearnsSection() {
+function GuardLearnsTeaser() {
   return (
-    <section className="bg-white py-24 px-6">
-      <div className="max-w-5xl mx-auto">
-        <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500 mb-4">How Conduct learns</p>
-        <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight leading-tight mb-4">
-          Every run makes the next run smarter.<br />
-          Every session makes the next agent more like your team.
-        </h2>
-        <p className="text-stone-500 leading-relaxed mb-14 max-w-2xl">
-          Two memory systems work together. One knows your codebase. One knows your team. No other automation tool has either.
+    <div className="bg-stone-50 border-y border-stone-100 py-8 px-6">
+      <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+        <p className="text-sm text-stone-600 leading-relaxed">
+          <span className="font-semibold text-stone-900">Guard learns as it runs.</span>{" "}
+          Every session makes the next one more accurate for your team.
         </p>
-
-        <div className="grid md:grid-cols-2 gap-5">
-
-          {/* Contextual Memory */}
-          <div className="rounded-[20px] border border-[#f0eef8] overflow-hidden">
-            <div className="px-9 pt-8 pb-6 border-b border-[#f0eef8] bg-[#faf9ff]">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-[12px] bg-indigo-50 flex items-center justify-center text-xl flex-shrink-0">🧠</div>
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-indigo-600 mb-0.5">Playbook Layer</p>
-                  <p className="text-lg font-extrabold text-stone-900 tracking-tight">Contextual Memory</p>
-                </div>
-              </div>
-              <p className="text-sm text-slate-500 leading-relaxed">
-                Per-workflow, per-repo. Every agent template reads what worked before it acts, then writes what it learned when it finishes.
-                Captured in <code className="text-xs bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded">recall_context</code> and{" "}
-                <code className="text-xs bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded">record_outcome</code> blocks.
-              </p>
-            </div>
-            <div className="px-9 py-6 flex flex-col gap-4">
-              {[
-                { title: "Knows which files are fragile", detail: "Run 1 explores. Run 10 goes straight to the right file." },
-                { title: "Avoids repeating past mistakes", detail: "If a fix caused a regression last time, the agent knows. It tries a different approach." },
-                { title: "Compounds across every template run", detail: "A workflow that has run 50 times on your repo is more valuable than a fresh install anywhere else." },
-              ].map(item => (
-                <div key={item.title} className="flex gap-3 items-start">
-                  <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 flex-shrink-0 mt-2" />
-                  <div>
-                    <p className="text-sm font-semibold text-stone-900 mb-0.5">{item.title}</p>
-                    <p className="text-sm text-slate-500">{item.detail}</p>
-                  </div>
-                </div>
-              ))}
-              <div className="mt-2 px-4 py-3 bg-[#faf9ff] border border-[#ede9fe] rounded-xl">
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 mb-1.5">How it works</p>
-                <p className="text-sm text-slate-500 leading-relaxed">Before every run → reads prior outcomes. After every run → writes what happened. The agent uses both to make better decisions next time.</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Team Session Memory */}
-          <div className="rounded-[20px] overflow-hidden">
-            <div className="px-9 pt-8 pb-6 border-b border-white/10" style={{ background: "linear-gradient(135deg, #0a0815, #1f1048)" }}>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-[12px] bg-white/10 flex items-center justify-center text-xl flex-shrink-0">👥</div>
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-violet-400 mb-0.5">CLI Layer</p>
-                  <p className="text-lg font-extrabold text-white tracking-tight">Team Session Memory</p>
-                </div>
-              </div>
-              <p className="text-sm leading-relaxed" style={{ color: "rgba(255,255,255,0.55)" }}>
-                Per-developer, across every AI tool. The CLI hook captures sessions passively — what was prompted, accepted, rejected, and how each developer works. Zero extra effort from your team.
-              </p>
-            </div>
-            <div className="px-9 py-6 flex flex-col gap-4" style={{ background: "#0a0815" }}>
-              {[
-                { title: "Knows how each developer works", detail: "Sarah always requires tests. The security lead flags credential exposure. The agent already knows this before it writes a line." },
-                { title: "Captured across Copilot, Cursor, Claude, Codex", detail: "One CLI hook. All tools. Every session adds to the team's shared context automatically." },
-                { title: "The agent behaves like a team member", detail: "Not a contractor who just showed up. An engineer who has been with the team for months and knows how things are done here." },
-              ].map(item => (
-                <div key={item.title} className="flex gap-3 items-start">
-                  <div className="w-1.5 h-1.5 rounded-full bg-violet-400 flex-shrink-0 mt-2" />
-                  <div>
-                    <p className="text-sm font-semibold mb-0.5" style={{ color: "rgba(255,255,255,0.9)" }}>{item.title}</p>
-                    <p className="text-sm" style={{ color: "rgba(255,255,255,0.45)" }}>{item.detail}</p>
-                  </div>
-                </div>
-              ))}
-              <div className="mt-2 px-4 py-3 rounded-xl" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(167,139,250,0.2)" }}>
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] mb-1.5" style={{ color: "rgba(255,255,255,0.3)" }}>How it works</p>
-                <p className="text-sm leading-relaxed" style={{ color: "rgba(255,255,255,0.5)" }}>conduct login installs a hook in every AI tool. Each session is captured silently. The team&apos;s working patterns accumulate. Agent templates draw on this context automatically.</p>
-              </div>
-            </div>
-          </div>
-
-        </div>
-
-        {/* Together callout */}
-        <div className="mt-5 px-10 py-8 rounded-[20px] flex items-center justify-between gap-8 flex-wrap"
-          style={{ background: "linear-gradient(135deg, #7c3aed, #4c1d95)" }}>
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/50 mb-2">Together</p>
-            <h3 className="text-xl font-extrabold text-white tracking-tight mb-2">An agent that knows your codebase and your team.</h3>
-            <p className="text-sm text-white/60 leading-relaxed max-w-xl">
-              No other automation tool has either. GitHub Actions has zero memory. Copilot has no team context. Conduct compounds both — silently, continuously, from day one.
-            </p>
-          </div>
-          <a href="/sign-up"
-            className="flex-shrink-0 text-sm font-bold text-indigo-600 bg-white px-6 py-3 rounded-xl hover:opacity-90 transition-opacity whitespace-nowrap">
-            Start Free — See It Yourself
-          </a>
-        </div>
-
+        <a href="/guard-landing" className="flex-shrink-0 text-sm font-semibold text-indigo-600 hover:text-indigo-700 transition-colors whitespace-nowrap">
+          See how it works →
+        </a>
       </div>
-    </section>
+    </div>
   )
 }
 
