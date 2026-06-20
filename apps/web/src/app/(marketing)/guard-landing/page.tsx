@@ -451,7 +451,7 @@ function PageFooter() {
             {[
               { heading: "Solutions", links: [["Conduct Guard", "/solutions#guard"], ["Secure", "/solutions#secure"], ["Agentic Workflows", "/solutions#workflows"]] as [string, string][] },
               { heading: "Company", links: [["About", "/about"], ["Partners", "/partners"], ["Blog", "/blog"]] as [string, string][] },
-              { heading: "Resources", links: [["Docs", "/docs"], ["Agent Templates", "/marketplace"], ["GitHub", "https://github.com/sseshachala/conductai"]] as [string, string][] },
+              { heading: "Resources", links: [["Docs", "/docs"], ["Agent Templates", "/marketplace"]] as [string, string][] },
               { heading: "Legal", links: [["Privacy", "/privacy"], ["Terms", "/terms"]] as [string, string][] },
             ].map(col => (
               <div key={col.heading}>
