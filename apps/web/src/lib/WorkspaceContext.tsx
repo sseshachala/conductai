@@ -65,7 +65,11 @@ function WorkspaceProviderInner({
   getToken: (() => Promise<string | null>) | null
 }) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
-  const [activeWorkspace, setActiveWorkspaceState] = useState<Workspace | null>(null)
+  const [activeWorkspace, setActiveWorkspaceState] = useState<Workspace | null>(() => {
+    const id = getCookie("delegator_project_id")
+    const name = getCookie("delegator_project_name")
+    return id ? { id, name: name ? decodeURIComponent(name) : "" } as Workspace : null
+  })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
