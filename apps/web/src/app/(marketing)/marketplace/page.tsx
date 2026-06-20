@@ -281,6 +281,8 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
       const token = await getToken()
       if (token) headers["Authorization"] = `Bearer ${token}`
     }
+    const wsId = activeWorkspace?.id ?? null
+    if (wsId) headers["X-Workspace-Id"] = wsId
     return headers
   }
 
