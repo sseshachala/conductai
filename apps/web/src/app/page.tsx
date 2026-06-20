@@ -674,11 +674,10 @@ function FinalCTASection() {
     <section className="py-24 px-6 bg-gradient-to-br from-indigo-600 to-violet-600">
       <div className="max-w-3xl mx-auto text-center">
         <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-tight mb-4">
-          Stop governing AI<br />with documentation.<br />Start governing it<br />with infrastructure.
+          Your team is already<br />using AI agents.<br />Conduct is how you<br />run them and govern them.
         </h2>
         <p className="text-indigo-200 text-lg leading-relaxed mb-10 max-w-xl mx-auto">
-          Platform for teams that move fast. Partnership for teams that need it done right.
-          Either way — your AI layer gets governed.
+          One platform. Two problems solved.
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <a href="/sign-up" className="rounded-xl bg-white text-indigo-600 px-7 py-3.5 text-base font-bold hover:bg-indigo-50 transition-colors w-full sm:w-auto text-center">
