@@ -81,6 +81,13 @@ function ProductsDropdown() {
               <p className="text-xs text-stone-400">Terminal governance + token savings</p>
             </div>
           </a>
+          <a href="/sdd" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <span>📐</span>
+            <div>
+              <p className="font-semibold">Spec-Driven Dev</p>
+              <p className="text-xs text-stone-400">Ship from a spec, not a vibe</p>
+            </div>
+          </a>
         </div>
       </div>
     </div>
