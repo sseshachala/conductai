@@ -8,9 +8,11 @@ export default function HomePage() {
         <AcquisitionBanner />
         <HeroSection />
         <ToolsStripSection />
+        <ProofStripSection />
         <ProblemSection />
         <SolutionsSection />
         <TwoTracksSection />
+        <GovernanceNarrativeSection />
         <PersonasSection />
         <FinalCTASection />
       </main>
@@ -165,6 +167,102 @@ function ToolsStripSection() {
         </div>
       </div>
     </div>
+  )
+}
+
+/* ─── Proof Strip ──────────────────────────────────────────────────────── */
+
+function ProofStripSection() {
+  const stats = [
+    { value: "$4,170", label: "AI spend tracked in 18 days" },
+    { value: "6", label: "production deploys intercepted" },
+    { value: "589", label: "PII events screened" },
+    { value: "$235", label: "saved via RTK + Booster" },
+  ]
+  return (
+    <section className="bg-stone-950 border-y border-stone-800 py-5 px-6">
+      <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-center gap-x-12 gap-y-4">
+        <span className="text-xs font-semibold uppercase tracking-widest text-stone-500 mr-2">Real data · 18 days · 1 developer</span>
+        {stats.map(s => (
+          <div key={s.label} className="flex items-baseline gap-2">
+            <span className="text-xl font-black text-white tracking-tight">{s.value}</span>
+            <span className="text-xs text-stone-400">{s.label}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+/* ─── Governance Narrative ─────────────────────────────────────────────── */
+
+function GovernanceNarrativeSection() {
+  const incidents = [
+    {
+      rule: "approve-prod-deploy",
+      headline: "Force-deploy to production — intercepted",
+      detail: "AI attempted vercel deploy --prod --force at 3:11pm on a Friday. Guard blocked it before it executed.",
+      badge: "BLOCKED",
+      badgeColor: "bg-red-500",
+    },
+    {
+      rule: "no-secret-in-commit-msg",
+      headline: "Secret embedded in git commit — caught",
+      detail: "AI tried to commit code with a credential token in the commit message. Fired twice in the same session.",
+      badge: "BLOCKED",
+      badgeColor: "bg-red-500",
+    },
+    {
+      rule: "pii-redact",
+      headline: "971 PII events in a single day",
+      detail: "Jun 19 spiked 30× the 32/day baseline. Without Guard, every one of those calls would have sent raw credentials to an LLM.",
+      badge: "WARNED",
+      badgeColor: "bg-amber-500",
+    },
+  ]
+  return (
+    <section className="py-24 px-6 bg-white border-b border-stone-100">
+      <div className="max-w-5xl mx-auto">
+        <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500 mb-4">18 days of real production data</p>
+        <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight leading-tight mb-4 max-w-2xl">
+          In 18 days of normal development, AI made 6 attempts to touch production and exposed credentials 971 times in a single day.
+        </h2>
+        <p className="text-stone-500 leading-relaxed mb-12 max-w-2xl">
+          The developer didn&apos;t notice any of it. Guard did.
+        </p>
+        <div className="grid md:grid-cols-3 gap-5 mb-12">
+          {incidents.map(inc => (
+            <div key={inc.rule} className="rounded-2xl border border-stone-200 p-6 flex flex-col gap-3 hover:border-stone-300 hover:shadow-sm transition-all">
+              <div className="flex items-center gap-2">
+                <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold text-white tracking-wider ${inc.badgeColor}`}>
+                  {inc.badge}
+                </span>
+                <span className="text-[10px] font-mono text-stone-400">{inc.rule}</span>
+              </div>
+              <h3 className="text-sm font-bold text-stone-900 leading-snug">{inc.headline}</h3>
+              <p className="text-xs text-stone-500 leading-relaxed">{inc.detail}</p>
+            </div>
+          ))}
+        </div>
+        <div className="rounded-2xl bg-indigo-50 border border-indigo-100 px-8 py-6 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-stone-900 mb-1">
+              What would have happened without Guard?
+            </p>
+            <p className="text-sm text-stone-500 leading-relaxed">
+              The production deploy would have executed. Average cost of a prod incident at a mid-market company: $15K–$50K.
+              $235 saved on tooling is nice. $50K in a prevented outage is a different conversation.
+            </p>
+          </div>
+          <a
+            href="/sign-up"
+            className="flex-shrink-0 rounded-xl bg-indigo-600 text-white px-6 py-3 text-sm font-bold hover:bg-indigo-700 transition-colors whitespace-nowrap"
+          >
+            Start Free
+          </a>
+        </div>
+      </div>
+    </section>
   )
 }
 
