@@ -66,6 +66,18 @@ class ProjectOut(BaseModel):
     security_finding_id: str | None = None
 
 
+class ProjectDetailOut(BaseModel):
+    """Response for GET /projects/{id} — actual projects table (not workspaces).
+    Distinct from ProjectOut which is used by /workspaces/* endpoints.
+    """
+    id: str
+    workspace_id: str
+    name: str
+    slug: str
+    created_at: datetime
+    agent_count: int = 0
+
+
 class ProjectCreate(BaseModel):
     name: str
     template_id: str | None = None
@@ -432,7 +444,7 @@ def delete_project(
 # Direct project lookup (no workspace cookie required — workspace derived from row)
 # ---------------------------------------------------------------------------
 
-@router.get("/{project_id}", response_model=ProjectOut)
+@router.get("/{project_id}", response_model=ProjectDetailOut)
 def get_project(
     project_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
@@ -456,8 +468,8 @@ def get_project(
     if not member and user_id != "dev":
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
 
-    return ProjectOut(id=str(row.id), workspace_id=proj_ws, name=row.name,
-                      slug=row.slug or "", created_at=row.created_at, agent_count=row.agent_count or 0)
+    return ProjectDetailOut(id=str(row.id), workspace_id=proj_ws, name=row.name,
+                            slug=row.slug or "", created_at=row.created_at, agent_count=row.agent_count or 0)
 
 
 # ---------------------------------------------------------------------------
