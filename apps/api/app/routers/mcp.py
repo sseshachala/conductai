@@ -1,9 +1,11 @@
 """
-POST /mcp/tools  — discover tools from an MCP server via credential handle
+POST /mcp/tools  — discover tools from an MCP server via credential handle or server_id
 """
 import structlog
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id
@@ -14,7 +16,8 @@ router = APIRouter(prefix="/mcp", tags=["mcp"])
 
 
 class ToolDiscoveryRequest(BaseModel):
-    credential_key: str
+    credential_key: Optional[str] = None
+    server_id: Optional[str] = None
     transport: str = "auto"
 
 
@@ -35,27 +38,55 @@ def discover_mcp_tools(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
 ):
-    from app.core.crypto import decrypt
-    from app.models.integration import Integration
+    from app.core.crypto import decrypt as _decrypt
 
-    row = db.query(Integration).filter(
-        Integration.workspace_id == workspace_id,
-        Integration.handle == body.credential_key,
-    ).first()
-    if not row or not row.encrypted_credentials:
-        raise HTTPException(status_code=404, detail=f"MCP credential '{body.credential_key}' not found")
+    if body.server_id is not None:
+        row = db.execute(
+            text(
+                "SELECT url, transport, encrypted_auth"
+                " FROM mcp_servers"
+                " WHERE id = :id AND workspace_id = :ws"
+            ),
+            {"id": body.server_id, "ws": workspace_id},
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="MCP server not found")
+        server_url = row.url
+        transport = row.transport or body.transport
+        token = _decrypt(row.encrypted_auth).get("token") if row.encrypted_auth else None
+    elif body.credential_key is not None:
+        from app.models.integration import Integration
 
-    creds = decrypt(row.encrypted_credentials)
-    server_url = creds.get("server_url") or creds.get("url")
-    token = creds.get("token") or creds.get("api_key")
-    if not server_url:
-        raise HTTPException(status_code=422, detail="Credential missing 'server_url'")
+        integration = db.query(Integration).filter(
+            Integration.workspace_id == workspace_id,
+            Integration.handle == body.credential_key,
+        ).first()
+        if not integration or not integration.encrypted_credentials:
+            raise HTTPException(
+                status_code=404,
+                detail=f"MCP credential '{body.credential_key}' not found",
+            )
+        creds = _decrypt(integration.encrypted_credentials)
+        server_url = creds.get("server_url") or creds.get("url")
+        token = creds.get("token") or creds.get("api_key")
+        transport = body.transport
+        if not server_url:
+            raise HTTPException(status_code=422, detail="Credential missing 'server_url'")
+    else:
+        raise HTTPException(
+            status_code=422, detail="Either 'server_id' or 'credential_key' is required"
+        )
 
     try:
         from app.runtime.integrations.mcp_client import list_tools
-        tools, transport_used = list_tools(server_url, token=token, transport=body.transport)
+        tools, transport_used = list_tools(server_url, token=token, transport=transport)
     except Exception as e:
-        log.warning("mcp.discover_failed", credential_key=body.credential_key, error=str(e))
+        log.warning(
+            "mcp.discover_failed",
+            server_id=body.server_id,
+            credential_key=body.credential_key,
+            error=str(e),
+        )
         raise HTTPException(status_code=502, detail=f"MCP connection failed: {e}")
 
     return ToolDiscoveryResponse(
