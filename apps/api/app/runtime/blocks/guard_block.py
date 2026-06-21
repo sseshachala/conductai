@@ -12,7 +12,8 @@ import uuid as _uuid
 from datetime import datetime, timezone
 
 import structlog
-from app.modules.guard.models import GuardAuditEvent, GuardPolicy
+from app.modules.guard.models import GuardAuditEvent, GuardConfig
+from app.modules.guard.policy_engine import compute_policy
 
 log = structlog.get_logger(__name__)
 
@@ -90,36 +91,36 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db) -> dict:
     path_text = " ".join(path_values)
 
     # ── 3. Load active policies ───────────────────────────────────────────────
-    policy_q = db.query(GuardPolicy).filter(
-        GuardPolicy.workspace_id == ws_uuid,
-        GuardPolicy.enabled.is_(True),
-    )
+    # Pull active rules from skill_packs JSONB via compute_policy(). Persona is
+    # the workspace's configured persona (defaults to 'standard').
+    cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
+    persona = (cfg.persona if cfg else None) or "standard"
+    policies = compute_policy(db, ws_uuid, persona)
     if rule_ids_filter:
-        policy_q = policy_q.filter(GuardPolicy.rule_id.in_(rule_ids_filter))
-    policies = policy_q.order_by(GuardPolicy.updated_at.desc()).all()
+        policies = [p for p in policies if (p.get("id") or p.get("rule_id")) in rule_ids_filter]
 
     # ── 4. Evaluate rules ─────────────────────────────────────────────────────
     violations = []
     for policy in policies:
         # match_tool — for workflow context use "workflow" as the synthetic tool
-        match_tool = (policy.match_tool or "*").lower()
+        match_tool = (policy.get("match_tool") or "*").lower()
         if match_tool != "*":
             allowed = {t.strip() for t in match_tool.split(",")}
             if "workflow" not in allowed:
                 continue
 
         # match_pattern — search context JSON
-        if policy.match_pattern:
+        if policy.get("match_pattern"):
             try:
-                if not _re.search(policy.match_pattern, context_json, _re.IGNORECASE):
+                if not _re.search(policy["match_pattern"], context_json, _re.IGNORECASE):
                     continue
             except _re.error:
                 continue
 
         # match_path_pattern — search path-like values
-        if policy.match_path_pattern:
+        if policy.get("match_path_pattern"):
             try:
-                if not _re.search(policy.match_path_pattern, path_text, _re.IGNORECASE):
+                if not _re.search(policy["match_path_pattern"], path_text, _re.IGNORECASE):
                     continue
             except _re.error:
                 continue
@@ -131,7 +132,7 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db) -> dict:
     now        = datetime.now(timezone.utc)
     warnings   = []
 
-    def _record_event(policy: GuardPolicy, decision: str) -> None:
+    def _record_event(policy: dict, decision: str) -> None:
         try:
             db.add(GuardAuditEvent(
                 workspace_id=ws_uuid,
@@ -139,8 +140,8 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db) -> dict:
                 tool_call=block_id,
                 input_summary=context_json[:500],
                 decision=decision,
-                rule_id=policy.rule_id,
-                rule_message=policy.message,
+                rule_id=policy.get("id") or policy.get("rule_id"),
+                rule_message=policy.get("message"),
                 ts=now,
             ))
             db.flush()
@@ -148,17 +149,18 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db) -> dict:
             pass
 
     for v in violations:
-        message = v.message or f"Policy violation: {v.rule_id}"
-        action  = v.action
+        v_rule_id = v.get("id") or v.get("rule_id")
+        message = v.get("message") or f"Policy violation: {v_rule_id}"
+        action  = v.get("action")
 
         if action == "block":
             _record_event(v, "blocked")
             db.commit()
-            raise RuntimeError(f"[ConductGuard] Blocked by policy '{v.rule_id}': {message}")
+            raise RuntimeError(f"[ConductGuard] Blocked by policy '{v_rule_id}': {message}")
 
         elif action in ("warn", "approval"):
             _record_event(v, "warned")
-            warnings.append({"rule_id": v.rule_id, "message": message})
+            warnings.append({"rule_id": v_rule_id, "message": message})
 
         else:  # audit
             _record_event(v, "audited")

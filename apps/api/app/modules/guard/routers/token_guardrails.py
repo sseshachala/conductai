@@ -15,7 +15,7 @@ from sqlalchemy import text as sa_text
 
 from app.core.auth import get_workspace_id
 from app.core.database import get_db
-from app.modules.guard.models import GuardConfig, GuardPolicy, GuardSpendBudget
+from app.modules.guard.models import GuardConfig, GuardRuleOverride, GuardSpendBudget
 
 log = structlog.get_logger(__name__)
 
@@ -128,13 +128,13 @@ def _build_guardrail_state(db: Session, workspace_id: str) -> dict:
     current_tools = (["rtk"] if has_rtk else []) + (["booster"] if has_booster else [])
 
     # ── Auto-detect: deterministic offload policy ─────────────────────────────
-    # Builtin default is active. Only inactive if a row exists with enabled=False.
+    # Builtin default is active. Only inactive if a workspace override has disabled it.
     explicitly_disabled = (
-        db.query(GuardPolicy)
+        db.query(GuardRuleOverride)
         .filter(
-            GuardPolicy.workspace_id == ws_uuid,
-            GuardPolicy.rule_id == "warn-deterministic-compute",
-            GuardPolicy.enabled.is_(False),
+            GuardRuleOverride.workspace_id == ws_uuid,
+            GuardRuleOverride.rule_id == "warn-deterministic-compute",
+            GuardRuleOverride.disabled.is_(True),
         )
         .first()
     ) is not None
