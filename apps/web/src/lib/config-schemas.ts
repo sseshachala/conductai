@@ -9,7 +9,7 @@ export interface TriggerTypeConfig {
 
 // Shared field definitions reused across trigger types
 const TRIGGER_REPO_FIELD: ConfigField = {
-  key: "config.repo",
+  key: "config.repo_allowlist",  // matches backend YAML field name
   label: "Repository",
   type: "text",
   required: true,
@@ -67,12 +67,13 @@ export const TRIGGER_CONFIG: Record<string, TriggerTypeConfig> = {
     fields: [
       TRIGGER_REPO_FIELD,
       {
-        key: "config.label",
-        label: "Label",
-        type: "text",
+        key: "config.labels",
+        label: "Labels",
+        type: "tags",
         required: true,
-        placeholder: "autopilot-ready",
-        hint: "GitHub issue label that fires this trigger",
+        placeholder: "Add a label…",
+        hint: "GitHub issue labels that fire this trigger — any match fires",
+        suggestions: ["autopilot ready", "ai_pilot_ready", "ai_ready"],
       },
     ],
   },
