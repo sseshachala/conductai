@@ -80,7 +80,6 @@ sys.modules["app.core.database"] = _db_mod
 from app.modules.guard.models import (   # noqa: E402
     GuardAuditEvent,
     GuardMemberConfig,
-    GuardPolicy,
     GuardSession,
     GuardSpendBudget,
 )
@@ -116,15 +115,15 @@ def _make_team(**kw):
 
 
 def _make_policy(**kw):
-    p = MagicMock()
-    p.rule_id = kw.get("rule_id", "test-rule")
-    p.match_tool = kw.get("match_tool", "*")
-    p.match_pattern = kw.get("match_pattern", None)
-    p.match_path_pattern = kw.get("match_path_pattern", None)
-    p.action = kw.get("action", "block")
-    p.message = kw.get("message", "Policy violation")
-    p.enabled = kw.get("enabled", True)
-    return p
+    # Rules now flow through compute_policy() as plain dicts.
+    return {
+        "id": kw.get("rule_id", "test-rule"),
+        "match_tool": kw.get("match_tool", "*"),
+        "match_pattern": kw.get("match_pattern"),
+        "match_path_pattern": kw.get("match_path_pattern"),
+        "action": kw.get("action", "block"),
+        "message": kw.get("message", "Policy violation"),
+    }
 
 
 def _make_db(team=None, policies=None, no_team=False):
@@ -143,12 +142,21 @@ def _make_db(team=None, policies=None, no_team=False):
     q.order_by.return_value = q
     q.all.return_value = resolved_policies
     db.query.return_value = q
+    db._test_policies = resolved_policies
     return db, resolved_team
 
 
 def _run(config, state, db, workspace_id=None):
     block = {"id": "guard_test", "config": config}
-    return _execute_guard(block, state, workspace_id or str(uuid.uuid4()), db)
+    # Patch compute_policy so the new code reads from the test's policy list
+    # (the legacy tests were written against the old direct-query API).
+    import app.runtime.blocks.guard_block as _gb
+    _orig = _gb.compute_policy
+    _gb.compute_policy = lambda _db, _ws, _persona: list(getattr(db, "_test_policies", []) or [])
+    try:
+        return _execute_guard(block, state, workspace_id or str(uuid.uuid4()), db)
+    finally:
+        _gb.compute_policy = _orig
 
 
 # ── Guard not installed ───────────────────────────────────────────────────────
@@ -359,20 +367,23 @@ class TestGuardMemberConfigModel:
         assert "member_token" in self._cols()
 
 
-# ── GuardPolicy model ─────────────────────────────────────────────────────────
+# ── WorkspaceCustomRule model (replaces GuardPolicy) ─────────────────────────
 
-class TestGuardPolicyModel:
+from app.modules.guard.models import WorkspaceCustomRule
+
+
+class TestWorkspaceCustomRuleModel:
     def _cols(self):
-        return {c.key for c in GuardPolicy.__table__.columns}
+        return {c.key for c in WorkspaceCustomRule.__table__.columns}
 
-    def test_has_match_fields(self):
+    def test_has_composite_key(self):
         cols = self._cols()
-        assert "match_tool" in cols
-        assert "match_pattern" in cols
-        assert "match_path_pattern" in cols
+        assert "workspace_id" in cols
+        assert "rule_id" in cols
 
-    def test_has_action_and_enabled(self):
+    def test_body_jsonb_holds_rule_shape(self):
         cols = self._cols()
-        assert "action" in cols
+        # The rule's match_*, action, message, etc. live inside the JSONB body
+        # instead of as top-level columns. This is the shape contract.
+        assert "body" in cols
         assert "enabled" in cols
-        assert "builtin" in cols
