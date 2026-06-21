@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { useWorkspace } from "@/lib/WorkspaceContext"
@@ -22,8 +23,13 @@ interface FrameworkRow {
   packs: string[]
 }
 
+interface BonusFrameworkRow extends FrameworkRow {
+  recommended_pack: string | null
+}
+
 interface FrameworksOut {
-  frameworks: FrameworkRow[]
+  installed: FrameworkRow[]
+  bonus: BonusFrameworkRow[]
   total_rules: number
   rules_with_framework: number
 }
@@ -117,8 +123,9 @@ export default function GovernancePage() {
         if (res.ok && !cancelled) {
           const data: FrameworksOut = await res.json()
           setFrameworks(data)
-          if (!activeFramework && data.frameworks.length > 0) {
-            setActiveFramework(data.frameworks[0].framework)
+          if (!activeFramework) {
+            const first = data.installed[0] || data.bonus[0]
+            if (first) setActiveFramework(first.framework)
           }
         }
       } catch { /* non-fatal */ }
@@ -137,7 +144,9 @@ export default function GovernancePage() {
     ? (savings.team_total.rtk_saved_usd || 0) + (savings.team_total.booster_saved_usd || 0)
     : 0
 
-  const activeFwRow = frameworks?.frameworks.find(f => f.framework === activeFramework) || null
+  const allFwRows: (FrameworkRow | BonusFrameworkRow)[] =
+    frameworks ? [...frameworks.installed, ...frameworks.bonus] : []
+  const activeFwRow = allFwRows.find(f => f.framework === activeFramework) || null
 
   return (
     <AppShell>
@@ -213,36 +222,86 @@ export default function GovernancePage() {
             )}
           </div>
 
-          {!frameworks || frameworks.frameworks.length === 0 ? (
+          {!frameworks || (frameworks.installed.length === 0 && frameworks.bonus.length === 0) ? (
             <div style={{ fontSize: 13, color: "var(--text-3)" }}>
               No frameworks covered yet. Install a compliance pack from the marketplace to start.
             </div>
           ) : (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {frameworks.frameworks.map(fw => {
-                const isActive = fw.framework === activeFramework
-                return (
-                  <button
-                    key={fw.framework}
-                    onClick={() => setActiveFramework(fw.framework)}
-                    style={{
-                      padding: "10px 14px",
-                      borderRadius: 8,
-                      border: `1px solid ${isActive ? "var(--accent-text)" : "var(--border)"}`,
-                      background: isActive ? "var(--accent-weak)" : "var(--surface-2)",
-                      color: isActive ? "var(--accent-text)" : "var(--text-1)",
-                      cursor: "pointer",
-                      fontSize: 13,
-                      fontWeight: isActive ? 600 : 500,
-                    }}
-                  >
-                    {FRAMEWORK_LABEL[fw.framework] ?? fw.framework}
-                    <span style={{ marginLeft: 8, fontSize: 11, color: isActive ? "var(--accent-text)" : "var(--text-3)" }}>
-                      {fw.rules_count} {fw.rules_count === 1 ? "rule" : "rules"}
+            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+              {/* Tier 1 — frameworks with a dedicated installed pack */}
+              {frameworks.installed.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 8 }}>
+                    Installed frameworks
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {frameworks.installed.map(fw => {
+                      const isActive = fw.framework === activeFramework
+                      return (
+                        <button
+                          key={fw.framework}
+                          onClick={() => setActiveFramework(fw.framework)}
+                          style={{
+                            padding: "10px 14px",
+                            borderRadius: 8,
+                            border: `1px solid ${isActive ? "var(--accent-text)" : "var(--border)"}`,
+                            background: isActive ? "var(--accent-weak)" : "var(--surface-2)",
+                            color: isActive ? "var(--accent-text)" : "var(--text-1)",
+                            cursor: "pointer",
+                            fontSize: 13,
+                            fontWeight: isActive ? 600 : 500,
+                          }}
+                        >
+                          {FRAMEWORK_LABEL[fw.framework] ?? fw.framework}
+                          <span style={{ marginLeft: 8, fontSize: 11, color: isActive ? "var(--accent-text)" : "var(--text-3)" }}>
+                            {fw.rules_count} {fw.rules_count === 1 ? "rule" : "rules"}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Tier 2 — bonus / cross-coverage from installed packs */}
+              {frameworks.bonus.length > 0 && (
+                <div>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+                      Bonus coverage
                     </span>
-                  </button>
-                )
-              })}
+                    <span style={{ fontSize: 11, color: "var(--text-3)" }}>
+                      cross-tagged rules from your installed packs
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {frameworks.bonus.map(fw => {
+                      const isActive = fw.framework === activeFramework
+                      return (
+                        <button
+                          key={fw.framework}
+                          onClick={() => setActiveFramework(fw.framework)}
+                          style={{
+                            padding: "10px 14px",
+                            borderRadius: 8,
+                            border: `1px dashed ${isActive ? "var(--accent-text)" : "var(--border)"}`,
+                            background: isActive ? "var(--accent-weak)" : "var(--surface-1)",
+                            color: isActive ? "var(--accent-text)" : "var(--text-2)",
+                            cursor: "pointer",
+                            fontSize: 13,
+                            fontWeight: isActive ? 600 : 500,
+                          }}
+                        >
+                          {FRAMEWORK_LABEL[fw.framework] ?? fw.framework}
+                          <span style={{ marginLeft: 8, fontSize: 11, color: isActive ? "var(--accent-text)" : "var(--text-3)" }}>
+                            {fw.rules_count} {fw.rules_count === 1 ? "rule" : "rules"}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </section>
@@ -280,6 +339,19 @@ export default function GovernancePage() {
             <div style={{ marginTop: 12, fontSize: 11, color: "var(--text-muted)" }}>
               Source packs: {activeFwRow.packs.join(", ")}
             </div>
+            {(() => {
+              const rec = (activeFwRow as BonusFrameworkRow).recommended_pack
+              if (!rec) return null
+              const label = FRAMEWORK_LABEL[activeFwRow.framework] ?? activeFwRow.framework
+              return (
+                <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-2)" }}>
+                  Want dedicated {label} controls?{" "}
+                  <Link href="/marketplace" style={{ color: "var(--accent-text)", textDecoration: "underline" }}>
+                    Install {rec}
+                  </Link>
+                </div>
+              )
+            })()}
           </section>
         )}
       </div>

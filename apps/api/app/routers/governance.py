@@ -36,10 +36,46 @@ class FrameworkRow(BaseModel):
     packs: list[str]             # pack slugs that contribute (e.g. ["conduct-base", "conduct-soc2"])
 
 
+class BonusFrameworkRow(BaseModel):
+    framework: str
+    rules_count: int
+    controls: list[str]
+    packs: list[str]                # packs that cross-tag this framework
+    recommended_pack: str | None    # slug of the dedicated pack, if one exists
+
+
 class FrameworksOut(BaseModel):
-    frameworks: list[FrameworkRow]
-    total_rules: int             # sum of all installed rules (across packs)
-    rules_with_framework: int    # how many of those have at least one framework tag
+    installed: list[FrameworkRow]   # frameworks where a dedicated pack is installed
+    bonus: list[BonusFrameworkRow]  # frameworks getting cross-coverage only
+    total_rules: int                # sum of all installed rules (across packs)
+    rules_with_framework: int       # how many of those have at least one framework tag
+
+
+# Maps pack slug → the framework it's designed for. None = general (no primary).
+# Used to split framework coverage into "installed" (dedicated pack present) and
+# "bonus" (cross-tagged rules from packs designed for other frameworks).
+PACK_PRIMARY_FRAMEWORK: dict[str, str | None] = {
+    "conduct-soc2":     "SOC2",
+    "conduct-owasp":    "OWASP",
+    "conduct-hipaa":    "HIPAA",
+    "conduct-pci-dss":  "PCI_DSS",
+    "conduct-base":     None,
+}
+
+# Reverse map: given a framework name, recommend the dedicated pack to install.
+# None = no dedicated pack ships today (e.g. GDPR, EU_AI_Act, ISO_42001).
+RECOMMENDED_PACK: dict[str, str | None] = {
+    "SOC2":      "conduct-soc2",
+    "OWASP":     "conduct-owasp",
+    "HIPAA":     "conduct-hipaa",
+    "PCI_DSS":   "conduct-pci-dss",
+    "ISO_42001": None,
+    "GDPR":      None,
+    "EU_AI_ACT": None,
+    "NIST":      None,
+    "NIS2":      None,
+    "DORA":      None,
+}
 
 
 class NarrativeOut(BaseModel):
@@ -104,18 +140,35 @@ def _compute_framework_coverage(db: Session, workspace_id: str) -> FrameworksOut
                     bucket["controls"].add(ctrl)
                 bucket["packs"].add(pack.slug)
 
-    rows = [
-        FrameworkRow(
-            framework=fw,
-            rules_count=data["rules"],
-            controls=sorted(data["controls"]),
-            packs=sorted(data["packs"]),
-        )
-        for fw, data in sorted(agg.items(), key=lambda kv: -kv[1]["rules"])
-    ]
+    # Set of frameworks for which a dedicated pack is installed.
+    installed_frameworks = {
+        PACK_PRIMARY_FRAMEWORK.get(wp.pack_slug)
+        for wp in installed
+        if PACK_PRIMARY_FRAMEWORK.get(wp.pack_slug) is not None
+    }
+
+    installed_rows: list[FrameworkRow] = []
+    bonus_rows: list[BonusFrameworkRow] = []
+    for fw, data in sorted(agg.items(), key=lambda kv: -kv[1]["rules"]):
+        if fw in installed_frameworks:
+            installed_rows.append(FrameworkRow(
+                framework=fw,
+                rules_count=data["rules"],
+                controls=sorted(data["controls"]),
+                packs=sorted(data["packs"]),
+            ))
+        else:
+            bonus_rows.append(BonusFrameworkRow(
+                framework=fw,
+                rules_count=data["rules"],
+                controls=sorted(data["controls"]),
+                packs=sorted(data["packs"]),
+                recommended_pack=RECOMMENDED_PACK.get(fw),
+            ))
 
     return FrameworksOut(
-        frameworks=rows,
+        installed=installed_rows,
+        bonus=bonus_rows,
         total_rules=total_rules,
         rules_with_framework=rules_with_framework,
     )
@@ -177,10 +230,12 @@ def get_narrative(
         .count()
     )
 
-    # Frameworks covered
+    # Frameworks covered — count primary (installed dedicated pack) first; mention bonus only if no primary.
     fw_resp = _compute_framework_coverage(db, workspace_id)
-    fw_count = len(fw_resp.frameworks)
-    fw_names = ", ".join(r.framework for r in fw_resp.frameworks[:3])
+    primary_count = len(fw_resp.installed)
+    bonus_count = len(fw_resp.bonus)
+    fw_count = primary_count
+    fw_names = ", ".join(r.framework for r in fw_resp.installed[:3])
 
     if total_7d == 0 and installed_packs == 0:
         para = (
@@ -197,6 +252,10 @@ def get_narrative(
             bits.append(f"flagged {warned_7d} for review")
         if fw_count > 0:
             bits.append(f"covering {fw_count} frameworks ({fw_names})")
+            if bonus_count > 0:
+                bits.append(f"with bonus coverage on {bonus_count} more")
+        elif bonus_count > 0:
+            bits.append(f"with bonus coverage on {bonus_count} frameworks from {installed_packs} pack(s)")
         elif installed_packs > 0:
             bits.append(f"with {installed_packs} pack(s) installed")
         para = ". ".join(b.capitalize() if i == 0 else b for i, b in enumerate(bits)) + "."
