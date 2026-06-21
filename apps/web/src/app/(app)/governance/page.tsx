@@ -15,6 +15,40 @@ interface SpendStats {
 
 interface InstalledPacksResponse { installed: string[] }
 
+interface FrameworkRow {
+  framework: string
+  rules_count: number
+  controls: string[]
+  packs: string[]
+}
+
+interface FrameworksOut {
+  frameworks: FrameworkRow[]
+  total_rules: number
+  rules_with_framework: number
+}
+
+interface NarrativeOut {
+  paragraph: string
+  generated_at: string
+  source: "template" | "llm"
+}
+
+// Friendly display names for known framework prefixes.
+const FRAMEWORK_LABEL: Record<string, string> = {
+  SOC2: "SOC 2",
+  ISO_42001: "ISO 42001",
+  ISO_27001: "ISO 27001",
+  EU_AI_ACT: "EU AI Act",
+  GDPR: "GDPR",
+  HIPAA: "HIPAA",
+  PCI_DSS: "PCI DSS",
+  OWASP: "OWASP Top 10",
+  NIST: "NIST AI RMF",
+  NIS2: "NIS 2",
+  DORA: "DORA",
+}
+
 function KpiCard({ label, value, sub, tone = "neutral" }: {
   label: string
   value: string
@@ -52,6 +86,9 @@ export default function GovernancePage() {
   const { getToken } = useAuth()
   const [stats, setStats] = useState<SpendStats | null>(null)
   const [installedPacks, setInstalledPacks] = useState<string[]>([])
+  const [frameworks, setFrameworks] = useState<FrameworksOut | null>(null)
+  const [narrative, setNarrative] = useState<NarrativeOut | null>(null)
+  const [activeFramework, setActiveFramework] = useState<string | null>(null)
 
   useEffect(() => {
     if (!workspaceId) return
@@ -74,15 +111,33 @@ export default function GovernancePage() {
           setInstalledPacks(Array.isArray(data?.installed) ? data.installed : [])
         }
       } catch { /* non-fatal */ }
+
+      try {
+        const res = await fetch(`${base}/governance/frameworks?workspace_id=${workspaceId}`, { headers })
+        if (res.ok && !cancelled) {
+          const data: FrameworksOut = await res.json()
+          setFrameworks(data)
+          if (!activeFramework && data.frameworks.length > 0) {
+            setActiveFramework(data.frameworks[0].framework)
+          }
+        }
+      } catch { /* non-fatal */ }
+
+      try {
+        const res = await fetch(`${base}/governance/narrative?workspace_id=${workspaceId}`, { headers })
+        if (res.ok && !cancelled) setNarrative(await res.json())
+      } catch { /* non-fatal */ }
     }
     load()
     return () => { cancelled = true }
-  }, [workspaceId, getToken])
+  }, [workspaceId, getToken, activeFramework])
 
   const { savings } = useGuardSavings(workspaceId)
   const totalSavedUsd = savings
     ? (savings.team_total.rtk_saved_usd || 0) + (savings.team_total.booster_saved_usd || 0)
     : 0
+
+  const activeFwRow = frameworks?.frameworks.find(f => f.framework === activeFramework) || null
 
   return (
     <AppShell>
@@ -96,7 +151,7 @@ export default function GovernancePage() {
           </p>
         </header>
 
-        {/* AI Narrative Strip — placeholder, real LLM-generated paragraph lands in 750e */}
+        {/* Narrative strip — template-generated (LLM upgrade in Phase 2) */}
         <section style={{
           border: "1px solid var(--border)",
           borderRadius: 8,
@@ -108,7 +163,7 @@ export default function GovernancePage() {
             This week in plain English
           </div>
           <p style={{ fontSize: 14, lineHeight: 1.55, color: "var(--text-2)", margin: 0 }}>
-            Narrative summary not yet generated. The daily LLM job will fill this in once analytics data is flowing.
+            {narrative?.paragraph ?? "Loading summary…"}
           </p>
         </section>
 
@@ -139,20 +194,94 @@ export default function GovernancePage() {
           />
         </section>
 
-        {/* Framework matrix — placeholder, real data lands in 750c */}
+        {/* Framework matrix */}
         <section style={{
           border: "1px solid var(--border)",
           borderRadius: 8,
           padding: 18,
           background: "var(--surface-1)",
+          marginBottom: 20,
         }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-1)", marginBottom: 12 }}>
-            Framework coverage
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-1)" }}>
+              Framework coverage
+            </div>
+            {frameworks && (
+              <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+                {frameworks.rules_with_framework} of {frameworks.total_rules} rules tagged
+              </div>
+            )}
           </div>
-          <div style={{ fontSize: 13, color: "var(--text-3)" }}>
-            Multi-framework matrix renders here once rules are installed and the `/governance/frameworks` endpoint ships (750c).
-          </div>
+
+          {!frameworks || frameworks.frameworks.length === 0 ? (
+            <div style={{ fontSize: 13, color: "var(--text-3)" }}>
+              No frameworks covered yet. Install a compliance pack from the marketplace to start.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {frameworks.frameworks.map(fw => {
+                const isActive = fw.framework === activeFramework
+                return (
+                  <button
+                    key={fw.framework}
+                    onClick={() => setActiveFramework(fw.framework)}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 8,
+                      border: `1px solid ${isActive ? "var(--accent-text)" : "var(--border)"}`,
+                      background: isActive ? "var(--accent-weak)" : "var(--surface-2)",
+                      color: isActive ? "var(--accent-text)" : "var(--text-1)",
+                      cursor: "pointer",
+                      fontSize: 13,
+                      fontWeight: isActive ? 600 : 500,
+                    }}
+                  >
+                    {FRAMEWORK_LABEL[fw.framework] ?? fw.framework}
+                    <span style={{ marginLeft: 8, fontSize: 11, color: isActive ? "var(--accent-text)" : "var(--text-3)" }}>
+                      {fw.rules_count} {fw.rules_count === 1 ? "rule" : "rules"}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </section>
+
+        {/* Per-control drill-down */}
+        {activeFwRow && (
+          <section style={{
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            padding: 18,
+            background: "var(--surface-1)",
+          }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-1)", marginBottom: 12 }}>
+              {FRAMEWORK_LABEL[activeFwRow.framework] ?? activeFwRow.framework} controls
+            </div>
+            {activeFwRow.controls.length === 0 ? (
+              <div style={{ fontSize: 13, color: "var(--text-3)" }}>
+                No specific controls tagged — this framework matches at the pack level only.
+              </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 8 }}>
+                {activeFwRow.controls.map(ctrl => (
+                  <div key={ctrl} style={{
+                    border: "1px solid var(--border)",
+                    borderRadius: 6,
+                    padding: "10px 12px",
+                    background: "var(--surface-2)",
+                  }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-1)" }}>{ctrl}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>covered</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ marginTop: 12, fontSize: 11, color: "var(--text-muted)" }}>
+              Source packs: {activeFwRow.packs.join(", ")}
+            </div>
+          </section>
+        )}
       </div>
     </AppShell>
   )
