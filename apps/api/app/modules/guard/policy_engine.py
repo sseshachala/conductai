@@ -27,6 +27,7 @@ from app.modules.guard.models import (
     GuardPolicyCache,
     GuardRuleOverride,
     SkillPack,
+    WorkspaceCustomRule,
     WorkspaceSkillPack,
 )
 
@@ -80,6 +81,23 @@ def _build_rules(db: Session, workspace_id: uuid.UUID, persona: str) -> list[dic
             if persona not in affinity:
                 continue
             rules[rule["id"]] = dict(rule)
+
+    # 1b. merge workspace custom rules on top (workspace-defined wins on rule_id collision)
+    customs = (
+        db.query(WorkspaceCustomRule)
+        .filter(
+            WorkspaceCustomRule.workspace_id == workspace_id,
+            WorkspaceCustomRule.enabled.is_(True),
+        )
+        .all()
+    )
+    for c in customs:
+        body = dict(c.body or {})
+        body.setdefault("id", c.rule_id)
+        affinity = body.get("persona_affinity", PERSONAS)
+        if persona not in affinity:
+            continue
+        rules[c.rule_id] = body
 
     # 2. apply workspace overrides
     overrides = (

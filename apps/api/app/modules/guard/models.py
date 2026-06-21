@@ -266,6 +266,22 @@ class WorkspaceSkillPack(Base):
     installed_at    = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
 
+class WorkspaceCustomRule(Base):
+    """Per-workspace custom guard rules. Replaces the legacy guard_policies
+    table for non-pack rules. Pack rules live in skill_packs.rules JSONB."""
+
+    __tablename__ = "workspace_custom_rules"
+
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True)
+    rule_id      = Column(Text, primary_key=True)
+    body         = Column(JSONB, nullable=False)            # full rule shape (id, match_*, action, message, severity, ...)
+    enabled      = Column(Boolean, nullable=False, default=True)
+    created_by   = Column(Text, nullable=True)              # clerk_user_id
+    created_at   = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at   = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc),
+                          onupdate=lambda: datetime.now(timezone.utc))
+
+
 class GuardRuleOverride(Base):
     """Per-workspace overrides on top of skill pack defaults."""
 
