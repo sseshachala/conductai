@@ -25,7 +25,8 @@ from sqlalchemy import text as _sql
 from app.core.database import SessionLocal
 from app.core.auth import get_clerk_user_email
 from app.core.pii import redact_secrets
-from app.modules.guard.models import GuardAuditEvent, GuardConfig, GuardMemberConfig, GuardPolicy
+from app.modules.guard.models import GuardAuditEvent, GuardConfig, GuardMemberConfig
+from app.modules.guard.policy_engine import compute_policy
 from app.modules.guard.routers.events import _send_guard_slack as _slack_notify
 
 router = APIRouter(prefix="/guard/mcp", tags=["guard-mcp"])
@@ -162,22 +163,21 @@ def _match_policy(tool_name: str, tool_input: dict, rules: list) -> dict | None:
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
 def _get_rules(db: Session, ws_uuid: uuid.UUID) -> list[dict]:
-    policies = (
-        db.query(GuardPolicy)
-        .filter(GuardPolicy.workspace_id == ws_uuid, GuardPolicy.enabled.is_(True))
-        .order_by(GuardPolicy.created_at)
-        .all()
-    )
+    """Active ruleset from skill_packs JSONB via compute_policy(). Persona is
+    read from guard_config; defaults to 'standard' if absent."""
+    cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
+    persona = (cfg.persona if cfg else None) or "standard"
+    rules = compute_policy(db, ws_uuid, persona)
     return [
         {
-            "rule_id":           p.rule_id,
-            "match_tool":        p.match_tool,
-            "match_pattern":     p.match_pattern,
-            "match_path_pattern": getattr(p, "match_path_pattern", None),
-            "action":            p.action,
-            "message":           getattr(p, "message", None),
+            "rule_id":           r.get("id") or r.get("rule_id"),
+            "match_tool":        r.get("match_tool"),
+            "match_pattern":     r.get("match_pattern"),
+            "match_path_pattern": r.get("match_path_pattern"),
+            "action":            r.get("action"),
+            "message":           r.get("message"),
         }
-        for p in policies
+        for r in rules
     ]
 
 
